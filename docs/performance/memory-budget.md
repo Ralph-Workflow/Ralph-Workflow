@@ -417,7 +417,7 @@ cargo test -p ralph-workflow --lib benchmarks -- --nocapture
 cargo test -p ralph-workflow --lib executor::tests::safety
 ```
 
-**Expected result:** ALL tests pass with NO OUTPUT (no warnings or failures)
+**Expected result:** tests pass with **no ERROR/WARNING diagnostics** (informational output is acceptable)
 
 ## Performance Baseline Summary
 

@@ -8,7 +8,7 @@
 # - Channel backpressure behavior
 # - Unsafe code correctness
 #
-# All tests must pass with NO OUTPUT (warnings or failures).
+# All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).
 #
 # Usage:
 #   bash scripts/verify_memory_safety.sh

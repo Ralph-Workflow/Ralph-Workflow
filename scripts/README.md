@@ -21,7 +21,7 @@ bash scripts/audit_tests.sh
 - Test files exceeding 1000 lines
 - Internal field assertions
 
-**Expected output:** No output for compliant tests. Any violations will be reported with file locations.
+**Expected output:** No ERROR/WARNING diagnostics for compliant tests. Any violations will be reported with file locations.
 
 ### check-tests.sh
 

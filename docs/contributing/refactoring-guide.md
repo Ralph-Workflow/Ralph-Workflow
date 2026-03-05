@@ -317,11 +317,11 @@ cargo build --release
 make dylint
 ```
 
-**All commands must produce NO OUTPUT** (zero warnings, zero failures).
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).
 
 ### Critical Rule: Fix ALL Failures
 
-Per `AGENTS.md`: **If ANY command produces output, you MUST fix ALL failures before committing** - even pre-existing issues you did not introduce.
+Per `AGENTS.md`: **If verification fails (command failure or ERROR/WARNING diagnostics), you MUST fix ALL failures before committing** — even pre-existing issues you did not introduce.
 
 Pre-existing failures become your TOP PRIORITY. The longer a failure exists, the more urgent it becomes.
 

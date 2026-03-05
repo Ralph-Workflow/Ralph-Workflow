@@ -1,9 +1,21 @@
 # Required Verification (before PR/completion)
 
-Run git rebase on main if on feature branch. All commands must produce **NO OUTPUT**:
+## Canonical command
 
 ```bash
-# Check for forbidden allow/expect attributes (aka. NOTHING IS ALLOWED HERE so this should produce NO OUTPUT)
+cargo xtask verify
+```
+
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
+
+---
+
+## Reference: underlying commands
+
+Run git rebase on main if on feature branch.
+
+```bash
+# Check for forbidden allow/expect attributes (must return 0 on success; no matches is success)
 rg -n -U --pcre2 '(?m)^\s*#\s*!?\[\s*(?:(?:allow|expect)\s*\(|cfg_attr\s*\((?:[^()]|\([^()]*\))*?,\s*(?:allow|expect)\s*\()' --glob '!target/**' --glob '!.git/**' --glob '*.rs' .
 
 # Integration test compliance
@@ -32,7 +44,11 @@ cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings
 # via #![deny(...)] attributes in test-helpers/src/lib.rs
 cargo clippy -p test-helpers --all-targets -- -D warnings
 
+# Lint xtask runner
+cargo clippy -p xtask --all-targets -- -D warnings
+
 # Unit tests
+cargo test -p xtask
 cargo test -p ralph-workflow --lib --all-features
 
 # Integration tests
@@ -79,6 +95,6 @@ make dylint
 cargo dylint -p ralph-workflow --lib file_too_long -- --lib
 ```
 
-**If ANY command produces output, FIX IT before continuing.** No ignored tests allowed.
+**If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.
 
 For dylint details/troubleshooting, see `docs/tooling/dylint.md`.

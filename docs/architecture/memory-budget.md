@@ -253,4 +253,4 @@ cargo test -p ralph-workflow-tests memory_safety
 cargo test -p ralph-workflow benchmarks -- --nocapture
 ```
 
-All verification commands must produce **NO OUTPUT** (warnings or failures) to pass.
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).

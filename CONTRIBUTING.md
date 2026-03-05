@@ -17,7 +17,7 @@ cargo test -p ralph-workflow --lib --all-features
 ## Source of Truth (Read These First)
 
 - Code style + testing philosophy: `CODE_STYLE.md`
-- Required verification commands (must produce NO OUTPUT): `docs/agents/verification.md`
+- Required verification commands (no ERROR/WARNING output): `docs/agents/verification.md`
 - Reducer/event-loop architecture: `docs/architecture/event-loop-and-reducers.md`
 - Effect system + filesystem rules: `docs/architecture/effect-system.md`
 - Workspace trait rules (`std::fs` is almost always forbidden): `docs/agents/workspace-trait.md`
@@ -26,10 +26,16 @@ cargo test -p ralph-workflow --lib --all-features
 
 ## Required Verification (Before PR/Completion)
 
-Run every command in `docs/agents/verification.md`.
+Canonical command:
 
-- All commands must produce NO OUTPUT
-- If any command produces output, fix it before continuing
+```bash
+cargo xtask verify
+```
+
+See `docs/agents/verification.md` for the full checklist (and reference commands).
+
+- Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable)
+- If any command fails or emits ERROR/WARNING diagnostics, fix it before continuing
 
 This is intentionally stricter than a typical "fmt/clippy/test" checklist because the repository has additional compliance checks.
 

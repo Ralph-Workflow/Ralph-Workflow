@@ -91,6 +91,7 @@ lint:
 	$(CARGO) clippy -p ralph-workflow $(CARGO_FLAGS) --all-targets --all-features -- -D warnings
 	$(CARGO) clippy -p ralph-workflow-tests $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
+	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
 # Run custom dylint lints (safe default: lib only)

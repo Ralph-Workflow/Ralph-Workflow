@@ -392,7 +392,7 @@ A change is complete only when **all** of the following hold:
 - [ ] Test names describe observable behavior, not implementation details.
 - [ ] AAA structure is clear; setup does not exceed ~10 lines without a named helper.
 - [ ] Required refactors for testability are done; no `cfg!(test)`, skip flags, or test-mode booleans remain.
-- [ ] `bash scripts/audit_tests.sh` and all verification commands in `docs/agents/verification.md` produce **no output**.
+- [ ] `bash scripts/audit_tests.sh` and all verification commands in `docs/agents/verification.md` produce no ERROR/WARNING diagnostics.
 
 ---
 

@@ -1,5 +1,8 @@
 # Cargo configuration for ralph-workflow project
 
+[alias]
+xtask = "run -p xtask --"
+
 [build]
 # Use default build settings.
 #
