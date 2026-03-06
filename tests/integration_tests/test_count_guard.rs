@@ -32,7 +32,7 @@
 //!   cargo test -p ralph-workflow-tests
 //! ```
 //!
-//! The test count floor is enforced by the integration_test_count_guard_documentation
+//! The test count floor is enforced by the `integration_test_count_guard_documentation`
 //! test which runs as part of `cargo test -p ralph-workflow-tests` (included in
 //! `cargo xtask verify` as the test-integration check). The compliance-timeout-wrapper
 //! native check in xtask/src/compliance.rs verifies timeout wrapper presence only,
@@ -761,8 +761,8 @@ fn count_tests_recursive(
 /// This verifies that the test count guard module is properly loaded, the
 /// constant is accessible, and the best-effort source scan has not regressed
 /// below the minimum floor. The authoritative compiled test list verification
-/// happens in CI via `cargo test -p ralph-workflow-tests -- --list` and in the
-/// compliance check script.
+/// happens via `cargo xtask verify` (which runs `cargo test -p ralph-workflow-tests -- --list`)
+/// and in CI by invoking the same xtask entry point.
 ///
 /// If this test appears, it means the test count guard module is properly loaded
 /// and the integration test suite includes this verification documentation.

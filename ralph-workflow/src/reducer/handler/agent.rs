@@ -6,6 +6,7 @@ use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
+use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::fault_tolerant_executor::{
     execute_agent_fault_tolerantly, AgentExecutionConfig, AgentExecutionResult,
 };
@@ -185,10 +186,9 @@ impl MainEffectHandler {
         );
         ctx.workspace
             .append_bytes(std::path::Path::new(&logfile), log_header.as_bytes())
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to write agent log header - log would be incomplete without metadata: {e}"
-                )
+            .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
+                path: logfile.clone(),
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
             })?;
 
         // Build command string, honoring reducer-selected model (if any).

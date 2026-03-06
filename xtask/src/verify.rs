@@ -378,11 +378,11 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "--files",
             "--glob",
             "*.sh",
-            "--glob",
-            "!target/**",
-            "--glob",
-            "!.git/**",
-            ".",
+            // Scope to directories where shell scripts previously lived.
+            // This aligns with the documented policy and avoids unintentionally forbidding
+            // intentionally committed .sh files elsewhere (e.g., fixtures).
+            "scripts/",
+            "tests/integration_tests/",
         ],
         // Exit code 1 means "no matches found" which is the success condition.
         success_exit_codes: &[1],
@@ -972,6 +972,29 @@ mod tests {
                 .iter()
                 .any(|c| c.name == "audit-no-shell-scripts"),
             "REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
+        );
+    }
+
+    #[test]
+    fn test_audit_no_shell_scripts_check_only_scans_scripts_and_integration_tests() {
+        // TDD anchor: this test fails until audit-no-shell-scripts is scoped to the intended
+        // directories (scripts/ and tests/integration_tests/) instead of scanning the entire repo.
+        let spec = REQUIRED_CHECKS
+            .iter()
+            .find(|c| c.name == "audit-no-shell-scripts")
+            .expect("audit-no-shell-scripts check must exist");
+
+        assert!(
+            spec.args.contains(&"scripts/"),
+            "audit-no-shell-scripts must scan scripts/"
+        );
+        assert!(
+            spec.args.contains(&"tests/integration_tests/"),
+            "audit-no-shell-scripts must scan tests/integration_tests/"
+        );
+        assert!(
+            !spec.args.contains(&"."),
+            "audit-no-shell-scripts must not scan the entire repository"
         );
     }
 
