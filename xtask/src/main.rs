@@ -1,3 +1,4 @@
+mod compliance;
 mod verify;
 
 use std::path::PathBuf;
@@ -60,7 +61,8 @@ fn main() -> ExitCode {
     match args.next().as_deref() {
         Some("verify") => {
             let runner = RealRunner::new();
-            let report = match verify::verify(&runner) {
+            let repo_root = runner.repo_root.clone();
+            let report = match verify::verify(&runner, &repo_root) {
                 Ok(report) => report,
                 Err(err) => {
                     eprintln!("xtask error: {err:#}");

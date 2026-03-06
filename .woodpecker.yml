@@ -6,17 +6,7 @@ steps:
     image: rust:1.78-bookworm
     commands:
       - rustup component add rustfmt clippy
-      - cargo fmt -- --check
-      - cargo clippy --all-targets -- -D warnings
-      # Unit tests for main crate
-      - cargo test -p ralph-workflow --lib --all-features
-      # Integration test compliance checks (includes minimum test count guard)
-      - ./tests/integration_tests/compliance_check.sh
-      # Integration tests (mandatory - 437+ tests)
-      - cargo test -p ralph-workflow-tests
-      # Memory safety verification (bounded growth, Arc patterns, thread lifecycle, etc.)
-      - bash scripts/verify_memory_safety.sh
-      # Performance regression verification (long-running tests, checkpoint size, etc.)
-      - bash scripts/ci_performance_regression.sh
+      # Run full verification suite via xtask (canonical entry point)
+      - cargo xtask verify
       # Note: System tests (git2-system-tests, process-system-tests) are NOT run in CI
       # They require real git/filesystem and are run manually as needed

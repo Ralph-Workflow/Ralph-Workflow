@@ -104,7 +104,7 @@ if [ $ERROR_COUNT -gt 0 ]; then
     echo "❌ Found $ERROR_COUNT test anti-pattern(s)"
     echo ""
     echo "Integration tests must follow guidelines in docs/agents/testing-guide.md"
-    echo "Run 'bash scripts/audit_tests.sh' for full audit"
+    echo "Run 'cargo xtask verify' for full audit"
     exit 1
 else
     echo "✓ All staged test files comply with integration testing guidelines"

@@ -47,6 +47,21 @@ pub struct VerifyReport {
     pub failure: Option<CheckFailure>,
 }
 
+pub struct NativeCheckResult {
+    pub status: CheckStatus,
+    pub message: String,
+}
+
+pub struct NativeCheck {
+    pub name: &'static str,
+    pub run: fn(&std::path::Path) -> NativeCheckResult,
+}
+
+pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[NativeCheck {
+    name: "compliance-timeout-wrapper",
+    run: crate::compliance::check_timeout_wrappers,
+}];
+
 fn has_line_prefix(output: &str, prefix: &str) -> bool {
     output
         .lines()
@@ -126,21 +141,235 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
             ".",
         ],
-        // Exit code 1 means "no matches".
+        // Exit code 1 means "no matches" which is success.
+        success_exit_codes: &[1],
+    },
+    // ── no-test-flags group (replaces no_test_flags_check.sh) ──────────────
+    CommandSpec {
+        name: "no-test-flags-cfg-test",
+        program: "rg",
+        args: &[
+            "-n",
+            r"cfg!\(test\)",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
         success_exit_codes: &[1],
     },
     CommandSpec {
-        name: "integration-test-compliance",
-        program: "bash",
-        args: &["./tests/integration_tests/compliance_check.sh"],
-        success_exit_codes: &[0],
+        name: "no-test-flags-test-mode-params",
+        program: "rg",
+        args: &[
+            "-n",
+            r"(test_mode|is_test|is_testing|testing_mode)\s*:\s*bool",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
     },
     CommandSpec {
-        name: "no-test-flags",
-        program: "bash",
-        args: &["./tests/integration_tests/no_test_flags_check.sh"],
-        success_exit_codes: &[0],
+        name: "no-test-flags-skip-params",
+        program: "rg",
+        args: &[
+            "-n",
+            r"(skip_validation|skip_verify|skip_check|skip_auth|skip_api)\s*:\s*bool",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
     },
+    CommandSpec {
+        name: "no-test-flags-mock-params",
+        program: "rg",
+        args: &[
+            "-n",
+            r"(mock_mode|fake_mode|stub_mode|use_mock|use_fake|use_stub)\s*:\s*bool",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "no-test-flags-testing-feature",
+        program: "rg",
+        args: &[
+            "-n",
+            r#"#\[cfg\(feature\s*=\s*"testing"\)\]"#,
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "no-test-flags-cfg-not-test",
+        program: "rg",
+        args: &[
+            "-n",
+            r"#\[cfg\(not\(test\)\)\]",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    // ── compliance group (process-spawn and serial checks from compliance_check.sh) ──
+    CommandSpec {
+        name: "compliance-no-process-spawn",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines (// prefix) to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*(std::process::Command::new|assert_cmd::Command::new)",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+            "--glob",
+            "!_TEMPLATE.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "compliance-no-serial",
+        program: "rg",
+        args: &[
+            "-n",
+            r"#\[serial\]|use serial_test",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+            "--glob",
+            "!_TEMPLATE.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    // ── audit group (replaces audit_tests.sh critical gates) ────────────────
+    CommandSpec {
+        name: "audit-no-cfg-test-integration",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*cfg!\(test\)",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-real-fs-integration",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*(std::fs::|TempDir|tempfile::)",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-real-process-integration",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*std::process::Command::new",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-serial-src",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*#\[serial\]",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-test-helpers-src",
+        program: "rg",
+        args: &[
+            "-n",
+            r"use test_helpers::|init_git_repo|commit_all|git_switch",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-env-mutations-integration",
+        program: "rg",
+        args: &[
+            "-n",
+            r"std::env::set_var|std::env::remove_var|env::set_var|env::remove_var",
+            "tests/integration_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-serial-process-system",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            // Exclude comment lines to avoid false positives from doc comments.
+            r"^(?!\s*//)[^\n]*#\[serial\]",
+            "tests/process_system_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-no-git2-process-system",
+        program: "rg",
+        args: &[
+            "-n",
+            r"git2::|init_git_repo",
+            "tests/process_system_tests/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    CommandSpec {
+        name: "audit-ignore-has-url",
+        program: "rg",
+        args: &[
+            "--pcre2",
+            "-n",
+            r"#\[ignore\b(?!.*https://)",
+            "tests/",
+            "ralph-workflow/src/",
+            "--glob",
+            "*.rs",
+        ],
+        success_exit_codes: &[1],
+    },
+    // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
         program: "cargo",
@@ -196,6 +425,7 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
         args: &["clippy", "-p", "xtask", "--all-targets", "--", "-D", "warnings"],
         success_exit_codes: &[0],
     },
+    // ── tests ────────────────────────────────────────────────────────────────
     CommandSpec {
         name: "test-xtask",
         program: "cargo",
@@ -220,24 +450,33 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         success_exit_codes: &[0],
     },
+    // ── memory safety (replaces verify_memory_safety.sh and ci_performance_regression.sh) ──
     CommandSpec {
-        name: "audit-tests",
-        program: "bash",
-        args: &["scripts/audit_tests.sh"],
+        name: "memory-safety-integration",
+        program: "cargo",
+        args: &[
+            "test",
+            "-p",
+            "ralph-workflow-tests",
+            "--test",
+            "integration_tests",
+            "memory_safety",
+        ],
         success_exit_codes: &[0],
     },
     CommandSpec {
-        name: "verify-memory-safety",
-        program: "bash",
-        args: &["scripts/verify_memory_safety.sh"],
+        name: "memory-safety-benchmarks",
+        program: "cargo",
+        args: &["test", "-p", "ralph-workflow", "--lib", "benchmarks"],
         success_exit_codes: &[0],
     },
     CommandSpec {
-        name: "ci-performance-regression",
-        program: "bash",
-        args: &["scripts/ci_performance_regression.sh"],
+        name: "memory-safety-executor",
+        program: "cargo",
+        args: &["test", "-p", "ralph-workflow", "--lib", "executor::tests"],
         success_exit_codes: &[0],
     },
+    // ── release build and custom lints ───────────────────────────────────────
     CommandSpec {
         name: "release-build",
         program: "cargo",
@@ -252,7 +491,24 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-pub fn verify(runner: &dyn CommandRunner) -> Result<VerifyReport> {
+pub fn verify(runner: &dyn CommandRunner, repo_root: &std::path::Path) -> Result<VerifyReport> {
+    // Run native checks first (Rust-native, no external subprocess)
+    for check in NATIVE_REQUIRED_CHECKS {
+        let result = (check.run)(repo_root);
+        if result.status != CheckStatus::Pass {
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: check.name,
+                    status: result.status,
+                    exit_code: -1,
+                    stdout: result.message,
+                    stderr: String::new(),
+                }),
+            });
+        }
+    }
+
     run_checks(runner, REQUIRED_CHECKS)
 }
 
@@ -494,7 +750,9 @@ mod tests {
         let runner = RecordingRunner::default();
 
         // Act
-        let report = verify(&runner).expect("verify should not error");
+        // Pass a nonexistent path so native checks (compliance-timeout-wrapper) return Pass
+        let report =
+            verify(&runner, std::path::Path::new("/fake")).expect("verify should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -502,23 +760,82 @@ mod tests {
         assert_eq!(
             runner.ran(),
             vec![
+                // rg pattern checks
                 "forbidden-allow-expect-scan",
-                "integration-test-compliance",
-                "no-test-flags",
+                // no-test-flags group
+                "no-test-flags-cfg-test",
+                "no-test-flags-test-mode-params",
+                "no-test-flags-skip-params",
+                "no-test-flags-mock-params",
+                "no-test-flags-testing-feature",
+                "no-test-flags-cfg-not-test",
+                // compliance group
+                "compliance-no-process-spawn",
+                "compliance-no-serial",
+                // audit group
+                "audit-no-cfg-test-integration",
+                "audit-no-real-fs-integration",
+                "audit-no-real-process-integration",
+                "audit-no-serial-src",
+                "audit-no-test-helpers-src",
+                "audit-no-env-mutations-integration",
+                "audit-no-serial-process-system",
+                "audit-no-git2-process-system",
+                "audit-ignore-has-url",
+                // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
                 "clippy-ralph-workflow-tests",
                 "clippy-test-helpers",
                 "clippy-xtask",
+                // tests
                 "test-xtask",
                 "test-ralph-workflow-lib",
                 "test-integration",
-                "audit-tests",
-                "verify-memory-safety",
-                "ci-performance-regression",
+                // memory safety
+                "memory-safety-integration",
+                "memory-safety-benchmarks",
+                "memory-safety-executor",
+                // build and custom lints
                 "release-build",
                 "dylint",
             ]
+        );
+    }
+
+    #[test]
+    fn test_required_checks_do_not_invoke_shell_scripts() {
+        for spec in REQUIRED_CHECKS {
+            assert_ne!(
+                spec.program, "bash",
+                "verify steps must not invoke bash scripts: {}",
+                spec.name
+            );
+
+            assert!(
+                !spec.args.iter().any(|arg| arg.ends_with(".sh")),
+                "verify steps must not reference .sh scripts: {} -> {:?}",
+                spec.name,
+                spec.args
+            );
+        }
+    }
+
+    #[test]
+    fn test_native_checks_do_not_include_bash() {
+        // Native checks are Rust functions — no bash invocations possible.
+        // Verify at least one native check exists (compliance-timeout-wrapper).
+        assert!(
+            !NATIVE_REQUIRED_CHECKS.is_empty(),
+            "at least one native check should be registered"
+        );
+
+        // Confirm the expected native check is present
+        assert!(
+            NATIVE_REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "compliance-timeout-wrapper"),
+            "compliance-timeout-wrapper native check must be registered"
         );
     }
 }

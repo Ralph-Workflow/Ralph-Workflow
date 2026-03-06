@@ -2,7 +2,7 @@
 //!
 //! This module provides documentation and a lightweight guard to catch
 //! accidental test suite regressions. The authoritative count check is
-//! performed by the compliance script using `cargo test -- --list`.
+//! performed by `cargo xtask verify` using `cargo test -- --list`.
 //!
 //! # Integration Test Style Guide
 //!
@@ -32,13 +32,13 @@
 //!   cargo test -p ralph-workflow-tests
 //! ```
 //!
-//! The compliance check script (`compliance_check.sh`) verifies the compiled
-//! test list using the same minimum floor defined here.
+//! The `cargo xtask verify` command enforces the compiled test list against the
+//! same minimum floor defined here (via the compliance-timeout-wrapper native check).
 //!
 //! NOTE: The source scan in this module is intentionally non-authoritative.
 //! It only looks for literal `#[test]` annotations and does not reflect
 //! conditional compilation or alternative test attributes (e.g. `#[tokio::test]`).
-//! The compliance script's `cargo test -- --list` output is the source of truth.
+//! The `cargo test -- --list` output is the source of truth.
 
 use crate::test_timeout::with_default_timeout;
 use std::collections::HashSet;
