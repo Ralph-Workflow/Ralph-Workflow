@@ -369,6 +369,20 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         success_exit_codes: &[1],
     },
+    CommandSpec {
+        name: "no-string-errors-handlers",
+        program: "rg",
+        args: &[
+            "-n",
+            "--pcre2",
+            r"\banyhow::anyhow!\(|\banyhow!\(|\banyhow::bail!\(|\bbail!\(|\banyhow::ensure!\(|\bensure!\(|\banyhow::format_err!\(|\bformat_err!\(|\banyhow::Error::msg\(",
+            "ralph-workflow/src/reducer/handler/",
+            "--glob",
+            "!**/tests/**",
+        ],
+        // Exit code 1 means "no matches" which is success.
+        success_exit_codes: &[1],
+    },
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
@@ -782,6 +796,7 @@ mod tests {
                 "audit-no-serial-process-system",
                 "audit-no-git2-process-system",
                 "audit-ignore-has-url",
+                "no-string-errors-handlers",
                 // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
@@ -819,6 +834,17 @@ mod tests {
                 spec.args
             );
         }
+    }
+
+    #[test]
+    fn test_no_string_errors_handlers_check_is_in_required_checks() {
+        // TDD anchor: this test fails until the CommandSpec is added to REQUIRED_CHECKS
+        assert!(
+            REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "no-string-errors-handlers"),
+            "REQUIRED_CHECKS must include the no-string-errors-handlers audit check"
+        );
     }
 
     #[test]
