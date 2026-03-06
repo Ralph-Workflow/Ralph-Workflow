@@ -369,6 +369,24 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         success_exit_codes: &[1],
     },
+    // Regression guard: no .sh files may be committed after the shell-script migration.
+    // rg --files exits 1 (no matches) = pass; exits 0 (matches found) = fail.
+    CommandSpec {
+        name: "audit-no-shell-scripts",
+        program: "rg",
+        args: &[
+            "--files",
+            "--glob",
+            "*.sh",
+            "--glob",
+            "!target/**",
+            "--glob",
+            "!.git/**",
+            ".",
+        ],
+        // Exit code 1 means "no matches found" which is the success condition.
+        success_exit_codes: &[1],
+    },
     CommandSpec {
         name: "no-string-errors-handlers",
         program: "rg",
@@ -886,6 +904,7 @@ mod tests {
                 "audit-no-serial-process-system",
                 "audit-no-git2-process-system",
                 "audit-ignore-has-url",
+                "audit-no-shell-scripts",
                 "no-string-errors-handlers",
                 // format and lint
                 "fmt-check",
@@ -917,8 +936,14 @@ mod tests {
                 spec.name
             );
 
+            // Args ending in ".sh" are forbidden UNLESS they are glob patterns (contain '*').
+            // The audit-no-shell-scripts check uses "*.sh" as an rg --glob pattern to detect
+            // committed shell scripts — that is the search target, not an invocation.
             assert!(
-                !spec.args.iter().any(|arg| arg.ends_with(".sh")),
+                !spec
+                    .args
+                    .iter()
+                    .any(|arg| arg.ends_with(".sh") && !arg.contains('*')),
                 "verify steps must not reference .sh scripts: {} -> {:?}",
                 spec.name,
                 spec.args
@@ -934,6 +959,19 @@ mod tests {
                 .iter()
                 .any(|c| c.name == "no-string-errors-handlers"),
             "REQUIRED_CHECKS must include the no-string-errors-handlers audit check"
+        );
+    }
+
+    #[test]
+    fn test_audit_no_shell_scripts_check_is_in_required_checks() {
+        // TDD anchor: this test fails until audit-no-shell-scripts is added to REQUIRED_CHECKS.
+        // Policy: no .sh files may exist in scripts/ or tests/integration_tests/.
+        // This check prevents regression after the shell-script migration.
+        assert!(
+            REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-no-shell-scripts"),
+            "REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
         );
     }
 

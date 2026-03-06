@@ -747,8 +747,8 @@ All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo test -p ralph-workflow-tests` - **119 integration tests pass** (all passing)
 - ✅ `cargo build --release` - Release build succeeds
 - ✅ `make dylint` - Custom file size lints pass (no files exceed 1000-line hard limit)
-- ✅ `./tests/integration_tests/compliance_check.sh` - Integration test compliance verified
-- ✅ `./tests/integration_tests/no_test_flags_check.sh` - No test flags in production code
+- ✅ Integration test compliance checks (migrated to `cargo xtask verify` in wt-48)
+- ✅ No test flags in production code (migrated to `cargo xtask verify` in wt-48)
 - ✅ Forbidden attributes check - Only 3 justified annotations remain
 
 **Step Completion Analysis:**
@@ -995,8 +995,8 @@ All verification commands now produce no ERROR/WARNING output (full compliance):
 - ✅ `cargo test -p ralph-workflow-tests` - 119 tests pass
 - ✅ `cargo build --release` - Clean release build
 - ✅ `make dylint` - No file size violations
-- ✅ `./tests/integration_tests/compliance_check.sh` - Compliant
-- ✅ `./tests/integration_tests/no_test_flags_check.sh` - No test flags in production
+- ✅ Integration test compliance checks (migrated to `cargo xtask verify` in wt-48)
+- ✅ No test flags in production code (migrated to `cargo xtask verify` in wt-48)
 - ✅ Forbidden attributes check - No `#[allow(...)]` or `#[expect(...)]` found
 
 ### Impact
