@@ -176,3 +176,129 @@ fn test_empty_diff_skip_unblocks_termination_when_safety_commit_pending() {
          to prevent infinite loop"
     );
 }
+
+#[test]
+fn test_created_normal_resets_commit_diff_prepared() {
+    // After a successful commit (normal path), commit_diff_prepared must be reset to false
+    // so the next entry into the commit phase always re-checks the diff.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_diff_prepared = true;
+    state.commit_diff_empty = false;
+    state.commit_diff_content_id_sha256 = Some("hash-to-reset".to_string());
+    // termination_resume_phase is None by default => normal path
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "fix: something".to_string()),
+    );
+
+    assert!(
+        !new_state.commit_diff_prepared,
+        "commit_diff_prepared must be false after CommitEvent::Created (normal path)"
+    );
+    assert!(
+        !new_state.commit_diff_empty,
+        "commit_diff_empty must be false after CommitEvent::Created (normal path)"
+    );
+    assert_eq!(
+        new_state.commit_diff_content_id_sha256, None,
+        "commit_diff_content_id_sha256 must be None after CommitEvent::Created (normal path)"
+    );
+}
+
+#[test]
+fn test_created_pre_termination_resets_commit_diff_prepared() {
+    // After a successful commit in the pre-termination safety path, commit_diff_prepared must
+    // be reset to false so the next commit-phase entry always re-checks the diff.
+    let mut state = PipelineState::initial(0, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.termination_resume_phase = Some(PipelinePhase::Complete);
+    state.pre_termination_commit_checked = false;
+    state.commit_diff_prepared = true;
+    state.commit_diff_empty = false;
+    state.commit_diff_content_id_sha256 = Some("hash-to-reset".to_string());
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "fix: something".to_string()),
+    );
+
+    assert!(
+        !new_state.commit_diff_prepared,
+        "commit_diff_prepared must be false after CommitEvent::Created (pre-termination path)"
+    );
+    assert!(
+        !new_state.commit_diff_empty,
+        "commit_diff_empty must be false after CommitEvent::Created (pre-termination path)"
+    );
+    assert_eq!(
+        new_state.commit_diff_content_id_sha256, None,
+        "commit_diff_content_id_sha256 must be None after CommitEvent::Created (pre-termination path)"
+    );
+}
+
+#[test]
+fn test_skipped_normal_resets_commit_diff_prepared() {
+    // After a skipped commit (normal path), commit_diff_prepared must be reset to false
+    // so the next entry into the commit phase always re-checks the diff.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_diff_prepared = true;
+    state.commit_diff_empty = false;
+    state.commit_diff_content_id_sha256 = Some("hash-to-reset".to_string());
+    // termination_resume_phase is None by default => normal path
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_skipped("AI chose to skip".to_string()),
+    );
+
+    assert!(
+        !new_state.commit_diff_prepared,
+        "commit_diff_prepared must be false after CommitEvent::Skipped (normal path)"
+    );
+    assert!(
+        !new_state.commit_diff_empty,
+        "commit_diff_empty must be false after CommitEvent::Skipped (normal path)"
+    );
+    assert_eq!(
+        new_state.commit_diff_content_id_sha256, None,
+        "commit_diff_content_id_sha256 must be None after CommitEvent::Skipped (normal path)"
+    );
+}
+
+#[test]
+fn test_skipped_pre_termination_resets_commit_diff_prepared() {
+    // After a skipped commit in the pre-termination safety path (AI-driven skip with
+    // non-empty diff), commit_diff_prepared must be reset to false.
+    let mut state = PipelineState::initial(0, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.termination_resume_phase = Some(PipelinePhase::Complete);
+    state.pre_termination_commit_checked = false;
+    state.commit_diff_prepared = true;
+    state.commit_diff_empty = false; // non-empty => AI-driven skip, pre_termination_commit_checked stays false
+    state.commit_diff_content_id_sha256 = Some("hash-to-reset".to_string());
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_skipped("AI chose to skip".to_string()),
+    );
+
+    assert!(
+        !new_state.commit_diff_prepared,
+        "commit_diff_prepared must be false after CommitEvent::Skipped (pre-termination path)"
+    );
+    assert!(
+        !new_state.commit_diff_empty,
+        "commit_diff_empty must be false after CommitEvent::Skipped (pre-termination path)"
+    );
+    assert_eq!(
+        new_state.commit_diff_content_id_sha256, None,
+        "commit_diff_content_id_sha256 must be None after CommitEvent::Skipped (pre-termination path)"
+    );
+}

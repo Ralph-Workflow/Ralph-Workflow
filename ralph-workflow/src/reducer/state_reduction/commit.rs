@@ -145,6 +145,9 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_extracted: false,
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
                     metrics: state.metrics.increment_commits_created_total(),
                     ..state
                 };
@@ -194,6 +197,9 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 reviewer_pass: next_reviewer_pass,
                 context_cleaned: false,
                 commit_required_files_cleaned: false,
+                commit_diff_prepared: false,
+                commit_diff_empty: false,
+                commit_diff_content_id_sha256: None,
                 agent_chain,
                 continuation,
                 metrics: state.metrics.increment_commits_created_total(),
@@ -285,6 +291,9 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_extracted: false,
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
                     ..state
                 };
             }
@@ -329,6 +338,9 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_xml_extracted: false,
                 commit_validated_outcome: None,
                 commit_xml_archived: false,
+                commit_diff_prepared: false,
+                commit_diff_empty: false,
+                commit_diff_content_id_sha256: None,
                 context_cleaned: false,
                 agent_chain,
                 continuation,

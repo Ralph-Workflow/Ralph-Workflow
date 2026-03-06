@@ -97,7 +97,7 @@ VALIDATION AND COMPLETION DISCIPLINE:
 - Ensure your final changes are validated with relevant checks (tests/lint/build as applicable).
 - Before finishing, verify the fixed behavior and confirm no regressions in touched areas.
 - If validation uncovers more defects, continue fixing until the touched scope is stable.
-- Relevant checks may be defined in project instruction files (for example `AGENTS.md` or other agent docs); follow those required verification steps.
+- Relevant checks may be defined in project instruction files (for example `AGENTS.md`, `CLAUDE.md`, or `.agent/` directory configuration); follow those required verification steps.
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT

@@ -334,6 +334,303 @@ fn test_determine_effect_final_validation() {
 }
 
 #[test]
+fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
+    // Regression: in a multi-iteration pipeline (dev → commit → planning → dev → commit),
+    // CheckCommitDiff must be emitted ONCE per commit-phase entry, not skipped on second entry.
+    //
+    // This test catches the bug where commit_diff_prepared survives across phase transitions
+    // (via ..state spread) and causes the orchestrator guard to skip CheckCommitDiff on
+    // the second commit phase entry.
+    let mut state = PipelineState::initial(2, 0); // 2 dev iterations, 0 reviewer passes
+    state.agent_chain = state.agent_chain.with_agents(
+        vec!["commit-agent".to_string()],
+        vec![vec![]],
+        AgentRole::Commit,
+    );
+
+    let mut check_diff_count = 0usize;
+    let max_steps = 200;
+
+    for step in 0..max_steps {
+        let effect = determine_next_effect(&state);
+
+        match effect {
+            Effect::CheckCommitDiff => {
+                check_diff_count += 1;
+                state = reduce(
+                    state,
+                    PipelineEvent::commit_diff_prepared(false, format!("hash-{check_diff_count}")),
+                );
+            }
+            Effect::LockPromptPermissions => {
+                state = reduce(state, PipelineEvent::prompt_permissions_locked(None));
+            }
+            Effect::RestorePromptPermissions => {
+                state = reduce(state, PipelineEvent::prompt_permissions_restored());
+            }
+            Effect::EnsureGitignoreEntries => {
+                state = reduce(
+                    state,
+                    PipelineEvent::gitignore_entries_ensured(
+                        vec!["/PROMPT*".to_string(), ".agent/".to_string()],
+                        vec![],
+                        false,
+                    ),
+                );
+            }
+            Effect::CleanupContext => {
+                state = reduce(state, PipelineEvent::ContextCleaned);
+            }
+            Effect::CleanupContinuationContext => {
+                state = reduce(
+                    state,
+                    PipelineEvent::development_continuation_context_cleaned(),
+                );
+            }
+            Effect::InitializeAgentChain { role } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::agent_chain_initialized(
+                        role,
+                        vec!["commit-agent".to_string()],
+                        3,
+                        1000,
+                        2.0,
+                        60000,
+                    ),
+                );
+            }
+            Effect::MaterializePlanningInputs { iteration } => {
+                let sig = state.agent_chain.consumer_signature_sha256();
+                state = reduce(
+                    state,
+                    PipelineEvent::planning_inputs_materialized(
+                        iteration,
+                        crate::reducer::state::MaterializedPromptInput {
+                            kind: crate::reducer::state::PromptInputKind::Prompt,
+                            content_id_sha256: "id".to_string(),
+                            consumer_signature_sha256: sig,
+                            original_bytes: 1,
+                            final_bytes: 1,
+                            model_budget_bytes: None,
+                            inline_budget_bytes: None,
+                            representation:
+                                crate::reducer::state::PromptInputRepresentation::Inline,
+                            reason:
+                                crate::reducer::state::PromptMaterializationReason::WithinBudgets,
+                        },
+                    ),
+                );
+            }
+            Effect::CleanupRequiredFiles { ref files }
+                if files.iter().any(|f| f.contains("plan.xml")) =>
+            {
+                let iteration = state.iteration;
+                state = reduce(state, PipelineEvent::planning_xml_cleaned(iteration));
+            }
+            Effect::PreparePlanningPrompt { iteration, .. } => {
+                state = reduce(state, PipelineEvent::planning_prompt_prepared(iteration));
+            }
+            Effect::InvokePlanningAgent { iteration } => {
+                state = reduce(state, PipelineEvent::planning_agent_invoked(iteration));
+            }
+            Effect::ExtractPlanningXml { iteration } => {
+                state = reduce(state, PipelineEvent::planning_xml_extracted(iteration));
+            }
+            Effect::ValidatePlanningXml { iteration } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::planning_xml_validated(
+                        iteration,
+                        true,
+                        Some("# Plan\n\n- step\n".to_string()),
+                    ),
+                );
+            }
+            Effect::WritePlanningMarkdown { iteration } => {
+                state = reduce(state, PipelineEvent::planning_markdown_written(iteration));
+            }
+            Effect::ArchivePlanningXml { iteration } => {
+                state = reduce(state, PipelineEvent::planning_xml_archived(iteration));
+            }
+            Effect::ApplyPlanningOutcome { iteration, valid } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::plan_generation_completed(iteration, valid),
+                );
+            }
+            Effect::PrepareDevelopmentContext { iteration } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::development_context_prepared(iteration),
+                );
+            }
+            Effect::MaterializeDevelopmentInputs { iteration } => {
+                let sig = state.agent_chain.consumer_signature_sha256();
+                let prompt = crate::reducer::state::MaterializedPromptInput {
+                    kind: crate::reducer::state::PromptInputKind::Prompt,
+                    content_id_sha256: "id".to_string(),
+                    consumer_signature_sha256: sig.clone(),
+                    original_bytes: 1,
+                    final_bytes: 1,
+                    model_budget_bytes: None,
+                    inline_budget_bytes: None,
+                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
+                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
+                };
+                let plan = crate::reducer::state::MaterializedPromptInput {
+                    kind: crate::reducer::state::PromptInputKind::Plan,
+                    content_id_sha256: "id".to_string(),
+                    consumer_signature_sha256: sig,
+                    original_bytes: 1,
+                    final_bytes: 1,
+                    model_budget_bytes: None,
+                    inline_budget_bytes: None,
+                    representation: crate::reducer::state::PromptInputRepresentation::Inline,
+                    reason: crate::reducer::state::PromptMaterializationReason::WithinBudgets,
+                };
+                state = reduce(
+                    state,
+                    PipelineEvent::development_inputs_materialized(iteration, prompt, plan),
+                );
+            }
+            Effect::CleanupRequiredFiles { ref files }
+                if files.iter().any(|f| f.contains("development_result.xml")) =>
+            {
+                let iteration = state.iteration;
+                state = reduce(state, PipelineEvent::development_xml_cleaned(iteration));
+            }
+            Effect::PrepareDevelopmentPrompt { iteration, .. } => {
+                state = reduce(state, PipelineEvent::development_prompt_prepared(iteration));
+            }
+            Effect::InvokeDevelopmentAgent { iteration } => {
+                state = reduce(state, PipelineEvent::development_agent_invoked(iteration));
+            }
+            Effect::InvokeAnalysisAgent { iteration } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::Development(
+                        crate::reducer::event::DevelopmentEvent::AnalysisAgentInvoked { iteration },
+                    ),
+                );
+            }
+            Effect::ExtractDevelopmentXml { iteration } => {
+                state = reduce(state, PipelineEvent::development_xml_extracted(iteration));
+            }
+            Effect::ValidateDevelopmentXml { iteration } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::development_xml_validated(
+                        iteration,
+                        crate::reducer::state::DevelopmentStatus::Completed,
+                        "done".to_string(),
+                        None,
+                        None,
+                    ),
+                );
+            }
+            Effect::ArchiveDevelopmentXml { iteration } => {
+                state = reduce(state, PipelineEvent::development_xml_archived(iteration));
+            }
+            Effect::ApplyDevelopmentOutcome { iteration } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::development_iteration_completed(iteration, true),
+                );
+            }
+            Effect::MaterializeCommitInputs { attempt } => {
+                let sig = state.agent_chain.consumer_signature_sha256();
+                state = reduce(
+                    state,
+                    PipelineEvent::commit_inputs_materialized(
+                        attempt,
+                        crate::reducer::state::MaterializedPromptInput {
+                            kind: crate::reducer::state::PromptInputKind::Diff,
+                            content_id_sha256: format!("hash-{check_diff_count}"),
+                            consumer_signature_sha256: sig,
+                            original_bytes: 1,
+                            final_bytes: 1,
+                            model_budget_bytes: None,
+                            inline_budget_bytes: None,
+                            representation:
+                                crate::reducer::state::PromptInputRepresentation::Inline,
+                            reason:
+                                crate::reducer::state::PromptMaterializationReason::WithinBudgets,
+                        },
+                    ),
+                );
+            }
+            Effect::PrepareCommitPrompt { .. } => {
+                state = reduce(state, PipelineEvent::commit_generation_started());
+                state = reduce(state, PipelineEvent::commit_prompt_prepared(1));
+            }
+            Effect::CleanupRequiredFiles { ref files }
+                if files.iter().any(|f| f.contains("commit_message.xml")) =>
+            {
+                state = reduce(state, PipelineEvent::commit_required_files_cleaned(1));
+            }
+            Effect::InvokeCommitAgent => {
+                state = reduce(state, PipelineEvent::commit_agent_invoked(1));
+            }
+            Effect::ExtractCommitXml => {
+                state = reduce(state, PipelineEvent::commit_xml_extracted(1));
+            }
+            Effect::ValidateCommitXml => {
+                state = reduce(
+                    state,
+                    PipelineEvent::commit_xml_validated("test commit".to_string(), 1),
+                );
+            }
+            Effect::ApplyCommitMessageOutcome => {
+                state = reduce(
+                    state,
+                    PipelineEvent::commit_message_generated("test commit".to_string(), 1),
+                );
+            }
+            Effect::ArchiveCommitXml => {
+                state = reduce(state, PipelineEvent::commit_xml_archived(1));
+            }
+            Effect::CreateCommit { .. } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::commit_created(
+                        format!("sha-{check_diff_count}"),
+                        "test commit".to_string(),
+                    ),
+                );
+            }
+            Effect::CheckUncommittedChangesBeforeTermination => {
+                state = reduce(state, PipelineEvent::pre_termination_safety_check_passed());
+            }
+            Effect::ValidateFinalState => {
+                state = reduce(state, PipelineEvent::finalizing_started());
+            }
+            Effect::SaveCheckpoint { .. } => {
+                if state.phase == PipelinePhase::Complete {
+                    break;
+                }
+            }
+            _ => panic!("Unexpected effect at step {step}: {effect:?}"),
+        }
+
+        if state.phase == PipelinePhase::Complete {
+            break;
+        }
+    }
+
+    assert_eq!(
+        state.phase,
+        PipelinePhase::Complete,
+        "Pipeline should complete"
+    );
+    assert_eq!(
+        check_diff_count, 2,
+        "CheckCommitDiff must be emitted exactly once per commit phase entry \
+         (2 dev iterations = 2 commit phases)"
+    );
+}
+
+#[test]
 fn test_determine_effect_complete() {
     let mut state = PipelineState {
         phase: PipelinePhase::Complete,

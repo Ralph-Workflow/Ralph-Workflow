@@ -127,15 +127,19 @@ fn test_fallback_instructions_contain_investigation_guidance() {
             "CheckCommitDiff effect should execute to prepare fallback diff"
         );
 
-        // Observable behavior: diff is considered prepared (with fallback content)
+        // Observable behavior: DiffPrepared was emitted (with fallback content)
         assert!(
-            effect_handler.state.commit_diff_prepared,
-            "Diff should be marked as prepared (even with fallback content)"
-        );
-
-        assert!(
-            !effect_handler.state.commit_diff_empty,
-            "Fallback diff content should not be treated as an empty diff"
+            effect_handler.was_event_emitted(|e| {
+                matches!(
+                    e,
+                    ralph_workflow::reducer::event::PipelineEvent::Commit(
+                        ralph_workflow::reducer::event::CommitEvent::DiffPrepared {
+                            empty: false, ..
+                        }
+                    )
+                )
+            }),
+            "DiffPrepared(empty=false) should be emitted even when git diff fails (with fallback content)"
         );
     });
 }
@@ -238,13 +242,6 @@ fn test_diff_failed_event_not_emitted_by_new_code() {
             "DiffPrepared should be emitted even when git diff fails"
         );
 
-        // Additional verification: Even with diff failure, fallback instructions should be used
-        // This is proven by commit_diff_prepared being true
-        assert!(
-            effect_handler.state.commit_diff_prepared,
-            "Even with diff failure, fallback instructions should be written and diff marked prepared"
-        );
-
         // Pipeline should continue to commit phase (not stuck in error state)
         // The fact that we reached a terminal state without Interrupted proves fallback worked
         assert!(
@@ -292,8 +289,16 @@ fn test_fallback_works_with_multiple_files() {
             "Pipeline should handle multiple files in fallback mode"
         );
 
+        // Observable behavior: DiffPrepared was emitted (with fallback content)
         assert!(
-            effect_handler.state.commit_diff_prepared,
+            effect_handler.was_event_emitted(|e| {
+                matches!(
+                    e,
+                    ralph_workflow::reducer::event::PipelineEvent::Commit(
+                        ralph_workflow::reducer::event::CommitEvent::DiffPrepared { .. }
+                    )
+                )
+            }),
             "Diff should be prepared with fallback content"
         );
     });
