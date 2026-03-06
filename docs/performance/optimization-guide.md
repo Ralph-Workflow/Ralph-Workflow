@@ -276,11 +276,8 @@ cargo test -p ralph-workflow --lib --all-features
 # Integration tests (if available)
 cargo test -p ralph-workflow-tests
 
-# Memory safety verification (if script exists)
-bash scripts/verify_memory_safety.sh
-
-# Performance regression verification (if script exists)
-bash scripts/ci_performance_regression.sh
+# Full verification suite (includes memory safety and performance regression)
+cargo xtask verify
 ```
 
 ## Updating Baselines

@@ -307,8 +307,7 @@ cargo test -p ralph-workflow --lib --all-features
 cargo test -p ralph-workflow-tests
 
 # 6. Integration test compliance
-./tests/integration_tests/compliance_check.sh
-./tests/integration_tests/no_test_flags_check.sh
+cargo xtask verify
 
 # 7. Release build
 cargo build --release

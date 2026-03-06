@@ -402,7 +402,7 @@ All memory safety tests can be verified with:
 
 ```bash
 # Full memory safety verification suite
-bash scripts/verify_memory_safety.sh
+cargo xtask verify
 
 # Individual test suites
 cargo test -p ralph-workflow-tests --test integration_tests memory_safety::bounded_growth
@@ -490,5 +490,4 @@ cargo test -p ralph-workflow --lib executor::tests::safety
 
 ### Verification Scripts
 
-- **Memory safety**: `scripts/verify_memory_safety.sh`
-- **Full verification**: `docs/agents/verification.md`
+- **Full verification**: `cargo xtask verify` (see `docs/agents/verification.md`)

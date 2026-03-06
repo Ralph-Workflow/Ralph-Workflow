@@ -13,7 +13,7 @@
 //!
 //! # Regression Detection Strategy
 //!
-//! 1. **CI runs `scripts/ci_performance_regression.sh` on every commit**
+//! 1. **CI runs `cargo xtask verify` on every commit**
 //!    - Fails if execution history exceeds 1000 entries (hard limit)
 //!    - Fails if checkpoint size exceeds 2048 KB (hard limit)
 //!    - Fails if thread cleanup doesn't complete (timeout detection)

@@ -262,18 +262,13 @@ Modules:
 
 Run with: `cargo test -p ralph-workflow benchmarks -- --nocapture`
 
-### 3. Verification Script
+### 3. Verification
 
-Location: `scripts/verify_memory_safety.sh`
-
-Runs all memory safety tests and confirms:
-- All integration tests pass
-- Benchmarks complete successfully
-- No warnings or errors
+Memory safety verification is included in the unified xtask runner.
 
 Run before every commit:
 ```bash
-bash scripts/verify_memory_safety.sh
+cargo xtask verify
 ```
 
 ### 4. CI Integration
