@@ -132,7 +132,7 @@ Design a practical implementation path:
 - key trade-off notes (brief)
 - risks and mitigations (brief)
 
-Prefer the simplest approach that satisfies all requirements.
+Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 4: REVIEW

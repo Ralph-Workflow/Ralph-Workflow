@@ -178,6 +178,16 @@ fn test_prompt_plan_with_context() {
     assert!(result.contains("PHASE 4: REVIEW"));
     assert!(result.contains("PHASE 5: WRITE STRUCTURED PLAN"));
     assert!(result.contains("<ralph-plan>"));
+    assert!(
+        result.contains(
+            "Choose a complete solution that fixes the problem at the root cause. Do not plan surface-level fixes or partial implementations."
+        ),
+        "Planning prompt should center design guidance on complete root-cause solutions"
+    );
+    assert!(
+        !result.contains("Prefer the simplest approach that satisfies all requirements."),
+        "Planning prompt should not bias toward simplistic approaches"
+    );
 }
 
 #[test]
