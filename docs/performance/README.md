@@ -25,11 +25,8 @@ resource management, and monitoring for the Ralph pipeline.
 ### Verification Commands
 
 ```bash
-# Full memory safety verification
-bash scripts/verify_memory_safety.sh
-
-# Performance regression tests
-bash scripts/ci_performance_regression.sh
+# Full verification suite (includes memory safety and performance regression)
+cargo xtask verify
 
 # Long-running pipeline tests (10k+ iterations)
 cargo test -p ralph-workflow-tests --test integration_tests \

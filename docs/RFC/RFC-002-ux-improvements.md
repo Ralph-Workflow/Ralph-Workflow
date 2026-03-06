@@ -1177,7 +1177,7 @@ Welcome! This checklist helps you make your first contribution to RFC-002.
 
 - [ ] Rust installed (1.70+)
 - [ ] Can run `cargo test --all-features` successfully
-- [ ] Can run `cargo clippy --all-targets --all-features -- -D warnings` with no output
+- [ ] Can run `cargo clippy --all-targets --all-features -- -D warnings` with no ERROR/WARNING diagnostics
 
 ### First Contribution Path (Total: ~1 hour)
 
@@ -1199,7 +1199,7 @@ Welcome! This checklist helps you make your first contribution to RFC-002.
 ### Verification Checklist
 
 - [ ] No `#[allow(...)]` or `#[expect(...)]` attributes added
-- [ ] `cargo fmt --all` produces no output
+- [ ] `cargo fmt --all` completes with no ERROR/WARNING diagnostics
 - [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes
 - [ ] `cargo test --all-features` passes
 - [ ] Manual test shows expected behavior

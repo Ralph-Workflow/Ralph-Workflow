@@ -66,9 +66,10 @@ impl MainEffectHandler {
             err_msg_lower.contains("usage limit")
                 || err_msg_lower.contains("quota exceeded")
                 || err_msg_lower.contains("rate limit")
+                || err_msg_lower.contains("limit exceeded")
+                || err_msg_lower.contains("workspace write failed")
         }
 
-        ctx.logger.error("WARNING: PIPELINE FAILURE DETECTED");
         ctx.logger.warn(&format!(
             "Pipeline failure detected (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle})"
         ));

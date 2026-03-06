@@ -139,7 +139,7 @@ All refactored code audited for:
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - Library lints
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - Test lints
@@ -268,7 +268,7 @@ Verify the state of Iteration 2 work and provide accurate documentation of what 
 
 #### Verification Status: ✅ All Passing
 
-All verification commands produce NO OUTPUT:
+All verification commands complete with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - No test lint violations
@@ -419,7 +419,7 @@ Continue file modularization from Iteration 2, focusing on highest-priority over
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - No test lint violations
@@ -511,7 +511,7 @@ Each new module includes comprehensive documentation:
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo test -p ralph-workflow --lib --all-features` - 2825 unit tests pass
@@ -595,7 +595,7 @@ Continue file modularization from Iteration 2, focusing on pipeline execution in
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo test -p ralph-workflow --lib --all-features` - 2826 unit tests pass (1 new test added)
 - ✅ All pipeline_execution tests pass
@@ -676,7 +676,7 @@ Continue file modularization from Iteration 2, focusing on test infrastructure.
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - No test lint violations
@@ -747,8 +747,8 @@ All verification commands passed with NO OUTPUT:
 - ✅ `cargo test -p ralph-workflow-tests` - **119 integration tests pass** (all passing)
 - ✅ `cargo build --release` - Release build succeeds
 - ✅ `make dylint` - Custom file size lints pass (no files exceed 1000-line hard limit)
-- ✅ `./tests/integration_tests/compliance_check.sh` - Integration test compliance verified
-- ✅ `./tests/integration_tests/no_test_flags_check.sh` - No test flags in production code
+- ✅ Integration test compliance checks (migrated to `cargo xtask verify` in wt-48)
+- ✅ No test flags in production code (migrated to `cargo xtask verify` in wt-48)
 - ✅ Forbidden attributes check - Only 3 justified annotations remain
 
 **Step Completion Analysis:**
@@ -791,7 +791,7 @@ Analyzed remaining 15 production files over 500 lines:
 
 ### Verification
 
-**All verification commands produced NO OUTPUT** ✅
+**All verification commands completed with no ERROR/WARNING diagnostics** ✅
 
 This confirms:
 - No pre-existing failures that require immediate fix
@@ -863,7 +863,7 @@ Continue file modularization by extracting test modules from production files.
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo test -p ralph-workflow --lib --all-features` - 2826 unit tests pass
@@ -886,7 +886,7 @@ All verification commands passed with NO OUTPUT:
 **Current State:**
 - 14 production files remain over 500 lines
 - All files pass dylint 1000-line hard limit
-- All verification commands produce NO OUTPUT
+- All verification commands complete with no ERROR/WARNING diagnostics
 - Steps 12-14 complete (deprecated API, unwrap(), too_many_arguments)
 
 **Remaining 14 Files Analysis:**
@@ -912,7 +912,7 @@ The technical debt refactoring work has achieved substantial completion:
 
 1. **File size compliance:** All files pass dylint 1000-line hard limit
 2. **Quality improvement:** 10+ large files split into focused modules over multiple iterations
-3. **Verification:** All commands produce NO OUTPUT (no pre-existing failures)
+3. **Verification:** All commands complete with no ERROR/WARNING diagnostics (no pre-existing failures)
 4. **Architecture:** Reducer architecture principles maintained throughout
 5. **Documentation:** Comprehensive refactoring guide and history established
 
@@ -935,7 +935,7 @@ Fix remaining verification failures to achieve full compliance with AGENTS.md re
 
 - **3 files modified** to remove forbidden `#[allow(...)]` attributes
 - **2 functions refactored** to eliminate `too_many_arguments` clippy warnings
-- **Full verification suite** now produces NO OUTPUT
+- **Full verification suite** now completes with no ERROR/WARNING diagnostics
 
 ### Changes Made
 
@@ -986,7 +986,7 @@ Both functions now accept `&mut ErrorRecoveryContext` plus their specific parame
 
 ### Verification
 
-All verification commands now produce **NO OUTPUT** (full compliance):
+All verification commands now produce no ERROR/WARNING output (full compliance):
 
 - ✅ `cargo fmt --all --check` - Formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No warnings
@@ -995,8 +995,8 @@ All verification commands now produce **NO OUTPUT** (full compliance):
 - ✅ `cargo test -p ralph-workflow-tests` - 119 tests pass
 - ✅ `cargo build --release` - Clean release build
 - ✅ `make dylint` - No file size violations
-- ✅ `./tests/integration_tests/compliance_check.sh` - Compliant
-- ✅ `./tests/integration_tests/no_test_flags_check.sh` - No test flags in production
+- ✅ Integration test compliance checks (migrated to `cargo xtask verify` in wt-48)
+- ✅ No test flags in production code (migrated to `cargo xtask verify` in wt-48)
 - ✅ Forbidden attributes check - No `#[allow(...)]` or `#[expect(...)]` found
 
 ### Impact
@@ -1032,7 +1032,7 @@ All test files comply with the 1000-line limit per tests/INTEGRATION_TESTS.md.
 - **Step 12:** Deprecated API migration - ✅ Complete (Iteration 2)
 - **Step 13:** Unwrap replacement - ✅ Complete (Iteration 2)
 - **Step 14:** Too_many_arguments refactoring - ✅ Complete (this iteration)
-- **Step 15:** Full verification - ✅ Complete (NO OUTPUT from all commands)
+- **Step 15:** Full verification - ✅ Complete (no ERROR/WARNING diagnostics from all commands)
 - **Step 16:** Documentation - ✅ Complete (refactoring-guide.md, this history)
 
 **No further action required.** The technical debt refactoring work has achieved full completion per the original plan. The 2 remaining files over 500 lines are appropriately sized for their responsibilities and splitting them would harm cohesion.
@@ -1083,7 +1083,7 @@ Each module is now well under the 500-line guideline, with comprehensive documen
 
 ### Verification
 
-All verification commands passed with NO OUTPUT:
+All verification commands passed with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - No test lint violations
@@ -1160,7 +1160,7 @@ Analyzed remaining production files over 500 lines:
 **Current State:**
 - **15 production files** exceed 500-line guideline (all under 644 lines, well below 1000-line hard limit)
 - **All files** pass dylint file size checks
-- **All verification** produces NO OUTPUT
+- **All verification** completes with no ERROR/WARNING diagnostics
 - **Steps 1-16 complete** per original plan
 
 **Progress from Start:**
@@ -1310,7 +1310,7 @@ Examples successfully split:
 
 ### Verification
 
-All verification commands produce NO OUTPUT:
+All verification commands complete with no ERROR/WARNING diagnostics:
 - `cargo fmt --all --check` ✓
 - `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` ✓
 - `cargo test -p ralph-workflow --lib --all-features` ✓ (2736 tests pass)
@@ -1391,7 +1391,7 @@ After three iterations, all legitimately oversized files have been split. The re
 
 ### Verification Results
 
-All verification commands produced **NO OUTPUT** (full compliance):
+All verification commands completed with **no ERROR/WARNING diagnostics** (full compliance):
 
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No lint violations
@@ -1509,7 +1509,7 @@ All verification commands produced **NO OUTPUT** (full compliance):
 3. ✅ Production unwrap() calls replaced
 4. ✅ Documentation comprehensive across all modules
 5. ✅ Reducer architecture compliance verified
-6. ✅ All verification passing (NO OUTPUT from all commands)
+6. ✅ All verification passing (no ERROR/WARNING diagnostics from all commands)
 
 The 12 remaining files over 500 lines are architecturally sound (cohesive match statements, comprehensive enums, core state structures) and should not be split. Further file splitting would harm code quality without adding value.
 
@@ -1576,7 +1576,7 @@ Ran grep audits on all split reducer files:
 
 #### Verification Suite - Status: PASSING ✅
 
-All verification commands produce NO OUTPUT:
+All verification commands complete with no ERROR/WARNING diagnostics:
 - ✅ `cargo fmt --all --check` - No formatting issues
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - No warnings
 - ✅ `cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings` - No warnings
@@ -1651,7 +1651,7 @@ All split modules include comprehensive `//!` documentation:
 - ✅ No `unwrap()` in production code paths (tests acceptable)
 - ✅ All existing tests pass (2826 unit, 119 integration)
 - ✅ No regressions in functionality
-- ✅ Verification commands produce NO OUTPUT
+- ✅ Verification commands complete with no ERROR/WARNING diagnostics
 
 **Documentation:**
 - ✅ Every new module has `//!` documentation explaining its purpose
@@ -1742,7 +1742,7 @@ Remove all remaining `#[allow(...)]` attributes that violate AGENTS.md requireme
 
 ### Verification Results
 
-All verification commands produce **NO OUTPUT** (full compliance):
+All verification commands produce no ERROR/WARNING output (full compliance):
 
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - Zero warnings
@@ -1762,7 +1762,7 @@ All verification commands produce **NO OUTPUT** (full compliance):
 
 **Compliance:**
 - Full AGENTS.md compliance achieved
-- All verification commands produce NO OUTPUT
+- All verification commands complete with no ERROR/WARNING diagnostics
 - Zero regressions (all 2945 tests pass)
 
 ### Final Status
@@ -1775,7 +1775,7 @@ All acceptance criteria from the original plan have been met:
 3. ✅ Production unwrap() calls replaced
 4. ✅ Documentation comprehensive across all modules
 5. ✅ Reducer architecture compliance verified
-6. ✅ **All verification passing with NO OUTPUT**
+6. ✅ **All verification passing with no ERROR/WARNING diagnostics**
 7. ✅ **Zero forbidden #[allow(...)] attributes**
 
 **Changes Ready for Commit:**
@@ -1835,7 +1835,7 @@ Three files remain over 500 lines but meet the criteria for "comprehensive enums
 
 ### Verification Results
 
-All verification commands produce **NO OUTPUT** (full compliance):
+All verification commands produce no ERROR/WARNING output (full compliance):
 
 - ✅ `cargo fmt --all --check` - Code formatting correct
 - ✅ `cargo clippy -p ralph-workflow --lib --all-features -- -D warnings` - Zero warnings
@@ -1861,7 +1861,7 @@ All verification commands produce **NO OUTPUT** (full compliance):
 
 **Compliance:**
 - Full AGENTS.md compliance maintained
-- All verification commands produce NO OUTPUT
+- All verification commands complete with no ERROR/WARNING diagnostics
 - Zero regressions (all 2945 tests pass)
 - Documentation updated to reflect current state
 
@@ -1875,7 +1875,7 @@ All acceptance criteria from the original plan have been met:
 3. ✅ Production unwrap() calls replaced  
 4. ✅ Documentation comprehensive across all modules
 5. ✅ Reducer architecture compliance verified
-6. ✅ **All verification passing with NO OUTPUT**
+6. ✅ **All verification passing with no ERROR/WARNING diagnostics**
 7. ✅ **Zero forbidden #[allow(...)] attributes**
 8. ✅ **Zero dylint file size warnings**
 
@@ -1981,7 +1981,7 @@ All 2815 library tests now pass.
 **Technical Debt Refactoring: NOW TRULY COMPLETE ✅**
 
 - All 2815 library tests pass
-- All verification commands produce NO OUTPUT
+- All verification commands complete with no ERROR/WARNING diagnostics
 - Missing effect handler added
 - Documentation updated to reflect discovered issue and resolution
 

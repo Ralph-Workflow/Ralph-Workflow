@@ -240,17 +240,17 @@ Established from memory safety benchmark tests (`ralph-workflow/src/benchmarks/`
 Memory safety is verified through:
 1. **Unit tests**: Benchmark tests in `ralph-workflow/src/benchmarks/`
 2. **Integration tests**: Memory safety tests in `tests/integration_tests/memory_safety/`
-3. **CI verification**: `scripts/verify_memory_safety.sh`
+3. **CI verification**: `cargo xtask verify`
 
 Run verification:
 
 ```bash
 # Full memory safety verification
-bash scripts/verify_memory_safety.sh
+cargo xtask verify
 
 # Individual test suites
 cargo test -p ralph-workflow-tests memory_safety
 cargo test -p ralph-workflow benchmarks -- --nocapture
 ```
 
-All verification commands must produce **NO OUTPUT** (warnings or failures) to pass.
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).

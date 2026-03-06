@@ -236,8 +236,9 @@ where
 ///
 /// Runtime process spawn detection is enforced by the compliance checker which
 /// detects `assert_cmd::Command::new` and `std::process::Command::new`
-/// usage in test code. The compliance checker (`./tests/integration_tests/compliance_check.sh`)
-/// runs before tests are accepted and will fail if any process spawning patterns are found.
+/// usage in test code. The compliance checker (native Rust check in `xtask/src/compliance.rs`,
+/// run via `cargo xtask verify`) runs before tests are accepted and will fail if any process
+/// spawning patterns are found.
 ///
 /// **Why Runtime Detection is Limited:**
 ///

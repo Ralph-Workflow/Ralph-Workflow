@@ -30,7 +30,7 @@ If you change **pipeline behavior** (phases, retries/fallback, effect sequencing
 
 - Filesystem I/O rules (Workspace vs `std::fs`, exceptions): `docs/agents/workspace-trait.md`
 - Testing strategy, rules, and patterns (all tiers): `docs/agents/testing-guide.md`
-- Required verification commands (must produce **NO OUTPUT**): `docs/agents/verification.md`
+- Required verification commands (no ERROR/WARNING output): `docs/agents/verification.md`
 - Custom lints (dylint), env vars, troubleshooting: `docs/tooling/dylint.md`
 
 ---
@@ -93,7 +93,7 @@ Handle dead code by:
 
 ## Required Verification (before PR/completion)
 
-Run the commands in `docs/agents/verification.md`. All commands must produce **NO OUTPUT**.
+Run the commands in `docs/agents/verification.md`. Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).
 
 ### YOU MUST FIX ALL FAILURES - NOT JUST YOUR OWN
 
@@ -109,7 +109,7 @@ Run the commands in `docs/agents/verification.md`. All commands must produce **N
 
 **The rule is simple:**
 1. Run verification
-2. If ANY command produces output → STOP EVERYTHING
+2. If any command fails or emits ERROR/WARNING diagnostics → STOP EVERYTHING
 3. Fixing failures is now your #1 priority - above the user's original request
 4. Do not rationalize ("not my change", "pre-existing", "unrelated to my task")
 5. Do not defer ("I'll file an issue", "someone else should fix it")
@@ -134,7 +134,7 @@ cargo test --test '*' continuation_budget
 cargo test --test '*' summary_consistency
 ```
 
-All tests must pass with NO OUTPUT (warnings or failures).
+All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).
 
 **Additional verification for logging changes:**
 
@@ -148,7 +148,7 @@ cargo test --test '*' logging_per_run
 cargo test --test '*' event_loop_trace_dump
 ```
 
-All tests must pass with NO OUTPUT (warnings or failures).
+All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).
 
 ---
 

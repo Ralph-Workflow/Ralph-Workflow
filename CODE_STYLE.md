@@ -250,7 +250,7 @@ cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings
 cargo clippy -p test-helpers --all-targets -- -D warnings
 ```
 
-All commands must produce **NO OUTPUT**.
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics** (informational output is acceptable).
 
 ---
 

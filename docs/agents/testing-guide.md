@@ -294,7 +294,7 @@ fn test_something_timing_sensitive() { ... }
 3. **Resolve** the quarantine issue within one sprint.
 
 **Rules:**
-- Every `#[ignore]` attribute must include a `https://` URL (enforced by `scripts/audit_tests.sh`).
+- Every `#[ignore]` attribute must include a `https://` URL (enforced by `cargo xtask verify`).
 - A `#[ignore]` without a URL will fail the audit.
 - Do not let quarantined tests accumulate.
 
@@ -304,7 +304,7 @@ fn test_something_timing_sensitive() { ... }
 
 ## Compliance Verification
 
-Run `bash scripts/audit_tests.sh` before every PR.
+Run `cargo xtask verify` before every PR.
 
 See `docs/agents/verification.md` for the complete pre-PR command list.
 
@@ -392,7 +392,7 @@ A change is complete only when **all** of the following hold:
 - [ ] Test names describe observable behavior, not implementation details.
 - [ ] AAA structure is clear; setup does not exceed ~10 lines without a named helper.
 - [ ] Required refactors for testability are done; no `cfg!(test)`, skip flags, or test-mode booleans remain.
-- [ ] `bash scripts/audit_tests.sh` and all verification commands in `docs/agents/verification.md` produce **no output**.
+- [ ] `cargo xtask verify` completes with no ERROR/WARNING diagnostics.
 
 ---
 
@@ -402,4 +402,4 @@ A change is complete only when **all** of the following hold:
 - **Update docs in the same commit** as the behavior or architecture change.
 - **Keep examples runnable.** Remove stale patterns immediately when the production API changes.
 - **Prefer concise, decision-oriented wording.** Contributors should be able to find the rule they need in under a minute.
-- **Every `#[ignore]` requires an issue URL** (enforced by `scripts/audit_tests.sh`).
+- **Every `#[ignore]` requires an issue URL** (enforced by `cargo xtask verify`).

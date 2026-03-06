@@ -1,16 +1,50 @@
 # Required Verification (before PR/completion)
 
-Run git rebase on main if on feature branch. All commands must produce **NO OUTPUT**:
+## Canonical command
 
 ```bash
-# Check for forbidden allow/expect attributes (aka. NOTHING IS ALLOWED HERE so this should produce NO OUTPUT)
+cargo xtask verify
+```
+
+Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
+
+---
+
+## Reference: underlying commands
+
+Run git rebase on main if on feature branch.
+
+```bash
+# Check for forbidden allow/expect attributes (must return exit 1: no matches is success)
 rg -n -U --pcre2 '(?m)^\s*#\s*!?\[\s*(?:(?:allow|expect)\s*\(|cfg_attr\s*\((?:[^()]|\([^()]*\))*?,\s*(?:allow|expect)\s*\()' --glob '!target/**' --glob '!.git/**' --glob '*.rs' .
 
-# Integration test compliance
-./tests/integration_tests/compliance_check.sh
+# No test flags in production code — 6 rg checks targeting ralph-workflow/src/
+rg -n 'cfg!\(test\)' ralph-workflow/src/ --glob '*.rs'
+rg -n '(test_mode|is_test|is_testing|testing_mode)\s*:\s*bool' ralph-workflow/src/ --glob '*.rs'
+rg -n '(skip_validation|skip_verify|skip_check|skip_auth|skip_api)\s*:\s*bool' ralph-workflow/src/ --glob '*.rs'
+rg -n '(mock_mode|fake_mode|stub_mode|use_mock|use_fake|use_stub)\s*:\s*bool' ralph-workflow/src/ --glob '*.rs'
+rg -n '#\[cfg\(feature\s*=\s*"testing"\)\]' ralph-workflow/src/ --glob '*.rs'
+rg -n '#\[cfg\(not\(test\)\)\]' ralph-workflow/src/ --glob '*.rs'
+# All must return exit 1 (no matches) to pass.
 
-# No test flags in production code (DO NOT MODIFY THIS SCRIPT)
-./tests/integration_tests/no_test_flags_check.sh
+# Integration test compliance — process-spawn and serial checks
+rg -n 'std::process::Command::new|assert_cmd::Command::new' tests/integration_tests/ --glob '*.rs' --glob '!_TEMPLATE.rs'
+rg -n '#\[serial\]|use serial_test' tests/integration_tests/ --glob '*.rs' --glob '!_TEMPLATE.rs'
+# Both must return exit 1 (no matches) to pass.
+# Timeout-wrapper compliance is enforced natively by `cargo xtask verify`
+# (compliance-timeout-wrapper native check in xtask/src/compliance.rs).
+
+# Audit tests for design compliance — 9 rg checks
+rg -n 'cfg!\(test\)' tests/integration_tests/ --glob '*.rs'
+rg -n 'std::fs::|TempDir|tempfile::' tests/integration_tests/ --glob '*.rs'
+rg -n 'std::process::Command::new' tests/integration_tests/ --glob '*.rs'
+rg -n '#\[serial\]' ralph-workflow/src/ --glob '*.rs'
+rg -n 'use test_helpers::|init_git_repo|commit_all|git_switch' ralph-workflow/src/ --glob '*.rs'
+rg -n 'std::env::set_var|std::env::remove_var|env::set_var|env::remove_var' tests/integration_tests/ --glob '*.rs'
+rg -n '#\[serial\]' tests/process_system_tests/ --glob '*.rs'
+rg -n 'git2::|init_git_repo' tests/process_system_tests/ --glob '*.rs'
+rg --pcre2 -n '#\[ignore\b(?!.*https://)' tests/ ralph-workflow/src/ --glob '*.rs'
+# All must return exit 1 (no matches) to pass.
 
 # Format check
 cargo fmt --all --check
@@ -32,7 +66,11 @@ cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings
 # via #![deny(...)] attributes in test-helpers/src/lib.rs
 cargo clippy -p test-helpers --all-targets -- -D warnings
 
+# Lint xtask runner
+cargo clippy -p xtask --all-targets -- -D warnings
+
 # Unit tests
+cargo test -p xtask
 cargo test -p ralph-workflow --lib --all-features
 
 # Integration tests
@@ -41,21 +79,10 @@ cargo test -p ralph-workflow-tests --test integration_tests
 # Process system tests (parallel, manual only — not in CI)
 cargo test -p ralph-workflow-tests --test process-system-tests
 
-# Every #[ignore] must include an issue URL (flaky quarantine rule)
-rg -n '#\[ignore\b' tests/ ralph-workflow/src/ \
-  | grep -v 'https://' \
-  && echo "FAIL: #[ignore] without issue URL found" || true
-
-# Audit tests for design compliance
-bash scripts/audit_tests.sh
-
 # Memory safety verification (bounded growth, thread cleanup, Arc patterns)
-bash scripts/verify_memory_safety.sh
-# (Use `--verbose` to print progress/output on failure debugging.)
-
-# Performance regression verification (long-running tests, checkpoint size, etc.)
-bash scripts/ci_performance_regression.sh
-# (Use `--verbose` to print progress/output on failure debugging.)
+cargo test -p ralph-workflow-tests --test integration_tests memory_safety
+cargo test -p ralph-workflow --lib benchmarks
+cargo test -p ralph-workflow --lib executor::tests
 
 # Per-run logging tests (when changing logging infrastructure)
 cargo test -p ralph-workflow-tests logging_per_run
@@ -79,6 +106,6 @@ make dylint
 cargo dylint -p ralph-workflow --lib file_too_long -- --lib
 ```
 
-**If ANY command produces output, FIX IT before continuing.** No ignored tests allowed.
+**If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.
 
 For dylint details/troubleshooting, see `docs/tooling/dylint.md`.

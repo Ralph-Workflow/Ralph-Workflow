@@ -1,8 +1,9 @@
 //! Guard test to ensure integration test count doesn't drop unexpectedly.
 //!
 //! This module provides documentation and a lightweight guard to catch
-//! accidental test suite regressions. The authoritative count check is
-//! performed by the compliance script using `cargo test -- --list`.
+//! accidental test suite regressions. The integration test count is NOT
+//! currently enforced by `cargo xtask verify`; this guard test (and any CI
+//! policy invoking `-- --list`) is the primary protection against drops.
 //!
 //! # Integration Test Style Guide
 //!
@@ -32,13 +33,16 @@
 //!   cargo test -p ralph-workflow-tests
 //! ```
 //!
-//! The compliance check script (`compliance_check.sh`) verifies the compiled
-//! test list using the same minimum floor defined here.
+//! The test count floor is enforced by the `integration_test_count_guard_documentation`
+//! test which runs as part of `cargo test -p ralph-workflow-tests` (included in
+//! `cargo xtask verify` as the test-integration check). The compliance-timeout-wrapper
+//! native check in xtask/src/compliance.rs verifies timeout wrapper presence only,
+//! not test count.
 //!
 //! NOTE: The source scan in this module is intentionally non-authoritative.
 //! It only looks for literal `#[test]` annotations and does not reflect
 //! conditional compilation or alternative test attributes (e.g. `#[tokio::test]`).
-//! The compliance script's `cargo test -- --list` output is the source of truth.
+//! The `cargo test -- --list` output is the source of truth.
 
 use crate::test_timeout::with_default_timeout;
 use std::collections::HashSet;
@@ -758,8 +762,9 @@ fn count_tests_recursive(
 /// This verifies that the test count guard module is properly loaded, the
 /// constant is accessible, and the best-effort source scan has not regressed
 /// below the minimum floor. The authoritative compiled test list verification
-/// happens in CI via `cargo test -p ralph-workflow-tests -- --list` and in the
-/// compliance check script.
+/// happens when a caller runs `cargo test -p ralph-workflow-tests -- --list`.
+/// `cargo xtask verify` currently runs the integration test suite, but does not
+/// invoke `-- --list` or enforce a compiled test count directly.
 ///
 /// If this test appears, it means the test count guard module is properly loaded
 /// and the integration test suite includes this verification documentation.
