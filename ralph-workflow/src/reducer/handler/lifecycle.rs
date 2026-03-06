@@ -70,7 +70,6 @@ impl MainEffectHandler {
                 || err_msg_lower.contains("workspace write failed")
         }
 
-        ctx.logger.error("WARNING: PIPELINE FAILURE DETECTED");
         ctx.logger.warn(&format!(
             "Pipeline failure detected (phase: {failed_phase}, role: {failed_role:?}, cycle: {retry_cycle})"
         ));

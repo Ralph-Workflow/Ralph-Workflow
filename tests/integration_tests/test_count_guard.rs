@@ -1,8 +1,9 @@
 //! Guard test to ensure integration test count doesn't drop unexpectedly.
 //!
 //! This module provides documentation and a lightweight guard to catch
-//! accidental test suite regressions. The authoritative count check is
-//! performed by `cargo xtask verify` using `cargo test -- --list`.
+//! accidental test suite regressions. The integration test count is NOT
+//! currently enforced by `cargo xtask verify`; this guard test (and any CI
+//! policy invoking `-- --list`) is the primary protection against drops.
 //!
 //! # Integration Test Style Guide
 //!
@@ -761,8 +762,9 @@ fn count_tests_recursive(
 /// This verifies that the test count guard module is properly loaded, the
 /// constant is accessible, and the best-effort source scan has not regressed
 /// below the minimum floor. The authoritative compiled test list verification
-/// happens via `cargo xtask verify` (which runs `cargo test -p ralph-workflow-tests -- --list`)
-/// and in CI by invoking the same xtask entry point.
+/// happens when a caller runs `cargo test -p ralph-workflow-tests -- --list`.
+/// `cargo xtask verify` currently runs the integration test suite, but does not
+/// invoke `-- --list` or enforce a compiled test count directly.
 ///
 /// If this test appears, it means the test count guard module is properly loaded
 /// and the integration test suite includes this verification documentation.

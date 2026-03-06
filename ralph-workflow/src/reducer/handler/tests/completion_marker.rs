@@ -530,6 +530,10 @@ fn dev_fix_agent_unavailable_log_does_not_claim_termination() {
         "expected updated log message, got:\n{log_contents}"
     );
     assert!(
+        !log_contents.contains("WARNING: PIPELINE FAILURE DETECTED"),
+        "log must not emit the legacy WARNING banner (it can trip verify output classifiers), got:\n{log_contents}"
+    );
+    assert!(
         !log_contents.contains("terminate with failure marker"),
         "log must not claim termination, got:\n{log_contents}"
     );
