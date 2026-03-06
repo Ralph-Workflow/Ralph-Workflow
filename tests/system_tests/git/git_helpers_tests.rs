@@ -357,3 +357,93 @@ fn test_git_snapshot_excludes_gitignored_files() {
         "git_snapshot should not include gitignored files, got: {snapshot}"
     );
 }
+
+#[test]
+#[serial]
+fn test_git_diff_in_repo_is_head_based_after_multiple_commits() {
+    // Regression: git_diff_in_repo must always diff against the current HEAD, not against a
+    // stale baseline from an earlier commit. This mirrors the production bug where the commit
+    // phase reused a stale diff because commit_diff_prepared was not reset after each commit.
+    use ralph_workflow::git_helpers::git_diff_in_repo;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Configure git identity required for commits.
+        {
+            let mut config = repo.config().unwrap();
+            config.set_str("user.name", "Test User").unwrap();
+            config.set_str("user.email", "test@example.com").unwrap();
+        }
+
+        let sig = git2::Signature::now("Test User", "test@example.com").unwrap();
+
+        // Commit A: add and commit file1.txt.
+        fs::write("file1.txt", "content1\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit A", &tree, &[])
+            .unwrap();
+
+        // Arrange: stage file2.txt after commit A (not yet committed).
+        // Use staged changes because diff_tree_to_workdir_with_index captures index vs HEAD.
+        fs::write("file2.txt", "content2\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file2.txt")).unwrap();
+        index.write().unwrap();
+
+        // First diff: should show staged file2.txt, not committed file1.txt.
+        let diff1 = git_diff_in_repo(dir.path()).expect("git_diff_in_repo must succeed");
+
+        assert!(
+            diff1.contains("file2.txt"),
+            "diff after commit A must show staged file2.txt; got: {diff1}"
+        );
+        assert!(
+            !diff1.contains("file1.txt"),
+            "diff after commit A must NOT show committed file1.txt (HEAD-based); got: {diff1}"
+        );
+
+        // Commit B: commit the staged file2.txt.
+        let mut index = repo.index().unwrap();
+        index
+            .add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit B", &tree, &[&parent])
+            .unwrap();
+
+        // Arrange: stage file3.txt after commit B.
+        fs::write("file3.txt", "content3\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file3.txt")).unwrap();
+        index.write().unwrap();
+
+        // Second diff: should show staged file3.txt only, not file1.txt or file2.txt.
+        // Regression: a stale diff (start-commit-based) would reinclude file2.txt here.
+        let diff2 = git_diff_in_repo(dir.path()).expect("git_diff_in_repo must succeed");
+
+        assert!(
+            diff2.contains("file3.txt"),
+            "diff after commit B must show staged file3.txt; got: {diff2}"
+        );
+        assert!(
+            !diff2.contains("file1.txt"),
+            "diff after commit B must NOT show file1.txt (committed in A); got: {diff2}"
+        );
+        assert!(
+            !diff2.contains("file2.txt"),
+            "diff after commit B must NOT show file2.txt (committed in B) — \
+             regression: stale diff would reinclude file2.txt; got: {diff2}"
+        );
+    });
+}
