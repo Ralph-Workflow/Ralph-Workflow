@@ -68,30 +68,30 @@ You are explicitly authorized to write EXACTLY ONE file: `{{PLAN_XML_PATH}}`.
 - Allowed operations: any non-mutating tools (for example file reads/search/listing and image analysis)
 
 ═══════════════════════════════════════════════════════════════════════════════
-PLANNING CONSTRAINTS (ANTI-LOOP)
+PLANNING CONSTRAINTS (ANTI-RUNAWAY POLICY - PROGRESS-BASED)
 ═══════════════════════════════════════════════════════════════════════════════
 
-TIMEBOX:
-- MAX 50 read/search operations before writing the plan.
-- If you have sufficient context earlier, stop exploring and write immediately.
+Track these control signals while planning:
+- required_sections = [objective, scope, steps, risks, verification]
+- unresolved_unknowns (max 3)
+- stagnation_count (increment when no materially new info is found)
 
-HARD CAP:
-- This planning phase has a hard cap on exploration.
-- After MAX 50 read/search operations, you must write the plan immediately.
-- Do not run additional exploration after the cap is reached.
-- Do not continue reflective analysis loops after the cap is reached.
-- Resolve unknowns during planning (using available budget) before writing the final plan.
-- If investigation is large or spans independent areas, split it into parallel investigation steps.
-- If investigation is large or spans independent areas, use parallel subagents and map each subagent output to an explicit investigation step.
-- Consolidate and synthesize findings from all parallel investigation before finalizing the plan.
-- If findings are inconsistent, look further with targeted follow-up investigation until the inconsistency is resolved or explicitly captured as an unresolved risk.
-- If investigation produces a clear picture, convert it into an actionable implementation roadmap (sequenced file-change/action steps), not more investigation placeholders.
-- Known investigation work should be converted into actionable implementation tasks in the plan.
-- If you run out of budget, only unresolved unknowns should be converted into explicit investigation plan steps (question, blocker, expected outcome).
-- Any leftover unknown must appear as an explicit investigation item in the plan.
+Progress-based rules:
+1. Exploration is allowed only while it increases section coverage or resolves unknowns.
+2. If stagnation_count reaches 2, stop exploration and start drafting.
+3. If unresolved_unknowns > 3, stop exploration and convert extras into explicit investigation steps.
+4. After drafting, run one critique pass.
+5. Critique may request at most one targeted re-exploration pass.
+6. Then finalize plan; no further exploration allowed.
 
-Do NOT loop on repeated analysis. If searches return the same information twice,
-move to writing the plan.
+Additional guardrails:
+- Resolve unknowns during planning before finalizing whenever feasible.
+- If investigation is large or spans independent areas, split work into parallel investigation tracks.
+- Use subagents when parallel investigation is appropriate, and map each output to an explicit plan update.
+- Consolidate and synthesize parallel findings before finalizing.
+- If findings are inconsistent, run targeted follow-up investigation or record explicit unresolved risks.
+- If investigation yields a clear picture, convert it into actionable implementation tasks, not additional placeholders.
+- When open questions or unknowns cannot be resolved immediately, convert them into explicit investigation/research steps with question, why it blocks, and expected evidence.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 1: UNDERSTANDING
@@ -101,10 +101,11 @@ USER REQUIREMENTS:
 {{PROMPT}}
 
 Extract only what is needed:
-- Goal
-- Acceptance criteria
+- Goal (objective)
+- Acceptance criteria and definition of done
 - Constraints
 - In-scope vs out-of-scope
+- Assumptions and open questions
 
 If requirements are ambiguous, note the ambiguity explicitly in the plan.
 
@@ -125,6 +126,9 @@ PHASE 3: DESIGN
 
 Design a practical implementation path:
 - ordered steps with dependencies
+- explicit inputs and expected outputs per step
+- verification method per step
+- which steps can run in parallel vs must stay sequential
 - key trade-off notes (brief)
 - risks and mitigations (brief)
 
@@ -138,7 +142,10 @@ Quick validation before output:
 - all acceptance criteria covered
 - target files are specific
 - steps are actionable and sequenced
+- each step has clear completion evidence
 - scope is not expanded
+- unresolved unknowns are explicit and bounded
+- handoff is executable by an agent with zero prior context
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 5: WRITE STRUCTURED PLAN

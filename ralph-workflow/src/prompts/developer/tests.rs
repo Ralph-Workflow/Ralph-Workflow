@@ -181,7 +181,7 @@ fn test_prompt_plan_with_context() {
 }
 
 #[test]
-fn test_prompt_plan_with_context_is_timeboxed_and_anti_loop() {
+fn test_prompt_plan_with_context_uses_progress_based_anti_runaway_policy() {
     use crate::workspace::MemoryWorkspace;
 
     let context = TemplateContext::default();
@@ -189,76 +189,57 @@ fn test_prompt_plan_with_context_is_timeboxed_and_anti_loop() {
     let result = prompt_plan_with_context(&context, None, &workspace);
 
     assert!(
-        result.contains("TIMEBOX"),
-        "Planning prompt should include explicit timeboxing guidance"
+        result.contains("ANTI-RUNAWAY POLICY") && result.contains("PROGRESS-BASED"),
+        "Planning prompt should require a progress-based anti-runaway policy"
     );
     assert!(
-        result.contains("MAX 50 read/search operations"),
-        "Planning prompt should set the hard cap to 50 read/search operations"
+        result.contains("required_sections")
+            && result.contains("objective")
+            && result.contains("scope")
+            && result.contains("steps")
+            && result.contains("risks")
+            && result.contains("verification"),
+        "Planning prompt should define goal-coverage gates for required sections"
     );
     assert!(
-        result.contains("MAX") && result.contains("read/search operations"),
-        "Planning prompt should include a clear hard cap on exploration operations"
+        result.contains("unresolved_unknowns") && result.contains("max 3"),
+        "Planning prompt should cap unresolved unknowns"
     );
     assert!(
-        !result.contains("minutes"),
-        "Planning prompt should avoid minute-based caps that are not reliably enforceable"
+        result.contains("stagnation_count") && result.contains("no materially new info"),
+        "Planning prompt should track stagnation based on novelty"
     );
     assert!(
-        result.contains("Do NOT loop") || result.contains("do not loop"),
-        "Planning prompt should explicitly forbid repetitive analysis loops"
+        result.contains("stagnation_count reaches 2")
+            && result.contains("stop exploration")
+            && result.contains("start drafting"),
+        "Planning prompt should force draft mode after repeated non-novel exploration"
     );
     assert!(
-        result.contains("sufficient context") || result.contains("enough context"),
-        "Planning prompt should define when to stop exploring"
+        result.contains("convert extras into explicit investigation steps"),
+        "Planning prompt should convert excess unknowns into explicit investigation steps"
     );
     assert!(
-        result.contains("HARD CAP"),
-        "Planning prompt should include an explicit hard cap section"
+        result.contains("one critique pass"),
+        "Planning prompt should include a bounded critique stage"
     );
     assert!(
-        result.contains("read/search operations"),
-        "Planning prompt should hard-cap exploratory operations"
+        result.contains("at most one targeted re-exploration pass"),
+        "Planning prompt should cap critique-driven re-exploration"
     );
     assert!(
-        result.contains("must write the plan") || result.contains("write the plan immediately"),
-        "Planning prompt should force plan completion once hard cap is reached"
+        result.contains("Then finalize plan") && result.contains("no further exploration allowed"),
+        "Planning prompt should hard-stop exploration after finalization"
     );
     assert!(
-        result.contains("run out of budget") && result.contains("investigation"),
-        "Planning prompt should require unresolved unknowns to become investigation steps when budget is exhausted"
+        result.contains("open questions")
+            && result.contains("research")
+            && result.contains("explicit investigation"),
+        "Planning prompt should convert open questions/unknowns into explicit research steps when needed"
     );
     assert!(
-        result.contains("parallel") && result.contains("investigation"),
-        "Planning prompt should encourage parallel investigation tracks when unknowns are large"
-    );
-    assert!(
-        result.contains("subagent"),
-        "Planning prompt should explicitly require subagents for large parallel investigation"
-    );
-    assert!(
-        result.contains("leftover unknown") || result.contains("unresolved unknown"),
-        "Planning prompt should ensure leftover unknowns are converted into explicit research items"
-    );
-    assert!(
-        result.contains("clear picture") && result.contains("actionable"),
-        "Planning prompt should require an actionable roadmap when research is conclusive"
-    );
-    assert!(
-        result.contains("during planning") || result.contains("before writing the final plan"),
-        "Planning prompt should require resolving unknowns now during planning, not handwaving to later"
-    );
-    assert!(
-        result.contains("only unresolved unknowns") || result.contains("only leftover unknowns"),
-        "Planning prompt should make research plan items a fallback only when budget is exhausted"
-    );
-    assert!(
-        result.contains("consolidate") || result.contains("synthesize"),
-        "Planning prompt should require consolidating findings from parallel investigation"
-    );
-    assert!(
-        result.contains("inconsisten") && result.contains("look further"),
-        "Planning prompt should require additional investigation when findings conflict"
+        !result.contains("MAX 50 read/search operations"),
+        "Planning prompt should avoid fixed operation hard caps"
     );
 }
 
