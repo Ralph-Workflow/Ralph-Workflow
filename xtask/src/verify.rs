@@ -124,7 +124,7 @@ pub fn run_checks(runner: &dyn CommandRunner, checks: &[CommandSpec]) -> Result<
     })
 }
 
-const REQUIRED_CHECKS: &[CommandSpec] = &[
+pub const REQUIRED_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "forbidden-allow-expect-scan",
         program: "rg",
@@ -505,9 +505,14 @@ const REQUIRED_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-pub fn verify(runner: &dyn CommandRunner, repo_root: &std::path::Path) -> Result<VerifyReport> {
+pub fn verify(
+    runner: &dyn CommandRunner,
+    repo_root: &std::path::Path,
+    native_checks: &[NativeCheck],
+    checks: &[CommandSpec],
+) -> Result<VerifyReport> {
     // Run native checks first (Rust-native, no external subprocess)
-    for check in NATIVE_REQUIRED_CHECKS {
+    for check in native_checks {
         let result = (check.run)(repo_root);
         if result.status != CheckStatus::Pass {
             return Ok(VerifyReport {
@@ -523,7 +528,7 @@ pub fn verify(runner: &dyn CommandRunner, repo_root: &std::path::Path) -> Result
         }
     }
 
-    run_checks(runner, REQUIRED_CHECKS)
+    run_checks(runner, checks)
 }
 
 #[cfg(test)]
@@ -758,6 +763,86 @@ mod tests {
         }
     }
 
+    fn fake_warning_native_check(_: &std::path::Path) -> NativeCheckResult {
+        NativeCheckResult {
+            status: CheckStatus::Warning,
+            message: "warning: fake warning from native check".to_string(),
+        }
+    }
+
+    fn fake_error_native_check(_: &std::path::Path) -> NativeCheckResult {
+        NativeCheckResult {
+            status: CheckStatus::Error,
+            message: "error: fake error from native check".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_verify_fails_immediately_when_native_check_returns_warning() {
+        // TDD anchor: verifies that when a native check returns Warning, verify() returns Failure
+        // and does NOT invoke any CommandRunner checks (early-exit guarantee).
+        let runner = RecordingRunner::default();
+
+        let warning_native_check = NativeCheck {
+            name: "fake-native-warning",
+            run: fake_warning_native_check,
+        };
+
+        let report = verify(
+            &runner,
+            std::path::Path::new("/fake"),
+            &[warning_native_check],
+            &[],
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure details");
+        assert_eq!(failure.name, "fake-native-warning");
+        assert_eq!(failure.status, CheckStatus::Warning);
+        // Runner must NOT have been called — native check failure causes early exit.
+        assert!(
+            runner.ran().is_empty(),
+            "command specs must not run after a native check failure"
+        );
+    }
+
+    #[test]
+    fn test_verify_fails_immediately_when_native_check_returns_error() {
+        // TDD anchor: companion to the Warning test above.
+        let runner = RecordingRunner::default();
+
+        let error_native_check = NativeCheck {
+            name: "fake-native-error",
+            run: fake_error_native_check,
+        };
+
+        let report = verify(
+            &runner,
+            std::path::Path::new("/fake"),
+            &[error_native_check],
+            &[],
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure details");
+        assert_eq!(failure.status, CheckStatus::Error);
+        assert!(runner.ran().is_empty());
+    }
+
+    #[test]
+    fn test_verify_succeeds_with_empty_native_and_command_checks() {
+        // TDD anchor: verify() with no checks at all returns Success.
+        let runner = RecordingRunner::default();
+
+        let report = verify(&runner, std::path::Path::new("/fake"), &[], &[])
+            .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(report.failure, None);
+    }
+
     #[test]
     fn test_verify_runs_required_checks_in_stable_order() {
         // Arrange
@@ -765,8 +850,13 @@ mod tests {
 
         // Act
         // Pass a nonexistent path so native checks (compliance-timeout-wrapper) return Pass
-        let report =
-            verify(&runner, std::path::Path::new("/fake")).expect("verify should not error");
+        let report = verify(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+        )
+        .expect("verify should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);

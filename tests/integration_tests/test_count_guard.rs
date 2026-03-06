@@ -32,8 +32,11 @@
 //!   cargo test -p ralph-workflow-tests
 //! ```
 //!
-//! The `cargo xtask verify` command enforces the compiled test list against the
-//! same minimum floor defined here (via the compliance-timeout-wrapper native check).
+//! The test count floor is enforced by the integration_test_count_guard_documentation
+//! test which runs as part of `cargo test -p ralph-workflow-tests` (included in
+//! `cargo xtask verify` as the test-integration check). The compliance-timeout-wrapper
+//! native check in xtask/src/compliance.rs verifies timeout wrapper presence only,
+//! not test count.
 //!
 //! NOTE: The source scan in this module is intentionally non-authoritative.
 //! It only looks for literal `#[test]` annotations and does not reflect

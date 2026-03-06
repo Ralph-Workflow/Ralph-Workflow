@@ -62,7 +62,12 @@ fn main() -> ExitCode {
         Some("verify") => {
             let runner = RealRunner::new();
             let repo_root = runner.repo_root.clone();
-            let report = match verify::verify(&runner, &repo_root) {
+            let report = match verify::verify(
+                &runner,
+                &repo_root,
+                verify::NATIVE_REQUIRED_CHECKS,
+                verify::REQUIRED_CHECKS,
+            ) {
                 Ok(report) => report,
                 Err(err) => {
                     eprintln!("xtask error: {err:#}");
