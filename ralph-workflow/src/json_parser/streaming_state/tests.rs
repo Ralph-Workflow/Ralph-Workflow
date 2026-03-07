@@ -5,7 +5,10 @@
 
 #[cfg(test)]
 mod tests {
-    use super::{snapshot_threshold, ContentType, StreamingSession, DEFAULT_SNAPSHOT_THRESHOLD};
+    use super::{
+        snapshot_threshold, snapshot_threshold_from_env_fn, ContentType, StreamingSession,
+        DEFAULT_SNAPSHOT_THRESHOLD,
+    };
 
     // Tests for StreamingSession lifecycle and content tracking
     include!("tests/session_tests.rs");
