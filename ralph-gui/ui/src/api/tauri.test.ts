@@ -11,7 +11,6 @@ import {
   getSessions,
   createSession,
   getSessionDetail,
-  resumeSession,
   listWorktrees,
   createWorktree,
   switchContext,
@@ -77,13 +76,6 @@ describe("Session API", () => {
     });
   });
 
-  it("resumeSession calls resume_session with run_id", async () => {
-    mockInvoke.mockRejectedValueOnce(new Error("not resumable"));
-    await expect(resumeSession("test-id")).rejects.toThrow();
-    expect(mockInvoke).toHaveBeenCalledWith("resume_session", {
-      run_id: "test-id",
-    });
-  });
 });
 
 describe("Worktree API", () => {

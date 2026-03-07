@@ -18,6 +18,10 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // When the system has NODE_ENV=production set globally, React loads its
+    // production build which does not support act(). The globalSetup file
+    // sets NODE_ENV=development before workers are spawned so workers inherit it.
+    globalSetup: ["./src/global-test-setup.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

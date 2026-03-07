@@ -13,7 +13,6 @@ fn main() {
             session::get_sessions,
             session::create_session,
             session::get_session_detail,
-            session::resume_session,
             worktree::list_worktrees,
             worktree::create_worktree,
             worktree::switch_context,

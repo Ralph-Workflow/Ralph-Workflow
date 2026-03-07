@@ -239,18 +239,6 @@ pub fn get_session_detail(
         .ok_or_else(|| format!("Session not found: {run_id}"))
 }
 
-/// Resume an interrupted session.
-///
-/// # Errors
-///
-/// Returns an error if the `run_id` is not found or is not resumable.
-#[tauri::command]
-pub fn resume_session(run_id: String) -> Result<SessionSummary, String> {
-    let mut msg = run_id;
-    msg.insert_str(0, "Session not found or not resumable: ");
-    Err(msg)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,11 +358,5 @@ mod tests {
         let summary = result.unwrap();
         assert_eq!(summary.run_id, "session-xyz");
         assert_eq!(summary.phase, "Review");
-    }
-
-    #[test]
-    fn test_resume_session_not_found() {
-        let result = resume_session("nonexistent-run-id".to_string());
-        assert!(result.is_err());
     }
 }

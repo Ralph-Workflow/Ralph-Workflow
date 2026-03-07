@@ -77,7 +77,7 @@ export function Home() {
                     {run.current_phase} · {run.agent_profile}
                   </div>
                 </div>
-                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => void navigate(`/sessions/${run.run_id}`)}>
+                <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => void navigate(`/runs/${run.run_id}`)}>
                   View
                 </button>
               </div>

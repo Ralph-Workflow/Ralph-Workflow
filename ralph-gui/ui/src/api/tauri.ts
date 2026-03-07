@@ -33,10 +33,6 @@ export async function getSessionDetail(
   return invoke<SessionSummary>("get_session_detail", { run_id: runId });
 }
 
-export async function resumeSession(runId: string): Promise<SessionSummary> {
-  return invoke<SessionSummary>("resume_session", { run_id: runId });
-}
-
 // --- Worktree commands ---
 
 export async function listWorktrees(
