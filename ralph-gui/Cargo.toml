@@ -1,0 +1,46 @@
+[package]
+name = "ralph-gui"
+version = "0.1.0"
+edition = "2021"
+description = "Desktop GUI for Ralph Workflow orchestrator"
+authors = ["Mistlight"]
+license = "AGPL-3.0-only"
+
+[lib]
+name = "ralph_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ralph-gui"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+tauri = { workspace = true }
+ralph-workflow = { path = "../ralph-workflow", features = ["monitoring", "hardened-resume"] }
+serde = { workspace = true }
+serde_json = "1.0"
+tokio = { workspace = true }
+thiserror = "2.0"
+anyhow = "1.0"
+dirs = "5.0"
+git2 = { workspace = true }
+uuid = { version = "1.10", features = ["v4"] }
+chrono = "0.4"
+regex = "1.10"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints.rust]
+warnings = "deny"
+
+[lints.clippy]
+all = "deny"
+pedantic = "deny"
+nursery = "deny"
+# tauri::State<'_, T> must be passed by value for Tauri's dependency injection;
+# this is a Tauri framework requirement that cannot use &State.
+needless_pass_by_value = "allow"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["ralph-workflow", "test-helpers", "tests", "xtask"]
+members = ["ralph-workflow", "test-helpers", "tests", "xtask", "ralph-gui"]
 default-members = ["ralph-workflow", "test-helpers", "xtask"]
 resolver = "2"
 
@@ -16,6 +16,10 @@ libraries = [
 # Shared dependencies for all workspace members
 git2 = "0.18"
 tempfile = "3.10"
+tauri = { version = "2" }
+tauri-build = { version = "2", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [profile.release]
 opt-level = 3

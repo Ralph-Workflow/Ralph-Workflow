@@ -1,0 +1,33 @@
+{
+  "productName": "Ralph Workflow",
+  "version": "0.1.0",
+  "identifier": "com.ralphworkflow.gui",
+  "build": {
+    "frontendDist": "../ralph-gui/ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "cd ui && npm run dev",
+    "beforeBuildCommand": "cd ui && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Ralph Workflow",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
