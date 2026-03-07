@@ -23,6 +23,12 @@ import {
   getRunStatus,
   getResumableRuns,
   getRunDetail,
+  readPromptFile,
+  savePromptFile,
+  reviewPromptWithAi,
+  listAgentProfiles,
+  launchRalphSession,
+  resumeRalphSession,
 } from "./tauri";
 
 const mockInvoke = invoke as Mock;
@@ -238,6 +244,83 @@ describe("Run Management API", () => {
     await expect(getRunDetail("test-id")).rejects.toThrow();
     expect(mockInvoke).toHaveBeenCalledWith("get_run_detail", {
       run_id: "test-id",
+    });
+  });
+});
+
+describe("Prompt File API", () => {
+  it("readPromptFile calls read_prompt_file with prompt_path", async () => {
+    mockInvoke.mockResolvedValueOnce("# My prompt");
+    const result = await readPromptFile("/my/repo/PROMPT.md");
+    expect(result).toBe("# My prompt");
+    expect(mockInvoke).toHaveBeenCalledWith("read_prompt_file", {
+      prompt_path: "/my/repo/PROMPT.md",
+    });
+  });
+
+  it("savePromptFile calls save_prompt_file with path and content", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await savePromptFile("/my/repo/PROMPT.md", "# Content");
+    expect(mockInvoke).toHaveBeenCalledWith("save_prompt_file", {
+      prompt_path: "/my/repo/PROMPT.md",
+      content: "# Content",
+    });
+  });
+
+  it("reviewPromptWithAi calls review_prompt_with_ai with content", async () => {
+    const mockResult = { suggestions: ["Add more detail"], improved_prompt: null };
+    mockInvoke.mockResolvedValueOnce(mockResult);
+    const result = await reviewPromptWithAi("# My prompt");
+    expect(result).toEqual(mockResult);
+    expect(mockInvoke).toHaveBeenCalledWith("review_prompt_with_ai", {
+      prompt_content: "# My prompt",
+    });
+  });
+});
+
+describe("Agent Profile API", () => {
+  it("listAgentProfiles calls list_agent_profiles with repo_path", async () => {
+    const profiles = [{ name: "claude-solo", developer_agent: "claude", reviewer_agent: "claude" }];
+    mockInvoke.mockResolvedValueOnce(profiles);
+    const result = await listAgentProfiles("/my/repo");
+    expect(result).toEqual(profiles);
+    expect(mockInvoke).toHaveBeenCalledWith("list_agent_profiles", {
+      repo_path: "/my/repo",
+    });
+  });
+
+  it("listAgentProfiles passes null when no repo path", async () => {
+    mockInvoke.mockResolvedValueOnce([]);
+    await listAgentProfiles();
+    expect(mockInvoke).toHaveBeenCalledWith("list_agent_profiles", {
+      repo_path: null,
+    });
+  });
+});
+
+describe("Session Launch API", () => {
+  it("launchRalphSession calls launch_ralph_session with args", async () => {
+    mockInvoke.mockResolvedValueOnce("run-id-abc");
+    const args = {
+      repo_path: "/my/repo",
+      worktree_path: null,
+      prompt_path: "/my/repo/PROMPT.md",
+      developer_iterations: 5,
+      reviewer_passes: 2,
+      developer_agent: null,
+      reviewer_agent: null,
+    };
+    const result = await launchRalphSession(args);
+    expect(result).toBe("run-id-abc");
+    expect(mockInvoke).toHaveBeenCalledWith("launch_ralph_session", { args });
+  });
+
+  it("resumeRalphSession calls resume_ralph_session with run_id and repo_path", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await resumeRalphSession("run-id-xyz", "/my/repo");
+    expect(mockInvoke).toHaveBeenCalledWith("resume_ralph_session", {
+      run_id: "run-id-xyz",
+      repo_path: "/my/repo",
     });
   });
 });

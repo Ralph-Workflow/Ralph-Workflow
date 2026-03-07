@@ -6,6 +6,9 @@ use std::sync::{Arc, Mutex};
 pub struct ActiveContext {
     pub repo_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
+    /// All repository paths that have been used in this session,
+    /// used to search for run checkpoints by `run_id`.
+    pub known_repos: Vec<PathBuf>,
 }
 
 pub type SharedState = Arc<Mutex<ActiveContext>>;
@@ -40,5 +43,25 @@ mod tests {
         }
         let repo_path = state.lock().unwrap().repo_path.clone();
         assert_eq!(repo_path, Some(PathBuf::from("/tmp/my-repo")));
+    }
+
+    #[test]
+    fn test_known_repos_initially_empty() {
+        let state = new_shared_state();
+        let known = state.lock().unwrap().known_repos.clone();
+        assert!(known.is_empty());
+    }
+
+    #[test]
+    fn test_known_repos_can_be_populated() {
+        let state = new_shared_state();
+        {
+            let mut locked = state.lock().unwrap();
+            locked.known_repos.push(PathBuf::from("/tmp/repo-a"));
+            locked.known_repos.push(PathBuf::from("/tmp/repo-b"));
+        }
+        let known = state.lock().unwrap().known_repos.clone();
+        assert_eq!(known.len(), 2);
+        assert!(known.contains(&PathBuf::from("/tmp/repo-a")));
     }
 }

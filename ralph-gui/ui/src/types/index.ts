@@ -31,6 +31,8 @@ export interface CreateSessionRequest {
   prompt_path: string;
   developer_iterations: number;
   reviewer_passes: number;
+  developer_agent?: string;
+  reviewer_agent?: string;
 }
 
 // --- Worktree types ---
@@ -95,4 +97,31 @@ export interface RunDetail {
 export interface ActiveContext {
   repo_path: string | null;
   worktree_path: string | null;
+}
+
+// --- Agent profile types ---
+// Rust: ralph_gui::commands::config::AgentProfile
+export interface AgentProfile {
+  name: string;
+  developer_agent: string;
+  reviewer_agent: string;
+}
+
+// --- AI prompt review types ---
+// Rust: ralph_gui::commands::session_prompt::PromptReviewResult
+export interface PromptReviewResult {
+  suggestions: string[];
+  improved_prompt: string | null;
+}
+
+// --- Session launch types ---
+// Rust: ralph_gui::commands::session_launch::LaunchSessionArgs
+export interface LaunchSessionArgs {
+  repo_path: string;
+  worktree_path: string | null;
+  prompt_path: string;
+  developer_iterations: number;
+  reviewer_passes: number;
+  developer_agent: string | null;
+  reviewer_agent: string | null;
 }

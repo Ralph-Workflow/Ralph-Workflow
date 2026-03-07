@@ -156,18 +156,87 @@ pub fn create_session(request: CreateSessionRequest) -> Result<SessionSummary, S
     })
 }
 
+/// Internal: search known repo paths for a session checkpoint matching `run_id`.
+fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<SessionSummary> {
+    for repo_path in repos {
+        let checkpoint_path = repo_path.join(".agent").join("checkpoint.json");
+        if !checkpoint_path.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&checkpoint_path) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let checkpoint_run_id = checkpoint
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if checkpoint_run_id != run_id {
+            continue;
+        }
+        let phase = checkpoint
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let timestamp = checkpoint
+            .get("timestamp")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let developer_agent = checkpoint
+            .get("developer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let reviewer_agent = checkpoint
+            .get("reviewer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let status = if phase == "Complete" {
+            "completed"
+        } else {
+            "paused"
+        }
+        .to_string();
+        return Some(SessionSummary {
+            run_id: run_id.to_string(),
+            status,
+            repo_path: repo_path.to_string_lossy().into_owned(),
+            worktree_path: None,
+            created_at: timestamp,
+            description: phase.clone(),
+            developer_agent,
+            reviewer_agent,
+            phase,
+        });
+    }
+    None
+}
+
 /// Get details for a specific session by `run_id`.
+///
+/// Scans all known repository paths for a checkpoint matching the given `run_id`.
 ///
 /// # Errors
 ///
-/// Returns an error string if the `run_id` is not found.
+/// Returns an error string if the `run_id` is not found in any known repository.
 #[tauri::command]
-pub fn get_session_detail(run_id: String) -> Result<SessionSummary, String> {
-    // For now, return a not-found error — a full implementation would
-    // scan all repos for checkpoints matching this run_id.
-    let mut msg = run_id;
-    msg.insert_str(0, "Session not found: ");
-    Err(msg)
+pub fn get_session_detail(
+    run_id: String,
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<SessionSummary, String> {
+    let known_repos = {
+        let locked = state
+            .lock()
+            .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+        locked.known_repos.clone()
+    };
+    find_session_in_repos(&run_id, &known_repos)
+        .ok_or_else(|| format!("Session not found: {run_id}"))
 }
 
 /// Resume an interrupted session.
@@ -271,10 +340,36 @@ mod tests {
     }
 
     #[test]
-    fn test_get_session_detail_not_found() {
-        let result = get_session_detail("nonexistent-run-id".to_string());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Session not found"));
+    fn test_get_session_detail_not_found_in_empty_repos() {
+        let repos: Vec<std::path::PathBuf> = Vec::new();
+        let result = find_session_in_repos("nonexistent-run-id", &repos);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_session_detail_finds_by_run_id() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "session-xyz",
+            "phase": "Review",
+            "timestamp": "2024-06-01 09:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "openai"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let repos = vec![dir.path().to_path_buf()];
+        let result = find_session_in_repos("session-xyz", &repos);
+        assert!(result.is_some(), "Expected Some but got None");
+        let summary = result.unwrap();
+        assert_eq!(summary.run_id, "session-xyz");
+        assert_eq!(summary.phase, "Review");
     }
 
     #[test]

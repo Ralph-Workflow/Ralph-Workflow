@@ -6,11 +6,14 @@ import {
 import { listWorktrees, createWorktree, switchContext } from "../../api/tauri";
 import type { WorktreeInfo } from "../../types";
 
+const LAST_REPO_KEY = "ralph_gui_last_repo";
+
 interface WorktreeState {
   worktrees: WorktreeInfo[];
   status: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
   activeWorktreePath: string | null;
+  lastRepoPath: string | null;
 }
 
 const initialState: WorktreeState = {
@@ -18,6 +21,7 @@ const initialState: WorktreeState = {
   status: "idle",
   error: null,
   activeWorktreePath: null,
+  lastRepoPath: localStorage.getItem(LAST_REPO_KEY),
 };
 
 export const fetchWorktrees = createAsyncThunk(
@@ -53,6 +57,15 @@ export const switchActiveContext = createAsyncThunk(
   },
 );
 
+/// Initialize the app with a selected repository: load worktrees and persist path.
+export const initializeRepo = createAsyncThunk(
+  "worktrees/initializeRepo",
+  async (repoPath: string) => {
+    const worktrees = await listWorktrees(repoPath);
+    return { repoPath, worktrees };
+  },
+);
+
 const worktreeSlice = createSlice({
   name: "worktrees",
   initialState,
@@ -80,6 +93,20 @@ const worktreeSlice = createSlice({
       })
       .addCase(switchActiveContext.fulfilled, (state, action) => {
         state.activeWorktreePath = action.payload;
+      })
+      .addCase(initializeRepo.pending, (state) => {
+        state.status = "loading";
+        state.error = null;
+      })
+      .addCase(initializeRepo.fulfilled, (state, action) => {
+        state.status = "succeeded";
+        state.worktrees = action.payload.worktrees;
+        state.lastRepoPath = action.payload.repoPath;
+        localStorage.setItem(LAST_REPO_KEY, action.payload.repoPath);
+      })
+      .addCase(initializeRepo.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message ?? "Unknown error";
       });
   },
 });

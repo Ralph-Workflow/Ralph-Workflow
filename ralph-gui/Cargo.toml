@@ -30,9 +30,13 @@ git2 = { workspace = true }
 uuid = { version = "1.10", features = ["v4"] }
 chrono = "0.4"
 regex = "1.10"
+toml = "0.8"
+ureq = { version = "2", features = ["json"] }
+which = "6"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tauri = { version = "2", features = ["test"] }
 
 [lints.rust]
 warnings = "deny"

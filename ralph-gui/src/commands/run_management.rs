@@ -169,16 +169,83 @@ pub fn get_resumable_runs(repo_path: String) -> Result<Vec<RunDetail>, String> {
     Ok(vec![detail])
 }
 
-/// Get detailed information for a specific run.
+/// Internal: find a run in a set of known repos by scanning checkpoints.
+fn find_run_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<RunDetail> {
+    for repo_path in repos {
+        let checkpoint_file = repo_path.join(".agent").join("checkpoint.json");
+        if !checkpoint_file.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&checkpoint_file) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let checkpoint_run_id = checkpoint
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if checkpoint_run_id != run_id {
+            continue;
+        }
+        let phase = checkpoint
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let timestamp = checkpoint
+            .get("timestamp")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let developer_agent = checkpoint
+            .get("developer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let reviewer_agent = checkpoint
+            .get("reviewer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let status = if phase == "Complete" {
+            RunStatus::Completed
+        } else {
+            RunStatus::Paused
+        };
+        return Some(RunDetail {
+            run_id: run_id.to_string(),
+            status,
+            current_phase: phase.clone(),
+            last_checkpoint: Some(timestamp.clone()),
+            agent_profile: format!("{developer_agent}/{reviewer_agent}"),
+            repo_path: repo_path.to_string_lossy().into_owned(),
+            worktree_path: None,
+            created_at: timestamp,
+            description: format!("Phase: {phase}"),
+        });
+    }
+    None
+}
+
+/// Get detailed information for a specific run by scanning all known repo paths.
 ///
 /// # Errors
 ///
-/// Returns an error if the run is not found.
+/// Returns an error if the run is not found in any known repository.
 #[tauri::command]
-pub fn get_run_detail(run_id: String) -> Result<RunDetail, String> {
-    let mut msg = run_id;
-    msg.insert_str(0, "Run not found: ");
-    Err(msg)
+pub fn get_run_detail(
+    run_id: String,
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<RunDetail, String> {
+    let known_repos = {
+        let locked = state
+            .lock()
+            .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+        locked.known_repos.clone()
+    };
+    find_run_in_repos(&run_id, &known_repos).ok_or_else(|| format!("Run not found: {run_id}"))
 }
 
 /// Internal struct for checkpoint summary used within this module.
@@ -316,9 +383,56 @@ mod tests {
     }
 
     #[test]
+    fn test_get_run_detail_finds_run_by_id() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "target-run-id",
+            "phase": "Development",
+            "timestamp": "2024-06-01 10:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let repos = vec![dir.path().to_path_buf()];
+        let detail = find_run_in_repos("target-run-id", &repos);
+        assert!(detail.is_some(), "Expected Some but got None");
+        let d = detail.unwrap();
+        assert_eq!(d.run_id, "target-run-id");
+        assert_eq!(d.current_phase, "Development");
+    }
+
+    #[test]
     fn test_get_run_detail_not_found() {
-        let result = get_run_detail("nonexistent-run-id".to_string());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Run not found"));
+        let repos: Vec<std::path::PathBuf> = Vec::new();
+        let detail = find_run_in_repos("nonexistent-run-id", &repos);
+        assert!(detail.is_none());
+    }
+
+    #[test]
+    fn test_get_run_detail_skips_repos_without_matching_id() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "other-run-id",
+            "phase": "Development",
+            "timestamp": "2024-06-01 10:00:00",
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let repos = vec![dir.path().to_path_buf()];
+        let detail = find_run_in_repos("target-run-id", &repos);
+        assert!(detail.is_none(), "Should not find unrelated run");
     }
 }

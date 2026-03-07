@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../store";
 import { fetchWorktrees } from "../store/slices/worktreeSlice";
 import { fetchResumableRuns } from "../store/slices/runSlice";
 import { RunStatusBadge } from "../components/RunStatusBadge";
+import { RepoSelector } from "../components/RepoSelector";
 
 export function Home() {
   const dispatch = useAppDispatch();
@@ -29,7 +30,7 @@ export function Home() {
   if (!hasContent) {
     return (
       <div className="page-content" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ maxWidth: 400, textAlign: "center", animation: "fadeIn 300ms ease" }}>
+        <div style={{ maxWidth: 480, textAlign: "center", animation: "fadeIn 300ms ease" }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>◈</div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.02em", marginBottom: 8 }}>
             Welcome to Ralph Workflow
@@ -37,9 +38,12 @@ export function Home() {
           <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
             An unattended AI orchestration platform for long-running development and review cycles.
           </p>
-          <button className="btn btn-primary" style={{ fontSize: 14, padding: "8px 20px" }} onClick={() => void navigate("/sessions")}>
-            Start a session →
-          </button>
+          <div style={{ textAlign: "left", marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8 }}>
+              Enter your repository path to get started:
+            </div>
+            <RepoSelector onRepoSelected={() => void navigate("/")} />
+          </div>
         </div>
       </div>
     );

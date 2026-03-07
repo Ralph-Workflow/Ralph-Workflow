@@ -175,7 +175,11 @@ pub fn switch_context(
     let mut locked = state
         .lock()
         .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
-    locked.repo_path = Some(std::path::PathBuf::from(repo_path));
+    let repo_pb = std::path::PathBuf::from(repo_path);
+    if !locked.known_repos.contains(&repo_pb) {
+        locked.known_repos.push(repo_pb.clone());
+    }
+    locked.repo_path = Some(repo_pb);
     locked.worktree_path = worktree_path.map(std::path::PathBuf::from);
     drop(locked);
     Ok(())

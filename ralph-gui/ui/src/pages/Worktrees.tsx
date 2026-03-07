@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../store";
 import { createNewWorktree, fetchWorktrees } from "../store/slices/worktreeSlice";
 
@@ -9,6 +10,7 @@ interface CreateForm {
 
 export function Worktrees() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const status = useAppSelector((s) => s.worktrees.status);
   const error = useAppSelector((s) => s.worktrees.error);
@@ -378,22 +380,37 @@ export function Worktrees() {
                     </div>
                   </div>
 
-                  {/* Active badge */}
-                  {isActive && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--text-muted)",
-                        padding: "2px 8px",
-                        border: "1px solid var(--border-default)",
-                        borderRadius: "var(--radius-sm)",
-                        flexShrink: 0,
-                      }}
-                    >
-                      active context
-                    </span>
-                  )}
+                  {/* Actions */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    {isActive && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--text-muted)",
+                          padding: "2px 8px",
+                          border: "1px solid var(--border-default)",
+                          borderRadius: "var(--radius-sm)",
+                        }}
+                      >
+                        active context
+                      </span>
+                    )}
+                    {!wt.is_main && (
+                      <button
+                        data-testid={`start-session-${wt.name}`}
+                        className="btn btn-secondary"
+                        style={{ fontSize: 11, padding: "3px 10px" }}
+                        onClick={() =>
+                          void navigate(
+                            `/sessions?new=true&worktree=${encodeURIComponent(wt.path)}`,
+                          )
+                        }
+                      >
+                        Start session
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

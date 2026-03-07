@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAppSelector } from "../store";
 import { SessionList } from "../components/sessions/SessionList";
 import { NewSessionWizard } from "../components/sessions/NewSessionWizard";
@@ -6,10 +7,21 @@ import { NewSessionWizard } from "../components/sessions/NewSessionWizard";
 type View = "list" | "new";
 
 export function Sessions() {
-  const [view, setView] = useState<View>("list");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [view, setView] = useState<View>(() =>
+    searchParams.get("new") === "true" ? "new" : "list",
+  );
+  const preselectedWorktree = searchParams.get("worktree");
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const activePath = useAppSelector((s) => s.worktrees.activeWorktreePath);
   const mainWorktree = worktrees.find((wt) => wt.is_main);
+
+  // Clear query params once consumed so back-navigation stays clean
+  useEffect(() => {
+    if (searchParams.get("new") === "true") {
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const repoPath =
     activePath ?? mainWorktree?.path ?? "";
@@ -59,7 +71,10 @@ export function Sessions() {
             >
               New session
             </div>
-            <NewSessionWizard onClose={() => setView("list")} />
+            <NewSessionWizard
+              onClose={() => setView("list")}
+              preselectedWorktreePath={preselectedWorktree}
+            />
           </div>
         ) : (
           <div>

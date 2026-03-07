@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentProfile,
   ConfigView,
   CreateSessionRequest,
   CreateWorktreeResult,
+  LaunchSessionArgs,
+  PromptReviewResult,
   RunDetail,
   RunStatusSummary,
   SessionSummary,
@@ -120,4 +123,53 @@ export async function getResumableRuns(
 
 export async function getRunDetail(runId: string): Promise<RunDetail> {
   return invoke<RunDetail>("get_run_detail", { run_id: runId });
+}
+
+// --- Prompt file commands ---
+
+export async function readPromptFile(promptPath: string): Promise<string> {
+  return invoke<string>("read_prompt_file", { prompt_path: promptPath });
+}
+
+export async function savePromptFile(
+  promptPath: string,
+  content: string,
+): Promise<void> {
+  return invoke<void>("save_prompt_file", { prompt_path: promptPath, content });
+}
+
+export async function reviewPromptWithAi(
+  promptContent: string,
+): Promise<PromptReviewResult> {
+  return invoke<PromptReviewResult>("review_prompt_with_ai", {
+    prompt_content: promptContent,
+  });
+}
+
+// --- Agent profile commands ---
+
+export async function listAgentProfiles(
+  repoPath?: string,
+): Promise<AgentProfile[]> {
+  return invoke<AgentProfile[]>("list_agent_profiles", {
+    repo_path: repoPath ?? null,
+  });
+}
+
+// --- Session launch commands ---
+
+export async function launchRalphSession(
+  args: LaunchSessionArgs,
+): Promise<string> {
+  return invoke<string>("launch_ralph_session", { args });
+}
+
+export async function resumeRalphSession(
+  runId: string,
+  repoPath: string,
+): Promise<void> {
+  return invoke<void>("resume_ralph_session", {
+    run_id: runId,
+    repo_path: repoPath,
+  });
 }

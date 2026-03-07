@@ -1,6 +1,58 @@
 use ralph_workflow::config::unified::UnifiedConfig;
 use serde::{Deserialize, Serialize};
 
+/// An agent profile from `agents.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProfile {
+    pub name: String,
+    pub developer_agent: String,
+    pub reviewer_agent: String,
+}
+
+/// List available agent profiles from `agents.toml`.
+///
+/// Searches project-local `agents.toml` first, then `~/.ralph/agents.toml`.
+/// Returns an empty list if neither file exists.
+///
+/// # Errors
+///
+/// Returns an error if an existing file cannot be parsed.
+#[tauri::command]
+pub fn list_agent_profiles(repo_path: Option<String>) -> Result<Vec<AgentProfile>, String> {
+    let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(repo) = repo_path {
+        search_paths.push(std::path::PathBuf::from(repo).join("agents.toml"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        search_paths.push(home.join(".ralph").join("agents.toml"));
+    }
+
+    for path in &search_paths {
+        if path.exists() {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to read agents.toml: {e}"))?;
+            let parsed: toml::Value = toml::from_str(&content)
+                .map_err(|e| format!("Failed to parse agents.toml: {e}"))?;
+            if let Some(agents) = parsed.get("agents").and_then(|v| v.as_array()) {
+                let profiles: Vec<AgentProfile> = agents
+                    .iter()
+                    .filter_map(|a| {
+                        Some(AgentProfile {
+                            name: a.get("name")?.as_str()?.to_string(),
+                            developer_agent: a.get("developer_agent")?.as_str()?.to_string(),
+                            reviewer_agent: a.get("reviewer_agent")?.as_str()?.to_string(),
+                        })
+                    })
+                    .collect();
+                return Ok(profiles);
+            }
+            // File exists but has no [agents] array — skip to next path.
+        }
+    }
+
+    Ok(Vec::new())
+}
+
 /// Serializable representation of the Ralph configuration for the GUI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigView {
@@ -222,5 +274,59 @@ mod tests {
         assert!(result.is_ok(), "Expected Ok: {result:?}");
         let config_path = dir.path().join(".agent").join("ralph-workflow.toml");
         assert!(config_path.exists(), "Config file should have been created");
+    }
+
+    #[test]
+    fn test_list_agent_profiles_returns_empty_when_no_file() {
+        let dir = TempDir::new().unwrap();
+        let result = list_agent_profiles(Some(dir.path().to_string_lossy().to_string()));
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_list_agent_profiles_parses_valid_file() {
+        let dir = TempDir::new().unwrap();
+        let agents_toml = r#"
+[[agents]]
+name = "claude-solo"
+developer_agent = "claude"
+reviewer_agent = "claude"
+
+[[agents]]
+name = "claude-codex"
+developer_agent = "claude"
+reviewer_agent = "codex"
+"#;
+        std::fs::write(dir.path().join("agents.toml"), agents_toml).unwrap();
+        let result = list_agent_profiles(Some(dir.path().to_string_lossy().to_string()));
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let profiles = result.unwrap();
+        assert_eq!(profiles.len(), 2);
+        assert_eq!(profiles[0].name, "claude-solo");
+        assert_eq!(profiles[1].developer_agent, "claude");
+        assert_eq!(profiles[1].reviewer_agent, "codex");
+    }
+
+    #[test]
+    fn test_list_agent_profiles_returns_error_on_invalid_toml() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("agents.toml"),
+            "this is not !!! valid toml @@",
+        )
+        .unwrap();
+        let result = list_agent_profiles(Some(dir.path().to_string_lossy().to_string()));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse agents.toml"));
+    }
+
+    #[test]
+    fn test_list_agent_profiles_returns_empty_without_agents_key() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("agents.toml"), "[general]\nfoo = true\n").unwrap();
+        let result = list_agent_profiles(Some(dir.path().to_string_lossy().to_string()));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 }
