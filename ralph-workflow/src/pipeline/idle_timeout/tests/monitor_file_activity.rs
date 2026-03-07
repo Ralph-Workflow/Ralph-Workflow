@@ -311,7 +311,8 @@ fn monitor_does_not_timeout_on_file_activity_check_error() {
     });
 
     // Give the monitor time to attempt at least one idle check cycle.
-    thread::sleep(Duration::from_millis(100));
+    // check_interval=10ms, so 25ms gives at least 2 full check cycles.
+    thread::sleep(Duration::from_millis(25));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
