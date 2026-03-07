@@ -81,6 +81,7 @@ mod reducer_fault_tolerance;
 mod reducer_hidden_behavior;
 mod reducer_legacy_rejection;
 mod reducer_rebase_state_machine;
+mod reducer_resume;
 mod reducer_resume_boundary_tests;
 mod reducer_resume_tests;
 mod reducer_state_machine;

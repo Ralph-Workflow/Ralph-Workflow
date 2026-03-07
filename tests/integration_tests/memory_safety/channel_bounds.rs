@@ -99,39 +99,33 @@ fn test_channel_drains_on_drop() {
 #[test]
 fn test_bounded_channel_blocks_on_full() {
     with_default_timeout(|| {
-        use std::sync::{Arc, Mutex};
+        use std::sync::{Arc, Barrier};
         use std::thread;
-        use std::time::Duration;
 
         let (tx, rx) = mpsc::sync_channel(2);
 
-        // Fill channel
+        // Fill channel to capacity
         tx.send("event1".to_string()).unwrap();
         tx.send("event2".to_string()).unwrap();
 
-        let blocked = Arc::new(Mutex::new(false));
-        let blocked_clone = blocked.clone();
+        // Barrier: both threads rendezvous before the drain happens
+        let barrier = Arc::new(Barrier::new(2));
+        let barrier_clone = Arc::clone(&barrier);
 
-        // Spawn thread that tries to send to full channel
         let sender_thread = thread::spawn(move || {
-            *blocked_clone.lock().unwrap() = true;
-            // This send() will block because channel is full
+            // Signal that we are about to attempt the blocking send
+            barrier_clone.wait();
+            // This send() blocks because channel is full until receiver drains
             tx.send("event3".to_string())
         });
 
-        // Give sender thread time to block
-        thread::sleep(Duration::from_millis(50));
-
-        assert!(
-            *blocked.lock().unwrap(),
-            "Sender should have attempted send"
-        );
+        // Wait until sender thread has reached the barrier (is about to block)
+        barrier.wait();
 
         // Drain channel to unblock sender
         let _ = rx.try_recv();
         let _ = rx.try_recv();
 
-        // Wait for sender to complete
         let result = sender_thread
             .join()
             .expect("Sender thread should not panic");
