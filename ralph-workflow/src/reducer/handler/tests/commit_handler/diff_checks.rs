@@ -186,3 +186,125 @@ fn test_check_commit_diff_uses_head_baseline_not_start_commit() {
         "expected already-committed change to be ABSENT from commit diff (HEAD baseline); got: {diff}"
     );
 }
+
+#[test]
+fn test_fresh_commit_context_after_previous_commit() {
+    // Behavioral regression: in a multi-iteration scenario, the second commit context
+    // must contain ONLY second-iteration changes, never first-iteration changes.
+    //
+    // This proves that check_commit_diff uses HEAD as baseline on each call, so a
+    // previously committed change (iteration 1) is invisible to the second diff check.
+    //
+    // IMPORTANT: Uses an isolated tempdir repo; never mutates process CWD (parallel-safe).
+    use std::path::Path;
+
+    const ITERATION1_UNIQUE_MARKER: &str =
+        "ITERATION1_UNIQUE_MARKER_MUST_NOT_APPEAR_IN_SECOND_DIFF";
+    const ITERATION2_UNIQUE_MARKER: &str = "ITERATION2_UNIQUE_MARKER_MUST_APPEAR_IN_SECOND_DIFF";
+
+    let repo_dir = tempfile::TempDir::new().expect("create temp git repo");
+    let repo = git2::Repository::init(repo_dir.path()).expect("init git repo");
+    let sig = git2::Signature::now("test", "test@test.com").expect("signature");
+
+    // Initial commit: create both tracked files with base content so HEAD exists.
+    // Both files must be tracked (committed) so that working-tree modifications appear in the diff.
+    let file1 = "iteration1_file.txt";
+    let file2 = "iteration2_file.txt";
+    let abs_file1 = repo_dir.path().join(file1);
+    let abs_file2 = repo_dir.path().join(file2);
+    std::fs::write(&abs_file1, "base content\n").expect("write file1 base");
+    std::fs::write(&abs_file2, "base content\n").expect("write file2 base");
+    let mut index = repo.index().expect("open index");
+    index.add_path(Path::new(file1)).expect("stage file1 base");
+    index.add_path(Path::new(file2)).expect("stage file2 base");
+    index.write().expect("write index");
+    let tree_init = repo
+        .find_tree(index.write_tree().expect("write tree init"))
+        .expect("find tree init");
+    repo.commit(Some("HEAD"), &sig, &sig, "initial commit", &tree_init, &[])
+        .expect("create initial commit");
+
+    // Iteration 1: modify file1 with a unique marker (working tree change of tracked file).
+    std::fs::write(
+        &abs_file1,
+        format!("base content\n{ITERATION1_UNIQUE_MARKER}\n"),
+    )
+    .expect("write file1 iter1 change");
+
+    // Set up fixture for first check_commit_diff call.
+    let workspace1 = crate::workspace::MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture1 = TestFixture::with_workspace(workspace1);
+    fixture1.repo_root = repo_dir.path().to_path_buf();
+    {
+        let ctx = fixture1.ctx();
+        MainEffectHandler::check_commit_diff(&ctx).expect("first check_commit_diff should succeed");
+    }
+
+    // Verify iteration 1 diff contains ITERATION1_UNIQUE_MARKER (proves file1 is captured).
+    let diff1 = fixture1
+        .workspace
+        .read(Path::new(".agent/tmp/commit_diff.txt"))
+        .expect("first diff file must be written");
+    assert!(
+        diff1.contains(ITERATION1_UNIQUE_MARKER),
+        "first diff must contain ITERATION1 marker; got: {diff1}"
+    );
+
+    // Now commit file1 into history (simulating end of iteration 1).
+    let mut index = repo.index().expect("open index for commit");
+    index
+        .add_path(Path::new(file1))
+        .expect("stage file1 for commit");
+    index.write().expect("write index for commit");
+    let tree_iter1 = repo
+        .find_tree(index.write_tree().expect("write tree iter1"))
+        .expect("find tree iter1");
+    let parent = repo
+        .head()
+        .expect("head after initial")
+        .peel_to_commit()
+        .expect("initial commit object");
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        "iteration 1 commit",
+        &tree_iter1,
+        &[&parent],
+    )
+    .expect("create iteration 1 commit");
+
+    // Iteration 2: modify file2 (already tracked) with a different unique marker.
+    std::fs::write(
+        &abs_file2,
+        format!("base content\n{ITERATION2_UNIQUE_MARKER}\n"),
+    )
+    .expect("write file2 iter2 change");
+
+    // Set up fixture for second check_commit_diff call (fresh workspace).
+    let workspace2 = crate::workspace::MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture2 = TestFixture::with_workspace(workspace2);
+    fixture2.repo_root = repo_dir.path().to_path_buf();
+    {
+        let ctx = fixture2.ctx();
+        MainEffectHandler::check_commit_diff(&ctx)
+            .expect("second check_commit_diff should succeed");
+    }
+
+    let diff2 = fixture2
+        .workspace
+        .read(Path::new(".agent/tmp/commit_diff.txt"))
+        .expect("second diff file must be written");
+
+    // The second diff must contain the second iteration's change.
+    assert!(
+        diff2.contains(ITERATION2_UNIQUE_MARKER),
+        "second diff must contain ITERATION2 marker to prove fresh context; got: {diff2}"
+    );
+
+    // The second diff must NOT contain the first iteration's change (already committed into HEAD).
+    assert!(
+        !diff2.contains(ITERATION1_UNIQUE_MARKER),
+        "second diff must NOT contain ITERATION1 marker (already committed); got: {diff2}"
+    );
+}

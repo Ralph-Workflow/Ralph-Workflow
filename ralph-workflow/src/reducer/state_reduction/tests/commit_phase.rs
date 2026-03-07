@@ -302,3 +302,149 @@ fn test_skipped_pre_termination_resets_commit_diff_prepared() {
         "commit_diff_content_id_sha256 must be None after CommitEvent::Skipped (pre-termination path)"
     );
 }
+
+#[test]
+fn test_created_normal_clears_prompt_inputs_commit() {
+    // After a successful commit (normal path), prompt_inputs.commit must be cleared
+    // to prevent stale materialized commit diff/context from surviving into the next iteration.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_diff_prepared = true;
+    // Set stale commit inputs that must be cleared after commit
+    state.prompt_inputs.commit = Some(MaterializedCommitInputs {
+        attempt: 1,
+        diff: MaterializedPromptInput {
+            kind: PromptInputKind::Diff,
+            content_id_sha256: "stale-hash".to_string(),
+            consumer_signature_sha256: "stale-sig".to_string(),
+            original_bytes: 100,
+            final_bytes: 100,
+            model_budget_bytes: None,
+            inline_budget_bytes: None,
+            representation: PromptInputRepresentation::Inline,
+            reason: PromptMaterializationReason::WithinBudgets,
+        },
+    });
+    // termination_resume_phase is None by default => normal path
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "fix: something".to_string()),
+    );
+
+    assert!(
+        new_state.prompt_inputs.commit.is_none(),
+        "prompt_inputs.commit must be cleared after CommitEvent::Created (normal path) \
+         to prevent stale commit context reuse in later iterations"
+    );
+}
+
+#[test]
+fn test_created_pre_termination_clears_prompt_inputs_commit() {
+    // After a successful commit (pre-termination safety path), prompt_inputs.commit must be
+    // cleared to prevent stale materialized commit context from surviving.
+    let mut state = PipelineState::initial(0, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.termination_resume_phase = Some(PipelinePhase::Complete);
+    state.pre_termination_commit_checked = false;
+    state.commit_diff_prepared = true;
+    state.prompt_inputs.commit = Some(MaterializedCommitInputs {
+        attempt: 1,
+        diff: MaterializedPromptInput {
+            kind: PromptInputKind::Diff,
+            content_id_sha256: "stale-hash".to_string(),
+            consumer_signature_sha256: "stale-sig".to_string(),
+            original_bytes: 100,
+            final_bytes: 100,
+            model_budget_bytes: None,
+            inline_budget_bytes: None,
+            representation: PromptInputRepresentation::Inline,
+            reason: PromptMaterializationReason::WithinBudgets,
+        },
+    });
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "fix: something".to_string()),
+    );
+
+    assert!(
+        new_state.prompt_inputs.commit.is_none(),
+        "prompt_inputs.commit must be cleared after CommitEvent::Created (pre-termination path)"
+    );
+}
+
+#[test]
+fn test_skipped_normal_clears_prompt_inputs_commit() {
+    // After a skipped commit (normal path), prompt_inputs.commit must be cleared
+    // to prevent stale materialized commit diff/context from surviving into the next iteration.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_diff_prepared = true;
+    state.prompt_inputs.commit = Some(MaterializedCommitInputs {
+        attempt: 1,
+        diff: MaterializedPromptInput {
+            kind: PromptInputKind::Diff,
+            content_id_sha256: "stale-hash".to_string(),
+            consumer_signature_sha256: "stale-sig".to_string(),
+            original_bytes: 100,
+            final_bytes: 100,
+            model_budget_bytes: None,
+            inline_budget_bytes: None,
+            representation: PromptInputRepresentation::Inline,
+            reason: PromptMaterializationReason::WithinBudgets,
+        },
+    });
+    // termination_resume_phase is None by default => normal path
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_skipped("AI chose to skip".to_string()),
+    );
+
+    assert!(
+        new_state.prompt_inputs.commit.is_none(),
+        "prompt_inputs.commit must be cleared after CommitEvent::Skipped (normal path) \
+         to prevent stale commit context reuse in later iterations"
+    );
+}
+
+#[test]
+fn test_skipped_pre_termination_clears_prompt_inputs_commit() {
+    // After a skipped commit (pre-termination safety path), prompt_inputs.commit must be
+    // cleared to prevent stale materialized commit context from surviving.
+    let mut state = PipelineState::initial(0, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.termination_resume_phase = Some(PipelinePhase::Complete);
+    state.pre_termination_commit_checked = false;
+    state.commit_diff_prepared = true;
+    state.commit_diff_empty = false; // non-empty => AI-driven skip
+    state.prompt_inputs.commit = Some(MaterializedCommitInputs {
+        attempt: 1,
+        diff: MaterializedPromptInput {
+            kind: PromptInputKind::Diff,
+            content_id_sha256: "stale-hash".to_string(),
+            consumer_signature_sha256: "stale-sig".to_string(),
+            original_bytes: 100,
+            final_bytes: 100,
+            model_budget_bytes: None,
+            inline_budget_bytes: None,
+            representation: PromptInputRepresentation::Inline,
+            reason: PromptMaterializationReason::WithinBudgets,
+        },
+    });
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_skipped("AI chose to skip".to_string()),
+    );
+
+    assert!(
+        new_state.prompt_inputs.commit.is_none(),
+        "prompt_inputs.commit must be cleared after CommitEvent::Skipped (pre-termination path)"
+    );
+}

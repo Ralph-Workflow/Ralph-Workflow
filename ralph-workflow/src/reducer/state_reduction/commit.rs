@@ -148,6 +148,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
+                    prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                     metrics: state.metrics.increment_commits_created_total(),
                     ..state
                 };
@@ -200,6 +201,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
+                prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                 agent_chain,
                 continuation,
                 metrics: state.metrics.increment_commits_created_total(),
@@ -294,6 +296,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
+                    prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                     ..state
                 };
             }
@@ -342,6 +345,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
                 context_cleaned: false,
+                prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                 agent_chain,
                 continuation,
                 ..state
