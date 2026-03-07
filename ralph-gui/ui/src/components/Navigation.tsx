@@ -10,7 +10,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/",            label: "Home",          icon: "⌂" },
   { path: "/sessions",    label: "Sessions",      icon: "▶" },
   { path: "/worktrees",   label: "Worktrees",     icon: "⎇" },
-  { path: "/config",      label: "Configuration", icon: "⚙" },
+  { path: "/configuration", label: "Configuration", icon: "⚙" },
 ];
 
 export function Navigation() {

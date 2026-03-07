@@ -3,7 +3,12 @@ import {
   createSlice,
   type PayloadAction,
 } from "@reduxjs/toolkit";
-import { getSessions, createSession, resumeSession } from "../../api/tauri";
+import {
+  getSessions,
+  createSession,
+  resumeRalphSession,
+  getSessionDetail,
+} from "../../api/tauri";
 import type { CreateSessionRequest, SessionSummary } from "../../types";
 
 export type LoadingStatus = "idle" | "loading" | "succeeded" | "failed";
@@ -38,8 +43,9 @@ export const createNewSession = createAsyncThunk(
 
 export const resumeInterruptedSession = createAsyncThunk(
   "sessions/resumeSession",
-  async (runId: string) => {
-    return resumeSession(runId);
+  async (args: { runId: string; repoPath: string }) => {
+    await resumeRalphSession(args.runId, args.repoPath);
+    return getSessionDetail(args.runId);
   },
 );
 

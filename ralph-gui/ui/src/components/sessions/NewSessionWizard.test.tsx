@@ -24,7 +24,15 @@ vi.mock("../../api/tauri", () => ({
     phase: "Pending",
   }),
   resumeSession: vi.fn(),
+  resumeRalphSession: vi.fn(),
+  getSessionDetail: vi.fn(),
+  launchRalphSession: vi.fn().mockResolvedValue("test-run-id-launched"),
 }));
+
+import { launchRalphSession } from "../../api/tauri";
+import type { Mock } from "vitest";
+
+const mockLaunchRalphSession = launchRalphSession as Mock;
 
 function makeStore() {
   return configureStore({
@@ -87,7 +95,7 @@ describe("NewSessionWizard", () => {
     expect(screen.getByTestId("wizard-template-step")).toBeInTheDocument();
   });
 
-  it("saves prompt file and dispatches createNewSession on launch", async () => {
+  it("advances to preflight step and shows Launch session button", async () => {
     const { store } = renderWizard();
     fireEvent.click(screen.getByTestId("template-feature"));
     // Set a valid repo path
@@ -106,5 +114,19 @@ describe("NewSessionWizard", () => {
     // Sessions state should eventually have the new session
     const state = store.getState();
     expect(state).toBeDefined();
+  });
+
+  it("calls launchRalphSession on confirm from preflight step", async () => {
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.change(screen.getByPlaceholderText("/path/to/your/repo"), {
+      target: { value: "/my/repo" },
+    });
+    fireEvent.click(screen.getByTestId("review-launch-button"));
+    await waitFor(() =>
+      expect(screen.getByText("Launch session")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Launch session"));
+    await waitFor(() => expect(mockLaunchRalphSession).toHaveBeenCalledOnce());
   });
 });

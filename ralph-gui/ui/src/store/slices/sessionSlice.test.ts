@@ -12,14 +12,22 @@ vi.mock("../../api/tauri", () => ({
   getSessions: vi.fn(),
   createSession: vi.fn(),
   resumeSession: vi.fn(),
+  resumeRalphSession: vi.fn(),
+  getSessionDetail: vi.fn(),
 }));
 
-import { getSessions, createSession, resumeSession } from "../../api/tauri";
+import {
+  getSessions,
+  createSession,
+  resumeRalphSession,
+  getSessionDetail,
+} from "../../api/tauri";
 import type { Mock } from "vitest";
 
 const mockGetSessions = getSessions as Mock;
 const mockCreateSession = createSession as Mock;
-const mockResumeSession = resumeSession as Mock;
+const mockResumeRalphSession = resumeRalphSession as Mock;
+const mockGetSessionDetail = getSessionDetail as Mock;
 
 function makeStore() {
   return configureStore({
@@ -109,9 +117,10 @@ describe("sessionSlice", () => {
     expect(store.getState().sessions.selectedRunId).toBeNull();
   });
 
-  it("resumeInterruptedSession.fulfilled updates existing session", async () => {
+  it("resumeInterruptedSession calls resumeRalphSession then updates session", async () => {
     const updatedSession = { ...mockSession, status: "running" as const };
-    mockResumeSession.mockResolvedValueOnce(updatedSession);
+    mockResumeRalphSession.mockResolvedValueOnce(undefined);
+    mockGetSessionDetail.mockResolvedValueOnce(updatedSession);
     const store = configureStore({
       reducer: { sessions: sessionReducer },
       preloadedState: {
@@ -123,7 +132,9 @@ describe("sessionSlice", () => {
         },
       },
     });
-    await store.dispatch(resumeInterruptedSession("run-abc-123"));
+    await store.dispatch(
+      resumeInterruptedSession({ runId: "run-abc-123", repoPath: "/my/repo" }),
+    );
     expect(store.getState().sessions.sessions[0].status).toBe("running");
   });
 });

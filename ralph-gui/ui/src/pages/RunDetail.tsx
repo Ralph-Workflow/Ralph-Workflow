@@ -1,7 +1,12 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../store";
-import { fetchRunDetail, clearRunDetail } from "../store/slices/runSlice";
+import {
+  fetchRunDetail,
+  clearRunDetail,
+  startPollingInterval,
+  stopPollingInterval,
+} from "../store/slices/runSlice";
 import { resumeInterruptedSession } from "../store/slices/sessionSlice";
 import { RunStatusBadge } from "../components/RunStatusBadge";
 
@@ -57,6 +62,12 @@ export function RunDetail() {
   const runDetail = useAppSelector((s) => s.runs.runDetail);
   const status = useAppSelector((s) => s.runs.status);
   const error = useAppSelector((s) => s.runs.error);
+  const pollingStatus = useAppSelector((s) => s.runs.pollingStatus);
+
+  const detailRunId = runDetail?.run_id ?? null;
+  const detailStatus = runDetail?.status ?? null;
+  const detailRepoPath = runDetail?.repo_path ?? null;
+  const detailWorktreePath = runDetail?.worktree_path ?? null;
 
   useEffect(() => {
     if (runId) {
@@ -67,10 +78,34 @@ export function RunDetail() {
     };
   }, [dispatch, runId]);
 
+  useEffect(() => {
+    if (!detailStatus || detailStatus !== "Running" || !detailRepoPath) return;
+    stopPollingInterval();
+    startPollingInterval(
+      (action) => {
+        void dispatch(action);
+      },
+      detailRepoPath,
+      detailWorktreePath,
+    );
+    return () => {
+      stopPollingInterval();
+    };
+  }, [dispatch, detailRunId, detailStatus, detailRepoPath, detailWorktreePath]);
+
+  useEffect(() => {
+    if (pollingStatus && runId) {
+      void dispatch(fetchRunDetail(runId));
+    }
+  }, [dispatch, pollingStatus, runId]);
+
   const handleResume = async () => {
     if (!runDetail) return;
     await dispatch(
-      resumeInterruptedSession(runDetail.run_id),
+      resumeInterruptedSession({
+        runId: runDetail.run_id,
+        repoPath: runDetail.repo_path,
+      }),
     ).unwrap();
     navigate("/sessions");
   };

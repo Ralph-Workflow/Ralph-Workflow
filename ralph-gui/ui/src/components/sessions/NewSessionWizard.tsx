@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { useAppDispatch, useAppSelector } from "../../store";
-import { createNewSession } from "../../store/slices/sessionSlice";
-import { listAgentProfiles, savePromptFile } from "../../api/tauri";
+import { useAppSelector } from "../../store";
+import { listAgentProfiles, launchRalphSession, savePromptFile } from "../../api/tauri";
 import type { AgentProfile } from "../../types";
 import { PreflightSummary } from "./PreflightSummary";
 import { PromptTemplatePicker } from "./PromptTemplatePicker";
@@ -19,7 +18,6 @@ export function NewSessionWizard({
   onClose,
   preselectedWorktreePath,
 }: NewSessionWizardProps) {
-  const dispatch = useAppDispatch();
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const activePath = useAppSelector((s) => s.worktrees.activeWorktreePath);
 
@@ -77,17 +75,15 @@ export function NewSessionWizard({
       const selectedProfile = agentProfiles.find(
         (p) => p.name === selectedAgentProfile,
       );
-      await dispatch(
-        createNewSession({
-          repo_path: repoPath,
-          worktree_path: worktreePath,
-          prompt_path: promptPath,
-          developer_iterations: developerIterations,
-          reviewer_passes: reviewerPasses,
-          developer_agent: selectedProfile?.developer_agent,
-          reviewer_agent: selectedProfile?.reviewer_agent,
-        }),
-      );
+      await launchRalphSession({
+        repo_path: repoPath,
+        worktree_path: worktreePath,
+        prompt_path: promptPath,
+        developer_iterations: developerIterations,
+        reviewer_passes: reviewerPasses,
+        developer_agent: selectedProfile?.developer_agent ?? null,
+        reviewer_agent: selectedProfile?.reviewer_agent ?? null,
+      });
       onClose();
     } finally {
       setIsLaunching(false);

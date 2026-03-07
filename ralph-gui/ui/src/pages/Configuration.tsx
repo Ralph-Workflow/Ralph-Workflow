@@ -248,11 +248,7 @@ export function Configuration() {
   ];
 
   const displayConfig: ConfigView | null =
-    activeTab === "effective"
-      ? effectiveConfig
-      : activeTab === "global"
-      ? globalConfig
-      : null;
+    activeTab === "effective" ? (effectiveConfig ?? globalConfig) : null;
 
   return (
     <div className="page-content">
@@ -290,8 +286,8 @@ export function Configuration() {
           ))}
         </div>
 
-        {/* Effective / Global read view */}
-        {(activeTab === "effective" || activeTab === "global") && (
+        {/* Effective read view */}
+        {activeTab === "effective" && (
           <div className="card">
             <div
               style={{
@@ -301,9 +297,7 @@ export function Configuration() {
                 fontFamily: "var(--font-mono)",
               }}
             >
-              {activeTab === "effective"
-                ? "Merged view: project overrides global defaults"
-                : "Global defaults from ~/.ralph/config.toml"}
+              Merged view: project overrides global defaults
             </div>
 
             {globalStatus === "loading" && (
@@ -332,7 +326,7 @@ export function Configuration() {
                   fontFamily: "var(--font-mono)",
                 }}
               >
-                {activeTab === "effective" && !repoPath
+                {!repoPath
                   ? "Select a repository to see effective config."
                   : "No configuration loaded."}
               </div>
@@ -340,7 +334,27 @@ export function Configuration() {
           </div>
         )}
 
-        {/* Project / Global edit view */}
+        {/* Global edit view */}
+        {activeTab === "global" && (
+          <div className="card">
+            <div
+              style={{
+                marginBottom: 16,
+                fontSize: 11,
+                color: "var(--text-muted)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              Global config stored at{" "}
+              <span style={{ color: "var(--text-secondary)" }}>
+                ~/.config/ralph-workflow.toml
+              </span>
+            </div>
+            <TomlEditor label="Global" repoPath={null} scope="global" />
+          </div>
+        )}
+
+        {/* Project edit view */}
         {activeTab === "project" && (
           <div className="card">
             <div
