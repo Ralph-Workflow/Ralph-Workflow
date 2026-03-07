@@ -68,7 +68,7 @@ fn active_ai_file_updates_prevent_timeout() {
             )
         });
 
-        thread::sleep(Duration::from_millis(80));
+        thread::sleep(Duration::from_millis(30));
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");

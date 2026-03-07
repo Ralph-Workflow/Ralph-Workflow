@@ -50,8 +50,9 @@ fn monitor_prevents_timeout_with_file_activity() {
         )
     });
 
-    // Wait 80ms — the file is fresh (< 500ms old), so timeout should not trigger
-    thread::sleep(Duration::from_millis(80));
+    // Wait 20ms — the file is fresh (< 500ms old), so timeout should not trigger;
+    // 20ms gives at least 2 check cycles at check_interval=10ms
+    thread::sleep(Duration::from_millis(20));
 
     // Signal monitor to stop
     should_stop.store(true, Ordering::Release);
@@ -158,8 +159,9 @@ fn monitor_respects_output_activity() {
         )
     });
 
-    // Wait 100ms then stop
-    thread::sleep(Duration::from_millis(100));
+    // Wait 40ms then stop — the update loop runs at 20ms intervals, and the timeout is 200ms;
+    // 40ms is sufficient to confirm the monitor sees recent activity
+    thread::sleep(Duration::from_millis(40));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
@@ -203,8 +205,8 @@ fn monitor_uses_configurable_check_interval() {
         )
     });
 
-    // Signal stop quickly
-    thread::sleep(Duration::from_millis(50));
+    // Signal stop quickly — 20ms is sufficient to start the monitor
+    thread::sleep(Duration::from_millis(20));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
@@ -355,7 +357,7 @@ fn monitor_without_file_activity_config_works() {
         )
     });
 
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(20));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");

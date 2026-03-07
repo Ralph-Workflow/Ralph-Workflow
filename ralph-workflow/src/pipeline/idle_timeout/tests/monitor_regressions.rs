@@ -416,8 +416,8 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
                         Duration::from_millis(1),
                         Duration::from_millis(1),
                         Duration::from_millis(5),
-                        Duration::from_millis(200),
-                        Duration::from_millis(20),
+                        Duration::from_millis(50),
+                        Duration::from_millis(10),
                     ),
                 },
             );
@@ -444,7 +444,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(20));
     let kill_calls_after = executor
         .execute_calls_for("kill")
         .iter()
@@ -457,13 +457,13 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
 
     // But it must be bounded: after the reaper window expires, it should stop.
     // Wait long enough for the bounded reaper window to elapse.
-    thread::sleep(Duration::from_millis(250));
+    thread::sleep(Duration::from_millis(80));
     let kill_calls_after_reaper_window = executor
         .execute_calls_for("kill")
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
-    thread::sleep(Duration::from_millis(250));
+    thread::sleep(Duration::from_millis(80));
     let kill_calls_final = executor
         .execute_calls_for("kill")
         .iter()
