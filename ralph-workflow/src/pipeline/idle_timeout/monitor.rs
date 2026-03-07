@@ -23,8 +23,8 @@ pub struct FileActivityConfig {
 /// Configuration for the idle timeout monitor.
 #[derive(Debug, Clone, Copy)]
 pub struct MonitorConfig {
-    /// Timeout duration in seconds.
-    pub timeout_secs: u64,
+    /// Timeout duration.
+    pub timeout: Duration,
     /// Check interval for the monitor loop.
     pub check_interval: Duration,
     /// Kill configuration for process termination.
@@ -34,7 +34,7 @@ pub struct MonitorConfig {
 impl Default for MonitorConfig {
     fn default() -> Self {
         Self {
-            timeout_secs: super::IDLE_TIMEOUT_SECS,
+            timeout: Duration::from_secs(super::IDLE_TIMEOUT_SECS),
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
         }
@@ -95,7 +95,7 @@ fn sleep_until_next_check_or_stop(
 pub fn monitor_idle_timeout(
     activity_timestamp: &SharedActivityTimestamp,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
-    timeout_secs: u64,
+    timeout: Duration,
     should_stop: &Arc<std::sync::atomic::AtomicBool>,
     executor: &Arc<dyn ProcessExecutor>,
 ) -> MonitorResult {
@@ -106,7 +106,7 @@ pub fn monitor_idle_timeout(
         should_stop,
         executor,
         MonitorConfig {
-            timeout_secs,
+            timeout,
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
         },
@@ -117,7 +117,7 @@ pub fn monitor_idle_timeout(
 pub fn monitor_idle_timeout_with_interval(
     activity_timestamp: &SharedActivityTimestamp,
     child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
-    timeout_secs: u64,
+    timeout: Duration,
     should_stop: &Arc<std::sync::atomic::AtomicBool>,
     executor: &Arc<dyn ProcessExecutor>,
     check_interval: Duration,
@@ -129,7 +129,7 @@ pub fn monitor_idle_timeout_with_interval(
         should_stop,
         executor,
         MonitorConfig {
-            timeout_secs,
+            timeout,
             check_interval,
             kill_config: DEFAULT_KILL_CONFIG,
         },
@@ -157,7 +157,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         triggered_at: std::time::Instant,
     }
 
-    let timeout_secs = config.timeout_secs;
+    let timeout = config.timeout;
     let check_interval = config.check_interval;
     let kill_config = config.kill_config;
 
@@ -263,7 +263,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             continue;
         }
 
-        if !is_idle_timeout_exceeded(activity_timestamp, timeout_secs) {
+        if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
             continue;
         }
 
@@ -281,15 +281,14 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                 .lock()
                 .expect("file activity tracker mutex poisoned - indicates panic in another thread");
 
-            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), timeout_secs)
-            {
+            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), timeout) {
                 Ok(true) => {
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
                 }
                 Ok(false) => {
                     eprintln!(
-                        "No AI-generated file updates in the last {timeout_secs} seconds, proceeding with timeout"
+                        "No AI-generated file updates in the last {timeout:?}, proceeding with timeout"
                     );
                 }
                 Err(e) => {

@@ -42,7 +42,7 @@ fn monitor_does_not_skip_timeout_enforcement_when_try_wait_errors_before_kill() 
         &should_stop,
         &executor,
         MonitorConfig {
-            timeout_secs: 0,
+            timeout: Duration::ZERO,
             check_interval: Duration::from_millis(1),
             kill_config: KillConfig::new(
                 Duration::from_millis(1),

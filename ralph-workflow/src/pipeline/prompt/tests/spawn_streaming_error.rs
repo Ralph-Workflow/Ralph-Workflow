@@ -155,7 +155,7 @@ fn test_run_with_agent_spawn_terminates_child_and_joins_threads_when_streaming_e
                 &cmd,
                 &runtime,
                 &[],
-                1,
+                Duration::from_secs(1),
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),

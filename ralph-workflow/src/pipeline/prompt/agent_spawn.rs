@@ -189,7 +189,7 @@ pub(super) fn run_with_agent_spawn(
             &monitor_should_stop_clone,
             &monitor_executor,
             MonitorConfig {
-                timeout_secs: IDLE_TIMEOUT_SECS,
+                timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
                 check_interval: Duration::from_secs(30), // 30-second check interval
                 kill_config: DEFAULT_KILL_CONFIG,
             },

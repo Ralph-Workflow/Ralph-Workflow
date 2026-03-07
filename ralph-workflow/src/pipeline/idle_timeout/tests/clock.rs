@@ -60,7 +60,10 @@ fn touch_activity_with_clock_resets_elapsed_time() {
 #[test]
 fn is_idle_timeout_exceeded_false_when_recent() {
     let timestamp = new_activity_timestamp();
-    assert!(!is_idle_timeout_exceeded(&timestamp, 1));
+    assert!(!is_idle_timeout_exceeded(
+        &timestamp,
+        Duration::from_secs(1)
+    ));
 }
 
 #[test]
@@ -68,7 +71,11 @@ fn is_idle_timeout_exceeded_true_after_timeout() {
     let clock = MockClock::new(100_000);
     let timestamp = new_activity_timestamp_with_clock(&clock);
     clock.advance(2000);
-    assert!(is_idle_timeout_exceeded_with_clock(&timestamp, 1, &clock));
+    assert!(is_idle_timeout_exceeded_with_clock(
+        &timestamp,
+        Duration::from_secs(1),
+        &clock
+    ));
 }
 
 #[test]
@@ -76,16 +83,32 @@ fn is_idle_timeout_exceeded_with_mock_clock() {
     let clock = MockClock::new(0);
     let timestamp = new_activity_timestamp_with_clock(&clock);
 
-    assert!(!is_idle_timeout_exceeded_with_clock(&timestamp, 5, &clock));
+    assert!(!is_idle_timeout_exceeded_with_clock(
+        &timestamp,
+        Duration::from_secs(5),
+        &clock
+    ));
 
     clock.advance(3000);
-    assert!(!is_idle_timeout_exceeded_with_clock(&timestamp, 5, &clock));
+    assert!(!is_idle_timeout_exceeded_with_clock(
+        &timestamp,
+        Duration::from_secs(5),
+        &clock
+    ));
 
     clock.advance(3000);
-    assert!(is_idle_timeout_exceeded_with_clock(&timestamp, 5, &clock));
+    assert!(is_idle_timeout_exceeded_with_clock(
+        &timestamp,
+        Duration::from_secs(5),
+        &clock
+    ));
 
     touch_activity_with_clock(&timestamp, &clock);
-    assert!(!is_idle_timeout_exceeded_with_clock(&timestamp, 5, &clock));
+    assert!(!is_idle_timeout_exceeded_with_clock(
+        &timestamp,
+        Duration::from_secs(5),
+        &clock
+    ));
 }
 
 #[test]
@@ -105,7 +128,7 @@ fn clock_jump_back_does_not_cause_spurious_timeout() {
     assert_eq!(elapsed, Duration::ZERO);
     assert!(!is_idle_timeout_exceeded_with_clock(
         &timestamp,
-        IDLE_TIMEOUT_SECS,
+        Duration::from_secs(IDLE_TIMEOUT_SECS),
         &clock
     ));
 }

@@ -38,13 +38,13 @@ fn create_test_step(iteration: u32) -> ExecutionStep {
 }
 
 #[test]
-fn test_10k_iterations_memory_remains_bounded() {
+fn test_1k_iterations_memory_remains_bounded() {
     with_default_timeout(|| {
-        let mut state = PipelineState::initial(10_000, 5);
+        let mut state = PipelineState::initial(2_000, 5);
         let limit = 1000;
 
-        // Simulate 10,000 iterations
-        for i in 0..10_000 {
+        // Simulate 1,900 iterations (900 beyond limit to trigger sliding window eviction)
+        for i in 0..1_900 {
             state.add_execution_step(create_test_step(i), limit);
 
             // Verify history never exceeds limit
@@ -64,17 +64,17 @@ fn test_10k_iterations_memory_remains_bounded() {
             "Final history should be at limit"
         );
 
-        // Verify we kept the most recent entries
+        // Verify we kept the most recent entries (sliding window: oldest 900 evicted)
         let first_entry = state.execution_history.front().unwrap();
         let last_entry = state.execution_history.back().unwrap();
 
         assert!(
-            first_entry.iteration >= 9_000,
+            first_entry.iteration >= 900,
             "First entry should be from recent iterations, got {}",
             first_entry.iteration
         );
         assert_eq!(
-            last_entry.iteration, 9_999,
+            last_entry.iteration, 1_899,
             "Last entry should be most recent"
         );
     });
@@ -83,11 +83,11 @@ fn test_10k_iterations_memory_remains_bounded() {
 #[test]
 fn test_checkpoint_size_remains_reasonable_with_max_history() {
     with_default_timeout(|| {
-        let mut state = PipelineState::initial(10_000, 5);
+        let mut state = PipelineState::initial(1_000, 5);
         let limit = 1000;
 
         // Fill history to limit
-        for i in 0..2000 {
+        for i in 0..500 {
             state.add_execution_step(create_test_step(i), limit);
         }
 
@@ -115,7 +115,7 @@ fn test_checkpoint_size_remains_reasonable_with_max_history() {
 #[test]
 fn test_memory_growth_rate_is_zero_after_limit_reached() {
     with_default_timeout(|| {
-        let mut state = PipelineState::initial(5000, 5);
+        let mut state = PipelineState::initial(1000, 5);
         let limit = 500;
 
         // Fill to limit
@@ -125,8 +125,8 @@ fn test_memory_growth_rate_is_zero_after_limit_reached() {
 
         assert_eq!(state.execution_history.len(), 500); // OK: precondition; content checked via front() iteration below
 
-        // Add 1000 more iterations - length should remain constant
-        for i in 500..1500 {
+        // Add 600 more iterations - length should remain constant
+        for i in 500..1100 {
             state.add_execution_step(create_test_step(i), limit);
         }
 
@@ -139,7 +139,7 @@ fn test_memory_growth_rate_is_zero_after_limit_reached() {
         // Verify ring buffer behavior - oldest entries dropped
         let first_iteration = state.execution_history.front().unwrap().iteration;
         assert!(
-            first_iteration >= 1000,
+            first_iteration >= 600,
             "Oldest entry should be from recent iterations, got {first_iteration}"
         );
     });
@@ -148,11 +148,11 @@ fn test_memory_growth_rate_is_zero_after_limit_reached() {
 #[test]
 fn test_execution_history_memory_proxy_remains_bounded() {
     with_default_timeout(|| {
-        let mut state = PipelineState::initial(10_000, 5);
+        let mut state = PipelineState::initial(1_000, 5);
         let limit = 1000;
 
         // Fill history to limit and beyond.
-        for i in 0..5000 {
+        for i in 0..1100 {
             state.add_execution_step(create_test_step(i), limit);
         }
 

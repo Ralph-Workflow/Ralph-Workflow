@@ -28,7 +28,7 @@ impl FileActivityTracker {
         }
     }
 
-    /// Check if any AI-generated files have been modified within `timeout_secs`.
+    /// Check if any AI-generated files have been modified within `timeout`.
     ///
     /// This method scans the `.agent/` directory for files that represent meaningful
     /// AI progress (PLAN.md, ISSUES.md, NOTES.md, commit-message.txt, .agent/tmp/*.xml)
@@ -40,7 +40,7 @@ impl FileActivityTracker {
     /// # Arguments
     ///
     /// * `workspace` - The workspace to read files from
-    /// * `timeout_secs` - The recency window in seconds (typically 300)
+    /// * `timeout` - The recency window (typically 300 seconds)
     ///
     /// # Excluded Files
     ///
@@ -57,7 +57,7 @@ impl FileActivityTracker {
     pub fn check_for_recent_activity(
         &mut self,
         workspace: &dyn Workspace,
-        timeout_secs: u64,
+        timeout: Duration,
     ) -> std::io::Result<bool> {
         let agent_dir = Path::new(".agent");
 
@@ -68,7 +68,7 @@ impl FileActivityTracker {
 
         let entries = workspace.read_dir(agent_dir)?;
         let now = SystemTime::now();
-        let threshold = Duration::from_secs(timeout_secs);
+        let threshold = timeout;
 
         for entry in entries {
             // Only check files, not directories

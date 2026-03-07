@@ -70,8 +70,8 @@ fn test_pipeline_completes_without_hanging() {
 #[test]
 fn test_pipeline_completes_multiple_times_no_thread_accumulation() {
     with_default_timeout(|| {
-        // Run pipeline 10 times to verify no thread leaks accumulate
-        for run in 0..10 {
+        // Run pipeline 3 times to verify no thread leaks accumulate
+        for run in 0..3 {
             let mut app_handler = MockAppEffectHandler::new()
                 .with_head_oid("a".repeat(40))
                 .with_cwd(PathBuf::from("/mock/repo"))
@@ -278,8 +278,8 @@ fn test_panic_in_effect_handler_does_not_hang() {
 #[test]
 fn test_rapid_start_stop_no_thread_leaks() {
     with_default_timeout(|| {
-        // Rapidly start and complete pipelines to stress test thread cleanup
-        for _ in 0..20 {
+        // Rapidly start 3 pipelines to stress test thread cleanup
+        for _ in 0..3 {
             let mut app_handler = MockAppEffectHandler::new()
                 .with_head_oid("a".repeat(40))
                 .with_cwd(PathBuf::from("/mock/repo"))

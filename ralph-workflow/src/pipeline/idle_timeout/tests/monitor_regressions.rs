@@ -82,7 +82,7 @@ fn monitor_does_not_hold_child_lock_while_waiting_between_sigterm_checks() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_secs(2),
@@ -160,7 +160,7 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
                 &should_stop_for_monitor,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(10),
@@ -240,7 +240,7 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
         &should_stop,
         &executor,
         MonitorConfig {
-            timeout_secs: 0,
+            timeout: Duration::ZERO,
             check_interval: Duration::from_millis(1),
             kill_config: config(
                 Duration::from_millis(10),
@@ -285,7 +285,7 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
                 &should_stop_clone,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(20),
@@ -350,7 +350,7 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
                 // to observe the TERM send and flip the mock child to "exited"
                 // before escalation.
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(200),
@@ -410,7 +410,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
                 &should_stop_for_monitor,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(1),

@@ -149,7 +149,7 @@ fn test_run_with_agent_spawn_cancels_stdout_pump_promptly_when_idle_timeout_enfo
                 &cmd,
                 &runtime,
                 &[],
-                1,
+                Duration::from_secs(1),
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(1),

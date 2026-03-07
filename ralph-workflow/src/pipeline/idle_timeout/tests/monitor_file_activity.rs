@@ -11,12 +11,14 @@ use std::time::{Duration, SystemTime};
 
 #[test]
 fn monitor_prevents_timeout_with_file_activity() {
-    // Setup: Process with no stdout output but files being written
+    // Setup: Process with no stdout output but files being written within recency window
     let timestamp = new_activity_timestamp();
+    // Prevent output-activity from interfering: set timestamp to epoch so it's always stale
+    timestamp.store(0, Ordering::Release);
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    // Create workspace with a recently modified file
+    // Create workspace with a recently modified file (within the 500ms window)
     let workspace = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Progress");
     let workspace_arc: Arc<dyn crate::workspace::Workspace> = Arc::new(workspace);
 
@@ -30,10 +32,10 @@ fn monitor_prevents_timeout_with_file_activity() {
 
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
-    // Set a very short timeout (1 second) but fast check interval
+    // Use a 500ms timeout with fast check interval so test runs quickly
     let config = MonitorConfig {
-        timeout_secs: 1,
-        check_interval: Duration::from_millis(50),
+        timeout: Duration::from_millis(500),
+        check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
     };
 
@@ -48,8 +50,8 @@ fn monitor_prevents_timeout_with_file_activity() {
         )
     });
 
-    // Wait longer than timeout (1.5 seconds)
-    thread::sleep(Duration::from_millis(1500));
+    // Wait 80ms — the file is fresh (< 500ms old), so timeout should not trigger
+    thread::sleep(Duration::from_millis(80));
 
     // Signal monitor to stop
     should_stop.store(true, Ordering::Release);
@@ -60,7 +62,7 @@ fn monitor_prevents_timeout_with_file_activity() {
     assert_eq!(
         result,
         MonitorResult::ProcessCompleted,
-        "Monitor should not timeout when files are being updated"
+        "Monitor should not timeout when files are within recency window"
     );
 }
 
@@ -68,6 +70,8 @@ fn monitor_prevents_timeout_with_file_activity() {
 fn monitor_times_out_without_any_activity() {
     // Setup: Process with no output and no file changes
     let timestamp = new_activity_timestamp();
+    // Ensure timestamp is in the past so output-activity timeout is immediately exceeded
+    timestamp.store(0, Ordering::Release);
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
@@ -85,10 +89,10 @@ fn monitor_times_out_without_any_activity() {
 
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
-    // Set a very short timeout for fast test execution
+    // Zero timeout: always exceeded immediately
     let config = MonitorConfig {
-        timeout_secs: 1,
-        check_interval: Duration::from_millis(50),
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(5),
         kill_config: DEFAULT_KILL_CONFIG,
     };
 
@@ -127,18 +131,18 @@ fn monitor_respects_output_activity() {
 
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
-    // Set a short timeout
+    // 200ms timeout with fast check interval
     let config = MonitorConfig {
-        timeout_secs: 1,
-        check_interval: Duration::from_millis(50),
+        timeout: Duration::from_millis(200),
+        check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
     };
 
-    // Update activity timestamp periodically to simulate stdout
+    // Update activity timestamp periodically to simulate stdout (6 updates at 20ms = 120ms total)
     let timestamp_clone = timestamp.clone();
     let update_handle = thread::spawn(move || {
-        for _ in 0..30 {
-            thread::sleep(Duration::from_millis(50));
+        for _ in 0..6 {
+            thread::sleep(Duration::from_millis(20));
             touch_activity(&timestamp_clone);
         }
     });
@@ -154,8 +158,8 @@ fn monitor_respects_output_activity() {
         )
     });
 
-    // Wait longer than timeout
-    thread::sleep(Duration::from_millis(1500));
+    // Wait 100ms then stop
+    thread::sleep(Duration::from_millis(100));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
@@ -183,7 +187,7 @@ fn monitor_uses_configurable_check_interval() {
 
     // Use a custom check interval (30 seconds as per spec)
     let config = MonitorConfig {
-        timeout_secs: 60,
+        timeout: Duration::from_secs(60),
         check_interval: Duration::from_secs(30),
         kill_config: DEFAULT_KILL_CONFIG,
     };
@@ -213,6 +217,8 @@ fn monitor_uses_configurable_check_interval() {
 fn monitor_file_activity_with_old_files_times_out() {
     // Setup: Files exist but are old (>timeout window)
     let timestamp = new_activity_timestamp();
+    // Ensure output-activity timeout is also exceeded
+    timestamp.store(0, Ordering::Release);
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
@@ -232,10 +238,10 @@ fn monitor_file_activity_with_old_files_times_out() {
 
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
-    // Set a short timeout for fast test
+    // Zero timeout: output activity is immediately exceeded; file is 400s old vs Duration::ZERO
     let config = MonitorConfig {
-        timeout_secs: 1,
-        check_interval: Duration::from_millis(50),
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(5),
         kill_config: DEFAULT_KILL_CONFIG,
     };
 
@@ -286,7 +292,7 @@ fn monitor_does_not_timeout_on_file_activity_check_error() {
     let executor_dyn: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     let config = MonitorConfig {
-        timeout_secs: 0,
+        timeout: Duration::ZERO,
         check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
     };
@@ -333,7 +339,7 @@ fn monitor_without_file_activity_config_works() {
     let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
 
     let config = MonitorConfig {
-        timeout_secs: 60,
+        timeout: Duration::from_secs(60),
         check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
     };

@@ -61,14 +61,14 @@ fn active_ai_file_updates_prevent_timeout() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout_secs: 1,
+                    timeout: Duration::from_millis(200),
                     check_interval: Duration::from_millis(10),
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        thread::sleep(Duration::from_millis(200));
+        thread::sleep(Duration::from_millis(80));
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
@@ -110,7 +110,7 @@ fn log_only_activity_does_not_prevent_timeout() {
                 &should_stop,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 1,
+                    timeout: Duration::from_millis(200),
                     check_interval: Duration::from_millis(10),
                     kill_config: fast_kill_config(),
                 },
@@ -172,7 +172,7 @@ fn no_output_and_no_ai_files_times_out() {
                 &should_stop,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 1,
+                    timeout: Duration::from_millis(200),
                     check_interval: Duration::from_millis(10),
                     kill_config: fast_kill_config(),
                 },
@@ -232,7 +232,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
         let workspace_for_updates = Arc::clone(&workspace);
         let update_handle = thread::spawn(move || {
             for i in 0..5 {
-                thread::sleep(Duration::from_millis(200));
+                thread::sleep(Duration::from_millis(20));
                 workspace_for_updates
                     .write(
                         Path::new(".agent/PLAN.md"),
@@ -250,7 +250,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout_secs: 1,
+                    timeout: Duration::from_millis(200),
                     check_interval: Duration::from_millis(100),
                     kill_config: fast_kill_config(),
                 },
@@ -259,7 +259,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
 
         // Wait for updates to complete, then signal stop
         update_handle.join().expect("update thread panicked");
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(20));
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
@@ -298,7 +298,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
         let workspace_for_updates = Arc::clone(&workspace);
         let activity_handle = thread::spawn(move || {
             for i in 0..4 {
-                thread::sleep(Duration::from_millis(200));
+                thread::sleep(Duration::from_millis(20));
                 if i % 2 == 0 {
                     // Even iterations: touch output timestamp
                     ralph_workflow::pipeline::idle_timeout::touch_activity(&timestamp_for_updates);
@@ -319,7 +319,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout_secs: 1,
+                    timeout: Duration::from_millis(200),
                     check_interval: Duration::from_millis(100),
                     kill_config: fast_kill_config(),
                 },
@@ -327,7 +327,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
         });
 
         activity_handle.join().expect("activity thread panicked");
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(20));
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");

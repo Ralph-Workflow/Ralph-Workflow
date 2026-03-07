@@ -41,7 +41,7 @@ fn monitor_stops_when_signaled() {
         monitor_idle_timeout_with_interval(
             &timestamp,
             &child,
-            60,
+            Duration::from_secs(60),
             &should_stop_clone,
             &executor,
             check_interval,
@@ -77,7 +77,7 @@ fn monitor_stops_promptly_even_with_long_check_interval() {
         monitor_idle_timeout_with_interval(
             &timestamp,
             &child,
-            60,
+            Duration::from_secs(60),
             &should_stop_clone,
             &executor,
             check_interval,
