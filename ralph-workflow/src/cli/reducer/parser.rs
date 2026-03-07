@@ -363,4 +363,12 @@ mod tests {
             "Should have streaming metrics event"
         );
     }
+
+    #[test]
+    fn test_args_parses_pause_on_exit_mode() {
+        let args = Args::try_parse_from(["ralph", "--pause-on-exit", "always"])
+            .expect("pause-on-exit should parse");
+
+        assert_eq!(args.pause_on_exit, crate::cli::PauseOnExitMode::Always);
+    }
 }

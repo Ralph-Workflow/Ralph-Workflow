@@ -14,6 +14,7 @@
 use clap::Parser;
 use ralph_workflow::app;
 use ralph_workflow::cli::Args;
+use ralph_workflow::exit_pause;
 use ralph_workflow::interrupt;
 use ralph_workflow::RealProcessExecutor;
 
@@ -22,11 +23,27 @@ fn main() -> anyhow::Result<()> {
     interrupt::setup_interrupt_handler();
 
     // Create real process executor for production use
+    let args = Args::parse();
+    let pause_mode = args.pause_on_exit;
     let executor = std::sync::Arc::new(RealProcessExecutor::new());
-    let result = app::run(Args::parse(), executor);
+    let result = app::run(args, executor);
+
+    let interrupted = interrupt::take_exit_130_after_run();
+    let outcome = if interrupted {
+        exit_pause::ExitOutcome::Interrupted
+    } else if result.is_err() {
+        exit_pause::ExitOutcome::Failure
+    } else {
+        exit_pause::ExitOutcome::Success
+    };
+
+    let launch_context = exit_pause::detect_launch_context();
+    if exit_pause::should_pause_before_exit(pause_mode, outcome, &launch_context) {
+        let _ = exit_pause::pause_for_enter();
+    }
 
     // If the pipeline requested a SIGINT exit code, exit after cleanup has completed.
-    if interrupt::take_exit_130_after_run() {
+    if interrupted {
         std::process::exit(130);
     }
 

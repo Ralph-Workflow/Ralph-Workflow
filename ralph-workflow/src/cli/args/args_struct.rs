@@ -263,4 +263,15 @@ pub struct Args {
         hide = true
     )]
     pub show_streaming_metrics: bool,
+
+    /// Pause behavior before process exit.
+    #[arg(
+        long,
+        env = "RALPH_PAUSE_ON_EXIT",
+        value_name = "MODE",
+        default_value = "auto",
+        help = "Pause before exit: auto (standalone failure only), always, or never",
+        hide = true
+    )]
+    pub pause_on_exit: PauseOnExitMode,
 }

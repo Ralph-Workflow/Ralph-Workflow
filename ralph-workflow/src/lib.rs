@@ -105,6 +105,7 @@ pub mod common;
 pub mod config;
 pub mod diagnostics;
 pub mod executor;
+pub mod exit_pause;
 pub mod files;
 pub mod git_helpers;
 pub mod guidelines;

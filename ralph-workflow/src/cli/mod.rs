@@ -25,6 +25,7 @@ pub mod reducer;
 
 // Re-export public items for API convenience
 pub use args::Args;
+pub use args::PauseOnExitMode;
 pub use completions::handle_generate_completion;
 pub use handlers::{
     create_prompt_from_template, handle_diagnose, handle_dry_run, handle_list_agents,
