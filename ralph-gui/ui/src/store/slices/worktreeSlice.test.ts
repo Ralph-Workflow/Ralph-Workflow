@@ -63,7 +63,7 @@ describe("worktreeSlice", () => {
     const state = store.getState().worktrees;
     expect(state.status).toBe("succeeded");
     expect(state.worktrees).toHaveLength(2);
-    expect(state.worktrees[0].is_main).toBe(true);
+    expect(state.worktrees[0]?.is_main).toBe(true);
   });
 
   it("fetchWorktrees.rejected sets error", async () => {
@@ -102,7 +102,7 @@ describe("worktreeSlice", () => {
     );
     const state = store.getState().worktrees;
     expect(state.worktrees).toHaveLength(1);
-    expect(state.worktrees[0].name).toBe("wt-50-feature");
+    expect(state.worktrees[0]?.name).toBe("wt-50-feature");
   });
 
   it("switchActiveContext.fulfilled updates activeWorktreePath", async () => {

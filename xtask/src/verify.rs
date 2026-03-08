@@ -508,6 +508,31 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         args: &["test", "-p", "ralph-workflow", "--lib", "executor::tests"],
         success_exit_codes: &[0],
     },
+    // ── ralph-gui crate: lint, unit tests, and frontend ─────────────────────
+    CommandSpec {
+        name: "clippy-ralph-gui",
+        program: "cargo",
+        args: &["clippy", "-p", "ralph-gui", "--all-targets", "--", "-D", "warnings"],
+        success_exit_codes: &[0],
+    },
+    CommandSpec {
+        name: "test-ralph-gui-lib",
+        program: "cargo",
+        args: &["test", "-p", "ralph-gui", "--lib"],
+        success_exit_codes: &[0],
+    },
+    CommandSpec {
+        name: "ralph-gui-frontend-lint",
+        program: "npm",
+        args: &["--prefix", "ralph-gui/ui", "run", "lint"],
+        success_exit_codes: &[0],
+    },
+    CommandSpec {
+        name: "ralph-gui-frontend-test",
+        program: "npm",
+        args: &["--prefix", "ralph-gui/ui", "run", "test", "--", "--run"],
+        success_exit_codes: &[0],
+    },
     // ── release build and custom lints ───────────────────────────────────────
     CommandSpec {
         name: "release-build",
@@ -920,6 +945,11 @@ mod tests {
                 "memory-safety-integration",
                 "memory-safety-benchmarks",
                 "memory-safety-executor",
+                // ralph-gui
+                "clippy-ralph-gui",
+                "test-ralph-gui-lib",
+                "ralph-gui-frontend-lint",
+                "ralph-gui-frontend-test",
                 // build and custom lints
                 "release-build",
                 "dylint",
@@ -949,6 +979,48 @@ mod tests {
                 spec.args
             );
         }
+    }
+
+    #[test]
+    fn test_clippy_ralph_gui_check_is_in_required_checks() {
+        // TDD anchor: fails until clippy-ralph-gui is added to REQUIRED_CHECKS.
+        assert!(
+            REQUIRED_CHECKS.iter().any(|c| c.name == "clippy-ralph-gui"),
+            "REQUIRED_CHECKS must include clippy-ralph-gui to lint the GUI crate"
+        );
+    }
+
+    #[test]
+    fn test_ralph_gui_lib_test_check_is_in_required_checks() {
+        // TDD anchor: fails until test-ralph-gui-lib is added to REQUIRED_CHECKS.
+        assert!(
+            REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "test-ralph-gui-lib"),
+            "REQUIRED_CHECKS must include test-ralph-gui-lib to run GUI crate unit tests"
+        );
+    }
+
+    #[test]
+    fn test_ralph_gui_frontend_lint_check_is_in_required_checks() {
+        // TDD anchor: fails until ralph-gui-frontend-lint is added to REQUIRED_CHECKS.
+        assert!(
+            REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "ralph-gui-frontend-lint"),
+            "REQUIRED_CHECKS must include ralph-gui-frontend-lint to enforce TypeScript strict rules"
+        );
+    }
+
+    #[test]
+    fn test_ralph_gui_frontend_test_check_is_in_required_checks() {
+        // TDD anchor: fails until ralph-gui-frontend-test is added to REQUIRED_CHECKS.
+        assert!(
+            REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "ralph-gui-frontend-test"),
+            "REQUIRED_CHECKS must include ralph-gui-frontend-test to run vitest component tests"
+        );
     }
 
     #[test]

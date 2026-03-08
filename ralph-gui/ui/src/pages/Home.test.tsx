@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
+import type * as ReactRouterDom from "react-router-dom";
 import runReducer from "../store/slices/runSlice";
 import sessionReducer from "../store/slices/sessionSlice";
 import worktreeReducer from "../store/slices/worktreeSlice";
@@ -12,10 +13,7 @@ import { Home } from "./Home";
 const mockNavigate = vi.fn();
 
 vi.mock("react-router-dom", async () => {
-  const actual =
-    await vi.importActual<typeof import("react-router-dom")>(
-      "react-router-dom",
-    );
+  const actual = await vi.importActual<typeof ReactRouterDom>("react-router-dom");
   return {
     ...actual,
     useNavigate: () => mockNavigate,

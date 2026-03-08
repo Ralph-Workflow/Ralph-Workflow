@@ -126,7 +126,7 @@ describe("ContextSwitcher", () => {
     expect(screen.getAllByText("wt-50-feature").length).toBeGreaterThan(0);
   });
 
-  it("selecting a worktree option calls switchContext and updates state", async () => {
+  it("selecting a worktree option calls switchContext and updates state", () => {
     const store = makeStore({
       worktrees: {
         worktrees: [mainWorktree, linkedWorktree],
@@ -141,14 +141,16 @@ describe("ContextSwitcher", () => {
     // The dropdown now shows "wt-50-feature" as a dropdown option.
     // Use getAllByText to avoid ambiguity if multiple spans show the same text.
     const wtOptions = screen.getAllByText("wt-50-feature");
-    fireEvent.click(wtOptions[wtOptions.length - 1]);
+    const lastOption = wtOptions.at(-1);
+    if (!lastOption) throw new Error("Expected at least one wt-50-feature element");
+    fireEvent.click(lastOption);
     expect(mockSwitchContext).toHaveBeenCalledWith(
       mainWorktree.path,
       linkedWorktree.path,
     );
   });
 
-  it("selecting Direct repository option sets activeWorktreePath to null", async () => {
+  it("selecting Direct repository option sets activeWorktreePath to null", () => {
     const store = makeStore({
       worktrees: {
         worktrees: [mainWorktree, linkedWorktree],
@@ -162,7 +164,9 @@ describe("ContextSwitcher", () => {
     // Open dropdown - the label shows the worktree name since activePath is set.
     // The main button may render contextLabel and contextBranch with the same text,
     // so click the first occurrence to open the dropdown.
-    fireEvent.click(screen.getAllByText("wt-50-feature")[0]);
+    const firstEl = screen.getAllByText("wt-50-feature").at(0);
+    if (!firstEl) throw new Error("Expected at least one wt-50-feature element");
+    fireEvent.click(firstEl);
     fireEvent.click(screen.getByText("Direct repository"));
     expect(mockSwitchContext).toHaveBeenCalledWith(mainWorktree.path, null);
   });

@@ -125,7 +125,12 @@ pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    // Serialize tests that mutate process-wide env vars to prevent race conditions
+    // between parallel test threads.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_save_prompt_file_creates_file() {
@@ -170,18 +175,25 @@ mod tests {
 
     #[test]
     fn test_review_prompt_errors_without_api_key() {
+        // Acquire mutex to prevent race conditions with other env-var-mutating tests.
+        let _guard = ENV_MUTEX.lock().unwrap();
         // Remove both env var and ensure no config fallback path is reachable.
-        // We temporarily set ANTHROPIC_API_KEY to empty to simulate absence.
+        // We temporarily remove ANTHROPIC_API_KEY to simulate absence.
         let old_val = std::env::var("ANTHROPIC_API_KEY").ok();
-        // Ensure dry run is off
+        let old_dry_run = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::remove_var("RALPH_GUI_DRY_RUN");
         std::env::remove_var("ANTHROPIC_API_KEY");
 
         let result = review_prompt_with_ai("# Test prompt".to_string());
-        // Restore env
+
+        // Restore env vars.
         if let Some(v) = old_val {
             std::env::set_var("ANTHROPIC_API_KEY", v);
         }
+        if let Some(v) = old_dry_run {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        }
+
         // Result may be Err (no key) or Ok (if config file has key) — either is valid.
         // We only assert the error message shape when it errors.
         if let Err(e) = result {
@@ -194,9 +206,17 @@ mod tests {
 
     #[test]
     fn test_review_prompt_dry_run_returns_placeholder() {
+        // Acquire mutex to prevent race conditions with other env-var-mutating tests.
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
         let result = review_prompt_with_ai("# Test prompt".to_string());
-        std::env::remove_var("RALPH_GUI_DRY_RUN");
+        // Restore previous value.
+        if let Some(v) = old_val {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        } else {
+            std::env::remove_var("RALPH_GUI_DRY_RUN");
+        }
         assert!(result.is_ok(), "Expected Ok in dry-run mode: {result:?}");
         let review = result.unwrap();
         assert!(!review.suggestions.is_empty(), "Should have suggestions");

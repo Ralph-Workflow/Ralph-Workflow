@@ -43,4 +43,11 @@ describe("PromptTemplatePicker", () => {
     expect(ids).toContain("test-coverage");
     expect(ids).toContain("blank");
   });
+
+  it("each template has acceptance criteria and out-of-scope sections for quality unattended sessions", () => {
+    for (const tpl of PROMPT_TEMPLATES) {
+      expect(tpl.content).toMatch(/## Acceptance Criteria/i);
+      expect(tpl.content).toMatch(/## Out of Scope/i);
+    }
+  });
 });

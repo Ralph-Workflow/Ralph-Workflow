@@ -75,7 +75,7 @@ describe("sessionSlice", () => {
     const state = store.getState().sessions;
     expect(state.status).toBe("succeeded");
     expect(state.sessions).toHaveLength(1);
-    expect(state.sessions[0].run_id).toBe("run-abc-123");
+    expect(state.sessions[0]?.run_id).toBe("run-abc-123");
   });
 
   it("fetchSessions.rejected sets status failed with error message", async () => {
@@ -101,7 +101,7 @@ describe("sessionSlice", () => {
     );
     const state = store.getState().sessions;
     expect(state.sessions).toHaveLength(1);
-    expect(state.sessions[0].run_id).toBe("run-abc-123");
+    expect(state.sessions[0]?.run_id).toBe("run-abc-123");
   });
 
   it("setActiveSession action updates selectedRunId", () => {
@@ -135,6 +135,6 @@ describe("sessionSlice", () => {
     await store.dispatch(
       resumeInterruptedSession({ runId: "run-abc-123", repoPath: "/my/repo" }),
     );
-    expect(store.getState().sessions.sessions[0].status).toBe("running");
+    expect(store.getState().sessions.sessions[0]?.status).toBe("running");
   });
 });

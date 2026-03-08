@@ -130,8 +130,11 @@ describe("Worktrees", () => {
     renderWorktrees(store);
     fireEvent.click(screen.getByText(/\+ New worktree/));
     const inputs = screen.getAllByRole("textbox");
-    fireEvent.change(inputs[0], { target: { value: "bad-branch" } });
-    fireEvent.change(inputs[1], { target: { value: "bad-name" } });
+    const firstInput = inputs.at(0);
+    const secondInput = inputs.at(1);
+    if (!firstInput || !secondInput) throw new Error("Expected two textbox inputs");
+    fireEvent.change(firstInput, { target: { value: "bad-branch" } });
+    fireEvent.change(secondInput, { target: { value: "bad-name" } });
     fireEvent.click(screen.getByText("Create worktree"));
     await waitFor(() => {
       const errorEl = document.querySelector('[style*="status-failed"]');

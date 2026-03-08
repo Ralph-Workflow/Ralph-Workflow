@@ -76,7 +76,7 @@ describe("runSlice", () => {
     await store.dispatch(fetchResumableRuns("/my/repo"));
     const state = store.getState().runs;
     expect(state.resumableRuns).toHaveLength(1);
-    expect(state.resumableRuns[0].run_id).toBe("run-abc-123");
+    expect(state.resumableRuns[0]?.run_id).toBe("run-abc-123");
   });
 
   it("fetchResumableRuns returns empty list when no runs", async () => {

@@ -56,6 +56,9 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 - [ ] Bug no longer reproduces with the reproduction steps above
 - [ ] Regression test added to prevent recurrence
 
+## Out of Scope
+<!-- Changes not required to fix this bug. State what should remain untouched. -->
+
 ## Context
 <!-- Relevant files, modules, or components most likely affected. -->
 `,
@@ -81,6 +84,9 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 - [ ] No public API or behavioral changes
 - [ ] Code complexity reduced:
 
+## Out of Scope
+<!-- What must NOT change: public API surface, behavior, test contracts, etc. -->
+
 ## Context
 <!-- Files and modules in scope for this refactor. -->
 `,
@@ -105,6 +111,9 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 - [ ] Tests cover the happy path for all listed functions
 - [ ] Tests cover at least one error/edge case per function
 - [ ] No production code changes (tests only)
+
+## Out of Scope
+<!-- Production code changes, refactoring, behavior changes. Only tests are in scope. -->
 
 ## Context
 <!-- Any existing test infrastructure or fixtures to reuse. -->

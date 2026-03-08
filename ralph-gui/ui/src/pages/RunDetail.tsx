@@ -337,9 +337,9 @@ export function RunDetail() {
                         justifyContent: "center",
                         fontSize: 11,
                         color: isCurrent
-                          ? "#000"
+                          ? "var(--text-inverse)"
                           : isDone
-                          ? "#000"
+                          ? "var(--text-inverse)"
                           : "var(--text-muted)",
                         fontWeight: 600,
                         transition: "all var(--transition-base)",

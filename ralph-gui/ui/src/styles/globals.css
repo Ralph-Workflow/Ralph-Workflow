@@ -315,3 +315,57 @@ body {
 }
 
 .tab:hover:not(.active) { color: var(--text-secondary); }
+
+/* Form elements */
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.form-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast);
+}
+.form-input:focus { outline: none; border-color: var(--accent); }
+.form-input::placeholder { color: var(--text-muted); }
+
+/* Tab bar — BEM variant used by Configuration page */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+
+.tab-item {
+  flex: 1;
+  padding: var(--space-2) var(--space-4);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+}
+
+.tab-item--active {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+
+.tab-item:hover:not(.tab-item--active) { color: var(--text-secondary); }

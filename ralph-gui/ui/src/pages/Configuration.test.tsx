@@ -35,7 +35,12 @@ vi.mock("../api/tauri", () => ({
   saveProjectConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
-function makeStore() {
+import { saveGlobalConfig } from "../api/tauri";
+import type { Mock } from "vitest";
+
+const mockSaveGlobalConfig = saveGlobalConfig as Mock;
+
+function makeStore(preloaded?: object) {
   return configureStore({
     reducer: {
       config: configReducer,
@@ -43,18 +48,27 @@ function makeStore() {
       sessions: sessionReducer,
       runs: runReducer,
     },
+    preloadedState: preloaded,
   });
 }
 
-function renderConfig() {
+function renderConfig(store = makeStore()) {
   return render(
-    <Provider store={makeStore()}>
+    <Provider store={store}>
       <MemoryRouter>
         <Configuration />
       </MemoryRouter>
     </Provider>,
   );
 }
+
+const mainWorktree = {
+  path: "/my/repo",
+  branch: "main",
+  name: "main",
+  has_active_run: false,
+  is_main: true,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -95,5 +109,56 @@ describe("Configuration", () => {
     expect(
       screen.getByText(/~\/.config\/ralph-workflow\.toml/i),
     ).toBeInTheDocument();
+  });
+
+  it("Project tab shows warning when no repo path is set (scope mistake prevention)", () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Project"));
+    expect(
+      screen.getByText(/Select a repository context to edit project config/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Project tab shows correct path label when repo is set", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderConfig(store);
+    fireEvent.click(screen.getByText("Project"));
+    expect(screen.getByText(/\/my\/repo\/.ralph\/config\.toml/)).toBeInTheDocument();
+  });
+
+  it("Save button in Project tab is disabled when no repo path is set", () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Project"));
+    const saveBtn = screen.getByText("Save");
+    expect(saveBtn).toBeDisabled();
+  });
+
+  it("Save button in Global tab calls saveGlobalConfig", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    const saveBtn = screen.getByText("Save");
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(mockSaveGlobalConfig).toHaveBeenCalled();
+    });
+  });
+
+  it("shows error message from backend when saveGlobalConfig rejects", async () => {
+    mockSaveGlobalConfig.mockRejectedValueOnce(new Error("Invalid TOML syntax"));
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    const saveBtn = screen.getByText("Save");
+    fireEvent.click(saveBtn);
+    await waitFor(() => {
+      expect(screen.getByText("Invalid TOML syntax")).toBeInTheDocument();
+    });
   });
 });
