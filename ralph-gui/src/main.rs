@@ -21,6 +21,8 @@ fn main() {
             config::get_effective_config,
             config::save_global_config,
             config::save_project_config,
+            config::get_raw_global_config_toml,
+            config::get_raw_project_config_toml,
             config::list_agent_profiles,
             run_management::get_run_status,
             run_management::get_resumable_runs,

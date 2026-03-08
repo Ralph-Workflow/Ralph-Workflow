@@ -55,7 +55,9 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+  --space-7: 28px;
   --space-8: 32px;
+  --space-9: 36px;
   --space-10: 40px;
   --space-12: 48px;
 
@@ -77,6 +79,26 @@
   /* Transitions */
   --transition-fast: 120ms ease;
   --transition-base: 200ms ease;
+}
+
+/* Button base reset */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+/* Link base styles */
+a:link,
+a:visited {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent-dim);
+  text-decoration: underline;
 }
 
 html, body, #root {
@@ -220,7 +242,7 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 

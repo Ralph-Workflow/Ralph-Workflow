@@ -99,6 +99,14 @@ export async function saveProjectConfig(
   });
 }
 
+export async function getRawGlobalConfigToml(): Promise<string> {
+  return invoke<string>("get_raw_global_config_toml");
+}
+
+export async function getRawProjectConfigToml(repoPath: string): Promise<string> {
+  return invoke<string>("get_raw_project_config_toml", { repo_path: repoPath });
+}
+
 // --- Run management commands ---
 
 export async function getRunStatus(

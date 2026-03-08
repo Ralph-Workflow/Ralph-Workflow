@@ -117,6 +117,16 @@ describe("sessionSlice", () => {
     expect(store.getState().sessions.selectedRunId).toBeNull();
   });
 
+  it("clearSessionError clears the error field", async () => {
+    const { clearSessionError } = await import("./sessionSlice");
+    mockGetSessions.mockRejectedValueOnce(new Error("Some error"));
+    const store = makeStore();
+    await store.dispatch(fetchSessions("/my/repo"));
+    expect(store.getState().sessions.error).toBe("Some error");
+    store.dispatch(clearSessionError());
+    expect(store.getState().sessions.error).toBeNull();
+  });
+
   it("resumeInterruptedSession calls resumeRalphSession then updates session", async () => {
     const updatedSession = { ...mockSession, status: "running" as const };
     mockResumeRalphSession.mockResolvedValueOnce(undefined);

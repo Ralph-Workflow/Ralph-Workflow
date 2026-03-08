@@ -5,7 +5,12 @@ import {
   fetchEffectiveConfig,
   setDirty,
 } from "../store/slices/configSlice";
-import { saveGlobalConfig, saveProjectConfig } from "../api/tauri";
+import {
+  saveGlobalConfig,
+  saveProjectConfig,
+  getRawGlobalConfigToml,
+  getRawProjectConfigToml,
+} from "../api/tauri";
 import type { ConfigView } from "../types";
 
 type TabId = "effective" | "global" | "project";
@@ -122,14 +127,38 @@ interface TomlEditorProps {
   scope: "global" | "project";
 }
 
+const DEFAULT_TOML_TEMPLATE = (label: string) =>
+  `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`;
+
 function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
   const dispatch = useAppDispatch();
-  const [toml, setToml] = useState(
-    `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`,
-  );
+  const [toml, setToml] = useState(DEFAULT_TOML_TEMPLATE(label));
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    const fetchToml = async () => {
+      try {
+        let content: string;
+        if (scope === "global") {
+          content = await getRawGlobalConfigToml();
+        } else if (repoPath) {
+          content = await getRawProjectConfigToml(repoPath);
+        } else {
+          content = "";
+        }
+        setToml(content.length > 0 ? content : DEFAULT_TOML_TEMPLATE(label));
+      } catch {
+        setToml(DEFAULT_TOML_TEMPLATE(label));
+      } finally {
+        setLoading(false);
+      }
+    };
+    void fetchToml();
+  }, [scope, repoPath, label]);
 
   const handleSave = async () => {
     if (scope === "project" && !repoPath) return;
@@ -155,6 +184,18 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
 
   return (
     <div>
+      {loading && (
+        <div
+          style={{
+            padding: "8px 0",
+            fontSize: 11,
+            color: "var(--text-muted)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          Loading...
+        </div>
+      )}
       <textarea
         value={toml}
         onChange={(e) => {

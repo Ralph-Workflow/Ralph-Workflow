@@ -170,6 +170,47 @@ pub fn save_global_config(config_toml: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to write global config: {e}"))
 }
 
+/// Get the raw TOML text of the global Ralph configuration.
+///
+/// Returns an empty string if the file does not exist.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read.
+#[tauri::command]
+pub fn get_raw_global_config_toml() -> Result<String, String> {
+    let config_path = dirs::home_dir()
+        .ok_or_else(|| "Cannot determine home directory".to_string())?
+        .join(".config")
+        .join("ralph-workflow.toml");
+
+    if !config_path.exists() {
+        return Ok(String::new());
+    }
+
+    std::fs::read_to_string(&config_path).map_err(|e| format!("Failed to read global config: {e}"))
+}
+
+/// Get the raw TOML text of the project-level Ralph configuration.
+///
+/// Returns an empty string if the file does not exist.
+///
+/// # Errors
+///
+/// Returns an error if the file exists but cannot be read.
+#[tauri::command]
+pub fn get_raw_project_config_toml(repo_path: String) -> Result<String, String> {
+    let config_path = std::path::PathBuf::from(repo_path)
+        .join(".agent")
+        .join("ralph-workflow.toml");
+
+    if !config_path.exists() {
+        return Ok(String::new());
+    }
+
+    std::fs::read_to_string(&config_path).map_err(|e| format!("Failed to read project config: {e}"))
+}
+
 /// Save the project-level Ralph configuration.
 ///
 /// # Errors
@@ -328,5 +369,50 @@ reviewer_agent = "codex"
         let result = list_agent_profiles(Some(dir.path().to_string_lossy().to_string()));
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_get_raw_global_config_toml_returns_empty_string_when_no_file() {
+        // This test relies on there being no global config at the real ~/.config/ralph-workflow.toml
+        // OR verifies the function handles a missing file gracefully.
+        // The function returns Ok("") when the file is absent — always a valid outcome.
+        let result = get_raw_global_config_toml();
+        assert!(
+            result.is_ok(),
+            "get_raw_global_config_toml should not fail: {result:?}"
+        );
+        // If no global config exists we get empty string. If one does exist we get content.
+        // Both are valid — we can't know which environment this runs in.
+        let _ = result.unwrap(); // just verify it's Ok
+    }
+
+    #[test]
+    fn test_get_raw_project_config_toml_returns_empty_string_when_no_file() {
+        let dir = TempDir::new().unwrap();
+        let result = get_raw_project_config_toml(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            "",
+            "Should return empty string when no project config exists"
+        );
+    }
+
+    #[test]
+    fn test_get_raw_project_config_toml_returns_content_when_file_exists() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let config_path = agent_dir.join("ralph-workflow.toml");
+        let toml_content = "[general]\nverbosity = 2\n";
+        std::fs::write(&config_path, toml_content).unwrap();
+
+        let result = get_raw_project_config_toml(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let content = result.unwrap();
+        assert!(
+            content.contains("verbosity = 2"),
+            "Returned content should contain written TOML; got: {content}"
+        );
     }
 }

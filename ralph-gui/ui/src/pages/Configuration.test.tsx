@@ -33,12 +33,16 @@ vi.mock("../api/tauri", () => ({
   }),
   saveGlobalConfig: vi.fn().mockResolvedValue(undefined),
   saveProjectConfig: vi.fn().mockResolvedValue(undefined),
+  getRawGlobalConfigToml: vi.fn().mockResolvedValue(""),
+  getRawProjectConfigToml: vi.fn().mockResolvedValue(""),
 }));
 
-import { saveGlobalConfig } from "../api/tauri";
+import { saveGlobalConfig, getRawGlobalConfigToml, getRawProjectConfigToml } from "../api/tauri";
 import type { Mock } from "vitest";
 
 const mockSaveGlobalConfig = saveGlobalConfig as Mock;
+const mockGetRawGlobalConfigToml = getRawGlobalConfigToml as Mock;
+const mockGetRawProjectConfigToml = getRawProjectConfigToml as Mock;
 
 function makeStore(preloaded?: object) {
   return configureStore({
@@ -159,6 +163,37 @@ describe("Configuration", () => {
     fireEvent.click(saveBtn);
     await waitFor(() => {
       expect(screen.getByText("Invalid TOML syntax")).toBeInTheDocument();
+    });
+  });
+
+  it("Global tab preloads existing TOML content in the textarea", async () => {
+    mockGetRawGlobalConfigToml.mockResolvedValueOnce("[general]\nverbosity = 2\n");
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea).not.toBeNull();
+      expect(textarea?.value).toContain("verbosity = 2");
+    });
+  });
+
+  it("Project tab preloads existing TOML content when repo path is set", async () => {
+    mockGetRawProjectConfigToml.mockResolvedValueOnce("[general]\ndeveloper_iters = 5\n");
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderConfig(store);
+    fireEvent.click(screen.getByText("Project"));
+    await waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea).not.toBeNull();
+      expect(textarea?.value).toContain("developer_iters = 5");
     });
   });
 });

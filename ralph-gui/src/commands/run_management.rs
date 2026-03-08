@@ -93,80 +93,104 @@ pub fn get_run_status(
     })
 }
 
-/// Get all resumable runs in a repository.
+/// Internal helper: collect all resumable (paused/interrupted) runs from a list of paths.
+///
+/// Each path is checked for `.agent/checkpoint.json`. Completed runs are excluded.
+#[must_use]
+pub fn collect_resumable_runs(paths: &[std::path::PathBuf]) -> Vec<RunDetail> {
+    let mut results = Vec::new();
+
+    for repo_path in paths {
+        let agent_dir = repo_path.join(".agent");
+        if !agent_dir.exists() {
+            continue;
+        }
+        let checkpoint_file = agent_dir.join("checkpoint.json");
+        if !checkpoint_file.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&checkpoint_file) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+
+        let phase = checkpoint
+            .get("phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+
+        if phase == "Complete" {
+            continue;
+        }
+
+        let run_id = checkpoint
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let timestamp = checkpoint
+            .get("timestamp")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let developer_agent = checkpoint
+            .get("developer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let reviewer_agent = checkpoint
+            .get("reviewer_agent")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        results.push(RunDetail {
+            run_id,
+            status: RunStatus::Paused,
+            current_phase: phase.clone(),
+            last_checkpoint: Some(timestamp.clone()),
+            agent_profile: format!("{developer_agent}/{reviewer_agent}"),
+            repo_path: repo_path.to_string_lossy().into_owned(),
+            worktree_path: None,
+            created_at: timestamp,
+            description: format!("Interrupted at {phase}"),
+        });
+    }
+
+    results
+}
+
+/// Get all resumable runs across the primary repository and all known worktrees.
 ///
 /// A run is resumable if it has a checkpoint in an interrupted/paused state.
 ///
 /// # Errors
 ///
-/// Returns an error if the path cannot be read.
+/// Returns an error if the app state lock cannot be acquired.
 #[tauri::command]
-pub fn get_resumable_runs(repo_path: String) -> Result<Vec<RunDetail>, String> {
-    let repo_path_buf = std::path::PathBuf::from(repo_path);
-    let agent_dir = repo_path_buf.join(".agent");
-    if !agent_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let checkpoint_file = agent_dir.join("checkpoint.json");
-    if !checkpoint_file.exists() {
-        return Ok(Vec::new());
-    }
-
-    let content = std::fs::read_to_string(&checkpoint_file)
-        .map_err(|e| format!("Failed to read checkpoint: {e}"))?;
-
-    let checkpoint: serde_json::Value =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse checkpoint: {e}"))?;
-
-    let phase = checkpoint
-        .get("phase")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Unknown")
-        .to_string();
-
-    // Only return paused/interrupted runs as resumable
-    if phase == "Complete" {
-        return Ok(Vec::new());
-    }
-
-    let run_id = checkpoint
-        .get("run_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
-
-    let timestamp = checkpoint
-        .get("timestamp")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let developer_agent = checkpoint
-        .get("developer_agent")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let reviewer_agent = checkpoint
-        .get("reviewer_agent")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let detail = RunDetail {
-        run_id,
-        status: RunStatus::Paused,
-        current_phase: phase.clone(),
-        last_checkpoint: Some(timestamp.clone()),
-        agent_profile: format!("{developer_agent}/{reviewer_agent}"),
-        repo_path: repo_path_buf.to_string_lossy().into_owned(),
-        worktree_path: None,
-        created_at: timestamp,
-        description: format!("Interrupted at {phase}"),
+pub fn get_resumable_runs(
+    repo_path: String,
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<Vec<RunDetail>, String> {
+    let mut paths = {
+        let locked = state
+            .lock()
+            .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+        locked.known_repos.clone()
     };
 
-    Ok(vec![detail])
+    let primary = std::path::PathBuf::from(&repo_path);
+    if !paths.contains(&primary) {
+        paths.push(primary);
+    }
+
+    Ok(collect_resumable_runs(&paths))
 }
 
 /// Internal: find a run in a set of known repos by scanning checkpoints.
@@ -323,15 +347,14 @@ mod tests {
     }
 
     #[test]
-    fn test_get_resumable_runs_returns_empty_when_no_checkpoint() {
+    fn test_collect_resumable_runs_returns_empty_when_no_checkpoint() {
         let dir = TempDir::new().unwrap();
-        let result = get_resumable_runs(dir.path().to_string_lossy().to_string());
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let runs = collect_resumable_runs(&[dir.path().to_path_buf()]);
+        assert!(runs.is_empty());
     }
 
     #[test]
-    fn test_get_resumable_runs_excludes_completed_runs() {
+    fn test_collect_resumable_runs_excludes_completed_runs() {
         let dir = TempDir::new().unwrap();
         let agent_dir = dir.path().join(".agent");
         std::fs::create_dir(&agent_dir).unwrap();
@@ -348,16 +371,12 @@ mod tests {
         )
         .unwrap();
 
-        let result = get_resumable_runs(dir.path().to_string_lossy().to_string());
-        assert!(result.is_ok());
-        assert!(
-            result.unwrap().is_empty(),
-            "Completed runs should not be resumable"
-        );
+        let runs = collect_resumable_runs(&[dir.path().to_path_buf()]);
+        assert!(runs.is_empty(), "Completed runs should not be resumable");
     }
 
     #[test]
-    fn test_get_resumable_runs_includes_interrupted_runs() {
+    fn test_collect_resumable_runs_includes_interrupted_runs() {
         let dir = TempDir::new().unwrap();
         let agent_dir = dir.path().join(".agent");
         std::fs::create_dir(&agent_dir).unwrap();
@@ -374,9 +393,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = get_resumable_runs(dir.path().to_string_lossy().to_string());
-        assert!(result.is_ok());
-        let runs = result.unwrap();
+        let runs = collect_resumable_runs(&[dir.path().to_path_buf()]);
         assert_eq!(runs.len(), 1, "Interrupted run should be resumable");
         assert_eq!(runs[0].run_id, "test-run-456");
         assert_eq!(runs[0].status, RunStatus::Paused);
@@ -434,5 +451,44 @@ mod tests {
         let repos = vec![dir.path().to_path_buf()];
         let detail = find_run_in_repos("target-run-id", &repos);
         assert!(detail.is_none(), "Should not find unrelated run");
+    }
+
+    #[test]
+    fn test_collect_resumable_runs_finds_paused_run_in_worktree() {
+        // Main repo has no checkpoint (fresh)
+        let main_dir = TempDir::new().unwrap();
+
+        // Worktree has a paused checkpoint
+        let worktree_dir = TempDir::new().unwrap();
+        let agent_dir = worktree_dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "wt-run-789",
+            "phase": "Review",
+            "timestamp": "2024-06-01 09:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        // Scanning only the main repo must NOT find the worktree run
+        let main_only = collect_resumable_runs(&[main_dir.path().to_path_buf()]);
+        assert!(
+            main_only.is_empty(),
+            "Main-only scan should not find worktree run"
+        );
+
+        // Scanning both must find the worktree run
+        let both = collect_resumable_runs(&[
+            main_dir.path().to_path_buf(),
+            worktree_dir.path().to_path_buf(),
+        ]);
+        assert_eq!(both.len(), 1, "Should find the paused run in the worktree");
+        assert_eq!(both[0].run_id, "wt-run-789");
+        assert_eq!(both[0].status, RunStatus::Paused);
     }
 }

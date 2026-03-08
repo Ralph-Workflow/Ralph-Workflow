@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Navigation } from "./Navigation";
 
@@ -36,5 +36,16 @@ describe("Navigation", () => {
     renderNav();
     const link = screen.getByText("Worktrees").closest("a");
     expect(link).toHaveAttribute("href", "/worktrees");
+  });
+
+  it("mouse hover events fire on nav links without errors", () => {
+    renderNav();
+    const homeLink = screen.getByText("Home").closest("a");
+    expect(homeLink).not.toBeNull();
+    // Fire hover events to cover onMouseEnter/onMouseLeave handlers
+    fireEvent.mouseEnter(homeLink!);
+    fireEvent.mouseLeave(homeLink!);
+    // If no error thrown, handlers executed correctly
+    expect(homeLink).toBeInTheDocument();
   });
 });

@@ -25,6 +25,17 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
+      exclude: [
+        // Types-only files have no executable code — excluding avoids false 0% coverage.
+        "src/types/**",
+        // Entry point — not independently testable.
+        "src/main.tsx",
+        // Test infrastructure — not product code.
+        "src/test-setup.ts",
+        "src/global-test-setup.ts",
+        // Vite config file — not product code.
+        "vite.config.ts",
+      ],
       thresholds: {
         statements: 80,
         branches: 80,

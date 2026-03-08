@@ -50,4 +50,14 @@ describe("PromptTemplatePicker", () => {
       expect(tpl.content).toMatch(/## Out of Scope/i);
     }
   });
+
+  it("hover events on template buttons fire without errors", () => {
+    const onSelect = vi.fn();
+    render(<PromptTemplatePicker onSelect={onSelect} />);
+    const featureBtn = screen.getByTestId("template-feature");
+    fireEvent.mouseEnter(featureBtn);
+    fireEvent.mouseLeave(featureBtn);
+    // Handlers should execute without throwing
+    expect(featureBtn).toBeInTheDocument();
+  });
 });

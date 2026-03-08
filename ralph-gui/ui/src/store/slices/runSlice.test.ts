@@ -1,15 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import runReducer, {
   fetchRunDetail,
   fetchResumableRuns,
   clearRunDetail,
+  startPolling,
+  stopPolling,
+  startPollingInterval,
+  stopPollingInterval,
+  pollRunStatus,
 } from "./runSlice";
 import type { RunDetail } from "../../types";
 
 vi.mock("../../api/tauri", () => ({
   getResumableRuns: vi.fn(),
   getRunDetail: vi.fn(),
+  getRunStatus: vi.fn(),
 }));
 
 import { getResumableRuns, getRunDetail } from "../../api/tauri";
@@ -38,6 +44,14 @@ const mockRunDetail: RunDetail = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  // Ensure polling is stopped between tests
+  stopPollingInterval();
+});
+
+afterEach(() => {
+  stopPollingInterval();
+  vi.useRealTimers();
 });
 
 describe("runSlice", () => {
@@ -99,5 +113,53 @@ describe("runSlice", () => {
     await store.dispatch(fetchRunDetail("run-abc-123"));
     store.dispatch(clearRunDetail());
     expect(store.getState().runs.runDetail).toBeNull();
+  });
+
+  it("startPolling and stopPolling reducer actions execute without error", () => {
+    const store = makeStore();
+    store.dispatch(startPolling({ repoPath: "/my/repo", worktreePath: null }));
+    store.dispatch(stopPolling());
+    // startPolling is a no-op in the reducer (side effect is external interval).
+    // stopPolling clears the interval. Both should not throw.
+    expect(store.getState().runs.status).toBe("idle");
+  });
+
+  it("startPollingInterval starts interval that dispatches pollRunStatus", async () => {
+    const mockStatus = {
+      status: "Running" as const,
+      run_id: "run-123",
+      current_phase: "Development",
+      last_checkpoint: null,
+    };
+    const { getRunStatus } = await import("../../api/tauri");
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValue(mockStatus);
+
+    const store = makeStore();
+    const dispatch = vi.fn((thunk) => store.dispatch(thunk as ReturnType<typeof pollRunStatus>));
+
+    startPollingInterval(dispatch as Parameters<typeof startPollingInterval>[0], "/my/repo", null);
+    vi.advanceTimersByTime(5001);
+    expect(dispatch).toHaveBeenCalled();
+    stopPollingInterval();
+  });
+
+  it("startPollingInterval is idempotent — second call does not start a second interval", () => {
+    const dispatch = vi.fn();
+    startPollingInterval(dispatch as Parameters<typeof startPollingInterval>[0], "/my/repo", null);
+    startPollingInterval(dispatch as Parameters<typeof startPollingInterval>[0], "/my/repo", null);
+    vi.advanceTimersByTime(5001);
+    // Even if two calls are made, only one interval should have been created
+    // so dispatch is called at most once per interval tick, not twice.
+    expect(dispatch.mock.calls.length).toBeLessThanOrEqual(1);
+    stopPollingInterval();
+  });
+
+  it("stopPollingInterval clears the interval and is idempotent", () => {
+    const dispatch = vi.fn();
+    startPollingInterval(dispatch as Parameters<typeof startPollingInterval>[0], "/my/repo", null);
+    stopPollingInterval();
+    stopPollingInterval(); // second call should be safe
+    vi.advanceTimersByTime(10000);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

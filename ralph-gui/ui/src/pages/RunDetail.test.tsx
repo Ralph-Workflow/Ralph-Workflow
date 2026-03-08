@@ -104,4 +104,22 @@ describe("RunDetail", () => {
       expect(matches.length).toBeGreaterThan(0);
     });
   });
+
+  it("renders all detail row labels when run is loaded", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getByText("phase")).toBeInTheDocument();
+    expect(screen.getByText("agent_profile")).toBeInTheDocument();
+    expect(screen.getByText("repo_path")).toBeInTheDocument();
+  });
+
+  it("shows Back button when run is loaded", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    const backBtn = screen.getByText("← Back");
+    expect(backBtn).toBeInTheDocument();
+  });
 });

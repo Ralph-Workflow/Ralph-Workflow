@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -9,6 +9,7 @@ import sessionReducer from "../store/slices/sessionSlice";
 import worktreeReducer from "../store/slices/worktreeSlice";
 import configReducer from "../store/slices/configSlice";
 import { Home } from "./Home";
+import { AppInitializer } from "../App";
 
 const mockNavigate = vi.fn();
 
@@ -20,11 +21,16 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
+import { listWorktrees } from "../api/tauri";
+import type { Mock } from "vitest";
+
 vi.mock("../api/tauri", () => ({
   listWorktrees: vi.fn().mockResolvedValue([]),
   getResumableRuns: vi.fn().mockResolvedValue([]),
   switchContext: vi.fn().mockResolvedValue(undefined),
 }));
+
+const mockListWorktrees = listWorktrees as Mock;
 
 const mainWorktree = {
   path: "/my/repo",
@@ -166,5 +172,42 @@ describe("Home", () => {
     renderHome(store);
     fireEvent.click(screen.getByText("Worktrees"));
     expect(mockNavigate).toHaveBeenCalledWith("/worktrees");
+  });
+});
+
+describe("App startup initialization", () => {
+  it("calls listWorktrees with lastRepoPath when worktrees are empty and lastRepoPath is set in store", async () => {
+    const mainWt = {
+      path: "/my/repo",
+      branch: "main",
+      name: "main",
+      has_active_run: false,
+      is_main: true,
+    };
+    mockListWorktrees.mockResolvedValueOnce([mainWt]);
+
+    // Use a custom store with lastRepoPath pre-set in the initial state so we don't
+    // depend on the module-singleton store or localStorage timing.
+    const store = makeStore({
+      worktrees: {
+        worktrees: [],
+        status: "idle" as const,
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <AppInitializer />
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(mockListWorktrees).toHaveBeenCalledWith("/my/repo");
+    });
   });
 });

@@ -110,4 +110,24 @@ describe("configSlice", () => {
     store.dispatch(setDirty(false));
     expect(store.getState().config.isDirty).toBe(false);
   });
+
+  it("clearConfigError clears the error field", async () => {
+    const { clearConfigError } = await import("./configSlice");
+    mockGetGlobalConfig.mockRejectedValueOnce(new Error("Read failed"));
+    const store = makeStore();
+    await store.dispatch(fetchGlobalConfig());
+    expect(store.getState().config.error).toBe("Read failed");
+    store.dispatch(clearConfigError());
+    expect(store.getState().config.error).toBeNull();
+  });
+
+  it("saveProject.fulfilled sets isDirty to false", async () => {
+    const { saveProject } = await import("./configSlice");
+    const { saveProjectConfig } = await import("../../api/tauri");
+    (saveProjectConfig as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const store = makeStore();
+    store.dispatch(setDirty(true));
+    await store.dispatch(saveProject({ repoPath: "/my/repo", configToml: "[general]\n" }));
+    expect(store.getState().config.isDirty).toBe(false);
+  });
 });
