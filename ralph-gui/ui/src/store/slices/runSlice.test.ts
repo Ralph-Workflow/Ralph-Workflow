@@ -8,8 +8,8 @@ import runReducer, {
   stopPolling,
   startPollingInterval,
   stopPollingInterval,
-  pollRunStatus,
 } from "./runSlice";
+import type { pollRunStatus } from "./runSlice";
 import type { RunDetail } from "../../types";
 
 vi.mock("../../api/tauri", () => ({

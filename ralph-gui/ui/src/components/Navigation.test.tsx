@@ -43,8 +43,9 @@ describe("Navigation", () => {
     const homeLink = screen.getByText("Home").closest("a");
     expect(homeLink).not.toBeNull();
     // Fire hover events to cover onMouseEnter/onMouseLeave handlers
-    fireEvent.mouseEnter(homeLink!);
-    fireEvent.mouseLeave(homeLink!);
+    if (homeLink === null) throw new Error("homeLink should not be null");
+    fireEvent.mouseEnter(homeLink);
+    fireEvent.mouseLeave(homeLink);
     // If no error thrown, handlers executed correctly
     expect(homeLink).toBeInTheDocument();
   });
