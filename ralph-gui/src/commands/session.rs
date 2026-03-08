@@ -328,6 +328,42 @@ mod tests {
     }
 
     #[test]
+    fn test_get_sessions_status_derives_from_checkpoint_phase() {
+        // Complete phase → "completed"
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+
+        for (phase, expected_status) in &[
+            ("Complete", "completed"),
+            ("Interrupted", "interrupted"),
+            ("Review", "paused"),
+        ] {
+            let checkpoint = serde_json::json!({
+                "run_id": format!("run-{phase}"),
+                "phase": phase,
+                "timestamp": "2024-06-01 09:00:00",
+                "developer_agent": "claude",
+                "reviewer_agent": "openai"
+            });
+            std::fs::write(
+                agent_dir.join("checkpoint.json"),
+                serde_json::to_string(&checkpoint).unwrap(),
+            )
+            .unwrap();
+
+            let result = get_sessions(dir.path().to_string_lossy().to_string());
+            assert!(result.is_ok(), "Expected Ok for phase {phase}");
+            let sessions = result.unwrap();
+            assert_eq!(sessions.len(), 1, "Expected one session for phase {phase}");
+            assert_eq!(
+                sessions[0].status, *expected_status,
+                "Phase '{phase}' should map to status '{expected_status}'"
+            );
+        }
+    }
+
+    #[test]
     fn test_get_session_detail_not_found_in_empty_repos() {
         let repos: Vec<std::path::PathBuf> = Vec::new();
         let result = find_session_in_repos("nonexistent-run-id", &repos);

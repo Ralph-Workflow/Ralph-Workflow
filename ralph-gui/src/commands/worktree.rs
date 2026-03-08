@@ -299,4 +299,34 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_list_worktrees_has_active_run_reflects_run_lock() {
+        let dir = TempDir::new().unwrap();
+        init_git_repo(&dir);
+
+        // Without run.lock, has_active_run should be false.
+        let result = list_worktrees(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let worktrees = result.unwrap();
+        let main = worktrees.iter().find(|wt| wt.is_main).unwrap();
+        assert!(
+            !main.has_active_run,
+            "has_active_run should be false when run.lock does not exist"
+        );
+
+        // Create the run.lock file — has_active_run should now be true.
+        let lock_path = dir.path().join(".agent").join("tmp").join("run.lock");
+        std::fs::create_dir_all(lock_path.parent().unwrap()).unwrap();
+        std::fs::write(&lock_path, "locked").unwrap();
+
+        let result = list_worktrees(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let worktrees = result.unwrap();
+        let main = worktrees.iter().find(|wt| wt.is_main).unwrap();
+        assert!(
+            main.has_active_run,
+            "has_active_run should be true when run.lock exists"
+        );
+    }
 }

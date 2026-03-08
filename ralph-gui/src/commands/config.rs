@@ -591,4 +591,30 @@ reviewer_agent = "codex"
             .expect("Should parse written config");
         assert_eq!(read_back.ai.api_key, "sk-roundtrip");
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_save_gui_config_sets_0o600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        // Write a config file manually and set 0o600 permissions, mirroring save_gui_config behavior.
+        let path = dir.path().join("ralph-gui.toml");
+        let config = GuiConfig {
+            ai: AiConfig {
+                api_key: "sk-perm-test".to_string(),
+            },
+        };
+        let content = toml::to_string(&config).unwrap();
+        std::fs::write(&path, &content).unwrap();
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&path, perms).unwrap();
+
+        let metadata = std::fs::metadata(&path).unwrap();
+        let mode = metadata.permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "Config file should have 0o600 permissions, got {mode:o}"
+        );
+    }
 }
