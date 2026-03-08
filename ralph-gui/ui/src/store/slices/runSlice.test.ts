@@ -251,6 +251,30 @@ describe("runSlice", () => {
     expect(mockNotifyRunStatusChange).toHaveBeenCalledWith("Completed", "run-done", "");
   });
 
+  it("fetchRunDetail.fulfilled preserves is_degraded=true in state", async () => {
+    mockGetRunDetail.mockResolvedValueOnce({ ...mockRunDetail, is_degraded: true });
+    const store = makeStore();
+    await store.dispatch(fetchRunDetail("run-abc-123"));
+    expect(store.getState().runs.runDetail?.is_degraded).toBe(true);
+  });
+
+  it("fetchRunDetail.fulfilled preserves is_degraded=false in state", async () => {
+    mockGetRunDetail.mockResolvedValueOnce({ ...mockRunDetail, is_degraded: false });
+    const store = makeStore();
+    await store.dispatch(fetchRunDetail("run-abc-123"));
+    expect(store.getState().runs.runDetail?.is_degraded).toBe(false);
+  });
+
+  it("fetchRunDetail.fulfilled preserves omitted is_degraded as undefined", async () => {
+    // When backend omits is_degraded (older checkpoints), it should default to undefined
+    const detailWithoutDegraded = { ...mockRunDetail };
+    delete (detailWithoutDegraded as Partial<typeof mockRunDetail>).is_degraded;
+    mockGetRunDetail.mockResolvedValueOnce(detailWithoutDegraded);
+    const store = makeStore();
+    await store.dispatch(fetchRunDetail("run-abc-123"));
+    expect(store.getState().runs.runDetail?.is_degraded).toBeUndefined();
+  });
+
   it("pollRunStatus.fulfilled does NOT notify on non-Running→Failed (was already paused)", async () => {
     const { getRunStatus } = await import("../../api/tauri");
     const store = makeStore();

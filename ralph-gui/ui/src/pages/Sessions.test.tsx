@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -18,6 +18,11 @@ vi.mock("../api/tauri", () => ({
   getSessionDetail: vi.fn().mockResolvedValue(null),
   resumeSession: vi.fn(),
 }));
+
+import { getSessions } from "../api/tauri";
+import type { Mock } from "vitest";
+
+const mockGetSessions = getSessions as Mock;
 
 const mainWorktree = {
   path: "/my/repo",
@@ -227,5 +232,37 @@ describe("Sessions", () => {
     // No worktrees / no lastRepoPath => empty-repo state
     renderSessions();
     expect(screen.queryByTestId("filter-toolbar")).not.toBeInTheDocument();
+  });
+
+  it("renders degraded badge when a session has is_degraded=true", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "deg-abc-123",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Running degraded",
+        developer_agent: "claude",
+        reviewer_agent: "codex",
+        phase: "Development",
+        is_degraded: true,
+      },
+    ]);
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    await waitFor(() =>
+      expect(screen.getByText(/deg-abc-123/)).toBeInTheDocument(),
+    );
+    // Degraded badge renders a span with title matching "degraded conditions"
+    expect(screen.getByTitle(/degraded conditions/i)).toBeInTheDocument();
   });
 });

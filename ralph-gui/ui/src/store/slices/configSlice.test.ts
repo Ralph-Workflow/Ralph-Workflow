@@ -128,6 +128,18 @@ describe("configSlice", () => {
     expect(store.getState().config.isDirty).toBe(false);
   });
 
+  it("revert action dispatch (setDirty false) clears dirty flag after user edits", () => {
+    // Simulates the TomlEditor handleRevert flow: user edits TOML → isDirty=true,
+    // then clicks Revert → dispatches setDirty(false) to clear the dirty flag.
+    const store = makeStore();
+    // Simulate user editing the TOML
+    store.dispatch(setDirty(true));
+    expect(store.getState().config.isDirty).toBe(true);
+    // Simulate the revert action dispatch (Configuration.tsx handleRevert calls setDirty(false))
+    store.dispatch(setDirty(false));
+    expect(store.getState().config.isDirty).toBe(false);
+  });
+
   it("clearConfigError clears the error field", async () => {
     const { clearConfigError } = await import("./configSlice");
     mockGetGlobalConfig.mockRejectedValueOnce(new Error("Read failed"));
