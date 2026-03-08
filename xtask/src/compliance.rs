@@ -215,18 +215,45 @@ fn scan_file_for_violations_ac(
     for test_start in test_attr_offsets {
         // O(log L) binary-search line lookup via LineIndex.
         let test_line = line_idx.line_number(test_start); // 0-based
-        let fn_line_idx = test_line + 1;
+        let mut fn_line_idx = test_line + 1;
         if fn_line_idx >= n {
             continue;
         }
+
+        // Some tests include additional attributes between `#[test]` and the
+        // function declaration (e.g., `#[ignore]`, `#[cfg_attr]`).
+        // Advance to the next plausible `fn` declaration within a small bound.
+        const MAX_FN_LOOKAHEAD_LINES: usize = 8;
+        let mut found_fn = None;
+        for _ in 0..MAX_FN_LOOKAHEAD_LINES {
+            if fn_line_idx >= n {
+                break;
+            }
+
+            let trimmed = trim_ascii(lines[fn_line_idx]);
+            if trimmed.is_empty() || trimmed.starts_with(b"#") || trimmed.starts_with(b"//") {
+                fn_line_idx += 1;
+                continue;
+            }
+
+            let fn_line_str = match std::str::from_utf8(lines[fn_line_idx]) {
+                Ok(s) => s,
+                Err(_) => break,
+            };
+            if is_fn_decl(fn_line_str) {
+                found_fn = Some(fn_line_idx);
+            }
+            break;
+        }
+
+        let Some(fn_line_idx) = found_fn else {
+            continue;
+        };
 
         let fn_line_str = match std::str::from_utf8(lines[fn_line_idx]) {
             Ok(s) => s,
             Err(_) => continue,
         };
-        if !is_fn_decl(fn_line_str) {
-            continue;
-        }
 
         let test_name = extract_test_name(fn_line_str).unwrap_or("<unknown>");
 
@@ -521,6 +548,37 @@ fn test_missing_timeout() {
         assert_eq!(result.status, CheckStatus::Warning);
         assert!(
             result.message.contains("test_missing_timeout"),
+            "message should mention the failing test: {}",
+            result.message
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_timeout_wrappers_finds_fn_after_additional_attributes() {
+        let dir = make_temp_dir("warn-extra-attrs");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        write_file(
+            &dir,
+            "tests/integration_tests/bad_test_attr.rs",
+            r#"
+#[test]
+#[ignore = "https://example.com/issues/123"]
+fn test_missing_timeout_with_extra_attr() {
+    // No timeout wrapper here
+    assert!(true);
+}
+"#,
+        );
+
+        let result = check_timeout_wrappers(&dir);
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert!(
+            result
+                .message
+                .contains("test_missing_timeout_with_extra_attr"),
             "message should mention the failing test: {}",
             result.message
         );

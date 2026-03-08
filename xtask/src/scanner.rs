@@ -467,8 +467,10 @@ pub fn run_native_scan_checks(
 
     std::thread::scope(|s| {
         let handles: Vec<_> = groups_vec
-            .iter()
-            .map(|check_indices| s.spawn(|| scan_group_collect(repo_root, checks, check_indices)))
+            .into_iter()
+            .map(|check_indices| {
+                s.spawn(move || scan_group_collect(repo_root, checks, &check_indices))
+            })
             .collect();
         for handle in handles {
             all_violations.push(handle.join().expect("scan group thread panicked"));
@@ -490,26 +492,28 @@ pub fn run_native_scan_checks(
 
 /// Read a slice of files in parallel using scoped threads.
 ///
-/// Returns `Option<Vec<u8>>` per file in the **same order** as `files`, so
+/// Returns `Result<Vec<u8>>` per file in the **same order** as `files`, so
 /// callers can zip results with the original slice without re-sorting.
 /// For small groups (below `PARALLEL_THRESHOLD`) sequential reads are used
 /// to avoid thread-spawn overhead.
-fn read_scan_files_parallel(files: &[PathBuf]) -> Vec<Option<Vec<u8>>> {
+fn read_scan_files_parallel(files: &[PathBuf]) -> Vec<std::io::Result<Vec<u8>>> {
     const PARALLEL_THRESHOLD: usize = 4;
     if files.len() < PARALLEL_THRESHOLD {
-        return files.iter().map(|p| std::fs::read(p).ok()).collect();
+        return files.iter().map(std::fs::read).collect();
     }
 
     let workers = scan_read_worker_count(files.len());
-    let mut results: Vec<Option<Vec<u8>>> = vec![None; files.len()];
+    let mut results: Vec<std::io::Result<Vec<u8>>> = (0..files.len())
+        .map(|_| Err(std::io::Error::other("scan read worker did not fill slot")))
+        .collect();
 
     std::thread::scope(|s| {
         let handles: Vec<_> = (0..workers)
             .map(|worker_id| {
                 s.spawn(move || {
-                    let mut out: Vec<(usize, Option<Vec<u8>>)> = Vec::new();
+                    let mut out: Vec<(usize, std::io::Result<Vec<u8>>)> = Vec::new();
                     for i in (worker_id..files.len()).step_by(workers) {
-                        out.push((i, std::fs::read(&files[i]).ok()));
+                        out.push((i, std::fs::read(&files[i])));
                     }
                     out
                 })
@@ -607,10 +611,26 @@ fn scan_group_collect(
 
     // Read all files in parallel, then process in deterministic (sorted) order.
     let contents = read_scan_files_parallel(&files);
-    for (file_path, content_opt) in files.iter().zip(contents.into_iter()) {
-        let content = match content_opt {
-            Some(c) => c,
-            None => continue,
+    for (file_path, content_res) in files.iter().zip(contents.into_iter()) {
+        let content = match content_res {
+            Ok(c) => c,
+            Err(e) => {
+                for &ci in check_indices {
+                    let check = &all_checks[ci];
+                    if file_is_excluded(file_path, check.exclude_globs) {
+                        continue;
+                    }
+                    violations.push((
+                        ci,
+                        NativeScanViolation {
+                            file: file_path.clone(),
+                            line_number: 1,
+                            line: format!("read file error for {}: {e}", file_path.display()),
+                        },
+                    ));
+                }
+                continue;
+            }
         };
 
         // Build a LineIndex in a single O(n) pass.  All per-match line-context
@@ -923,7 +943,7 @@ pub fn scan_has_diagnostic_prefix(text: &str) -> DiagnosticLevel {
         // Check that the match is at the start of the trimmed line.
         let line_start = line_idx.line_start(byte_start);
         let prefix_bytes = &bytes[line_start..byte_start];
-        let all_ws = prefix_bytes.iter().all(|&b| b == b' ' || b == b'\t');
+        let all_ws = prefix_bytes.iter().all(|&b| b.is_ascii_whitespace());
         if !all_ws {
             continue; // match is not at line start after trim
         }
@@ -1255,6 +1275,59 @@ mod tests {
                 .iter()
                 .any(|v| v.line.contains("read_dir") || v.line.contains("Permission")),
             "expected an explicit read_dir error violation, got: {}",
+            results[0]
+                .violations
+                .iter()
+                .map(|v| v.line.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_unreadable_file_causes_failure_not_silent_pass() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = make_temp_dir("unreadable-file");
+        write_file(&dir, "src/lib.rs", "forbidden_pattern\n");
+
+        // Make the file unreadable so the scan must surface a read error.
+        let src_file = dir.join("src/lib.rs");
+        let mut perms = fs::metadata(&src_file).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&src_file, perms).unwrap();
+
+        let check = NativeScanCheck {
+            name: "test-unreadable-file",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+
+        // Restore permissions so cleanup works.
+        let mut perms_restore = fs::metadata(&src_file).unwrap().permissions();
+        perms_restore.set_mode(0o644);
+        let _ = fs::set_permissions(&src_file, perms_restore);
+
+        assert!(
+            !results[0].passed,
+            "unreadable files must fail the scan (not silently pass)"
+        );
+        assert!(
+            results[0]
+                .violations
+                .iter()
+                .any(|v| v.line.contains("read") || v.line.contains("Permission")),
+            "expected an explicit read-file error violation, got: {}",
             results[0]
                 .violations
                 .iter()
@@ -2214,6 +2287,13 @@ mod tests {
         fn test_diagnostic_prefix_detects_indented_error() {
             // Leading whitespace before "error:" must still be detected.
             let level = scan_has_diagnostic_prefix("   error: indented error\n");
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_treats_cr_as_whitespace() {
+            // trim_start() treats '\r' as whitespace; our prefix check must match.
+            let level = scan_has_diagnostic_prefix("\rerror: windows line ending artifact\n");
             assert_eq!(level, DiagnosticLevel::Error);
         }
 

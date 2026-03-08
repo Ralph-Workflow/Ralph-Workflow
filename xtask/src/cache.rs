@@ -281,19 +281,38 @@ impl CachingCommandRunner {
         self.repo_root.join("target/xtask-verify-cache.json")
     }
 
-    fn persist(&self) {
+    fn persist(&self) -> std::io::Result<()> {
         let entries = self.memory.lock().unwrap().clone();
         let file = CacheFile { entries };
-        if let Ok(json) = serde_json::to_string_pretty(&file) {
-            let _ = std::fs::write(self.cache_path(), json);
+
+        let json = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
+
+        let final_path = self.cache_path();
+        if let Some(parent) = final_path.parent() {
+            std::fs::create_dir_all(parent)?;
         }
+
+        // Write to a temp file and rename for best-effort atomic update.
+        let file_name = final_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("xtask-verify-cache.json");
+        let tmp_path = final_path.with_file_name(format!("{file_name}.tmp.{}", std::process::id()));
+
+        std::fs::write(&tmp_path, json)?;
+
+        // On Windows rename may fail if destination exists; remove first.
+        if final_path.exists() {
+            let _ = std::fs::remove_file(&final_path);
+        }
+        std::fs::rename(&tmp_path, &final_path)?;
+        Ok(())
     }
 
     /// Flush any pending cache updates to disk.  Call once at program exit.
     /// Idempotent: safe to call multiple times.
     pub fn flush(&self) {
-        if self.dirty.load(Ordering::Relaxed) {
-            self.persist();
+        if self.dirty.load(Ordering::Relaxed) && self.persist().is_ok() {
             self.dirty.store(false, Ordering::Relaxed);
         }
     }
@@ -887,6 +906,49 @@ mod tests {
         let _ = runner.run(&spec).unwrap();
         runner.flush();
         runner.flush(); // second flush must not panic or corrupt
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_flush_retries_after_persist_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = std::env::temp_dir().join("xtask-cache-flush-retry-after-fail");
+        let _ = std::fs::create_dir_all(&tmp);
+        let target_dir = tmp.join("target");
+        let _ = std::fs::create_dir_all(&target_dir);
+        let cache_path = target_dir.join("xtask-verify-cache.json");
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+        let spec = make_spec("no-test-flags-cfg-test");
+
+        let _ = runner.run(&spec).unwrap();
+
+        // Make the target dir unreadable/unwritable so persist fails.
+        let mut perms = std::fs::metadata(&target_dir).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&target_dir, perms).unwrap();
+
+        runner.flush();
+        assert!(
+            !cache_path.exists(),
+            "cache file must not exist when flush cannot persist"
+        );
+
+        // Restore permissions and flush again; dirty flag must still be set so the
+        // cache can be persisted on a later successful flush.
+        let mut perms_restore = std::fs::metadata(&target_dir).unwrap().permissions();
+        perms_restore.set_mode(0o755);
+        let _ = std::fs::set_permissions(&target_dir, perms_restore);
+
+        runner.flush();
+        assert!(
+            cache_path.exists(),
+            "cache must be written after permissions are restored"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
