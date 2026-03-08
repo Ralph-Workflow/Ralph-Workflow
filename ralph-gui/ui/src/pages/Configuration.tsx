@@ -247,10 +247,13 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
         }}
         style={{
           minHeight: 220,
-          padding: "12px",
+          padding: "12px 14px",
           resize: "vertical",
-          lineHeight: 1.6,
+          lineHeight: 1.7,
+          fontSize: 12,
           borderColor: validationError ? "var(--status-failed)" : undefined,
+          background: "var(--bg-base, #0d0d0d)",
+          color: "var(--text-primary)",
         }}
         spellCheck={false}
       />

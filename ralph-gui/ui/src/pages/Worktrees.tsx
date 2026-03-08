@@ -283,6 +283,14 @@ export function Worktrees() {
                         : "none",
                     transition: "background var(--transition-fast)",
                   }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      "var(--bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLDivElement).style.background =
+                      "transparent";
+                  }}
                 >
                   {/* Active indicator */}
                   <div
@@ -387,10 +395,12 @@ export function Worktrees() {
                         style={{
                           fontSize: 10,
                           fontFamily: "var(--font-mono)",
-                          color: "var(--text-muted)",
+                          color: "var(--accent)",
                           padding: "2px 8px",
-                          border: "1px solid var(--border-default)",
+                          border: "1px solid rgba(232,168,56,0.3)",
                           borderRadius: "var(--radius-sm)",
+                          background: "var(--accent-bg)",
+                          letterSpacing: "0.04em",
                         }}
                       >
                         active context

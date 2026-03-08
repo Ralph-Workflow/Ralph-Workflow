@@ -14,6 +14,8 @@ import { PreflightSummary } from "./PreflightSummary";
 import { PromptTemplatePicker } from "./PromptTemplatePicker";
 import { PROMPT_TEMPLATES } from "./promptTemplates";
 import { PromptReviewPanel } from "./PromptReviewPanel";
+import { InlineWorktreeCreate } from "./InlineWorktreeCreate";
+import type { WorktreeInfo } from "../../types";
 
 const PRESETS_KEY = "ralph_gui_presets";
 
@@ -70,6 +72,7 @@ export function NewSessionWizard({
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [showCreateWorktree, setShowCreateWorktree] = useState(false);
 
   // Preset state
   const [presets, setPresets] = useState<LaunchPreset[]>(() => loadPresets());
@@ -126,6 +129,11 @@ export function NewSessionWizard({
     setPresets(updated);
   }
 
+  function handleWorktreeCreated(worktree: WorktreeInfo) {
+    setWorktreePath(worktree.path);
+    setShowCreateWorktree(false);
+  }
+
   function handleTemplateSelect(content: string) {
     dispatch(setPromptContent(content));
     setStep("config");
@@ -165,12 +173,104 @@ export function NewSessionWizard({
     }
   }
 
+  const STEPS: { id: WizardStep; label: string }[] = [
+    { id: "template", label: "Template" },
+    { id: "config", label: "Configure" },
+    { id: "preflight", label: "Pre-flight" },
+  ];
+
+  function StepIndicator() {
+    const currentIdx = STEPS.findIndex((s) => s.id === step);
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0,
+          marginBottom: 20,
+        }}
+      >
+        {STEPS.map((s, idx) => {
+          const isActive = s.id === step;
+          const isDone = idx < currentIdx;
+          return (
+            <div
+              key={s.id}
+              style={{ display: "flex", alignItems: "center", flex: idx < STEPS.length - 1 ? 1 : undefined }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    background: isActive
+                      ? "var(--accent)"
+                      : isDone
+                      ? "var(--status-completed)"
+                      : "var(--bg-elevated)",
+                    border: isActive
+                      ? "2px solid var(--accent)"
+                      : isDone
+                      ? "2px solid var(--status-completed)"
+                      : "2px solid var(--border-default)",
+                    color: isActive || isDone ? "#000" : "var(--text-muted)",
+                    boxShadow: isActive ? "0 0 8px var(--accent-glow)" : "none",
+                  }}
+                >
+                  {isDone ? "✓" : idx + 1}
+                </div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontFamily: "var(--font-ui)",
+                    fontWeight: isActive ? 600 : 400,
+                    color: isActive
+                      ? "var(--accent)"
+                      : isDone
+                      ? "var(--text-secondary)"
+                      : "var(--text-muted)",
+                    letterSpacing: "0.01em",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {s.label}
+                </span>
+              </div>
+              {idx < STEPS.length - 1 && (
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: isDone
+                      ? "var(--status-completed)"
+                      : "var(--border-subtle)",
+                    margin: "0 8px",
+                    opacity: 0.6,
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (step === "template") {
     return (
       <div
         data-testid="wizard-template-step"
         style={{ display: "flex", flexDirection: "column", gap: 20 }}
       >
+        <StepIndicator />
         <PromptTemplatePicker onSelect={handleTemplateSelect} />
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className="btn btn-ghost" onClick={onClose}>
@@ -184,6 +284,7 @@ export function NewSessionWizard({
   if (step === "preflight") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <StepIndicator />
         {launchError && (
           <div
             data-testid="launch-error"
@@ -219,6 +320,7 @@ export function NewSessionWizard({
       data-testid="wizard-config-step"
       style={{ display: "flex", flexDirection: "column", gap: 16 }}
     >
+      <StepIndicator />
       {/* Repo path */}
       <div>
         <label className="section-label" htmlFor="repo-path">
@@ -236,25 +338,53 @@ export function NewSessionWizard({
       {/* Worktree selection */}
       {worktrees.length > 0 && (
         <div>
-          <label className="section-label" htmlFor="worktree-select">
-            Context
-          </label>
-          <select
-            id="worktree-select"
-            className="input"
-            value={worktreePath ?? ""}
-            onChange={(e) => setWorktreePath(e.target.value || null)}
-            style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 6,
+            }}
           >
-            <option value="">Direct repository (no worktree)</option>
-            {worktrees
-              .filter((wt) => !wt.is_main)
-              .map((wt) => (
-                <option key={wt.path} value={wt.path}>
-                  {wt.name} ({wt.branch})
-                </option>
-              ))}
-          </select>
+            <label className="section-label" htmlFor="worktree-select" style={{ marginBottom: 0 }}>
+              Context
+            </label>
+            <button
+              data-testid="create-worktree-toggle"
+              className="btn btn-ghost"
+              style={{ fontSize: 11, padding: "2px 10px" }}
+              onClick={() => setShowCreateWorktree((v) => !v)}
+            >
+              {showCreateWorktree ? "← Select existing" : "+ Create new worktree"}
+            </button>
+          </div>
+          {!showCreateWorktree && (
+            <select
+              id="worktree-select"
+              className="input"
+              value={worktreePath ?? ""}
+              onChange={(e) => {
+                setWorktreePath(e.target.value || null);
+                setShowCreateWorktree(false);
+              }}
+              style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+            >
+              <option value="">Direct repository (no worktree)</option>
+              {worktrees
+                .filter((wt) => !wt.is_main)
+                .map((wt) => (
+                  <option key={wt.path} value={wt.path}>
+                    {wt.name} ({wt.branch})
+                  </option>
+                ))}
+            </select>
+          )}
+          {showCreateWorktree && (
+            <InlineWorktreeCreate
+              repoPath={repoPath}
+              onCreated={handleWorktreeCreated}
+            />
+          )}
         </div>
       )}
 

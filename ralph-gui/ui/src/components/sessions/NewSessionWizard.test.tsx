@@ -31,12 +31,32 @@ vi.mock("../../api/tauri", () => ({
   resumeRalphSession: vi.fn(),
   getSessionDetail: vi.fn(),
   launchRalphSession: vi.fn().mockResolvedValue("test-run-id-launched"),
+  createWorktree: vi.fn().mockResolvedValue({
+    worktree: {
+      path: "/my/wt-51-feature",
+      branch: "wt-51-feature",
+      name: "wt-51-feature",
+      has_active_run: false,
+      is_main: false,
+    },
+  }),
+  listWorktrees: vi.fn().mockResolvedValue([]),
+  switchContext: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { launchRalphSession } from "../../api/tauri";
+import { launchRalphSession, createWorktree } from "../../api/tauri";
 import type { Mock } from "vitest";
 
 const mockLaunchRalphSession = launchRalphSession as Mock;
+const mockCreateWorktree = createWorktree as Mock;
+
+const mainWorktree = {
+  path: "/my/repo",
+  branch: "main",
+  name: "main",
+  has_active_run: false,
+  is_main: true,
+};
 
 function makeStore() {
   return configureStore({
@@ -51,8 +71,42 @@ function makeStore() {
   });
 }
 
+function makeStoreWithWorktrees() {
+  return configureStore({
+    reducer: {
+      worktrees: worktreeReducer,
+      sessions: sessionReducer,
+      runs: runReducer,
+      config: configReducer,
+      prompt: promptReducer,
+      agentProfile: agentProfileReducer,
+    },
+    preloadedState: {
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded" as const,
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    },
+  });
+}
+
 function renderWizard(onClose = vi.fn()) {
   const store = makeStore();
+  return {
+    store,
+    ...render(
+      <Provider store={store}>
+        <NewSessionWizard onClose={onClose} />
+      </Provider>,
+    ),
+  };
+}
+
+function renderWizardWithWorktrees(onClose = vi.fn()) {
+  const store = makeStoreWithWorktrees();
   return {
     store,
     ...render(
@@ -267,5 +321,89 @@ describe("NewSessionWizard", () => {
     const repoInput = screen.getByLabelText(/repository path/i);
     expect(repoInput).toBeInTheDocument();
     expect(repoInput).toHaveAttribute("id", "repo-path");
+  });
+
+  // --- Inline worktree creation sub-flow tests ---
+
+  it("shows create worktree toggle in config step when worktrees exist", () => {
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    expect(screen.getByTestId("create-worktree-toggle")).toBeInTheDocument();
+  });
+
+  it("expanding create worktree toggle shows branch and name inputs", () => {
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.click(screen.getByTestId("create-worktree-toggle"));
+    expect(screen.getByTestId("wt-branch-input")).toBeInTheDocument();
+    expect(screen.getByTestId("wt-name-input")).toBeInTheDocument();
+  });
+
+  it("create worktree form calls createWorktree with branch and name", async () => {
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.click(screen.getByTestId("create-worktree-toggle"));
+    fireEvent.change(screen.getByTestId("wt-branch-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.change(screen.getByTestId("wt-name-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.click(screen.getByTestId("wt-create-button"));
+    await waitFor(() =>
+      expect(mockCreateWorktree).toHaveBeenCalledWith(
+        "/my/repo",
+        "wt-51-feature",
+        "wt-51-feature",
+        undefined,
+      ),
+    );
+  });
+
+  it("successful worktree creation collapses the create form", async () => {
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.click(screen.getByTestId("create-worktree-toggle"));
+    fireEvent.change(screen.getByTestId("wt-branch-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.change(screen.getByTestId("wt-name-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.click(screen.getByTestId("wt-create-button"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("wt-branch-input")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("worktree creation error shows inline error message", async () => {
+    mockCreateWorktree.mockRejectedValueOnce(new Error("Branch already exists"));
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.click(screen.getByTestId("create-worktree-toggle"));
+    fireEvent.change(screen.getByTestId("wt-branch-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.change(screen.getByTestId("wt-name-input"), {
+      target: { value: "wt-51-feature" },
+    });
+    fireEvent.click(screen.getByTestId("wt-create-button"));
+    await waitFor(() =>
+      expect(screen.getByTestId("wt-create-error")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("wt-create-error")).toHaveTextContent(
+      "Branch already exists",
+    );
+  });
+
+  it("blurring branch input autofills name when name is empty", () => {
+    renderWizardWithWorktrees();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.click(screen.getByTestId("create-worktree-toggle"));
+    fireEvent.change(screen.getByTestId("wt-branch-input"), {
+      target: { value: "wt-51-my-feature" },
+    });
+    fireEvent.blur(screen.getByTestId("wt-branch-input"));
+    expect(screen.getByTestId("wt-name-input")).toHaveValue("wt-51-my-feature");
   });
 });

@@ -295,6 +295,62 @@ describe("ContextSwitcher", () => {
     expect(screen.getByTestId("active-run-badge-/my/wt-active")).toBeInTheDocument();
   });
 
+  it("active-run worktrees appear before inactive worktrees regardless of alphabetical order", () => {
+    const inactiveFirst = {
+      path: "/my/wt-aaa",
+      branch: "wt-aaa",
+      name: "aaa-inactive",
+      has_active_run: false,
+      is_main: false,
+    };
+    const activeSecond = {
+      path: "/my/wt-zzz",
+      branch: "wt-zzz",
+      name: "zzz-active",
+      has_active_run: true,
+      is_main: false,
+    };
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, inactiveFirst, activeSecond],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    // The active-run worktree ("zzz-active") should appear before the inactive one
+    // ("aaa-inactive") in the DOM, even though "aaa" sorts before "zzz".
+    const allButtons = screen.getAllByRole("button");
+    const activeIdx = allButtons.findIndex((btn) =>
+      btn.textContent?.includes("zzz-active"),
+    );
+    const inactiveIdx = allButtons.findIndex((btn) =>
+      btn.textContent?.includes("aaa-inactive"),
+    );
+    expect(activeIdx).toBeGreaterThan(-1);
+    expect(inactiveIdx).toBeGreaterThan(-1);
+    expect(activeIdx).toBeLessThan(inactiveIdx);
+  });
+
+  it("search input receives focus when dropdown opens", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, linkedWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    const searchInput = screen.getByTestId("context-search");
+    expect(document.activeElement).toBe(searchInput);
+  });
+
   it("context trigger button has accessible label for screen readers", () => {
     const store = makeStore({
       worktrees: {

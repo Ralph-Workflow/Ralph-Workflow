@@ -19,10 +19,13 @@ export function PreflightSummary({
   onBack,
   isLaunching,
 }: PreflightSummaryProps) {
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "Repository", value: repoPath },
-    { label: "Context", value: worktreePath ?? "Direct repository" },
+  const contextRows: Array<{ label: string; value: string; important?: boolean }> = [
+    { label: "Repository", value: repoPath, important: true },
+    { label: "Context", value: worktreePath ?? "Direct repository", important: true },
     { label: "Prompt", value: promptPath },
+  ];
+
+  const configRows: Array<{ label: string; value: string }> = [
     { label: "Dev iterations", value: `${developerIterations}` },
     { label: "Review passes", value: `${reviewerPasses}` },
   ];
@@ -39,27 +42,67 @@ export function PreflightSummary({
             overflow: "hidden",
           }}
         >
-          {rows.map((row, i) => (
+          {/* Context rows — given visual prominence */}
+          {contextRows.map((row) => (
             <div
               key={row.label}
               style={{
                 display: "flex",
                 gap: 16,
-                padding: "8px 14px",
-                borderBottom:
-                  i < rows.length - 1
-                    ? "1px solid var(--border-subtle)"
-                    : "none",
+                padding: row.important ? "10px 14px" : "8px 14px",
+                borderBottom: "1px solid var(--border-subtle)",
+                background: row.important ? "var(--bg-surface)" : undefined,
               }}
             >
-              <span style={{ fontSize: 12, color: "var(--text-muted)", width: 110, flexShrink: 0 }}>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: row.important ? "var(--text-secondary)" : "var(--text-muted)",
+                  width: 110,
+                  flexShrink: 0,
+                  fontWeight: row.important ? 500 : 400,
+                }}
+              >
                 {row.label}
               </span>
-              <span className="chip-mono" style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span
+                className="chip-mono"
+                style={{
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  color: row.important ? "var(--text-primary)" : undefined,
+                }}
+              >
                 {row.value}
               </span>
             </div>
           ))}
+          {/* Config rows — two-column grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+            {configRows.map((row, i) => (
+              <div
+                key={row.label}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  padding: "10px 14px",
+                  borderRight: i === 0 ? "1px solid var(--border-subtle)" : "none",
+                }}
+              >
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {row.label}
+                </span>
+                <span
+                  className="chip-mono"
+                  style={{ fontSize: 14, fontWeight: 600, color: "var(--accent)" }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

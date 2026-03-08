@@ -46,6 +46,15 @@ export function PromptTemplatePicker({ onSelect }: PromptTemplatePickerProps) {
               (e.currentTarget as HTMLButtonElement).style.borderColor =
                 "var(--border-subtle)";
             }}
+            onFocus={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.outline =
+                "2px solid var(--accent)";
+              (e.currentTarget as HTMLButtonElement).style.outlineOffset =
+                "2px";
+            }}
+            onBlur={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.outline = "none";
+            }}
           >
             <span
               style={{
