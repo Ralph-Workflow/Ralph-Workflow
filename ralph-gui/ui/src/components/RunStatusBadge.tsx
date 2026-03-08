@@ -57,8 +57,16 @@ export function RunStatusBadge({
   const cfg = STATUS_CONFIG[status];
   const dotSize = size === "sm" ? 6 : 8;
 
+  const ariaLabel = isDegraded
+    ? `Status: ${status} (degraded)`
+    : `Status: ${status}`;
+
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+    <span
+      role="status"
+      aria-label={ariaLabel}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+    >
       <span
         title={cfg.description}
         style={{

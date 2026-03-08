@@ -294,4 +294,20 @@ describe("ContextSwitcher", () => {
     expect(screen.getByText("wt-active-run")).toBeInTheDocument();
     expect(screen.getByTestId("active-run-badge-/my/wt-active")).toBeInTheDocument();
   });
+
+  it("context trigger button has accessible label for screen readers", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    // The trigger button must have an aria-label so screen readers can identify it
+    const triggerBtn = screen.getByRole("button", { name: /switch active context/i });
+    expect(triggerBtn).toBeInTheDocument();
+  });
 });

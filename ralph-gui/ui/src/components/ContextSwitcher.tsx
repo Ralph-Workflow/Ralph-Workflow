@@ -71,6 +71,9 @@ export function ContextSwitcher() {
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
+        aria-label="Switch active context"
+        aria-expanded={open}
+        aria-haspopup="listbox"
         onClick={() => setOpen((o) => !o)}
         style={{
           width: "100%",

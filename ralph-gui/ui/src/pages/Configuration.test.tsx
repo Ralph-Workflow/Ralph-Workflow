@@ -390,4 +390,34 @@ describe("Configuration", () => {
     expect(screen.getByTestId("scope-badge")).toBeInTheDocument();
     expect(screen.getByTestId("scope-badge").textContent?.toLowerCase()).toContain("project");
   });
+
+  // --- Revert button tests ---
+
+  it("shows Revert button in Global tab editor", () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    expect(screen.getByTestId("revert-config-button")).toBeInTheDocument();
+  });
+
+  it("Revert button reloads content from backend and clears dirty flag", async () => {
+    mockGetRawGlobalConfigToml.mockResolvedValue("original-content");
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    // Wait for initial load
+    await waitFor(() => {
+      const textarea = document.querySelector("textarea");
+      expect(textarea?.value).toContain("original-content");
+    });
+    // Simulate user editing
+    const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "modified-content" } });
+    expect(textarea.value).toContain("modified-content");
+    // Click Revert
+    const revertBtn = screen.getByTestId("revert-config-button");
+    fireEvent.click(revertBtn);
+    // Content should revert to the saved value
+    await waitFor(() => {
+      expect(textarea.value).toContain("original-content");
+    });
+  });
 });

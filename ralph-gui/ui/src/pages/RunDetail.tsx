@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../store";
 import {
@@ -9,6 +9,8 @@ import {
 } from "../store/slices/runSlice";
 import { resumeInterruptedSession } from "../store/slices/sessionSlice";
 import { RunStatusBadge } from "../components/RunStatusBadge";
+import { RunLog } from "../components/RunLog";
+import { getRunLogs } from "../api/tauri";
 
 interface DetailRowProps {
   label: string;
@@ -98,6 +100,33 @@ export function RunDetail() {
       void dispatch(fetchRunDetail(runId));
     }
   }, [dispatch, pollingStatus, runId]);
+
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logExpanded, setLogExpanded] = useState(false);
+  const [logFetched, setLogFetched] = useState(false);
+
+  const handleFetchLogs = async () => {
+    if (!detailRepoPath) return;
+    setLogLoading(true);
+    try {
+      const lines = await getRunLogs(detailRepoPath, detailWorktreePath ?? null);
+      setLogLines(lines);
+      setLogFetched(true);
+    } catch {
+      setLogLines([]);
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
+  const handleToggleLogs = () => {
+    const nextExpanded = !logExpanded;
+    setLogExpanded(nextExpanded);
+    if (nextExpanded && !logFetched) {
+      void handleFetchLogs();
+    }
+  };
 
   const handleResume = async () => {
     if (!runDetail) return;
@@ -296,7 +325,7 @@ export function RunDetail() {
         </div>
 
         {/* Phase timeline */}
-        <div className="card">
+        <div className="card" style={{ marginBottom: "var(--space-5)" }}>
           <div
             style={{
               fontFamily: "var(--font-display)",
@@ -393,6 +422,54 @@ export function RunDetail() {
               );
             })}
           </div>
+        </div>
+
+        {/* Run Log section */}
+        <div className="card" style={{ marginTop: "var(--space-5)" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--text-secondary)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Run Log
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {logExpanded && logFetched && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: 11, padding: "2px 10px" }}
+                  onClick={() => void handleFetchLogs()}
+                >
+                  Refresh
+                </button>
+              )}
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: 11, padding: "2px 10px" }}
+                onClick={handleToggleLogs}
+                data-testid="toggle-run-log"
+              >
+                {logExpanded ? "Collapse" : "Expand"}
+              </button>
+            </div>
+          </div>
+          {logExpanded && (
+            <div style={{ marginTop: 12 }}>
+              <RunLog lines={logLines} isLoading={logLoading} />
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -15,12 +15,14 @@ vi.mock("../api/tauri", () => ({
   resumeRalphSession: vi.fn(),
   getSessionDetail: vi.fn(),
   resumeSession: vi.fn(),
+  getRunLogs: vi.fn().mockResolvedValue([]),
 }));
 
-import { getRunDetail } from "../api/tauri";
+import { getRunDetail, getRunLogs } from "../api/tauri";
 import type { Mock } from "vitest";
 
 const mockGetRunDetail = getRunDetail as Mock;
+const mockGetRunLogs = getRunLogs as Mock;
 
 const mockRun = {
   run_id: "run-detail-123",
@@ -59,6 +61,7 @@ function renderDetail(runId = "run-detail-123") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetRunLogs.mockResolvedValue([]);
 });
 
 describe("RunDetail", () => {
@@ -177,5 +180,31 @@ describe("RunDetail", () => {
     renderDetail();
     await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
     expect(screen.queryByTestId("degraded-banner")).not.toBeInTheDocument();
+  });
+
+  // --- Run Log section tests ---
+
+  it("shows Run Log section heading when run is loaded", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.getByText("Run Log")).toBeInTheDocument();
+  });
+
+  it("expanding Run Log section calls getRunLogs and displays lines", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    mockGetRunLogs.mockResolvedValueOnce(["first log line", "second log line"]);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    const expandBtn = screen.getByTestId("toggle-run-log");
+    fireEvent.click(expandBtn);
+    await waitFor(() => {
+      expect(mockGetRunLogs).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const content = screen.getByTestId("run-log-content");
+      expect(content.textContent).toContain("first log line");
+      expect(content.textContent).toContain("second log line");
+    });
   });
 });

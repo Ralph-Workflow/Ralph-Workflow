@@ -389,6 +389,71 @@ pub fn notify_run_status_change(
         .map_err(|e| format!("Failed to send notification: {e}"))
 }
 
+/// Read the last N lines of the Ralph pipeline log for a given repo/worktree context.
+///
+/// Looks up the current `run_id` from the checkpoint, then reads
+/// `.agent/logs-<run_id>/pipeline.log`.
+///
+/// Returns an empty Vec when no checkpoint or log file exists (non-error: the log
+/// may not have been created yet for short or not-yet-started runs).
+///
+/// # Errors
+///
+/// Returns an error if the log file exists but cannot be read (permissions, IO error).
+#[tauri::command]
+pub fn get_run_logs(
+    repo_path: String,
+    worktree_path: Option<String>,
+    max_lines: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let base = worktree_path.map_or_else(
+        || std::path::PathBuf::from(&repo_path),
+        std::path::PathBuf::from,
+    );
+    let agent_dir = base.join(".agent");
+
+    let checkpoint_file = agent_dir.join("checkpoint.json");
+    if !checkpoint_file.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = std::fs::read_to_string(&checkpoint_file)
+        .map_err(|e| format!("Failed to read checkpoint: {e}"))?;
+    let checkpoint: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse checkpoint: {e}"))?;
+
+    let run_id = checkpoint
+        .get("run_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    if run_id.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let log_file = agent_dir
+        .join(format!("logs-{run_id}"))
+        .join("pipeline.log");
+
+    if !log_file.exists() {
+        return Ok(Vec::new());
+    }
+
+    let log_content =
+        std::fs::read_to_string(&log_file).map_err(|e| format!("Failed to read log file: {e}"))?;
+
+    let limit = max_lines.unwrap_or(500);
+    let all: Vec<String> = log_content.lines().map(String::from).collect();
+    let len = all.len();
+    let lines = if len > limit {
+        all[len - limit..].to_vec()
+    } else {
+        all
+    };
+
+    Ok(lines)
+}
+
 /// Internal struct for checkpoint summary used within this module.
 struct CheckpointSummary {
     run_id: String,
@@ -819,6 +884,105 @@ mod tests {
             detail.is_degraded,
             "Should parse is_degraded=true from checkpoint"
         );
+    }
+
+    // --- get_run_logs tests ---
+
+    #[test]
+    fn test_get_run_logs_returns_empty_when_no_log_file() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        // Checkpoint exists with run_id, but no log directory
+        let checkpoint = serde_json::json!({
+            "run_id": "log-test-run-1",
+            "phase": "Development",
+            "timestamp": "2024-01-01 10:00:00",
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let result = get_run_logs(dir.path().to_string_lossy().to_string(), None, None);
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        assert!(
+            result.unwrap().is_empty(),
+            "Should return empty when no log file exists"
+        );
+    }
+
+    #[test]
+    fn test_get_run_logs_returns_lines_from_log_file() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let run_id = "log-test-run-2";
+        let checkpoint = serde_json::json!({
+            "run_id": run_id,
+            "phase": "Development",
+            "timestamp": "2024-01-01 10:00:00",
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let log_dir = agent_dir.join(format!("logs-{run_id}"));
+        std::fs::create_dir_all(&log_dir).unwrap();
+        std::fs::write(
+            log_dir.join("pipeline.log"),
+            "line one\nline two\nline three\n",
+        )
+        .unwrap();
+
+        let result = get_run_logs(dir.path().to_string_lossy().to_string(), None, None);
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let lines = result.unwrap();
+        assert_eq!(lines.len(), 3, "Should return 3 lines");
+        assert_eq!(lines[0], "line one");
+        assert_eq!(lines[1], "line two");
+        assert_eq!(lines[2], "line three");
+    }
+
+    #[test]
+    fn test_get_run_logs_limits_to_last_500_lines() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let run_id = "log-test-run-3";
+        let checkpoint = serde_json::json!({
+            "run_id": run_id,
+            "phase": "Development",
+            "timestamp": "2024-01-01 10:00:00",
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let log_dir = agent_dir.join(format!("logs-{run_id}"));
+        std::fs::create_dir_all(&log_dir).unwrap();
+        let mut content = String::with_capacity(600 * 10);
+        for i in 1..=600_usize {
+            content.push_str("line ");
+            content.push_str(&i.to_string());
+            content.push('\n');
+        }
+        std::fs::write(log_dir.join("pipeline.log"), content).unwrap();
+
+        let result = get_run_logs(dir.path().to_string_lossy().to_string(), None, Some(500));
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let lines = result.unwrap();
+        assert_eq!(lines.len(), 500, "Should return exactly 500 lines");
+        assert_eq!(
+            lines[0], "line 101",
+            "Should start from line 101 (last 500 of 600)"
+        );
+        assert_eq!(lines[499], "line 600", "Should end at line 600");
     }
 
     #[test]

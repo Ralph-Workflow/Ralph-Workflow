@@ -211,4 +211,13 @@ describe("NewSessionWizard", () => {
     fireEvent.change(nameInput, { target: { value: "Valid Name" } });
     expect(saveBtn).not.toBeDisabled();
   });
+
+  it("repo-path input has an accessible label via htmlFor association", () => {
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    // getByLabelText verifies the htmlFor/id association is correct
+    const repoInput = screen.getByLabelText(/repository path/i);
+    expect(repoInput).toBeInTheDocument();
+    expect(repoInput).toHaveAttribute("id", "repo-path");
+  });
 });

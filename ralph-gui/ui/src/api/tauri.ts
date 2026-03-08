@@ -129,6 +129,18 @@ export async function getRunDetail(runId: string): Promise<RunDetail> {
   return invoke<RunDetail>("get_run_detail", { run_id: runId });
 }
 
+export async function getRunLogs(
+  repoPath: string,
+  worktreePath: string | null,
+  maxLines?: number,
+): Promise<string[]> {
+  return invoke<string[]>("get_run_logs", {
+    repo_path: repoPath,
+    worktree_path: worktreePath,
+    max_lines: maxLines ?? 500,
+  });
+}
+
 // --- Prompt file commands ---
 
 export async function readPromptFile(promptPath: string): Promise<string> {

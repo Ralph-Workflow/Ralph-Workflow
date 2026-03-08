@@ -31,6 +31,7 @@ fn main() {
             run_management::get_run_status,
             run_management::get_resumable_runs,
             run_management::get_run_detail,
+            run_management::get_run_logs,
             run_management::notify_run_status_change,
             session_prompt::read_prompt_file,
             session_prompt::save_prompt_file,

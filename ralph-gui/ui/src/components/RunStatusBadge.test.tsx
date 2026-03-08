@@ -87,4 +87,18 @@ describe("RunStatusBadge", () => {
     render(<RunStatusBadge status="Running" showLabel />);
     expect(screen.queryByText("Degraded")).not.toBeInTheDocument();
   });
+
+  it("badge container has role='status' and aria-label including the status", () => {
+    const { container } = render(<RunStatusBadge status="Running" showLabel />);
+    const statusEl = container.querySelector('[role="status"]');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveAttribute("aria-label", expect.stringContaining("Running"));
+  });
+
+  it("badge aria-label includes '(degraded)' when isDegraded is true", () => {
+    const { container } = render(<RunStatusBadge status="Running" showLabel isDegraded />);
+    const statusEl = container.querySelector('[role="status"]');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl?.getAttribute("aria-label")).toMatch(/degraded/i);
+  });
 });

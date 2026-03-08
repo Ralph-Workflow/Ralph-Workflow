@@ -250,7 +250,8 @@ mod tests {
         );
         let msg = result.unwrap_err();
         assert!(
-            msg.contains("Failed to write prompt file") || msg.contains("Failed to create directory"),
+            msg.contains("Failed to write prompt file")
+                || msg.contains("Failed to create directory"),
             "Error message should indicate write failure: {msg}"
         );
     }

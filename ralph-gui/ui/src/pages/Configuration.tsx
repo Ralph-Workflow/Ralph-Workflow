@@ -145,6 +145,8 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks the last successfully fetched TOML so Revert can restore it.
+  const savedTomlRef = useRef<string>(DEFAULT_TOML_TEMPLATE(label));
 
   useEffect(() => {
     setLoading(true);
@@ -158,9 +160,13 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
         } else {
           content = "";
         }
-        setToml(content.length > 0 ? content : DEFAULT_TOML_TEMPLATE(label));
+        const resolved = content.length > 0 ? content : DEFAULT_TOML_TEMPLATE(label);
+        setToml(resolved);
+        savedTomlRef.current = resolved;
       } catch {
-        setToml(DEFAULT_TOML_TEMPLATE(label));
+        const fallback = DEFAULT_TOML_TEMPLATE(label);
+        setToml(fallback);
+        savedTomlRef.current = fallback;
       } finally {
         setLoading(false);
       }
@@ -199,6 +205,7 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
         await saveProjectConfig(repoPath, toml);
         void dispatch(fetchEffectiveConfig(repoPath));
       }
+      savedTomlRef.current = toml;
       setSaveMsg("Saved successfully.");
       dispatch(setDirty(false));
     } catch (e: unknown) {
@@ -206,6 +213,12 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRevert = () => {
+    setToml(savedTomlRef.current);
+    setValidationError(null);
+    dispatch(setDirty(false));
   };
 
   const scopeLabel = scope === "global" ? "global" : "project";
@@ -273,6 +286,15 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
           disabled={isSaveDisabled}
         >
           {saving ? "Saving..." : "Save"}
+        </button>
+        <button
+          className="btn btn-ghost"
+          data-testid="revert-config-button"
+          onClick={handleRevert}
+          disabled={toml === savedTomlRef.current}
+          title="Discard unsaved changes and reload from saved state"
+        >
+          Revert
         </button>
         {/* Scope badge — persistent label so users know which scope they are editing */}
         <span

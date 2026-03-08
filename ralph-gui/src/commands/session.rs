@@ -395,7 +395,9 @@ mod tests {
         };
         let value = serde_json::to_value(&summary).expect("serialization failed");
         assert_eq!(
-            value.get("is_degraded").and_then(serde_json::Value::as_bool),
+            value
+                .get("is_degraded")
+                .and_then(serde_json::Value::as_bool),
             Some(true),
             "is_degraded: true should serialize as JSON true"
         );
@@ -406,7 +408,9 @@ mod tests {
         };
         let value_false = serde_json::to_value(&summary_false).expect("serialization failed");
         assert_eq!(
-            value_false.get("is_degraded").and_then(serde_json::Value::as_bool),
+            value_false
+                .get("is_degraded")
+                .and_then(serde_json::Value::as_bool),
             Some(false),
             "is_degraded: false should serialize as JSON false"
         );
@@ -435,7 +439,10 @@ mod tests {
         assert!(result.is_ok());
         let sessions = result.unwrap();
         assert_eq!(sessions.len(), 1);
-        assert!(sessions[0].is_degraded, "is_degraded should be true from checkpoint");
+        assert!(
+            sessions[0].is_degraded,
+            "is_degraded should be true from checkpoint"
+        );
     }
 
     #[test]
@@ -460,7 +467,10 @@ mod tests {
         assert!(result.is_ok());
         let sessions = result.unwrap();
         assert_eq!(sessions.len(), 1);
-        assert!(!sessions[0].is_degraded, "is_degraded should default to false");
+        assert!(
+            !sessions[0].is_degraded,
+            "is_degraded should default to false"
+        );
     }
 
     #[test]

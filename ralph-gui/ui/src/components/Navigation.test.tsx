@@ -49,4 +49,10 @@ describe("Navigation", () => {
     // If no error thrown, handlers executed correctly
     expect(homeLink).toBeInTheDocument();
   });
+
+  it("nav element has aria-label='Main navigation'", () => {
+    renderNav();
+    const nav = document.querySelector("nav");
+    expect(nav).toHaveAttribute("aria-label", "Main navigation");
+  });
 });

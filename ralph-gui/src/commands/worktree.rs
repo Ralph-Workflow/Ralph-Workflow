@@ -164,9 +164,7 @@ pub fn create_worktree(
 /// Returns `Ok(())` if all provided paths exist, or an error describing which path is invalid.
 fn validate_context_paths(repo_path: &str, worktree_path: Option<&str>) -> Result<(), String> {
     if !std::path::Path::new(repo_path).exists() {
-        return Err(format!(
-            "Repository path does not exist: {repo_path}"
-        ));
+        return Err(format!("Repository path does not exist: {repo_path}"));
     }
     if let Some(wt) = worktree_path {
         if !std::path::Path::new(wt).exists() {
@@ -371,7 +369,10 @@ mod tests {
             &dir.path().to_string_lossy(),
             Some("/nonexistent/worktree/path/for/testing"),
         );
-        assert!(result.is_err(), "Expected Err for nonexistent worktree path");
+        assert!(
+            result.is_err(),
+            "Expected Err for nonexistent worktree path"
+        );
         let msg = result.unwrap_err();
         assert!(
             msg.contains("does not exist"),
