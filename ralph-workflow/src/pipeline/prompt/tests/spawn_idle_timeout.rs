@@ -122,7 +122,7 @@ fn test_run_with_agent_spawn_does_not_hang_when_stdout_closes_early_and_idle_tim
                 &cmd,
                 &runtime,
                 &[],
-                Duration::from_secs(1),
+                Duration::ZERO,
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),
@@ -436,7 +436,7 @@ fn test_run_with_agent_spawn_regains_control_when_child_never_exits_after_sigkil
                 &cmd,
                 &runtime,
                 &[],
-                Duration::from_secs(1),
+                Duration::ZERO,
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),
