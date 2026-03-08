@@ -8,6 +8,10 @@
 //! ### `EffectHandler`
 //!
 //! The `execute()` method handles effects that require workspace access:
+//! - `CheckCommitDiff` - Writes simulated diff to workspace, reads staged diff sequence
+//! - `MaterializeCommitInputs` - Reads diff from workspace and computes real byte sizes
+//! - `CheckUncommittedChangesBeforeTermination` - Returns mocked safety check results
+//! - `ReportAgentChainExhausted` - Returns error event for exhausted agent chains
 //! - `SaveCheckpoint` - Actually saves checkpoint for resume tests
 //! - `TriggerDevFixFlow` - Dispatch dev-fix flow (no termination marker)
 //! - `EmitCompletionMarkerAndTerminate` - Writes completion marker for termination tests
@@ -49,7 +53,11 @@ use super::{
 /// `MainEffectHandler` in tests. The `PhaseContext` is ignored for most effects -
 /// the mock simply captures the effect and returns an appropriate mock event.
 ///
-/// Special cases that require workspace access:
+/// Special cases that require workspace access (handled in `execute()` before delegating):
+/// - `CheckCommitDiff` - Writes simulated diff; reads from staged diff sequence
+/// - `MaterializeCommitInputs` - Reads diff from workspace, computes real byte sizes
+/// - `CheckUncommittedChangesBeforeTermination` - Returns mocked pre-termination check
+/// - `ReportAgentChainExhausted` - Returns error for exhausted agent chains
 /// - `SaveCheckpoint` - Actually saves checkpoint for resume tests
 /// - `EmitCompletionMarkerAndTerminate` - Writes completion marker file
 impl EffectHandler<'_> for MockEffectHandler {

@@ -38,11 +38,13 @@
 //! - `recovery` - Defensive completion and max iterations handling
 //! - `core` - Public API and convenience functions
 
+mod cloud_progress;
 mod config;
 mod core;
 mod driver;
 mod error_handling;
 mod iteration;
+mod logging;
 mod recovery;
 mod trace;
 

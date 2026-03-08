@@ -124,7 +124,7 @@ pub fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
 mod agent;
 #[path = "state_reduction/awaiting_dev_fix.rs"]
 mod awaiting_dev_fix;
-#[path = "state_reduction/commit.rs"]
+#[path = "state_reduction/commit/mod.rs"]
 mod commit;
 #[path = "state_reduction/development/mod.rs"]
 mod development;

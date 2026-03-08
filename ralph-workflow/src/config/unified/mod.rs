@@ -26,10 +26,12 @@
 //!
 //! # Module Organization
 //!
-//! This module is split into three focused submodules:
+//! This module is split into focused submodules:
 //!
 //! - [`types`]: All configuration type definitions (General, CCS, Agent configs)
 //! - [`loading`]: Configuration loading and initialization logic
+//! - [`merging`]: `merge_with` and `merge_with_content` implementation
+//! - [`fallback_merge`]: Fallback chain merge helper functions
 //! - [`helpers`]: Utility functions (path resolution, etc.)
 //!
 //! # Examples
@@ -59,8 +61,10 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+pub mod fallback_merge;
 pub mod helpers;
 pub mod loading;
+pub mod merging;
 pub mod types;
 
 // Re-export all public types and functions at the module level for convenience

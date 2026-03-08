@@ -75,137 +75,21 @@
 //!
 //! - [`crate::executor::ProcessExecutor`] - Similar abstraction for process execution
 
-// ============================================================================
-// Well-known path constants
-// ============================================================================
-
-/// The `.agent` directory where Ralph stores all artifacts.
-pub const AGENT_DIR: &str = ".agent";
-
-/// The `.agent/tmp` directory for temporary files.
-pub const AGENT_TMP: &str = ".agent/tmp";
-
-// AGENT_LOGS constant removed - use RunLogContext for per-run log directories.
-
-/// Path to the implementation plan file.
-pub const PLAN_MD: &str = ".agent/PLAN.md";
-
-/// Path to the issues file from code review.
-pub const ISSUES_MD: &str = ".agent/ISSUES.md";
-
-/// Path to the status file.
-pub const STATUS_MD: &str = ".agent/STATUS.md";
-
-/// Path to the notes file.
-pub const NOTES_MD: &str = ".agent/NOTES.md";
-
-/// Path to the commit message file.
-pub const COMMIT_MESSAGE_TXT: &str = ".agent/commit-message.txt";
-
-/// Path to the checkpoint file for resume support.
-pub const CHECKPOINT_JSON: &str = ".agent/checkpoint.json";
-
-/// Path to the start commit tracking file.
-pub const START_COMMIT: &str = ".agent/start_commit";
-
-/// Path to the review baseline tracking file.
-pub const REVIEW_BASELINE_TXT: &str = ".agent/review_baseline.txt";
-
-/// Path to the prompt file in repository root.
-pub const PROMPT_MD: &str = "PROMPT.md";
-
-/// Path to the prompt backup file.
-pub const PROMPT_BACKUP: &str = ".agent/PROMPT.md.backup";
-
-/// Path to the agent config file.
-pub const AGENT_CONFIG_TOML: &str = ".agent/config.toml";
-
-/// Path to the agents registry file.
-pub const AGENTS_TOML: &str = ".agent/agents.toml";
-
-// PIPELINE_LOG constant removed - use RunLogContext::pipeline_log() for per-run log paths.
-
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
+// Well-known path constants
+// ============================================================================
+
+include!("workspace/paths.rs");
+
+// ============================================================================
 // DirEntry - abstraction for directory entries
 // ============================================================================
 
-/// A directory entry returned by `Workspace::read_dir`.
-///
-/// This abstracts `std::fs::DirEntry` to allow in-memory implementations.
-#[derive(Debug, Clone)]
-pub struct DirEntry {
-    /// The path of this entry (relative to workspace root).
-    path: PathBuf,
-    /// Whether this entry is a file.
-    is_file: bool,
-    /// Whether this entry is a directory.
-    is_dir: bool,
-    /// Optional modification time (for sorting by recency).
-    modified: Option<std::time::SystemTime>,
-}
-
-impl DirEntry {
-    /// Create a new directory entry.
-    #[must_use]
-    pub const fn new(path: PathBuf, is_file: bool, is_dir: bool) -> Self {
-        Self {
-            path,
-            is_file,
-            is_dir,
-            modified: None,
-        }
-    }
-
-    /// Create a new directory entry with modification time.
-    #[must_use]
-    pub const fn with_modified(
-        path: PathBuf,
-        is_file: bool,
-        is_dir: bool,
-        modified: std::time::SystemTime,
-    ) -> Self {
-        Self {
-            path,
-            is_file,
-            is_dir,
-            modified: Some(modified),
-        }
-    }
-
-    /// Get the path of this entry.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Check if this entry is a file.
-    #[must_use]
-    pub const fn is_file(&self) -> bool {
-        self.is_file
-    }
-
-    /// Check if this entry is a directory.
-    #[must_use]
-    pub const fn is_dir(&self) -> bool {
-        self.is_dir
-    }
-
-    /// Get the file name of this entry.
-    #[must_use]
-    pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
-        self.path.file_name()
-    }
-
-    /// Get the modification time of this entry, if available.
-    #[must_use]
-    pub const fn modified(&self) -> Option<std::time::SystemTime> {
-        self.modified
-    }
-}
+include!("workspace/dir_entry.rs");
 
 // ============================================================================
 // Workspace Trait

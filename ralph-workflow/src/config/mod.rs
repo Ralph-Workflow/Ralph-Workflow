@@ -21,12 +21,14 @@
 //! # Module Structure
 //!
 //! - [`types`] - Core configuration types (Config, `ReviewDepth`, Verbosity)
+//! - [`cloud`] - Cloud and git remote configuration types
 //! - [`truncation`] - Truncation limits for verbosity levels
 //! - [`parser`] - Environment variable parsing (legacy)
 //! - [`unified`] - Unified configuration format types
 //! - [`loader`] - Unified configuration loader with env overrides
 //! - [`path_resolver`] - Configuration path resolution with dependency injection
 
+pub mod cloud;
 pub mod loader;
 pub mod parser;
 pub mod path_resolver;
@@ -36,10 +38,11 @@ pub mod unified;
 pub mod validation;
 
 // Re-export main types at module level for convenience
-pub use types::{
-    CloudConfig, CloudStateConfig, Config, GitAuthMethod, GitAuthStateMethod, GitRemoteConfig,
-    GitRemoteStateConfig, ReviewDepth, Verbosity,
+pub use cloud::{
+    CloudConfig, CloudStateConfig, GitAuthMethod, GitAuthStateMethod, GitRemoteConfig,
+    GitRemoteStateConfig,
 };
+pub use types::{Config, ReviewDepth, Verbosity};
 
 // Re-export unified config types for --init-global handling
 pub use unified::{
