@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -55,6 +55,10 @@ function renderList(repoPath = "/my/repo", onResume = vi.fn()) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockNavigate.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("SessionList", () => {
@@ -355,5 +359,123 @@ describe("SessionList", () => {
       expect(screen.getByText(/run-running/)).toBeInTheDocument(),
     );
     expect(screen.queryByText("Resume")).not.toBeInTheDocument();
+  });
+
+  it("renders degraded indicator badge when session is_degraded is true", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "degraded-run-abc",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Running degraded",
+        developer_agent: "claude",
+        reviewer_agent: "codex",
+        phase: "Development",
+        is_degraded: true,
+      },
+    ]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText(/degraded-run-abc/)).toBeInTheDocument(),
+    );
+    // The degraded badge renders a ⚠ icon in the RunStatusBadge with title attribute
+    const degradedIcon = screen.getByTitle(
+      /degraded conditions/i,
+    );
+    expect(degradedIcon).toBeInTheDocument();
+  });
+
+  it("does not render degraded indicator when session is_degraded is false", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "healthy-run-xyz",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Running healthy",
+        developer_agent: "claude",
+        reviewer_agent: "codex",
+        phase: "Development",
+        is_degraded: false,
+      },
+    ]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText(/healthy-run-xyz/)).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByTitle(/degraded conditions/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("polls get_sessions every 5 seconds when a running session exists", async () => {
+    // Only fake interval APIs so waitFor (which uses setTimeout) still works
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
+    mockGetSessions.mockResolvedValue([
+      {
+        run_id: "poll-run-123",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Running poll test",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Development",
+      },
+    ]);
+
+    renderList("/my/repo");
+
+    // Wait for the initial fetch to complete
+    await waitFor(() => {
+      expect(mockGetSessions).toHaveBeenCalledTimes(1);
+    });
+
+    const callsAfterMount = mockGetSessions.mock.calls.length;
+
+    // Advance time past the 5-second polling interval
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5001);
+    });
+
+    expect(mockGetSessions.mock.calls.length).toBeGreaterThan(callsAfterMount);
+  });
+
+  it("does not poll when no sessions are running", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "done-run-456",
+        status: "completed",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Completed",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Complete",
+      },
+    ]);
+
+    renderList("/my/repo");
+
+    await waitFor(() => {
+      expect(mockGetSessions).toHaveBeenCalledTimes(1);
+    });
+
+    const callsAfterMount = mockGetSessions.mock.calls.length;
+
+    // Advance time 10 seconds — no interval should fire for non-running sessions
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10001);
+    });
+
+    expect(mockGetSessions.mock.calls.length).toBe(callsAfterMount);
   });
 });

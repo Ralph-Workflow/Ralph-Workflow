@@ -12,6 +12,10 @@ pub struct SessionSummary {
     pub developer_agent: String,
     pub reviewer_agent: String,
     pub phase: String,
+    /// True when the run is operating with degraded conditions (retries exceeded,
+    /// fallback agents used, etc.). Defaults to false for older checkpoints.
+    #[serde(default)]
+    pub is_degraded: bool,
 }
 
 /// Request to create a new Ralph workflow session.
@@ -96,6 +100,11 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
     }
     .to_string();
 
+    let is_degraded = checkpoint
+        .get("is_degraded")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
     let summary = SessionSummary {
         run_id,
         status,
@@ -106,6 +115,7 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
         developer_agent,
         reviewer_agent,
         phase,
+        is_degraded,
     };
 
     Ok(vec![summary])
@@ -153,6 +163,7 @@ pub fn create_session(request: CreateSessionRequest) -> Result<SessionSummary, S
         developer_agent: String::new(),
         reviewer_agent: String::new(),
         phase: "Pending".to_string(),
+        is_degraded: false,
     })
 }
 
@@ -202,6 +213,10 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
             "paused"
         }
         .to_string();
+        let is_degraded = checkpoint
+            .get("is_degraded")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
         return Some(SessionSummary {
             run_id: run_id.to_string(),
             status,
@@ -212,6 +227,7 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
             developer_agent,
             reviewer_agent,
             phase,
+            is_degraded,
         });
     }
     None
@@ -361,6 +377,90 @@ mod tests {
                 "Phase '{phase}' should map to status '{expected_status}'"
             );
         }
+    }
+
+    #[test]
+    fn test_session_summary_is_degraded_field_serializes_correctly() {
+        let summary = SessionSummary {
+            run_id: "test-run".to_string(),
+            status: "paused".to_string(),
+            repo_path: "/repo".to_string(),
+            worktree_path: None,
+            created_at: "2024-01-01".to_string(),
+            description: "test".to_string(),
+            developer_agent: "claude".to_string(),
+            reviewer_agent: "codex".to_string(),
+            phase: "Review".to_string(),
+            is_degraded: true,
+        };
+        let value = serde_json::to_value(&summary).expect("serialization failed");
+        assert_eq!(
+            value.get("is_degraded").and_then(serde_json::Value::as_bool),
+            Some(true),
+            "is_degraded: true should serialize as JSON true"
+        );
+
+        let summary_false = SessionSummary {
+            is_degraded: false,
+            ..summary
+        };
+        let value_false = serde_json::to_value(&summary_false).expect("serialization failed");
+        assert_eq!(
+            value_false.get("is_degraded").and_then(serde_json::Value::as_bool),
+            Some(false),
+            "is_degraded: false should serialize as JSON false"
+        );
+    }
+
+    #[test]
+    fn test_get_sessions_reads_is_degraded_from_checkpoint() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "degraded-run",
+            "phase": "Review",
+            "timestamp": "2024-06-01 09:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex",
+            "is_degraded": true
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let result = get_sessions(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let sessions = result.unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert!(sessions[0].is_degraded, "is_degraded should be true from checkpoint");
+    }
+
+    #[test]
+    fn test_get_sessions_defaults_is_degraded_to_false_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "normal-run",
+            "phase": "Review",
+            "timestamp": "2024-06-01 09:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let result = get_sessions(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok());
+        let sessions = result.unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert!(!sessions[0].is_degraded, "is_degraded should default to false");
     }
 
     #[test]

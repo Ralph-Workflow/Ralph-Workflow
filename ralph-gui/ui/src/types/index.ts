@@ -22,6 +22,8 @@ export interface SessionSummary {
   developer_agent: string;
   reviewer_agent: string;
   phase: string;
+  /** True when the run is operating with degraded conditions (retries exceeded, fallback used). */
+  is_degraded?: boolean;
 }
 
 // Rust: ralph_gui::commands::session::CreateSessionRequest

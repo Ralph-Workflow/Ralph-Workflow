@@ -40,6 +40,16 @@ export function SessionList({ repoPath, onResume, filterStatus, filterWorktreePa
     }
   }, [dispatch, repoPath]);
 
+  const hasRunningSessions = sessions.some((s) => s.status === "running");
+
+  useEffect(() => {
+    if (!repoPath || !hasRunningSessions) return undefined;
+    const id = setInterval(() => {
+      void dispatch(fetchSessions(repoPath));
+    }, 5000);
+    return () => clearInterval(id);
+  }, [dispatch, repoPath, hasRunningSessions]);
+
   if (status === "loading") {
     return (
       <div style={{ padding: "24px", color: "var(--text-muted)", fontSize: 13, fontFamily: "var(--font-mono)" }}>
@@ -152,6 +162,7 @@ function SessionRow({
         status={sessionStatusToRunStatus(session.status)}
         showLabel={false}
         size="sm"
+        isDegraded={session.is_degraded === true}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
