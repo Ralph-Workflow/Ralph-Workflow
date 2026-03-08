@@ -108,7 +108,10 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
             //
             // Idempotency: if the key already exists (e.g., handler ran twice due to
             // retry without a new scope), the existing entry is preserved (do not overwrite).
-            let entry = crate::prompts::PromptHistoryEntry { content, content_id };
+            let entry = crate::prompts::PromptHistoryEntry {
+                content,
+                content_id,
+            };
             let mut new_history = state.prompt_history.clone();
             new_history.entry(key).or_insert(entry);
             PipelineState {

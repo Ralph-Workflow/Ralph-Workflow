@@ -31,7 +31,8 @@ pub struct ResumeContext {
     /// Run ID for tracing
     pub run_id: String,
     /// Captured prompts from the original run for deterministic replay
-    pub prompt_history: Option<std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>>,
+    pub prompt_history:
+        Option<std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>>,
     /// Execution history from the checkpoint (if available)
     pub execution_history: Option<ExecutionHistory>,
 }

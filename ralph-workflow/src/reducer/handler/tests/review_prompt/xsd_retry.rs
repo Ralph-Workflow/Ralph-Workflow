@@ -375,10 +375,10 @@ fn test_prepare_fix_prompt_uses_prompt_history_replay() {
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     // Insert into state.prompt_history (handler reads from self.state.prompt_history).
-    handler
-        .state
-        .prompt_history
-        .insert("fix_0".to_string(), PromptHistoryEntry::from_string("REPLAYED PROMPT".to_string()));
+    handler.state.prompt_history.insert(
+        "fix_0".to_string(),
+        PromptHistoryEntry::from_string("REPLAYED PROMPT".to_string()),
+    );
     handler
         .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_fix_prompt should succeed");

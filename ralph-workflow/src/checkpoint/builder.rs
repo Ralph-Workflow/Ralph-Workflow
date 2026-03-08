@@ -51,9 +51,7 @@ pub struct CheckpointBuilder {
     run_context: Option<RunContext>,
     // Hardened resume fields
     execution_history: Option<ExecutionHistory>,
-    prompt_history: Option<
-        std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
-    >,
+    prompt_history: Option<std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>>,
     prompt_inputs: Option<PromptInputsState>,
     prompt_permissions: PromptPermissionsState,
     last_substitution_log: Option<crate::prompts::SubstitutionLog>,

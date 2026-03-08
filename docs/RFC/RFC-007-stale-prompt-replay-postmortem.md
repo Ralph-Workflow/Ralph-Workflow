@@ -200,9 +200,10 @@ Redux and Elm guidance maps directly to this incident class.
    mismatch is treated as a cache miss and a fresh prompt is generated. `PromptHistoryEntry` carries
    an optional SHA-256 hex digest of materialized inputs so replay/miss is auditable.
 3. Type migration complete: all prompt-history maps changed from `HashMap<String, String>` to
-   `HashMap<String, PromptHistoryEntry>` across both reducer and legacy pipeline paths. Dual-path
-   drift remains for full event-capture migration (legacy paths still call `ctx.capture_prompt`
-   rather than emitting `PromptCaptured`) but the type surface is now uniform.
+   `HashMap<String, PromptHistoryEntry>` across both reducer and legacy pipeline paths. Full
+   event-capture migration complete: all paths (including rebase conflict resolution via
+   `app/rebase/conflicts.rs`) use `PromptScopeKey` for key generation and
+   `get_stored_or_generate_prompt` for replay. No remaining ad-hoc `format!()` prompt keys.
 4. `PromptHistoryEntry` uses backward-compatible serde (bare string → v0; object with `content_id`
    → v1). `PipelineCheckpoint` carries `replay_metadata_version` for explicit migration signaling.
    The custom `Deserialize` impl handles old checkpoints transparently.
@@ -282,6 +283,8 @@ Redux and Elm guidance maps directly to this incident class.
    `PromptScopeKey` encodes all dimensions except `content_id`. Content-id is computed from
    materialized prompt inputs and stored in `PromptHistoryEntry`. Mandatory dimensions per phase
    are enforced by the phase-specific constructors on `PromptScopeKey`.
-3. What is the deprecation plan for duplicate legacy prompt execution pathways?
-   The type surface is unified. Full migration (legacy paths emit `PromptCaptured` events and read
-   from `state.prompt_history` rather than `ctx.prompt_history`) is tracked as follow-on work.
+3. ~~What is the deprecation plan for duplicate legacy prompt execution pathways?~~
+   **Resolved**: Full migration complete. `for_conflict_resolution` constructor added to
+   `PromptScopeKey`; `app/rebase/conflicts.rs` migrated to typed keys via
+   `get_stored_or_generate_prompt`. All prompt-history keys across the codebase now
+   use typed `PromptScopeKey` constructors. No remaining ad-hoc `format!()` keys.

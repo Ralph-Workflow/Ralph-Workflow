@@ -86,7 +86,9 @@ fn test_builder_with_prompt_history() {
     assert_eq!(history.len(), 1);
     assert_eq!(
         history.get("development_1"),
-        Some(&PromptHistoryEntry::from_string("Implement feature X".to_string()))
+        Some(&PromptHistoryEntry::from_string(
+            "Implement feature X".to_string()
+        ))
     );
 }
 
@@ -122,11 +124,15 @@ fn test_builder_with_prompt_history_multiple() {
     assert_eq!(history.len(), 2);
     assert_eq!(
         history.get("development_1"),
-        Some(&PromptHistoryEntry::from_string("Implement feature X".to_string()))
+        Some(&PromptHistoryEntry::from_string(
+            "Implement feature X".to_string()
+        ))
     );
     assert_eq!(
         history.get("review_1"),
-        Some(&PromptHistoryEntry::from_string("Review the changes".to_string()))
+        Some(&PromptHistoryEntry::from_string(
+            "Review the changes".to_string()
+        ))
     );
 }
 

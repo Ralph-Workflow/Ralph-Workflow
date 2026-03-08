@@ -68,7 +68,8 @@ pub fn run_initial_rebase(
             Ok(InitialRebaseOutcome::Skipped { reason })
         }
         Ok(RebaseResult::Conflicts(_)) => {
-            let resolved = handle_rebase_conflicts(phase_ctx, run_context, executor, prompt_history)?;
+            let resolved =
+                handle_rebase_conflicts(phase_ctx, run_context, executor, prompt_history)?;
             if resolved {
                 Ok(InitialRebaseOutcome::Succeeded {
                     new_head: read_repo_head_or_unknown(phase_ctx.workspace),
@@ -118,8 +119,12 @@ fn save_pre_rebase_checkpoint(
     }
 
     let default_branch = get_default_branch().unwrap_or_else(|_| "main".to_string());
-    let builder =
-        create_checkpoint_builder(phase_ctx, run_context, PipelinePhase::PreRebase, prompt_history);
+    let builder = create_checkpoint_builder(
+        phase_ctx,
+        run_context,
+        PipelinePhase::PreRebase,
+        prompt_history,
+    );
 
     if let Some(mut checkpoint) = builder.build_with_workspace(phase_ctx.workspace) {
         checkpoint.rebase_state = RebaseState::PreRebaseInProgress {

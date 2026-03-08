@@ -262,9 +262,7 @@ mod tests {
 
         // epoch1 should still find the entry stored under epoch0's Display string
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key_epoch1, &history, None, || {
-                "new".to_string()
-            });
+            get_stored_or_generate_prompt(&scope_key_epoch1, &history, None, || "new".to_string());
         assert_eq!(prompt, "stored");
         assert!(
             was_replayed,
@@ -284,12 +282,10 @@ mod tests {
             },
         );
 
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &history,
-            Some("abc123"),
-            || "generated".to_string(),
-        );
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, Some("abc123"), || {
+                "generated".to_string()
+            });
 
         assert_eq!(prompt, "stored prompt");
         assert!(was_replayed, "Should replay when content-ids match");
@@ -307,12 +303,10 @@ mod tests {
             },
         );
 
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &history,
-            Some("new_hash"),
-            || "fresh prompt".to_string(),
-        );
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, Some("new_hash"), || {
+                "fresh prompt".to_string()
+            });
 
         assert_eq!(prompt, "fresh prompt");
         assert!(
@@ -331,12 +325,10 @@ mod tests {
             PromptHistoryEntry::from_string("legacy prompt".to_string()),
         );
 
-        let (prompt, was_replayed) = get_stored_or_generate_prompt(
-            &scope_key,
-            &history,
-            Some("any_hash"),
-            || "generated".to_string(),
-        );
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, Some("any_hash"), || {
+                "generated".to_string()
+            });
 
         assert_eq!(prompt, "legacy prompt");
         assert!(
@@ -359,9 +351,7 @@ mod tests {
         );
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, None, || {
-                "generated".to_string()
-            });
+            get_stored_or_generate_prompt(&scope_key, &history, None, || "generated".to_string());
 
         assert_eq!(prompt, "stored prompt");
         assert!(

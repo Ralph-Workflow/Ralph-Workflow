@@ -611,6 +611,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("workflows/resume/v3/prompt_history.rs"),
     },
     SourceFile {
+        path: "workflows/resume/v3/rebase_conflict_replay.rs",
+        contents: include_str!("workflows/resume/v3/rebase_conflict_replay.rs"),
+    },
+    SourceFile {
         path: "workflows/resume/v3/smoke.rs",
         contents: include_str!("workflows/resume/v3/smoke.rs"),
     },

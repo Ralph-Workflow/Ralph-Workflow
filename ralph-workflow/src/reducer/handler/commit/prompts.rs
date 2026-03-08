@@ -177,11 +177,13 @@ impl MainEffectHandler {
             let prompt_captured_event = if was_replayed {
                 None
             } else {
-                Some(PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                    key: prompt_key.clone(),
-                    content: prompt,
-                    content_id: None,
-                }))
+                Some(PipelineEvent::PromptInput(
+                    PromptInputEvent::PromptCaptured {
+                        key: prompt_key.clone(),
+                        content: prompt,
+                        content_id: None,
+                    },
+                ))
             };
 
             // Build events: CommitPromptPrepared is primary, TemplateRendered is additional (if log exists)
@@ -330,8 +332,11 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
-                let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    None,
+                    || {
                         // Use log-based rendering
                         let rendered =
                             crate::prompts::prompt_generate_commit_message_with_diff_with_log(
@@ -341,7 +346,8 @@ impl MainEffectHandler {
                                 "commit_message_xml",
                             );
                         rendered.content
-                    });
+                    },
+                );
                 (prompt_key, prompt, was_replayed, true)
             }
             PromptMode::XsdRetry => {
@@ -392,11 +398,13 @@ impl MainEffectHandler {
         let prompt_captured_event = if was_replayed {
             None
         } else {
-            Some(PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: prompt_key.clone(),
-                content: prompt.clone(),
-                content_id: None,
-            }))
+            Some(PipelineEvent::PromptInput(
+                PromptInputEvent::PromptCaptured {
+                    key: prompt_key.clone(),
+                    content: prompt.clone(),
+                    content_id: None,
+                },
+            ))
         };
 
         let tmp_dir = Path::new(".agent/tmp");

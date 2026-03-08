@@ -2,6 +2,7 @@ use super::types::{ConflictResolutionContext, ConflictResolutionResult};
 use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::template_context::TemplateContext;
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
 
 /// Attempt to resolve rebase conflicts with AI.
 ///
@@ -26,21 +27,19 @@ pub fn try_resolve_conflicts(
 
     let conflicts = collect_conflict_info_or_error(conflicted_files, ctx.workspace, ctx.logger)?;
 
-    // Use stored_or_generate pattern for hardened resume.
-    // The rebase conflict key is a dynamic string (not a PromptScopeKey) because
-    // it is phase-name-based and outside the main pipeline phase hierarchy.
-    let prompt_key = format!("{}_conflict_resolution", phase.to_lowercase());
-    let (resolution_prompt, was_replayed) = prompt_history.get(&prompt_key).map_or_else(
-        || {
-            (
-                build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
-                false,
-            )
-        },
-        |stored| (stored.content.clone(), true),
-    );
+    // Use typed PromptScopeKey for conflict resolution (RFC-007 arch correction #2).
+    // Display output is byte-identical to the former format!("{}_conflict_resolution", ...).
+    // recovery_epoch is 0: the rebase handler owns epoch semantics via PromptCaptured events;
+    // this helper function is not a reducer.
+    let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
+    let prompt_key = scope_key.to_string();
+    let (resolution_prompt, was_replayed) =
+        get_stored_or_generate_prompt(&scope_key, prompt_history, None, || {
+            build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace)
+        });
 
-    // Capture the resolution prompt for deterministic resume (only if newly generated)
+    // Capture the resolution prompt for deterministic resume (only if newly generated).
+    // get_stored_or_generate_prompt reads from history; insert must be done by callers.
     if was_replayed {
         ctx.logger.info(&format!(
             "Using stored prompt from checkpoint for determinism: {prompt_key}"

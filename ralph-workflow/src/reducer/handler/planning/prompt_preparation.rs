@@ -16,7 +16,9 @@ use crate::prompts::{
     get_stored_or_generate_prompt, prompt_planning_xml_with_references, PromptScopeKey, RetryMode,
 };
 use crate::reducer::effect::EffectResult;
-use crate::reducer::event::{ErrorEvent, PipelineEvent, PipelinePhase, PromptInputEvent, WorkspaceIoErrorKind};
+use crate::reducer::event::{
+    ErrorEvent, PipelineEvent, PipelinePhase, PromptInputEvent, WorkspaceIoErrorKind,
+};
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::PromptMode;
 use crate::reducer::state::{
@@ -305,8 +307,11 @@ impl MainEffectHandler {
                     );
                     let prompt_key = scope_key.to_string();
                     let prompt_ref_for_template = prompt_ref.clone();
-                    let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        None,
+                        || {
                             // Use log-based rendering
                             let rendered =
                                 crate::prompts::prompt_planning_xml_with_references_and_log(
@@ -316,7 +321,8 @@ impl MainEffectHandler {
                                     "planning_xml",
                                 );
                             rendered.content
-                        });
+                        },
+                    );
 
                     // Validate freshly generated prompts (not replayed ones)
                     let rendered_log = if was_replayed {
@@ -369,11 +375,13 @@ impl MainEffectHandler {
             if was_replayed {
                 None
             } else {
-                Some(PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                    key: prompt_key_str.to_string(),
-                    content: prompt.clone(),
-                    content_id: None,
-                }))
+                Some(PipelineEvent::PromptInput(
+                    PromptInputEvent::PromptCaptured {
+                        key: prompt_key_str.to_string(),
+                        content: prompt.clone(),
+                        content_id: None,
+                    },
+                ))
             }
         });
 

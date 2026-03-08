@@ -39,13 +39,19 @@ impl PromptHistoryEntry {
     /// Create a new entry with content and optional content-id.
     #[must_use]
     pub const fn new(content: String, content_id: Option<String>) -> Self {
-        Self { content, content_id }
+        Self {
+            content,
+            content_id,
+        }
     }
 
     /// Create a legacy entry with no content-id (backward compat).
     #[must_use]
     pub const fn from_string(content: String) -> Self {
-        Self { content, content_id: None }
+        Self {
+            content,
+            content_id: None,
+        }
     }
 }
 
@@ -83,12 +89,17 @@ enum PromptHistoryEntryRepr {
 impl<'de> Deserialize<'de> for PromptHistoryEntry {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         match PromptHistoryEntryRepr::deserialize(deserializer)? {
-            PromptHistoryEntryRepr::Legacy(content) => {
-                Ok(Self { content, content_id: None })
-            }
-            PromptHistoryEntryRepr::Current { content, content_id } => {
-                Ok(Self { content, content_id })
-            }
+            PromptHistoryEntryRepr::Legacy(content) => Ok(Self {
+                content,
+                content_id: None,
+            }),
+            PromptHistoryEntryRepr::Current {
+                content,
+                content_id,
+            } => Ok(Self {
+                content,
+                content_id,
+            }),
         }
     }
 }

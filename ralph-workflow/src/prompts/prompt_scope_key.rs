@@ -41,6 +41,14 @@ pub enum PromptPhase {
     Review,
     /// Fix phase (pass-scoped).
     Fix,
+    /// Rebase conflict resolution phase (rebase-phase-name-scoped).
+    ///
+    /// `phase` is the lowercase rebase phase name (e.g., "planning", "development")
+    /// derived from git rebase context, not the main pipeline phase.
+    ConflictResolution {
+        /// The rebase phase name (lowercase).
+        phase: String,
+    },
 }
 
 /// The retry mode for a prompt invocation.
@@ -174,6 +182,33 @@ impl PromptScopeKey {
             recovery_epoch,
         }
     }
+
+    /// Construct a key for a rebase conflict resolution prompt.
+    ///
+    /// The `phase` argument is the rebase phase name (lowercase), e.g. `"planning"`
+    /// or `"development"`, derived from the git rebase context. It is NOT a main
+    /// pipeline phase — it identifies which rebase phase triggered the conflict.
+    ///
+    /// `recovery_epoch` is carried for auditing but the rebase handler owns epoch
+    /// semantics via `PromptCaptured` events. Pass `0` from effectful helpers.
+    ///
+    /// The `Display` output (`"{phase}_conflict_resolution"`) is byte-identical to
+    /// the former `format!("{}_conflict_resolution", phase.to_lowercase())` calls,
+    /// preserving backward-compatibility with existing checkpoint `prompt_history` maps.
+    #[must_use]
+    pub fn for_conflict_resolution(phase: &str, recovery_epoch: u32) -> Self {
+        Self {
+            phase: PromptPhase::ConflictResolution {
+                phase: phase.to_lowercase(),
+            },
+            iteration: 0,
+            pass: None,
+            attempt: None,
+            continuation: None,
+            retry_mode: RetryMode::Normal,
+            recovery_epoch,
+        }
+    }
 }
 
 /// Display implementation producing strings backward-compatible with existing checkpoint data.
@@ -206,6 +241,9 @@ impl fmt::Display for PromptScopeKey {
             ),
             PromptPhase::Review => format!("review_{}", self.pass.unwrap_or(1)),
             PromptPhase::Fix => format!("fix_{}", self.pass.unwrap_or(1)),
+            PromptPhase::ConflictResolution { phase } => {
+                format!("{phase}_conflict_resolution")
+            }
         };
         match &self.retry_mode {
             RetryMode::Normal => write!(f, "{base}"),
@@ -385,5 +423,59 @@ mod tests {
         let iter1 = PromptScopeKey::for_planning(1, RetryMode::Normal, 0).to_string();
         let iter2 = PromptScopeKey::for_planning(2, RetryMode::Normal, 0).to_string();
         assert_ne!(iter1, iter2);
+    }
+
+    // =========================================================================
+    // ConflictResolution phase key tests
+    // =========================================================================
+
+    #[test]
+    fn test_conflict_resolution_key_format_matches_legacy_raw_string() {
+        // Verifies byte-identical output to the former:
+        //   format!("{}_conflict_resolution", "planning".to_lowercase())
+        let key = PromptScopeKey::for_conflict_resolution("planning", 0);
+        assert_eq!(key.to_string(), "planning_conflict_resolution");
+    }
+
+    #[test]
+    fn test_conflict_resolution_key_for_different_phases() {
+        assert_eq!(
+            PromptScopeKey::for_conflict_resolution("development", 0).to_string(),
+            "development_conflict_resolution"
+        );
+        assert_eq!(
+            PromptScopeKey::for_conflict_resolution("RebaseOnly", 0).to_string(),
+            "rebaseonly_conflict_resolution"
+        );
+    }
+
+    #[test]
+    fn test_conflict_resolution_key_lowercases_phase() {
+        let upper = PromptScopeKey::for_conflict_resolution("PLANNING", 0).to_string();
+        let lower = PromptScopeKey::for_conflict_resolution("planning", 0).to_string();
+        assert_eq!(upper, lower);
+    }
+
+    #[test]
+    fn test_conflict_resolution_key_recovery_epoch_not_in_display() {
+        let key_epoch0 = PromptScopeKey::for_conflict_resolution("planning", 0);
+        let key_epoch1 = PromptScopeKey::for_conflict_resolution("planning", 1);
+        assert_eq!(
+            key_epoch0.to_string(),
+            key_epoch1.to_string(),
+            "recovery_epoch must not affect Display string for checkpoint compat"
+        );
+    }
+
+    #[test]
+    fn test_conflict_resolution_key_is_unique_from_pipeline_phase_keys() {
+        let conflict_key = PromptScopeKey::for_conflict_resolution("planning", 0).to_string();
+        let planning_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0).to_string();
+        let development_key =
+            PromptScopeKey::for_development(1, None, RetryMode::Normal, 0).to_string();
+        // Conflict key contains "_conflict_resolution" suffix, which pipeline keys do not.
+        assert_ne!(conflict_key, planning_key);
+        assert_ne!(conflict_key, development_key);
+        assert!(conflict_key.ends_with("_conflict_resolution"));
     }
 }
