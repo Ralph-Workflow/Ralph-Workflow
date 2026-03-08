@@ -12,6 +12,8 @@ pub struct CommandSpec {
     pub program: &'static str,
     pub args: &'static [&'static str],
     pub success_exit_codes: &'static [i32],
+    /// Environment variable overrides for this command.
+    pub extra_env: &'static [(&'static str, &'static str)],
 }
 
 #[derive(Debug, Clone)]
@@ -21,7 +23,7 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
-pub trait CommandRunner {
+pub trait CommandRunner: Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
 }
 
@@ -57,38 +59,34 @@ pub struct NativeCheck {
     pub run: fn(&std::path::Path) -> NativeCheckResult,
 }
 
-pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[NativeCheck {
-    name: "compliance-timeout-wrapper",
-    run: crate::compliance::check_timeout_wrappers,
-}];
-
-fn has_line_prefix(output: &str, prefix: &str) -> bool {
-    output
-        .lines()
-        .any(|line| line.trim_start().starts_with(prefix))
-}
+pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
+    NativeCheck {
+        name: "compliance-timeout-wrapper",
+        run: crate::compliance::check_timeout_wrappers,
+    },
+    NativeCheck {
+        name: "audit-no-shell-scripts",
+        run: crate::compliance::check_no_shell_scripts,
+    },
+];
 
 fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i32]) -> CheckStatus {
     if !success_exit_codes.contains(&exit_code) {
         return CheckStatus::Error;
     }
-
-    if has_line_prefix(stderr, "error:")
-        || has_line_prefix(stdout, "error:")
-        || has_line_prefix(stderr, "Error:")
-        || has_line_prefix(stdout, "Error:")
-    {
-        return CheckStatus::Error;
+    use crate::scanner::{scan_has_diagnostic_prefix, DiagnosticLevel};
+    // Single Aho-Corasick pass over each output (O(n+m) each).
+    match scan_has_diagnostic_prefix(stderr).max_level(scan_has_diagnostic_prefix(stdout)) {
+        DiagnosticLevel::Error => CheckStatus::Error,
+        DiagnosticLevel::Warning => CheckStatus::Warning,
+        DiagnosticLevel::Clean => CheckStatus::Pass,
     }
-
-    if has_line_prefix(stderr, "warning:") || has_line_prefix(stdout, "warning:") {
-        return CheckStatus::Warning;
-    }
-
-    CheckStatus::Pass
 }
 
-pub fn run_checks(runner: &dyn CommandRunner, checks: &[CommandSpec]) -> Result<VerifyReport> {
+pub fn run_checks(
+    runner: &(dyn CommandRunner + Sync),
+    checks: &[CommandSpec],
+) -> Result<VerifyReport> {
     for spec in checks {
         let output = runner
             .run(spec)
@@ -124,289 +122,80 @@ pub fn run_checks(runner: &dyn CommandRunner, checks: &[CommandSpec]) -> Result<
     })
 }
 
+/// Format native scan violations in rg-compatible `path:line:content` format.
+fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) -> String {
+    violations
+        .iter()
+        .map(|v| format!("{}:{}:{}", v.file.display(), v.line_number, v.line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Fast verification: native scan checks, then cargo checks via prefetch + sequential.
+///
+/// `prefetch_specs` are run concurrently in a background thread during the cargo phase to
+/// pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no prefetch is
+/// desired (e.g., in tests with fake runners).
+pub fn verify_fast(
+    runner: &(dyn CommandRunner + Sync),
+    repo_root: &std::path::Path,
+    native_checks: &[NativeCheck],
+    checks: &[CommandSpec],
+    prefetch_specs: &[CommandSpec],
+) -> Result<VerifyReport> {
+    // Phase 0: native checks (always sequential, very fast).
+    for check in native_checks {
+        let result = (check.run)(repo_root);
+        if result.status != CheckStatus::Pass {
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: check.name,
+                    status: result.status,
+                    exit_code: -1,
+                    stdout: result.message,
+                    stderr: String::new(),
+                }),
+            });
+        }
+    }
+
+    // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces all rg subprocess calls).
+    // Groups checks by directory, reads each source file once, O(n + m + z) per group.
+    let scan_results =
+        crate::scanner::run_native_scan_checks(repo_root, crate::scanner::NATIVE_SCAN_CHECKS);
+    for result in &scan_results {
+        if !result.passed {
+            let output = format_scan_violations(&result.violations);
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: result.check_name,
+                    status: CheckStatus::Error,
+                    exit_code: 1,
+                    stdout: output,
+                    stderr: String::new(),
+                }),
+            });
+        }
+    }
+
+    // Phase 2: cargo checks with optional concurrent prefetch.
+    // All scanning is now native (Phase 0.5), so we go directly to cargo checks.
+    run_cargo_prefetch(runner, prefetch_specs, checks)
+}
+
+/// All verification checks.  All scanning is now native (Aho-Corasick, Phase 0.5).
+/// Any future check that cannot be expressed natively should be added here with
+/// an explanation of why native expression is not feasible.
 pub const REQUIRED_CHECKS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "forbidden-allow-expect-scan",
-        program: "rg",
-        args: &[
-            "-n",
-            "-U",
-            "--pcre2",
-            "(?m)^\\s*#\\s*!?\\[\\s*(?:(?:allow|expect)\\s*\\(|cfg_attr\\s*\\((?:[^()]|\\([^()]*\\))*?,\\s*(?:allow|expect)\\s*\\()",
-            "--glob",
-            "!target/**",
-            "--glob",
-            "!.git/**",
-            "--glob",
-            "*.rs",
-            ".",
-        ],
-        // Exit code 1 means "no matches" which is success.
-        success_exit_codes: &[1],
-    },
-    // ── no-test-flags group (replaces no_test_flags_check.sh) ──────────────
-    CommandSpec {
-        name: "no-test-flags-cfg-test",
-        program: "rg",
-        args: &[
-            "-n",
-            r"cfg!\(test\)",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-test-flags-test-mode-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(test_mode|is_test|is_testing|testing_mode)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-test-flags-skip-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(skip_validation|skip_verify|skip_check|skip_auth|skip_api)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-test-flags-mock-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(mock_mode|fake_mode|stub_mode|use_mock|use_fake|use_stub)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-test-flags-testing-feature",
-        program: "rg",
-        args: &[
-            "-n",
-            r#"#\[cfg\(feature\s*=\s*"testing"\)\]"#,
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-test-flags-cfg-not-test",
-        program: "rg",
-        args: &[
-            "-n",
-            r"#\[cfg\(not\(test\)\)\]",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    // ── compliance group (process-spawn and serial checks from compliance_check.sh) ──
-    CommandSpec {
-        name: "compliance-no-process-spawn",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines (// prefix) to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*(std::process::Command::new|assert_cmd::Command::new)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-            "--glob",
-            "!_TEMPLATE.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "compliance-no-serial",
-        program: "rg",
-        args: &[
-            "-n",
-            r"#\[serial\]|use serial_test",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-            "--glob",
-            "!_TEMPLATE.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    // ── audit group (replaces audit_tests.sh critical gates) ────────────────
-    CommandSpec {
-        name: "audit-no-cfg-test-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*cfg!\(test\)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-real-fs-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*(std::fs::|TempDir|tempfile::)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-real-process-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*std::process::Command::new",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-serial-src",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*#\[serial\]",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-test-helpers-src",
-        program: "rg",
-        args: &[
-            "-n",
-            r"use test_helpers::|init_git_repo|commit_all|git_switch",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-env-mutations-integration",
-        program: "rg",
-        args: &[
-            "-n",
-            r"std::env::set_var|std::env::remove_var|env::set_var|env::remove_var",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-serial-process-system",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*#\[serial\]",
-            "tests/process_system_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-no-git2-process-system",
-        program: "rg",
-        args: &[
-            "-n",
-            r"git2::|init_git_repo",
-            "tests/process_system_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "audit-ignore-has-url",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            r"#\[ignore\b(?!.*https://)",
-            "tests/",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-    },
-    // Regression guard: no .sh files may be committed after the shell-script migration.
-    // rg --files exits 1 (no matches) = pass; exits 0 (matches found) = fail.
-    CommandSpec {
-        name: "audit-no-shell-scripts",
-        program: "rg",
-        args: &[
-            "--files",
-            "--glob",
-            "*.sh",
-            // Scope to directories where shell scripts previously lived.
-            // This aligns with the documented policy and avoids unintentionally forbidding
-            // intentionally committed .sh files elsewhere (e.g., fixtures).
-            "scripts/",
-            "tests/integration_tests/",
-        ],
-        // Exit code 1 means "no matches found" which is the success condition.
-        success_exit_codes: &[1],
-    },
-    CommandSpec {
-        name: "no-string-errors-handlers",
-        program: "rg",
-        args: &[
-            "-n",
-            "--pcre2",
-            r"\banyhow::anyhow!\(|\banyhow!\(|\banyhow::bail!\(|\bbail!\(|\banyhow::ensure!\(|\bensure!\(|\banyhow::format_err!\(|\bformat_err!\(|\banyhow::Error::msg\(",
-            "ralph-workflow/src/reducer/handler/",
-            "--glob",
-            "!**/tests/**",
-        ],
-        // Exit code 1 means "no matches" which is success.
-        success_exit_codes: &[1],
-    },
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
         program: "cargo",
         args: &["fmt", "--all", "--check"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-ralph-workflow",
@@ -422,6 +211,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-ralph-workflow-tests",
@@ -436,6 +226,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-test-helpers",
@@ -450,12 +241,22 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-xtask",
         program: "cargo",
-        args: &["clippy", "-p", "xtask", "--all-targets", "--", "-D", "warnings"],
+        args: &[
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── tests ────────────────────────────────────────────────────────────────
     CommandSpec {
@@ -463,12 +264,14 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["test", "-p", "xtask"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "test-ralph-workflow-lib",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "--all-features"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "test-integration",
@@ -481,6 +284,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "integration_tests",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── memory safety (replaces verify_memory_safety.sh and ci_performance_regression.sh) ──
     CommandSpec {
@@ -495,18 +299,21 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "memory_safety",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "memory-safety-benchmarks",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "benchmarks"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "memory-safety-executor",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "executor::tests"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── release build and custom lints ───────────────────────────────────────
     CommandSpec {
@@ -514,17 +321,83 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["build", "--release"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "dylint",
         program: "make",
         args: &["dylint"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
 ];
 
-pub fn verify(
-    runner: &dyn CommandRunner,
+/// Prefetch specs for xtask checks run concurrently with the sequential cargo phase.
+///
+/// These use the same `name` as the corresponding entries in REQUIRED_CHECKS so they
+/// share the same cache key (name + scope hash).  A separate `CARGO_TARGET_DIR` avoids
+/// holding the default target/ lock while the main sequential phase compiles other crates.
+pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
+    CommandSpec {
+        name: "clippy-xtask",
+        program: "cargo",
+        args: &[
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+    CommandSpec {
+        name: "test-xtask",
+        program: "cargo",
+        args: &["test", "-p", "xtask"],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+];
+
+/// Run prefetch specs concurrently with main specs.
+///
+/// Launches a background thread that runs `prefetch_specs` while the current
+/// thread runs `main_specs` sequentially.  When `prefetch_specs` complete they
+/// populate the `CachingCommandRunner` cache so that, if the sequential phase
+/// later reaches the same check names, it gets instant cache hits.
+///
+/// Returns the first failure in `main_specs` order.
+///
+/// Prefetch is a best-effort optimisation: failures in `prefetch_specs` must
+/// never fail verification, and are intentionally ignored.
+pub fn run_cargo_prefetch(
+    runner: &(dyn CommandRunner + Sync),
+    prefetch_specs: &[CommandSpec],
+    main_specs: &[CommandSpec],
+) -> Result<VerifyReport> {
+    std::thread::scope(|s| {
+        // Spawn background prefetch thread.
+        if !prefetch_specs.is_empty() {
+            s.spawn(|| {
+                // Best-effort: ignore errors and failures.
+                let _ = run_checks(runner, prefetch_specs);
+            });
+        }
+
+        // Main thread runs main specs sequentially.
+        let main_report = run_checks(runner, main_specs)?;
+
+        // Wait for prefetch to finish (scope join).
+        Ok::<_, anyhow::Error>(main_report)
+    })
+}
+
+#[cfg(test)]
+fn verify(
+    runner: &(dyn CommandRunner + Sync),
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
@@ -553,18 +426,19 @@ pub fn verify(
 mod tests {
     use super::*;
 
-    use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::collections::VecDeque;
+    use std::sync::Mutex;
 
     #[derive(Debug, Default)]
     struct FakeRunner {
-        outputs: RefCell<VecDeque<CommandOutput>>,
+        outputs: Mutex<VecDeque<CommandOutput>>,
     }
 
     impl FakeRunner {
         fn new(outputs: impl IntoIterator<Item = CommandOutput>) -> Self {
             Self {
-                outputs: RefCell::new(outputs.into_iter().collect()),
+                outputs: Mutex::new(outputs.into_iter().collect()),
             }
         }
     }
@@ -572,7 +446,8 @@ mod tests {
     impl CommandRunner for FakeRunner {
         fn run(&self, _spec: &CommandSpec) -> std::io::Result<CommandOutput> {
             self.outputs
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .pop_front()
                 .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "no output"))
         }
@@ -584,6 +459,41 @@ mod tests {
             program: "fake",
             args: &[],
             success_exit_codes: &[0],
+            extra_env: &[],
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct ByNameRunner {
+        outputs: Mutex<HashMap<&'static str, CommandOutput>>,
+        ran: Mutex<Vec<&'static str>>,
+    }
+
+    impl ByNameRunner {
+        fn with_output(self, name: &'static str, output: CommandOutput) -> Self {
+            self.outputs.lock().unwrap().insert(name, output);
+            self
+        }
+
+        fn ran(&self) -> Vec<&'static str> {
+            self.ran.lock().unwrap().clone()
+        }
+    }
+
+    impl CommandRunner for ByNameRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.ran.lock().unwrap().push(spec.name);
+            self.outputs
+                .lock()
+                .unwrap()
+                .get(spec.name)
+                .cloned()
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("no output configured for {}", spec.name),
+                    )
+                })
         }
     }
 
@@ -625,6 +535,7 @@ mod tests {
             program: "rg",
             args: &["pattern"],
             success_exit_codes: &[1],
+            extra_env: &[],
         }];
 
         // Act
@@ -760,18 +671,18 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct RecordingRunner {
-        ran: RefCell<Vec<&'static str>>,
+        ran: Mutex<Vec<&'static str>>,
     }
 
     impl RecordingRunner {
         fn ran(&self) -> Vec<&'static str> {
-            self.ran.borrow().clone()
+            self.ran.lock().unwrap().clone()
         }
     }
 
     impl CommandRunner for RecordingRunner {
         fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.ran.borrow_mut().push(spec.name);
+            self.ran.lock().unwrap().push(spec.name);
 
             Ok(CommandOutput {
                 exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
@@ -879,33 +790,12 @@ mod tests {
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(report.failure, None);
+        // After the Aho-Corasick migration, REQUIRED_CHECKS contains only the 2 complex
+        // PCRE2 rg checks and the cargo checks.  The 17 literal pattern checks and
+        // audit-no-shell-scripts are now handled natively (no CommandRunner involvement).
         assert_eq!(
             runner.ran(),
             vec![
-                // rg pattern checks
-                "forbidden-allow-expect-scan",
-                // no-test-flags group
-                "no-test-flags-cfg-test",
-                "no-test-flags-test-mode-params",
-                "no-test-flags-skip-params",
-                "no-test-flags-mock-params",
-                "no-test-flags-testing-feature",
-                "no-test-flags-cfg-not-test",
-                // compliance group
-                "compliance-no-process-spawn",
-                "compliance-no-serial",
-                // audit group
-                "audit-no-cfg-test-integration",
-                "audit-no-real-fs-integration",
-                "audit-no-real-process-integration",
-                "audit-no-serial-src",
-                "audit-no-test-helpers-src",
-                "audit-no-env-mutations-integration",
-                "audit-no-serial-process-system",
-                "audit-no-git2-process-system",
-                "audit-ignore-has-url",
-                "audit-no-shell-scripts",
-                "no-string-errors-handlers",
                 // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
@@ -952,49 +842,48 @@ mod tests {
     }
 
     #[test]
-    fn test_no_string_errors_handlers_check_is_in_required_checks() {
-        // TDD anchor: this test fails until the CommandSpec is added to REQUIRED_CHECKS
+    fn test_no_string_errors_handlers_check_is_in_native_scan_checks() {
+        // TDD anchor: no-string-errors-handlers is now a native Aho-Corasick scan check,
+        // not a rg subprocess check.  Verify it is registered in NATIVE_SCAN_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            crate::scanner::NATIVE_SCAN_CHECKS
                 .iter()
                 .any(|c| c.name == "no-string-errors-handlers"),
-            "REQUIRED_CHECKS must include the no-string-errors-handlers audit check"
+            "NATIVE_SCAN_CHECKS must include the no-string-errors-handlers audit check"
         );
     }
 
     #[test]
-    fn test_audit_no_shell_scripts_check_is_in_required_checks() {
-        // TDD anchor: this test fails until audit-no-shell-scripts is added to REQUIRED_CHECKS.
-        // Policy: no .sh files may exist in scripts/ or tests/integration_tests/.
-        // This check prevents regression after the shell-script migration.
+    fn test_audit_no_shell_scripts_check_is_in_native_required_checks() {
+        // TDD anchor: audit-no-shell-scripts is now a NativeCheck (file-existence check),
+        // not a rg subprocess check.  Verify it is registered in NATIVE_REQUIRED_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            NATIVE_REQUIRED_CHECKS
                 .iter()
                 .any(|c| c.name == "audit-no-shell-scripts"),
-            "REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
+            "NATIVE_REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
         );
     }
 
     #[test]
-    fn test_audit_no_shell_scripts_check_only_scans_scripts_and_integration_tests() {
-        // TDD anchor: this test fails until audit-no-shell-scripts is scoped to the intended
-        // directories (scripts/ and tests/integration_tests/) instead of scanning the entire repo.
-        let spec = REQUIRED_CHECKS
-            .iter()
-            .find(|c| c.name == "audit-no-shell-scripts")
-            .expect("audit-no-shell-scripts check must exist");
+    fn test_audit_ignore_has_url_check_is_in_native_scan_checks() {
+        // TDD anchor: audit-ignore-has-url is now a native NegativeLookahead scan check.
+        assert!(
+            crate::scanner::NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-ignore-has-url"),
+            "NATIVE_SCAN_CHECKS must include the audit-ignore-has-url check"
+        );
+    }
 
+    #[test]
+    fn test_forbidden_allow_expect_is_in_native_scan_checks() {
+        // TDD anchor: forbidden-allow-expect-scan is now a native AnyLiteralAtLineStart check.
         assert!(
-            spec.args.contains(&"scripts/"),
-            "audit-no-shell-scripts must scan scripts/"
-        );
-        assert!(
-            spec.args.contains(&"tests/integration_tests/"),
-            "audit-no-shell-scripts must scan tests/integration_tests/"
-        );
-        assert!(
-            !spec.args.contains(&"."),
-            "audit-no-shell-scripts must not scan the entire repository"
+            crate::scanner::NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "forbidden-allow-expect-scan"),
+            "NATIVE_SCAN_CHECKS must include the forbidden-allow-expect-scan check"
         );
     }
 
@@ -1007,12 +896,261 @@ mod tests {
             "at least one native check should be registered"
         );
 
-        // Confirm the expected native check is present
+        // Confirm the expected native checks are present
         assert!(
             NATIVE_REQUIRED_CHECKS
                 .iter()
                 .any(|c| c.name == "compliance-timeout-wrapper"),
             "compliance-timeout-wrapper native check must be registered"
         );
+        assert!(
+            NATIVE_REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-no-shell-scripts"),
+            "audit-no-shell-scripts native check must be registered"
+        );
+    }
+
+    // ── TDD tests for concurrent execution ──────────────────────────────────
+
+    #[test]
+    fn test_required_checks_first_entry_is_fmt_check() {
+        // TDD anchor: now that all scanning is native, fmt-check is the first entry.
+        assert_eq!(
+            REQUIRED_CHECKS[0].name, "fmt-check",
+            "REQUIRED_CHECKS[0] must be fmt-check (first cargo check)"
+        );
+    }
+
+    #[test]
+    fn test_required_checks_contain_no_rg_entries() {
+        // TDD anchor: all scanning is now native; no rg subprocesses should remain.
+        for spec in REQUIRED_CHECKS {
+            assert_ne!(
+                spec.program, "rg",
+                "check '{}' must not use rg — all scanning is now native",
+                spec.name
+            );
+        }
+    }
+
+    // ── TDD tests for concurrent execution ──────────────────────────────────
+
+    #[test]
+    fn test_verify_fast_runs_all_required_checks() {
+        // TDD anchor: verify_fast() must exercise all REQUIRED_CHECKS.
+        let runner = RecordingRunner::default();
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+            &[], // no prefetch in tests
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(report.failure, None);
+
+        let ran = runner.ran();
+        use std::collections::HashSet;
+        let ran_set: HashSet<&str> = ran.iter().copied().collect();
+
+        for spec in REQUIRED_CHECKS {
+            assert!(
+                ran_set.contains(spec.name),
+                "verify_fast must run check '{}'",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_verify_fast_stops_on_first_cargo_failure() {
+        // TDD anchor: all scanning is now native (no rg phase); verify_fast proceeds
+        // directly to cargo checks.  When the first cargo check (fmt-check) fails,
+        // later checks must NOT run.
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        }]);
+
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+            &[], // no prefetch in tests
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "fmt-check");
+    }
+
+    #[test]
+    fn test_verify_fast_stops_on_cargo_check_failure() {
+        // TDD anchor: when first cargo check (fmt-check) fails, later cargo checks must not run.
+        // All scanning is now native (no rg phase), so the first runner call is fmt-check.
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo (success_exit_codes: &[0])
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        }]);
+
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+            &[], // no prefetch in tests
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "fmt-check");
+    }
+
+    // ── TDD tests for cargo prefetch ────────────────────────────────────────
+
+    #[test]
+    fn test_cargo_prefetch_specs_use_same_names_as_required_checks() {
+        // TDD anchor: CARGO_PREFETCH_SPECS must use the same check names as REQUIRED_CHECKS
+        // so the cache key (name + scope hash) is shared between prefetch and sequential runs.
+        for spec in CARGO_PREFETCH_SPECS {
+            assert!(
+                REQUIRED_CHECKS.iter().any(|c| c.name == spec.name),
+                "prefetch spec '{}' must have a matching entry in REQUIRED_CHECKS",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_cargo_prefetch_specs_have_extra_env() {
+        // TDD anchor: prefetch specs must carry CARGO_TARGET_DIR override to avoid lock
+        // contention with the main sequential build.
+        for spec in CARGO_PREFETCH_SPECS {
+            let has_cargo_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
+            assert!(
+                has_cargo_target_dir,
+                "prefetch spec \'{}\' must set CARGO_TARGET_DIR in extra_env",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_populates_results_for_all_specs() {
+        // TDD anchor: run_cargo_prefetch must run all prefetch specs and all main specs,
+        // returning Success when all pass.
+        let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
+
+        let runner = RecordingRunner::default();
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "fmt-check",
+            program: "cargo",
+            args: &["fmt", "--all", "--check"],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let prefetch_specs = CARGO_PREFETCH_SPECS;
+
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let ran = runner.ran();
+        assert!(
+            ran.contains(&"fmt-check"),
+            "run_cargo_prefetch must run main specs"
+        );
+        for name in &prefetch_names {
+            assert!(
+                ran.contains(name),
+                "run_cargo_prefetch must run prefetch spec \'{name}\'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_returns_failure_on_main_spec_failure() {
+        // TDD anchor: if a main spec fails, run_cargo_prefetch must return Failure.
+        let outputs = vec![CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        }];
+        let runner = FakeRunner::new(outputs);
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "fmt-check-fail",
+            program: "cargo",
+            args: &["fmt", "--all", "--check"],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let report = run_cargo_prefetch(&runner, &[], main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "fmt-check-fail");
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_does_not_fail_when_only_prefetch_fails() {
+        // Prefetch is a best-effort optimisation; verification correctness is determined
+        // by the sequential main specs.
+        let runner = ByNameRunner::default()
+            .with_output(
+                "prefetch-fails",
+                CommandOutput {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "error: prefetch failed".to_string(),
+                },
+            )
+            .with_output(
+                "main-passes",
+                CommandOutput {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            );
+
+        let prefetch_specs: &[CommandSpec] = &[CommandSpec {
+            name: "prefetch-fails",
+            program: "cargo",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "main-passes",
+            program: "cargo",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        // Both specs should have been invoked (order is not guaranteed due to concurrency).
+        let ran = runner.ran();
+        assert!(ran.contains(&"prefetch-fails"));
+        assert!(ran.contains(&"main-passes"));
     }
 }
