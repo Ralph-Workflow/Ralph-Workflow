@@ -1205,7 +1205,9 @@ mod tests {
 
     #[test]
     fn test_run_checks_concurrent_collects_first_failure() {
-        // Arrange: first check fails (by order), rest pass
+        // Arrange: both checks fail so that the result is deterministic even with concurrent
+        // thread scheduling. When both fail, run_checks_concurrent always returns the first
+        // failure BY CHECK-LIST ORDER (not by completion order), which is "fail-check".
         let checks = [
             CommandSpec {
                 name: "fail-check",
@@ -1214,7 +1216,7 @@ mod tests {
                 success_exit_codes: &[0],
             },
             CommandSpec {
-                name: "pass-check",
+                name: "second-fail-check",
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
@@ -1227,8 +1229,8 @@ mod tests {
                 stderr: String::new(),
             },
             CommandOutput {
-                exit_code: 0,
-                stdout: String::new(),
+                exit_code: 42,
+                stdout: "also failing".to_string(),
                 stderr: String::new(),
             },
         ]);
@@ -1237,11 +1239,11 @@ mod tests {
         let report =
             run_checks_concurrent(&runner, &checks).expect("concurrent checks should not error");
 
-        // Assert
+        // Assert: even though both checks fail concurrently, the FIRST failure by check-list
+        // order is returned — "fail-check" at index 0, not "second-fail-check" at index 1.
         assert_eq!(report.exit, VerifyExitCode::Failure);
         let failure = report.failure.expect("expected failure details");
         assert_eq!(failure.name, "fail-check");
-        assert_eq!(failure.exit_code, 42);
     }
 
     #[test]
@@ -1275,19 +1277,16 @@ mod tests {
     #[test]
     fn test_verify_fast_stops_on_rg_group_failure() {
         // TDD anchor: when an rg check fails, cargo checks must NOT run.
-        // Provide a failing output for the first rg check, then pass for remaining rg checks.
+        // All rg checks fail so the first failure by check-list order is deterministic:
+        // concurrent threads may consume outputs in any order, but since every rg output
+        // is a failure, run_checks_concurrent always returns the first failure BY ORDER
+        // ("forbidden-allow-expect-scan" at index 0).
         let mut outputs: Vec<CommandOutput> = Vec::new();
-        // First rg check fails
-        outputs.push(CommandOutput {
-            exit_code: 0, // exit 0 = matches found = failure for rg checks (success_exit_codes: &[1])
-            stdout: "found forbidden pattern".to_string(),
-            stderr: String::new(),
-        });
-        // Rest of rg checks pass (RG_SCAN_END - 1 more)
-        for _ in 1..RG_SCAN_END {
+        // All rg checks fail (exit 0 = matches found = failure for rg success_exit_codes: &[1])
+        for _ in 0..RG_SCAN_END {
             outputs.push(CommandOutput {
-                exit_code: 1, // exit 1 = no matches = success for rg checks
-                stdout: String::new(),
+                exit_code: 0,
+                stdout: "found forbidden pattern".to_string(),
                 stderr: String::new(),
             });
         }

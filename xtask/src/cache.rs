@@ -25,6 +25,15 @@ pub enum CheckScope {
     Build(&'static [&'static str]),
 }
 
+/// Returns a stable string key for a scope, used for in-process memoization.
+/// The key encodes both the scope type (directories vs build) and the directory list.
+pub fn scope_memo_key(scope: &CheckScope) -> String {
+    match scope {
+        CheckScope::Directories(dirs) => format!("d:{}", dirs.join(",")),
+        CheckScope::Build(dirs) => format!("b:{}", dirs.join(",")),
+    }
+}
+
 /// Returns the scope for a given check name. Checks not listed here
 /// are assumed to have Build scope (most conservative: any change triggers re-run).
 pub fn scope_for(check_name: &str) -> CheckScope {
@@ -53,7 +62,42 @@ pub fn scope_for(check_name: &str) -> CheckScope {
         "audit-no-serial-process-system" | "audit-no-git2-process-system" => {
             CheckScope::Directories(&["tests/process_system_tests"])
         }
-        // All cargo-based checks use the full build scope
+        // fmt-check: only .rs file content matters, not Cargo.lock
+        "fmt-check" => CheckScope::Directories(&[
+            "ralph-workflow/src",
+            "tests",
+            "xtask/src",
+            "test-helpers/src",
+        ]),
+        // per-package clippy and tests: only the package's own source + Cargo.lock
+        "clippy-ralph-workflow"
+        | "test-ralph-workflow-lib"
+        | "memory-safety-benchmarks"
+        | "memory-safety-executor"
+        | "dylint" => CheckScope::Build(&["ralph-workflow/src"]),
+
+        "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
+
+        "clippy-test-helpers" => CheckScope::Build(&["test-helpers/src", "ralph-workflow/src"]),
+
+        "clippy-ralph-workflow-tests" => {
+            CheckScope::Build(&["tests", "ralph-workflow/src", "test-helpers/src"])
+        }
+
+        "test-integration" | "memory-safety-integration" => CheckScope::Build(&[
+            "ralph-workflow/src",
+            "tests/integration_tests",
+            "test-helpers/src",
+        ]),
+
+        "release-build" => CheckScope::Build(&[
+            "ralph-workflow/src",
+            "tests",
+            "xtask/src",
+            "test-helpers/src",
+        ]),
+
+        // conservative fallback for any unrecognised check
         _ => CheckScope::Build(&["ralph-workflow/src", "tests", "xtask/src"]),
     }
 }
@@ -126,7 +170,10 @@ struct CacheFile {
 pub struct CachingCommandRunner {
     inner: Box<dyn CommandRunner + Send + Sync>,
     repo_root: PathBuf,
-    memory: Mutex<HashMap<String, CacheEntry>>,
+    pub(crate) memory: Mutex<HashMap<String, CacheEntry>>,
+    /// In-process memoization: avoids re-traversing the same directories
+    /// for multiple checks that share the same scope within a single run.
+    pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
 }
 
 impl CachingCommandRunner {
@@ -143,6 +190,7 @@ impl CachingCommandRunner {
             inner: Box::new(inner),
             repo_root,
             memory: Mutex::new(memory),
+            scope_memo: Mutex::new(HashMap::new()),
         }
     }
 
@@ -157,12 +205,25 @@ impl CachingCommandRunner {
             let _ = std::fs::write(self.cache_path(), json);
         }
     }
+
+    fn compute_or_cached_scope_hash(&self, scope: &CheckScope) -> u64 {
+        let key = scope_memo_key(scope);
+        {
+            let memo = self.scope_memo.lock().unwrap();
+            if let Some(&h) = memo.get(&key) {
+                return h;
+            }
+        }
+        let h = compute_scope_hash(&self.repo_root, scope);
+        self.scope_memo.lock().unwrap().insert(key, h);
+        h
+    }
 }
 
 impl CommandRunner for CachingCommandRunner {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
         let scope = scope_for(spec.name);
-        let hash = compute_scope_hash(&self.repo_root, &scope);
+        let hash = self.compute_or_cached_scope_hash(&scope);
         let key = format!("{}:{}", spec.name, hash);
 
         // Check cache.
@@ -365,6 +426,120 @@ mod tests {
             count.load(Ordering::SeqCst),
             2,
             "failures must not be cached; inner runner called again"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── Granular scope tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_scope_for_clippy_ralph_workflow_is_granular() {
+        let key = scope_memo_key(&scope_for("clippy-ralph-workflow"));
+        // Must be a Build scope targeting only ralph-workflow/src, not the broad fallback.
+        assert_eq!(key, "b:ralph-workflow/src");
+    }
+
+    #[test]
+    fn test_scope_for_clippy_xtask_is_granular() {
+        let key = scope_memo_key(&scope_for("clippy-xtask"));
+        assert_eq!(key, "b:xtask/src");
+    }
+
+    #[test]
+    fn test_scope_for_test_xtask_is_granular() {
+        let key = scope_memo_key(&scope_for("test-xtask"));
+        assert_eq!(key, "b:xtask/src");
+    }
+
+    #[test]
+    fn test_scope_for_fmt_check_uses_directories_not_build() {
+        let key = scope_memo_key(&scope_for("fmt-check"));
+        // fmt-check should be a Directories scope (no Cargo.lock dependency).
+        assert!(
+            key.starts_with("d:"),
+            "fmt-check must use Directories scope, got: {key}"
+        );
+        // Must include all four source trees.
+        assert!(
+            key.contains("ralph-workflow/src"),
+            "missing ralph-workflow/src"
+        );
+        assert!(key.contains("tests"), "missing tests");
+        assert!(key.contains("xtask/src"), "missing xtask/src");
+        assert!(key.contains("test-helpers/src"), "missing test-helpers/src");
+    }
+
+    #[test]
+    fn test_scope_memo_key_is_stable() {
+        // Same scope must always produce the same key.
+        let k1 = scope_memo_key(&CheckScope::Build(&["ralph-workflow/src"]));
+        let k2 = scope_memo_key(&CheckScope::Build(&["ralph-workflow/src"]));
+        assert_eq!(k1, k2);
+
+        let k3 = scope_memo_key(&CheckScope::Directories(&["ralph-workflow/src"]));
+        // Build and Directories keys for same dirs must differ.
+        assert_ne!(k1, k3);
+    }
+
+    #[test]
+    fn test_scope_memo_deduplicates_traversals() {
+        // Two checks that share the same scope should only traverse directories once.
+        // We verify this by checking that both checks produce the same hash AND
+        // that after the first run the scope_memo is populated.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-scope-memo");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        // clippy-xtask and test-xtask share the same scope: Build(&["xtask/src"])
+        let scope1 = scope_for("clippy-xtask");
+        let scope2 = scope_for("test-xtask");
+        let key1 = scope_memo_key(&scope1);
+        let key2 = scope_memo_key(&scope2);
+        assert_eq!(
+            key1, key2,
+            "clippy-xtask and test-xtask must share the same scope key"
+        );
+
+        // First hash computation populates the memo.
+        let h1 = runner.compute_or_cached_scope_hash(&scope_for("clippy-xtask"));
+        {
+            let memo = runner.scope_memo.lock().unwrap();
+            assert!(
+                memo.contains_key(&key1),
+                "scope memo must be populated after first hash"
+            );
+        }
+
+        // Second computation for same key returns same hash from memo.
+        let h2 = runner.compute_or_cached_scope_hash(&scope_for("test-xtask"));
+        assert_eq!(h1, h2, "same scope must produce same hash");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_caching_runner_reuses_scope_hash_for_same_scope() {
+        // After running two checks with the same scope, scope_memo must hold exactly one entry.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-reuse-scope");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let spec1 = make_spec("clippy-xtask");
+        let spec2 = make_spec("test-xtask");
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let _ = runner.run(&spec1).unwrap();
+        let _ = runner.run(&spec2).unwrap();
+
+        // Both checks map to the same scope key, so scope_memo should have exactly 1 entry.
+        let memo_len = runner.scope_memo.lock().unwrap().len();
+        assert_eq!(
+            memo_len, 1,
+            "two checks with same scope should share one scope_memo entry"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
