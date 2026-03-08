@@ -7,6 +7,29 @@ import { PromptTemplatePicker } from "./PromptTemplatePicker";
 import { PROMPT_TEMPLATES } from "./promptTemplates";
 import { PromptReviewPanel } from "./PromptReviewPanel";
 
+const PRESETS_KEY = "ralph_gui_presets";
+
+interface LaunchPreset {
+  name: string;
+  developerIterations: number;
+  reviewerPasses: number;
+  agentProfile: string | null;
+}
+
+function loadPresets(): LaunchPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as LaunchPreset[];
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: LaunchPreset[]): void {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
 type WizardStep = "template" | "config" | "preflight";
 
 interface NewSessionWizardProps {
@@ -40,6 +63,10 @@ export function NewSessionWizard({
     string | null
   >(null);
 
+  // Preset state
+  const [presets, setPresets] = useState<LaunchPreset[]>(() => loadPresets());
+  const [presetNameInput, setPresetNameInput] = useState("");
+
   // Load agent profiles when repo path is known
   useEffect(() => {
     if (!repoPath) return;
@@ -54,6 +81,36 @@ export function NewSessionWizard({
   }, [repoPath]);
 
   const promptPath = repoPath ? `${repoPath}/PROMPT.md` : "";
+
+  function handleSavePreset() {
+    if (!presetNameInput.trim()) return;
+    const updated = [
+      ...presets.filter((p) => p.name !== presetNameInput.trim()),
+      {
+        name: presetNameInput.trim(),
+        developerIterations,
+        reviewerPasses,
+        agentProfile: selectedAgentProfile,
+      },
+    ];
+    savePresets(updated);
+    setPresets(updated);
+    setPresetNameInput("");
+  }
+
+  function handleLoadPreset(name: string) {
+    const preset = presets.find((p) => p.name === name);
+    if (!preset) return;
+    setDeveloperIterations(preset.developerIterations);
+    setReviewerPasses(preset.reviewerPasses);
+    setSelectedAgentProfile(preset.agentProfile);
+  }
+
+  function handleDeletePreset(name: string) {
+    const updated = presets.filter((p) => p.name !== name);
+    savePresets(updated);
+    setPresets(updated);
+  }
 
   function handleTemplateSelect(content: string) {
     setPromptContent(content);
@@ -191,6 +248,69 @@ export function NewSessionWizard({
         </div>
       )}
 
+      {/* Preset picker */}
+      {presets.length > 0 && (
+        <div>
+          <label className="section-label">Load preset</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <select
+              data-testid="load-preset-select"
+              className="input"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) handleLoadPreset(e.target.value);
+              }}
+              style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
+            >
+              <option value="">— select a preset —</option>
+              {presets.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {/* Saved preset list with delete buttons */}
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {presets.map((p) => (
+              <span
+                key={p.name}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 8px",
+                  borderRadius: 100,
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-subtle)",
+                  fontSize: 11,
+                  color: "var(--text-secondary)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                {p.name}
+                <button
+                  data-testid={`delete-preset-${p.name}`}
+                  onClick={() => handleDeletePreset(p.name)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                    fontSize: 10,
+                    padding: 0,
+                    lineHeight: 1,
+                  }}
+                  title={`Delete preset "${p.name}"`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Iteration config */}
       <div
         style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
@@ -222,6 +342,30 @@ export function NewSessionWizard({
             value={reviewerPasses}
             onChange={(e) => setReviewerPasses(Number(e.target.value))}
           />
+        </div>
+      </div>
+
+      {/* Save as preset */}
+      <div>
+        <label className="section-label">Save current config as preset</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            data-testid="preset-name-input"
+            className="input input-mono"
+            value={presetNameInput}
+            onChange={(e) => setPresetNameInput(e.target.value)}
+            placeholder="Preset name…"
+            style={{ flex: 1 }}
+          />
+          <button
+            data-testid="save-preset-button"
+            className="btn btn-secondary"
+            onClick={handleSavePreset}
+            disabled={!presetNameInput.trim()}
+            style={{ flexShrink: 0 }}
+          >
+            Save
+          </button>
         </div>
       </div>
 

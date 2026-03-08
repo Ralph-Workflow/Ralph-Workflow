@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import worktreeReducer, {
   fetchWorktrees,
   createNewWorktree,
   switchActiveContext,
   setActiveWorktree,
+  initializeRepo,
 } from "./worktreeSlice";
 import type { WorktreeInfo } from "../../types";
 
@@ -45,6 +46,11 @@ const mockMainWorktree: WorktreeInfo = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+});
+
+afterEach(() => {
+  localStorage.clear();
 });
 
 describe("worktreeSlice", () => {
@@ -117,5 +123,63 @@ describe("worktreeSlice", () => {
     expect(store.getState().worktrees.activeWorktreePath).toBe(
       "/my/wt-50-feature",
     );
+  });
+
+  it("fetchWorktrees.pending sets status to loading", () => {
+    mockListWorktrees.mockReturnValue(new Promise(() => undefined));
+    const store = makeStore();
+    void store.dispatch(fetchWorktrees("/my/repo"));
+    expect(store.getState().worktrees.status).toBe("loading");
+  });
+
+  // --- initializeRepo tests ---
+
+  it("initializeRepo.pending sets status to loading", () => {
+    mockListWorktrees.mockReturnValue(new Promise(() => undefined));
+    const store = makeStore();
+    void store.dispatch(initializeRepo("/my/repo"));
+    expect(store.getState().worktrees.status).toBe("loading");
+  });
+
+  it("initializeRepo.fulfilled sets worktrees and lastRepoPath", async () => {
+    mockListWorktrees.mockResolvedValueOnce([mockMainWorktree, mockWorktree]);
+    const store = makeStore();
+    await store.dispatch(initializeRepo("/my/repo"));
+    const state = store.getState().worktrees;
+    expect(state.status).toBe("succeeded");
+    expect(state.worktrees).toHaveLength(2);
+    expect(state.lastRepoPath).toBe("/my/repo");
+  });
+
+  it("initializeRepo.fulfilled persists lastRepoPath to localStorage", async () => {
+    mockListWorktrees.mockResolvedValueOnce([mockMainWorktree]);
+    const store = makeStore();
+    await store.dispatch(initializeRepo("/my/repo"));
+    expect(localStorage.getItem("ralph_gui_last_repo")).toBe("/my/repo");
+  });
+
+  it("initializeRepo.rejected sets status to failed with error", async () => {
+    mockListWorktrees.mockRejectedValueOnce(new Error("Not a git repo"));
+    const store = makeStore();
+    await store.dispatch(initializeRepo("/bad/path"));
+    const state = store.getState().worktrees;
+    expect(state.status).toBe("failed");
+    expect(state.error).toBe("Not a git repo");
+  });
+
+  it("switchActiveContext with null worktreePath sets activeWorktreePath to null", async () => {
+    mockSwitchContext.mockResolvedValueOnce(undefined);
+    const store = makeStore();
+    // First switch to a worktree
+    await store.dispatch(
+      switchActiveContext({ repoPath: "/my/repo", worktreePath: "/my/wt-50" }),
+    );
+    expect(store.getState().worktrees.activeWorktreePath).toBe("/my/wt-50");
+    // Then switch back to direct repo
+    mockSwitchContext.mockResolvedValueOnce(undefined);
+    await store.dispatch(
+      switchActiveContext({ repoPath: "/my/repo", worktreePath: null }),
+    );
+    expect(store.getState().worktrees.activeWorktreePath).toBeNull();
   });
 });

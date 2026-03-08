@@ -53,3 +53,8 @@ wt-*/
 # Dylint build artifacts
 lints/*/target/
 lints/*/Cargo.lock
+
+# Ralph GUI frontend build artifacts
+ralph-gui/ui/node_modules/
+ralph-gui/ui/dist/
+ralph-gui/ui/coverage/

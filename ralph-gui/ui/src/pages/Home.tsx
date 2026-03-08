@@ -68,7 +68,7 @@ export function Home() {
                 className="card card-elevated"
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}
               >
-                <RunStatusBadge status="Paused" showLabel={false} />
+                <RunStatusBadge status="Paused" showLabel={false} isDegraded={run.is_degraded} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>
                     {run.run_id.slice(0, 16)}

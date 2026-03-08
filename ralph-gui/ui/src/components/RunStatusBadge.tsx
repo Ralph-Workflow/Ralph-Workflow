@@ -4,6 +4,7 @@ interface RunStatusBadgeProps {
   status: RunStatus;
   showLabel?: boolean;
   size?: "sm" | "md";
+  isDegraded?: boolean;
 }
 
 const STATUS_CONFIG: Record<
@@ -51,46 +52,71 @@ export function RunStatusBadge({
   status,
   showLabel = true,
   size = "md",
+  isDegraded = false,
 }: RunStatusBadgeProps) {
   const cfg = STATUS_CONFIG[status];
   const dotSize = size === "sm" ? 6 : 8;
 
   return (
-    <span
-      title={cfg.description}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding:
-          showLabel
-            ? size === "sm"
-              ? "2px 8px"
-              : "3px 10px"
-            : "3px",
-        borderRadius: 100,
-        background: cfg.bg,
-        border: `1px solid ${cfg.color}30`,
-        fontSize: size === "sm" ? 11 : 12,
-        fontWeight: 500,
-        color: cfg.color,
-        whiteSpace: "nowrap",
-        userSelect: "none",
-      }}
-    >
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <span
+        title={cfg.description}
         style={{
-          width: dotSize,
-          height: dotSize,
-          borderRadius: "50%",
-          background: cfg.color,
-          flexShrink: 0,
-          animation: cfg.pulse
-            ? "pulse-dot 1.4s ease-in-out infinite"
-            : undefined,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding:
+            showLabel
+              ? size === "sm"
+                ? "2px 8px"
+                : "3px 10px"
+              : "3px",
+          borderRadius: 100,
+          background: cfg.bg,
+          border: `1px solid ${cfg.color}30`,
+          fontSize: size === "sm" ? 11 : 12,
+          fontWeight: 500,
+          color: cfg.color,
+          whiteSpace: "nowrap",
+          userSelect: "none",
         }}
-      />
-      {showLabel && <span>{cfg.label}</span>}
+      >
+        <span
+          style={{
+            width: dotSize,
+            height: dotSize,
+            borderRadius: "50%",
+            background: cfg.color,
+            flexShrink: 0,
+            animation: cfg.pulse
+              ? "pulse-dot 1.4s ease-in-out infinite"
+              : undefined,
+          }}
+        />
+        {showLabel && <span>{cfg.label}</span>}
+      </span>
+      {isDegraded && (
+        <span
+          title="Running with degraded conditions — retries exceeded or fallback agent active"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: showLabel ? "3px 8px" : "3px",
+            borderRadius: 100,
+            background: "rgba(232,168,56,0.10)",
+            border: "1px solid rgba(232,168,56,0.35)",
+            fontSize: size === "sm" ? 11 : 12,
+            fontWeight: 500,
+            color: "var(--accent)",
+            whiteSpace: "nowrap",
+            userSelect: "none",
+          }}
+        >
+          <span style={{ fontSize: 10 }}>⚠</span>
+          {showLabel && <span>Degraded</span>}
+        </span>
+      )}
     </span>
   );
 }

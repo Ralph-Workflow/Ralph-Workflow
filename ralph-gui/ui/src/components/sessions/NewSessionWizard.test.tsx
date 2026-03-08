@@ -1,3 +1,5 @@
+// NOTE: localStorage is cleared in beforeEach to prevent preset cross-contamination.
+// All preset-related tests use ralph_gui_presets as the storage key.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
@@ -59,6 +61,7 @@ function renderWizard(onClose = vi.fn()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 describe("NewSessionWizard", () => {
@@ -128,5 +131,69 @@ describe("NewSessionWizard", () => {
     );
     fireEvent.click(screen.getByText("Launch session"));
     await waitFor(() => expect(mockLaunchRalphSession).toHaveBeenCalledOnce());
+  });
+
+  // --- Preset save/load/delete tests ---
+
+  it("shows Save as preset button on config step", () => {
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    expect(screen.getByTestId("save-preset-button")).toBeInTheDocument();
+  });
+
+  it("saving a preset writes to localStorage under ralph_gui_presets", () => {
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    // Enter a preset name and save
+    const nameInput = screen.getByTestId("preset-name-input");
+    fireEvent.change(nameInput, { target: { value: "My Preset" } });
+    fireEvent.click(screen.getByTestId("save-preset-button"));
+    const stored = JSON.parse(localStorage.getItem("ralph_gui_presets") ?? "[]") as unknown[];
+    expect(stored).toHaveLength(1);
+    expect((stored[0] as { name: string }).name).toBe("My Preset");
+  });
+
+  it("loads a saved preset and populates dev iterations field", () => {
+    // Seed a preset in localStorage
+    localStorage.setItem(
+      "ralph_gui_presets",
+      JSON.stringify([
+        {
+          name: "Quick Run",
+          developerIterations: 3,
+          reviewerPasses: 1,
+          agentProfile: null,
+        },
+      ]),
+    );
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    // Open the load dropdown and select the preset
+    const loadSelect = screen.getByTestId("load-preset-select");
+    fireEvent.change(loadSelect, { target: { value: "Quick Run" } });
+    // Dev iterations input should be updated to 3
+    const devIterInput = screen.getByDisplayValue("3");
+    expect(devIterInput).toBeInTheDocument();
+  });
+
+  it("deletes a saved preset from localStorage", () => {
+    localStorage.setItem(
+      "ralph_gui_presets",
+      JSON.stringify([
+        {
+          name: "To Delete",
+          developerIterations: 5,
+          reviewerPasses: 2,
+          agentProfile: null,
+        },
+      ]),
+    );
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    // Delete button should be visible for the saved preset
+    const deleteBtn = screen.getByTestId("delete-preset-To Delete");
+    fireEvent.click(deleteBtn);
+    const stored = JSON.parse(localStorage.getItem("ralph_gui_presets") ?? "[]") as unknown[];
+    expect(stored).toHaveLength(0);
   });
 });

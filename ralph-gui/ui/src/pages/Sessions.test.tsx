@@ -119,4 +119,84 @@ describe("Sessions", () => {
     renderSessions(makeStore(), "/sessions?new=true");
     expect(screen.getByTestId("wizard-template-step")).toBeInTheDocument();
   });
+
+  it("shows filter toolbar when repo is set", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    expect(screen.getByTestId("filter-toolbar")).toBeInTheDocument();
+  });
+
+  it("filter chips render for each status", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    expect(screen.getByTestId("filter-chip-running")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-paused")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-completed")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-failed")).toBeInTheDocument();
+  });
+
+  it("toggling a filter chip selects it and shows clear button", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    expect(screen.queryByTestId("clear-filters")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("filter-chip-running"));
+    expect(screen.getByTestId("clear-filters")).toBeInTheDocument();
+  });
+
+  it("clicking clear resets filters and hides clear button", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    fireEvent.click(screen.getByTestId("filter-chip-paused"));
+    expect(screen.getByTestId("clear-filters")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("clear-filters"));
+    expect(screen.queryByTestId("clear-filters")).not.toBeInTheDocument();
+  });
+
+  it("context filter dropdown renders with All contexts option", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    const select = screen.getByTestId("filter-context");
+    expect(select).toBeInTheDocument();
+    expect(screen.getByText("All contexts")).toBeInTheDocument();
+  });
 });

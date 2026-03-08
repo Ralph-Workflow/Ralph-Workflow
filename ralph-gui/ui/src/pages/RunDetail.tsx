@@ -195,7 +195,7 @@ export function RunDetail() {
         <h1 className="page-title" style={{ marginBottom: 0, flex: 1 }}>
           Run Detail
         </h1>
-        <RunStatusBadge status={runDetail.status} showLabel />
+        <RunStatusBadge status={runDetail.status} showLabel isDegraded={runDetail.is_degraded} />
         {canResume && (
           <button
             className="btn btn-primary"

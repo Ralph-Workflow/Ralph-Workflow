@@ -72,4 +72,19 @@ describe("RunStatusBadge", () => {
     );
     expect(badge).toBeInTheDocument();
   });
+
+  it("renders Degraded secondary badge when isDegraded is true", () => {
+    render(<RunStatusBadge status="Running" showLabel isDegraded />);
+    expect(screen.getByText("Degraded")).toBeInTheDocument();
+  });
+
+  it("does not render Degraded badge when isDegraded is false", () => {
+    render(<RunStatusBadge status="Running" showLabel isDegraded={false} />);
+    expect(screen.queryByText("Degraded")).not.toBeInTheDocument();
+  });
+
+  it("does not render Degraded badge when isDegraded is absent", () => {
+    render(<RunStatusBadge status="Running" showLabel />);
+    expect(screen.queryByText("Degraded")).not.toBeInTheDocument();
+  });
 });

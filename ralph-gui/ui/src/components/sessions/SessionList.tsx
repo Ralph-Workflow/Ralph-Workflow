@@ -18,9 +18,17 @@ function sessionStatusToRunStatus(status: string): RunStatus {
 interface SessionListProps {
   repoPath: string;
   onResume?: (runId: string) => void;
+  /** If non-empty, only sessions with a status in this array are shown. */
+  filterStatus?: string[];
+  /**
+   * If provided, only sessions whose worktree_path matches this value are shown.
+   * Pass the empty string "" to show direct-repo sessions (worktree_path === null).
+   * Pass null or undefined to disable the filter.
+   */
+  filterWorktreePath?: string | null;
 }
 
-export function SessionList({ repoPath, onResume }: SessionListProps) {
+export function SessionList({ repoPath, onResume, filterStatus, filterWorktreePath }: SessionListProps) {
   const dispatch = useAppDispatch();
   const { sessions, status, selectedRunId } = useAppSelector((s) => s.sessions);
 
@@ -48,9 +56,36 @@ export function SessionList({ repoPath, onResume }: SessionListProps) {
     );
   }
 
+  // Apply client-side filters
+  const hasStatusFilter = filterStatus !== undefined && filterStatus.length > 0;
+  const hasWorktreeFilter = filterWorktreePath !== undefined && filterWorktreePath !== null;
+
+  const visible = sessions.filter((s) => {
+    if (hasStatusFilter && !filterStatus.includes(s.status)) return false;
+    if (hasWorktreeFilter) {
+      // "" means direct repo (worktree_path === null); otherwise match path
+      if (filterWorktreePath === "") {
+        if (s.worktree_path !== null) return false;
+      } else {
+        if (s.worktree_path !== filterWorktreePath) return false;
+      }
+    }
+    return true;
+  });
+
+  if (visible.length === 0) {
+    return (
+      <div className="empty-state">
+        <span className="empty-state-icon">◈</span>
+        <div className="empty-state-title">No sessions match the selected filters.</div>
+        <div className="empty-state-desc">Try clearing the filters to see all sessions.</div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {sessions.map((session) => (
+      {visible.map((session) => (
         <SessionRow
           key={session.run_id}
           session={session}

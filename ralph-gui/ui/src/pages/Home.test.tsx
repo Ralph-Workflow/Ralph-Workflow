@@ -175,6 +175,57 @@ describe("Home", () => {
   });
 });
 
+describe("Home degraded run indicator", () => {
+  const storeWithDegradedRun = (isDegraded: boolean) =>
+    makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+      runs: {
+        resumableRuns: [{ ...resumableRun, is_degraded: isDegraded }],
+        runDetail: null,
+        status: "idle",
+        error: null,
+        pollingStatus: null,
+      },
+    });
+
+  it("shows degraded warning icon when is_degraded is true on a resumable run", () => {
+    renderHome(storeWithDegradedRun(true));
+    expect(screen.getByTitle(/degraded conditions/i)).toBeInTheDocument();
+  });
+
+  it("does not show degraded warning when is_degraded is false", () => {
+    renderHome(storeWithDegradedRun(false));
+    expect(screen.queryByTitle(/degraded conditions/i)).not.toBeInTheDocument();
+  });
+
+  it("does not show degraded warning when is_degraded is absent", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+      runs: {
+        resumableRuns: [resumableRun],
+        runDetail: null,
+        status: "idle",
+        error: null,
+        pollingStatus: null,
+      },
+    });
+    renderHome(store);
+    expect(screen.queryByTitle(/degraded conditions/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("App startup initialization", () => {
   it("calls listWorktrees with lastRepoPath when worktrees are empty and lastRepoPath is set in store", async () => {
     const mainWt = {
