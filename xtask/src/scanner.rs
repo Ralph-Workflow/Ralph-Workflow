@@ -30,6 +30,29 @@ pub enum MatchMode {
     /// Also enforces a word-boundary check at the match start so that
     /// `is_testing_mode` does not trigger on the `is_test` stem.
     StemWithBoolSuffix,
+    /// Fail if the literal appears AND only whitespace (or nothing) precedes it
+    /// on the same line.  Equivalent to the rg anchor `^\s*literal`.
+    ///
+    /// When `skip_comment_lines` is true, matches on lines whose non-whitespace
+    /// prefix is `//` are ignored (avoids false positives in doc-comments).
+    ///
+    /// This provides O(n+m+z) Aho-Corasick detection with an O(k) per-match
+    /// post-filter for the line-start check (k = length of prefix slice).
+    AnyLiteralAtLineStart { skip_comment_lines: bool },
+    /// Fail if the literal appears at a word boundary (next char is not
+    /// alphanumeric/underscore, when `word_boundary_at_end` is true) AND the
+    /// `negative_context` string is absent from the same line.
+    ///
+    /// Implements a native negative-lookahead: the violation is triggered only
+    /// when the literal is found BUT the negative_context is NOT present on the
+    /// same line.  This replaces a PCRE2 `(?!.*ctx)` pattern.
+    NegativeLookahead {
+        /// If present on the same line, the match is NOT a violation.
+        negative_context: &'static str,
+        /// When true, the character immediately after the literal must not be
+        /// an ASCII alphanumeric character or underscore (word boundary).
+        word_boundary_at_end: bool,
+    },
 }
 
 /// A single native scan check definition.
@@ -275,6 +298,38 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             skip_comment_lines: false,
         },
     },
+    // ── audit-ignore-has-url: replaces PCRE2 rg negative lookahead ────────────
+    // Fails if #[ignore] appears without an https:// URL on the same line.
+    // The word_boundary_at_end check prevents #[ignore_reason] from triggering.
+    NativeScanCheck {
+        name: "audit-ignore-has-url",
+        literals: &["#[ignore"],
+        directories: &["tests", "ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::NegativeLookahead {
+            negative_context: "https://",
+            word_boundary_at_end: true,
+        },
+    },
+    // ── forbidden-allow-expect-scan: replaces PCRE2 rg multiline pattern ──────
+    // Fails if #[allow(, #![allow(, #[expect(, or #![expect( appears at line
+    // start (possibly preceded by whitespace).  Comment lines are skipped.
+    NativeScanCheck {
+        name: "forbidden-allow-expect-scan",
+        literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+        directories: &[
+            "ralph-workflow/src",
+            "tests",
+            "xtask/src",
+            "test-helpers/src",
+        ],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteralAtLineStart {
+            skip_comment_lines: true,
+        },
+    },
 ];
 
 // ── Public entry point ────────────────────────────────────────────────────────
@@ -315,8 +370,29 @@ pub fn run_native_scan_checks(
             .push(idx);
     }
 
-    for check_indices in groups.values() {
-        scan_group(repo_root, checks, check_indices, &mut results);
+    // Collect violations per group in parallel using scoped threads.
+    // Each group is independent (different directories or patterns), so no
+    // synchronisation is needed during the scan phase.
+    let groups_vec: Vec<Vec<usize>> = groups.into_values().collect();
+    let mut all_violations: Vec<Vec<(usize, NativeScanViolation)>> =
+        Vec::with_capacity(groups_vec.len());
+
+    std::thread::scope(|s| {
+        let handles: Vec<_> = groups_vec
+            .iter()
+            .map(|check_indices| s.spawn(|| scan_group_collect(repo_root, checks, check_indices)))
+            .collect();
+        for handle in handles {
+            all_violations.push(handle.join().expect("scan group thread panicked"));
+        }
+    });
+
+    // Merge violations back into results (check indices are unique across groups).
+    for group_violations in all_violations {
+        for (ci, v) in group_violations {
+            results[ci].passed = false;
+            results[ci].violations.push(v);
+        }
     }
 
     results
@@ -332,12 +408,16 @@ fn directory_group_key(check: &NativeScanCheck) -> String {
 
 /// Scan one directory group: collect files once, build a single Aho-Corasick
 /// automaton from all patterns in the group, search each file, demultiplex.
-fn scan_group(
+///
+/// Returns a flat list of `(check_index, NativeScanViolation)` pairs so the
+/// caller can merge results from multiple groups (including parallel groups).
+fn scan_group_collect(
     repo_root: &Path,
     all_checks: &[NativeScanCheck],
     check_indices: &[usize],
-    results: &mut [NativeScanCheckResult],
-) {
+) -> Vec<(usize, NativeScanViolation)> {
+    let mut violations: Vec<(usize, NativeScanViolation)> = Vec::new();
+
     let first = &all_checks[check_indices[0]];
 
     // Collect all matching files for the group's directories.
@@ -362,12 +442,12 @@ fn scan_group(
     }
 
     if all_patterns.is_empty() {
-        return;
+        return violations;
     }
 
     let ac = match AhoCorasick::new(&all_patterns) {
         Ok(ac) => ac,
-        Err(_) => return,
+        Err(_) => return violations,
     };
 
     // Scan each file with the combined automaton.
@@ -398,20 +478,57 @@ fn scan_group(
                     word_boundary_at_start(&content, byte_start)
                         && matches_bool_suffix(&content, byte_end)
                 }
+                MatchMode::AnyLiteralAtLineStart { skip_comment_lines } => {
+                    if skip_comment_lines && line_is_comment(&content, byte_start) {
+                        false
+                    } else {
+                        only_whitespace_before_on_line(&content, byte_start)
+                    }
+                }
+                MatchMode::NegativeLookahead {
+                    negative_context,
+                    word_boundary_at_end,
+                } => {
+                    // Word-boundary check: char at byte_end must not be identifier char.
+                    let boundary_ok = if word_boundary_at_end {
+                        is_word_boundary_at_end(&content, byte_end)
+                    } else {
+                        true
+                    };
+                    if !boundary_ok {
+                        false
+                    } else {
+                        // Violation only if negative_context is absent from the line.
+                        let line_start = find_line_start(&content, byte_start);
+                        let line_end_pos = find_line_end(&content, byte_start);
+                        let line_bytes = &content[line_start..line_end_pos];
+                        if negative_context.is_empty() {
+                            false // empty negative_context always suppresses (degenerate)
+                        } else {
+                            !line_bytes
+                                .windows(negative_context.len())
+                                .any(|w| w == negative_context.as_bytes())
+                        }
+                    }
+                }
             };
 
             if is_violation {
                 let line_number = count_lines_before(&content, byte_start) + 1;
                 let line = extract_line(&content, byte_start);
-                results[check_idx].passed = false;
-                results[check_idx].violations.push(NativeScanViolation {
-                    file: file_path.clone(),
-                    line_number,
-                    line,
-                });
+                violations.push((
+                    check_idx,
+                    NativeScanViolation {
+                        file: file_path.clone(),
+                        line_number,
+                        line,
+                    },
+                ));
             }
         }
     }
+
+    violations
 }
 
 fn collect_files_with_glob(dir: &Path, include_glob: &str, files: &mut Vec<PathBuf>) {
@@ -508,6 +625,25 @@ fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
         }
     }
     true
+}
+
+/// Return true when only whitespace (spaces or tabs) precedes `byte_offset`
+/// on the same line.  An empty prefix (match at column 0) also returns true.
+fn only_whitespace_before_on_line(content: &[u8], byte_offset: usize) -> bool {
+    let line_start = find_line_start(content, byte_offset);
+    content[line_start..byte_offset]
+        .iter()
+        .all(|&b| b == b' ' || b == b'\t')
+}
+
+/// Return true when the character immediately after `end` is NOT an ASCII
+/// alphanumeric character or underscore (word boundary at end of literal).
+fn is_word_boundary_at_end(content: &[u8], end: usize) -> bool {
+    if end >= content.len() {
+        return true;
+    }
+    let next = content[end];
+    !next.is_ascii_alphanumeric() && next != b'_'
 }
 
 fn count_lines_before(content: &[u8], offset: usize) -> usize {
@@ -1053,6 +1189,344 @@ mod tests {
         assert!(results[0].violations[0].line.contains("forbidden_pattern"));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── AnyLiteralAtLineStart ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_line_start_literal_at_column_zero_is_violation() {
+        let dir = make_temp_dir("line-start-col0");
+        write_file(&dir, "src/lib.rs", "#[allow(clippy::foo)]\nfn foo() {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-line-start-col0",
+            literals: &["#[allow("],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "#[allow( at column 0 must trigger violation"
+        );
+        assert_eq!(results[0].violations[0].line_number, 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_line_start_literal_with_leading_spaces_is_violation() {
+        let dir = make_temp_dir("line-start-spaces");
+        write_file(&dir, "src/lib.rs", "    #[allow(clippy::foo)]\n");
+
+        let check = NativeScanCheck {
+            name: "test-line-start-spaces",
+            literals: &["#[allow("],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "#[allow( after leading spaces must trigger violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_line_start_literal_inline_not_violation() {
+        let dir = make_temp_dir("line-start-inline");
+        // Inline usage: non-whitespace before #[allow( — not a line-start attribute.
+        write_file(&dir, "src/lib.rs", "foo(#[allow(clippy::foo)] bar)\n");
+
+        let check = NativeScanCheck {
+            name: "test-line-start-inline",
+            literals: &["#[allow("],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "#[allow( inline (after non-whitespace) must NOT trigger violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_line_start_comment_line_skipped_when_flag() {
+        let dir = make_temp_dir("line-start-comment");
+        write_file(&dir, "src/lib.rs", "// #[allow(clippy::foo)]\n");
+
+        let check = NativeScanCheck {
+            name: "test-line-start-comment",
+            literals: &["#[allow("],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "comment-line #[allow( must be skipped when skip_comment_lines=true"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_line_start_violation_contains_correct_line_number() {
+        let dir = make_temp_dir("line-start-lineno");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn foo() {}\nfn bar() {}\n#[allow(dead_code)]\nfn baz() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "test-line-start-lineno",
+            literals: &["#[allow("],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed);
+        assert_eq!(
+            results[0].violations[0].line_number, 3,
+            "violation must be on line 3"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── NegativeLookahead ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_negative_lookahead_no_context_is_violation() {
+        let dir = make_temp_dir("neg-lookahead-no-ctx");
+        write_file(&dir, "src/lib.rs", "#[ignore]\nfn slow_test() {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-neg-no-ctx",
+            literals: &["#[ignore"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::NegativeLookahead {
+                negative_context: "https://",
+                word_boundary_at_end: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "#[ignore] without URL must trigger violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_negative_lookahead_with_context_is_pass() {
+        let dir = make_temp_dir("neg-lookahead-with-ctx");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "#[ignore] // https://example.com/issue/123\nfn slow_test() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "test-neg-with-ctx",
+            literals: &["#[ignore"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::NegativeLookahead {
+                negative_context: "https://",
+                word_boundary_at_end: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "#[ignore] with URL on same line must NOT trigger violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_negative_lookahead_word_boundary_prevents_match() {
+        let dir = make_temp_dir("neg-lookahead-boundary");
+        // #[ignore_slow] — the char after "ignore" is '_', an identifier char.
+        write_file(&dir, "src/lib.rs", "#[ignore_slow]\nfn test() {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-neg-boundary",
+            literals: &["#[ignore"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::NegativeLookahead {
+                negative_context: "https://",
+                word_boundary_at_end: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "#[ignore_slow] must NOT trigger when word_boundary_at_end=true"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_negative_lookahead_no_boundary_matches_any() {
+        let dir = make_temp_dir("neg-lookahead-no-boundary");
+        // Without word-boundary check, #[ignore_slow] DOES trigger.
+        write_file(&dir, "src/lib.rs", "#[ignore_slow]\nfn test() {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-neg-no-boundary",
+            literals: &["#[ignore"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::NegativeLookahead {
+                negative_context: "https://",
+                word_boundary_at_end: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "#[ignore_slow] MUST trigger when word_boundary_at_end=false"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_negative_lookahead_context_anywhere_on_line_is_pass() {
+        let dir = make_temp_dir("neg-lookahead-ctx-anywhere");
+        // URL appears before the #[ignore] on the same line.
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "// see https://example.com #[ignore]\nfn test() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "test-neg-ctx-anywhere",
+            literals: &["#[ignore"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::NegativeLookahead {
+                negative_context: "https://",
+                word_boundary_at_end: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "https:// before #[ignore] on same line must NOT trigger violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── parallel groups ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parallel_groups_return_same_results_as_single_group() {
+        // Two checks in DIFFERENT directories → two separate scan groups.
+        // Verifies that parallel group scanning produces the same violations as
+        // running each check individually.
+        let dir = make_temp_dir("parallel-groups");
+        write_file(&dir, "src/lib.rs", "pattern_alpha\n");
+        write_file(&dir, "other/lib.rs", "pattern_beta\n");
+
+        let checks = [
+            NativeScanCheck {
+                name: "check-alpha",
+                literals: &["pattern_alpha"],
+                directories: &["src"],
+                include_glob: "*.rs",
+                exclude_globs: &[],
+                mode: MatchMode::AnyLiteral {
+                    skip_comment_lines: false,
+                },
+            },
+            NativeScanCheck {
+                name: "check-beta",
+                literals: &["pattern_beta"],
+                directories: &["other"],
+                include_glob: "*.rs",
+                exclude_globs: &[],
+                mode: MatchMode::AnyLiteral {
+                    skip_comment_lines: false,
+                },
+            },
+        ];
+
+        let results = run_native_scan_checks(&dir, &checks);
+        assert!(!results[0].passed, "check-alpha must find pattern_alpha");
+        assert!(!results[1].passed, "check-beta must find pattern_beta");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_audit_ignore_has_url_is_in_native_scan_checks() {
+        assert!(
+            NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-ignore-has-url"),
+            "NATIVE_SCAN_CHECKS must include audit-ignore-has-url"
+        );
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_is_in_native_scan_checks() {
+        assert!(
+            NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "forbidden-allow-expect-scan"),
+            "NATIVE_SCAN_CHECKS must include forbidden-allow-expect-scan"
+        );
     }
 
     // ── NATIVE_SCAN_CHECKS sanity ─────────────────────────────────────────────

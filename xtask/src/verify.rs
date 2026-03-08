@@ -135,84 +135,6 @@ pub fn run_checks(
     })
 }
 
-/// Index in REQUIRED_CHECKS where the rg fast-scan group ends (exclusive).
-/// Checks at indices [0, RG_SCAN_END) are independent rg pattern scans (complex
-/// PCRE2 patterns that cannot be expressed as Aho-Corasick literals) and can
-/// run concurrently. Checks at indices [RG_SCAN_END, ..) invoke cargo and must
-/// run sequentially to avoid target/ lock conflicts.
-pub const RG_SCAN_END: usize = 2;
-
-/// Run checks concurrently using scoped threads.
-///
-/// All checks run to completion. If any fail, the first failure
-/// (by check-list order) is returned. Succeeds only if all checks pass.
-pub fn run_checks_concurrent(
-    runner: &(dyn CommandRunner + Sync),
-    checks: &[CommandSpec],
-) -> Result<VerifyReport> {
-    use std::sync::Mutex;
-
-    // Collect results in order-preserving slots.
-    let slots: Vec<Mutex<Option<(CheckStatus, CommandOutput)>>> =
-        (0..checks.len()).map(|_| Mutex::new(None)).collect();
-
-    std::thread::scope(|s| {
-        for (i, spec) in checks.iter().enumerate() {
-            let slot = &slots[i];
-            s.spawn(move || {
-                let output = match runner.run(spec) {
-                    Ok(o) => o,
-                    Err(e) => {
-                        *slot.lock().unwrap() = Some((
-                            CheckStatus::Error,
-                            CommandOutput {
-                                exit_code: -1,
-                                stdout: String::new(),
-                                stderr: e.to_string(),
-                            },
-                        ));
-                        return;
-                    }
-                };
-                let status = classify(
-                    output.exit_code,
-                    &output.stdout,
-                    &output.stderr,
-                    spec.success_exit_codes,
-                );
-                *slot.lock().unwrap() = Some((status, output));
-            });
-        }
-    });
-
-    // Return first failure in original check order.
-    for (i, spec) in checks.iter().enumerate() {
-        let pair = slots[i]
-            .lock()
-            .unwrap()
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("check {} did not produce a result", spec.name))?;
-        let (status, output) = pair;
-        if status != CheckStatus::Pass {
-            return Ok(VerifyReport {
-                exit: VerifyExitCode::Failure,
-                failure: Some(CheckFailure {
-                    name: spec.name,
-                    status,
-                    exit_code: output.exit_code,
-                    stdout: output.stdout,
-                    stderr: output.stderr,
-                }),
-            });
-        }
-    }
-
-    Ok(VerifyReport {
-        exit: VerifyExitCode::Success,
-        failure: None,
-    })
-}
-
 /// Format native scan violations in rg-compatible `path:line:content` format.
 fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) -> String {
     violations
@@ -222,7 +144,7 @@ fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) ->
         .join("\n")
 }
 
-/// Fast verification: rg checks run concurrently, cargo checks via prefetch + sequential.
+/// Fast verification: native scan checks, then cargo checks via prefetch + sequential.
 ///
 /// `prefetch_specs` are run concurrently in a background thread during the cargo phase to
 /// pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no prefetch is
@@ -251,7 +173,7 @@ pub fn verify_fast(
         }
     }
 
-    // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces 17 rg subprocess calls).
+    // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces all rg subprocess calls).
     // Groups checks by directory, reads each source file once, O(n + m + z) per group.
     let scan_results =
         crate::scanner::run_native_scan_checks(repo_root, crate::scanner::NATIVE_SCAN_CHECKS);
@@ -271,57 +193,15 @@ pub fn verify_fast(
         }
     }
 
-    let rg_end = RG_SCAN_END.min(checks.len());
-    let (rg_checks, cargo_checks) = checks.split_at(rg_end);
-
-    // Phase 1: parallel rg pattern scans (complex PCRE2 checks only).
-    let rg_report = run_checks_concurrent(runner, rg_checks)?;
-    if rg_report.exit == VerifyExitCode::Failure {
-        return Ok(rg_report);
-    }
-
     // Phase 2: cargo checks with optional concurrent prefetch.
-    run_cargo_prefetch(runner, prefetch_specs, cargo_checks)
+    // All scanning is now native (Phase 0.5), so we go directly to cargo checks.
+    run_cargo_prefetch(runner, prefetch_specs, checks)
 }
 
+/// All verification checks.  All scanning is now native (Aho-Corasick, Phase 0.5).
+/// Any future check that cannot be expressed natively should be added here with
+/// an explanation of why native expression is not feasible.
 pub const REQUIRED_CHECKS: &[CommandSpec] = &[
-    // ── rg pattern scans (PCRE2 patterns that cannot be expressed as Aho-Corasick literals) ──
-    CommandSpec {
-        name: "forbidden-allow-expect-scan",
-        program: "rg",
-        args: &[
-            "-n",
-            "-U",
-            "--pcre2",
-            "(?m)^\\s*#\\s*!?\\[\\s*(?:(?:allow|expect)\\s*\\(|cfg_attr\\s*\\((?:[^()]|\\([^()]*\\))*?,\\s*(?:allow|expect)\\s*\\()",
-            "--glob",
-            "!target/**",
-            "--glob",
-            "!.git/**",
-            "--glob",
-            "*.rs",
-            ".",
-        ],
-        // Exit code 1 means "no matches" which is success.
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        // PCRE2 negative lookahead: cannot be expressed as Aho-Corasick literals.
-        name: "audit-ignore-has-url",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            r"#\[ignore\b(?!.*https://)",
-            "tests/",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
@@ -379,7 +259,15 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "clippy-xtask",
         program: "cargo",
-        args: &["clippy", "-p", "xtask", "--all-targets", "--", "-D", "warnings"],
+        args: &[
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -903,9 +791,6 @@ mod tests {
         assert_eq!(
             runner.ran(),
             vec![
-                // PCRE2 rg checks (complex patterns kept as rg)
-                "forbidden-allow-expect-scan",
-                "audit-ignore-has-url",
                 // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
@@ -976,13 +861,24 @@ mod tests {
     }
 
     #[test]
-    fn test_audit_ignore_has_url_check_is_in_required_checks() {
-        // TDD anchor: audit-ignore-has-url uses PCRE2 negative lookahead and must stay as rg.
+    fn test_audit_ignore_has_url_check_is_in_native_scan_checks() {
+        // TDD anchor: audit-ignore-has-url is now a native NegativeLookahead scan check.
         assert!(
-            REQUIRED_CHECKS
+            crate::scanner::NATIVE_SCAN_CHECKS
                 .iter()
                 .any(|c| c.name == "audit-ignore-has-url"),
-            "REQUIRED_CHECKS must include the audit-ignore-has-url rg check (complex PCRE2)"
+            "NATIVE_SCAN_CHECKS must include the audit-ignore-has-url check"
+        );
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_is_in_native_scan_checks() {
+        // TDD anchor: forbidden-allow-expect-scan is now a native AnyLiteralAtLineStart check.
+        assert!(
+            crate::scanner::NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "forbidden-allow-expect-scan"),
+            "NATIVE_SCAN_CHECKS must include the forbidden-allow-expect-scan check"
         );
     }
 
@@ -1013,118 +909,27 @@ mod tests {
     // ── TDD tests for concurrent execution ──────────────────────────────────
 
     #[test]
-    fn test_rg_scan_end_points_to_fmt_check() {
-        // TDD anchor: RG_SCAN_END must point exactly at the first cargo check.
-        assert!(
-            RG_SCAN_END < REQUIRED_CHECKS.len(),
-            "RG_SCAN_END must be within REQUIRED_CHECKS bounds"
-        );
+    fn test_required_checks_first_entry_is_fmt_check() {
+        // TDD anchor: now that all scanning is native, fmt-check is the first entry.
         assert_eq!(
-            REQUIRED_CHECKS[RG_SCAN_END].name, "fmt-check",
-            "REQUIRED_CHECKS[RG_SCAN_END] must be fmt-check (first cargo check)"
+            REQUIRED_CHECKS[0].name, "fmt-check",
+            "REQUIRED_CHECKS[0] must be fmt-check (first cargo check)"
         );
     }
 
     #[test]
-    fn test_rg_scan_group_contains_only_rg_checks() {
-        // TDD anchor: all checks before RG_SCAN_END must use program == "rg".
-        for spec in &REQUIRED_CHECKS[..RG_SCAN_END] {
-            assert_eq!(
+    fn test_required_checks_contain_no_rg_entries() {
+        // TDD anchor: all scanning is now native; no rg subprocesses should remain.
+        for spec in REQUIRED_CHECKS {
+            assert_ne!(
                 spec.program, "rg",
-                "check '{}' at index before RG_SCAN_END must use program 'rg', got '{}'",
-                spec.name, spec.program
+                "check '{}' must not use rg — all scanning is now native",
+                spec.name
             );
         }
     }
 
-    #[test]
-    fn test_run_checks_concurrent_runs_all_checks_when_all_pass() {
-        // Arrange: N checks that all succeed
-        let checks = [
-            CommandSpec {
-                name: "check-a",
-                program: "rg",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-            CommandSpec {
-                name: "check-b",
-                program: "rg",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-            CommandSpec {
-                name: "check-c",
-                program: "rg",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-        ];
-        let runner = RecordingRunner::default();
-
-        // Act
-        let report =
-            run_checks_concurrent(&runner, &checks).expect("concurrent checks should not error");
-
-        // Assert
-        assert_eq!(report.exit, VerifyExitCode::Success);
-        assert_eq!(report.failure, None);
-        let ran = runner.ran();
-        // All checks must have run (order may differ due to parallelism)
-        use std::collections::HashSet;
-        let ran_set: HashSet<&str> = ran.iter().copied().collect();
-        assert!(ran_set.contains("check-a"), "check-a must have run");
-        assert!(ran_set.contains("check-b"), "check-b must have run");
-        assert!(ran_set.contains("check-c"), "check-c must have run");
-    }
-
-    #[test]
-    fn test_run_checks_concurrent_collects_first_failure() {
-        // Arrange: both checks fail so that the result is deterministic even with concurrent
-        // thread scheduling. When both fail, run_checks_concurrent always returns the first
-        // failure BY CHECK-LIST ORDER (not by completion order), which is "fail-check".
-        let checks = [
-            CommandSpec {
-                name: "fail-check",
-                program: "rg",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-            CommandSpec {
-                name: "second-fail-check",
-                program: "rg",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-        ];
-        let runner = FakeRunner::new([
-            CommandOutput {
-                exit_code: 42,
-                stdout: "matches found".to_string(),
-                stderr: String::new(),
-            },
-            CommandOutput {
-                exit_code: 42,
-                stdout: "also failing".to_string(),
-                stderr: String::new(),
-            },
-        ]);
-
-        // Act
-        let report =
-            run_checks_concurrent(&runner, &checks).expect("concurrent checks should not error");
-
-        // Assert: even though both checks fail concurrently, the FIRST failure by check-list
-        // order is returned — "fail-check" at index 0, not "second-fail-check" at index 1.
-        assert_eq!(report.exit, VerifyExitCode::Failure);
-        let failure = report.failure.expect("expected failure details");
-        assert_eq!(failure.name, "fail-check");
-    }
+    // ── TDD tests for concurrent execution ──────────────────────────────────
 
     #[test]
     fn test_verify_fast_runs_all_required_checks() {
@@ -1156,22 +961,15 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_fast_stops_on_rg_group_failure() {
-        // TDD anchor: when an rg check fails, cargo checks must NOT run.
-        // All rg checks fail so the first failure by check-list order is deterministic:
-        // concurrent threads may consume outputs in any order, but since every rg output
-        // is a failure, run_checks_concurrent always returns the first failure BY ORDER
-        // ("forbidden-allow-expect-scan" at index 0).
-        let mut outputs: Vec<CommandOutput> = Vec::new();
-        // All rg checks fail (exit 0 = matches found = failure for rg success_exit_codes: &[1])
-        for _ in 0..RG_SCAN_END {
-            outputs.push(CommandOutput {
-                exit_code: 0,
-                stdout: "found forbidden pattern".to_string(),
-                stderr: String::new(),
-            });
-        }
-        let runner = FakeRunner::new(outputs);
+    fn test_verify_fast_stops_on_first_cargo_failure() {
+        // TDD anchor: all scanning is now native (no rg phase); verify_fast proceeds
+        // directly to cargo checks.  When the first cargo check (fmt-check) fails,
+        // later checks must NOT run.
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        }]);
 
         let report = verify_fast(
             &runner,
@@ -1184,28 +982,18 @@ mod tests {
 
         assert_eq!(report.exit, VerifyExitCode::Failure);
         let failure = report.failure.expect("expected failure");
-        assert_eq!(failure.name, "forbidden-allow-expect-scan");
+        assert_eq!(failure.name, "fmt-check");
     }
 
     #[test]
     fn test_verify_fast_stops_on_cargo_check_failure() {
         // TDD anchor: when first cargo check (fmt-check) fails, later cargo checks must not run.
-        let mut outputs: Vec<CommandOutput> = Vec::new();
-        // All rg checks pass
-        for _ in 0..RG_SCAN_END {
-            outputs.push(CommandOutput {
-                exit_code: 1, // no matches = success
-                stdout: String::new(),
-                stderr: String::new(),
-            });
-        }
-        // fmt-check fails
-        outputs.push(CommandOutput {
+        // All scanning is now native (no rg phase), so the first runner call is fmt-check.
+        let runner = FakeRunner::new([CommandOutput {
             exit_code: 1, // exit 1 = failure for cargo (success_exit_codes: &[0])
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
-        });
-        let runner = FakeRunner::new(outputs);
+        }]);
 
         let report = verify_fast(
             &runner,
