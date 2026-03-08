@@ -115,72 +115,125 @@ pub fn scope_for(check_name: &str) -> CheckScope {
 ///
 /// Files are returned in the same order as `paths` so the caller can hash
 /// them deterministically without re-sorting.
-fn read_files_parallel(paths: &[PathBuf]) -> Vec<Vec<u8>> {
+fn io_worker_count(len: usize) -> usize {
+    const MAX_IO_WORKERS: usize = 32;
+    let avail = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    std::cmp::min(len, std::cmp::min(avail, MAX_IO_WORKERS)).max(1)
+}
+
+fn read_files_parallel(paths: &[PathBuf]) -> std::io::Result<Vec<Vec<u8>>> {
     if paths.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     // For small file lists, thread overhead exceeds benefit; use serial reads.
     const PARALLEL_THRESHOLD: usize = 4;
     if paths.len() < PARALLEL_THRESHOLD {
-        return paths
-            .iter()
-            .map(|p| std::fs::read(p).unwrap_or_default())
+        return paths.iter().map(std::fs::read).collect();
+    }
+
+    // Spawn a bounded number of workers and reassemble in order.
+    let workers = io_worker_count(paths.len());
+    let mut slots: Vec<Option<std::io::Result<Vec<u8>>>> = (0..paths.len()).map(|_| None).collect();
+
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..workers)
+            .map(|worker_id| {
+                s.spawn(move || {
+                    let mut out: Vec<(usize, std::io::Result<Vec<u8>>)> = Vec::new();
+                    for i in (worker_id..paths.len()).step_by(workers) {
+                        out.push((i, std::fs::read(&paths[i])));
+                    }
+                    out
+                })
+            })
             .collect();
-    }
 
-    // Spawn one thread per file (index, bytes) and reassemble in order.
-    let handles: Vec<std::thread::JoinHandle<(usize, Vec<u8>)>> = paths
-        .iter()
-        .enumerate()
-        .map(|(i, path)| {
-            let path = path.clone();
-            std::thread::spawn(move || (i, std::fs::read(&path).unwrap_or_default()))
-        })
-        .collect();
-
-    let mut results: Vec<Vec<u8>> = vec![Vec::new(); paths.len()];
-    for handle in handles {
-        if let Ok((i, bytes)) = handle.join() {
-            results[i] = bytes;
+        for h in handles {
+            for (i, r) in h.join().expect("file read worker panicked") {
+                slots[i] = Some(r);
+            }
         }
+    });
+
+    let mut results: Vec<Vec<u8>> = Vec::with_capacity(paths.len());
+    for slot in slots {
+        // Every index must be populated by exactly one worker.
+        let r = slot.expect("worker must write slot");
+        results.push(r?);
     }
-    results
+    Ok(results)
 }
 
 /// Compute a u64 hash of the scope by iterating relevant files and
 /// hashing (path, content bytes) pairs. Content-based hashing ensures
 /// cache keys are stable across mtime changes (e.g., git checkout round-trips).
-pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
+pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Result<u64> {
     let mut hasher = Fnv1aHasher::new();
 
-    let dirs = match scope {
-        CheckScope::Directories(dirs) => dirs,
-        CheckScope::Build(dirs) => {
-            // Include Cargo.lock content in hash.
-            let lock = repo_root.join("Cargo.lock");
-            hasher.write_bytes(lock.to_string_lossy().as_bytes());
-            if let Ok(bytes) = std::fs::read(&lock) {
-                hasher.write_bytes(&bytes);
-            }
-            dirs
-        }
+    let (dirs, include_lock) = match scope {
+        CheckScope::Directories(dirs) => (dirs, false),
+        CheckScope::Build(dirs) => (dirs, true),
     };
 
-    let mut entries: Vec<PathBuf> = Vec::new();
+    let mut all_paths: Vec<PathBuf> = Vec::new();
+
+    // Include check-specific sources.
     for dir in *dirs {
         let full = repo_root.join(dir);
-        crate::scanner::collect_files_with_glob(&full, "*.rs", &mut entries);
-    }
-    entries.sort();
+        if full.exists() {
+            crate::scanner::collect_files_with_glob(&full, "*.rs", &mut all_paths)?;
+        }
 
-    // Read files in parallel; hash results in sorted (deterministic) order.
-    let file_bytes = read_files_parallel(&entries);
-    for (path, bytes) in entries.iter().zip(file_bytes.iter()) {
+        // Include Cargo.toml from this directory's crate (and any parent crates)
+        // so build/lint caches invalidate on manifest changes.
+        let mut cur = full.as_path();
+        while let Some(parent) = cur.parent() {
+            let manifest = cur.join("Cargo.toml");
+            if manifest.exists() {
+                all_paths.push(manifest);
+            }
+            if cur == repo_root {
+                break;
+            }
+            cur = parent;
+        }
+    }
+
+    // Include repo-wide config inputs that affect verification results.
+    let mut config_candidates: Vec<&str> = vec![
+        "Cargo.toml",
+        "rustfmt.toml",
+        "clippy.toml",
+        ".cargo/config.toml",
+        ".cargo/config",
+        "rust-toolchain.toml",
+        "rust-toolchain",
+        "Makefile",
+    ];
+    if include_lock {
+        config_candidates.push("Cargo.lock");
+    }
+    for rel in config_candidates {
+        let p = repo_root.join(rel);
+        if p.exists() {
+            all_paths.push(p);
+        }
+    }
+
+    // Deduplicate + sort for deterministic hashing.
+    all_paths.sort();
+    all_paths.dedup();
+
+    // Read files in parallel (bounded); hash results in sorted order.
+    let file_bytes = read_files_parallel(&all_paths)?;
+    for (path, bytes) in all_paths.iter().zip(file_bytes.iter()) {
         hasher.write_bytes(path.to_string_lossy().as_bytes());
         hasher.write_bytes(bytes);
     }
 
-    hasher.finish()
+    Ok(hasher.finish())
 }
 
 /// On-disk format for the cache file.
@@ -245,24 +298,32 @@ impl CachingCommandRunner {
         }
     }
 
-    fn compute_or_cached_scope_hash(&self, scope: &CheckScope) -> u64 {
+    fn compute_or_cached_scope_hash(&self, scope: &CheckScope) -> Option<u64> {
         let key = scope_memo_key(scope);
         {
             let memo = self.scope_memo.lock().unwrap();
             if let Some(&h) = memo.get(&key) {
-                return h;
+                return Some(h);
             }
         }
-        let h = compute_scope_hash(&self.repo_root, scope);
-        self.scope_memo.lock().unwrap().insert(key, h);
-        h
+        match compute_scope_hash(&self.repo_root, scope) {
+            Ok(h) => {
+                self.scope_memo.lock().unwrap().insert(key, h);
+                Some(h)
+            }
+            Err(_) => None,
+        }
     }
 }
 
 impl CommandRunner for CachingCommandRunner {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
         let scope = scope_for(spec.name);
-        let hash = self.compute_or_cached_scope_hash(&scope);
+        let Some(hash) = self.compute_or_cached_scope_hash(&scope) else {
+            // If scope hashing fails (unreadable files, directory walk errors, etc.),
+            // bypass caching completely to avoid incorrect cache hits.
+            return self.inner.run(spec);
+        };
         let key = format!("{}:{}", spec.name, hash);
 
         // Check cache.
@@ -529,7 +590,9 @@ mod tests {
         );
 
         // First hash computation populates the memo.
-        let h1 = runner.compute_or_cached_scope_hash(&scope_for("clippy-xtask"));
+        let h1 = runner
+            .compute_or_cached_scope_hash(&scope_for("clippy-xtask"))
+            .expect("scope hash should be computable in test");
         {
             let memo = runner.scope_memo.lock().unwrap();
             assert!(
@@ -539,7 +602,9 @@ mod tests {
         }
 
         // Second computation for same key returns same hash from memo.
-        let h2 = runner.compute_or_cached_scope_hash(&scope_for("test-xtask"));
+        let h2 = runner
+            .compute_or_cached_scope_hash(&scope_for("test-xtask"))
+            .expect("scope hash should be computable in test");
         assert_eq!(h1, h2, "same scope must produce same hash");
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -558,12 +623,12 @@ mod tests {
         std::fs::write(&file_path, b"fn foo() {}").unwrap();
 
         let scope = CheckScope::Directories(&["src"]);
-        let hash1 = compute_scope_hash(&tmp, &scope);
+        let hash1 = compute_scope_hash(&tmp, &scope).unwrap();
 
         // Re-write same content (changes mtime but not content).
         std::fs::write(&file_path, b"fn foo() {}").unwrap();
 
-        let hash2 = compute_scope_hash(&tmp, &scope);
+        let hash2 = compute_scope_hash(&tmp, &scope).unwrap();
 
         assert_eq!(
             hash1, hash2,
@@ -585,16 +650,97 @@ mod tests {
         std::fs::write(&file_path, b"fn foo() {}").unwrap();
 
         let scope = CheckScope::Directories(&["src"]);
-        let hash1 = compute_scope_hash(&tmp, &scope);
+        let hash1 = compute_scope_hash(&tmp, &scope).unwrap();
 
         // Write different content.
         std::fs::write(&file_path, b"fn bar() {}").unwrap();
 
-        let hash2 = compute_scope_hash(&tmp, &scope);
+        let hash2 = compute_scope_hash(&tmp, &scope).unwrap();
 
         assert_ne!(
             hash1, hash2,
             "different file content must produce different scope hash"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_compute_scope_hash_build_scope_includes_cargo_toml_inputs() {
+        // Cache invalidation must include Cargo.toml inputs for build-related checks.
+        // Regression: hashing only Cargo.lock + *.rs can produce false cache hits.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-cargo-toml");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+
+        // Required for Build scope.
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock").unwrap();
+
+        // A source file so the scope isn't empty.
+        std::fs::write(tmp.join("xtask/src/lib.rs"), b"fn foo() {}").unwrap();
+
+        // Create an initial manifest.
+        std::fs::create_dir_all(tmp.join("xtask")).unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let scope = CheckScope::Build(&["xtask/src"]);
+        let h1 = compute_scope_hash(&tmp, &scope).unwrap();
+
+        // Changing Cargo.toml should invalidate the scope hash.
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        let h2 = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(h1, h2, "Cargo.toml change must change scope hash");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_caching_runner_bypasses_cache_when_scope_hash_cannot_be_computed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // If a file is unreadable, scope hashing must not collapse it to empty content,
+        // otherwise we can incorrectly reuse cached successes.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-unreadable");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock").unwrap();
+
+        let file_path = tmp.join("ralph-workflow/src/lib.rs");
+        std::fs::write(&file_path, b"fn foo() {}\n").unwrap();
+
+        let mut perms = std::fs::metadata(&file_path).unwrap().permissions();
+        perms.set_mode(0o000);
+        std::fs::set_permissions(&file_path, perms).unwrap();
+
+        let spec = make_spec("clippy-ralph-workflow");
+
+        let (inner, count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let _ = runner.run(&spec).unwrap();
+        let _ = runner.run(&spec).unwrap();
+
+        // Restore permissions so cleanup works.
+        let mut perms_restore = std::fs::metadata(&file_path).unwrap().permissions();
+        perms_restore.set_mode(0o644);
+        let _ = std::fs::set_permissions(&file_path, perms_restore);
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            2,
+            "unreadable scope inputs must bypass caching (inner must run each time)"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -638,8 +784,8 @@ mod tests {
         std::fs::write(src.join("lib.rs"), b"fn foo() {}").unwrap();
 
         let scope = CheckScope::Directories(&["src"]);
-        let h1 = compute_scope_hash(&tmp, &scope);
-        let h2 = compute_scope_hash(&tmp, &scope);
+        let h1 = compute_scope_hash(&tmp, &scope).unwrap();
+        let h2 = compute_scope_hash(&tmp, &scope).unwrap();
         assert_eq!(h1, h2, "same content must produce same hash on every call");
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -654,10 +800,10 @@ mod tests {
 
         std::fs::write(src.join("lib.rs"), b"fn foo() {}").unwrap();
         let scope = CheckScope::Directories(&["src"]);
-        let h1 = compute_scope_hash(&tmp, &scope);
+        let h1 = compute_scope_hash(&tmp, &scope).unwrap();
 
         std::fs::write(src.join("lib.rs"), b"fn bar() {}").unwrap();
-        let h2 = compute_scope_hash(&tmp, &scope);
+        let h2 = compute_scope_hash(&tmp, &scope).unwrap();
 
         assert_ne!(h1, h2, "different content must produce different hash");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -672,8 +818,8 @@ mod tests {
         let _ = std::fs::create_dir_all(tmp.join("src"));
 
         let scope = CheckScope::Directories(&["src"]);
-        let h1 = compute_scope_hash(&tmp, &scope);
-        let h2 = compute_scope_hash(&tmp, &scope);
+        let h1 = compute_scope_hash(&tmp, &scope).unwrap();
+        let h2 = compute_scope_hash(&tmp, &scope).unwrap();
         assert_eq!(h1, h2, "empty directory must produce consistent hash");
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -766,13 +912,13 @@ mod tests {
 
         let scope = CheckScope::Directories(&["src"]);
         // Compute hash twice — parallel impl must be deterministic.
-        let h1 = compute_scope_hash(&tmp, &scope);
-        let h2 = compute_scope_hash(&tmp, &scope);
+        let h1 = compute_scope_hash(&tmp, &scope).unwrap();
+        let h2 = compute_scope_hash(&tmp, &scope).unwrap();
         assert_eq!(h1, h2, "parallel scope hash must be deterministic");
 
         // Content change must still be detected.
         std::fs::write(src.join("file0.rs"), b"fn changed() {}").unwrap();
-        let h3 = compute_scope_hash(&tmp, &scope);
+        let h3 = compute_scope_hash(&tmp, &scope).unwrap();
         assert_ne!(h1, h3, "hash must change when file content changes");
 
         let _ = std::fs::remove_dir_all(&tmp);

@@ -499,17 +499,42 @@ fn read_scan_files_parallel(files: &[PathBuf]) -> Vec<Option<Vec<u8>>> {
     if files.len() < PARALLEL_THRESHOLD {
         return files.iter().map(|p| std::fs::read(p).ok()).collect();
     }
+
+    let workers = scan_read_worker_count(files.len());
     let mut results: Vec<Option<Vec<u8>>> = vec![None; files.len()];
+
     std::thread::scope(|s| {
-        let handles: Vec<_> = files
-            .iter()
-            .map(|p| s.spawn(move || std::fs::read(p).ok()))
+        let handles: Vec<_> = (0..workers)
+            .map(|worker_id| {
+                s.spawn(move || {
+                    let mut out: Vec<(usize, Option<Vec<u8>>)> = Vec::new();
+                    for i in (worker_id..files.len()).step_by(workers) {
+                        out.push((i, std::fs::read(&files[i]).ok()));
+                    }
+                    out
+                })
+            })
             .collect();
-        for (i, h) in handles.into_iter().enumerate() {
-            results[i] = h.join().unwrap_or(None);
+
+        for h in handles {
+            for (i, r) in h.join().expect("scan read worker panicked") {
+                results[i] = r;
+            }
         }
     });
+
     results
+}
+
+fn scan_read_worker_count(len: usize) -> usize {
+    const MAX_IO_WORKERS: usize = 32;
+    if len == 0 {
+        return 0;
+    }
+    let avail = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    std::cmp::min(len, std::cmp::min(avail, MAX_IO_WORKERS)).max(1)
 }
 
 fn directory_group_key(check: &NativeScanCheck) -> String {
@@ -537,7 +562,25 @@ fn scan_group_collect(
     for dir in first.directories {
         let full_dir = repo_root.join(dir);
         if full_dir.exists() {
-            collect_files_with_glob(&full_dir, first.include_glob, &mut files);
+            if let Err(e) = collect_files_with_glob(&full_dir, first.include_glob, &mut files) {
+                // Directory traversal errors must not be silently treated as "no files".
+                // Surface the error as an explicit failure for every check in this group.
+                let msg = format!("read_dir error for {}: {e}", full_dir.display());
+                return check_indices
+                    .iter()
+                    .copied()
+                    .map(|ci| {
+                        (
+                            ci,
+                            NativeScanViolation {
+                                file: full_dir.clone(),
+                                line_number: 1,
+                                line: msg.clone(),
+                            },
+                        )
+                    })
+                    .collect();
+            }
         }
     }
     files.sort();
@@ -648,18 +691,23 @@ fn scan_group_collect(
     violations
 }
 
-pub(crate) fn collect_files_with_glob(dir: &Path, include_glob: &str, files: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
+pub(crate) fn collect_files_with_glob(
+    dir: &Path,
+    include_glob: &str,
+    files: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            collect_files_with_glob(&path, include_glob, files);
+            collect_files_with_glob(&path, include_glob, files)?;
         } else if file_matches_include_glob(&path, include_glob) {
             files.push(path);
         }
     }
+
+    Ok(())
 }
 
 fn file_matches_include_glob(path: &Path, glob: &str) -> bool {
@@ -721,7 +769,7 @@ fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
     let rest = &content[end..];
     let mut i = 0;
     // Skip optional whitespace.
-    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+    while i < rest.len() && rest[i].is_ascii_whitespace() {
         i += 1;
     }
     if i >= rest.len() || rest[i] != b':' {
@@ -729,7 +777,7 @@ fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
     }
     i += 1;
     // Skip optional whitespace.
-    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+    while i < rest.len() && rest[i].is_ascii_whitespace() {
         i += 1;
     }
     if !rest[i..].starts_with(b"bool") {
@@ -1165,6 +1213,59 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_unreadable_directory_causes_failure_not_silent_pass() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = make_temp_dir("unreadable-dir");
+        write_file(&dir, "src/lib.rs", "forbidden_pattern\n");
+
+        // Make the directory unreadable so directory walking hits a read_dir error.
+        let src_dir = dir.join("src");
+        let mut perms = fs::metadata(&src_dir).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&src_dir, perms).unwrap();
+
+        let check = NativeScanCheck {
+            name: "test-unreadable",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+
+        // Restore permissions so cleanup works.
+        let mut perms_restore = fs::metadata(&src_dir).unwrap().permissions();
+        perms_restore.set_mode(0o755);
+        let _ = fs::set_permissions(&src_dir, perms_restore);
+
+        assert!(
+            !results[0].passed,
+            "unreadable directories must fail the scan (not silently pass)"
+        );
+        assert!(
+            results[0]
+                .violations
+                .iter()
+                .any(|v| v.line.contains("read_dir") || v.line.contains("Permission")),
+            "expected an explicit read_dir error violation, got: {}",
+            results[0]
+                .violations
+                .iter()
+                .map(|v| v.line.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     // ── comment-line exclusion ────────────────────────────────────────────────
 
     #[test]
@@ -1305,6 +1406,31 @@ mod tests {
         assert!(
             !results[0].passed,
             "test_mode : bool (spaces) must trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_stem_with_bool_suffix_with_newline_whitespace() {
+        // Regression: formatting can insert newlines between the stem and `: bool`.
+        // This should still match the intended `\s*:\s*bool` suffix.
+        let dir = make_temp_dir("stem-bool-newline");
+        write_file(&dir, "src/lib.rs", "fn foo(test_mode\n: bool) {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-stem-newline",
+            literals: &["test_mode"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "test_mode\\n: bool must trigger failure (whitespace includes newlines)"
         );
 
         let _ = fs::remove_dir_all(&dir);
@@ -1941,6 +2067,16 @@ mod tests {
             "no-string-errors-handlers must scan the handler directory, got: {:?}",
             check.directories
         );
+    }
+
+    #[test]
+    fn test_scan_read_worker_count_is_bounded() {
+        // Regression guard: never spawn one OS thread per file.
+        // The exact bound is an implementation detail, but it must be far smaller
+        // than the number of files to avoid resource exhaustion.
+        let workers = super::scan_read_worker_count(10_000);
+        assert!(workers > 0);
+        assert!(workers <= 32, "workers must be capped, got {workers}");
     }
 
     // ── Boyer-Moore-Horspool tests ─────────────────────────────────────────────

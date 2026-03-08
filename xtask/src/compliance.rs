@@ -20,13 +20,26 @@ const TIMEOUT_PATTERNS: &[&str] = &["#[test]", "with_default_timeout", "with_tim
 pub fn check_no_shell_scripts(repo_root: &Path) -> NativeCheckResult {
     let scan_dirs = ["scripts", "tests/integration_tests"];
     let mut found: Vec<String> = Vec::new();
+    let mut walk_errors: Vec<String> = Vec::new();
 
     for rel_dir in &scan_dirs {
         let dir = repo_root.join(rel_dir);
         if !dir.exists() {
             continue;
         }
-        collect_sh_files(&dir, &mut found);
+        if let Err(e) = collect_sh_files(&dir, &mut found) {
+            walk_errors.push(format!("read_dir error for {}: {e}", dir.display()));
+        }
+    }
+
+    if !walk_errors.is_empty() {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Failed to scan for .sh files due to directory walk errors:\n{}",
+                walk_errors.join("\n")
+            ),
+        };
     }
 
     if found.is_empty() {
@@ -46,18 +59,19 @@ pub fn check_no_shell_scripts(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
-fn collect_sh_files(dir: &Path, out: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
+fn collect_sh_files(dir: &Path, out: &mut Vec<String>) -> std::io::Result<()> {
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            collect_sh_files(&path, out);
+            collect_sh_files(&path, out)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("sh") {
             out.push(path.display().to_string());
         }
     }
+
+    Ok(())
 }
 
 /// Scans integration test files for `#[test]` functions that do not call
@@ -83,21 +97,44 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
         };
     }
 
-    let files = collect_rs_files(&test_dir);
+    let files = match collect_rs_files(&test_dir) {
+        Ok(f) => f,
+        Err(e) => {
+            return NativeCheckResult {
+                status: CheckStatus::Error,
+                message: format!(
+                    "Failed to walk integration test directory {}: {e}",
+                    test_dir.display()
+                ),
+            };
+        }
+    };
 
     let ac = AhoCorasick::new(TIMEOUT_PATTERNS).expect("valid patterns");
     let mut violations: Vec<String> = Vec::new();
+    let mut read_errors: Vec<String> = Vec::new();
 
     for file_path in &files {
         let content = match std::fs::read(file_path) {
             Ok(c) => c,
             Err(e) => {
-                violations.push(format!("{}: read error: {e}", file_path.display()));
+                read_errors.push(format!("{}: read error: {e}", file_path.display()));
                 continue;
             }
         };
 
         scan_file_for_violations_ac(file_path, &content, &ac, &mut violations);
+    }
+
+    if !read_errors.is_empty() {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Failed to read {} integration test file(s) during timeout-wrapper compliance scan:\n{}",
+                read_errors.len(),
+                read_errors.join("\n")
+            ),
+        };
     }
 
     if violations.is_empty() {
@@ -117,12 +154,12 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
-fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
+fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    crate::scanner::collect_files_with_glob(dir, "*.rs", &mut files);
+    crate::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
     files.retain(|p| !should_skip_file(p));
     files.sort();
-    files
+    Ok(files)
 }
 
 fn should_skip_file(path: &Path) -> bool {
@@ -387,6 +424,37 @@ mod tests {
         assert!(
             result.message.contains("old_check.sh"),
             "{}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_check_no_shell_scripts_errors_on_unreadable_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = make_temp_dir("no-shell-unreadable");
+        let scripts_dir = dir.join("scripts");
+        fs::create_dir_all(&scripts_dir).unwrap();
+        write_file(&dir, "scripts/migrate.sh", "#!/bin/bash\necho hi");
+
+        let mut perms = fs::metadata(&scripts_dir).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&scripts_dir, perms).unwrap();
+
+        let result = check_no_shell_scripts(&dir);
+
+        // Restore permissions so cleanup works.
+        let mut perms_restore = fs::metadata(&scripts_dir).unwrap().permissions();
+        perms_restore.set_mode(0o755);
+        let _ = fs::set_permissions(&scripts_dir, perms_restore);
+
+        assert_eq!(result.status, CheckStatus::Error, "{}", result.message);
+        assert!(
+            result.message.contains("read_dir") || result.message.contains("Failed"),
+            "message must mention directory walk error: {}",
             result.message
         );
 
@@ -726,6 +794,49 @@ fn test_lacks_timeout() {
         assert!(
             !result.message.contains("test_has_timeout"),
             "test_has_timeout should NOT be flagged: {}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_check_timeout_wrappers_reports_read_errors_separately() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = make_temp_dir("read-error");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        let file_rel = "tests/integration_tests/unreadable.rs";
+        write_file(
+            &dir,
+            file_rel,
+            "#[test]\nfn test_unreadable() { assert!(true); }\n",
+        );
+
+        let file_path = dir.join(file_rel);
+        let mut perms = fs::metadata(&file_path).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&file_path, perms).unwrap();
+
+        let result = check_timeout_wrappers(&dir);
+
+        // Restore permissions so cleanup works.
+        let mut perms_restore = fs::metadata(&file_path).unwrap().permissions();
+        perms_restore.set_mode(0o644);
+        let _ = fs::set_permissions(&file_path, perms_restore);
+
+        assert_eq!(result.status, CheckStatus::Error, "{}", result.message);
+        assert!(
+            result.message.contains("read error"),
+            "message must mention read error: {}",
+            result.message
+        );
+        assert!(
+            !result.message.contains("missing timeout wrapper"),
+            "read errors must not be counted as missing wrappers: {}",
             result.message
         );
 

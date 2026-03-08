@@ -369,46 +369,29 @@ pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
 /// populate the `CachingCommandRunner` cache so that, if the sequential phase
 /// later reaches the same check names, it gets instant cache hits.
 ///
-/// Returns the first failure in `main_specs` order.  If `main_specs` all pass
-/// but a prefetch spec fails, the prefetch failure is returned.
+/// Returns the first failure in `main_specs` order.
+///
+/// Prefetch is a best-effort optimisation: failures in `prefetch_specs` must
+/// never fail verification, and are intentionally ignored.
 pub fn run_cargo_prefetch(
     runner: &(dyn CommandRunner + Sync),
     prefetch_specs: &[CommandSpec],
     main_specs: &[CommandSpec],
 ) -> Result<VerifyReport> {
-    use std::sync::Mutex;
-
-    // Slot for the prefetch thread's combined report.
-    let prefetch_result: Mutex<Option<VerifyReport>> = Mutex::new(None);
-
     std::thread::scope(|s| {
         // Spawn background prefetch thread.
-        s.spawn(|| {
-            let report = run_checks(runner, prefetch_specs).unwrap_or(VerifyReport {
-                exit: VerifyExitCode::Success,
-                failure: None,
+        if !prefetch_specs.is_empty() {
+            s.spawn(|| {
+                // Best-effort: ignore errors and failures.
+                let _ = run_checks(runner, prefetch_specs);
             });
-            *prefetch_result.lock().unwrap() = Some(report);
-        });
+        }
 
         // Main thread runs main specs sequentially.
         let main_report = run_checks(runner, main_specs)?;
 
         // Wait for prefetch to finish (scope join).
         Ok::<_, anyhow::Error>(main_report)
-    })
-    .map(|main_report| {
-        if main_report.exit == VerifyExitCode::Failure {
-            return main_report;
-        }
-        // Main passed; check if prefetch had a failure.
-        prefetch_result
-            .into_inner()
-            .unwrap()
-            .unwrap_or(VerifyReport {
-                exit: VerifyExitCode::Success,
-                failure: None,
-            })
     })
 }
 
@@ -443,6 +426,7 @@ fn verify(
 mod tests {
     use super::*;
 
+    use std::collections::HashMap;
     use std::collections::VecDeque;
     use std::sync::Mutex;
 
@@ -476,6 +460,40 @@ mod tests {
             args: &[],
             success_exit_codes: &[0],
             extra_env: &[],
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct ByNameRunner {
+        outputs: Mutex<HashMap<&'static str, CommandOutput>>,
+        ran: Mutex<Vec<&'static str>>,
+    }
+
+    impl ByNameRunner {
+        fn with_output(self, name: &'static str, output: CommandOutput) -> Self {
+            self.outputs.lock().unwrap().insert(name, output);
+            self
+        }
+
+        fn ran(&self) -> Vec<&'static str> {
+            self.ran.lock().unwrap().clone()
+        }
+    }
+
+    impl CommandRunner for ByNameRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.ran.lock().unwrap().push(spec.name);
+            self.outputs
+                .lock()
+                .unwrap()
+                .get(spec.name)
+                .cloned()
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("no output configured for {}", spec.name),
+                    )
+                })
         }
     }
 
@@ -1085,5 +1103,54 @@ mod tests {
         assert_eq!(report.exit, VerifyExitCode::Failure);
         let failure = report.failure.expect("expected failure");
         assert_eq!(failure.name, "fmt-check-fail");
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_does_not_fail_when_only_prefetch_fails() {
+        // Prefetch is a best-effort optimisation; verification correctness is determined
+        // by the sequential main specs.
+        let runner = ByNameRunner::default()
+            .with_output(
+                "prefetch-fails",
+                CommandOutput {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "error: prefetch failed".to_string(),
+                },
+            )
+            .with_output(
+                "main-passes",
+                CommandOutput {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            );
+
+        let prefetch_specs: &[CommandSpec] = &[CommandSpec {
+            name: "prefetch-fails",
+            program: "cargo",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "main-passes",
+            program: "cargo",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        // Both specs should have been invoked (order is not guaranteed due to concurrency).
+        let ran = runner.ran();
+        assert!(ran.contains(&"prefetch-fails"));
+        assert!(ran.contains(&"main-passes"));
     }
 }
