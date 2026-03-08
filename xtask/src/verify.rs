@@ -12,6 +12,8 @@ pub struct CommandSpec {
     pub program: &'static str,
     pub args: &'static [&'static str],
     pub success_exit_codes: &'static [i32],
+    /// Environment variable overrides for this command.
+    pub extra_env: &'static [(&'static str, &'static str)],
 }
 
 #[derive(Debug, Clone)]
@@ -204,14 +206,19 @@ pub fn run_checks_concurrent(
     })
 }
 
-/// Fast verification: rg checks run concurrently, cargo checks sequentially.
+/// Fast verification: rg checks run concurrently, cargo checks via prefetch + sequential.
+///
+/// `prefetch_specs` are run concurrently in a background thread during the cargo phase to
+/// pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no prefetch is
+/// desired (e.g., in tests with fake runners).
 pub fn verify_fast(
     runner: &(dyn CommandRunner + Sync),
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
+    prefetch_specs: &[CommandSpec],
 ) -> Result<VerifyReport> {
-    // Run native checks first (always sequential, very fast).
+    // Phase 0: native checks (always sequential, very fast).
     for check in native_checks {
         let result = (check.run)(repo_root);
         if result.status != CheckStatus::Pass {
@@ -237,8 +244,8 @@ pub fn verify_fast(
         return Ok(rg_report);
     }
 
-    // Phase 2: sequential cargo checks.
-    run_checks(runner, cargo_checks)
+    // Phase 2: cargo checks with optional concurrent prefetch.
+    run_cargo_prefetch(runner, prefetch_specs, cargo_checks)
 }
 
 pub const REQUIRED_CHECKS: &[CommandSpec] = &[
@@ -260,6 +267,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         // Exit code 1 means "no matches" which is success.
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     // ── no-test-flags group (replaces no_test_flags_check.sh) ──────────────
     CommandSpec {
@@ -273,6 +281,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-test-flags-test-mode-params",
@@ -285,6 +294,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-test-flags-skip-params",
@@ -297,6 +307,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-test-flags-mock-params",
@@ -309,6 +320,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-test-flags-testing-feature",
@@ -321,6 +333,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-test-flags-cfg-not-test",
@@ -333,6 +346,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     // ── compliance group (process-spawn and serial checks from compliance_check.sh) ──
     CommandSpec {
@@ -350,6 +364,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "!_TEMPLATE.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "compliance-no-serial",
@@ -364,6 +379,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "!_TEMPLATE.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     // ── audit group (replaces audit_tests.sh critical gates) ────────────────
     CommandSpec {
@@ -379,6 +395,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-real-fs-integration",
@@ -393,6 +410,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-real-process-integration",
@@ -407,6 +425,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-serial-src",
@@ -421,6 +440,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-test-helpers-src",
@@ -433,6 +453,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-env-mutations-integration",
@@ -445,6 +466,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-serial-process-system",
@@ -459,6 +481,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-no-git2-process-system",
@@ -471,6 +494,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "audit-ignore-has-url",
@@ -485,6 +509,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "*.rs",
         ],
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     // Regression guard: no .sh files may be committed after the shell-script migration.
     // rg --files exits 1 (no matches) = pass; exits 0 (matches found) = fail.
@@ -503,6 +528,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         // Exit code 1 means "no matches found" which is the success condition.
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     CommandSpec {
         name: "no-string-errors-handlers",
@@ -517,6 +543,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         ],
         // Exit code 1 means "no matches" which is success.
         success_exit_codes: &[1],
+        extra_env: &[],
     },
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
@@ -524,6 +551,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["fmt", "--all", "--check"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-ralph-workflow",
@@ -539,6 +567,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-ralph-workflow-tests",
@@ -553,6 +582,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-test-helpers",
@@ -567,12 +597,14 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "clippy-xtask",
         program: "cargo",
         args: &["clippy", "-p", "xtask", "--all-targets", "--", "-D", "warnings"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── tests ────────────────────────────────────────────────────────────────
     CommandSpec {
@@ -580,12 +612,14 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["test", "-p", "xtask"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "test-ralph-workflow-lib",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "--all-features"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "test-integration",
@@ -598,6 +632,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "integration_tests",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── memory safety (replaces verify_memory_safety.sh and ci_performance_regression.sh) ──
     CommandSpec {
@@ -612,18 +647,21 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "memory_safety",
         ],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "memory-safety-benchmarks",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "benchmarks"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "memory-safety-executor",
         program: "cargo",
         args: &["test", "-p", "ralph-workflow", "--lib", "executor::tests"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     // ── release build and custom lints ───────────────────────────────────────
     CommandSpec {
@@ -631,14 +669,96 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["build", "--release"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
     CommandSpec {
         name: "dylint",
         program: "make",
         args: &["dylint"],
         success_exit_codes: &[0],
+        extra_env: &[],
     },
 ];
+
+/// Prefetch specs for xtask checks run concurrently with the sequential cargo phase.
+///
+/// These use the same `name` as the corresponding entries in REQUIRED_CHECKS so they
+/// share the same cache key (name + scope hash).  A separate `CARGO_TARGET_DIR` avoids
+/// holding the default target/ lock while the main sequential phase compiles other crates.
+pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
+    CommandSpec {
+        name: "clippy-xtask",
+        program: "cargo",
+        args: &[
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+    CommandSpec {
+        name: "test-xtask",
+        program: "cargo",
+        args: &["test", "-p", "xtask"],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+];
+
+/// Run prefetch specs concurrently with main specs.
+///
+/// Launches a background thread that runs `prefetch_specs` while the current
+/// thread runs `main_specs` sequentially.  When `prefetch_specs` complete they
+/// populate the `CachingCommandRunner` cache so that, if the sequential phase
+/// later reaches the same check names, it gets instant cache hits.
+///
+/// Returns the first failure in `main_specs` order.  If `main_specs` all pass
+/// but a prefetch spec fails, the prefetch failure is returned.
+pub fn run_cargo_prefetch(
+    runner: &(dyn CommandRunner + Sync),
+    prefetch_specs: &[CommandSpec],
+    main_specs: &[CommandSpec],
+) -> Result<VerifyReport> {
+    use std::sync::Mutex;
+
+    // Slot for the prefetch thread's combined report.
+    let prefetch_result: Mutex<Option<VerifyReport>> = Mutex::new(None);
+
+    std::thread::scope(|s| {
+        // Spawn background prefetch thread.
+        s.spawn(|| {
+            let report = run_checks(runner, prefetch_specs).unwrap_or(VerifyReport {
+                exit: VerifyExitCode::Success,
+                failure: None,
+            });
+            *prefetch_result.lock().unwrap() = Some(report);
+        });
+
+        // Main thread runs main specs sequentially.
+        let main_report = run_checks(runner, main_specs)?;
+
+        // Wait for prefetch to finish (scope join).
+        Ok::<_, anyhow::Error>(main_report)
+    })
+    .map(|main_report| {
+        if main_report.exit == VerifyExitCode::Failure {
+            return main_report;
+        }
+        // Main passed; check if prefetch had a failure.
+        prefetch_result
+            .into_inner()
+            .unwrap()
+            .unwrap_or(VerifyReport {
+                exit: VerifyExitCode::Success,
+                failure: None,
+            })
+    })
+}
 
 #[cfg(test)]
 fn verify(
@@ -703,6 +823,7 @@ mod tests {
             program: "fake",
             args: &[],
             success_exit_codes: &[0],
+            extra_env: &[],
         }
     }
 
@@ -744,6 +865,7 @@ mod tests {
             program: "rg",
             args: &["pattern"],
             success_exit_codes: &[1],
+            extra_env: &[],
         }];
 
         // Act
@@ -1171,18 +1293,21 @@ mod tests {
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
+                extra_env: &[],
             },
             CommandSpec {
                 name: "check-b",
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
+                extra_env: &[],
             },
             CommandSpec {
                 name: "check-c",
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
+                extra_env: &[],
             },
         ];
         let runner = RecordingRunner::default();
@@ -1214,12 +1339,14 @@ mod tests {
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
+                extra_env: &[],
             },
             CommandSpec {
                 name: "second-fail-check",
                 program: "rg",
                 args: &[],
                 success_exit_codes: &[0],
+                extra_env: &[],
             },
         ];
         let runner = FakeRunner::new([
@@ -1255,6 +1382,7 @@ mod tests {
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
+            &[], // no prefetch in tests
         )
         .expect("verify_fast should not error");
 
@@ -1297,6 +1425,7 @@ mod tests {
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
+            &[], // no prefetch in tests
         )
         .expect("verify_fast should not error");
 
@@ -1330,11 +1459,103 @@ mod tests {
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
+            &[], // no prefetch in tests
         )
         .expect("verify_fast should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Failure);
         let failure = report.failure.expect("expected failure");
         assert_eq!(failure.name, "fmt-check");
+    }
+
+    // ── TDD tests for cargo prefetch ────────────────────────────────────────
+
+    #[test]
+    fn test_cargo_prefetch_specs_use_same_names_as_required_checks() {
+        // TDD anchor: CARGO_PREFETCH_SPECS must use the same check names as REQUIRED_CHECKS
+        // so the cache key (name + scope hash) is shared between prefetch and sequential runs.
+        for spec in CARGO_PREFETCH_SPECS {
+            assert!(
+                REQUIRED_CHECKS.iter().any(|c| c.name == spec.name),
+                "prefetch spec '{}' must have a matching entry in REQUIRED_CHECKS",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_cargo_prefetch_specs_have_extra_env() {
+        // TDD anchor: prefetch specs must carry CARGO_TARGET_DIR override to avoid lock
+        // contention with the main sequential build.
+        for spec in CARGO_PREFETCH_SPECS {
+            let has_cargo_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
+            assert!(
+                has_cargo_target_dir,
+                "prefetch spec \'{}\' must set CARGO_TARGET_DIR in extra_env",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_populates_results_for_all_specs() {
+        // TDD anchor: run_cargo_prefetch must run all prefetch specs and all main specs,
+        // returning Success when all pass.
+        let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
+
+        let runner = RecordingRunner::default();
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "fmt-check",
+            program: "cargo",
+            args: &["fmt", "--all", "--check"],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let prefetch_specs = CARGO_PREFETCH_SPECS;
+
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let ran = runner.ran();
+        assert!(
+            ran.contains(&"fmt-check"),
+            "run_cargo_prefetch must run main specs"
+        );
+        for name in &prefetch_names {
+            assert!(
+                ran.contains(name),
+                "run_cargo_prefetch must run prefetch spec \'{name}\'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_returns_failure_on_main_spec_failure() {
+        // TDD anchor: if a main spec fails, run_cargo_prefetch must return Failure.
+        let outputs = vec![CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        }];
+        let runner = FakeRunner::new(outputs);
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "fmt-check-fail",
+            program: "cargo",
+            args: &["fmt", "--all", "--check"],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let report = run_cargo_prefetch(&runner, &[], main_specs)
+            .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "fmt-check-fail");
     }
 }

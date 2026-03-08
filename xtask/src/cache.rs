@@ -9,7 +9,7 @@ use crate::verify::{CheckStatus, CommandOutput, CommandRunner, CommandSpec};
 /// Cached result for a single check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
-    /// Hash of the check scope (file path+size+mtime tuples, sorted).
+    /// Hash of the check scope (file paths + content bytes, sorted by path).
     pub scope_hash: u64,
     pub exit_code: i32,
     pub stdout: String,
@@ -103,7 +103,8 @@ pub fn scope_for(check_name: &str) -> CheckScope {
 }
 
 /// Compute a u64 hash of the scope by iterating relevant files and
-/// hashing (path, size, modified_time) tuples.
+/// hashing (path, content bytes) pairs. Content-based hashing ensures
+/// cache keys are stable across mtime changes (e.g., git checkout round-trips).
 pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -112,36 +113,32 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
     let dirs = match scope {
         CheckScope::Directories(dirs) => dirs,
         CheckScope::Build(dirs) => {
-            // Include Cargo.lock in hash.
+            // Include Cargo.lock content in hash.
             let lock = repo_root.join("Cargo.lock");
-            if let Ok(meta) = std::fs::metadata(&lock) {
-                lock.to_string_lossy().hash(&mut hasher);
-                meta.len().hash(&mut hasher);
-                if let Ok(t) = meta.modified() {
-                    t.hash(&mut hasher);
-                }
+            lock.to_string_lossy().hash(&mut hasher);
+            if let Ok(bytes) = std::fs::read(&lock) {
+                bytes.hash(&mut hasher);
             }
             dirs
         }
     };
 
-    let mut entries: Vec<(PathBuf, u64, Option<std::time::SystemTime>)> = Vec::new();
+    let mut entries: Vec<PathBuf> = Vec::new();
     for dir in *dirs {
         let full = repo_root.join(dir);
         collect_rs_files(&full, &mut entries);
     }
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    for (path, size, mtime) in entries {
+    entries.sort();
+    for path in entries {
         path.to_string_lossy().hash(&mut hasher);
-        size.hash(&mut hasher);
-        if let Some(t) = mtime {
-            t.hash(&mut hasher);
+        if let Ok(bytes) = std::fs::read(&path) {
+            bytes.hash(&mut hasher);
         }
     }
     hasher.finish()
 }
 
-fn collect_rs_files(dir: &Path, out: &mut Vec<(PathBuf, u64, Option<std::time::SystemTime>)>) {
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
@@ -150,9 +147,7 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<(PathBuf, u64, Option<std::time::S
         if path.is_dir() {
             collect_rs_files(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            if let Ok(meta) = entry.metadata() {
-                out.push((path, meta.len(), meta.modified().ok()));
-            }
+            out.push(path);
         }
     }
 }
@@ -319,6 +314,7 @@ mod tests {
             program: "rg",
             args: &[],
             success_exit_codes: &[1],
+            extra_env: &[],
         }
     }
 
@@ -516,6 +512,61 @@ mod tests {
         // Second computation for same key returns same hash from memo.
         let h2 = runner.compute_or_cached_scope_hash(&scope_for("test-xtask"));
         assert_eq!(h1, h2, "same scope must produce same hash");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_compute_scope_hash_stable_across_mtime_change() {
+        // TDD: same file content must produce same hash even after mtime changes.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-content-stable");
+        let _ = std::fs::create_dir_all(&tmp);
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+
+        // Write a file with known content.
+        let file_path = src_dir.join("lib.rs");
+        std::fs::write(&file_path, b"fn foo() {}").unwrap();
+
+        let scope = CheckScope::Directories(&["src"]);
+        let hash1 = compute_scope_hash(&tmp, &scope);
+
+        // Re-write same content (changes mtime but not content).
+        std::fs::write(&file_path, b"fn foo() {}").unwrap();
+
+        let hash2 = compute_scope_hash(&tmp, &scope);
+
+        assert_eq!(
+            hash1, hash2,
+            "same file content must produce same scope hash regardless of mtime"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_compute_scope_hash_differs_on_content_change() {
+        // TDD: different file content must produce different hash.
+        let tmp = std::env::temp_dir().join("xtask-cache-test-content-change");
+        let _ = std::fs::create_dir_all(&tmp);
+        let src_dir = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src_dir);
+
+        let file_path = src_dir.join("lib.rs");
+        std::fs::write(&file_path, b"fn foo() {}").unwrap();
+
+        let scope = CheckScope::Directories(&["src"]);
+        let hash1 = compute_scope_hash(&tmp, &scope);
+
+        // Write different content.
+        std::fs::write(&file_path, b"fn bar() {}").unwrap();
+
+        let hash2 = compute_scope_hash(&tmp, &scope);
+
+        assert_ne!(
+            hash1, hash2,
+            "different file content must produce different scope hash"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

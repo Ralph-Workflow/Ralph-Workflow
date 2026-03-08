@@ -45,6 +45,7 @@ impl CommandRunner for RealRunner {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
         let output = Command::new(spec.program)
             .args(spec.args)
+            .envs(spec.extra_env.iter().copied())
             .current_dir(&self.repo_root)
             .output()?;
 
@@ -69,6 +70,7 @@ fn main() -> ExitCode {
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
                 verify::REQUIRED_CHECKS,
+                verify::CARGO_PREFETCH_SPECS,
             ) {
                 Ok(report) => report,
                 Err(err) => {
