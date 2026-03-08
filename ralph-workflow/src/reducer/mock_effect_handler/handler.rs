@@ -116,6 +116,49 @@ If you determine there are NO actual changes to commit, respond with:
                 Ok(EffectResult::event(event))
             }
 
+            Effect::MaterializeCommitInputs { attempt } => {
+                use crate::reducer::prompt_inputs::sha256_hex_str;
+                use crate::reducer::state::{
+                    MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
+                    PromptMaterializationReason,
+                };
+                use std::path::Path;
+
+                let diff_path = Path::new(".agent/tmp/commit_diff.txt");
+                let Ok(content) = ctx.workspace.read(diff_path) else {
+                    // Match real handler semantics: emit commit_diff_invalidated when file missing.
+                    let event = PipelineEvent::commit_diff_invalidated(
+                        "Missing commit diff at .agent/tmp/commit_diff.txt".to_string(),
+                    );
+                    self.captured_events.borrow_mut().push(event.clone());
+                    return Ok(EffectResult::event(event));
+                };
+
+                let original_bytes = content.len() as u64;
+                let content_id_sha256 = sha256_hex_str(&content);
+                let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
+
+                self.captured_effects
+                    .borrow_mut()
+                    .push(Effect::MaterializeCommitInputs { attempt });
+
+                let input = MaterializedPromptInput {
+                    kind: PromptInputKind::Diff,
+                    content_id_sha256,
+                    consumer_signature_sha256,
+                    original_bytes,
+                    final_bytes: original_bytes,
+                    model_budget_bytes: None,
+                    inline_budget_bytes: None,
+                    representation: PromptInputRepresentation::Inline,
+                    reason: PromptMaterializationReason::WithinBudgets,
+                };
+
+                let event = PipelineEvent::commit_inputs_materialized(attempt, input);
+                self.captured_events.borrow_mut().push(event.clone());
+                Ok(EffectResult::event(event))
+            }
+
             Effect::CheckUncommittedChangesBeforeTermination => {
                 use crate::reducer::event::ErrorEvent;
 

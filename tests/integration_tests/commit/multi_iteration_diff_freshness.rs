@@ -24,7 +24,7 @@ use crate::common::{
 use crate::test_timeout::with_default_timeout;
 use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
 use ralph_workflow::reducer::effect::Effect;
-use ralph_workflow::reducer::event::{CommitEvent, PipelineEvent};
+use ralph_workflow::reducer::event::{CommitEvent, PipelineEvent, PromptInputEvent};
 use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
 use ralph_workflow::reducer::PipelineState;
 use std::path::PathBuf;
@@ -155,6 +155,75 @@ fn test_two_iterations_each_produce_a_commit() {
         assert_eq!(
             create_commit_count, 2,
             "CreateCommit must be called once per commit cycle (2 dev iterations = 2 commits)"
+        );
+    });
+}
+
+/// Test that the second commit cycle's diff input size does not exceed the first cycle's.
+///
+/// This is the size-based behavioral invariant: when the real diff shrinks from
+/// cycle 1 to cycle 2, the materialized commit context for cycle 2 must also be
+/// smaller (or equal) — never larger due to stale reuse of cycle-1 diff content.
+///
+/// Scenario:
+/// - Cycle 1: 50KB diff content
+/// - Cycle 2: 30KB diff content
+///
+/// Required: `cycle_2` `original_bytes` <= `cycle_1` `original_bytes`, and
+///           `cycle_2` `original_bytes` reflects the actual second diff (≤ 30KB).
+#[test]
+fn test_second_commit_cycle_diff_size_does_not_exceed_first_cycle() {
+    with_default_timeout(|| {
+        let mut app_handler = create_multi_iter_app_handler();
+        let cycle_1_diff = "A".repeat(50_000);
+        let cycle_2_diff = "B".repeat(30_000);
+        let mut effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
+            .with_staged_diff_sequence([cycle_1_diff.as_str(), cycle_2_diff.as_str()]);
+        let config = create_test_config_struct().with_developer_iters(2);
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handlers(&[], executor, config, &mut app_handler, &mut effect_handler)
+            .unwrap();
+
+        // Collect original_bytes from all CommitInputsMaterialized events (one per cycle).
+        let diff_sizes: Vec<u64> = effect_handler
+            .captured_events()
+            .into_iter()
+            .filter_map(|e| {
+                if let PipelineEvent::PromptInput(PromptInputEvent::CommitInputsMaterialized {
+                    diff,
+                    ..
+                }) = e
+                {
+                    Some(diff.original_bytes)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(
+            diff_sizes.len(),
+            2,
+            "Expected exactly 2 CommitInputsMaterialized events (one per commit cycle), got: {diff_sizes:?}"
+        );
+
+        let cycle_1_bytes = diff_sizes[0];
+        let cycle_2_bytes = diff_sizes[1];
+
+        assert!(
+            cycle_1_bytes <= 50_000,
+            "Cycle 1 diff must reflect actual first diff content (≤ 50KB), got {cycle_1_bytes} bytes"
+        );
+        assert!(
+            cycle_2_bytes <= 30_000,
+            "Cycle 2 diff must reflect actual second diff content (≤ 30KB), got {cycle_2_bytes} bytes — \
+             stale reuse of cycle-1 diff detected"
+        );
+        assert!(
+            cycle_2_bytes <= cycle_1_bytes,
+            "Cycle 2 diff input size ({cycle_2_bytes}) must not exceed cycle 1 ({cycle_1_bytes}) — \
+             second commit context must not grow due to stale reuse"
         );
     });
 }
