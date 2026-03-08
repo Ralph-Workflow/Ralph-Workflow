@@ -79,6 +79,8 @@ fn main() -> ExitCode {
                 }
             };
 
+            runner.flush();
+
             if report.exit == VerifyExitCode::Failure {
                 print_verify_failure(&report);
             }

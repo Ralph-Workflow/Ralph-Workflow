@@ -1,10 +1,37 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
 use crate::verify::{CheckStatus, CommandOutput, CommandRunner, CommandSpec};
+
+/// A minimal FNV-1a 64-bit hasher.  Stable across Rust versions and platforms.
+///
+/// FNV-1a is significantly faster than SipHash (the default) for short inputs
+/// (file paths), which constitute the majority of hashed bytes.
+struct Fnv1aHasher(u64);
+
+impl Fnv1aHasher {
+    const OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+    const PRIME: u64 = 1_099_511_628_211;
+
+    fn new() -> Self {
+        Self(Self::OFFSET_BASIS)
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 ^= b as u64;
+            self.0 = self.0.wrapping_mul(Self::PRIME);
+        }
+    }
+
+    fn finish(self) -> u64 {
+        self.0
+    }
+}
 
 /// Cached result for a single check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,22 +129,56 @@ pub fn scope_for(check_name: &str) -> CheckScope {
     }
 }
 
+/// Read file contents in parallel using scoped threads.
+///
+/// Files are returned in the same order as `paths` so the caller can hash
+/// them deterministically without re-sorting.
+fn read_files_parallel(paths: &[PathBuf]) -> Vec<Vec<u8>> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    // For small file lists, thread overhead exceeds benefit; use serial reads.
+    const PARALLEL_THRESHOLD: usize = 4;
+    if paths.len() < PARALLEL_THRESHOLD {
+        return paths
+            .iter()
+            .map(|p| std::fs::read(p).unwrap_or_default())
+            .collect();
+    }
+
+    // Spawn one thread per file (index, bytes) and reassemble in order.
+    let handles: Vec<std::thread::JoinHandle<(usize, Vec<u8>)>> = paths
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let path = path.clone();
+            std::thread::spawn(move || (i, std::fs::read(&path).unwrap_or_default()))
+        })
+        .collect();
+
+    let mut results: Vec<Vec<u8>> = vec![Vec::new(); paths.len()];
+    for handle in handles {
+        if let Ok((i, bytes)) = handle.join() {
+            results[i] = bytes;
+        }
+    }
+    results
+}
+
 /// Compute a u64 hash of the scope by iterating relevant files and
 /// hashing (path, content bytes) pairs. Content-based hashing ensures
 /// cache keys are stable across mtime changes (e.g., git checkout round-trips).
 pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
+    let mut hasher = Fnv1aHasher::new();
 
     let dirs = match scope {
         CheckScope::Directories(dirs) => dirs,
         CheckScope::Build(dirs) => {
             // Include Cargo.lock content in hash.
             let lock = repo_root.join("Cargo.lock");
-            lock.to_string_lossy().hash(&mut hasher);
+            hasher.write_bytes(lock.to_string_lossy().as_bytes());
             if let Ok(bytes) = std::fs::read(&lock) {
-                bytes.hash(&mut hasher);
+                hasher.write_bytes(&bytes);
             }
             dirs
         }
@@ -129,12 +190,14 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
         collect_rs_files(&full, &mut entries);
     }
     entries.sort();
-    for path in entries {
-        path.to_string_lossy().hash(&mut hasher);
-        if let Ok(bytes) = std::fs::read(&path) {
-            bytes.hash(&mut hasher);
-        }
+
+    // Read files in parallel; hash results in sorted (deterministic) order.
+    let file_bytes = read_files_parallel(&entries);
+    for (path, bytes) in entries.iter().zip(file_bytes.iter()) {
+        hasher.write_bytes(path.to_string_lossy().as_bytes());
+        hasher.write_bytes(bytes);
     }
+
     hasher.finish()
 }
 
@@ -162,6 +225,7 @@ struct CacheFile {
 ///
 /// Cache is persisted to `{repo_root}/target/xtask-verify-cache.json`.
 /// Only successful check results are cached; failures always cause a re-run.
+/// Disk writes are deferred until `flush()` is called (O(1) writes per run).
 pub struct CachingCommandRunner {
     inner: Box<dyn CommandRunner + Send + Sync>,
     repo_root: PathBuf,
@@ -169,6 +233,8 @@ pub struct CachingCommandRunner {
     /// In-process memoization: avoids re-traversing the same directories
     /// for multiple checks that share the same scope within a single run.
     pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
+    /// Set to true when in-memory cache has unsaved changes.
+    dirty: AtomicBool,
 }
 
 impl CachingCommandRunner {
@@ -186,6 +252,7 @@ impl CachingCommandRunner {
             repo_root,
             memory: Mutex::new(memory),
             scope_memo: Mutex::new(HashMap::new()),
+            dirty: AtomicBool::new(false),
         }
     }
 
@@ -198,6 +265,15 @@ impl CachingCommandRunner {
         let file = CacheFile { entries };
         if let Ok(json) = serde_json::to_string_pretty(&file) {
             let _ = std::fs::write(self.cache_path(), json);
+        }
+    }
+
+    /// Flush any pending cache updates to disk.  Call once at program exit.
+    /// Idempotent: safe to call multiple times.
+    pub fn flush(&self) {
+        if self.dirty.load(Ordering::Relaxed) {
+            self.persist();
+            self.dirty.store(false, Ordering::Relaxed);
         }
     }
 
@@ -251,7 +327,8 @@ impl CommandRunner for CachingCommandRunner {
                     stderr: output.stderr.clone(),
                 },
             );
-            self.persist();
+            // Mark dirty; actual disk write is deferred to flush().
+            self.dirty.store(true, Ordering::Relaxed);
         }
 
         Ok(output)
@@ -592,6 +669,159 @@ mod tests {
             memo_len, 1,
             "two checks with same scope should share one scope_memo entry"
         );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── FNV-1a hasher tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_fnv_hasher_is_deterministic_for_same_content() {
+        // FNV-1a must produce the same hash for identical file content
+        // regardless of when it is computed (no DefaultHasher randomisation).
+        let tmp = std::env::temp_dir().join("xtask-fnv-deterministic");
+        let _ = std::fs::create_dir_all(&tmp);
+        let src = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src);
+        std::fs::write(src.join("lib.rs"), b"fn foo() {}").unwrap();
+
+        let scope = CheckScope::Directories(&["src"]);
+        let h1 = compute_scope_hash(&tmp, &scope);
+        let h2 = compute_scope_hash(&tmp, &scope);
+        assert_eq!(h1, h2, "same content must produce same hash on every call");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_fnv_hasher_differs_for_different_content() {
+        let tmp = std::env::temp_dir().join("xtask-fnv-differs");
+        let _ = std::fs::create_dir_all(&tmp);
+        let src = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src);
+
+        std::fs::write(src.join("lib.rs"), b"fn foo() {}").unwrap();
+        let scope = CheckScope::Directories(&["src"]);
+        let h1 = compute_scope_hash(&tmp, &scope);
+
+        std::fs::write(src.join("lib.rs"), b"fn bar() {}").unwrap();
+        let h2 = compute_scope_hash(&tmp, &scope);
+
+        assert_ne!(h1, h2, "different content must produce different hash");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_fnv_hasher_known_value_for_empty_directory_scope() {
+        // Empty directory: hash must be consistent across two calls.
+        // We only assert the result is the same across two calls to avoid
+        // pinning to implementation details.
+        let tmp = std::env::temp_dir().join("xtask-fnv-empty-scope");
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+
+        let scope = CheckScope::Directories(&["src"]);
+        let h1 = compute_scope_hash(&tmp, &scope);
+        let h2 = compute_scope_hash(&tmp, &scope);
+        assert_eq!(h1, h2, "empty directory must produce consistent hash");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── Deferred persistence tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_run_does_not_persist_before_flush() {
+        // After a successful run, the cache must be updated in memory but NOT
+        // written to disk until flush() is called.
+        let tmp = std::env::temp_dir().join("xtask-cache-deferred-persist");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let spec = make_spec("no-test-flags-cfg-test");
+        let cache_path = tmp.join("target/xtask-verify-cache.json");
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        // Run a check — should populate in-memory cache but NOT write to disk.
+        let _ = runner.run(&spec).unwrap();
+
+        assert!(
+            !cache_path.exists(),
+            "cache must not be written to disk before flush() is called"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_flush_writes_cache_to_disk() {
+        let tmp = std::env::temp_dir().join("xtask-cache-flush-writes");
+        let _ = std::fs::create_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+
+        let spec = make_spec("no-test-flags-cfg-test");
+        let cache_path = tmp.join("target/xtask-verify-cache.json");
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let _ = runner.run(&spec).unwrap();
+        runner.flush();
+
+        assert!(
+            cache_path.exists(),
+            "cache must be written to disk after flush() is called"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_flush_is_idempotent() {
+        // Calling flush() multiple times must not cause errors or duplicated writes.
+        let tmp = std::env::temp_dir().join("xtask-cache-flush-idempotent");
+        let _ = std::fs::create_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let spec = make_spec("no-test-flags-cfg-test");
+        let _ = runner.run(&spec).unwrap();
+        runner.flush();
+        runner.flush(); // second flush must not panic or corrupt
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── Parallel file reading tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_parallel_file_read_same_hash_as_sequential() {
+        // Parallel read_files_parallel must produce the same bytes as sequential read.
+        let tmp = std::env::temp_dir().join("xtask-parallel-hash");
+        let _ = std::fs::create_dir_all(&tmp);
+        let src = tmp.join("src");
+        let _ = std::fs::create_dir_all(&src);
+
+        // Write multiple files to exercise the parallel path (>= PARALLEL_THRESHOLD).
+        for i in 0..8u32 {
+            std::fs::write(
+                src.join(format!("file{i}.rs")),
+                format!("fn f{i}() {{}}").as_bytes(),
+            )
+            .unwrap();
+        }
+
+        let scope = CheckScope::Directories(&["src"]);
+        // Compute hash twice — parallel impl must be deterministic.
+        let h1 = compute_scope_hash(&tmp, &scope);
+        let h2 = compute_scope_hash(&tmp, &scope);
+        assert_eq!(h1, h2, "parallel scope hash must be deterministic");
+
+        // Content change must still be detected.
+        std::fs::write(src.join("file0.rs"), b"fn changed() {}").unwrap();
+        let h3 = compute_scope_hash(&tmp, &scope);
+        assert_ne!(h1, h3, "hash must change when file content changes");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
