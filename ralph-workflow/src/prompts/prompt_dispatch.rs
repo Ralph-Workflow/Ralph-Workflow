@@ -359,4 +359,40 @@ mod tests {
             "Should replay when current_content_id is None (caller does not validate)"
         );
     }
+
+    /// Regression test for RFC-007 root cause: commit prompt stale replay across iterations.
+    ///
+    /// Before the fix, commit keys were `commit_message_attempt_{attempt}` with no iteration
+    /// dimension. Attempt resets to 1 on each new commit cycle, so iter2/attempt1 would
+    /// collide with iter1/attempt1 and replay the stale first-cycle prompt.
+    ///
+    /// This test verifies that when iter1/attempt1 exists in history, requesting
+    /// iter2/attempt1 does NOT replay it — the iteration dimension produces a different key.
+    #[test]
+    fn test_iteration_2_commit_does_not_replay_iteration_1_prompt() {
+        // Arrange: history contains the iter1/attempt1 commit prompt (from a completed cycle)
+        let iter1_key = PromptScopeKey::for_commit(1, 1, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            iter1_key.to_string(),
+            PromptHistoryEntry::from_string("iter 1 commit prompt".to_string()),
+        );
+
+        // Act: request iter2/attempt1 (attempt resets to 1 on the new cycle — the bug scenario)
+        let iter2_key = PromptScopeKey::for_commit(2, 1, RetryMode::Normal, 0);
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&iter2_key, &history, None, || {
+                "iter 2 fresh commit prompt".to_string()
+            });
+
+        // Assert: iter2 must generate a fresh prompt, not replay iter1's stale prompt
+        assert!(
+            !was_replayed,
+            "iter2/attempt1 must NOT replay iter1/attempt1"
+        );
+        assert_eq!(
+            prompt, "iter 2 fresh commit prompt",
+            "iter2 must receive a freshly generated prompt, not iter1's stale content"
+        );
+    }
 }

@@ -425,6 +425,26 @@ mod tests {
         assert_ne!(iter1, iter2);
     }
 
+    /// Regression test for the root cause of the stale prompt replay bug (RFC-007).
+    ///
+    /// The bug: commit attempt numbers reset to 1 on each new commit cycle. Before
+    /// the fix, keys were `commit_message_attempt_1` (attempt-only), so iter2/attempt1
+    /// would collide with iter1/attempt1 and replay the stale first-cycle prompt.
+    ///
+    /// After the fix, keys include the iteration dimension:
+    /// `commit_message_attempt_iter1_1` != `commit_message_attempt_iter2_1`.
+    #[test]
+    fn commit_keys_are_unique_across_iterations_same_attempt() {
+        // Both use attempt=1 (attempt resets to 1 on each new commit cycle — the bug scenario)
+        let iter1_attempt1 = PromptScopeKey::for_commit(1, 1, RetryMode::Normal, 0).to_string();
+        let iter2_attempt1 = PromptScopeKey::for_commit(2, 1, RetryMode::Normal, 0).to_string();
+        assert_ne!(
+            iter1_attempt1, iter2_attempt1,
+            "Commit keys must differ across iterations even when attempt number is the same. \
+             iter1/attempt1 = '{iter1_attempt1}', iter2/attempt1 = '{iter2_attempt1}'"
+        );
+    }
+
     // =========================================================================
     // ConflictResolution phase key tests
     // =========================================================================
