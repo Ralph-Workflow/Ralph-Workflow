@@ -10,16 +10,182 @@
 
 use crate::test_timeout::with_default_timeout;
 use ralph_workflow::pipeline::idle_timeout::{
-    monitor_idle_timeout_with_interval_and_kill_config, new_activity_timestamp,
-    new_file_activity_tracker, FileActivityConfig, KillConfig, MonitorConfig, MonitorResult,
+    is_idle_timeout_exceeded, monitor_idle_timeout_with_interval_and_kill_config,
+    new_activity_timestamp, new_file_activity_tracker, touch_activity, FileActivityConfig,
+    KillConfig, MonitorConfig, MonitorResult,
 };
-use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
+use ralph_workflow::workspace::{DirEntry, MemoryWorkspace, Workspace};
 use ralph_workflow::{AgentChild, MockAgentChild, MockProcessExecutor, ProcessExecutor};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+fn wait_until_idle_timeout_exceeded(
+    timestamp: &Arc<std::sync::atomic::AtomicU64>,
+    timeout: Duration,
+) {
+    timestamp.store(0, Ordering::Release);
+    while !is_idle_timeout_exceeded(timestamp, timeout) {
+        std::thread::yield_now();
+    }
+}
+
+#[derive(Debug)]
+struct ReadDirCountingWorkspace {
+    inner: MemoryWorkspace,
+    read_dir_calls: std::sync::atomic::AtomicUsize,
+}
+
+impl ReadDirCountingWorkspace {
+    const fn new(inner: MemoryWorkspace) -> Self {
+        Self {
+            inner,
+            read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn read_dir_calls(&self) -> usize {
+        self.read_dir_calls
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+impl Workspace for ReadDirCountingWorkspace {
+    fn root(&self) -> &Path {
+        self.inner.root()
+    }
+
+    fn read(&self, relative: &Path) -> std::io::Result<String> {
+        self.inner.read(relative)
+    }
+
+    fn read_bytes(&self, relative: &Path) -> std::io::Result<Vec<u8>> {
+        self.inner.read_bytes(relative)
+    }
+
+    fn write(&self, relative: &Path, content: &str) -> std::io::Result<()> {
+        self.inner.write(relative, content)
+    }
+
+    fn write_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()> {
+        self.inner.write_bytes(relative, content)
+    }
+
+    fn append_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()> {
+        self.inner.append_bytes(relative, content)
+    }
+
+    fn exists(&self, relative: &Path) -> bool {
+        self.inner.exists(relative)
+    }
+
+    fn is_file(&self, relative: &Path) -> bool {
+        self.inner.is_file(relative)
+    }
+
+    fn is_dir(&self, relative: &Path) -> bool {
+        self.inner.is_dir(relative)
+    }
+
+    fn remove(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.remove(relative)
+    }
+
+    fn remove_if_exists(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.remove_if_exists(relative)
+    }
+
+    fn remove_dir_all(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.remove_dir_all(relative)
+    }
+
+    fn remove_dir_all_if_exists(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.remove_dir_all_if_exists(relative)
+    }
+
+    fn create_dir_all(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.create_dir_all(relative)
+    }
+
+    fn read_dir(&self, relative: &Path) -> std::io::Result<Vec<DirEntry>> {
+        self.read_dir_calls
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.inner.read_dir(relative)
+    }
+
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        self.inner.rename(from, to)
+    }
+
+    fn write_atomic(&self, relative: &Path, content: &str) -> std::io::Result<()> {
+        self.inner.write_atomic(relative, content)
+    }
+
+    fn set_readonly(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.set_readonly(relative)
+    }
+
+    fn set_writable(&self, relative: &Path) -> std::io::Result<()> {
+        self.inner.set_writable(relative)
+    }
+}
+
+#[derive(Debug)]
+struct KillNotifyingExecutor {
+    inner: Arc<MockProcessExecutor>,
+    controller: Option<Arc<std::sync::atomic::AtomicBool>>,
+}
+
+impl KillNotifyingExecutor {
+    const fn new(
+        inner: Arc<MockProcessExecutor>,
+        controller: Option<Arc<std::sync::atomic::AtomicBool>>,
+    ) -> Self {
+        Self { inner, controller }
+    }
+}
+
+impl ProcessExecutor for KillNotifyingExecutor {
+    fn spawn(
+        &self,
+        command: &str,
+        args: &[&str],
+        env: &[(String, String)],
+        workdir: Option<&Path>,
+    ) -> std::io::Result<std::process::Child> {
+        self.inner.spawn(command, args, env, workdir)
+    }
+
+    fn spawn_agent(
+        &self,
+        config: &ralph_workflow::executor::AgentSpawnConfig,
+    ) -> std::io::Result<ralph_workflow::executor::AgentChildHandle> {
+        self.inner.spawn_agent(config)
+    }
+
+    fn execute(
+        &self,
+        command: &str,
+        args: &[&str],
+        env: &[(String, String)],
+        workdir: Option<&Path>,
+    ) -> std::io::Result<ralph_workflow::executor::ProcessOutput> {
+        let out = self.inner.execute(command, args, env, workdir);
+
+        if command == "kill" {
+            let saw_term = args.contains(&"-TERM");
+            if saw_term {
+                if let Some(controller) = &self.controller {
+                    controller.store(false, Ordering::Release);
+                }
+            }
+        }
+
+        out
+    }
+}
 
 const fn fast_kill_config() -> KillConfig {
     KillConfig::new(
@@ -35,23 +201,27 @@ const fn fast_kill_config() -> KillConfig {
 fn active_ai_file_updates_prevent_timeout() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        timestamp.store(0, Ordering::Release);
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
 
-        let workspace: Arc<dyn Workspace> =
-            Arc::new(MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# in progress"));
+        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# in progress"),
+        ));
+        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
 
         let file_activity_config = Some(FileActivityConfig {
             tracker: new_file_activity_tracker(),
-            workspace,
+            workspace: workspace_dyn,
         });
 
         let (mock_child, _controller) = MockAgentChild::new_running(0);
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-        let executor: Arc<dyn ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
         let handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
@@ -61,14 +231,24 @@ fn active_ai_file_updates_prevent_timeout() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout: Duration::from_millis(200),
-                    check_interval: Duration::from_millis(10),
+                    timeout,
+                    check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        thread::sleep(Duration::from_millis(30));
+        for _ in 0..100_000 {
+            if workspace.read_dir_calls() > 0 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            workspace.read_dir_calls() > 0,
+            "monitor should scan .agent/ to evaluate file-activity gating"
+        );
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
@@ -77,6 +257,11 @@ fn active_ai_file_updates_prevent_timeout() {
             MonitorResult::ProcessCompleted,
             "recent PLAN.md updates should keep run active"
         );
+
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "recent AI file activity should prevent kill signals"
+        );
     });
 }
 
@@ -84,12 +269,14 @@ fn active_ai_file_updates_prevent_timeout() {
 fn log_only_activity_does_not_prevent_timeout() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        timestamp.store(0, Ordering::Release);
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
 
-        let workspace: Arc<dyn Workspace> =
-            Arc::new(MemoryWorkspace::new_test().with_file(".agent/pipeline.log", "log churn"));
+        let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file(".agent/pipeline.log", "log churn"),
+        ));
 
         let file_activity_config = Some(FileActivityConfig {
             tracker: new_file_activity_tracker(),
@@ -100,7 +287,10 @@ fn log_only_activity_does_not_prevent_timeout() {
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
         let executor_impl = Arc::new(MockProcessExecutor::new());
-        let executor_dyn: Arc<dyn ProcessExecutor> = executor_impl.clone();
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
 
         let monitor_handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
@@ -110,36 +300,26 @@ fn log_only_activity_does_not_prevent_timeout() {
                 &should_stop,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout: Duration::from_millis(200),
-                    check_interval: Duration::from_millis(10),
+                    timeout,
+                    check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        let controller_for_watcher = Arc::clone(&controller);
-        let executor_for_watcher = Arc::clone(&executor_impl);
-        let watcher = thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            while std::time::Instant::now() < deadline {
-                let saw_term = executor_for_watcher
-                    .execute_calls_for("kill")
-                    .iter()
-                    .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM"));
-                if saw_term {
-                    controller_for_watcher.store(false, Ordering::Release);
-                    return;
-                }
-                thread::sleep(Duration::from_millis(5));
-            }
-        });
-
         let result = monitor_handle.join().expect("monitor thread panicked");
-        watcher.join().expect("watcher thread panicked");
 
         assert!(
             matches!(result, MonitorResult::TimedOut { .. }),
             "log-only updates should still time out"
+        );
+
+        let kill_calls = executor_impl.execute_calls_for("kill");
+        assert!(
+            kill_calls
+                .iter()
+                .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM")),
+            "timeout enforcement should send SIGTERM via kill"
         );
     });
 }
@@ -148,7 +328,8 @@ fn log_only_activity_does_not_prevent_timeout() {
 fn no_output_and_no_ai_files_times_out() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        timestamp.store(0, Ordering::Release);
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
@@ -162,7 +343,10 @@ fn no_output_and_no_ai_files_times_out() {
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
         let executor_impl = Arc::new(MockProcessExecutor::new());
-        let executor_dyn: Arc<dyn ProcessExecutor> = executor_impl.clone();
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
 
         let monitor_handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
@@ -172,36 +356,26 @@ fn no_output_and_no_ai_files_times_out() {
                 &should_stop,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout: Duration::from_millis(200),
-                    check_interval: Duration::from_millis(10),
+                    timeout,
+                    check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        let controller_for_watcher = Arc::clone(&controller);
-        let executor_for_watcher = Arc::clone(&executor_impl);
-        let watcher = thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
-            while std::time::Instant::now() < deadline {
-                let saw_term = executor_for_watcher
-                    .execute_calls_for("kill")
-                    .iter()
-                    .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM"));
-                if saw_term {
-                    controller_for_watcher.store(false, Ordering::Release);
-                    return;
-                }
-                thread::sleep(Duration::from_millis(5));
-            }
-        });
-
         let result = monitor_handle.join().expect("monitor thread panicked");
-        watcher.join().expect("watcher thread panicked");
 
         assert!(
             matches!(result, MonitorResult::TimedOut { .. }),
             "no output and no AI files should time out"
+        );
+
+        let kill_calls = executor_impl.execute_calls_for("kill");
+        assert!(
+            kill_calls
+                .iter()
+                .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM")),
+            "timeout enforcement should send SIGTERM via kill"
         );
     });
 }
@@ -210,35 +384,37 @@ fn no_output_and_no_ai_files_times_out() {
 fn continuous_file_updates_prevent_timeout_over_extended_period() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        timestamp.store(0, Ordering::Release);
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
 
-        let workspace: Arc<dyn Workspace> =
-            Arc::new(MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Initial plan"));
+        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Initial plan"),
+        ));
+        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
 
         let file_activity_config = Some(FileActivityConfig {
             tracker: new_file_activity_tracker(),
-            workspace: Arc::clone(&workspace),
+            workspace: Arc::clone(&workspace_dyn),
         });
 
         let (mock_child, _controller) = MockAgentChild::new_running(0);
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-        let executor: Arc<dyn ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
-        // Simulate periodic file updates in background thread
+        // Simulate a handful of rapid updates while the monitor runs.
         let workspace_for_updates = Arc::clone(&workspace);
         let update_handle = thread::spawn(move || {
             for i in 0..5 {
-                thread::sleep(Duration::from_millis(20));
-                workspace_for_updates
-                    .write(
-                        Path::new(".agent/PLAN.md"),
-                        &format!("# Updated plan iteration {i}"),
-                    )
-                    .ok();
+                let _ = workspace_for_updates.write(
+                    Path::new(".agent/PLAN.md"),
+                    &format!("# Updated plan iteration {i}"),
+                );
+                std::thread::yield_now();
             }
         });
 
@@ -250,16 +426,26 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout: Duration::from_millis(200),
-                    check_interval: Duration::from_millis(100),
+                    timeout,
+                    check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        // Wait for updates to complete, then signal stop
+        // Wait for updates to complete and for at least a few file-activity scans,
+        // then signal stop.
         update_handle.join().expect("update thread panicked");
-        thread::sleep(Duration::from_millis(20));
+        for _ in 0..100_000 {
+            if workspace.read_dir_calls() >= 3 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(
+            workspace.read_dir_calls() >= 1,
+            "monitor should scan .agent/ to evaluate file-activity gating"
+        );
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
@@ -268,6 +454,11 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
             MonitorResult::ProcessCompleted,
             "continuous file updates should prevent timeout"
         );
+
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "file activity should prevent kill signals"
+        );
     });
 }
 
@@ -275,41 +466,30 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
 fn mixed_output_and_file_activity_prevents_timeout() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        timestamp.store(0, Ordering::Release);
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
 
-        let workspace: Arc<dyn Workspace> =
-            Arc::new(MemoryWorkspace::new_test().with_file(".agent/NOTES.md", "# Notes"));
+        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file(".agent/NOTES.md", "# Notes"),
+        ));
+        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
 
         let file_activity_config = Some(FileActivityConfig {
             tracker: new_file_activity_tracker(),
-            workspace: Arc::clone(&workspace),
+            workspace: Arc::clone(&workspace_dyn),
         });
 
         let (mock_child, _controller) = MockAgentChild::new_running(0);
         let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-        let executor: Arc<dyn ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
-        // Simulate alternating output and file activity
         let timestamp_for_updates = timestamp.clone();
         let workspace_for_updates = Arc::clone(&workspace);
-        let activity_handle = thread::spawn(move || {
-            for i in 0..4 {
-                thread::sleep(Duration::from_millis(20));
-                if i % 2 == 0 {
-                    // Even iterations: touch output timestamp
-                    ralph_workflow::pipeline::idle_timeout::touch_activity(&timestamp_for_updates);
-                } else {
-                    // Odd iterations: update file
-                    workspace_for_updates
-                        .write(Path::new(".agent/NOTES.md"), &format!("# Notes update {i}"))
-                        .ok();
-                }
-            }
-        });
 
         let handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
@@ -319,15 +499,35 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout: Duration::from_millis(200),
-                    check_interval: Duration::from_millis(100),
+                    timeout,
+                    check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                 },
             )
         });
 
-        activity_handle.join().expect("activity thread panicked");
-        thread::sleep(Duration::from_millis(20));
+        // Wait until file-activity gating is observed, then add stdout + file churn.
+        for _ in 0..100_000 {
+            if workspace.read_dir_calls() > 0 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(
+            workspace.read_dir_calls() > 0,
+            "monitor should scan .agent/ to evaluate file-activity gating"
+        );
+
+        for i in 0..4 {
+            if i % 2 == 0 {
+                touch_activity(&timestamp_for_updates);
+            } else {
+                let _ = workspace_for_updates
+                    .write(Path::new(".agent/NOTES.md"), &format!("# Notes update {i}"));
+            }
+            std::thread::yield_now();
+        }
+
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
@@ -335,6 +535,11 @@ fn mixed_output_and_file_activity_prevents_timeout() {
             result,
             MonitorResult::ProcessCompleted,
             "mixed activity should prevent timeout"
+        );
+
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "mixed activity should prevent kill signals"
         );
     });
 }

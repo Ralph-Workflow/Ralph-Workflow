@@ -3,24 +3,137 @@
 use super::super::monitor::MonitorConfig;
 use super::super::*;
 use crate::executor::{AgentChild, MockAgentChild, MockProcessExecutor};
-use crate::workspace::MemoryWorkspace;
+use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
+fn wait_until_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Duration) {
+    timestamp.store(0, Ordering::Release);
+    while !is_idle_timeout_exceeded(timestamp, timeout) {
+        std::thread::yield_now();
+    }
+}
+
+#[derive(Debug)]
+struct ReadDirCountingWorkspace {
+    inner: MemoryWorkspace,
+    read_dir_calls: std::sync::atomic::AtomicUsize,
+}
+
+impl ReadDirCountingWorkspace {
+    fn new(inner: MemoryWorkspace) -> Self {
+        Self {
+            inner,
+            read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn read_dir_calls(&self) -> usize {
+        self.read_dir_calls
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+impl Workspace for ReadDirCountingWorkspace {
+    fn root(&self) -> &std::path::Path {
+        self.inner.root()
+    }
+
+    fn read(&self, relative: &std::path::Path) -> std::io::Result<String> {
+        self.inner.read(relative)
+    }
+
+    fn read_bytes(&self, relative: &std::path::Path) -> std::io::Result<Vec<u8>> {
+        self.inner.read_bytes(relative)
+    }
+
+    fn write(&self, relative: &std::path::Path, content: &str) -> std::io::Result<()> {
+        self.inner.write(relative, content)
+    }
+
+    fn write_bytes(&self, relative: &std::path::Path, content: &[u8]) -> std::io::Result<()> {
+        self.inner.write_bytes(relative, content)
+    }
+
+    fn append_bytes(&self, relative: &std::path::Path, content: &[u8]) -> std::io::Result<()> {
+        self.inner.append_bytes(relative, content)
+    }
+
+    fn exists(&self, relative: &std::path::Path) -> bool {
+        self.inner.exists(relative)
+    }
+
+    fn is_file(&self, relative: &std::path::Path) -> bool {
+        self.inner.is_file(relative)
+    }
+
+    fn is_dir(&self, relative: &std::path::Path) -> bool {
+        self.inner.is_dir(relative)
+    }
+
+    fn remove(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.remove(relative)
+    }
+
+    fn remove_if_exists(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.remove_if_exists(relative)
+    }
+
+    fn remove_dir_all(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.remove_dir_all(relative)
+    }
+
+    fn remove_dir_all_if_exists(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.remove_dir_all_if_exists(relative)
+    }
+
+    fn create_dir_all(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.create_dir_all(relative)
+    }
+
+    fn read_dir(&self, relative: &std::path::Path) -> std::io::Result<Vec<DirEntry>> {
+        self.read_dir_calls
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.inner.read_dir(relative)
+    }
+
+    fn rename(&self, from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+        self.inner.rename(from, to)
+    }
+
+    fn write_atomic(&self, relative: &std::path::Path, content: &str) -> std::io::Result<()> {
+        self.inner.write_atomic(relative, content)
+    }
+
+    fn set_readonly(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.set_readonly(relative)
+    }
+
+    fn set_writable(&self, relative: &std::path::Path) -> std::io::Result<()> {
+        self.inner.set_writable(relative)
+    }
+}
+
 #[test]
 fn monitor_prevents_timeout_with_file_activity() {
     // Setup: Process with no stdout output but files being written within recency window
     let timestamp = new_activity_timestamp();
-    // Prevent output-activity from interfering: set timestamp to epoch so it's always stale
-    timestamp.store(0, Ordering::Release);
+
+    // Ensure we deterministically exercise the file-activity gating path.
+    // This avoids tests passing vacuously when the monotonic epoch is still < timeout.
+    let timeout = Duration::from_millis(50);
+    wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
     // Create workspace with a recently modified file (within the 500ms window)
-    let workspace = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Progress");
-    let workspace_arc: Arc<dyn crate::workspace::Workspace> = Arc::new(workspace);
+    let workspace = Arc::new(ReadDirCountingWorkspace::new(
+        MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Progress"),
+    ));
+    let workspace_arc: Arc<dyn crate::workspace::Workspace> = workspace.clone();
 
     let file_activity_config = Some(FileActivityConfig {
         tracker: new_file_activity_tracker(),
@@ -30,12 +143,13 @@ fn monitor_prevents_timeout_with_file_activity() {
     let mock_child = MockAgentChild::new(0);
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+    let executor_impl = Arc::new(MockProcessExecutor::new());
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
-    // Use a 500ms timeout with fast check interval so test runs quickly
+    // Use a short timeout so idle checks are reached immediately.
     let config = MonitorConfig {
-        timeout: Duration::from_millis(500),
-        check_interval: Duration::from_millis(10),
+        timeout,
+        check_interval: Duration::ZERO,
         kill_config: DEFAULT_KILL_CONFIG,
     };
 
@@ -50,9 +164,19 @@ fn monitor_prevents_timeout_with_file_activity() {
         )
     });
 
-    // Wait 20ms — the file is fresh (< 500ms old), so timeout should not trigger;
-    // 20ms gives at least 2 check cycles at check_interval=10ms
-    thread::sleep(Duration::from_millis(20));
+    // Wait until we observe the monitor actually performed a directory scan, proving
+    // it exercised the file-activity gating path (as opposed to returning early).
+    for _ in 0..100_000 {
+        if workspace.read_dir_calls() > 0 {
+            break;
+        }
+        std::thread::yield_now();
+    }
+
+    assert!(
+        workspace.read_dir_calls() > 0,
+        "monitor should scan .agent/ to evaluate file-activity gating"
+    );
 
     // Signal monitor to stop
     should_stop.store(true, Ordering::Release);
@@ -64,6 +188,11 @@ fn monitor_prevents_timeout_with_file_activity() {
         result,
         MonitorResult::ProcessCompleted,
         "Monitor should not timeout when files are within recency window"
+    );
+
+    assert!(
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "monitor should not send kill signals when recent file activity is detected"
     );
 }
 
