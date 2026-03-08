@@ -70,30 +70,17 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
     },
 ];
 
-fn has_line_prefix(output: &str, prefix: &str) -> bool {
-    output
-        .lines()
-        .any(|line| line.trim_start().starts_with(prefix))
-}
-
 fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i32]) -> CheckStatus {
     if !success_exit_codes.contains(&exit_code) {
         return CheckStatus::Error;
     }
-
-    if has_line_prefix(stderr, "error:")
-        || has_line_prefix(stdout, "error:")
-        || has_line_prefix(stderr, "Error:")
-        || has_line_prefix(stdout, "Error:")
-    {
-        return CheckStatus::Error;
+    use crate::scanner::{scan_has_diagnostic_prefix, DiagnosticLevel};
+    // Single Aho-Corasick pass over each output (O(n+m) each).
+    match scan_has_diagnostic_prefix(stderr).max_level(scan_has_diagnostic_prefix(stdout)) {
+        DiagnosticLevel::Error => CheckStatus::Error,
+        DiagnosticLevel::Warning => CheckStatus::Warning,
+        DiagnosticLevel::Clean => CheckStatus::Pass,
     }
-
-    if has_line_prefix(stderr, "warning:") || has_line_prefix(stdout, "warning:") {
-        return CheckStatus::Warning;
-    }
-
-    CheckStatus::Pass
 }
 
 pub fn run_checks(

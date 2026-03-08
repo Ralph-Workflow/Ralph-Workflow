@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::verify::{CheckStatus, CommandOutput, CommandRunner, CommandSpec};
+use crate::verify::{CommandOutput, CommandRunner, CommandSpec};
 
 /// A minimal FNV-1a 64-bit hasher.  Stable across Rust versions and platforms.
 ///
@@ -169,7 +169,7 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
     let mut entries: Vec<PathBuf> = Vec::new();
     for dir in *dirs {
         let full = repo_root.join(dir);
-        collect_rs_files(&full, &mut entries);
+        crate::scanner::collect_files_with_glob(&full, "*.rs", &mut entries);
     }
     entries.sort();
 
@@ -181,20 +181,6 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> u64 {
     }
 
     hasher.finish()
-}
-
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_rs_files(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
 }
 
 /// On-disk format for the cache file.
@@ -297,8 +283,10 @@ impl CommandRunner for CachingCommandRunner {
         let output = self.inner.run(spec)?;
 
         // Only cache successful results (exit code in success list, no error/warning diagnostics).
+        use crate::scanner::{scan_has_diagnostic_prefix, DiagnosticLevel};
         let is_success = spec.success_exit_codes.contains(&output.exit_code)
-            && classify_output(&output.stdout, &output.stderr) == CheckStatus::Pass;
+            && scan_has_diagnostic_prefix(&output.stdout) == DiagnosticLevel::Clean
+            && scan_has_diagnostic_prefix(&output.stderr) == DiagnosticLevel::Clean;
         if is_success {
             self.memory.lock().unwrap().insert(
                 key,
@@ -315,24 +303,6 @@ impl CommandRunner for CachingCommandRunner {
 
         Ok(output)
     }
-}
-
-/// Check whether output contains error or warning diagnostics.
-fn classify_output(stdout: &str, stderr: &str) -> CheckStatus {
-    fn has_prefix(s: &str, prefix: &str) -> bool {
-        s.lines().any(|l| l.trim_start().starts_with(prefix))
-    }
-    if has_prefix(stderr, "error:")
-        || has_prefix(stdout, "error:")
-        || has_prefix(stderr, "Error:")
-        || has_prefix(stdout, "Error:")
-    {
-        return CheckStatus::Error;
-    }
-    if has_prefix(stderr, "warning:") || has_prefix(stdout, "warning:") {
-        return CheckStatus::Warning;
-    }
-    CheckStatus::Pass
 }
 
 #[cfg(test)]

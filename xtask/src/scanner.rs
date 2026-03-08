@@ -618,16 +618,12 @@ fn scan_group_collect(
                     } else {
                         // Violation only if negative_context is absent from the line.
                         // Use LineIndex O(log L) lookups for line boundaries.
-                        // The windows() search for negative_context (always 8 bytes:
-                        // "https://") is intentionally left as-is — it is cache-friendly
-                        // and called only when boundary_ok is true.
                         let line_bytes = line_idx.extract_line(&content, byte_start);
                         if negative_context.is_empty() {
                             false // empty negative_context always suppresses (degenerate)
                         } else {
-                            !line_bytes
-                                .windows(negative_context.len())
-                                .any(|w| w == negative_context.as_bytes())
+                            // Boyer-Moore-Horspool O(n/m) average search (TAOCP Vol. 3 §6.3).
+                            !bmh_contains(line_bytes, negative_context.as_bytes())
                         }
                     }
                 }
@@ -652,7 +648,7 @@ fn scan_group_collect(
     violations
 }
 
-fn collect_files_with_glob(dir: &Path, include_glob: &str, files: &mut Vec<PathBuf>) {
+pub(crate) fn collect_files_with_glob(dir: &Path, include_glob: &str, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -773,6 +769,125 @@ fn is_word_boundary_at_end(content: &[u8], end: usize) -> bool {
     }
     let next = content[end];
     !next.is_ascii_alphanumeric() && next != b'_'
+}
+
+// ── Boyer-Moore-Horspool single-pattern search ────────────────────────────────
+
+/// Boyer-Moore-Horspool single-pattern byte search.
+///
+/// Preprocessing: O(|alphabet| + |pattern|) — builds a 256-entry bad-character shift table.
+/// Search: O(|text| / |pattern|) average, O(|text| × |pattern|) worst-case.
+///
+/// Reference: Horspool, R.N. (1980). "Practical Fast Searching in Strings."
+/// Software: Practice and Experience 10(6): 501–506.
+/// See also: TAOCP Vol. 3, §6.3 (String Searching).
+pub(crate) fn bmh_contains(text: &[u8], pattern: &[u8]) -> bool {
+    let m = pattern.len();
+    if m == 0 {
+        return true;
+    }
+    let n = text.len();
+    if m > n {
+        return false;
+    }
+    // Build bad-character shift table.
+    // shift[c] = how far to advance when text[i + m - 1] == c and the rightmost
+    // occurrence of c in pattern[0..m-1] (excluding the last position) is at index j.
+    // Default shift is m (pattern length) when c does not appear in pattern[0..m-1].
+    let mut shift = [m; 256];
+    for i in 0..m - 1 {
+        shift[pattern[i] as usize] = m - 1 - i;
+    }
+    let mut i = m - 1;
+    while i < n {
+        let mut j = m - 1;
+        let mut k = i;
+        while j > 0 && text[k] == pattern[j] {
+            k -= 1;
+            j -= 1;
+        }
+        // j == 0 means the inner loop ran to completion (all m chars matched).
+        // Must check j == 0 first: if j > 0, the inner loop exited due to mismatch,
+        // and text[k] == pattern[0] is a coincidence that must NOT trigger a match.
+        if j == 0 && text[k] == pattern[0] {
+            return true;
+        }
+        i += shift[text[i] as usize];
+    }
+    false
+}
+
+// ── Diagnostic-level classifier (Aho-Corasick single pass) ───────────────────
+
+/// Result of scanning command output for Cargo/compiler diagnostic prefixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticLevel {
+    /// No error or warning diagnostic found.
+    Clean,
+    /// At least one "warning:" prefix found (and no error).
+    Warning,
+    /// At least one "error:" or "Error:" prefix found.
+    Error,
+}
+
+impl DiagnosticLevel {
+    /// Returns the more severe of two diagnostic levels.
+    /// Error > Warning > Clean.
+    pub(crate) fn max_level(self, other: DiagnosticLevel) -> DiagnosticLevel {
+        match (self, other) {
+            (DiagnosticLevel::Error, _) | (_, DiagnosticLevel::Error) => DiagnosticLevel::Error,
+            (DiagnosticLevel::Warning, _) | (_, DiagnosticLevel::Warning) => {
+                DiagnosticLevel::Warning
+            }
+            _ => DiagnosticLevel::Clean,
+        }
+    }
+}
+
+// Pattern IDs for the diagnostic Aho-Corasick automaton.
+const DIAG_PAT_ERROR_LC: usize = 0; // "error:"
+const DIAG_PAT_ERROR_TC: usize = 1; // "Error:"
+const DIAG_PAT_WARNING: usize = 2; // "warning:"
+const DIAG_PAT_WARNING_TC: usize = 3; // "Warning:" (defensive; kept for completeness)
+
+static DIAG_PATTERNS: &[&str] = &["error:", "Error:", "warning:", "Warning:"];
+
+/// Scan command output (stdout or stderr) for diagnostic-level prefixes in O(n+m).
+///
+/// Uses a single Aho-Corasick pass (Aho & Corasick, 1975) over the raw bytes.
+/// For each match, verifies the pattern appears at the start of a trimmed line
+/// (equivalent to `line.trim_start().starts_with(pattern)`) via a LineIndex O(log L)
+/// lookup (TAOCP Vol. 3 §6.2.1 Algorithm B).
+///
+/// Returns `DiagnosticLevel::Error` if any error pattern is found at line start,
+/// `DiagnosticLevel::Warning` if any warning pattern (but no error) is found,
+/// `DiagnosticLevel::Clean` otherwise.
+pub fn scan_has_diagnostic_prefix(text: &str) -> DiagnosticLevel {
+    if text.is_empty() {
+        return DiagnosticLevel::Clean;
+    }
+    let bytes = text.as_bytes();
+    let line_idx = LineIndex::new(bytes);
+    let ac = AhoCorasick::new(DIAG_PATTERNS).expect("static patterns are valid");
+    let mut level = DiagnosticLevel::Clean;
+    for mat in ac.find_iter(bytes) {
+        let byte_start = mat.start();
+        // Check that the match is at the start of the trimmed line.
+        let line_start = line_idx.line_start(byte_start);
+        let prefix_bytes = &bytes[line_start..byte_start];
+        let all_ws = prefix_bytes.iter().all(|&b| b == b' ' || b == b'\t');
+        if !all_ws {
+            continue; // match is not at line start after trim
+        }
+        match mat.pattern().as_usize() {
+            DIAG_PAT_ERROR_LC | DIAG_PAT_ERROR_TC => return DiagnosticLevel::Error,
+            DIAG_PAT_WARNING | DIAG_PAT_WARNING_TC => {
+                level = DiagnosticLevel::Warning;
+            }
+            _ => {}
+        }
+    }
+    level
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1826,5 +1941,205 @@ mod tests {
             "no-string-errors-handlers must scan the handler directory, got: {:?}",
             check.directories
         );
+    }
+
+    // ── Boyer-Moore-Horspool tests ─────────────────────────────────────────────
+
+    mod bmh_tests {
+        use super::super::bmh_contains;
+
+        #[test]
+        fn test_bmh_contains_empty_pattern_always_true() {
+            assert!(bmh_contains(b"abc", b""), "empty pattern must always match");
+            assert!(
+                bmh_contains(b"", b""),
+                "empty pattern in empty text must match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_empty_text_returns_false() {
+            assert!(
+                !bmh_contains(b"", b"abc"),
+                "non-empty pattern in empty text must not match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_pattern_longer_than_text() {
+            assert!(
+                !bmh_contains(b"hi", b"hello"),
+                "pattern longer than text must not match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_exact_match() {
+            assert!(
+                bmh_contains(b"https://", b"https://"),
+                "exact match must return true"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_found_at_start() {
+            assert!(
+                bmh_contains(b"https://example.com", b"https://"),
+                "pattern at start of text must match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_found_at_end() {
+            assert!(
+                bmh_contains(b"see https://", b"https://"),
+                "pattern at end of text must match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_not_found() {
+            assert!(
+                !bmh_contains(b"http://example.com", b"https://"),
+                "https:// must not match in http:// URL"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_single_char_pattern_found() {
+            assert!(bmh_contains(b"abc", b"b"), "single char pattern must match");
+        }
+
+        #[test]
+        fn test_bmh_contains_single_char_pattern_not_found() {
+            assert!(
+                !bmh_contains(b"abc", b"z"),
+                "absent single char must not match"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_repeated_chars() {
+            // Degenerate case: repeated chars exercise the shift table carefully.
+            assert!(
+                bmh_contains(b"aaaaab", b"aaab"),
+                "repeated char pattern must match when present"
+            );
+            assert!(
+                !bmh_contains(b"aaaaa", b"aaab"),
+                "repeated char pattern must not match when absent"
+            );
+        }
+
+        #[test]
+        fn test_bmh_contains_pattern_equals_text_length() {
+            assert!(
+                bmh_contains(b"hello", b"hello"),
+                "pattern same length as text must match"
+            );
+            assert!(
+                !bmh_contains(b"hello", b"world"),
+                "pattern same length as text but different must not match"
+            );
+        }
+    }
+
+    // ── DiagnosticLevel / scan_has_diagnostic_prefix tests ────────────────────
+
+    mod classify_tests {
+        use super::super::{scan_has_diagnostic_prefix, DiagnosticLevel};
+
+        #[test]
+        fn test_diagnostic_prefix_detects_error_lowercase() {
+            let level = scan_has_diagnostic_prefix("error: something went wrong\n");
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_detects_error_titlecase() {
+            let level = scan_has_diagnostic_prefix("Error: something went wrong\n");
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_detects_warning() {
+            let level = scan_has_diagnostic_prefix("warning: unused variable\n");
+            assert_eq!(level, DiagnosticLevel::Warning);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_detects_warning_tc() {
+            // "Warning:" (title-case) is included for completeness.
+            let level = scan_has_diagnostic_prefix("Warning: deprecated usage\n");
+            assert_eq!(level, DiagnosticLevel::Warning);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_detects_indented_error() {
+            // Leading whitespace before "error:" must still be detected.
+            let level = scan_has_diagnostic_prefix("   error: indented error\n");
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_clean_output() {
+            let level = scan_has_diagnostic_prefix("Compiling foo v0.1.0\nFinished\n");
+            assert_eq!(level, DiagnosticLevel::Clean);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_error_wins_over_warning() {
+            let text = "warning: something\nerror: fatal\n";
+            let level = scan_has_diagnostic_prefix(text);
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_empty_string() {
+            let level = scan_has_diagnostic_prefix("");
+            assert_eq!(level, DiagnosticLevel::Clean);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_mid_line_not_counted() {
+            // "error:" that appears after non-whitespace must NOT trigger.
+            let level = scan_has_diagnostic_prefix("foo error: bar\n");
+            assert_eq!(
+                level,
+                DiagnosticLevel::Clean,
+                "mid-line error: must not trigger"
+            );
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_multiline_only_warning() {
+            let text = "Compiling\nwarning: unused\nFinished\n";
+            let level = scan_has_diagnostic_prefix(text);
+            assert_eq!(level, DiagnosticLevel::Warning);
+        }
+
+        #[test]
+        fn test_diagnostic_level_max_level() {
+            assert_eq!(
+                DiagnosticLevel::Error.max_level(DiagnosticLevel::Clean),
+                DiagnosticLevel::Error
+            );
+            assert_eq!(
+                DiagnosticLevel::Clean.max_level(DiagnosticLevel::Error),
+                DiagnosticLevel::Error
+            );
+            assert_eq!(
+                DiagnosticLevel::Warning.max_level(DiagnosticLevel::Clean),
+                DiagnosticLevel::Warning
+            );
+            assert_eq!(
+                DiagnosticLevel::Clean.max_level(DiagnosticLevel::Clean),
+                DiagnosticLevel::Clean
+            );
+            assert_eq!(
+                DiagnosticLevel::Warning.max_level(DiagnosticLevel::Error),
+                DiagnosticLevel::Error
+            );
+        }
     }
 }

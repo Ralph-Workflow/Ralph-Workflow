@@ -83,15 +83,7 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
         };
     }
 
-    let files = match collect_rs_files(&test_dir) {
-        Ok(f) => f,
-        Err(e) => {
-            return NativeCheckResult {
-                status: CheckStatus::Warning,
-                message: format!("Failed to walk integration test directory: {e}"),
-            }
-        }
-    };
+    let files = collect_rs_files(&test_dir);
 
     let ac = AhoCorasick::new(TIMEOUT_PATTERNS).expect("valid patterns");
     let mut violations: Vec<String> = Vec::new();
@@ -125,28 +117,12 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
-fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    collect_rs_files_inner(dir, &mut files)?;
+    crate::scanner::collect_files_with_glob(dir, "*.rs", &mut files);
+    files.retain(|p| !should_skip_file(p));
     files.sort();
-    Ok(files)
-}
-
-fn collect_rs_files_inner(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_dir() {
-            collect_rs_files_inner(&path, files)?;
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            if should_skip_file(&path) {
-                continue;
-            }
-            files.push(path);
-        }
-    }
-    Ok(())
+    files
 }
 
 fn should_skip_file(path: &Path) -> bool {
