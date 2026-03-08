@@ -91,6 +91,12 @@ export interface RunDetail {
   worktree_path: string | null;
   created_at: string;
   description: string;
+  /** Number of developer iterations completed. Defaults to 0 for older checkpoints. */
+  iteration_count?: number;
+  /** Last error message recorded in the checkpoint, if any. */
+  last_error?: string | null;
+  /** True when the run is operating in degraded conditions (retries exceeded, fallback used). */
+  is_degraded?: boolean;
 }
 
 // --- App state types ---

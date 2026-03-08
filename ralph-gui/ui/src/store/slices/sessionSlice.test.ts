@@ -14,6 +14,7 @@ vi.mock("../../api/tauri", () => ({
   resumeSession: vi.fn(),
   resumeRalphSession: vi.fn(),
   getSessionDetail: vi.fn(),
+  notifyRunStatusChange: vi.fn().mockResolvedValue(undefined),
 }));
 
 import {
@@ -21,6 +22,7 @@ import {
   createSession,
   resumeRalphSession,
   getSessionDetail,
+  notifyRunStatusChange,
 } from "../../api/tauri";
 import type { Mock } from "vitest";
 
@@ -28,6 +30,7 @@ const mockGetSessions = getSessions as Mock;
 const mockCreateSession = createSession as Mock;
 const mockResumeRalphSession = resumeRalphSession as Mock;
 const mockGetSessionDetail = getSessionDetail as Mock;
+const mockNotifyRunStatusChange = notifyRunStatusChange as Mock;
 
 function makeStore() {
   return configureStore({
@@ -146,5 +149,39 @@ describe("sessionSlice", () => {
       resumeInterruptedSession({ runId: "run-abc-123", repoPath: "/my/repo" }),
     );
     expect(store.getState().sessions.sessions[0]?.status).toBe("running");
+  });
+
+  // --- Notification on failure tests ---
+
+  it("createNewSession.rejected fires Failed notification", async () => {
+    mockCreateSession.mockRejectedValueOnce(new Error("Backend not available"));
+    const store = makeStore();
+    await store.dispatch(
+      createNewSession({
+        repo_path: "/my/repo",
+        worktree_path: null,
+        prompt_path: "/my/repo/PROMPT.md",
+        developer_iterations: 3,
+        reviewer_passes: 2,
+      }),
+    );
+    expect(mockNotifyRunStatusChange).toHaveBeenCalledWith(
+      "Failed",
+      "launch",
+      expect.any(String),
+    );
+  });
+
+  it("resumeInterruptedSession.rejected fires Failed notification with run_id", async () => {
+    mockResumeRalphSession.mockRejectedValueOnce(new Error("Resume failed"));
+    const store = makeStore();
+    await store.dispatch(
+      resumeInterruptedSession({ runId: "run-to-resume", repoPath: "/my/repo" }),
+    );
+    expect(mockNotifyRunStatusChange).toHaveBeenCalledWith(
+      "Failed",
+      "run-to-resume",
+      expect.any(String),
+    );
   });
 });

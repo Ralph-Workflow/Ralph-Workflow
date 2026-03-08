@@ -150,6 +150,35 @@ export async function reviewPromptWithAi(
   });
 }
 
+// --- AI API key commands ---
+
+export async function getAiApiKey(): Promise<string> {
+  return invoke<string>("get_ai_api_key");
+}
+
+export async function saveAiApiKey(apiKey: string): Promise<void> {
+  return invoke<void>("save_ai_api_key", { api_key: apiKey });
+}
+
+// --- Notification commands ---
+
+export async function notifyRunStatusChange(
+  status: string,
+  runId: string,
+  context: string,
+): Promise<void> {
+  // Graceful no-op if the notification plugin is unavailable.
+  try {
+    return await invoke<void>("notify_run_status_change", {
+      status,
+      run_id: runId,
+      context,
+    });
+  } catch {
+    // Notifications are non-critical — swallow errors silently.
+  }
+}
+
 // --- Agent profile commands ---
 
 export async function listAgentProfiles(

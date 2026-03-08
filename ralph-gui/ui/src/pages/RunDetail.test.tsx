@@ -122,4 +122,60 @@ describe("RunDetail", () => {
     const backBtn = screen.getByText("← Back");
     expect(backBtn).toBeInTheDocument();
   });
+
+  // --- Diagnostics field tests ---
+
+  it("shows iteration_count row when run is loaded", async () => {
+    // Use 42 to avoid collision with phase timeline step numbers (1–4)
+    mockGetRunDetail.mockResolvedValueOnce({ ...mockRun, iteration_count: 42 });
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.getByText("iteration_count")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
+  it("shows iteration_count as 0 when field is absent", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.getByText("iteration_count")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
+  });
+
+  it("shows last_error row when run has a last_error", async () => {
+    mockGetRunDetail.mockResolvedValueOnce({
+      ...mockRun,
+      last_error: "Agent timeout after 120s",
+    });
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.getByText("last_error")).toBeInTheDocument();
+    expect(screen.getByText("Agent timeout after 120s")).toBeInTheDocument();
+  });
+
+  it("does not show last_error row when last_error is absent", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.queryByText("last_error")).not.toBeInTheDocument();
+  });
+
+  it("shows degraded-condition banner when is_degraded is true", async () => {
+    mockGetRunDetail.mockResolvedValueOnce({
+      ...mockRun,
+      is_degraded: true,
+    });
+    renderDetail();
+    await waitFor(() => {
+      expect(screen.getByTestId("degraded-banner")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/degraded conditions/i)).toBeInTheDocument();
+  });
+
+  it("does not show degraded-condition banner when is_degraded is false or absent", async () => {
+    mockGetRunDetail.mockResolvedValueOnce(mockRun);
+    renderDetail();
+    await waitFor(() => expect(screen.getByText("run-detail-123")).toBeInTheDocument());
+    expect(screen.queryByTestId("degraded-banner")).not.toBeInTheDocument();
+  });
 });

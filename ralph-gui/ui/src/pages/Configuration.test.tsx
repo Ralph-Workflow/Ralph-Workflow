@@ -35,14 +35,24 @@ vi.mock("../api/tauri", () => ({
   saveProjectConfig: vi.fn().mockResolvedValue(undefined),
   getRawGlobalConfigToml: vi.fn().mockResolvedValue(""),
   getRawProjectConfigToml: vi.fn().mockResolvedValue(""),
+  getAiApiKey: vi.fn().mockResolvedValue(""),
+  saveAiApiKey: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { saveGlobalConfig, getRawGlobalConfigToml, getRawProjectConfigToml } from "../api/tauri";
+import {
+  saveGlobalConfig,
+  getRawGlobalConfigToml,
+  getRawProjectConfigToml,
+  getAiApiKey,
+  saveAiApiKey,
+} from "../api/tauri";
 import type { Mock } from "vitest";
 
 const mockSaveGlobalConfig = saveGlobalConfig as Mock;
 const mockGetRawGlobalConfigToml = getRawGlobalConfigToml as Mock;
 const mockGetRawProjectConfigToml = getRawProjectConfigToml as Mock;
+const mockGetAiApiKey = getAiApiKey as Mock;
+const mockSaveAiApiKey = saveAiApiKey as Mock;
 
 function makeStore(preloaded?: object) {
   return configureStore({
@@ -194,6 +204,111 @@ describe("Configuration", () => {
       const textarea = document.querySelector("textarea");
       expect(textarea).not.toBeNull();
       expect(textarea?.value).toContain("developer_iters = 5");
+    });
+  });
+
+  // --- AI Settings section tests ---
+
+  it("Global tab shows AI Integration section heading", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(screen.getByText("AI Integration")).toBeInTheDocument();
+    });
+  });
+
+  it("Global tab renders AI API key input field", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+    });
+  });
+
+  it("AI API key input is masked (type=password) by default", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      expect(input).toHaveAttribute("type", "password");
+    });
+  });
+
+  it("show/hide toggle reveals and masks the API key", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      expect(input).toHaveAttribute("type", "password");
+    });
+    const toggleBtn = screen.getByRole("button", { name: /show/i });
+    fireEvent.click(toggleBtn);
+    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    expect(input).toHaveAttribute("type", "text");
+    fireEvent.click(screen.getByRole("button", { name: /hide/i }));
+    expect(input).toHaveAttribute("type", "password");
+  });
+
+  it("fetchAiApiKey is called on mount when Global tab opens", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(mockGetAiApiKey).toHaveBeenCalled();
+    });
+  });
+
+  it("pre-populates AI key input with saved key from backend", async () => {
+    mockGetAiApiKey.mockResolvedValueOnce("sk-existing-key");
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      expect((input as HTMLInputElement).value).toBe("sk-existing-key");
+    });
+  });
+
+  it("Save API Key button calls saveAiApiKey with the entered value", async () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+    });
+    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    fireEvent.change(input, { target: { value: "sk-my-new-key" } });
+    const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
+    fireEvent.click(saveKeyBtn);
+    await waitFor(() => {
+      expect(mockSaveAiApiKey).toHaveBeenCalledWith("sk-my-new-key");
+    });
+  });
+
+  it("shows success feedback after saving AI API key", async () => {
+    mockSaveAiApiKey.mockResolvedValueOnce(undefined);
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+    });
+    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    fireEvent.change(input, { target: { value: "sk-key" } });
+    const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
+    fireEvent.click(saveKeyBtn);
+    await waitFor(() => {
+      expect(screen.getByText(/saved/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows error feedback when saveAiApiKey backend rejects", async () => {
+    mockSaveAiApiKey.mockRejectedValueOnce(new Error("API key must not be empty"));
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+    });
+    const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
+    fireEvent.click(saveKeyBtn);
+    await waitFor(() => {
+      expect(screen.getByText(/API key must not be empty/i)).toBeInTheDocument();
     });
   });
 });

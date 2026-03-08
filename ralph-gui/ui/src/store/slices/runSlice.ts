@@ -1,11 +1,23 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { getResumableRuns, getRunDetail, getRunStatus } from "../../api/tauri";
-import type { RunDetail, RunStatusSummary } from "../../types";
+import {
+  getResumableRuns,
+  getRunDetail,
+  getRunStatus,
+  notifyRunStatusChange,
+} from "../../api/tauri";
+import type { RunDetail, RunStatus, RunStatusSummary } from "../../types";
 
 // Module-level polling interval handle (non-serializable, kept outside Redux state)
 let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
 
+// Track the previous polling status for transition detection (non-serializable)
+let previousPollingStatus: RunStatus | null = null;
+
 const POLL_INTERVAL_MS = 5000;
+
+/// Status transitions that warrant a notification.
+/// Running→anything means the run has concluded or changed state.
+const NOTIFY_TRANSITIONS = new Set<RunStatus>(["Paused", "Failed", "Completed"]);
 
 interface RunState {
   runDetail: RunDetail | null;
@@ -71,6 +83,7 @@ const runSlice = createSlice({
         clearInterval(pollingIntervalId);
         pollingIntervalId = null;
       }
+      previousPollingStatus = null;
     },
   },
   extraReducers: (builder) => {
@@ -91,6 +104,19 @@ const runSlice = createSlice({
         state.resumableRuns = action.payload;
       })
       .addCase(pollRunStatus.fulfilled, (state, action) => {
+        const newStatus = action.payload.status;
+        const prev = previousPollingStatus;
+
+        // Detect status transition: if previous was Running and new is a terminal state,
+        // fire a desktop notification (non-serializable side effect via module-level call).
+        if (prev === "Running" && NOTIFY_TRANSITIONS.has(newStatus)) {
+          const runId = action.payload.run_id ?? "unknown";
+          const context = state.runDetail?.repo_path ?? state.runDetail?.worktree_path ?? "";
+          // Fire and forget — notifications are non-critical
+          void notifyRunStatusChange(newStatus, runId, context);
+        }
+
+        previousPollingStatus = newStatus;
         state.pollingStatus = action.payload;
       });
   },
@@ -117,4 +143,5 @@ export function stopPollingInterval(): void {
     clearInterval(pollingIntervalId);
     pollingIntervalId = null;
   }
+  previousPollingStatus = null;
 }

@@ -28,6 +28,9 @@ import {
   listAgentProfiles,
   launchRalphSession,
   resumeRalphSession,
+  getAiApiKey,
+  saveAiApiKey,
+  notifyRunStatusChange,
 } from "./tauri";
 
 const mockInvoke = invoke as Mock;
@@ -314,5 +317,51 @@ describe("Session Launch API", () => {
       run_id: "run-id-xyz",
       repo_path: "/my/repo",
     });
+  });
+});
+
+describe("AI API Key API", () => {
+  it("getAiApiKey calls get_ai_api_key with no arguments", async () => {
+    mockInvoke.mockResolvedValueOnce("sk-test-key");
+    const result = await getAiApiKey();
+    expect(result).toBe("sk-test-key");
+    expect(mockInvoke).toHaveBeenCalledWith("get_ai_api_key");
+  });
+
+  it("getAiApiKey returns empty string when no key is set", async () => {
+    mockInvoke.mockResolvedValueOnce("");
+    const result = await getAiApiKey();
+    expect(result).toBe("");
+  });
+
+  it("saveAiApiKey calls save_ai_api_key with api_key", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await saveAiApiKey("sk-new-key-123");
+    expect(mockInvoke).toHaveBeenCalledWith("save_ai_api_key", {
+      api_key: "sk-new-key-123",
+    });
+  });
+
+  it("saveAiApiKey rejects when backend returns error", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("API key must not be empty"));
+    await expect(saveAiApiKey("")).rejects.toThrow("API key must not be empty");
+  });
+});
+
+describe("Notification API", () => {
+  it("notifyRunStatusChange calls notify_run_status_change with correct args", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await notifyRunStatusChange("Failed", "run-id-abc", "My Repo");
+    expect(mockInvoke).toHaveBeenCalledWith("notify_run_status_change", {
+      status: "Failed",
+      run_id: "run-id-abc",
+      context: "My Repo",
+    });
+  });
+
+  it("notifyRunStatusChange is silent when backend rejects (graceful no-op)", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("Plugin unavailable"));
+    // Should not throw — notifications are non-critical
+    await expect(notifyRunStatusChange("Failed", "run-id", "ctx")).resolves.toBeUndefined();
   });
 });

@@ -3,6 +3,8 @@ import { configureStore } from "@reduxjs/toolkit";
 import configReducer, {
   fetchGlobalConfig,
   fetchEffectiveConfig,
+  fetchAiApiKey,
+  saveAiApiKeyThunk,
   saveGlobal,
   setDirty,
 } from "./configSlice";
@@ -14,18 +16,24 @@ vi.mock("../../api/tauri", () => ({
   getEffectiveConfig: vi.fn(),
   saveGlobalConfig: vi.fn(),
   saveProjectConfig: vi.fn(),
+  getAiApiKey: vi.fn(),
+  saveAiApiKey: vi.fn(),
 }));
 
 import {
   getGlobalConfig,
   getEffectiveConfig,
   saveGlobalConfig,
+  getAiApiKey,
+  saveAiApiKey,
 } from "../../api/tauri";
 import type { Mock } from "vitest";
 
 const mockGetGlobalConfig = getGlobalConfig as Mock;
 const mockGetEffectiveConfig = getEffectiveConfig as Mock;
 const mockSaveGlobalConfig = saveGlobalConfig as Mock;
+const mockGetAiApiKey = getAiApiKey as Mock;
+const mockSaveAiApiKey = saveAiApiKey as Mock;
 
 function makeStore() {
   return configureStore({
@@ -56,6 +64,15 @@ describe("configSlice", () => {
     expect(state.projectConfig).toBeNull();
     expect(state.effectiveConfig).toBeNull();
     expect(state.isDirty).toBe(false);
+  });
+
+  it("initial state has empty aiApiKey and idle statuses", () => {
+    const store = makeStore();
+    const state = store.getState().config;
+    expect(state.aiApiKey).toBe("");
+    expect(state.aiApiKeyStatus).toBe("idle");
+    expect(state.aiApiKeySaveStatus).toBe("idle");
+    expect(state.aiApiKeyError).toBeNull();
   });
 
   it("fetchGlobalConfig.pending sets status to loading", () => {
@@ -129,5 +146,84 @@ describe("configSlice", () => {
     store.dispatch(setDirty(true));
     await store.dispatch(saveProject({ repoPath: "/my/repo", configToml: "[general]\n" }));
     expect(store.getState().config.isDirty).toBe(false);
+  });
+
+  // --- AI API key thunk tests ---
+
+  it("fetchAiApiKey.pending sets aiApiKeyStatus to loading", () => {
+    mockGetAiApiKey.mockReturnValue(new Promise(() => undefined));
+    const store = makeStore();
+    void store.dispatch(fetchAiApiKey());
+    expect(store.getState().config.aiApiKeyStatus).toBe("loading");
+  });
+
+  it("fetchAiApiKey.fulfilled populates aiApiKey", async () => {
+    mockGetAiApiKey.mockResolvedValueOnce("sk-test-key-abc");
+    const store = makeStore();
+    await store.dispatch(fetchAiApiKey());
+    const state = store.getState().config;
+    expect(state.aiApiKeyStatus).toBe("succeeded");
+    expect(state.aiApiKey).toBe("sk-test-key-abc");
+  });
+
+  it("fetchAiApiKey.fulfilled with empty string keeps aiApiKey empty", async () => {
+    mockGetAiApiKey.mockResolvedValueOnce("");
+    const store = makeStore();
+    await store.dispatch(fetchAiApiKey());
+    expect(store.getState().config.aiApiKey).toBe("");
+  });
+
+  it("fetchAiApiKey.rejected sets aiApiKeyError", async () => {
+    mockGetAiApiKey.mockRejectedValueOnce(new Error("Config read failed"));
+    const store = makeStore();
+    await store.dispatch(fetchAiApiKey());
+    const state = store.getState().config;
+    expect(state.aiApiKeyStatus).toBe("failed");
+    expect(state.aiApiKeyError).toBe("Config read failed");
+  });
+
+  it("saveAiApiKeyThunk.pending sets aiApiKeySaveStatus to saving", () => {
+    mockSaveAiApiKey.mockReturnValue(new Promise(() => undefined));
+    const store = makeStore();
+    void store.dispatch(saveAiApiKeyThunk("sk-new-key"));
+    expect(store.getState().config.aiApiKeySaveStatus).toBe("saving");
+  });
+
+  it("saveAiApiKeyThunk.fulfilled updates aiApiKey and sets status to saved", async () => {
+    mockSaveAiApiKey.mockResolvedValueOnce(undefined);
+    const store = makeStore();
+    await store.dispatch(saveAiApiKeyThunk("sk-saved-key"));
+    const state = store.getState().config;
+    expect(state.aiApiKeySaveStatus).toBe("saved");
+    expect(state.aiApiKey).toBe("sk-saved-key");
+  });
+
+  it("saveAiApiKeyThunk.rejected sets aiApiKeyError", async () => {
+    mockSaveAiApiKey.mockRejectedValueOnce(new Error("API key must not be empty"));
+    const store = makeStore();
+    await store.dispatch(saveAiApiKeyThunk(""));
+    const state = store.getState().config;
+    expect(state.aiApiKeySaveStatus).toBe("failed");
+    expect(state.aiApiKeyError).toBe("API key must not be empty");
+  });
+
+  it("clearAiApiKeyError clears the aiApiKeyError field", async () => {
+    const { clearAiApiKeyError } = await import("./configSlice");
+    mockGetAiApiKey.mockRejectedValueOnce(new Error("test error"));
+    const store = makeStore();
+    await store.dispatch(fetchAiApiKey());
+    expect(store.getState().config.aiApiKeyError).toBe("test error");
+    store.dispatch(clearAiApiKeyError());
+    expect(store.getState().config.aiApiKeyError).toBeNull();
+  });
+
+  it("resetAiApiKeySaveStatus resets save status to idle", async () => {
+    const { resetAiApiKeySaveStatus } = await import("./configSlice");
+    mockSaveAiApiKey.mockResolvedValueOnce(undefined);
+    const store = makeStore();
+    await store.dispatch(saveAiApiKeyThunk("sk-key"));
+    expect(store.getState().config.aiApiKeySaveStatus).toBe("saved");
+    store.dispatch(resetAiApiKeySaveStatus());
+    expect(store.getState().config.aiApiKeySaveStatus).toBe("idle");
   });
 });

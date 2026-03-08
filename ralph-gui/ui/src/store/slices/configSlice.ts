@@ -8,6 +8,8 @@ import {
   getEffectiveConfig,
   saveGlobalConfig,
   saveProjectConfig,
+  getAiApiKey,
+  saveAiApiKey,
 } from "../../api/tauri";
 import type { ConfigView } from "../../types";
 
@@ -19,6 +21,10 @@ interface ConfigState {
   projectStatus: "idle" | "loading" | "succeeded" | "failed";
   error: string | null;
   isDirty: boolean;
+  aiApiKey: string;
+  aiApiKeyStatus: "idle" | "loading" | "succeeded" | "failed";
+  aiApiKeySaveStatus: "idle" | "saving" | "saved" | "failed";
+  aiApiKeyError: string | null;
 }
 
 const initialState: ConfigState = {
@@ -29,6 +35,10 @@ const initialState: ConfigState = {
   projectStatus: "idle",
   error: null,
   isDirty: false,
+  aiApiKey: "",
+  aiApiKeyStatus: "idle",
+  aiApiKeySaveStatus: "idle",
+  aiApiKeyError: null,
 };
 
 export const fetchGlobalConfig = createAsyncThunk(
@@ -60,6 +70,21 @@ export const saveProject = createAsyncThunk(
   },
 );
 
+export const fetchAiApiKey = createAsyncThunk(
+  "config/fetchAiApiKey",
+  async () => {
+    return getAiApiKey();
+  },
+);
+
+export const saveAiApiKeyThunk = createAsyncThunk(
+  "config/saveAiApiKey",
+  async (apiKey: string) => {
+    await saveAiApiKey(apiKey);
+    return apiKey;
+  },
+);
+
 const configSlice = createSlice({
   name: "config",
   initialState,
@@ -69,6 +94,12 @@ const configSlice = createSlice({
     },
     clearConfigError: (state) => {
       state.error = null;
+    },
+    clearAiApiKeyError: (state) => {
+      state.aiApiKeyError = null;
+    },
+    resetAiApiKeySaveStatus: (state) => {
+      state.aiApiKeySaveStatus = "idle";
     },
   },
   extraReducers: (builder) => {
@@ -94,9 +125,34 @@ const configSlice = createSlice({
       })
       .addCase(saveProject.fulfilled, (state) => {
         state.isDirty = false;
+      })
+      .addCase(fetchAiApiKey.pending, (state) => {
+        state.aiApiKeyStatus = "loading";
+        state.aiApiKeyError = null;
+      })
+      .addCase(fetchAiApiKey.fulfilled, (state, action) => {
+        state.aiApiKeyStatus = "succeeded";
+        state.aiApiKey = action.payload;
+      })
+      .addCase(fetchAiApiKey.rejected, (state, action) => {
+        state.aiApiKeyStatus = "failed";
+        state.aiApiKeyError = action.error.message ?? "Unknown error";
+      })
+      .addCase(saveAiApiKeyThunk.pending, (state) => {
+        state.aiApiKeySaveStatus = "saving";
+        state.aiApiKeyError = null;
+      })
+      .addCase(saveAiApiKeyThunk.fulfilled, (state, action) => {
+        state.aiApiKeySaveStatus = "saved";
+        state.aiApiKey = action.payload;
+      })
+      .addCase(saveAiApiKeyThunk.rejected, (state, action) => {
+        state.aiApiKeySaveStatus = "failed";
+        state.aiApiKeyError = action.error.message ?? "Unknown error";
       });
   },
 });
 
-export const { setDirty, clearConfigError } = configSlice.actions;
+export const { setDirty, clearConfigError, clearAiApiKeyError, resetAiApiKeySaveStatus } =
+  configSlice.actions;
 export default configSlice.reducer;

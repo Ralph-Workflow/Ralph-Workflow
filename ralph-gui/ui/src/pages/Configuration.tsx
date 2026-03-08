@@ -3,6 +3,9 @@ import { useAppSelector, useAppDispatch } from "../store";
 import {
   fetchGlobalConfig,
   fetchEffectiveConfig,
+  fetchAiApiKey,
+  saveAiApiKeyThunk,
+  resetAiApiKeySaveStatus,
   setDirty,
 } from "../store/slices/configSlice";
 import {
@@ -197,25 +200,13 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
         </div>
       )}
       <textarea
+        className="form-input input-mono"
         value={toml}
         onChange={(e) => {
           setToml(e.target.value);
           dispatch(setDirty(true));
         }}
-        style={{
-          width: "100%",
-          minHeight: 220,
-          background: "var(--bg-elevated)",
-          border: "1px solid var(--border-default)",
-          borderRadius: "var(--radius-md)",
-          padding: "12px",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-          color: "var(--text-primary)",
-          resize: "vertical",
-          outline: "none",
-          lineHeight: 1.6,
-        }}
+        style={{ minHeight: 220, padding: "12px", resize: "vertical", lineHeight: 1.6 }}
         spellCheck={false}
       />
       <div
@@ -253,6 +244,152 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
             }}
           >
             {saveError}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/// AI Integration section shown in the Global tab.
+/// Allows users to persist their OpenAI API key without touching CLI environment variables.
+function AiIntegrationSection() {
+  const dispatch = useAppDispatch();
+  const aiApiKey = useAppSelector((s) => s.config.aiApiKey);
+  const saveStatus = useAppSelector((s) => s.config.aiApiKeySaveStatus);
+  const aiApiKeyError = useAppSelector((s) => s.config.aiApiKeyError);
+
+  const [localKey, setLocalKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  // Load saved key on mount
+  useEffect(() => {
+    void dispatch(fetchAiApiKey());
+  }, [dispatch]);
+
+  // Sync local input when the store key changes (e.g., loaded from backend)
+  useEffect(() => {
+    setLocalKey(aiApiKey);
+  }, [aiApiKey]);
+
+  // Auto-reset save status after 3 seconds so the success message fades
+  useEffect(() => {
+    if (saveStatus === "saved") {
+      const timer = setTimeout(() => {
+        dispatch(resetAiApiKeySaveStatus());
+      }, 3000);
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+    return undefined;
+  }, [dispatch, saveStatus]);
+
+  const handleSave = () => {
+    void dispatch(saveAiApiKeyThunk(localKey));
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-6)",
+        paddingTop: "var(--space-6)",
+        borderTop: "1px solid var(--border-subtle)",
+      }}
+    >
+      {/* Section heading */}
+      <div
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--text-secondary)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: "var(--space-3)",
+        }}
+      >
+        AI Integration
+      </div>
+
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--text-muted)",
+          fontFamily: "var(--font-mono)",
+          marginBottom: "var(--space-4)",
+        }}
+      >
+        OpenAI API key used for AI-assisted PROMPT.md review. Stored at{" "}
+        <span style={{ color: "var(--text-secondary)" }}>~/.config/ralph-gui.toml</span>{" "}
+        with restricted permissions (0600).
+      </div>
+
+      {/* Key input with show/hide toggle */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          marginBottom: "var(--space-3)",
+        }}
+      >
+        <input
+          type={showKey ? "text" : "password"}
+          className="form-input input-mono"
+          value={localKey}
+          onChange={(e) => {
+            setLocalKey(e.target.value);
+          }}
+          placeholder="Enter OpenAI API key (sk-...)"
+          style={{ flex: 1 }}
+        />
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setShowKey((prev) => !prev);
+          }}
+          style={{ flexShrink: 0, minWidth: 52 }}
+        >
+          {showKey ? "Hide" : "Show"}
+        </button>
+      </div>
+
+      {/* Save button + feedback */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-3)",
+        }}
+      >
+        <button
+          className="btn btn-primary"
+          onClick={handleSave}
+          disabled={saveStatus === "saving"}
+        >
+          {saveStatus === "saving" ? "Saving..." : "Save API Key"}
+        </button>
+        {saveStatus === "saved" && (
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--status-completed)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            Saved
+          </span>
+        )}
+        {saveStatus === "failed" && aiApiKeyError && (
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--status-failed)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            {aiApiKeyError}
           </span>
         )}
       </div>
@@ -320,7 +457,9 @@ export function Configuration() {
             <button
               key={tab.id}
               className={`tab-item${activeTab === tab.id ? " tab-item--active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+              }}
             >
               {tab.label}
             </button>
@@ -392,6 +531,7 @@ export function Configuration() {
               </span>
             </div>
             <TomlEditor label="Global" repoPath={null} scope="global" />
+            <AiIntegrationSection />
           </div>
         )}
 

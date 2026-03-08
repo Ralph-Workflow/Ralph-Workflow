@@ -8,6 +8,7 @@ use ralph_gui::state::new_shared_state;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(new_shared_state())
         .invoke_handler(tauri::generate_handler![
             session::get_sessions,
@@ -24,9 +25,12 @@ fn main() {
             config::get_raw_global_config_toml,
             config::get_raw_project_config_toml,
             config::list_agent_profiles,
+            config::get_ai_api_key,
+            config::save_ai_api_key,
             run_management::get_run_status,
             run_management::get_resumable_runs,
             run_management::get_run_detail,
+            run_management::notify_run_status_change,
             session_prompt::read_prompt_file,
             session_prompt::save_prompt_file,
             session_prompt::review_prompt_with_ai,

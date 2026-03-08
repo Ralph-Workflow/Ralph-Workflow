@@ -224,6 +224,29 @@ export function RunDetail() {
           {runDetail.run_id}
         </div>
 
+        {/* Degraded condition banner */}
+        {runDetail.is_degraded && (
+          <div
+            style={{
+              padding: "10px 16px",
+              background: "rgba(232,168,56,0.10)",
+              border: "1px solid rgba(232,168,56,0.35)",
+              borderRadius: "var(--radius-md)",
+              color: "var(--accent)",
+              fontSize: 12,
+              fontFamily: "var(--font-mono)",
+              marginBottom: "var(--space-4)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+            data-testid="degraded-banner"
+          >
+            <span style={{ fontSize: 14 }}>⚠</span>
+            Running with degraded conditions — retries exceeded or fallback agent active.
+          </div>
+        )}
+
         {/* Details card */}
         <div className="card" style={{ marginBottom: "var(--space-5)" }}>
           <div
@@ -255,6 +278,14 @@ export function RunDetail() {
             value={runDetail.last_checkpoint}
             mono
           />
+          <DetailRow
+            label="iteration_count"
+            value={String(runDetail.iteration_count ?? 0)}
+            mono
+          />
+          {runDetail.last_error != null && (
+            <DetailRow label="last_error" value={runDetail.last_error} mono />
+          )}
           <DetailRow
             label="description"
             value={runDetail.description || null}

@@ -8,21 +8,23 @@ import runReducer, {
   stopPolling,
   startPollingInterval,
   stopPollingInterval,
+  pollRunStatus,
 } from "./runSlice";
-import type { pollRunStatus } from "./runSlice";
 import type { RunDetail } from "../../types";
 
 vi.mock("../../api/tauri", () => ({
   getResumableRuns: vi.fn(),
   getRunDetail: vi.fn(),
   getRunStatus: vi.fn(),
+  notifyRunStatusChange: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getResumableRuns, getRunDetail } from "../../api/tauri";
+import { getResumableRuns, getRunDetail, notifyRunStatusChange } from "../../api/tauri";
 import type { Mock } from "vitest";
 
 const mockGetResumableRuns = getResumableRuns as Mock;
 const mockGetRunDetail = getRunDetail as Mock;
+const mockNotifyRunStatusChange = notifyRunStatusChange as Mock;
 
 function makeStore() {
   return configureStore({
@@ -161,5 +163,115 @@ describe("runSlice", () => {
     stopPollingInterval(); // second call should be safe
     vi.advanceTimersByTime(10000);
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  // --- Notification transition tests ---
+
+  it("pollRunStatus.fulfilled does NOT notify on first poll (no previous status)", async () => {
+    const { getRunStatus } = await import("../../api/tauri");
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Failed" as const,
+      run_id: "run-123",
+      current_phase: "Development",
+      last_checkpoint: null,
+    });
+    const store = makeStore();
+    // No previous status — first poll should not trigger notification
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    // notifyRunStatusChange should NOT be called because previous status was null (no transition)
+    expect(mockNotifyRunStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("pollRunStatus.fulfilled triggers notification on Running→Failed transition", async () => {
+    const { getRunStatus } = await import("../../api/tauri");
+    const store = makeStore();
+
+    // First poll: Running
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Running" as const,
+      run_id: "run-123",
+      current_phase: "Development",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    expect(mockNotifyRunStatusChange).not.toHaveBeenCalled();
+
+    // Second poll: Failed — should trigger notification
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Failed" as const,
+      run_id: "run-123",
+      current_phase: "Development",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    expect(mockNotifyRunStatusChange).toHaveBeenCalledWith("Failed", "run-123", "");
+  });
+
+  it("pollRunStatus.fulfilled triggers notification on Running→Paused transition", async () => {
+    const { getRunStatus } = await import("../../api/tauri");
+    const store = makeStore();
+
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Running" as const,
+      run_id: "run-xyz",
+      current_phase: "Review",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Paused" as const,
+      run_id: "run-xyz",
+      current_phase: "Review",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    expect(mockNotifyRunStatusChange).toHaveBeenCalledWith("Paused", "run-xyz", "");
+  });
+
+  it("pollRunStatus.fulfilled triggers notification on Running→Completed transition", async () => {
+    const { getRunStatus } = await import("../../api/tauri");
+    const store = makeStore();
+
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Running" as const,
+      run_id: "run-done",
+      current_phase: "Commit",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Completed" as const,
+      run_id: "run-done",
+      current_phase: "Complete",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    expect(mockNotifyRunStatusChange).toHaveBeenCalledWith("Completed", "run-done", "");
+  });
+
+  it("pollRunStatus.fulfilled does NOT notify on non-Running→Failed (was already paused)", async () => {
+    const { getRunStatus } = await import("../../api/tauri");
+    const store = makeStore();
+
+    // First poll: Paused (not Running)
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Paused" as const,
+      run_id: "run-abc",
+      current_phase: "Review",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+
+    // Second poll: Failed — but previous was Paused not Running, so no notification
+    (getRunStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: "Failed" as const,
+      run_id: "run-abc",
+      current_phase: "Review",
+      last_checkpoint: null,
+    });
+    await store.dispatch(pollRunStatus({ repoPath: "/my/repo", worktreePath: null }));
+    expect(mockNotifyRunStatusChange).not.toHaveBeenCalled();
   });
 });

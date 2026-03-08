@@ -8,6 +8,7 @@ import {
   createSession,
   resumeRalphSession,
   getSessionDetail,
+  notifyRunStatusChange,
 } from "../../api/tauri";
 import type { CreateSessionRequest, SessionSummary } from "../../types";
 
@@ -84,6 +85,21 @@ const sessionSlice = createSlice({
         if (index !== -1) {
           state.sessions[index] = action.payload;
         }
+      })
+      // Fire a Failed notification when session launch or resume rejects.
+      .addCase(createNewSession.rejected, (_state, action) => {
+        void notifyRunStatusChange(
+          "Failed",
+          "launch",
+          action.error.message ?? "Session launch failed",
+        );
+      })
+      .addCase(resumeInterruptedSession.rejected, (_state, action) => {
+        void notifyRunStatusChange(
+          "Failed",
+          action.meta.arg.runId,
+          action.error.message ?? "Session resume failed",
+        );
       });
   },
 });
