@@ -47,9 +47,13 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
         ));
     }
 
-    let prompt_key = "commit_message_attempt_1";
+    // Prompt replay keys must be unique per commit cycle (diff/content) to prevent
+    // reusing stale prompt text from prompt_history.
+    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(&model_safe_diff);
+    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
+    let prompt_key = format!("commit_message_attempt_diff{diff_id_short}_attempt_1");
     let (prompt, was_replayed, substitution_log) = build_commit_prompt(
-        prompt_key,
+        &prompt_key,
         template_context,
         &model_safe_diff,
         workspace,
@@ -66,7 +70,7 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
 
     let mut generated_prompts = HashMap::new();
     if !was_replayed {
-        generated_prompts.insert(prompt_key.to_string(), prompt.clone());
+        generated_prompts.insert(prompt_key, prompt.clone());
     }
 
     let agent_config = registry
@@ -176,8 +180,14 @@ pub fn generate_commit_message_with_chain<S: std::hash::BuildHasher + Default>(
     let mut last_error: Option<anyhow::Error> = None;
     let mut generated_prompts = HashMap::new();
 
+    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(&model_safe_diff);
+    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
+
     for (agent_index, commit_agent) in agents.iter().enumerate() {
-        let prompt_key = format!("commit_message_chain_attempt_{}", agent_index + 1);
+        let prompt_key = format!(
+            "commit_message_chain_diff{diff_id_short}_attempt_{}",
+            agent_index + 1
+        );
         let (prompt, was_replayed, substitution_log) = build_commit_prompt(
             &prompt_key,
             template_context,

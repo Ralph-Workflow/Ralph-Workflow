@@ -4,11 +4,60 @@ use super::*;
 
 #[test]
 fn mock_effect_handler_simulates_empty_diff() {
+    use crate::agents::AgentRegistry;
+    use crate::checkpoint::{ExecutionHistory, RunContext};
+    use crate::config::Config;
+    use crate::executor::MockProcessExecutor;
+    use crate::logger::{Colors, Logger};
+    use crate::phases::PhaseContext;
+    use crate::pipeline::Timer;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::workspace::MemoryWorkspace;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
     let state = PipelineState::initial(1, 0);
     let mut handler = MockEffectHandler::new(state).with_empty_diff();
 
+    let config = Config::default();
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+    let template_context = TemplateContext::default();
+    let registry = AgentRegistry::new().unwrap();
+    let executor = Arc::new(MockProcessExecutor::new());
+    let repo_root = PathBuf::from("/test/repo");
+    let workspace = MemoryWorkspace::new(repo_root.clone());
+    let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let cloud = crate::config::types::CloudConfig::disabled();
+
+    let mut ctx = PhaseContext {
+        config: &config,
+        registry: &registry,
+        logger: &logger,
+        colors: &colors,
+        timer: &mut timer,
+        developer_agent: "claude",
+        reviewer_agent: "claude",
+        review_guidelines: None,
+        template_context: &template_context,
+        run_context: RunContext::new(),
+        execution_history: ExecutionHistory::new(),
+        prompt_history: std::collections::HashMap::new(),
+        executor: &*executor,
+        executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+        repo_root: &repo_root,
+        workspace: &workspace,
+        workspace_arc: std::sync::Arc::new(workspace.clone()),
+        run_log_context: &run_log_context,
+        cloud_reporter: None,
+        cloud: &cloud,
+    };
+
     // CheckCommitDiff should mark empty diff
-    let result = handler.execute_mock(&Effect::CheckCommitDiff);
+    let result = handler
+        .execute(Effect::CheckCommitDiff, &mut ctx)
+        .expect("Expected effect result");
 
     assert!(
         matches!(

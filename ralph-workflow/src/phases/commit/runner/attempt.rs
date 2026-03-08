@@ -57,7 +57,14 @@ pub fn run_commit_attempt(
     // The diff passed here is already truncated to the effective model budget.
     // See: reducer/handler/commit.rs::materialize_commit_inputs
 
-    let prompt_key = format!("commit_message_attempt_{attempt}");
+    // Prompt replay keys must be unique per commit cycle to prevent stale replay.
+    // Cycle identity is derived from run_context (legacy phase runner) and the
+    // model-safe diff content id.
+    let commit_cycle = ctx.run_context.actual_developer_runs;
+    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(model_safe_diff);
+    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
+    let prompt_key =
+        format!("commit_message_attempt_cycle{commit_cycle}_diff{diff_id_short}_attempt{attempt}");
     let (prompt, was_replayed, substitution_log) = build_commit_prompt(
         &prompt_key,
         ctx.template_context,

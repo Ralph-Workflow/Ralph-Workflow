@@ -65,8 +65,7 @@ pub fn prompt_generate_commit_message_with_diff(diff: &str) -> String {
 
     template
         .render_with_partials(&variables, &partials)
-        .unwrap_or_else(|e| {
-        eprintln!("Warning: Failed to render commit template: {e}");
+        .unwrap_or_else(|_e| {
         // Last resort: simple inline prompt (no fallback template needed)
         format!(
             "Generate a conventional commit message for this diff:\n\n{diff_content}\n\n\
@@ -131,8 +130,7 @@ pub fn prompt_generate_commit_message_with_diff_with_log(
 
     match template.render_with_log(template_name, &variables, &partials) {
         Ok(rendered) => rendered,
-        Err(e) => {
-            eprintln!("Warning: Failed to render commit template: {e}");
+        Err(_e) => {
             // Last resort: simple inline prompt with manual log
             let prompt_content = format!(
                 "Generate a conventional commit message for this diff:\n\n{diff_content}\n\n\
@@ -208,8 +206,7 @@ pub fn prompt_generate_commit_message_with_diff_with_context(
 
     template
         .render_with_partials(&variables, &partials)
-        .unwrap_or_else(|e| {
-        eprintln!("Warning: Failed to render commit template: {e}");
+        .unwrap_or_else(|_e| {
         // Last resort: simple inline prompt (no fallback template needed)
         format!(
             "Generate a conventional commit message for this diff:\n\n{diff_content}\n\n\

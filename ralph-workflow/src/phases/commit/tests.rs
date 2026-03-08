@@ -258,6 +258,83 @@ mod tests {
     }
 
     #[test]
+    fn test_run_commit_attempt_prompt_key_is_cycle_scoped_prevents_stale_prompt_replay() {
+        // Regression: commit prompt replay keys must not collide across commit cycles.
+        // If prompt_history contains a stale prompt under the legacy attempt-only key,
+        // we must generate a fresh prompt for the current diff instead of replaying.
+
+        let cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            xml_paths::COMMIT_MESSAGE_XML,
+            "<ralph-commit><ralph-subject>feat: x</ralph-subject></ralph-commit>",
+        );
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let mut timer = Timer::new();
+
+        let config = Config::default();
+        let registry = AgentRegistry::new().unwrap();
+        let template_context = TemplateContext::default();
+
+        let executor = Arc::new(
+            MockProcessExecutor::new()
+                .with_agent_result("claude", Ok(crate::executor::AgentCommandResult::success())),
+        );
+        let executor_arc: Arc<dyn ProcessExecutor> = executor;
+
+        let repo_root = PathBuf::from("/mock/repo");
+        let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+
+        let mut prompt_history = HashMap::new();
+        prompt_history.insert(
+            "commit_message_attempt_1".to_string(),
+            "STALE_MARKER: this prompt should not be replayed".to_string(),
+        );
+
+        // Simulate a later commit cycle where attempt resets to 1.
+        let run_context = RunContext::new().with_developer_runs(2);
+
+        let mut ctx = PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent: "claude",
+            reviewer_agent: "claude",
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context,
+            execution_history: ExecutionHistory::new(),
+            prompt_history,
+            executor: executor_arc.as_ref(),
+            executor_arc: executor_arc.clone(),
+            repo_root: repo_root.as_path(),
+            workspace: &workspace,
+            workspace_arc: std::sync::Arc::new(workspace.clone()),
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &cloud,
+        };
+
+        let fresh_diff = "diff --git a/a b/a\n+FRESH_DIFF_CONTENT\n";
+        let _ = run_commit_attempt(&mut ctx, 1, fresh_diff, "claude")
+            .expect("run_commit_attempt should succeed");
+
+        let saved_prompt = workspace
+            .read(config.prompt_path.as_path())
+            .expect("prompt should be written");
+        assert!(
+            !saved_prompt.contains("STALE_MARKER"),
+            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
+        );
+        assert!(
+            saved_prompt.contains("FRESH_DIFF_CONTENT"),
+            "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
+        );
+    }
+
+    #[test]
     fn test_run_commit_attempt_errors_on_missing_template_variables() {
         let cloud = crate::config::types::CloudConfig::disabled();
         let tempdir = tempdir().expect("create temp dir");
@@ -371,8 +448,146 @@ mod tests {
             CommitMessageOutcome::Skipped { reason } => {
                 assert_eq!(reason, "No changes found");
             }
-            other @ CommitMessageOutcome::Message(_) => panic!("expected skipped outcome, got: {other:?}"),
+            other @ CommitMessageOutcome::Message(_) => {
+                panic!("expected skipped outcome, got: {other:?}")
+            }
         }
+    }
+
+    #[test]
+    fn test_generate_commit_message_prompt_key_is_diff_scoped_prevents_stale_prompt_replay() {
+        // Regression: single-agent commit generation must not use a constant replay key.
+        // A stale prompt under the legacy key must not be replayed for a new diff.
+
+        let workspace = MemoryWorkspace::new_test().with_file(
+            xml_paths::COMMIT_MESSAGE_XML,
+            "<ralph-commit><ralph-subject>feat: x</ralph-subject></ralph-commit>",
+        );
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let mut timer = Timer::new();
+
+        let config = Config::default();
+        let registry = AgentRegistry::new().unwrap();
+        let template_context = TemplateContext::default();
+
+        let executor = Arc::new(
+            MockProcessExecutor::new()
+                .with_agent_result("claude", Ok(crate::executor::AgentCommandResult::success())),
+        );
+        let executor_arc: Arc<dyn ProcessExecutor> = executor;
+
+        let executor_ref: &dyn ProcessExecutor = executor_arc.as_ref();
+        let executor_arc_for_runtime: Arc<dyn ProcessExecutor> = executor_arc.clone();
+        let mut runtime = PipelineRuntime {
+            timer: &mut timer,
+            logger: &logger,
+            colors: &colors,
+            config: &config,
+            executor: executor_ref,
+            executor_arc: executor_arc_for_runtime,
+            workspace: &workspace,
+            workspace_arc: std::sync::Arc::new(workspace.clone()),
+        };
+
+        let mut prompt_history = HashMap::new();
+        prompt_history.insert(
+            "commit_message_attempt_1".to_string(),
+            "STALE_MARKER: constant-key prompt".to_string(),
+        );
+
+        let fresh_diff = "diff --git a/a b/a\n+FRESH_DIFF_CONTENT\n";
+        let _ = generate_commit_message(
+            fresh_diff,
+            &registry,
+            &mut runtime,
+            "claude",
+            &template_context,
+            &workspace,
+            &prompt_history,
+        )
+        .expect("expected commit generation to succeed");
+
+        let saved_prompt = workspace
+            .read(config.prompt_path.as_path())
+            .expect("prompt should be written");
+        assert!(
+            !saved_prompt.contains("STALE_MARKER"),
+            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
+        );
+        assert!(
+            saved_prompt.contains("FRESH_DIFF_CONTENT"),
+            "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
+        );
+    }
+
+    #[test]
+    fn test_generate_commit_message_with_chain_prompt_keys_are_diff_scoped_prevents_stale_prompt_replay(
+    ) {
+        // Regression: fallback-chain commit generation keys must not restart at 1 each cycle.
+        // A stale prompt under the legacy chain key must not be replayed for a new diff.
+
+        let workspace = MemoryWorkspace::new_test().with_file(
+            xml_paths::COMMIT_MESSAGE_XML,
+            "<ralph-commit><ralph-subject>feat: x</ralph-subject></ralph-commit>",
+        );
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let mut timer = Timer::new();
+
+        let config = Config::default();
+        let registry = AgentRegistry::new().unwrap();
+        let template_context = TemplateContext::default();
+
+        let executor = Arc::new(
+            MockProcessExecutor::new()
+                .with_agent_result("claude", Ok(crate::executor::AgentCommandResult::success())),
+        );
+        let executor_arc: Arc<dyn ProcessExecutor> = executor;
+        let executor_ref: &dyn ProcessExecutor = executor_arc.as_ref();
+        let executor_arc_for_runtime: Arc<dyn ProcessExecutor> = executor_arc.clone();
+        let mut runtime = PipelineRuntime {
+            timer: &mut timer,
+            logger: &logger,
+            colors: &colors,
+            config: &config,
+            executor: executor_ref,
+            executor_arc: executor_arc_for_runtime,
+            workspace: &workspace,
+            workspace_arc: std::sync::Arc::new(workspace.clone()),
+        };
+
+        let agents = vec!["claude".to_string()];
+
+        let mut prompt_history = HashMap::new();
+        prompt_history.insert(
+            "commit_message_chain_attempt_1".to_string(),
+            "STALE_MARKER: chain prompt".to_string(),
+        );
+
+        let fresh_diff = "diff --git a/a b/a\n+FRESH_DIFF_CONTENT\n";
+        let _ = generate_commit_message_with_chain(
+            fresh_diff,
+            &registry,
+            &mut runtime,
+            &agents,
+            &template_context,
+            &workspace,
+            &prompt_history,
+        )
+        .expect("expected commit generation with chain to succeed");
+
+        let saved_prompt = workspace
+            .read(config.prompt_path.as_path())
+            .expect("prompt should be written");
+        assert!(
+            !saved_prompt.contains("STALE_MARKER"),
+            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
+        );
+        assert!(
+            saved_prompt.contains("FRESH_DIFF_CONTENT"),
+            "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
+        );
     }
 
     // Tests for effective_model_budget_bytes
@@ -621,7 +836,9 @@ mod tests {
             CommitMessageOutcome::Message(message) => {
                 assert_eq!(message, "feat: fallback worked");
             }
-            other @ CommitMessageOutcome::Skipped { .. } => panic!("expected message outcome, got: {other:?}"),
+            other @ CommitMessageOutcome::Skipped { .. } => {
+                panic!("expected message outcome, got: {other:?}")
+            }
         }
 
         // Verify both agents were tried

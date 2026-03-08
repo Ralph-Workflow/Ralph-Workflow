@@ -46,6 +46,10 @@ impl MockEffectHandler {
         &self,
         effect: Effect,
     ) -> Option<(PipelineEvent, Vec<UIEvent>)> {
+        // NOTE: `Effect::CheckCommitDiff` is handled in the workspace-backed mock
+        // handler implementation (`mock_effect_handler/handler.rs`) so it can write
+        // the diff to `.agent/tmp/commit_diff.txt` and compute a real sha256 content id.
+        // Do not map it here.
         match effect {
             Effect::RunRebase {
                 phase,
@@ -57,14 +61,6 @@ impl MockEffectHandler {
 
             Effect::ResolveRebaseConflicts { strategy: _ } => {
                 Some((PipelineEvent::rebase_conflict_resolved(vec![]), vec![]))
-            }
-
-            Effect::CheckCommitDiff => {
-                let empty = self.simulate_empty_diff;
-                Some((
-                    PipelineEvent::commit_diff_prepared(empty, "id".to_string()),
-                    vec![],
-                ))
             }
 
             Effect::PrepareCommitPrompt { prompt_mode: _ } => {
@@ -186,5 +182,23 @@ impl MockEffectHandler {
 
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
+        // `Effect::CheckCommitDiff` is workspace-backed in MockEffectHandler::execute so the
+        // content id is computed from the actual diff bytes written to workspace.
+        // The pure effect-mapping layer must not synthesize a fake content id.
+        let handler = MockEffectHandler::new(crate::reducer::state::PipelineState::initial(1, 0));
+        let mapped = handler.handle_commit_effect(Effect::CheckCommitDiff);
+        assert!(
+            mapped.is_none(),
+            "CheckCommitDiff should be handled by the workspace-backed execute path"
+        );
     }
 }
