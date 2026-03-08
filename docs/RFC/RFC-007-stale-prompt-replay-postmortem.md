@@ -91,6 +91,77 @@ Consequence: more places to drift, harder incident triage, weaker global invaria
 
 ---
 
+## External Pattern Review (What Industry Guidance Adds)
+
+We reviewed external Rust and architecture guidance to test whether this incident is a local bug or a known class of design failure. The external guidance supports our architecture diagnosis and adds specific implementation patterns.
+
+### A) Rust API Guidelines: static distinctions over ambiguous primitives
+
+Rust API Guidelines explicitly recommend newtypes/custom types over ambiguous primitives and stringly-typed arguments (C-NEWTYPE, C-CUSTOM-TYPE), and static enforcement of invariants where practical (C-VALIDATE).
+
+Applied to this incident:
+
+- Prompt keys should not be plain `String` values assembled in multiple handlers.
+- Use typed identity objects (`PromptScopeKey`) with required fields enforced at construction.
+- Keep unchecked/raw key paths confined to a narrow internal module if needed for migration.
+
+### B) Parse, don't validate: enforce invariants at the boundary once
+
+Type-driven design guidance ("parse, don't validate") argues for converting unstructured data into refined types as early as possible, so downstream code cannot accidentally bypass invariants.
+
+Applied to this incident:
+
+- Parse raw phase/iteration/pass/attempt/retry metadata into one canonical replay-scope type before prompt generation.
+- Remove downstream ad-hoc key synthesis; handlers consume typed scope rather than rebuilding identity logic.
+- This converts replay safety from "remember to format the right key" into a compile-time API constraint.
+
+### C) Event sourcing lessons: replay requires canonical identity + deterministic boundaries
+
+Event sourcing literature emphasizes that replay correctness depends on canonical event identity and strict control of what can be replayed. If replay side data is outside the canonical state model, replay correctness becomes accidental.
+
+Applied to this incident:
+
+- Treat prompt replay metadata as part of deterministic state semantics, not incidental context cache.
+- Introduce explicit epoch/generation semantics so recovery resets and replay identity move together.
+- Keep replay side effects observable (hit/miss events and key dimensions) for audit and incident debugging.
+
+### D) Serde/versioned-state guidance: encode evolution explicitly
+
+Serde guidance around tagged representations and strict field handling (`deny_unknown_fields`, tagged enums) reinforces explicit versioning when serialized state evolves.
+
+Applied to this incident:
+
+- If replay metadata moves into checkpointed/reducer-owned structures, include explicit version/tag fields.
+- Add backward-compat decoding policy for old checkpoints to prevent silent behavior drift on resume.
+
+### E) Redux/Elm patterns we are partially applying, but not fully
+
+Redux and Elm guidance maps directly to this incident class.
+
+1. **Single store / single source of truth (Redux)**
+   - Redux guidance favors one canonical store and reducer ownership of state shape.
+   - Gap: replay-critical `prompt_history` is outside reducer-owned state, creating split-brain semantics.
+
+2. **Reducers should own state shape (Redux)**
+   - Redux explicitly warns against reducers giving up ownership to caller-shaped payloads.
+   - Gap analogue: replay identity is assembled ad-hoc in handlers (`format!`), so state-shape constraints are effectively delegated to call sites.
+
+3. **Treat reducers as state machines (Redux)**
+   - Current reducer already models phases/passes, but replay eligibility is not modeled as a first-class transition guard.
+   - Missing: explicit replay-state transitions keyed by `epoch` + scope identity, so invalid replay transitions are unrepresentable.
+
+4. **Model actions as events, avoid multi-step transactional drift (Redux)**
+   - Redux recommends event-style actions and avoiding sequential dispatches for one conceptual transaction.
+   - Gap analogue: our orchestration sometimes requires multiple granular events to establish "fresh prompt context"; intermediate states can still permit stale replay.
+   - Improvement: add a single domain event that atomically advances "context refreshed + replay scope rotated".
+
+5. **Effects separated from pure update loop (Elm Architecture)**
+   - Elm keeps `update` pure and pushes effects through `Cmd`/runtime.
+   - We largely follow this pattern, but replay cache semantics currently straddle runtime context and reducer semantics.
+   - Improvement: keep side effects external, but move replay *identity/lifecycle* decisions into pure state transitions.
+
+---
+
 ## Why This Took So Long
 
 1. Investigations focused on reducer-visible freshness indicators, while failure source was replay cache identity.
@@ -113,12 +184,15 @@ Consequence: more places to drift, harder incident triage, weaker global invaria
 2. Include recovery/reset epoch in replay identity (not just iteration/pass/attempt).
 3. Add replay observability: explicit event/metric for replay hit with key dimensions.
 4. Add invariants that replayed prompt content must match current materialized input IDs.
+5. Add compile-time constructors/builders for replay scope so missing identity dimensions are impossible.
 
 ### Medium term (recommended)
 
 1. Move replay metadata ownership into reducer-owned state (or reducer-versioned cache contract).
 2. Unify prompt keying/replay policy behind one API used by all phases.
 3. Reduce dual-path drift between legacy phase-runner and reducer pathways.
+4. Add checkpoint schema versioning for replay metadata and explicit migration tests.
+5. Add atomic reducer event for replay-scope rotation so "fresh-context" transitions are one-step and auditable.
 
 ---
 
@@ -163,6 +237,19 @@ Consequence: more places to drift, harder incident triage, weaker global invaria
 - `ralph-workflow/src/reducer/handler/commit/prompts.rs`
 - `ralph-workflow/src/reducer/state/pipeline/helpers.rs`
 - `ralph-workflow/src/reducer/state_reduction/awaiting_dev_fix.rs`
+- Rust API Guidelines (Type Safety, Dependability, Predictability): `https://rust-lang.github.io/api-guidelines/`
+- Rust API Guidelines (Type Safety chapter): `https://rust-lang.github.io/api-guidelines/type-safety.html`
+- Rust API Guidelines (Dependability chapter): `https://rust-lang.github.io/api-guidelines/dependability.html`
+- Rust API Guidelines (Predictability chapter): `https://rust-lang.github.io/api-guidelines/predictability.html`
+- Parse, don't validate (Alexis King): `https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/`
+- Event Sourcing (Martin Fowler): `https://martinfowler.com/eaaDev/EventSourcing.html`
+- Serde enum representations and attributes: `https://serde.rs/enum-representations` and `https://serde.rs/attributes`
+- Redux Style Guide: `https://redux.js.org/style-guide/`
+- Redux reducers as state machines: `https://redux.js.org/style-guide/#treat-reducers-as-state-machines`
+- Redux reducer prerequisites (purity/immutability/replay): `https://redux.js.org/usage/structuring-reducers/prerequisite-concepts`
+- Redux normalizing state shape: `https://redux.js.org/usage/structuring-reducers/normalizing-state-shape`
+- Elm Architecture overview: `https://guide.elm-lang.org/architecture/`
+- Elm commands and subscriptions (effects boundary): `https://guide.elm-lang.org/effects/`
 
 ---
 
