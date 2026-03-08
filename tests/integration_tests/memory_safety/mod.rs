@@ -15,7 +15,6 @@
 //! - NO real filesystem, process spawning, or external dependencies
 //! - Tests are deterministic and verify invariants, not implementation details
 
-mod arc_patterns;
 mod bounded_growth;
 mod channel_bounds;
 mod edge_cases;

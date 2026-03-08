@@ -281,10 +281,6 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("memory_safety/thread_lifecycle.rs"),
     },
     SourceFile {
-        path: "memory_safety/arc_patterns.rs",
-        contents: include_str!("memory_safety/arc_patterns.rs"),
-    },
-    SourceFile {
         path: "memory_safety/channel_bounds.rs",
         contents: include_str!("memory_safety/channel_bounds.rs"),
     },

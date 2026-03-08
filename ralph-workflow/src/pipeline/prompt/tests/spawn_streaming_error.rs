@@ -155,7 +155,7 @@ fn test_run_with_agent_spawn_terminates_child_and_joins_threads_when_streaming_e
                 &cmd,
                 &runtime,
                 &[],
-                1,
+                Duration::from_secs(1),
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),
@@ -174,7 +174,7 @@ fn test_run_with_agent_spawn_terminates_child_and_joins_threads_when_streaming_e
             .expect("expected run to return promptly");
         assert!(result.is_err(), "expected streaming to fail");
 
-        std::thread::sleep(Duration::from_millis(1500));
+        std::thread::sleep(Duration::from_millis(50));
         still_running.store(false, Ordering::Release);
 
         let kill_times = kill_calls_at.lock().unwrap().clone();

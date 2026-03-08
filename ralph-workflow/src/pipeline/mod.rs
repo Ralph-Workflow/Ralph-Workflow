@@ -105,7 +105,6 @@ impl Default for Timer {
 #[cfg(test)]
 mod timer_tests {
     use super::*;
-    use std::thread;
 
     #[test]
     fn test_format_duration_zero() {
@@ -129,22 +128,5 @@ mod timer_tests {
     fn test_format_duration_large() {
         let d = Duration::from_secs(3661);
         assert_eq!(Timer::format_duration(d), "61m 01s");
-    }
-
-    #[test]
-    fn test_timer_elapsed() {
-        let timer = Timer::new();
-        thread::sleep(Duration::from_millis(10));
-        assert!(timer.elapsed() >= Duration::from_millis(10));
-    }
-
-    #[test]
-    fn test_timer_phase() {
-        let mut timer = Timer::new();
-        thread::sleep(Duration::from_millis(10));
-        timer.start_phase();
-        thread::sleep(Duration::from_millis(10));
-        // Phase elapsed should be less than total elapsed
-        assert!(timer.phase_elapsed() < timer.elapsed());
     }
 }

@@ -36,19 +36,19 @@ fn monitor_stops_when_signaled() {
     let executor: Arc<dyn crate::executor::ProcessExecutor> =
         Arc::new(crate::executor::MockProcessExecutor::new());
 
-    let check_interval = Duration::from_millis(10);
+    let check_interval = Duration::from_millis(1);
     let handle = thread::spawn(move || {
         monitor_idle_timeout_with_interval(
             &timestamp,
             &child,
-            60,
+            Duration::from_secs(60),
             &should_stop_clone,
             &executor,
             check_interval,
         )
     });
 
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(5));
     should_stop.store(true, Ordering::Release);
 
     let result = handle.join().expect("Monitor thread panicked");
@@ -77,7 +77,7 @@ fn monitor_stops_promptly_even_with_long_check_interval() {
         monitor_idle_timeout_with_interval(
             &timestamp,
             &child,
-            60,
+            Duration::from_secs(60),
             &should_stop_clone,
             &executor,
             check_interval,
@@ -132,7 +132,7 @@ fn kill_process_returns_failed_when_sigterm_command_exits_nonzero() {
 
 #[test]
 #[cfg(unix)]
-fn kill_process_uses_double_dash_before_negative_pgid() {
+fn kill_command_uses_correct_syntax_for_negative_pgid() {
     let executor = crate::executor::MockProcessExecutor::new();
 
     let _ = super::super::kill::kill_process(12345, &executor, None, DEFAULT_KILL_CONFIG);
@@ -144,7 +144,7 @@ fn kill_process_uses_double_dash_before_negative_pgid() {
 
 #[test]
 #[cfg(unix)]
-fn force_kill_best_effort_uses_double_dash_before_negative_pgid() {
+fn force_kill_best_effort_uses_correct_syntax_for_negative_pgid() {
     let executor = crate::executor::MockProcessExecutor::new();
 
     let ok = super::super::kill::force_kill_best_effort(12345, &executor);

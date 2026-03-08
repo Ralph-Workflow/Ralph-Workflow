@@ -151,8 +151,8 @@ pub fn time_since_activity_with_clock(
 /// Checks if the idle timeout has been exceeded.
 ///
 /// Uses monotonic time to prevent spurious timeout triggers from clock jumps.
-pub fn is_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout_secs: u64) -> bool {
-    time_since_activity(timestamp) > Duration::from_secs(timeout_secs)
+pub fn is_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Duration) -> bool {
+    time_since_activity(timestamp) > timeout
 }
 
 /// Checks if the idle timeout has been exceeded using a custom clock.
@@ -160,8 +160,8 @@ pub fn is_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout_sec
 /// This variant is primarily used for testing with mock clocks.
 pub fn is_idle_timeout_exceeded_with_clock(
     timestamp: &SharedActivityTimestamp,
-    timeout_secs: u64,
+    timeout: Duration,
     clock: &dyn Clock,
 ) -> bool {
-    time_since_activity_with_clock(timestamp, clock) > Duration::from_secs(timeout_secs)
+    time_since_activity_with_clock(timestamp, clock) > timeout
 }

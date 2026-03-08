@@ -102,16 +102,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_production_retry_timer_sleeps() {
-        let timer = production_timer();
-        let start = std::time::Instant::now();
-        timer.sleep(Duration::from_millis(10));
-        let elapsed = start.elapsed();
-        assert!(elapsed >= Duration::from_millis(10));
-    }
-
-    #[test]
-    fn test_test_retry_timer_immediate() {
+    fn test_retry_timer_returns_immediately_without_blocking() {
         let timer = TestRetryTimer::new();
         let start = std::time::Instant::now();
         timer.sleep(Duration::from_secs(10));

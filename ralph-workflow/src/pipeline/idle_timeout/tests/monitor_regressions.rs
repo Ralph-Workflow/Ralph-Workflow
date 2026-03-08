@@ -21,7 +21,7 @@ fn config(
 }
 
 #[test]
-fn monitor_does_not_hold_child_lock_while_waiting_between_sigterm_checks() {
+fn monitor_releases_child_lock_between_sigterm_checks_so_caller_can_access_child() {
     use crate::executor::MockAgentChild;
 
     #[derive(Debug)]
@@ -82,7 +82,7 @@ fn monitor_does_not_hold_child_lock_while_waiting_between_sigterm_checks() {
                 &should_stop_for_monitor,
                 &executor,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_secs(2),
@@ -160,7 +160,7 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
                 &should_stop_for_monitor,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(10),
@@ -240,7 +240,7 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
         &should_stop,
         &executor,
         MonitorConfig {
-            timeout_secs: 0,
+            timeout: Duration::ZERO,
             check_interval: Duration::from_millis(1),
             kill_config: config(
                 Duration::from_millis(10),
@@ -285,7 +285,7 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
                 &should_stop_clone,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(20),
@@ -350,7 +350,7 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
                 // to observe the TERM send and flip the mock child to "exited"
                 // before escalation.
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(200),
@@ -410,14 +410,14 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
                 &should_stop_for_monitor,
                 &executor_dyn,
                 MonitorConfig {
-                    timeout_secs: 0,
+                    timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
                     kill_config: config(
                         Duration::from_millis(1),
                         Duration::from_millis(1),
                         Duration::from_millis(5),
-                        Duration::from_millis(200),
-                        Duration::from_millis(20),
+                        Duration::from_millis(50),
+                        Duration::from_millis(10),
                     ),
                 },
             );
@@ -444,7 +444,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(10));
     let kill_calls_after = executor
         .execute_calls_for("kill")
         .iter()
@@ -456,14 +456,14 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
     );
 
     // But it must be bounded: after the reaper window expires, it should stop.
-    // Wait long enough for the bounded reaper window to elapse.
-    thread::sleep(Duration::from_millis(250));
+    // post_sigkill_hard_cap=50ms; 60ms gives 20% headroom over the window.
+    thread::sleep(Duration::from_millis(60));
     let kill_calls_after_reaper_window = executor
         .execute_calls_for("kill")
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
-    thread::sleep(Duration::from_millis(250));
+    thread::sleep(Duration::from_millis(40));
     let kill_calls_final = executor
         .execute_calls_for("kill")
         .iter()
@@ -480,7 +480,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
 
 #[test]
 #[cfg(unix)]
-fn kill_process_targets_process_group_by_default_to_avoid_fd_inheritance_hangs() {
+fn kill_sends_signal_to_process_group_not_just_process() {
     use crate::executor::MockAgentChild;
 
     let (mock_child, _controller) = MockAgentChild::new_running(0);
