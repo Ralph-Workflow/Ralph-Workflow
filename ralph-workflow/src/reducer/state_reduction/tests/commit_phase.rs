@@ -414,6 +414,50 @@ fn test_skipped_normal_clears_prompt_inputs_commit() {
 }
 
 #[test]
+fn test_diff_prepared_clears_stale_prompt_inputs_surviving_generation_failed() {
+    // When GenerationFailed fires, prompt_inputs.commit is NOT cleared (uses ..state spread).
+    // The subsequent DiffPrepared event MUST clear it to force rematerialization before the
+    // next commit prompt is prepared. This is the canonical safety net for diff freshness.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    // Simulate stale commit inputs materialized during iteration 1
+    state.prompt_inputs.commit = Some(MaterializedCommitInputs {
+        attempt: 1,
+        diff: MaterializedPromptInput {
+            kind: PromptInputKind::Diff,
+            content_id_sha256: "iter-1-hash".to_string(),
+            consumer_signature_sha256: "iter-1-sig".to_string(),
+            original_bytes: 100,
+            final_bytes: 100,
+            model_budget_bytes: None,
+            inline_budget_bytes: None,
+            representation: PromptInputRepresentation::Inline,
+            reason: PromptMaterializationReason::WithinBudgets,
+        },
+    });
+
+    // Step 1: GenerationFailed should NOT clear prompt_inputs.commit
+    let after_failed = reduce(
+        state,
+        PipelineEvent::commit_generation_failed("agent timeout".to_string()),
+    );
+    assert!(
+        after_failed.prompt_inputs.commit.is_some(),
+        "GenerationFailed must NOT clear prompt_inputs.commit — DiffPrepared is the safety net"
+    );
+
+    // Step 2: DiffPrepared (from the re-triggered CheckCommitDiff) MUST clear stale inputs
+    let after_diff_prepared = reduce(
+        after_failed,
+        PipelineEvent::commit_diff_prepared(false, "iter-2-hash".to_string()),
+    );
+    assert!(
+        after_diff_prepared.prompt_inputs.commit.is_none(),
+        "DiffPrepared must clear prompt_inputs.commit to prevent stale diff context reuse"
+    );
+}
+
+#[test]
 fn test_skipped_pre_termination_clears_prompt_inputs_commit() {
     // After a skipped commit (pre-termination safety path), prompt_inputs.commit must be
     // cleared to prevent stale materialized commit context from surviving.

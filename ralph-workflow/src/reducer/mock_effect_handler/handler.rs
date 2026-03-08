@@ -73,7 +73,9 @@ impl EffectHandler<'_> for MockEffectHandler {
                         .map_err(|e| anyhow::anyhow!(e))?;
                 }
 
-                let content = if let Some(ref err) = self.simulate_commit_diff_error {
+                let content = if let Some(staged) = self.staged_diff_contents.pop_front() {
+                    staged
+                } else if let Some(ref err) = self.simulate_commit_diff_error {
                     format!(
                         r"## DIFF UNAVAILABLE - INVESTIGATION REQUIRED
 

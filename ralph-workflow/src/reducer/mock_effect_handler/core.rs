@@ -4,6 +4,8 @@
 //! pattern methods for configuration, and inspection helpers for verifying
 //! captured effects and UI events.
 
+use std::collections::VecDeque;
+
 use super::{Effect, PipelineEvent, PipelineState, RefCell, UIEvent};
 
 /// Mock implementation of `EffectHandler` for testing.
@@ -52,6 +54,12 @@ pub struct MockEffectHandler {
     /// Optional simulated diff content for `CheckCommitDiff`.
     pub(super) simulate_commit_diff_content: Option<String>,
 
+    /// Per-call staged diff contents for `CheckCommitDiff` (consumed in order, front first).
+    ///
+    /// When non-empty, the front entry takes priority over `simulate_commit_diff_content`
+    /// and default diff content. Use `with_staged_diff_sequence` to configure.
+    pub(super) staged_diff_contents: VecDeque<String>,
+
     /// Optional simulated commit message XML for `ValidateCommitXml`.
     pub(super) simulate_commit_message_xml: Option<String>,
 
@@ -95,6 +103,7 @@ impl MockEffectHandler {
             simulate_empty_diff: false,
             simulate_commit_diff_error: None,
             simulate_commit_diff_content: None,
+            staged_diff_contents: VecDeque::new(),
             simulate_commit_message_xml: None,
             pre_termination_snapshot: PreTerminationSnapshotMock::Clean,
             panic_on_next_execute: false,
@@ -129,6 +138,20 @@ impl MockEffectHandler {
     #[must_use]
     pub fn with_commit_diff_content(mut self, content: impl Into<String>) -> Self {
         self.simulate_commit_diff_content = Some(content.into());
+        self
+    }
+
+    /// Configure a sequence of diff contents returned by successive `CheckCommitDiff` calls.
+    ///
+    /// Each call to `CheckCommitDiff` pops the front of this queue. This takes priority over
+    /// `simulate_commit_diff_content` and the default diff. Use this when testing multi-iteration
+    /// pipelines where each commit phase should receive distinct diff content.
+    #[must_use]
+    pub fn with_staged_diff_sequence(
+        mut self,
+        contents: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.staged_diff_contents = contents.into_iter().map(Into::into).collect();
         self
     }
 
