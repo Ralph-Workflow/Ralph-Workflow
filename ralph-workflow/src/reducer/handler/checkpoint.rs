@@ -87,7 +87,7 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
             // Omit prompt history (can be very large) on interrupt.
             std::collections::HashMap::new()
         } else {
-            ctx.clone_prompt_history()
+            state.prompt_history.clone()
         })
         .with_prompt_inputs(state.prompt_inputs.clone())
         .with_prompt_permissions(state.prompt_permissions.clone())

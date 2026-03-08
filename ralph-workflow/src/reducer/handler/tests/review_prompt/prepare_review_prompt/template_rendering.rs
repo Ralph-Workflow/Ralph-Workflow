@@ -6,6 +6,7 @@
 use super::super::super::common::TestFixture;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
 use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode};
@@ -23,7 +24,7 @@ fn test_prepare_review_prompt_writes_prompt_file_with_required_markers() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -34,7 +35,7 @@ fn test_prepare_review_prompt_writes_prompt_file_with_required_markers() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let _ = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
     let prompt = fixture
@@ -71,7 +72,7 @@ fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
     let mut fixture = TestFixture::with_workspace(workspace);
     fixture.template_context =
         TemplateContext::new(TemplateRegistry::new(Some(tempdir.path().to_path_buf())));
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -83,7 +84,7 @@ fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
     }
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
     match result.event {
@@ -117,7 +118,7 @@ fn test_prepare_review_prompt_allows_literal_placeholders_in_plan() {
         .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -128,7 +129,7 @@ fn test_prepare_review_prompt_allows_literal_placeholders_in_plan() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
     assert!(matches!(result.event, PipelineEvent::Review(_)));
@@ -143,10 +144,11 @@ fn test_prepare_review_prompt_normal_mode_ignores_retry_state() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.prompt_history
-        .insert("review_0".to_string(), "{{UNRESOLVED}}".to_string());
+    let ctx = fixture.ctx();
 
+    // Store a retry prompt with unresolved placeholders in state.prompt_history.
+    // Normal mode must NOT replay this retry prompt.
+    // Handlers read from self.state.prompt_history, so we insert there.
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             invalid_output_attempts: 1,
@@ -154,6 +156,10 @@ fn test_prepare_review_prompt_normal_mode_ignores_retry_state() {
         },
         ..PipelineState::initial(0, 1)
     });
+    handler.state.prompt_history.insert(
+        "review_0".to_string(),
+        PromptHistoryEntry::from_string("{{UNRESOLVED}}".to_string()),
+    );
 
     let materialize = handler
         .materialize_review_inputs(&ctx, 0)
@@ -164,7 +170,7 @@ fn test_prepare_review_prompt_normal_mode_ignores_retry_state() {
     }
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
     // Replayed prompts are trusted and not re-validated, so we expect ReviewPromptPrepared

@@ -410,4 +410,26 @@ pub struct PipelineState {
     /// Used for reporting and observability.
     #[serde(default)]
     pub pr_number: Option<u32>,
+
+    /// Reducer-owned prompt history for deterministic resume replay (RFC-007).
+    ///
+    /// Maps `PromptScopeKey::to_string()` keys to [`PromptHistoryEntry`] values
+    /// containing the generated prompt and optional content-id for stale-replay detection.
+    ///
+    /// # Ownership Contract
+    ///
+    /// This field is the **single source of truth** for prompt history. It replaces
+    /// the `PhaseContext::prompt_history` side-channel, ensuring that all history
+    /// updates are observable as reducer events (`PromptCaptured`) and are part of
+    /// the pure event loop.
+    ///
+    /// # Clearing Semantics
+    ///
+    /// Cleared atomically alongside `recovery_epoch` increment on Level-3 and Level-4
+    /// recovery to prevent stale prompts from crossing iteration-scope boundaries.
+    ///
+    /// Defaults to empty map for backward-compatibility with checkpoints that pre-date
+    /// this field (they populate via `from_checkpoint_with_execution_history_limit`).
+    #[serde(default)]
+    pub prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 }

@@ -247,7 +247,7 @@ If you determine there are NO actual changes to commit, respond with:
                     )
                     .with_executor_from_context(std::sync::Arc::clone(&ctx.executor_arc))
                     .with_execution_history(ctx.execution_history.clone())
-                    .with_prompt_history(ctx.clone_prompt_history())
+                    .with_prompt_history(self.state.prompt_history.clone())
                     .with_prompt_inputs(self.state.prompt_inputs.clone())
                     .with_prompt_permissions(self.state.prompt_permissions.clone())
                     .with_log_run_id(ctx.run_log_context.run_id().to_string());
@@ -357,7 +357,6 @@ mod tests {
     use crate::pipeline::Timer;
     use crate::prompts::template_context::TemplateContext;
     use crate::workspace::{MemoryWorkspace, Workspace};
-    use std::collections::HashMap;
     use std::io;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -505,7 +504,6 @@ mod tests {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),

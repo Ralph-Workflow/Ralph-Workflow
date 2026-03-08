@@ -18,7 +18,7 @@ fn test_prepare_review_prompt_diff_fallback_instructions_include_staged_and_untr
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -29,7 +29,7 @@ fn test_prepare_review_prompt_diff_fallback_instructions_include_staged_and_untr
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let _ = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed with diff fallback instructions");
 
     let prompt = fixture
@@ -66,7 +66,7 @@ fn test_prepare_review_prompt_uses_diff_baseline_for_oversize_diff() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -77,7 +77,7 @@ fn test_prepare_review_prompt_uses_diff_baseline_for_oversize_diff() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let _ = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
     let prompt = fixture
@@ -104,7 +104,7 @@ fn test_prepare_review_prompt_missing_diff_backup_with_baseline_uses_fallback_in
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
 
@@ -120,7 +120,7 @@ fn test_prepare_review_prompt_missing_diff_backup_with_baseline_uses_fallback_in
 
     // Prepare review prompt (should use fallback instructions with baseline)
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed with fallback DIFF");
 
     assert!(
@@ -154,7 +154,7 @@ fn test_prepare_review_prompt_missing_diff_backup_without_baseline_uses_generic_
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
 
@@ -170,7 +170,7 @@ fn test_prepare_review_prompt_missing_diff_backup_without_baseline_uses_generic_
 
     // Prepare review prompt (should use generic fallback instructions)
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed with generic fallback");
 
     assert!(

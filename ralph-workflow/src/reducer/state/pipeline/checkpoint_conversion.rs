@@ -204,6 +204,16 @@ impl PipelineState {
             unpushed_commits,
             last_pushed_commit,
             pr_number,
+            // Restore reducer-owned prompt history from checkpoint (RFC-007).
+            // Legacy checkpoints stored HashMap<String, String>; the PromptHistoryEntry
+            // custom deserializer migrates bare strings to PromptHistoryEntry { content, content_id: None }.
+            prompt_history: checkpoint
+                .prompt_history
+                .unwrap_or_default()
+                .into_iter()
+                // checkpoint.prompt_history is already typed as HashMap<String, PromptHistoryEntry>
+                // (via the updated PipelineCheckpoint type), so no conversion needed.
+                .collect(),
         };
 
         let bounded_steps =

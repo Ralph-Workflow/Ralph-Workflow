@@ -11,7 +11,6 @@ use crate::logger::{Colors, Logger};
 use crate::pipeline::Timer;
 use crate::prompts::template_context::TemplateContext;
 use crate::workspace::{MemoryWorkspace, Workspace};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -82,7 +81,6 @@ impl TestFixture {
             template_context: &self.template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: self.executor.as_ref(),
             executor_arc: Arc::clone(&self.executor) as Arc<dyn crate::executor::ProcessExecutor>,
             repo_root: self.repo_root.as_path(),
@@ -108,7 +106,6 @@ impl TestFixture {
             template_context: &self.template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: self.executor.as_ref(),
             executor_arc: Arc::clone(&self.executor) as Arc<dyn crate::executor::ProcessExecutor>,
             repo_root: self.repo_root.as_path(),

@@ -197,15 +197,19 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                 3 => {
                     // Level 3: Reset iteration counter - decrement iteration and restart from Planning.
                     // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
                     let mut s = new_state.reset_iteration();
                     s.recovery_epoch += 1;
+                    s.prompt_history.clear();
                     s
                 }
                 _ => {
                     // Level 4+: Complete reset - reset to iteration 0, restart from Planning.
                     // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
                     let mut s = new_state.reset_to_iteration_zero();
                     s.recovery_epoch += 1;
+                    s.prompt_history.clear();
                     s
                 }
             };
@@ -551,6 +555,107 @@ mod tests {
         assert_eq!(
             state2.recovery_epoch, 2,
             "Sequential level-3 recoveries must each increment epoch"
+        );
+    }
+
+    // =========================================================================
+    // prompt_history clearing tests (RFC-007 corrective action #3)
+    // =========================================================================
+
+    #[test]
+    fn level_3_recovery_clears_prompt_history() {
+        let mut state = PipelineState::initial(2, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+        state.prompt_history.insert(
+            "planning_iter1_normal".to_string(),
+            crate::prompts::PromptHistoryEntry::from_string("old prompt".to_string()),
+        );
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 3,
+                attempt_count: 7,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+
+        assert!(
+            new_state.prompt_history.is_empty(),
+            "Level 3 recovery must clear prompt_history to prevent stale replay after epoch rotation"
+        );
+        assert_eq!(new_state.recovery_epoch, 1);
+    }
+
+    #[test]
+    fn level_4_recovery_clears_prompt_history() {
+        let mut state = PipelineState::initial(3, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+        state.prompt_history.insert(
+            "planning_iter1_normal".to_string(),
+            crate::prompts::PromptHistoryEntry::from_string("old prompt".to_string()),
+        );
+        state.prompt_history.insert(
+            "development_iter1_normal".to_string(),
+            crate::prompts::PromptHistoryEntry::from_string("other old prompt".to_string()),
+        );
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 4,
+                attempt_count: 10,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+
+        assert!(
+            new_state.prompt_history.is_empty(),
+            "Level 4 recovery must clear prompt_history to prevent stale replay after epoch rotation"
+        );
+        assert_eq!(new_state.recovery_epoch, 1);
+    }
+
+    #[test]
+    fn level_1_and_2_recovery_preserve_prompt_history() {
+        let mut state = PipelineState::initial(1, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+        state.prompt_history.insert(
+            "planning_iter1_normal".to_string(),
+            crate::prompts::PromptHistoryEntry::from_string("valid prompt".to_string()),
+        );
+
+        // Level 1: should preserve prompt_history
+        let new_state = reduce(
+            state.clone(),
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 1,
+                attempt_count: 1,
+                target_phase: PipelinePhase::Development,
+            }),
+        );
+        assert!(
+            !new_state.prompt_history.is_empty(),
+            "Level 1 recovery must NOT clear prompt_history"
+        );
+
+        // Level 2: should preserve prompt_history
+        let new_state2 = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 2,
+                attempt_count: 4,
+                target_phase: PipelinePhase::Development,
+            }),
+        );
+        assert!(
+            !new_state2.prompt_history.is_empty(),
+            "Level 2 recovery must NOT clear prompt_history"
         );
     }
 

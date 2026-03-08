@@ -76,12 +76,22 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
         .as_ref()
         .map_or(PipelinePhase::Planning, |checkpoint| checkpoint.phase);
 
+    // Snapshot the initial prompt history from the checkpoint (if any) for the interrupt
+    // context. The event loop owns live prompt_history via PipelineState, but the interrupt
+    // handler runs outside the event loop and can only see this initial snapshot.
+    let initial_prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry> =
+        resume_state
+            .resume_checkpoint
+            .as_ref()
+            .and_then(|c| c.prompt_history.clone())
+            .unwrap_or_default();
+
     setup_interrupt_context_for_pipeline(
         initial_phase,
         resume_state.config.developer_iters,
         resume_state.config.reviewer_reviews,
         &phase_ctx.execution_history,
-        &phase_ctx.prompt_history,
+        &initial_prompt_history,
         &resume_state.run_context,
         std::sync::Arc::clone(&ctx.workspace),
     );
@@ -89,7 +99,8 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     let _interrupt_guard = defer_clear_interrupt_context();
 
     update_interrupt_context_from_phase(
-        &phase_ctx,
+        &phase_ctx.execution_history,
+        initial_prompt_history,
         initial_phase,
         resume_state.config.developer_iters,
         resume_state.config.reviewer_reviews,

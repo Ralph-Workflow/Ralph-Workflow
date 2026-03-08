@@ -149,7 +149,6 @@ fn attempt_recovery_uses_previous_phase_when_failed_phase_for_recovery_missing()
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: std::collections::HashMap::new(),
             executor: &*executor,
             executor_arc: Arc::clone(&executor)
                 as Arc<dyn ralph_workflow::executor::ProcessExecutor>,
@@ -232,7 +231,6 @@ fn attempt_recovery_never_targets_awaiting_dev_fix() {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: std::collections::HashMap::new(),
             executor: &*executor,
             executor_arc: Arc::clone(&executor)
                 as Arc<dyn ralph_workflow::executor::ProcessExecutor>,

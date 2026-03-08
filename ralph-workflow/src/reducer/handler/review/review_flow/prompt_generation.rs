@@ -30,7 +30,7 @@
 impl MainEffectHandler {
     pub(in crate::reducer::handler) fn prepare_review_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         pass: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
@@ -227,14 +227,11 @@ impl MainEffectHandler {
                     plan: Some(plan_ref),
                     diff: Some(diff_ref),
                 };
-                let (base_prompt, should_validate) =
-                    match ctx.workspace.read(Path::new(".agent/tmp/review_prompt.txt")) {
-                        Ok(previous_prompt) => (
-                            crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                .to_string(),
-                            false,
-                        ),
-                        Err(_) => {
+                let (base_prompt, should_validate) = ctx
+                    .workspace
+                    .read(Path::new(".agent/tmp/review_prompt.txt"))
+                    .map_or_else(
+                        |_| {
                             (
                                 prompt_review_xml_with_references(
                                     ctx.template_context,
@@ -243,8 +240,15 @@ impl MainEffectHandler {
                                 ),
                                 true,
                             )
-                        }
-                    };
+                        },
+                        |previous_prompt| {
+                            (
+                                crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                    .to_string(),
+                                false,
+                            )
+                        },
+                    );
                 let prompt = format!("{retry_preamble}\n{base_prompt}");
                 let scope_key = PromptScopeKey::for_review(
                     pass,
@@ -331,7 +335,7 @@ impl MainEffectHandler {
                     }
                 };
                 let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+                    get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                         let plan_ref = plan_ref.clone();
                         let diff_ref = diff_ref.clone();
 
@@ -398,9 +402,18 @@ impl MainEffectHandler {
             }
         };
 
-        if !was_replayed {
-            ctx.capture_prompt(&prompt_key, &review_prompt_xml);
-        }
+        // Prepare PromptCaptured event if this is a freshly generated prompt
+        let prompt_captured_event = if was_replayed {
+            None
+        } else {
+            Some(crate::reducer::event::PipelineEvent::PromptInput(
+                crate::reducer::event::PromptInputEvent::PromptCaptured {
+                    key: prompt_key.clone(),
+                    content: review_prompt_xml.clone(),
+                    content_id: None,
+                },
+            ))
+        };
 
         // Write prompt file (non-fatal: if write fails, log warning and continue)
         // Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
@@ -421,6 +434,11 @@ impl MainEffectHandler {
                 key: prompt_key,
                 was_replayed,
             });
+
+        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
+        }
 
         // Add any additional events from XSD retry materialization, etc.
         for ev in additional_events {

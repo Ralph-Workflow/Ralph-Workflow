@@ -95,5 +95,126 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
                 ..state
             }
         }
+        PromptInputEvent::PromptCaptured {
+            key,
+            content,
+            content_id,
+        } => {
+            // Insert the captured prompt into the reducer-owned prompt history.
+            //
+            // This event is emitted by prompt preparation handlers when a fresh prompt
+            // is generated (not replayed). The reducer inserts it here so subsequent
+            // effects and resumed runs can replay the same prompt deterministically.
+            //
+            // Idempotency: if the key already exists (e.g., handler ran twice due to
+            // retry without a new scope), the existing entry is preserved (do not overwrite).
+            let entry = crate::prompts::PromptHistoryEntry { content, content_id };
+            let mut new_history = state.prompt_history.clone();
+            new_history.entry(key).or_insert(entry);
+            PipelineState {
+                prompt_history: new_history,
+                ..state
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reducer::event::PipelineEvent;
+    use crate::reducer::state::PipelineState;
+
+    fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
+        match event {
+            PipelineEvent::PromptInput(e) => reduce_prompt_input_event(state, e),
+            _ => panic!("unexpected event in test"),
+        }
+    }
+
+    #[test]
+    fn test_prompt_captured_adds_to_state_prompt_history() {
+        let state = PipelineState::initial(1, 0);
+        assert!(
+            state.prompt_history.is_empty(),
+            "initial state has no prompt history"
+        );
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "test planning prompt".to_string(),
+                content_id: Some("sha256-abc".to_string()),
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present after PromptCaptured");
+
+        assert_eq!(entry.content, "test planning prompt");
+        assert_eq!(entry.content_id, Some("sha256-abc".to_string()));
+    }
+
+    #[test]
+    fn test_prompt_captured_does_not_overwrite_existing_if_was_replayed() {
+        // Simulate state where a prompt was already captured (replayed scenario).
+        let mut state = PipelineState::initial(1, 0);
+        state.prompt_history.insert(
+            "planning_1".to_string(),
+            crate::prompts::PromptHistoryEntry {
+                content: "original prompt".to_string(),
+                content_id: Some("sha256-original".to_string()),
+            },
+        );
+
+        // Attempt to capture a different prompt with the same key (idempotency check).
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "replacement prompt".to_string(),
+                content_id: Some("sha256-new".to_string()),
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must still be present");
+
+        // Must preserve the original — PromptCaptured is idempotent (or_insert semantics).
+        assert_eq!(
+            entry.content, "original prompt",
+            "existing entry must not be overwritten by PromptCaptured"
+        );
+        assert_eq!(entry.content_id, Some("sha256-original".to_string()));
+    }
+
+    #[test]
+    fn test_prompt_captured_with_no_content_id_stores_none() {
+        let state = PipelineState::initial(1, 0);
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "development_1".to_string(),
+                content: "dev prompt without id".to_string(),
+                content_id: None,
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("development_1")
+            .expect("entry must be present");
+
+        assert_eq!(entry.content, "dev prompt without id");
+        assert!(
+            entry.content_id.is_none(),
+            "content_id must be None when not provided"
+        );
     }
 }

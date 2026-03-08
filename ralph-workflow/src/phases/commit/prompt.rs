@@ -1,22 +1,15 @@
-fn build_commit_prompt<S: std::hash::BuildHasher>(
-    prompt_key: &str,
+fn build_commit_prompt(
     template_context: &TemplateContext,
     working_diff: &str,
     workspace: &dyn Workspace,
-    prompt_history: &HashMap<String, String, S>,
-) -> (String, bool, Option<crate::prompts::SubstitutionLog>) {
-    prompt_history.get(prompt_key).map_or_else(
-        || {
-            let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                template_context,
-                working_diff,
-                workspace,
-                "commit_message_xml",
-            );
-            (rendered.content, false, Some(rendered.log))
-        },
-        |stored_prompt| (stored_prompt.clone(), true, None),
-    )
+) -> (String, crate::prompts::SubstitutionLog) {
+    let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+        template_context,
+        working_diff,
+        workspace,
+        "commit_message_xml",
+    );
+    (rendered.content, rendered.log)
 }
 
 fn stderr_contains_auth_error(stderr: &str) -> bool {

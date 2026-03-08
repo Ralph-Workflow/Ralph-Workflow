@@ -27,7 +27,7 @@ pub struct InterruptContext {
     /// Execution history tracking
     pub execution_history: crate::checkpoint::ExecutionHistory,
     /// Prompt history for deterministic resume
-    pub prompt_history: std::collections::HashMap<String, String>,
+    pub prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     /// Workspace for checkpoint persistence
     pub workspace: std::sync::Arc<dyn Workspace>,
 }

@@ -6,6 +6,7 @@ use anyhow::Result;
 
 impl MainEffectHandler {
     pub(super) fn run_rebase(
+        &self,
         ctx: &mut PhaseContext<'_>,
         phase: RebasePhase,
         target_branch: &str,
@@ -14,7 +15,15 @@ impl MainEffectHandler {
 
         if matches!(phase, RebasePhase::Initial) {
             let run_context = ctx.run_context.clone();
-            let outcome = crate::app::rebase::run_initial_rebase(ctx, &run_context, ctx.executor)?;
+            // Start with the current reducer-owned prompt history so rebase conflict
+            // resolution can replay stored prompts and new ones are emitted as events.
+            let mut local_prompt_history = self.state.prompt_history.clone();
+            let outcome = crate::app::rebase::run_initial_rebase(
+                ctx,
+                &run_context,
+                ctx.executor,
+                &mut local_prompt_history,
+            )?;
 
             let event = match outcome {
                 crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {
@@ -25,7 +34,23 @@ impl MainEffectHandler {
                 }
             };
 
-            return Ok(EffectResult::event(event));
+            // Emit PromptCaptured events for any prompts newly captured during rebase
+            // conflict resolution, so the reducer-owned PipelineState.prompt_history
+            // stays consistent with what was saved to disk in the interim checkpoints.
+            let mut result = EffectResult::event(event);
+            for (key, entry) in &local_prompt_history {
+                if !self.state.prompt_history.contains_key(key) {
+                    result = result.with_additional_event(PipelineEvent::PromptInput(
+                        crate::reducer::event::PromptInputEvent::PromptCaptured {
+                            key: key.clone(),
+                            content: entry.content.clone(),
+                            content_id: entry.content_id.clone(),
+                        },
+                    ));
+                }
+            }
+
+            return Ok(result);
         }
 
         match rebase_onto(target_branch, ctx.executor) {

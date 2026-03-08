@@ -10,7 +10,6 @@ use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
 use crate::workspace::MemoryWorkspace;
 use crate::workspace::Workspace;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -70,7 +69,6 @@ impl TestFixture {
             template_context: &self.template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: std::collections::HashMap::new(),
             executor: self.executor_arc.as_ref(),
             executor_arc: self.executor_arc.clone(),
             repo_root: self.repo_root.as_path(),
@@ -163,7 +161,6 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: HashMap::new(),
         executor: executor_arc.as_ref(),
         executor_arc: executor_arc.clone(),
         repo_root: repo_root.as_path(),
@@ -221,7 +218,6 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: HashMap::new(),
         executor: executor_arc.as_ref(),
         executor_arc: executor_arc.clone(),
         repo_root: repo_root.as_path(),
@@ -290,7 +286,6 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: HashMap::new(),
         executor: executor_arc.as_ref(),
         executor_arc: executor_arc.clone(),
         repo_root: repo_root.as_path(),
@@ -354,7 +349,6 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: HashMap::new(),
         executor: executor_arc.as_ref(),
         executor_arc: executor_arc.clone(),
         repo_root: repo_root.as_path(),

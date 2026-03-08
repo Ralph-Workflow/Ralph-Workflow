@@ -10,7 +10,6 @@ mod tests {
     use crate::prompts::template_context::TemplateContext;
     use crate::prompts::template_registry::TemplateRegistry;
     use crate::workspace::MemoryWorkspace;
-    use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -162,7 +161,6 @@ mod tests {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),
@@ -222,7 +220,6 @@ mod tests {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),
@@ -258,10 +255,9 @@ mod tests {
     }
 
     #[test]
-    fn test_run_commit_attempt_prompt_key_is_cycle_scoped_prevents_stale_prompt_replay() {
-        // Regression: commit prompt replay keys must not collide across commit cycles.
-        // If prompt_history contains a stale prompt under the legacy attempt-only key,
-        // we must generate a fresh prompt for the current diff instead of replaying.
+    fn test_run_commit_attempt_always_generates_fresh_prompt_for_diff() {
+        // The legacy path always generates fresh prompts (no replay); verify the diff
+        // content appears in the generated prompt.
 
         let cloud = crate::config::types::CloudConfig::disabled();
         let workspace = MemoryWorkspace::new_test().with_file(
@@ -285,15 +281,6 @@ mod tests {
         let repo_root = PathBuf::from("/mock/repo");
         let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
 
-        let mut prompt_history = HashMap::new();
-        prompt_history.insert(
-            "commit_message_attempt_1".to_string(),
-            "STALE_MARKER: this prompt should not be replayed".to_string(),
-        );
-
-        // Simulate a later commit cycle where attempt resets to 1.
-        let run_context = RunContext::new().with_developer_runs(2);
-
         let mut ctx = PhaseContext {
             config: &config,
             registry: &registry,
@@ -304,9 +291,8 @@ mod tests {
             reviewer_agent: "claude",
             review_guidelines: None,
             template_context: &template_context,
-            run_context,
+            run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history,
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),
@@ -324,10 +310,6 @@ mod tests {
         let saved_prompt = workspace
             .read(config.prompt_path.as_path())
             .expect("prompt should be written");
-        assert!(
-            !saved_prompt.contains("STALE_MARKER"),
-            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
-        );
         assert!(
             saved_prompt.contains("FRESH_DIFF_CONTENT"),
             "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
@@ -372,7 +354,6 @@ mod tests {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),
@@ -440,7 +421,6 @@ mod tests {
             &agents,
             &template_context,
             &workspace,
-            &HashMap::new(),
         )
         .expect("expected skip outcome to be treated as success");
 
@@ -455,9 +435,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_commit_message_prompt_key_is_diff_scoped_prevents_stale_prompt_replay() {
-        // Regression: single-agent commit generation must not use a constant replay key.
-        // A stale prompt under the legacy key must not be replayed for a new diff.
+    fn test_generate_commit_message_always_generates_fresh_prompt_for_diff() {
+        // The legacy path always generates fresh prompts; verify the diff content
+        // appears in the generated prompt.
 
         let workspace = MemoryWorkspace::new_test().with_file(
             xml_paths::COMMIT_MESSAGE_XML,
@@ -490,12 +470,6 @@ mod tests {
             workspace_arc: std::sync::Arc::new(workspace.clone()),
         };
 
-        let mut prompt_history = HashMap::new();
-        prompt_history.insert(
-            "commit_message_attempt_1".to_string(),
-            "STALE_MARKER: constant-key prompt".to_string(),
-        );
-
         let fresh_diff = "diff --git a/a b/a\n+FRESH_DIFF_CONTENT\n";
         let _ = generate_commit_message(
             fresh_diff,
@@ -504,7 +478,6 @@ mod tests {
             "claude",
             &template_context,
             &workspace,
-            &prompt_history,
         )
         .expect("expected commit generation to succeed");
 
@@ -512,20 +485,16 @@ mod tests {
             .read(config.prompt_path.as_path())
             .expect("prompt should be written");
         assert!(
-            !saved_prompt.contains("STALE_MARKER"),
-            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
-        );
-        assert!(
             saved_prompt.contains("FRESH_DIFF_CONTENT"),
             "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
         );
     }
 
     #[test]
-    fn test_generate_commit_message_with_chain_prompt_keys_are_diff_scoped_prevents_stale_prompt_replay(
+    fn test_generate_commit_message_with_chain_always_generates_fresh_prompt_for_diff(
     ) {
-        // Regression: fallback-chain commit generation keys must not restart at 1 each cycle.
-        // A stale prompt under the legacy chain key must not be replayed for a new diff.
+        // The legacy path always generates fresh prompts; verify the diff content
+        // appears in the generated prompt.
 
         let workspace = MemoryWorkspace::new_test().with_file(
             xml_paths::COMMIT_MESSAGE_XML,
@@ -558,13 +527,6 @@ mod tests {
         };
 
         let agents = vec!["claude".to_string()];
-
-        let mut prompt_history = HashMap::new();
-        prompt_history.insert(
-            "commit_message_chain_attempt_1".to_string(),
-            "STALE_MARKER: chain prompt".to_string(),
-        );
-
         let fresh_diff = "diff --git a/a b/a\n+FRESH_DIFF_CONTENT\n";
         let _ = generate_commit_message_with_chain(
             fresh_diff,
@@ -573,17 +535,12 @@ mod tests {
             &agents,
             &template_context,
             &workspace,
-            &prompt_history,
         )
         .expect("expected commit generation with chain to succeed");
 
         let saved_prompt = workspace
             .read(config.prompt_path.as_path())
             .expect("prompt should be written");
-        assert!(
-            !saved_prompt.contains("STALE_MARKER"),
-            "expected stale prompt not to be replayed; prompt was:\n{saved_prompt}"
-        );
         assert!(
             saved_prompt.contains("FRESH_DIFF_CONTENT"),
             "expected prompt to include the fresh diff content; prompt was:\n{saved_prompt}"
@@ -823,7 +780,6 @@ mod tests {
             &agents,
             &template_context,
             &workspace,
-            &HashMap::new(),
         );
 
         // Should succeed because claude succeeded after ccs failed
@@ -887,7 +843,6 @@ mod tests {
             template_context: &template_context,
             run_context: RunContext::new(),
             execution_history: ExecutionHistory::new(),
-            prompt_history: HashMap::new(),
             executor: executor_arc.as_ref(),
             executor_arc: executor_arc.clone(),
             repo_root: repo_root.as_path(),

@@ -21,7 +21,7 @@ fn test_prepare_review_prompt_same_agent_retry_uses_previous_prepared_prompt() {
         .with_file(".agent/tmp/review_prompt.txt", marker);
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -39,7 +39,7 @@ fn test_prepare_review_prompt_same_agent_retry_uses_previous_prepared_prompt() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_review_prompt should succeed");
 
     let prompt = fixture
@@ -75,7 +75,7 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
         .with_file(".agent/tmp/review_prompt.txt", marker);
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -94,12 +94,12 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
     }
 
     let _ = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_review_prompt should succeed");
 
     handler.state.continuation.same_agent_retry_count = 2;
     let _ = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_review_prompt should succeed");
 
     let prompt = fixture

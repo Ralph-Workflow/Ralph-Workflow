@@ -107,18 +107,17 @@ fn create_phase_context_with_config<'ctx>(
     // IMPORTANT: When loading from checkpoint, we MUST enforce the configured
     // execution_history_limit using clone_bounded() to prevent oversized legacy
     // checkpoints from loading arbitrarily large history into memory.
-    let (execution_history, prompt_history) = resume_checkpoint.map_or_else(
-        || (
-            crate::checkpoint::execution_history::ExecutionHistory::new(),
-            std::collections::HashMap::new(),
-        ),
+    let execution_history = resume_checkpoint.map_or_else(
+        crate::checkpoint::execution_history::ExecutionHistory::new,
         |checkpoint| {
-            let exec_history = checkpoint
+            checkpoint
                 .execution_history
-                .as_ref().map_or_else(crate::checkpoint::execution_history::ExecutionHistory::new, |h| h.clone_bounded(config.execution_history_limit));
-            let prompt_hist = checkpoint.prompt_history.clone().unwrap_or_default();
-            (exec_history, prompt_hist)
-        }
+                .as_ref()
+                .map_or_else(
+                    crate::checkpoint::execution_history::ExecutionHistory::new,
+                    |h| h.clone_bounded(config.execution_history_limit),
+                )
+        },
     );
 
     PhaseContext {
@@ -133,7 +132,6 @@ fn create_phase_context_with_config<'ctx>(
         template_context: &ctx.template_context,
         run_context: run_context.clone(),
         execution_history,
-        prompt_history,
         executor: &*ctx.executor,
         executor_arc: std::sync::Arc::clone(&ctx.executor),
         repo_root: &ctx.repo_root,

@@ -129,4 +129,28 @@ pub enum PromptInputEvent {
         /// Detailed substitution log from rendering.
         log: crate::prompts::SubstitutionLog,
     },
+
+    /// A prompt was generated and captured for future replay.
+    ///
+    /// Emitted by prompt preparation handlers when a fresh prompt is generated
+    /// (not replayed from history). The reducer inserts the entry into
+    /// `PipelineState::prompt_history` so subsequent effects and resumed runs
+    /// can replay the same prompt deterministically.
+    ///
+    /// # RFC-007
+    ///
+    /// This event moves prompt history ownership from `PhaseContext` (mutable
+    /// side-channel) into the pure event loop, ensuring that all history updates
+    /// are observable, replayable, and consistent with reducer-owned state.
+    PromptCaptured {
+        /// Lookup key (from `PromptScopeKey::to_string()`).
+        key: String,
+        /// The generated prompt text.
+        content: String,
+        /// Optional SHA-256 content-id of the materialized inputs at generation time.
+        ///
+        /// When `Some`, future replay is gated on content-id matching to prevent
+        /// stale-content replay after inputs change.
+        content_id: Option<String>,
+    },
 }

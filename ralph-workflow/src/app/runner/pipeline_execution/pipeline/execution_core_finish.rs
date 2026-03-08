@@ -93,7 +93,7 @@ fn save_complete_checkpoint_if_needed(
 
     let builder = builder
         .with_execution_history(phase_ctx.execution_history.clone())
-        .with_prompt_history(phase_ctx.clone_prompt_history())
+        .with_prompt_history(loop_result.final_state.prompt_history.clone())
         .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
     if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {

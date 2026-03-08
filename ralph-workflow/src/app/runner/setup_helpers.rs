@@ -162,7 +162,7 @@ fn setup_interrupt_context_for_pipeline(
     total_iterations: u32,
     total_reviewer_passes: u32,
     execution_history: &crate::checkpoint::ExecutionHistory,
-    prompt_history: &std::collections::HashMap<String, String>,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     run_context: &crate::checkpoint::RunContext,
     workspace: std::sync::Arc<dyn crate::workspace::Workspace>,
 ) {
@@ -197,8 +197,14 @@ fn setup_interrupt_context_for_pipeline(
 ///
 /// This function should be called after each major phase to keep the
 /// interrupt context up-to-date with the latest execution history.
+///
+/// `prompt_history` reflects the state at the time of the last checkpoint load;
+/// it is not updated during the event loop (which owns prompt history via
+/// `PipelineState`). This is a known limitation: an interrupt mid-run will
+/// checkpoint with the initial prompt history, not newly captured prompts.
 fn update_interrupt_context_from_phase(
-    phase_ctx: &crate::phases::PhaseContext<'_>,
+    execution_history: &crate::checkpoint::ExecutionHistory,
+    prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: PipelinePhase,
     total_iterations: u32,
     total_reviewer_passes: u32,
@@ -228,8 +234,8 @@ fn update_interrupt_context_from_phase(
         reviewer_pass,
         total_reviewer_passes,
         run_context: run_context.clone(),
-        execution_history: phase_ctx.execution_history.clone(),
-        prompt_history: phase_ctx.clone_prompt_history(),
+        execution_history: execution_history.clone(),
+        prompt_history,
         workspace,
     };
 

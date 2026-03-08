@@ -191,15 +191,27 @@ Redux and Elm guidance maps directly to this incident class.
 5. `Display` output of `PromptScopeKey` is byte-identical to the old `format!()` strings, preserving
    checkpoint backward-compatibility for existing `prompt_history` maps.
 
-Items 4 (content-id invariant for replayed prompts) is deferred as medium-term work (see below).
+### Medium term (done)
 
-### Medium term (recommended)
-
-1. Move replay metadata ownership into reducer-owned state (or reducer-versioned cache contract).
-2. Add invariants that replayed prompt content must match current materialized input IDs.
-3. Reduce dual-path drift between legacy phase-runner and reducer pathways.
-4. Add checkpoint schema versioning for replay metadata and explicit migration tests.
-5. Add atomic reducer event for replay-scope rotation so "fresh-context" transitions are one-step and auditable.
+1. `prompt_history` moved into reducer-owned `PipelineState` (`HashMap<String, PromptHistoryEntry>`);
+   checkpoint handler uses `state.prompt_history` rather than `ctx.clone_prompt_history()`. The
+   final completion checkpoint uses `loop_result.final_state.prompt_history` for the same reason.
+2. `get_stored_or_generate_prompt` validates `content_id` when both stored and current are `Some`;
+   mismatch is treated as a cache miss and a fresh prompt is generated. `PromptHistoryEntry` carries
+   an optional SHA-256 hex digest of materialized inputs so replay/miss is auditable.
+3. Type migration complete: all prompt-history maps changed from `HashMap<String, String>` to
+   `HashMap<String, PromptHistoryEntry>` across both reducer and legacy pipeline paths. Dual-path
+   drift remains for full event-capture migration (legacy paths still call `ctx.capture_prompt`
+   rather than emitting `PromptCaptured`) but the type surface is now uniform.
+4. `PromptHistoryEntry` uses backward-compatible serde (bare string → v0; object with `content_id`
+   → v1). `PipelineCheckpoint` carries `replay_metadata_version` for explicit migration signaling.
+   The custom `Deserialize` impl handles old checkpoints transparently.
+5. `PromptInputEvent::PromptCaptured { key, content, content_id }` added; all reducer-path prompt
+   handlers (planning, development, commit, review, fix) now emit this event instead of calling
+   `ctx.capture_prompt()`. The reducer handles the event and writes to `state.prompt_history`
+   atomically. Level-3 and level-4 recovery in `awaiting_dev_fix.rs` now clears `prompt_history`
+   alongside the `recovery_epoch` increment so stale replay candidates cannot survive an epoch
+   boundary.
 
 ---
 
@@ -244,6 +256,8 @@ Items 4 (content-id invariant for replayed prompts) is deferred as medium-term w
 - `ralph-workflow/src/reducer/handler/commit/prompts.rs`
 - `ralph-workflow/src/reducer/state/pipeline/helpers.rs`
 - `ralph-workflow/src/reducer/state_reduction/awaiting_dev_fix.rs`
+- `ralph-workflow/src/prompts/prompt_history_entry.rs`
+- `ralph-workflow/src/reducer/event/prompt_input.rs`
 - Rust API Guidelines (Type Safety, Dependability, Predictability): `https://rust-lang.github.io/api-guidelines/`
 - Rust API Guidelines (Type Safety chapter): `https://rust-lang.github.io/api-guidelines/type-safety.html`
 - Rust API Guidelines (Dependability chapter): `https://rust-lang.github.io/api-guidelines/dependability.html`
@@ -262,6 +276,12 @@ Items 4 (content-id invariant for replayed prompts) is deferred as medium-term w
 
 ## Open Questions
 
-1. Should replay cache be reducer-owned state, or remain external but strictly reducer-versioned?
+1. ~~Should replay cache be reducer-owned state, or remain external but strictly reducer-versioned?~~
+   **Resolved**: replay cache (`prompt_history`) is now reducer-owned state in `PipelineState`.
 2. Which identity dimensions are mandatory globally (`phase`, `iteration`, `pass`, `attempt`, `retry_mode`, `recovery_epoch`, `content_id`)?
+   `PromptScopeKey` encodes all dimensions except `content_id`. Content-id is computed from
+   materialized prompt inputs and stored in `PromptHistoryEntry`. Mandatory dimensions per phase
+   are enforced by the phase-specific constructors on `PromptScopeKey`.
 3. What is the deprecation plan for duplicate legacy prompt execution pathways?
+   The type surface is unified. Full migration (legacy paths emit `PromptCaptured` events and read
+   from `state.prompt_history` rather than `ctx.prompt_history`) is tracked as follow-on work.

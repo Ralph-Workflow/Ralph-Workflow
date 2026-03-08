@@ -77,7 +77,7 @@ impl MainEffectHandler {
     /// `XsdRetryLastOutputMaterialized` and `PromptInputOversizeDetected` events for XSD retry mode.
     pub(in crate::reducer::handler) fn prepare_development_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         iteration: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
@@ -100,13 +100,21 @@ impl MainEffectHandler {
             PromptModeResult::Data(data) => data,
         };
 
-        // Capture prompt to history and collect replay observability key.
+        // Collect replay observability key and prepare PromptCaptured event if needed.
         let replay_key = prompt_key.as_deref().map(|k| (k.to_string(), was_replayed));
-        if let Some(prompt_key_str) = prompt_key.as_deref() {
-            if !was_replayed {
-                ctx.capture_prompt(prompt_key_str, &dev_prompt);
+        let prompt_captured_event = prompt_key.as_deref().and_then(|prompt_key_str| {
+            if was_replayed {
+                None
+            } else {
+                Some(crate::reducer::event::PipelineEvent::PromptInput(
+                    crate::reducer::event::PromptInputEvent::PromptCaptured {
+                        key: prompt_key_str.to_string(),
+                        content: dev_prompt.clone(),
+                        content_id: None,
+                    },
+                ))
             }
-        }
+        });
 
         let tmp_dir = Path::new(".agent/tmp");
         if !ctx.workspace.exists(tmp_dir) {
@@ -142,6 +150,11 @@ impl MainEffectHandler {
             });
         }
 
+        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
+        }
+
         // Add any additional events from XSD retry materialization, etc.
         for ev in additional_events {
             result = result.with_additional_event(ev);
@@ -175,7 +188,7 @@ impl MainEffectHandler {
         );
         let prompt_key = scope_key.to_string();
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+            get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                 prompt_developer_iteration_continuation_xml(
                     ctx.template_context,
                     continuation_state,

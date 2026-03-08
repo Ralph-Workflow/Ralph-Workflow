@@ -346,7 +346,7 @@ impl MainEffectHandler {
             Effect::RunRebase {
                 phase,
                 target_branch,
-            } => Self::run_rebase(ctx, phase, &target_branch),
+            } => self.run_rebase(ctx, phase, &target_branch),
 
             Effect::ResolveRebaseConflicts { strategy } => {
                 Ok(Self::resolve_rebase_conflicts(ctx, strategy))

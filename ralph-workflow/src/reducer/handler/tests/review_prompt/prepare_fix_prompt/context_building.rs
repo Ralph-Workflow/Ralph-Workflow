@@ -13,11 +13,11 @@ fn test_prepare_fix_prompt_allows_literal_placeholders_in_issues() {
         .with_file(".agent/ISSUES.md", "{{MISSING}}\n");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let result = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_fix_prompt should succeed");
 
     assert!(matches!(result.event, PipelineEvent::Review(_)));
@@ -41,11 +41,11 @@ fn test_prepare_fix_prompt_embeds_sentinel_when_prompt_backup_missing() {
         .with_file(".agent/ISSUES.md", "<issues/>\n");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let _ = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_fix_prompt should succeed");
 
     let prompt = fixture
@@ -65,11 +65,11 @@ fn test_prepare_fix_prompt_embeds_sentinel_when_issues_missing() {
         .with_file(".agent/PLAN.md", "# Plan\n");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let _ = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_fix_prompt should succeed");
 
     let prompt = fixture

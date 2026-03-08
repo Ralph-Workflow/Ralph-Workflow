@@ -70,41 +70,25 @@ pub fn run_review_pass(
             }
         };
 
-    let prompt_key = format!("review_{j}");
-    let (review_prompt_xml, was_replayed, substitution_log) =
-        if let Some(stored_prompt) = ctx.prompt_history.get(&prompt_key) {
-            (stored_prompt.clone(), true, None)
-        } else {
-            let refs = PromptContentBuilder::new(ctx.workspace)
-                .with_plan(plan_content)
-                .with_diff(changes_content, &baseline_oid_for_prompts)
-                .build();
-            let rendered = prompt_review_xml_with_references_and_log(
-                ctx.template_context,
-                &refs,
-                ctx.workspace,
-                "review_xml",
-            );
-            (rendered.content, false, Some(rendered.log))
-        };
+    let refs = PromptContentBuilder::new(ctx.workspace)
+        .with_plan(plan_content)
+        .with_diff(changes_content, &baseline_oid_for_prompts)
+        .build();
+    let rendered = prompt_review_xml_with_references_and_log(
+        ctx.template_context,
+        &refs,
+        ctx.workspace,
+        "review_xml",
+    );
+    let review_prompt_xml = rendered.content;
 
     // Legacy phase-based code
     // Validate freshly rendered prompts using substitution logs (no regex scanning).
-    if let Some(log) = substitution_log {
-        if !log.is_complete() {
-            return Err(anyhow::anyhow!(
-                "Review prompt has unresolved placeholders: {:?}",
-                log.unsubstituted
-            ));
-        }
-    }
-
-    if was_replayed {
-        ctx.logger.info(&format!(
-            "Using stored prompt from checkpoint for determinism: {prompt_key}"
+    if !rendered.log.is_complete() {
+        return Err(anyhow::anyhow!(
+            "Review prompt has unresolved placeholders: {:?}",
+            rendered.log.unsubstituted
         ));
-    } else {
-        ctx.capture_prompt(&prompt_key, &review_prompt_xml);
     }
 
     if ctx.config.verbosity.is_debug() {

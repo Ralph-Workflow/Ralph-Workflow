@@ -1,4 +1,5 @@
 use super::*;
+use crate::prompts::PromptHistoryEntry;
 
 #[test]
 fn test_prepare_development_prompt_xsd_retry_includes_real_last_output() {
@@ -12,10 +13,10 @@ fn test_prepare_development_prompt_xsd_retry_includes_real_last_output() {
     let mut fixture = TestFixture::with_workspace(workspace);
 
     let result = {
-        let mut ctx = fixture.ctx();
+        let ctx = fixture.ctx();
         let handler = MainEffectHandler::new(PipelineState::initial(1, 1));
         handler
-            .prepare_development_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+            .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
             .expect("prepare_development_prompt should succeed")
     };
 
@@ -48,7 +49,7 @@ fn test_prepare_development_prompt_same_agent_retry_uses_previous_prepared_promp
     let mut fixture = TestFixture::with_workspace(workspace);
 
     let result = {
-        let mut ctx = fixture.ctx();
+        let ctx = fixture.ctx();
 
         let mut handler = MainEffectHandler::new(PipelineState {
             continuation: ContinuationState {
@@ -68,7 +69,7 @@ fn test_prepare_development_prompt_same_agent_retry_uses_previous_prepared_promp
         }
 
         handler
-            .prepare_development_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+            .prepare_development_prompt(&ctx, 0, PromptMode::SameAgentRetry)
             .expect("prepare_development_prompt should succeed")
     };
 
@@ -106,7 +107,7 @@ fn test_prepare_development_prompt_same_agent_retry_does_not_stack_retry_notes()
     let mut fixture = TestFixture::with_workspace(workspace);
 
     {
-        let mut ctx = fixture.ctx();
+        let ctx = fixture.ctx();
 
         let mut handler = MainEffectHandler::new(PipelineState {
             continuation: ContinuationState {
@@ -126,12 +127,12 @@ fn test_prepare_development_prompt_same_agent_retry_does_not_stack_retry_notes()
         }
 
         handler
-            .prepare_development_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+            .prepare_development_prompt(&ctx, 0, PromptMode::SameAgentRetry)
             .expect("prepare_development_prompt should succeed");
 
         handler.state.continuation.same_agent_retry_count = 2;
         handler
-            .prepare_development_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+            .prepare_development_prompt(&ctx, 0, PromptMode::SameAgentRetry)
             .expect("prepare_development_prompt should succeed");
     }
 
@@ -164,7 +165,7 @@ fn test_prepare_development_prompt_continuation_emits_template_rendered() {
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -177,7 +178,7 @@ fn test_prepare_development_prompt_continuation_emits_template_rendered() {
     });
 
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Continuation)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Continuation)
         .expect("prepare_development_prompt should succeed");
 
     assert!(
@@ -194,13 +195,9 @@ fn test_prepare_development_prompt_continuation_replay_skips_template_rendered()
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.prompt_history.insert(
-        "development_0_continuation_1".to_string(),
-        "stored continuation prompt".to_string(),
-    );
+    let ctx = fixture.ctx();
 
-    let handler = MainEffectHandler::new(PipelineState {
+    let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             continuation_attempt: 1,
             previous_status: Some(crate::reducer::state::DevelopmentStatus::Partial),
@@ -209,9 +206,14 @@ fn test_prepare_development_prompt_continuation_replay_skips_template_rendered()
         },
         ..PipelineState::initial(1, 0)
     });
+    // Insert into state.prompt_history (handler reads from self.state.prompt_history).
+    handler.state.prompt_history.insert(
+        "development_0_continuation_1".to_string(),
+        PromptHistoryEntry::from_string("stored continuation prompt".to_string()),
+    );
 
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Continuation)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Continuation)
         .expect("prepare_development_prompt should succeed");
 
     assert!(
@@ -234,12 +236,12 @@ fn test_prepare_development_prompt_xsd_retry_emits_oversize_detected_for_last_ou
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
 
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_development_prompt should succeed");
 
     assert!(
@@ -262,12 +264,12 @@ fn test_development_xsd_retry_oversize_detected_is_deduped_across_retries() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
 
     let first = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_development_prompt should succeed");
     handler.state = crate::reducer::reduce(handler.state.clone(), first.event);
     for ev in first.additional_events {
@@ -275,7 +277,7 @@ fn test_development_xsd_retry_oversize_detected_is_deduped_across_retries() {
     }
 
     let second = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_development_prompt should succeed");
 
     assert!(

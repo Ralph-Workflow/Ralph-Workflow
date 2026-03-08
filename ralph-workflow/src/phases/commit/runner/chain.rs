@@ -25,14 +25,13 @@
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
+pub fn generate_commit_message(
     diff: &str,
     registry: &AgentRegistry,
     runtime: &mut PipelineRuntime<'_>,
     commit_agent: &str,
     template_context: &TemplateContext,
     workspace: &dyn Workspace,
-    prompt_history: &HashMap<String, String, S>,
 ) -> anyhow::Result<CommitMessageResult> {
     // For CLI plumbing, we truncate to the single agent's budget.
     // This is different from the reducer path which uses min budget across the chain.
@@ -47,30 +46,12 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
         ));
     }
 
-    // Prompt replay keys must be unique per commit cycle (diff/content) to prevent
-    // reusing stale prompt text from prompt_history.
-    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(&model_safe_diff);
-    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
-    let prompt_key = format!("commit_message_attempt_diff{diff_id_short}_attempt_1");
-    let (prompt, was_replayed, substitution_log) = build_commit_prompt(
-        &prompt_key,
-        template_context,
-        &model_safe_diff,
-        workspace,
-        prompt_history,
-    );
-    if let Some(log) = substitution_log {
-        if !log.is_complete() {
-            return Err(anyhow::anyhow!(
-                "Commit prompt has unresolved placeholders: {:?}",
-                log.unsubstituted
-            ));
-        }
-    }
-
-    let mut generated_prompts = HashMap::new();
-    if !was_replayed {
-        generated_prompts.insert(prompt_key, prompt.clone());
+    let (prompt, substitution_log) = build_commit_prompt(template_context, &model_safe_diff, workspace);
+    if !substitution_log.is_complete() {
+        return Err(anyhow::anyhow!(
+            "Commit prompt has unresolved placeholders: {:?}",
+            substitution_log.unsubstituted
+        ));
     }
 
     let agent_config = registry
@@ -117,7 +98,6 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
             archive_xml_file_with_workspace(workspace, Path::new(xml_paths::COMMIT_MESSAGE_XML));
             return Ok(CommitMessageResult {
                 outcome: CommitMessageOutcome::Skipped { reason },
-                generated_prompts,
             });
         }
     };
@@ -126,7 +106,6 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
 
     Ok(CommitMessageResult {
         outcome: CommitMessageOutcome::Message(result.into_message()),
-        generated_prompts,
     })
 }
 
@@ -143,8 +122,6 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
 /// * `agents` - Chain of agents to try in order (first agent tried first)
 /// * `template_context` - Template context for prompt generation
 /// * `workspace` - Workspace for file operations
-/// * `prompt_history` - History of prompts for replay detection
-///
 /// # Returns
 /// * `Ok(CommitMessageResult)` - If any agent in the chain succeeds
 /// * `Err` - If all agents in the chain fail
@@ -152,14 +129,13 @@ pub fn generate_commit_message<S: std::hash::BuildHasher + Default>(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn generate_commit_message_with_chain<S: std::hash::BuildHasher + Default>(
+pub fn generate_commit_message_with_chain(
     diff: &str,
     registry: &AgentRegistry,
     runtime: &mut PipelineRuntime<'_>,
     agents: &[String],
     template_context: &TemplateContext,
     workspace: &dyn Workspace,
-    prompt_history: &HashMap<String, String, S>,
 ) -> anyhow::Result<CommitMessageResult> {
     if agents.is_empty() {
         anyhow::bail!("No agents provided in commit chain");
@@ -178,34 +154,14 @@ pub fn generate_commit_message_with_chain<S: std::hash::BuildHasher + Default>(
     }
 
     let mut last_error: Option<anyhow::Error> = None;
-    let mut generated_prompts = HashMap::new();
-
-    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(&model_safe_diff);
-    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
 
     for (agent_index, commit_agent) in agents.iter().enumerate() {
-        let prompt_key = format!(
-            "commit_message_chain_diff{diff_id_short}_attempt_{}",
-            agent_index + 1
-        );
-        let (prompt, was_replayed, substitution_log) = build_commit_prompt(
-            &prompt_key,
-            template_context,
-            &model_safe_diff,
-            workspace,
-            prompt_history,
-        );
-        if let Some(log) = substitution_log {
-            if !log.is_complete() {
-                return Err(anyhow::anyhow!(
-                    "Commit prompt has unresolved placeholders: {:?}",
-                    log.unsubstituted
-                ));
-            }
-        }
-
-        if !was_replayed {
-            generated_prompts.insert(prompt_key.clone(), prompt.clone());
+        let (prompt, substitution_log) = build_commit_prompt(template_context, &model_safe_diff, workspace);
+        if !substitution_log.is_complete() {
+            return Err(anyhow::anyhow!(
+                "Commit prompt has unresolved placeholders: {:?}",
+                substitution_log.unsubstituted
+            ));
         }
 
         let Some(agent_config) = registry.resolve_config(commit_agent) else {
@@ -271,7 +227,6 @@ pub fn generate_commit_message_with_chain<S: std::hash::BuildHasher + Default>(
                 );
                 return Ok(CommitMessageResult {
                     outcome: CommitMessageOutcome::Message(extracted.into_message()),
-                    generated_prompts,
                 });
             }
             CommitExtractionOutcome::Skipped(reason) => {
@@ -281,7 +236,6 @@ pub fn generate_commit_message_with_chain<S: std::hash::BuildHasher + Default>(
                 );
                 return Ok(CommitMessageResult {
                     outcome: CommitMessageOutcome::Skipped { reason },
-                    generated_prompts,
                 });
             }
             CommitExtractionOutcome::InvalidXml(detail)

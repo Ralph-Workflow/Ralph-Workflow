@@ -3,6 +3,7 @@ use crate::checkpoint::state::{AgentConfigSnapshot, CliArgsSnapshot};
 use crate::checkpoint::CheckpointBuilder;
 use crate::checkpoint::PipelinePhase;
 use crate::config::ReviewDepth;
+use crate::prompts::PromptHistoryEntry;
 
 #[test]
 fn test_builder_basic() {
@@ -65,7 +66,7 @@ fn test_builder_with_prompt_history() {
     let mut prompts = std::collections::HashMap::new();
     prompts.insert(
         "development_1".to_string(),
-        "Implement feature X".to_string(),
+        PromptHistoryEntry::from_string("Implement feature X".to_string()),
     );
 
     let checkpoint = CheckpointBuilder::new()
@@ -85,7 +86,7 @@ fn test_builder_with_prompt_history() {
     assert_eq!(history.len(), 1);
     assert_eq!(
         history.get("development_1"),
-        Some(&"Implement feature X".to_string())
+        Some(&PromptHistoryEntry::from_string("Implement feature X".to_string()))
     );
 }
 
@@ -98,9 +99,12 @@ fn test_builder_with_prompt_history_multiple() {
     let mut prompts = std::collections::HashMap::new();
     prompts.insert(
         "development_1".to_string(),
-        "Implement feature X".to_string(),
+        PromptHistoryEntry::from_string("Implement feature X".to_string()),
     );
-    prompts.insert("review_1".to_string(), "Review the changes".to_string());
+    prompts.insert(
+        "review_1".to_string(),
+        PromptHistoryEntry::from_string("Review the changes".to_string()),
+    );
 
     let checkpoint = CheckpointBuilder::new()
         .phase(PipelinePhase::Development, 2, 5)
@@ -118,11 +122,11 @@ fn test_builder_with_prompt_history_multiple() {
     assert_eq!(history.len(), 2);
     assert_eq!(
         history.get("development_1"),
-        Some(&"Implement feature X".to_string())
+        Some(&PromptHistoryEntry::from_string("Implement feature X".to_string()))
     );
     assert_eq!(
         history.get("review_1"),
-        Some(&"Review the changes".to_string())
+        Some(&PromptHistoryEntry::from_string("Review the changes".to_string()))
     );
 }
 

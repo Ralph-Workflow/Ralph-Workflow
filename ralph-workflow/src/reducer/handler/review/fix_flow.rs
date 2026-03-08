@@ -1,7 +1,7 @@
 impl MainEffectHandler {
     pub(super) fn prepare_fix_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         pass: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
@@ -76,14 +76,14 @@ impl MainEffectHandler {
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                     // Try reading from the archived .processed file as a fallback
                     let processed_path = Path::new(".agent/tmp/fix_result.xml.processed");
-                    match ctx.workspace.read(processed_path) {
-                        Ok(output) => {
+                    ctx.workspace.read(processed_path).map_or_else(
+                        |_| String::new(),
+                        |output| {
                             ctx.logger
                                 .info("XSD retry: using archived .processed file as last output");
                             output
-                        }
-                        Err(_) => String::new(),
-                    }
+                        },
+                    )
                 }
                 Err(err) => {
                     return Err(ErrorEvent::WorkspaceReadFailed {
@@ -113,7 +113,7 @@ impl MainEffectHandler {
                         .unwrap_or("XML output failed validation. Provide valid XML output.");
                     xsd_error_for_validation = Some(xsd_error.to_string());
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                             prompt_fix_xsd_retry_with_context(
                                 ctx.template_context,
                                 &issues_content,
@@ -131,25 +131,31 @@ impl MainEffectHandler {
                         crate::reducer::handler::retry_guidance::same_agent_retry_preamble(
                             continuation_state,
                         );
-                    let (base_prompt, should_validate) =
-                    match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
-                        Ok(previous_prompt) => (
-                            crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                .to_string(),
-                            false,
-                        ),
-                        Err(_) => (
-                            prompt_fix_xml_with_context(
-                                ctx.template_context,
-                                &prompt_content,
-                                &plan_content,
-                                &issues_content,
-                                &[],
-                                ctx.workspace,
-                            ),
-                            true,
-                        ),
-                    };
+                    let (base_prompt, should_validate) = ctx
+                        .workspace
+                        .read(Path::new(".agent/tmp/fix_prompt.txt"))
+                        .map_or_else(
+                            |_| {
+                                (
+                                    prompt_fix_xml_with_context(
+                                        ctx.template_context,
+                                        &prompt_content,
+                                        &plan_content,
+                                        &issues_content,
+                                        &[],
+                                        ctx.workspace,
+                                    ),
+                                    true,
+                                )
+                            },
+                            |previous_prompt| {
+                                (
+                                    crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                        .to_string(),
+                                    false,
+                                )
+                            },
+                        );
                     let prompt = format!("{retry_preamble}\n{base_prompt}");
                     let scope_key = PromptScopeKey::for_fix(
                         pass,
@@ -167,7 +173,7 @@ impl MainEffectHandler {
                     );
                     let prompt_key = scope_key.to_string();
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                             // Use log-based rendering
                             let rendered = crate::prompts::review::prompt_fix_xml_with_log(
                                 ctx.template_context,
@@ -232,9 +238,18 @@ impl MainEffectHandler {
             None
         };
 
-        if !was_replayed {
-            ctx.capture_prompt(&prompt_key, &fix_prompt);
-        }
+        // Prepare PromptCaptured event if this is a freshly generated prompt
+        let prompt_captured_event = if was_replayed {
+            None
+        } else {
+            Some(crate::reducer::event::PipelineEvent::PromptInput(
+                crate::reducer::event::PromptInputEvent::PromptCaptured {
+                    key: prompt_key.clone(),
+                    content: fix_prompt.clone(),
+                    content_id: None,
+                },
+            ))
+        };
 
         // Write prompt file (non-fatal: if write fails, log warning and continue)
         if let Err(err) = ctx
@@ -251,6 +266,12 @@ impl MainEffectHandler {
                 key: prompt_key,
                 was_replayed,
             });
+
+        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
+        }
+
         if let Some(log) = rendered_log {
             result = result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,

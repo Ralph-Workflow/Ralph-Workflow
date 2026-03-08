@@ -257,7 +257,7 @@ impl MainEffectHandler {
             }
         };
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+            get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                 let prompt_ref = prompt_ref.clone();
                 let plan_ref = plan_ref.clone();
                 let refs = PromptContentReferences {

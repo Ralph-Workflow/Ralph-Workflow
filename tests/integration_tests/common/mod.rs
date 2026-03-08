@@ -126,7 +126,6 @@ impl IntegrationFixture {
             template_context: &self.template_context,
             run_context: ralph_workflow::checkpoint::RunContext::new(),
             execution_history: ralph_workflow::checkpoint::ExecutionHistory::new(),
-            prompt_history: std::collections::HashMap::new(),
             executor: &*self.executor,
             executor_arc: Arc::clone(&self.executor)
                 as Arc<dyn ralph_workflow::executor::ProcessExecutor>,

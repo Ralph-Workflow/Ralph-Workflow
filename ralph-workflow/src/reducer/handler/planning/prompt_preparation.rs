@@ -16,7 +16,7 @@ use crate::prompts::{
     get_stored_or_generate_prompt, prompt_planning_xml_with_references, PromptScopeKey, RetryMode,
 };
 use crate::reducer::effect::EffectResult;
-use crate::reducer::event::{ErrorEvent, PipelineEvent, PipelinePhase, WorkspaceIoErrorKind};
+use crate::reducer::event::{ErrorEvent, PipelineEvent, PipelinePhase, PromptInputEvent, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::PromptMode;
 use crate::reducer::state::{
@@ -32,7 +32,7 @@ const PLANNING_PROMPT_PATH: &str = ".agent/tmp/planning_prompt.txt";
 impl MainEffectHandler {
     pub(in crate::reducer::handler) fn prepare_planning_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         iteration: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
@@ -200,26 +200,30 @@ impl MainEffectHandler {
                         }
                     };
 
-                    let (base_prompt, should_validate) = match ctx
+                    let (base_prompt, should_validate) = ctx
                         .workspace
                         .read(Path::new(PLANNING_PROMPT_PATH))
-                    {
-                        Ok(previous_prompt) => (
-                            super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                                &previous_prompt,
-                            )
-                            .to_string(),
-                            false,
-                        ),
-                        Err(_) => (
-                            prompt_planning_xml_with_references(
-                                ctx.template_context,
-                                &prompt_ref,
-                                ctx.workspace,
-                            ),
-                            true,
-                        ),
-                    };
+                        .map_or_else(
+                            |_| {
+                                (
+                                    prompt_planning_xml_with_references(
+                                        ctx.template_context,
+                                        &prompt_ref,
+                                        ctx.workspace,
+                                    ),
+                                    true,
+                                )
+                            },
+                            |previous_prompt| {
+                                (
+                                    super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                        &previous_prompt,
+                                    )
+                                    .to_string(),
+                                    false,
+                                )
+                            },
+                        );
                     let prompt = format!("{retry_preamble}\n{base_prompt}");
                     let scope_key = PromptScopeKey::for_planning(
                         iteration,
@@ -302,7 +306,7 @@ impl MainEffectHandler {
                     let prompt_key = scope_key.to_string();
                     let prompt_ref_for_template = prompt_ref.clone();
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
                             // Use log-based rendering
                             let rendered =
                                 crate::prompts::prompt_planning_xml_with_references_and_log(
@@ -359,13 +363,19 @@ impl MainEffectHandler {
                 }
             };
 
-        // Capture prompt to history and collect replay observability key.
+        // Collect replay observability key and prepare PromptCaptured event if needed.
         let replay_key = prompt_key.as_deref().map(|k| (k.to_string(), was_replayed));
-        if let Some(prompt_key_str) = prompt_key.as_deref() {
-            if !was_replayed {
-                ctx.capture_prompt(prompt_key_str, &prompt);
+        let prompt_captured_event = prompt_key.as_deref().and_then(|prompt_key_str| {
+            if was_replayed {
+                None
+            } else {
+                Some(PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                    key: prompt_key_str.to_string(),
+                    content: prompt.clone(),
+                    content_id: None,
+                }))
             }
-        }
+        });
 
         // Write prompt file (non-fatal: if write fails, log warning and continue)
         // Per acceptance criteria #5: Template rendering errors must never terminate the pipeline.
@@ -389,6 +399,11 @@ impl MainEffectHandler {
                 key,
                 was_replayed: replayed,
             });
+        }
+
+        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
         }
 
         // Add any additional events from XSD retry materialization, etc.

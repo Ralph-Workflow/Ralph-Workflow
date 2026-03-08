@@ -173,14 +173,14 @@ fn test_prepare_planning_prompt_same_agent_retry_uses_previous_prepared_prompt()
         .with_file(".agent/tmp/planning_prompt.txt", marker);
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(same_agent_retry_state(1));
 
     materialize_and_reduce(&mut handler, &ctx, 0);
 
     let result = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_planning_prompt should succeed");
 
     let prompt = fixture
@@ -223,14 +223,14 @@ fn test_prepare_planning_prompt_emits_template_rendered_on_validation_failure() 
     fixture.template_context =
         TemplateContext::new(TemplateRegistry::new(Some(tempdir.path().to_path_buf())));
 
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     init_agent_chain(&mut handler);
     seed_materialized_planning_inputs(&mut handler);
 
     let result = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_planning_prompt should succeed");
 
     match result.event {
@@ -271,7 +271,7 @@ fn test_prepare_planning_prompt_workspace_write_failure_is_non_fatal() {
         WriteFailingWorkspace::new(inner, PathBuf::from(".agent/tmp/planning_prompt.txt"));
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&failing_ws);
+    let ctx = fixture.ctx_with_workspace(&failing_ws);
 
     let mut handler = MainEffectHandler::new(same_agent_retry_state(1));
 
@@ -280,7 +280,7 @@ fn test_prepare_planning_prompt_workspace_write_failure_is_non_fatal() {
     // Per AC #5: Write failure should NOT return an error; it should succeed
     // with a warning logged instead.
     let result = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_planning_prompt should succeed even when write fails (non-fatal)");
 
     // Verify that the prompt was prepared in memory even though the write failed
@@ -303,19 +303,19 @@ fn test_prepare_planning_prompt_same_agent_retry_does_not_stack_retry_notes() {
         .with_file(".agent/tmp/planning_prompt.txt", marker);
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(same_agent_retry_state(1));
 
     materialize_and_reduce(&mut handler, &ctx, 0);
 
     handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_planning_prompt should succeed");
 
     handler.state.continuation.same_agent_retry_count = 2;
     handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_planning_prompt should succeed");
 
     let prompt = fixture
@@ -358,9 +358,9 @@ fn test_prepare_planning_prompt_uses_references_for_oversize_prompt() {
     materialize_and_reduce(&mut handler, &ctx, 0);
 
     // Need a fresh mutable ctx after materialize_and_reduce borrowed it
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
     handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_planning_prompt should succeed");
 
     let prompt = fixture
@@ -400,14 +400,14 @@ fn test_prepare_planning_prompt_errors_when_prompt_missing() {
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     // Seed reducer state with materialized planning inputs so prepare_planning_prompt can run.
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     init_agent_chain(&mut handler);
     seed_materialized_planning_inputs(&mut handler);
 
-    let result = handler.prepare_planning_prompt(&mut ctx, 0, PromptMode::Normal);
+    let result = handler.prepare_planning_prompt(&ctx, 0, PromptMode::Normal);
     assert!(
         result.is_err(),
         "Expected Err when PROMPT.md is missing, got {result:?}",
@@ -421,10 +421,10 @@ fn test_prepare_planning_prompt_errors_when_inputs_not_materialized() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(1, 0));
-    let result = handler.prepare_planning_prompt(&mut ctx, 0, PromptMode::Normal);
+    let result = handler.prepare_planning_prompt(&ctx, 0, PromptMode::Normal);
     assert!(
         result.is_err(),
         "Expected Err when planning inputs are missing, got {result:?}",
@@ -441,13 +441,13 @@ fn test_prepare_planning_prompt_xsd_retry_emits_oversize_detected_for_last_outpu
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     init_agent_chain(&mut handler);
 
     let result = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_planning_prompt should succeed");
 
     assert!(
@@ -479,13 +479,13 @@ fn test_planning_xsd_retry_oversize_detected_is_deduped_across_retries() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     init_agent_chain(&mut handler);
 
     let first = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_planning_prompt should succeed");
     handler.state = crate::reducer::reduce(handler.state.clone(), first.event);
     for ev in first.additional_events {
@@ -493,7 +493,7 @@ fn test_planning_xsd_retry_oversize_detected_is_deduped_across_retries() {
     }
 
     let second = handler
-        .prepare_planning_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_planning_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_planning_prompt should succeed");
 
     assert!(

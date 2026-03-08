@@ -137,6 +137,7 @@ impl PipelineState {
             unpushed_commits: Vec::new(),
             last_pushed_commit: None,
             pr_number: None,
+            prompt_history: std::collections::HashMap::new(),
         }
     }
 

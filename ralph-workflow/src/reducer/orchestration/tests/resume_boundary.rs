@@ -82,6 +82,7 @@ fn create_resume_state(
         completion_marker_reason: None,
         gitignore_entries_ensured: false,
         prompt_inputs: crate::reducer::state::PromptInputsState::default(),
+        prompt_history: std::collections::HashMap::new(),
         // Simulate that permissions were locked at original startup (resume scenario)
         prompt_permissions: crate::reducer::state::PromptPermissionsState {
             locked: true,

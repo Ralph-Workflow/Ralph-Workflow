@@ -12,6 +12,7 @@ use super::TemplateContext;
 use super::{
     prompt_developer_iteration_with_context, prompt_fix_with_context, prompt_plan_with_context,
 };
+use crate::prompts::PromptHistoryEntry;
 
 /// Generate a prompt for any agent type.
 ///
@@ -100,11 +101,24 @@ pub fn prompt_for_agent(
 /// the same string format as the legacy `format!()` calls it replaces, ensuring
 /// backward-compatibility with existing checkpoint `prompt_history` entries.
 ///
+/// # Content-ID Validation (RFC-007)
+///
+/// When `current_content_id` is `Some` and the stored entry has a `content_id`
+/// that differs, the entry is treated as a cache miss and a fresh prompt is
+/// generated. This prevents stale-content replay when the materialized inputs
+/// have changed since the prompt was generated.
+///
+/// If `current_content_id` is `None` or the stored entry has no `content_id`
+/// (legacy entries), replay proceeds without content-id validation for backward
+/// compatibility.
+///
 /// # Arguments
 ///
 /// * `scope_key` - Typed prompt scope key. Its `Display` string is used for
 ///   the `HashMap` lookup.
-/// * `prompt_history` - The prompt history from the checkpoint (if available)
+/// * `prompt_history` - The reducer-owned prompt history from `PipelineState`
+/// * `current_content_id` - Optional content-id of the current materialized inputs.
+///   When `Some`, used to validate that stored entry matches current content.
 /// * `generator` - Function to generate the prompt if not found in history
 ///
 /// # Returns
@@ -119,7 +133,8 @@ pub fn prompt_for_agent(
 /// let scope_key = PromptScopeKey::for_development(iteration, None, RetryMode::Normal, recovery_epoch);
 /// let (prompt, was_replayed) = get_stored_or_generate_prompt(
 ///     &scope_key,
-///     &ctx.prompt_history,
+///     &state.prompt_history,
+///     None,
 ///     || prompt_for_agent(role, action, context, template_context, config),
 /// );
 /// if was_replayed {
@@ -128,17 +143,32 @@ pub fn prompt_for_agent(
 /// ```
 pub fn get_stored_or_generate_prompt<F, S: std::hash::BuildHasher>(
     scope_key: &PromptScopeKey,
-    prompt_history: &std::collections::HashMap<String, String, S>,
+    prompt_history: &std::collections::HashMap<String, PromptHistoryEntry, S>,
+    current_content_id: Option<&str>,
     generator: F,
 ) -> (String, bool)
 where
     F: FnOnce() -> String,
 {
     let key = scope_key.to_string();
-    prompt_history.get(&key).map_or_else(
-        || (generator(), false),
-        |stored_prompt| (stored_prompt.clone(), true),
-    )
+    if let Some(entry) = prompt_history.get(&key) {
+        // Content-id validation: if both stored and current content-ids are Some
+        // and differ, treat as cache miss to prevent stale-content replay.
+        let content_id_mismatch = match (entry.content_id.as_deref(), current_content_id) {
+            (Some(stored_id), Some(current_id)) => stored_id != current_id,
+            // One or both content-ids absent → replay without validation (backward compat)
+            _ => false,
+        };
+
+        if content_id_mismatch {
+            // Content changed: generate fresh prompt, do not replay stale entry
+            (generator(), false)
+        } else {
+            (entry.content.clone(), true)
+        }
+    } else {
+        (generator(), false)
+    }
 }
 
 #[cfg(test)]
@@ -151,10 +181,15 @@ mod tests {
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let mut history = std::collections::HashMap::new();
         // Use the Display string as the key (matches legacy format!() output)
-        history.insert(scope_key.to_string(), "stored prompt".to_string());
+        history.insert(
+            scope_key.to_string(),
+            PromptHistoryEntry::from_string("stored prompt".to_string()),
+        );
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, || "generated prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, None, || {
+                "generated prompt".to_string()
+            });
 
         assert_eq!(prompt, "stored prompt");
         assert!(was_replayed, "Should have replayed the stored prompt");
@@ -166,7 +201,9 @@ mod tests {
         let history = std::collections::HashMap::new();
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, || "generated prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, None, || {
+                "generated prompt".to_string()
+            });
 
         assert_eq!(prompt, "generated prompt");
         assert!(!was_replayed, "Should have generated a new prompt");
@@ -178,7 +215,9 @@ mod tests {
         let history = std::collections::HashMap::new();
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, || "fresh prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, None, || {
+                "fresh prompt".to_string()
+            });
 
         assert_eq!(prompt, "fresh prompt");
         assert!(
@@ -196,11 +235,11 @@ mod tests {
         let mut history = std::collections::HashMap::new();
         history.insert(
             expected_key.to_string(),
-            "stored xsd retry prompt".to_string(),
+            PromptHistoryEntry::from_string("stored xsd retry prompt".to_string()),
         );
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &history, || "new prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, None, || "new prompt".to_string());
 
         assert_eq!(prompt, "stored xsd retry prompt");
         assert!(
@@ -216,15 +255,118 @@ mod tests {
         let scope_key_epoch0 = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let scope_key_epoch1 = PromptScopeKey::for_planning(1, RetryMode::Normal, 1);
         let mut history = std::collections::HashMap::new();
-        history.insert(scope_key_epoch0.to_string(), "stored".to_string());
+        history.insert(
+            scope_key_epoch0.to_string(),
+            PromptHistoryEntry::from_string("stored".to_string()),
+        );
 
         // epoch1 should still find the entry stored under epoch0's Display string
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key_epoch1, &history, || "new".to_string());
+            get_stored_or_generate_prompt(&scope_key_epoch1, &history, None, || {
+                "new".to_string()
+            });
         assert_eq!(prompt, "stored");
         assert!(
             was_replayed,
             "Epoch change alone must not bust the history lookup key"
+        );
+    }
+
+    #[test]
+    fn test_content_id_match_replays_prompt() {
+        let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            scope_key.to_string(),
+            PromptHistoryEntry {
+                content: "stored prompt".to_string(),
+                content_id: Some("abc123".to_string()),
+            },
+        );
+
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &history,
+            Some("abc123"),
+            || "generated".to_string(),
+        );
+
+        assert_eq!(prompt, "stored prompt");
+        assert!(was_replayed, "Should replay when content-ids match");
+    }
+
+    #[test]
+    fn test_content_id_mismatch_generates_fresh_prompt() {
+        let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            scope_key.to_string(),
+            PromptHistoryEntry {
+                content: "stale prompt".to_string(),
+                content_id: Some("old_hash".to_string()),
+            },
+        );
+
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &history,
+            Some("new_hash"),
+            || "fresh prompt".to_string(),
+        );
+
+        assert_eq!(prompt, "fresh prompt");
+        assert!(
+            !was_replayed,
+            "Should generate fresh prompt when content-ids differ"
+        );
+    }
+
+    #[test]
+    fn test_no_content_id_in_stored_entry_replays_without_validation() {
+        // Legacy entries (content_id: None) always replay without validation
+        let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            scope_key.to_string(),
+            PromptHistoryEntry::from_string("legacy prompt".to_string()),
+        );
+
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &history,
+            Some("any_hash"),
+            || "generated".to_string(),
+        );
+
+        assert_eq!(prompt, "legacy prompt");
+        assert!(
+            was_replayed,
+            "Legacy entries with no content_id replay without content-id validation"
+        );
+    }
+
+    #[test]
+    fn test_no_current_content_id_replays_without_validation() {
+        // When caller doesn't provide current_content_id, skip validation
+        let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            scope_key.to_string(),
+            PromptHistoryEntry {
+                content: "stored prompt".to_string(),
+                content_id: Some("some_hash".to_string()),
+            },
+        );
+
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, None, || {
+                "generated".to_string()
+            });
+
+        assert_eq!(prompt, "stored prompt");
+        assert!(
+            was_replayed,
+            "Should replay when current_content_id is None (caller does not validate)"
         );
     }
 }

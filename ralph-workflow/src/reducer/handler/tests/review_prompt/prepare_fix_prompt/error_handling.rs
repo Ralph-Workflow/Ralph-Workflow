@@ -25,7 +25,7 @@ fn test_prepare_fix_prompt_workspace_write_failure_is_non_fatal() {
         AtomicWriteEnforcingWorkspace::new(inner, PathBuf::from(".agent/tmp/fix_prompt.txt"));
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -39,7 +39,7 @@ fn test_prepare_fix_prompt_workspace_write_failure_is_non_fatal() {
     // Per AC #5: Write failure should NOT return an error; it should succeed
     // with a warning logged instead.
     let result = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::SameAgentRetry)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_fix_prompt should succeed even when write fails (non-fatal)");
 
     // Verify that the prompt was prepared in memory even though the write failed
@@ -63,11 +63,11 @@ fn test_prepare_fix_prompt_does_not_mask_non_not_found_prompt_backup_read_errors
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let err = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_fix_prompt should surface non-NotFound PROMPT backup read failures");
 
     let error_event = err
@@ -98,11 +98,11 @@ fn test_prepare_fix_prompt_does_not_mask_non_not_found_plan_read_errors() {
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let err = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_fix_prompt should surface non-NotFound PLAN read failures");
 
     let error_event = err
@@ -133,11 +133,11 @@ fn test_prepare_fix_prompt_does_not_mask_non_not_found_issues_read_errors() {
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let err = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_fix_prompt should surface non-NotFound ISSUES read failures");
 
     let error_event = err
@@ -171,7 +171,7 @@ fn test_prepare_fix_prompt_xsd_retry_does_not_mask_non_not_found_last_output_rea
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     handler.state.continuation = ContinuationState {
@@ -180,7 +180,7 @@ fn test_prepare_fix_prompt_xsd_retry_does_not_mask_non_not_found_last_output_rea
     };
 
     let err = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect_err("prepare_fix_prompt should surface non-NotFound FIX_RESULT_XML read failures");
 
     let error_event = err

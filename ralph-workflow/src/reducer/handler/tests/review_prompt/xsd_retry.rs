@@ -1,4 +1,5 @@
 use super::super::common::TestFixture;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{
     AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent, ReviewEvent,
 };
@@ -33,12 +34,16 @@ fn test_prepare_review_prompt_uses_xsd_retry_prompt_key() {
     });
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
 
     assert!(
-        ctx.prompt_history.contains_key("review_0_xsd_retry_1"),
-        "expected retry prompt to be captured with retry key"
+        result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key, .. })
+                if key == "review_0_xsd_retry_1"
+        )),
+        "expected retry prompt to be captured with retry key via PromptCaptured event"
     );
 
     assert!(
@@ -84,7 +89,7 @@ fn test_review_xsd_retry_oversize_detected_is_deduped_across_retries() {
     });
 
     let first = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
     handler.state = crate::reducer::reduce(handler.state.clone(), first.event);
     for ev in first.additional_events {
@@ -92,7 +97,7 @@ fn test_review_xsd_retry_oversize_detected_is_deduped_across_retries() {
     }
 
     let second = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
 
     assert!(
@@ -116,22 +121,23 @@ fn test_prepare_review_prompt_xsd_retry_ignores_last_output_placeholders() {
         );
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.prompt_history.insert(
-        "review_0_xsd_retry_1".to_string(),
-        "Last output was {{MISSING}}".to_string(),
-    );
+    let ctx = fixture.ctx();
 
-    let handler = MainEffectHandler::new(PipelineState {
+    let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             invalid_output_attempts: 1,
             ..ContinuationState::new()
         },
         ..PipelineState::initial(0, 1)
     });
+    // Insert into state.prompt_history (handler reads from self.state.prompt_history).
+    handler.state.prompt_history.insert(
+        "review_0_xsd_retry_1".to_string(),
+        PromptHistoryEntry::from_string("Last output was {{MISSING}}".to_string()),
+    );
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
 
     assert!(matches!(result.event, PipelineEvent::Review(_)));
@@ -146,7 +152,7 @@ fn test_prepare_review_prompt_xsd_retry_ignores_xsd_error_placeholders() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -158,7 +164,7 @@ fn test_prepare_review_prompt_xsd_retry_ignores_xsd_error_placeholders() {
     });
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
 
     assert!(matches!(
@@ -177,22 +183,23 @@ fn test_prepare_review_prompt_uses_xsd_retry_template_name() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.prompt_history.insert(
-        "review_0_xsd_retry_1".to_string(),
-        "retry prompt {{UNRESOLVED}}".to_string(),
-    );
+    let ctx = fixture.ctx();
 
-    let handler = MainEffectHandler::new(PipelineState {
+    let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             invalid_output_attempts: 1,
             ..ContinuationState::new()
         },
         ..PipelineState::initial(0, 1)
     });
+    // Insert into state.prompt_history (handler reads from self.state.prompt_history).
+    handler.state.prompt_history.insert(
+        "review_0_xsd_retry_1".to_string(),
+        PromptHistoryEntry::from_string("retry prompt {{UNRESOLVED}}".to_string()),
+    );
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed");
 
     assert!(
@@ -217,7 +224,7 @@ fn test_prepare_review_prompt_xsd_retry_allows_missing_issues_xml() {
         .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -228,7 +235,7 @@ fn test_prepare_review_prompt_xsd_retry_allows_missing_issues_xml() {
     });
 
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_review_prompt should succeed without issues.xml");
 
     assert!(matches!(result.event, PipelineEvent::Review(_)));
@@ -251,22 +258,23 @@ fn test_prepare_fix_prompt_uses_xsd_retry_template_name() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-    ctx.prompt_history.insert(
-        "fix_0_xsd_retry_1".to_string(),
-        "retry prompt {{UNRESOLVED}}".to_string(),
-    );
+    let ctx = fixture.ctx();
 
-    let handler = MainEffectHandler::new(PipelineState {
+    let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             invalid_output_attempts: 1,
             ..ContinuationState::new()
         },
         ..PipelineState::initial(0, 1)
     });
+    // Insert into state.prompt_history (handler reads from self.state.prompt_history).
+    handler.state.prompt_history.insert(
+        "fix_0_xsd_retry_1".to_string(),
+        PromptHistoryEntry::from_string("retry prompt {{UNRESOLVED}}".to_string()),
+    );
 
     let result = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_fix_prompt should succeed");
 
     assert!(matches!(
@@ -284,7 +292,7 @@ fn test_prepare_fix_prompt_xsd_retry_ignores_xsd_error_placeholders() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -296,7 +304,7 @@ fn test_prepare_fix_prompt_xsd_retry_ignores_xsd_error_placeholders() {
     });
 
     let result = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_fix_prompt should succeed");
 
     assert!(matches!(
@@ -315,7 +323,7 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -327,7 +335,7 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
     });
 
     let result = handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::XsdRetry)
+        .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_fix_prompt should succeed");
 
     match result.event {
@@ -364,12 +372,15 @@ fn test_prepare_fix_prompt_uses_prompt_history_replay() {
     let mut ctx = fixture.ctx();
     ctx.developer_agent = "claude";
     ctx.reviewer_agent = "codex";
-    ctx.prompt_history
-        .insert("fix_0".to_string(), "REPLAYED PROMPT".to_string());
 
-    let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
+    let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
+    // Insert into state.prompt_history (handler reads from self.state.prompt_history).
     handler
-        .prepare_fix_prompt(&mut ctx, 0, PromptMode::Normal)
+        .state
+        .prompt_history
+        .insert("fix_0".to_string(), PromptHistoryEntry::from_string("REPLAYED PROMPT".to_string()));
+    handler
+        .prepare_fix_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_fix_prompt should succeed");
 
     let content = fixture
