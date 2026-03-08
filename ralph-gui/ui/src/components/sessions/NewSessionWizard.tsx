@@ -57,6 +57,7 @@ export function NewSessionWizard({
   const [developerIterations, setDeveloperIterations] = useState(5);
   const [reviewerPasses, setReviewerPasses] = useState(2);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [selectedAgentProfile, setSelectedAgentProfile] = useState<
@@ -124,6 +125,7 @@ export function NewSessionWizard({
 
   async function handleLaunch() {
     setIsLaunching(true);
+    setLaunchError(null);
     try {
       // Write the prompt to disk before launching
       if (promptPath) {
@@ -142,6 +144,8 @@ export function NewSessionWizard({
         reviewer_agent: selectedProfile?.reviewer_agent ?? null,
       });
       onClose();
+    } catch (err) {
+      setLaunchError(err instanceof Error ? err.message : "Launch failed");
     } finally {
       setIsLaunching(false);
     }
@@ -165,16 +169,33 @@ export function NewSessionWizard({
 
   if (step === "preflight") {
     return (
-      <PreflightSummary
-        repoPath={repoPath}
-        worktreePath={worktreePath}
-        promptPath={promptPath}
-        developerIterations={developerIterations}
-        reviewerPasses={reviewerPasses}
-        onConfirm={() => void handleLaunch()}
-        onBack={() => setStep("config")}
-        isLaunching={isLaunching}
-      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {launchError && (
+          <div
+            data-testid="launch-error"
+            style={{
+              padding: "8px 12px",
+              background: "var(--error-bg, #fee)",
+              border: "1px solid var(--error-border, #f99)",
+              borderRadius: "var(--radius-md)",
+              fontSize: 12,
+              color: "var(--error-text, #c00)",
+            }}
+          >
+            {launchError}
+          </div>
+        )}
+        <PreflightSummary
+          repoPath={repoPath}
+          worktreePath={worktreePath}
+          promptPath={promptPath}
+          developerIterations={developerIterations}
+          reviewerPasses={reviewerPasses}
+          onConfirm={() => void handleLaunch()}
+          onBack={() => setStep("config")}
+          isLaunching={isLaunching}
+        />
+      </div>
     );
   }
 

@@ -212,6 +212,50 @@ describe("NewSessionWizard", () => {
     expect(saveBtn).not.toBeDisabled();
   });
 
+  it("launch button is disabled while launch is in progress", async () => {
+    // Keep the promise unresolved to simulate the loading state
+    let resolvelaunch!: (value: string) => void;
+    mockLaunchRalphSession.mockImplementation(
+      () => new Promise<string>((resolve) => { resolvelaunch = resolve; }),
+    );
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.change(screen.getByPlaceholderText("/path/to/your/repo"), {
+      target: { value: "/my/repo" },
+    });
+    fireEvent.click(screen.getByTestId("review-launch-button"));
+    await waitFor(() =>
+      expect(screen.getByText("Launch session")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Launch session"));
+    await waitFor(() =>
+      expect(screen.getByText("Launching…")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Launching…")).toBeDisabled();
+    // Resolve to clean up
+    resolvelaunch("test-run-id");
+  });
+
+  it("displays launch error message when launchRalphSession rejects", async () => {
+    mockLaunchRalphSession.mockRejectedValueOnce(new Error("Ralph process failed to start"));
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    fireEvent.change(screen.getByPlaceholderText("/path/to/your/repo"), {
+      target: { value: "/my/repo" },
+    });
+    fireEvent.click(screen.getByTestId("review-launch-button"));
+    await waitFor(() =>
+      expect(screen.getByText("Launch session")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Launch session"));
+    await waitFor(() =>
+      expect(screen.getByTestId("launch-error")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("launch-error")).toHaveTextContent(
+      "Ralph process failed to start",
+    );
+  });
+
   it("repo-path input has an accessible label via htmlFor association", () => {
     renderWizard();
     fireEvent.click(screen.getByTestId("template-feature"));

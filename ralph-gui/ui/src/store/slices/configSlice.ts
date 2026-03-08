@@ -123,6 +123,9 @@ const configSlice = createSlice({
         state.globalConfig = action.payload;
         state.isDirty = false;
       })
+      .addCase(saveGlobal.rejected, (state, action) => {
+        state.error = action.error.message ?? "Unknown error";
+      })
       .addCase(saveProject.fulfilled, (state) => {
         state.isDirty = false;
       })

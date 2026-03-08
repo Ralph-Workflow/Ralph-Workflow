@@ -337,7 +337,7 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
 }
 
 /// AI Integration section shown in the Global tab.
-/// Allows users to persist their OpenAI API key without touching CLI environment variables.
+/// Allows users to persist their Anthropic API key without touching CLI environment variables.
 function AiIntegrationSection() {
   const dispatch = useAppDispatch();
   const aiApiKey = useAppSelector((s) => s.config.aiApiKey);
@@ -405,7 +405,7 @@ function AiIntegrationSection() {
           marginBottom: "var(--space-4)",
         }}
       >
-        OpenAI API key used for AI-assisted PROMPT.md review. Stored at{" "}
+        Anthropic API key used for AI-assisted PROMPT.md review. Stored at{" "}
         <span style={{ color: "var(--text-secondary)" }}>~/.config/ralph-gui.toml</span>{" "}
         with restricted permissions (0600).
       </div>
@@ -426,7 +426,7 @@ function AiIntegrationSection() {
           onChange={(e) => {
             setLocalKey(e.target.value);
           }}
-          placeholder="Enter OpenAI API key (sk-...)"
+          placeholder="Enter Anthropic API key (sk-ant-...)"
           style={{ flex: 1 }}
         />
         <button

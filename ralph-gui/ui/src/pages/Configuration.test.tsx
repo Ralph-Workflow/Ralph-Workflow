@@ -224,7 +224,7 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/enter anthropic api key/i)).toBeInTheDocument();
     });
   });
 
@@ -232,7 +232,7 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      const input = screen.getByPlaceholderText(/enter anthropic api key/i);
       expect(input).toHaveAttribute("type", "password");
     });
   });
@@ -241,12 +241,12 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      const input = screen.getByPlaceholderText(/enter anthropic api key/i);
       expect(input).toHaveAttribute("type", "password");
     });
     const toggleBtn = screen.getByRole("button", { name: /show/i });
     fireEvent.click(toggleBtn);
-    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    const input = screen.getByPlaceholderText(/enter anthropic api key/i);
     expect(input).toHaveAttribute("type", "text");
     fireEvent.click(screen.getByRole("button", { name: /hide/i }));
     expect(input).toHaveAttribute("type", "password");
@@ -265,7 +265,7 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      const input = screen.getByPlaceholderText(/enter openai api key/i);
+      const input = screen.getByPlaceholderText(/enter anthropic api key/i);
       expect((input as HTMLInputElement).value).toBe("sk-existing-key");
     });
   });
@@ -274,9 +274,9 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/enter anthropic api key/i)).toBeInTheDocument();
     });
-    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    const input = screen.getByPlaceholderText(/enter anthropic api key/i);
     fireEvent.change(input, { target: { value: "sk-my-new-key" } });
     const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
     fireEvent.click(saveKeyBtn);
@@ -290,9 +290,9 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/enter anthropic api key/i)).toBeInTheDocument();
     });
-    const input = screen.getByPlaceholderText(/enter openai api key/i);
+    const input = screen.getByPlaceholderText(/enter anthropic api key/i);
     fireEvent.change(input, { target: { value: "sk-key" } });
     const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
     fireEvent.click(saveKeyBtn);
@@ -306,7 +306,7 @@ describe("Configuration", () => {
     renderConfig();
     fireEvent.click(screen.getByText("Global"));
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/enter openai api key/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/enter anthropic api key/i)).toBeInTheDocument();
     });
     const saveKeyBtn = screen.getByRole("button", { name: /save api key/i });
     fireEvent.click(saveKeyBtn);

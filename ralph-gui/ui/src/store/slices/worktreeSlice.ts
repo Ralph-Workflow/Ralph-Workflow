@@ -91,6 +91,9 @@ const worktreeSlice = createSlice({
       .addCase(createNewWorktree.fulfilled, (state, action) => {
         state.worktrees.push(action.payload);
       })
+      .addCase(createNewWorktree.rejected, (state, action) => {
+        state.error = action.error.message ?? "Unknown error";
+      })
       .addCase(switchActiveContext.fulfilled, (state, action) => {
         state.activeWorktreePath = action.payload;
       })

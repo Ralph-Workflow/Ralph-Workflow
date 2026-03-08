@@ -167,6 +167,21 @@ describe("worktreeSlice", () => {
     expect(state.error).toBe("Not a git repo");
   });
 
+  it("createNewWorktree.rejected stores error and leaves worktrees unchanged", async () => {
+    mockCreateWorktree.mockRejectedValueOnce(new Error("Branch already exists"));
+    const store = makeStore();
+    await store.dispatch(
+      createNewWorktree({
+        repoPath: "/my/repo",
+        branch: "existing-branch",
+        name: "existing-branch",
+      }),
+    );
+    const state = store.getState().worktrees;
+    expect(state.worktrees).toHaveLength(0);
+    expect(state.error).toBe("Branch already exists");
+  });
+
   it("switchActiveContext with null worktreePath sets activeWorktreePath to null", async () => {
     mockSwitchContext.mockResolvedValueOnce(undefined);
     const store = makeStore();

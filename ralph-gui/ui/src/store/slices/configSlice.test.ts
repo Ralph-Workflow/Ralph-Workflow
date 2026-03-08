@@ -120,6 +120,16 @@ describe("configSlice", () => {
     expect(state.isDirty).toBe(false);
   });
 
+  it("saveGlobal.rejected stores error and preserves isDirty true", async () => {
+    mockSaveGlobalConfig.mockRejectedValueOnce(new Error("Disk write failed"));
+    const store = makeStore();
+    store.dispatch(setDirty(true));
+    await store.dispatch(saveGlobal("[general]\nverbosity = 9\n"));
+    const state = store.getState().config;
+    expect(state.isDirty).toBe(true);
+    expect(state.error).toBe("Disk write failed");
+  });
+
   it("setDirty marks the config as dirty", () => {
     const store = makeStore();
     store.dispatch(setDirty(true));
