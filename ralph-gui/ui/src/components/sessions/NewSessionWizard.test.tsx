@@ -196,4 +196,19 @@ describe("NewSessionWizard", () => {
     const stored = JSON.parse(localStorage.getItem("ralph_gui_presets") ?? "[]") as unknown[];
     expect(stored).toHaveLength(0);
   });
+
+  it("preset name input validation prevents saving blank names", () => {
+    renderWizard();
+    fireEvent.click(screen.getByTestId("template-feature"));
+    // Save button should be disabled when name is blank
+    const saveBtn = screen.getByTestId("save-preset-button");
+    expect(saveBtn).toBeDisabled();
+    // Enter a whitespace-only name
+    const nameInput = screen.getByTestId("preset-name-input");
+    fireEvent.change(nameInput, { target: { value: "   " } });
+    expect(saveBtn).toBeDisabled();
+    // Enter a real name to confirm button enables
+    fireEvent.change(nameInput, { target: { value: "Valid Name" } });
+    expect(saveBtn).not.toBeDisabled();
+  });
 });

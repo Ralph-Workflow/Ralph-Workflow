@@ -33,7 +33,7 @@ export function Navigation() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "7px 10px",
+            padding: "7px 10px 7px 8px",
             borderRadius: "var(--radius-md)",
             fontFamily: "var(--font-ui)",
             fontSize: 13,
@@ -46,25 +46,43 @@ export function Navigation() {
             textDecoration: "none",
             transition: "all var(--transition-fast)",
             cursor: "pointer",
+            position: "relative",
+            overflow: "hidden",
           })}
           onMouseEnter={(e) => {
             const el = e.currentTarget;
             if (!el.getAttribute("aria-current")) {
               el.style.color = "var(--text-primary)";
+              el.style.background = "rgba(255,255,255,0.03)";
             }
           }}
           onMouseLeave={(e) => {
             const el = e.currentTarget;
             if (!el.getAttribute("aria-current")) {
               el.style.color = "var(--text-secondary)";
+              el.style.background = "transparent";
             }
           }}
         >
           {({ isActive }) => (
             <>
+              {/* Left accent bar for active state */}
+              {isActive && (
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: "20%",
+                    bottom: "20%",
+                    width: 2,
+                    background: "var(--accent)",
+                    borderRadius: 2,
+                  }}
+                />
+              )}
               <span
                 style={{
-                  fontSize: 14,
+                  fontSize: 13,
                   width: 18,
                   textAlign: "center",
                   color: isActive ? "var(--accent)" : "var(--text-muted)",

@@ -159,6 +159,25 @@ mod tests {
     }
 
     #[test]
+    fn test_launch_ralph_session_errors_when_repo_path_missing() {
+        // No RALPH_GUI_DRY_RUN needed — path existence check happens before dry-run guard.
+        let result = launch_ralph_session(LaunchSessionArgs {
+            repo_path: "/nonexistent/repo/path/that/does/not/exist".to_string(),
+            worktree_path: None,
+            prompt_path: "/nonexistent/PROMPT.md".to_string(),
+            developer_iterations: 3,
+            reviewer_passes: 2,
+            developer_agent: None,
+            reviewer_agent: None,
+        });
+        assert!(result.is_err(), "Expected error for missing repo path");
+        assert!(
+            result.unwrap_err().contains("does not exist"),
+            "Error should mention path does not exist"
+        );
+    }
+
+    #[test]
     fn test_launch_ralph_session_errors_when_prompt_missing() {
         let dir = TempDir::new().unwrap();
         git2::Repository::init(dir.path()).unwrap();

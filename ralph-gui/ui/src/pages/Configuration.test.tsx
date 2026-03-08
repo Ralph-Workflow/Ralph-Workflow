@@ -37,6 +37,7 @@ vi.mock("../api/tauri", () => ({
   getRawProjectConfigToml: vi.fn().mockResolvedValue(""),
   getAiApiKey: vi.fn().mockResolvedValue(""),
   saveAiApiKey: vi.fn().mockResolvedValue(undefined),
+  validateConfigToml: vi.fn().mockResolvedValue(null),
 }));
 
 import {
@@ -45,6 +46,7 @@ import {
   getRawProjectConfigToml,
   getAiApiKey,
   saveAiApiKey,
+  validateConfigToml,
 } from "../api/tauri";
 import type { Mock } from "vitest";
 
@@ -53,6 +55,7 @@ const mockGetRawGlobalConfigToml = getRawGlobalConfigToml as Mock;
 const mockGetRawProjectConfigToml = getRawProjectConfigToml as Mock;
 const mockGetAiApiKey = getAiApiKey as Mock;
 const mockSaveAiApiKey = saveAiApiKey as Mock;
+const mockValidateConfigToml = validateConfigToml as Mock;
 
 function makeStore(preloaded?: object) {
   return configureStore({
@@ -310,5 +313,81 @@ describe("Configuration", () => {
     await waitFor(() => {
       expect(screen.getByText(/API key must not be empty/i)).toBeInTheDocument();
     });
+  });
+
+  // --- TOML validation tests ---
+
+  it("Save button in Global tab is enabled when validateConfigToml returns null (valid)", async () => {
+    mockValidateConfigToml.mockResolvedValue(null);
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      const saveBtn = screen.getByText("Save");
+      expect(saveBtn).not.toBeDisabled();
+    });
+  });
+
+  it("Save button in Global tab is disabled when validateConfigToml returns an error string", async () => {
+    mockValidateConfigToml.mockResolvedValue("TOML parse error: unclosed bracket");
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    // Trigger validation by changing textarea content
+    await waitFor(() => {
+      expect(document.querySelector("textarea")).not.toBeNull();
+    });
+    const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "[unclosed" } });
+    await waitFor(() => {
+      expect(screen.getByText(/TOML parse error/i)).toBeInTheDocument();
+    });
+    const saveBtn = screen.getByText("Save");
+    expect(saveBtn).toBeDisabled();
+  });
+
+  it("inline validation error disappears when TOML is corrected", async () => {
+    mockValidateConfigToml
+      .mockResolvedValueOnce("Parse error: bad syntax")
+      .mockResolvedValue(null);
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    await waitFor(() => {
+      expect(document.querySelector("textarea")).not.toBeNull();
+    });
+    const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
+    // Enter bad TOML
+    fireEvent.change(textarea, { target: { value: "[bad" } });
+    await waitFor(() => {
+      expect(screen.getByText(/Parse error/i)).toBeInTheDocument();
+    });
+    // Fix the TOML
+    fireEvent.change(textarea, { target: { value: "[general]\nverbosity = 1\n" } });
+    await waitFor(() => {
+      expect(screen.queryByText(/Parse error/i)).not.toBeInTheDocument();
+    });
+    const saveBtn = screen.getByText("Save");
+    expect(saveBtn).not.toBeDisabled();
+  });
+
+  it("scope badge is visible next to Save button in Global tab", () => {
+    renderConfig();
+    fireEvent.click(screen.getByText("Global"));
+    // There should be a scope badge with "global" or "Global" label near the save button
+    expect(screen.getByTestId("scope-badge")).toBeInTheDocument();
+  });
+
+  it("scope badge shows 'project' in Project tab", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderConfig(store);
+    fireEvent.click(screen.getByText("Project"));
+    expect(screen.getByTestId("scope-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("scope-badge").textContent?.toLowerCase()).toContain("project");
   });
 });

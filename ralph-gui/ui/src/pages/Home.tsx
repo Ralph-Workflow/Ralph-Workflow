@@ -31,16 +31,23 @@ export function Home() {
     return (
       <div className="page-content" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <div style={{ maxWidth: 480, textAlign: "center", animation: "fadeIn 300ms ease" }}>
-          <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>◈</div>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.02em", marginBottom: 8 }}>
+          <div style={{
+            fontSize: 40,
+            marginBottom: 20,
+            opacity: 0.15,
+            fontFamily: "var(--font-mono)",
+            color: "var(--accent)",
+            letterSpacing: "-0.05em",
+          }}>◈</div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.02em", marginBottom: 10 }}>
             Welcome to Ralph Workflow
           </h1>
-          <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 24 }}>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: 28 }}>
             An unattended AI orchestration platform for long-running development and review cycles.
           </p>
           <div style={{ textAlign: "left", marginBottom: 16 }}>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8 }}>
-              Enter your repository path to get started:
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Enter your repository path to get started
             </div>
             <RepoSelector onRepoSelected={() => void navigate("/")} />
           </div>
@@ -101,11 +108,26 @@ export function Home() {
 
 function StatCard({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="card" style={{ padding: "16px 20px" }}>
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 600, color: accent ? "var(--accent)" : "var(--text-primary)", letterSpacing: "-0.02em" }}>
+    <div
+      className="card"
+      style={{
+        padding: "18px 20px",
+        borderBottom: accent && value > 0 ? "2px solid var(--accent)" : "2px solid transparent",
+      }}
+    >
+      <div style={{
+        fontFamily: "var(--font-display)",
+        fontSize: 32,
+        fontWeight: 700,
+        color: accent && value > 0 ? "var(--accent)" : "var(--text-primary)",
+        letterSpacing: "-0.03em",
+        lineHeight: 1,
+        marginBottom: 6,
+        textShadow: accent && value > 0 ? "0 0 20px var(--accent-glow)" : "none",
+      }}>
         {value}
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-ui)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
     </div>
   );
 }
@@ -115,14 +137,33 @@ function QuickAction({ icon, label, desc, onClick }: { icon: string; label: stri
     <button
       onClick={onClick}
       className="card"
-      style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", cursor: "pointer", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", textAlign: "left", width: "100%" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-default)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border-subtle)"; }}
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        padding: "14px 16px",
+        cursor: "pointer",
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-subtle)",
+        textAlign: "left",
+        width: "100%",
+        transition: "border-color var(--transition-fast), background var(--transition-fast)",
+      }}
+      onMouseEnter={(e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        btn.style.borderColor = "var(--border-default)";
+        btn.style.background = "var(--bg-elevated)";
+      }}
+      onMouseLeave={(e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        btn.style.borderColor = "var(--border-subtle)";
+        btn.style.background = "var(--bg-surface)";
+      }}
     >
-      <span style={{ fontSize: 18, color: "var(--accent)", flexShrink: 0, marginTop: 1 }}>{icon}</span>
+      <span style={{ fontSize: 16, color: "var(--accent)", flexShrink: 0, marginTop: 2, opacity: 0.9 }}>{icon}</span>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{desc}</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 2 }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>{desc}</div>
       </div>
     </button>
   );

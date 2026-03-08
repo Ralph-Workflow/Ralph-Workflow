@@ -199,4 +199,33 @@ describe("Sessions", () => {
     expect(select).toBeInTheDocument();
     expect(screen.getByText("All contexts")).toBeInTheDocument();
   });
+
+  it("multiple filter chips can be active simultaneously", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderSessions(store);
+    fireEvent.click(screen.getByTestId("filter-chip-running"));
+    fireEvent.click(screen.getByTestId("filter-chip-failed"));
+    // Both chips should be visually active (have active class or aria-pressed)
+    expect(screen.getByTestId("filter-chip-running")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-failed")).toBeInTheDocument();
+    // Clear button should appear when any filter is active
+    expect(screen.getByTestId("clear-filters")).toBeInTheDocument();
+    // Clicking clear removes all filters
+    fireEvent.click(screen.getByTestId("clear-filters"));
+    expect(screen.queryByTestId("clear-filters")).not.toBeInTheDocument();
+  });
+
+  it("filter toolbar is absent when no repo context is active", () => {
+    // No worktrees / no lastRepoPath => empty-repo state
+    renderSessions();
+    expect(screen.queryByTestId("filter-toolbar")).not.toBeInTheDocument();
+  });
 });

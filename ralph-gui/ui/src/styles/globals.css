@@ -30,6 +30,11 @@
   --accent-glow:   rgba(232, 168, 56, 0.12);
   --accent-bg:     rgba(232, 168, 56, 0.08);
 
+  /* Degraded state — warm orange, visually distinct from amber accent */
+  --status-degraded:    #f59e0b;
+  --status-degraded-bg: rgba(245, 158, 11, 0.10);
+  --status-degraded-border: rgba(245, 158, 11, 0.35);
+
   /* Status */
   --status-running:  #58a6ff;
   --status-paused:   #e8a838;
@@ -383,11 +388,71 @@ body {
   color: var(--text-muted);
   background: transparent;
   border: none;
+  position: relative;
 }
 
 .tab-item--active {
   background: var(--bg-overlay);
   color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  font-weight: 600;
 }
 
-.tab-item:hover:not(.tab-item--active) { color: var(--text-secondary); }
+.tab-item:hover:not(.tab-item--active) { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
+
+/* Degraded banner */
+.degraded-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--status-degraded-bg);
+  border: 1px solid var(--status-degraded-border);
+  border-radius: var(--radius-md);
+  color: var(--status-degraded);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+/* Phase timeline */
+.phase-timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.phase-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.phase-node__dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  transition: all var(--transition-base);
+  font-family: var(--font-mono);
+}
+
+.phase-node__label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.phase-connector {
+  flex: 1;
+  height: 2px;
+  margin-top: 14px;
+  margin-bottom: 20px;
+  transition: background var(--transition-base);
+}

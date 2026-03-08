@@ -28,12 +28,27 @@ export function Layout({ children }: LayoutProps) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          position: "relative",
         }}
       >
+        {/* Amber top accent stripe */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: "linear-gradient(90deg, var(--accent) 0%, transparent 100%)",
+            opacity: 0.7,
+            pointerEvents: "none",
+          }}
+        />
+
         {/* Logo / Brand */}
         <div
           style={{
-            padding: "20px 16px 16px",
+            padding: "22px 16px 16px",
             borderBottom: "1px solid var(--border-subtle)",
           }}
         >
@@ -47,18 +62,19 @@ export function Layout({ children }: LayoutProps) {
           >
             <div
               style={{
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 background: "var(--accent)",
                 borderRadius: "var(--radius-sm)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 700,
                 color: "#000",
                 flexShrink: 0,
                 fontFamily: "var(--font-mono)",
+                boxShadow: "0 0 10px var(--accent-glow)",
               }}
             >
               R
@@ -80,7 +96,9 @@ export function Layout({ children }: LayoutProps) {
               fontFamily: "var(--font-mono)",
               fontSize: 10,
               color: "var(--text-muted)",
-              paddingLeft: 32,
+              paddingLeft: 34,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
             }}
           >
             workflow
@@ -107,6 +125,7 @@ export function Layout({ children }: LayoutProps) {
             fontSize: 10,
             color: "var(--text-muted)",
             fontFamily: "var(--font-mono)",
+            letterSpacing: "0.04em",
           }}
         >
           v0.1.0

@@ -27,6 +27,7 @@ fn main() {
             config::list_agent_profiles,
             config::get_ai_api_key,
             config::save_ai_api_key,
+            config::validate_config_toml,
             run_management::get_run_status,
             run_management::get_resumable_runs,
             run_management::get_run_detail,

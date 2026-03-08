@@ -159,19 +159,38 @@ pub fn create_worktree(
     })
 }
 
+/// Validate that context paths exist before switching.
+///
+/// Returns `Ok(())` if all provided paths exist, or an error describing which path is invalid.
+fn validate_context_paths(repo_path: &str, worktree_path: Option<&str>) -> Result<(), String> {
+    if !std::path::Path::new(repo_path).exists() {
+        return Err(format!(
+            "Repository path does not exist: {repo_path}"
+        ));
+    }
+    if let Some(wt) = worktree_path {
+        if !std::path::Path::new(wt).exists() {
+            return Err(format!("Worktree path does not exist: {wt}"));
+        }
+    }
+    Ok(())
+}
+
 /// Switch the active GUI context to a different worktree.
 ///
 /// This is a state mutation only — no git operations are performed.
 ///
 /// # Errors
 ///
-/// Returns an error if the state lock cannot be acquired.
+/// Returns an error if the repo or worktree path does not exist, or if the
+/// state lock cannot be acquired.
 #[tauri::command]
 pub fn switch_context(
     repo_path: String,
     worktree_path: Option<String>,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<(), String> {
+    validate_context_paths(&repo_path, worktree_path.as_deref())?;
     let mut locked = state
         .lock()
         .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
@@ -298,6 +317,82 @@ mod tests {
                 "Should not fail on naming: {e}"
             );
         }
+    }
+
+    #[test]
+    fn test_create_worktree_with_existing_branch_does_not_reject_on_naming() {
+        // When a branch with the given name already exists, create_worktree should
+        // attempt to use it (not reject the request due to naming convention).
+        let dir = TempDir::new().unwrap();
+        let repo = init_git_repo(&dir);
+
+        // Pre-create the branch so it already exists.
+        let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.branch("wt-99-existing", &head_commit, false).unwrap();
+
+        let result = create_worktree(
+            dir.path().to_string_lossy().to_string(),
+            "wt-99-existing".to_string(),
+            "wt-99-existing".to_string(),
+            None,
+        );
+        // Either Ok or git filesystem error — not a naming-convention rejection.
+        if let Err(e) = &result {
+            assert!(
+                !e.contains("does not match convention"),
+                "Should not fail on naming when branch exists: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_switch_context_invalid_repo_path_returns_error() {
+        // Switching context to a nonexistent path must return an error describing the invalid path.
+        let result =
+            validate_context_paths("/nonexistent/path/that/does/not/exist/for/testing", None);
+        assert!(result.is_err(), "Expected Err for nonexistent repo path");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("does not exist"),
+            "Error should mention 'does not exist': {msg}"
+        );
+        assert!(
+            msg.contains("/nonexistent/path/that/does/not/exist/for/testing"),
+            "Error should contain the invalid path: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_switch_context_invalid_worktree_path_returns_error() {
+        // Switching context with an invalid worktree path must return an error.
+        let dir = TempDir::new().unwrap();
+        // repo_path exists, worktree_path does not
+        let result = validate_context_paths(
+            &dir.path().to_string_lossy(),
+            Some("/nonexistent/worktree/path/for/testing"),
+        );
+        assert!(result.is_err(), "Expected Err for nonexistent worktree path");
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("does not exist"),
+            "Error should mention 'does not exist': {msg}"
+        );
+        assert!(
+            msg.contains("/nonexistent/worktree/path/for/testing"),
+            "Error should contain the invalid path: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_switch_context_valid_paths_returns_ok() {
+        // Both paths exist — validation should succeed.
+        let repo_dir = TempDir::new().unwrap();
+        let wt_dir = TempDir::new().unwrap();
+        let result = validate_context_paths(
+            &repo_dir.path().to_string_lossy(),
+            Some(&wt_dir.path().to_string_lossy()),
+        );
+        assert!(result.is_ok(), "Expected Ok for valid paths: {result:?}");
     }
 
     #[test]

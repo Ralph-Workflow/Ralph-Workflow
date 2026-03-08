@@ -231,6 +231,22 @@ pub fn save_project_config(repo_path: String, config_toml: String) -> Result<(),
         .map_err(|e| format!("Failed to write project config: {e}"))
 }
 
+/// Validate a ralph-workflow TOML configuration string without saving it.
+///
+/// Returns `Ok(None)` if the TOML is valid, or `Ok(Some(error_message))` if parsing fails.
+/// This allows the frontend to surface validation errors before the user attempts to save.
+///
+/// # Errors
+///
+/// This command does not return `Err`; parse failures are returned as `Ok(Some(message))`.
+#[tauri::command]
+pub fn validate_config_toml(config_toml: String) -> Result<Option<String>, String> {
+    match UnifiedConfig::load_from_content(&config_toml) {
+        Ok(_) => Ok(None),
+        Err(e) => Ok(Some(format!("{e}"))),
+    }
+}
+
 /// GUI-specific configuration stored separately from ralph-workflow config.
 /// Stored at `~/.config/ralph-gui.toml` with restrictive 0o600 permissions.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -378,6 +394,19 @@ mod tests {
     }
 
     #[test]
+    fn test_save_global_config_rejects_invalid_toml() {
+        // save_global_config validates via UnifiedConfig::load_from_content before writing.
+        // We cannot safely redirect the write target in a unit test (it targets the real home dir),
+        // but we can verify the validation guard triggers before any I/O attempt.
+        let result = save_global_config("this is not valid toml !!!!!".to_string());
+        assert!(result.is_err(), "Invalid TOML should be rejected");
+        assert!(
+            result.unwrap_err().contains("Invalid config"),
+            "Error should indicate invalid config"
+        );
+    }
+
+    #[test]
     fn test_save_project_config_rejects_invalid_toml() {
         let dir = TempDir::new().unwrap();
         let result = save_project_config(
@@ -467,6 +496,63 @@ reviewer_agent = "codex"
         // If no global config exists we get empty string. If one does exist we get content.
         // Both are valid — we can't know which environment this runs in.
         let _ = result.unwrap(); // just verify it's Ok
+    }
+
+    // --- validate_config_toml tests ---
+
+    #[test]
+    fn test_validate_config_toml_accepts_valid_toml() {
+        let result = validate_config_toml("[general]\nverbosity = 2\n".to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        assert!(
+            result.unwrap().is_none(),
+            "Valid TOML should return Ok(None)"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_toml_rejects_invalid_toml_syntax() {
+        let result = validate_config_toml("[unclosed".to_string());
+        assert!(result.is_ok(), "Should always return Ok: {result:?}");
+        let inner = result.unwrap();
+        assert!(
+            inner.is_some(),
+            "Invalid TOML syntax should return Ok(Some(error))"
+        );
+        let msg = inner.unwrap();
+        assert!(!msg.is_empty(), "Error message should not be empty");
+    }
+
+    #[test]
+    fn test_validate_config_toml_accepts_empty_string() {
+        // An empty string is valid TOML (no keys — all defaults).
+        let result = validate_config_toml(String::new());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        assert!(
+            result.unwrap().is_none(),
+            "Empty TOML string should be valid (uses defaults)"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_toml_rejects_garbage_content() {
+        let result = validate_config_toml("this is not !!! valid toml @@ content $$".to_string());
+        assert!(result.is_ok(), "Should always return Ok: {result:?}");
+        let inner = result.unwrap();
+        assert!(
+            inner.is_some(),
+            "Garbage content should return Ok(Some(error))"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_toml_accepts_valid_developer_iters() {
+        let result = validate_config_toml("[general]\ndeveloper_iters = 5\n".to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        assert!(
+            result.unwrap().is_none(),
+            "Valid developer_iters should pass validation"
+        );
     }
 
     #[test]

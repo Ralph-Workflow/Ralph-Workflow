@@ -229,21 +229,24 @@ export function RunDetail() {
           <div
             style={{
               padding: "10px 16px",
-              background: "rgba(232,168,56,0.10)",
-              border: "1px solid rgba(232,168,56,0.35)",
+              background: "var(--status-degraded-bg)",
+              border: "1px solid var(--status-degraded-border)",
               borderRadius: "var(--radius-md)",
-              color: "var(--accent)",
+              color: "var(--status-degraded)",
               fontSize: 12,
               fontFamily: "var(--font-mono)",
               marginBottom: "var(--space-4)",
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
             }}
             data-testid="degraded-banner"
           >
-            <span style={{ fontSize: 14 }}>⚠</span>
-            Running with degraded conditions — retries exceeded or fallback agent active.
+            <span style={{ fontSize: 15, flexShrink: 0 }}>⚠</span>
+            <span>
+              <strong style={{ fontWeight: 600 }}>Degraded conditions</strong>
+              {" "}— retries exceeded or fallback agent active. Monitor closely.
+            </span>
           </div>
         )}
 
@@ -292,7 +295,7 @@ export function RunDetail() {
           />
         </div>
 
-        {/* Phase timeline stub */}
+        {/* Phase timeline */}
         <div className="card">
           <div
             style={{
@@ -302,18 +305,15 @@ export function RunDetail() {
               color: "var(--text-secondary)",
               textTransform: "uppercase",
               letterSpacing: "0.08em",
-              marginBottom: 14,
+              marginBottom: 20,
             }}
           >
             Phase
           </div>
 
           <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
+            className="phase-timeline"
+            style={{ alignItems: "flex-start" }}
           >
             {[
               "plan",
@@ -330,79 +330,62 @@ export function RunDetail() {
                 ? false
                 : idx < ["plan", "develop", "review", "commit"].indexOf(currentPhase.split("_")[0] ?? "");
               const isCurrent = currentPhase.includes(phase);
+
+              let dotBg = "var(--bg-elevated)";
+              let dotBorder = "2px solid var(--border-default)";
+              let dotColor = "var(--text-muted)";
+              let labelColor = "var(--text-muted)";
+
+              if (isCurrent) {
+                dotBg = "var(--accent)";
+                dotBorder = "2px solid var(--accent)";
+                dotColor = "#000";
+                labelColor = "var(--accent)";
+              } else if (isDone) {
+                dotBg = "var(--status-completed)";
+                dotBorder = "2px solid var(--status-completed)";
+                dotColor = "#000";
+                labelColor = "var(--status-completed)";
+              }
+
               return (
                 <div
                   key={phase}
                   style={{
                     display: "flex",
-                    alignItems: "center",
-                    gap: 8,
+                    alignItems: "flex-start",
                     flex: idx < 3 ? 1 : undefined,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
+                  <div className="phase-node">
                     <div
+                      className="phase-node__dot"
                       style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: "50%",
-                        background: isCurrent
-                          ? "var(--accent)"
-                          : isDone
-                          ? "var(--status-completed)"
-                          : "var(--bg-elevated)",
-                        border: isCurrent
-                          ? "2px solid var(--accent)"
-                          : isDone
-                          ? "2px solid var(--status-completed)"
-                          : "2px solid var(--border-default)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 11,
-                        color: isCurrent
-                          ? "var(--text-inverse)"
-                          : isDone
-                          ? "var(--text-inverse)"
-                          : "var(--text-muted)",
-                        fontWeight: 600,
-                        transition: "all var(--transition-base)",
+                        background: dotBg,
+                        border: dotBorder,
+                        color: dotColor,
+                        boxShadow: isCurrent ? "0 0 12px var(--accent-glow)" : "none",
                       }}
                     >
                       {isDone ? "✓" : idx + 1}
                     </div>
                     <div
-                      style={{
-                        fontSize: 10,
-                        fontFamily: "var(--font-mono)",
-                        color: isCurrent
-                          ? "var(--accent)"
-                          : isDone
-                          ? "var(--status-completed)"
-                          : "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
+                      className="phase-node__label"
+                      style={{ color: labelColor }}
                     >
                       {phase}
                     </div>
                   </div>
                   {idx < 3 && (
                     <div
+                      className="phase-connector"
                       style={{
-                        flex: 1,
-                        height: 1,
                         background: isDone
                           ? "var(--status-completed)"
+                          : isCurrent
+                          ? "linear-gradient(90deg, var(--accent) 0%, var(--border-subtle) 100%)"
                           : "var(--border-subtle)",
-                        marginBottom: 20,
+                        opacity: isDone ? 1 : 0.5,
                       }}
                     />
                   )}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppSelector, useAppDispatch } from "../store";
 import {
   fetchGlobalConfig,
@@ -13,6 +13,7 @@ import {
   saveProjectConfig,
   getRawGlobalConfigToml,
   getRawProjectConfigToml,
+  validateConfigToml,
 } from "../api/tauri";
 import type { ConfigView } from "../types";
 
@@ -133,6 +134,8 @@ interface TomlEditorProps {
 const DEFAULT_TOML_TEMPLATE = (label: string) =>
   `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`;
 
+const VALIDATION_DEBOUNCE_MS = 300;
+
 function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
   const dispatch = useAppDispatch();
   const [toml, setToml] = useState(DEFAULT_TOML_TEMPLATE(label));
@@ -140,6 +143,8 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -163,8 +168,26 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
     void fetchToml();
   }, [scope, repoPath, label]);
 
+  // Validate TOML on every change, debounced to avoid spamming the backend.
+  useEffect(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      void validateConfigToml(toml).then((error) => {
+        setValidationError(error ?? null);
+      });
+    }, VALIDATION_DEBOUNCE_MS);
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [toml]);
+
   const handleSave = async () => {
     if (scope === "project" && !repoPath) return;
+    if (validationError !== null) return;
     setSaving(true);
     setSaveMsg(null);
     setSaveError(null);
@@ -184,6 +207,9 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
       setSaving(false);
     }
   };
+
+  const scopeLabel = scope === "global" ? "global" : "project";
+  const isSaveDisabled = saving || (scope === "project" && !repoPath) || validationError !== null;
 
   return (
     <div>
@@ -206,9 +232,33 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
           setToml(e.target.value);
           dispatch(setDirty(true));
         }}
-        style={{ minHeight: 220, padding: "12px", resize: "vertical", lineHeight: 1.6 }}
+        style={{
+          minHeight: 220,
+          padding: "12px",
+          resize: "vertical",
+          lineHeight: 1.6,
+          borderColor: validationError ? "var(--status-failed)" : undefined,
+        }}
         spellCheck={false}
       />
+      {/* Inline validation error */}
+      {validationError && (
+        <div
+          data-testid="toml-validation-error"
+          style={{
+            marginTop: 6,
+            padding: "6px 10px",
+            background: "rgba(248, 81, 73, 0.08)",
+            border: "1px solid rgba(248, 81, 73, 0.25)",
+            borderRadius: "var(--radius-md)",
+            fontSize: 11,
+            color: "var(--status-failed)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {validationError}
+        </div>
+      )}
       <div
         style={{
           display: "flex",
@@ -220,10 +270,23 @@ function TomlEditor({ label, repoPath, scope }: TomlEditorProps) {
         <button
           className="btn btn-primary"
           onClick={() => void handleSave()}
-          disabled={saving || (scope === "project" && !repoPath)}
+          disabled={isSaveDisabled}
         >
           {saving ? "Saving..." : "Save"}
         </button>
+        {/* Scope badge — persistent label so users know which scope they are editing */}
+        <span
+          data-testid="scope-badge"
+          className="chip-mono"
+          style={{
+            fontSize: 10,
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+          }}
+        >
+          {scopeLabel}
+        </span>
         {saveMsg && (
           <span
             style={{

@@ -221,4 +221,61 @@ mod tests {
         let review = result.unwrap();
         assert!(!review.suggestions.is_empty(), "Should have suggestions");
     }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_save_prompt_file_errors_for_unwritable_path() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let readonly_dir = dir.path().join("readonly");
+        std::fs::create_dir(&readonly_dir).unwrap();
+
+        // Set directory permissions to read-only so writes fail.
+        let mut perms = std::fs::metadata(&readonly_dir).unwrap().permissions();
+        perms.set_mode(0o444);
+        std::fs::set_permissions(&readonly_dir, perms).unwrap();
+
+        let path = readonly_dir.join("PROMPT.md");
+        let result = save_prompt_file(path.to_string_lossy().to_string(), "# Test".to_string());
+
+        // Restore permissions before asserting so TempDir can clean up.
+        let mut perms = std::fs::metadata(&readonly_dir).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&readonly_dir, perms).unwrap();
+
+        assert!(
+            result.is_err(),
+            "Expected Err when writing to a read-only directory"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("Failed to write prompt file") || msg.contains("Failed to create directory"),
+            "Error message should indicate write failure: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_review_prompt_dry_run_with_empty_prompt_returns_suggestions() {
+        // AI review with an empty prompt string in dry-run mode must still return suggestions.
+        // This verifies that the dry-run path does not silently fail on empty input.
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
+        std::env::set_var("RALPH_GUI_DRY_RUN", "1");
+        let result = review_prompt_with_ai(String::new());
+        if let Some(v) = old_val {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        } else {
+            std::env::remove_var("RALPH_GUI_DRY_RUN");
+        }
+        assert!(
+            result.is_ok(),
+            "Expected Ok for empty prompt in dry-run: {result:?}"
+        );
+        let review = result.unwrap();
+        assert!(
+            !review.suggestions.is_empty(),
+            "Dry-run should return placeholder suggestions even for empty prompt"
+        );
+    }
 }

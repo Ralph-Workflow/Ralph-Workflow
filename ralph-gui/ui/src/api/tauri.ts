@@ -179,6 +179,16 @@ export async function notifyRunStatusChange(
   }
 }
 
+// --- Config validation ---
+
+export async function validateConfigToml(
+  configToml: string,
+): Promise<string | null> {
+  return invoke<string | null>("validate_config_toml", {
+    config_toml: configToml,
+  });
+}
+
 // --- Agent profile commands ---
 
 export async function listAgentProfiles(
