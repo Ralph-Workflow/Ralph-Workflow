@@ -32,10 +32,7 @@
 use crate::files::llm_output_extraction::try_extract_xml_commit_with_trace;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
-use crate::reducer::state::{
-    CommitState, MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
-    PromptMaterializationReason,
-};
+use crate::reducer::state::CommitState;
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
 
 use super::super::MockEffectHandler;
@@ -69,31 +66,6 @@ impl MockEffectHandler {
                     vec![],
                 ))
             }
-
-            Effect::MaterializeCommitInputs { attempt } => Some((
-                PipelineEvent::commit_inputs_materialized(
-                    attempt,
-                    MaterializedPromptInput {
-                        kind: PromptInputKind::Diff,
-                        content_id_sha256: self
-                            .state
-                            .commit_diff_content_id_sha256
-                            .clone()
-                            .unwrap_or_else(|| "id".to_string()),
-                        consumer_signature_sha256: self
-                            .state
-                            .agent_chain
-                            .consumer_signature_sha256(),
-                        original_bytes: 1,
-                        final_bytes: 1,
-                        model_budget_bytes: None,
-                        inline_budget_bytes: None,
-                        representation: PromptInputRepresentation::Inline,
-                        reason: PromptMaterializationReason::WithinBudgets,
-                    },
-                ),
-                vec![],
-            )),
 
             Effect::PrepareCommitPrompt { prompt_mode: _ } => {
                 let attempt = match self.state.commit {
