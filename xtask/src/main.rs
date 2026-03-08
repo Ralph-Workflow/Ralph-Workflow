@@ -1,3 +1,4 @@
+mod cache;
 mod compliance;
 mod verify;
 
@@ -60,9 +61,10 @@ fn main() -> ExitCode {
 
     match args.next().as_deref() {
         Some("verify") => {
-            let runner = RealRunner::new();
-            let repo_root = runner.repo_root.clone();
-            let report = match verify::verify(
+            let real_runner = RealRunner::new();
+            let repo_root = real_runner.repo_root.clone();
+            let runner = cache::CachingCommandRunner::new(real_runner, repo_root.clone());
+            let report = match verify::verify_fast(
                 &runner,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,

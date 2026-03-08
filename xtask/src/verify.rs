@@ -21,7 +21,7 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
-pub trait CommandRunner {
+pub trait CommandRunner: Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
 }
 
@@ -88,7 +88,10 @@ fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i3
     CheckStatus::Pass
 }
 
-pub fn run_checks(runner: &dyn CommandRunner, checks: &[CommandSpec]) -> Result<VerifyReport> {
+pub fn run_checks(
+    runner: &(dyn CommandRunner + Sync),
+    checks: &[CommandSpec],
+) -> Result<VerifyReport> {
     for spec in checks {
         let output = runner
             .run(spec)
@@ -122,6 +125,120 @@ pub fn run_checks(runner: &dyn CommandRunner, checks: &[CommandSpec]) -> Result<
         exit: VerifyExitCode::Success,
         failure: None,
     })
+}
+
+/// Index in REQUIRED_CHECKS where the rg fast-scan group ends (exclusive).
+/// Checks at indices [0, RG_SCAN_END) are independent rg pattern scans and
+/// can run concurrently. Checks at indices [RG_SCAN_END, ..) invoke cargo
+/// and must run sequentially to avoid target/ lock conflicts.
+pub const RG_SCAN_END: usize = 20;
+
+/// Run checks concurrently using scoped threads.
+///
+/// All checks run to completion. If any fail, the first failure
+/// (by check-list order) is returned. Succeeds only if all checks pass.
+pub fn run_checks_concurrent(
+    runner: &(dyn CommandRunner + Sync),
+    checks: &[CommandSpec],
+) -> Result<VerifyReport> {
+    use std::sync::Mutex;
+
+    // Collect results in order-preserving slots.
+    let slots: Vec<Mutex<Option<(CheckStatus, CommandOutput)>>> =
+        (0..checks.len()).map(|_| Mutex::new(None)).collect();
+
+    std::thread::scope(|s| {
+        for (i, spec) in checks.iter().enumerate() {
+            let slot = &slots[i];
+            s.spawn(move || {
+                let output = match runner.run(spec) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        *slot.lock().unwrap() = Some((
+                            CheckStatus::Error,
+                            CommandOutput {
+                                exit_code: -1,
+                                stdout: String::new(),
+                                stderr: e.to_string(),
+                            },
+                        ));
+                        return;
+                    }
+                };
+                let status = classify(
+                    output.exit_code,
+                    &output.stdout,
+                    &output.stderr,
+                    spec.success_exit_codes,
+                );
+                *slot.lock().unwrap() = Some((status, output));
+            });
+        }
+    });
+
+    // Return first failure in original check order.
+    for (i, spec) in checks.iter().enumerate() {
+        let pair = slots[i]
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("check {} did not produce a result", spec.name))?;
+        let (status, output) = pair;
+        if status != CheckStatus::Pass {
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: spec.name,
+                    status,
+                    exit_code: output.exit_code,
+                    stdout: output.stdout,
+                    stderr: output.stderr,
+                }),
+            });
+        }
+    }
+
+    Ok(VerifyReport {
+        exit: VerifyExitCode::Success,
+        failure: None,
+    })
+}
+
+/// Fast verification: rg checks run concurrently, cargo checks sequentially.
+pub fn verify_fast(
+    runner: &(dyn CommandRunner + Sync),
+    repo_root: &std::path::Path,
+    native_checks: &[NativeCheck],
+    checks: &[CommandSpec],
+) -> Result<VerifyReport> {
+    // Run native checks first (always sequential, very fast).
+    for check in native_checks {
+        let result = (check.run)(repo_root);
+        if result.status != CheckStatus::Pass {
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: check.name,
+                    status: result.status,
+                    exit_code: -1,
+                    stdout: result.message,
+                    stderr: String::new(),
+                }),
+            });
+        }
+    }
+
+    let rg_end = RG_SCAN_END.min(checks.len());
+    let (rg_checks, cargo_checks) = checks.split_at(rg_end);
+
+    // Phase 1: parallel rg pattern scans.
+    let rg_report = run_checks_concurrent(runner, rg_checks)?;
+    if rg_report.exit == VerifyExitCode::Failure {
+        return Ok(rg_report);
+    }
+
+    // Phase 2: sequential cargo checks.
+    run_checks(runner, cargo_checks)
 }
 
 pub const REQUIRED_CHECKS: &[CommandSpec] = &[
@@ -523,8 +640,9 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-pub fn verify(
-    runner: &dyn CommandRunner,
+#[cfg(test)]
+fn verify(
+    runner: &(dyn CommandRunner + Sync),
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
@@ -553,18 +671,18 @@ pub fn verify(
 mod tests {
     use super::*;
 
-    use std::cell::RefCell;
     use std::collections::VecDeque;
+    use std::sync::Mutex;
 
     #[derive(Debug, Default)]
     struct FakeRunner {
-        outputs: RefCell<VecDeque<CommandOutput>>,
+        outputs: Mutex<VecDeque<CommandOutput>>,
     }
 
     impl FakeRunner {
         fn new(outputs: impl IntoIterator<Item = CommandOutput>) -> Self {
             Self {
-                outputs: RefCell::new(outputs.into_iter().collect()),
+                outputs: Mutex::new(outputs.into_iter().collect()),
             }
         }
     }
@@ -572,7 +690,8 @@ mod tests {
     impl CommandRunner for FakeRunner {
         fn run(&self, _spec: &CommandSpec) -> std::io::Result<CommandOutput> {
             self.outputs
-                .borrow_mut()
+                .lock()
+                .unwrap()
                 .pop_front()
                 .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "no output"))
         }
@@ -760,18 +879,18 @@ mod tests {
 
     #[derive(Debug, Default)]
     struct RecordingRunner {
-        ran: RefCell<Vec<&'static str>>,
+        ran: Mutex<Vec<&'static str>>,
     }
 
     impl RecordingRunner {
         fn ran(&self) -> Vec<&'static str> {
-            self.ran.borrow().clone()
+            self.ran.lock().unwrap().clone()
         }
     }
 
     impl CommandRunner for RecordingRunner {
         fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.ran.borrow_mut().push(spec.name);
+            self.ran.lock().unwrap().push(spec.name);
 
             Ok(CommandOutput {
                 exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
@@ -1014,5 +1133,209 @@ mod tests {
                 .any(|c| c.name == "compliance-timeout-wrapper"),
             "compliance-timeout-wrapper native check must be registered"
         );
+    }
+
+    // ── TDD tests for concurrent execution ──────────────────────────────────
+
+    #[test]
+    fn test_rg_scan_end_points_to_fmt_check() {
+        // TDD anchor: RG_SCAN_END must point exactly at the first cargo check.
+        assert!(
+            RG_SCAN_END < REQUIRED_CHECKS.len(),
+            "RG_SCAN_END must be within REQUIRED_CHECKS bounds"
+        );
+        assert_eq!(
+            REQUIRED_CHECKS[RG_SCAN_END].name, "fmt-check",
+            "REQUIRED_CHECKS[RG_SCAN_END] must be fmt-check (first cargo check)"
+        );
+    }
+
+    #[test]
+    fn test_rg_scan_group_contains_only_rg_checks() {
+        // TDD anchor: all checks before RG_SCAN_END must use program == "rg".
+        for spec in &REQUIRED_CHECKS[..RG_SCAN_END] {
+            assert_eq!(
+                spec.program, "rg",
+                "check '{}' at index before RG_SCAN_END must use program 'rg', got '{}'",
+                spec.name, spec.program
+            );
+        }
+    }
+
+    #[test]
+    fn test_run_checks_concurrent_runs_all_checks_when_all_pass() {
+        // Arrange: N checks that all succeed
+        let checks = [
+            CommandSpec {
+                name: "check-a",
+                program: "rg",
+                args: &[],
+                success_exit_codes: &[0],
+            },
+            CommandSpec {
+                name: "check-b",
+                program: "rg",
+                args: &[],
+                success_exit_codes: &[0],
+            },
+            CommandSpec {
+                name: "check-c",
+                program: "rg",
+                args: &[],
+                success_exit_codes: &[0],
+            },
+        ];
+        let runner = RecordingRunner::default();
+
+        // Act
+        let report =
+            run_checks_concurrent(&runner, &checks).expect("concurrent checks should not error");
+
+        // Assert
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(report.failure, None);
+        let ran = runner.ran();
+        // All checks must have run (order may differ due to parallelism)
+        use std::collections::HashSet;
+        let ran_set: HashSet<&str> = ran.iter().copied().collect();
+        assert!(ran_set.contains("check-a"), "check-a must have run");
+        assert!(ran_set.contains("check-b"), "check-b must have run");
+        assert!(ran_set.contains("check-c"), "check-c must have run");
+    }
+
+    #[test]
+    fn test_run_checks_concurrent_collects_first_failure() {
+        // Arrange: first check fails (by order), rest pass
+        let checks = [
+            CommandSpec {
+                name: "fail-check",
+                program: "rg",
+                args: &[],
+                success_exit_codes: &[0],
+            },
+            CommandSpec {
+                name: "pass-check",
+                program: "rg",
+                args: &[],
+                success_exit_codes: &[0],
+            },
+        ];
+        let runner = FakeRunner::new([
+            CommandOutput {
+                exit_code: 42,
+                stdout: "matches found".to_string(),
+                stderr: String::new(),
+            },
+            CommandOutput {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        ]);
+
+        // Act
+        let report =
+            run_checks_concurrent(&runner, &checks).expect("concurrent checks should not error");
+
+        // Assert
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure details");
+        assert_eq!(failure.name, "fail-check");
+        assert_eq!(failure.exit_code, 42);
+    }
+
+    #[test]
+    fn test_verify_fast_runs_all_required_checks() {
+        // TDD anchor: verify_fast() must exercise all REQUIRED_CHECKS.
+        let runner = RecordingRunner::default();
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(report.failure, None);
+
+        let ran = runner.ran();
+        use std::collections::HashSet;
+        let ran_set: HashSet<&str> = ran.iter().copied().collect();
+
+        for spec in REQUIRED_CHECKS {
+            assert!(
+                ran_set.contains(spec.name),
+                "verify_fast must run check '{}'",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_verify_fast_stops_on_rg_group_failure() {
+        // TDD anchor: when an rg check fails, cargo checks must NOT run.
+        // Provide a failing output for the first rg check, then pass for remaining rg checks.
+        let mut outputs: Vec<CommandOutput> = Vec::new();
+        // First rg check fails
+        outputs.push(CommandOutput {
+            exit_code: 0, // exit 0 = matches found = failure for rg checks (success_exit_codes: &[1])
+            stdout: "found forbidden pattern".to_string(),
+            stderr: String::new(),
+        });
+        // Rest of rg checks pass (RG_SCAN_END - 1 more)
+        for _ in 1..RG_SCAN_END {
+            outputs.push(CommandOutput {
+                exit_code: 1, // exit 1 = no matches = success for rg checks
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        let runner = FakeRunner::new(outputs);
+
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "forbidden-allow-expect-scan");
+    }
+
+    #[test]
+    fn test_verify_fast_stops_on_cargo_check_failure() {
+        // TDD anchor: when first cargo check (fmt-check) fails, later cargo checks must not run.
+        let mut outputs: Vec<CommandOutput> = Vec::new();
+        // All rg checks pass
+        for _ in 0..RG_SCAN_END {
+            outputs.push(CommandOutput {
+                exit_code: 1, // no matches = success
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        // fmt-check fails
+        outputs.push(CommandOutput {
+            exit_code: 1, // exit 1 = failure for cargo (success_exit_codes: &[0])
+            stdout: String::new(),
+            stderr: "error: formatting differences found".to_string(),
+        });
+        let runner = FakeRunner::new(outputs);
+
+        let report = verify_fast(
+            &runner,
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            REQUIRED_CHECKS,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "fmt-check");
     }
 }
