@@ -8,6 +8,10 @@
 //! ### `EffectHandler`
 //!
 //! The `execute()` method handles effects that require workspace access:
+//! - `CheckCommitDiff` - Writes simulated diff to workspace, reads staged diff sequence
+//! - `MaterializeCommitInputs` - Reads diff from workspace and computes real byte sizes
+//! - `CheckUncommittedChangesBeforeTermination` - Returns mocked safety check results
+//! - `ReportAgentChainExhausted` - Returns error event for exhausted agent chains
 //! - `SaveCheckpoint` - Actually saves checkpoint for resume tests
 //! - `TriggerDevFixFlow` - Dispatch dev-fix flow (no termination marker)
 //! - `EmitCompletionMarkerAndTerminate` - Writes completion marker for termination tests
@@ -49,7 +53,11 @@ use super::{
 /// `MainEffectHandler` in tests. The `PhaseContext` is ignored for most effects -
 /// the mock simply captures the effect and returns an appropriate mock event.
 ///
-/// Special cases that require workspace access:
+/// Special cases that require workspace access (handled in `execute()` before delegating):
+/// - `CheckCommitDiff` - Writes simulated diff; reads from staged diff sequence
+/// - `MaterializeCommitInputs` - Reads diff from workspace, computes real byte sizes
+/// - `CheckUncommittedChangesBeforeTermination` - Returns mocked pre-termination check
+/// - `ReportAgentChainExhausted` - Returns error for exhausted agent chains
 /// - `SaveCheckpoint` - Actually saves checkpoint for resume tests
 /// - `EmitCompletionMarkerAndTerminate` - Writes completion marker file
 impl EffectHandler<'_> for MockEffectHandler {
@@ -73,7 +81,9 @@ impl EffectHandler<'_> for MockEffectHandler {
                         .map_err(|e| anyhow::anyhow!(e))?;
                 }
 
-                let content = if let Some(ref err) = self.simulate_commit_diff_error {
+                let content = if let Some(staged) = self.staged_diff_contents.pop_front() {
+                    staged
+                } else if let Some(ref err) = self.simulate_commit_diff_error {
                     format!(
                         r"## DIFF UNAVAILABLE - INVESTIGATION REQUIRED
 
@@ -110,6 +120,57 @@ If you determine there are NO actual changes to commit, respond with:
                     content.trim().is_empty(),
                     sha256_hex_str(&content),
                 );
+                self.captured_events.borrow_mut().push(event.clone());
+                Ok(EffectResult::event(event))
+            }
+
+            Effect::MaterializeCommitInputs { attempt } => {
+                use crate::reducer::prompt_inputs::sha256_hex_str;
+                use crate::reducer::state::{
+                    MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
+                    PromptMaterializationReason,
+                };
+                use std::path::Path;
+
+                self.captured_effects
+                    .borrow_mut()
+                    .push(Effect::MaterializeCommitInputs { attempt });
+
+                let diff_path = Path::new(".agent/tmp/commit_diff.txt");
+                let content = match ctx.workspace.read(diff_path) {
+                    Ok(content) => content,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                        // Match real handler semantics: invalidate when the diff file is missing.
+                        let event = PipelineEvent::commit_diff_invalidated(
+                            "Missing commit diff at .agent/tmp/commit_diff.txt".to_string(),
+                        );
+                        self.captured_events.borrow_mut().push(event.clone());
+                        return Ok(EffectResult::event(event));
+                    }
+                    Err(err) => {
+                        return Err(anyhow::anyhow!(err).context(
+                            "Failed to read .agent/tmp/commit_diff.txt while materializing commit inputs",
+                        ));
+                    }
+                };
+
+                let original_bytes = content.len() as u64;
+                let content_id_sha256 = sha256_hex_str(&content);
+                let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
+
+                let input = MaterializedPromptInput {
+                    kind: PromptInputKind::Diff,
+                    content_id_sha256,
+                    consumer_signature_sha256,
+                    original_bytes,
+                    final_bytes: original_bytes,
+                    model_budget_bytes: None,
+                    inline_budget_bytes: None,
+                    representation: PromptInputRepresentation::Inline,
+                    reason: PromptMaterializationReason::WithinBudgets,
+                };
+
+                let event = PipelineEvent::commit_inputs_materialized(attempt, input);
                 self.captured_events.borrow_mut().push(event.clone());
                 Ok(EffectResult::event(event))
             }
@@ -281,5 +342,185 @@ If you determine there are NO actual changes to commit, respond with:
 impl crate::app::event_loop::StatefulHandler for MockEffectHandler {
     fn update_state(&mut self, state: PipelineState) {
         self.state = state;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agents::AgentRegistry;
+    use crate::checkpoint::execution_history::ExecutionHistory;
+    use crate::checkpoint::RunContext;
+    use crate::config::Config;
+    use crate::executor::{MockProcessExecutor, ProcessExecutor};
+    use crate::logger::{Colors, Logger};
+    use crate::pipeline::Timer;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::workspace::{MemoryWorkspace, Workspace};
+    use std::collections::HashMap;
+    use std::io;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct ReadErrorWorkspace {
+        inner: MemoryWorkspace,
+        deny_path: PathBuf,
+        deny_kind: io::ErrorKind,
+        deny_message: String,
+    }
+
+    impl ReadErrorWorkspace {
+        fn new(inner: MemoryWorkspace, deny_path: impl Into<PathBuf>, kind: io::ErrorKind) -> Self {
+            Self {
+                inner,
+                deny_path: deny_path.into(),
+                deny_kind: kind,
+                deny_message: "injected read error".to_string(),
+            }
+        }
+
+        fn should_deny(&self, relative: &Path) -> bool {
+            relative == self.deny_path.as_path()
+        }
+    }
+
+    impl Workspace for ReadErrorWorkspace {
+        fn root(&self) -> &Path {
+            self.inner.root()
+        }
+
+        fn read(&self, relative: &Path) -> io::Result<String> {
+            if self.should_deny(relative) {
+                return Err(io::Error::new(self.deny_kind, self.deny_message.clone()));
+            }
+            self.inner.read(relative)
+        }
+
+        fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+            if self.should_deny(relative) {
+                return Err(io::Error::new(self.deny_kind, self.deny_message.clone()));
+            }
+            self.inner.read_bytes(relative)
+        }
+
+        fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write(relative, content)
+        }
+
+        fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.write_bytes(relative, content)
+        }
+
+        fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+            self.inner.append_bytes(relative, content)
+        }
+
+        fn exists(&self, relative: &Path) -> bool {
+            self.inner.exists(relative)
+        }
+
+        fn is_file(&self, relative: &Path) -> bool {
+            self.inner.is_file(relative)
+        }
+
+        fn is_dir(&self, relative: &Path) -> bool {
+            self.inner.is_dir(relative)
+        }
+
+        fn remove(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove(relative)
+        }
+
+        fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_if_exists(relative)
+        }
+
+        fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all(relative)
+        }
+
+        fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+            self.inner.remove_dir_all_if_exists(relative)
+        }
+
+        fn create_dir_all(&self, relative: &Path) -> io::Result<()> {
+            self.inner.create_dir_all(relative)
+        }
+
+        fn read_dir(&self, relative: &Path) -> io::Result<Vec<crate::workspace::DirEntry>> {
+            self.inner.read_dir(relative)
+        }
+
+        fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+            self.inner.rename(from, to)
+        }
+
+        fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
+            self.inner.write_atomic(relative, content)
+        }
+
+        fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_readonly(relative)
+        }
+
+        fn set_writable(&self, relative: &Path) -> io::Result<()> {
+            self.inner.set_writable(relative)
+        }
+    }
+
+    #[test]
+    fn test_materialize_commit_inputs_propagates_non_not_found_workspace_read_errors() {
+        let inner_ws = MemoryWorkspace::new_test().with_file(".agent/tmp/commit_diff.txt", "x");
+        let deny_path = PathBuf::from(".agent/tmp/commit_diff.txt");
+        let ws = ReadErrorWorkspace::new(inner_ws, deny_path, io::ErrorKind::PermissionDenied);
+
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let mut timer = Timer::new();
+
+        let config = Config::default();
+        let registry = AgentRegistry::new().unwrap();
+        let template_context = TemplateContext::default();
+
+        let executor = Arc::new(MockProcessExecutor::new());
+        let executor_arc: Arc<dyn ProcessExecutor> = executor;
+
+        let repo_root = PathBuf::from("/mock/repo");
+        let run_log_context = crate::logging::RunLogContext::new(&ws).unwrap();
+        let cloud = crate::config::types::CloudConfig::disabled();
+
+        let ws_arc: Arc<dyn Workspace> = Arc::new(ws);
+        let workspace_arc = Arc::clone(&ws_arc);
+
+        let mut ctx = crate::phases::PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent: "claude",
+            reviewer_agent: "claude",
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context: RunContext::new(),
+            execution_history: ExecutionHistory::new(),
+            prompt_history: HashMap::new(),
+            executor: executor_arc.as_ref(),
+            executor_arc: executor_arc.clone(),
+            repo_root: repo_root.as_path(),
+            workspace: ws_arc.as_ref(),
+            workspace_arc,
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &cloud,
+        };
+
+        let mut handler = MockEffectHandler::new(PipelineState::initial(1, 0));
+        let result = handler.execute(Effect::MaterializeCommitInputs { attempt: 1 }, &mut ctx);
+        assert!(
+            result.is_err(),
+            "expected non-NotFound workspace read errors to propagate"
+        );
     }
 }

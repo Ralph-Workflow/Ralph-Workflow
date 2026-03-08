@@ -193,6 +193,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("commit/diff_failure_fallback.rs"),
     },
     SourceFile {
+        path: "commit/multi_iteration_diff_freshness.rs",
+        contents: include_str!("commit/multi_iteration_diff_freshness.rs"),
+    },
+    SourceFile {
         path: "commit/pre_termination_safety.rs",
         contents: include_str!("commit/pre_termination_safety.rs"),
     },
@@ -275,10 +279,6 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "memory_safety/thread_lifecycle.rs",
         contents: include_str!("memory_safety/thread_lifecycle.rs"),
-    },
-    SourceFile {
-        path: "memory_safety/arc_patterns.rs",
-        contents: include_str!("memory_safety/arc_patterns.rs"),
     },
     SourceFile {
         path: "memory_safety/channel_bounds.rs",

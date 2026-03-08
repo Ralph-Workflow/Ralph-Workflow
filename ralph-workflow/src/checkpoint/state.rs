@@ -33,6 +33,7 @@ use std::path::Path;
 use crate::workspace::Workspace;
 
 include!("state/types/snapshots_and_phases.rs");
+include!("state/types/pipeline_phase.rs");
 include!("state/types/checkpoint.rs");
 include!("state/serialization.rs");
 

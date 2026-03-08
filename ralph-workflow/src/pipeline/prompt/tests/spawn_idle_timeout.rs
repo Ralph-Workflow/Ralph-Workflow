@@ -122,7 +122,7 @@ fn test_run_with_agent_spawn_does_not_hang_when_stdout_closes_early_and_idle_tim
                 &cmd,
                 &runtime,
                 &[],
-                1,
+                Duration::ZERO,
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),
@@ -288,7 +288,7 @@ fn test_run_with_agent_spawn_cancels_stderr_collector_on_idle_timeout() {
         &cmd,
         &runtime,
         &[],
-        0,
+        Duration::ZERO,
         Duration::from_millis(10),
         crate::pipeline::idle_timeout::KillConfig::new(
             Duration::from_millis(20),
@@ -436,7 +436,7 @@ fn test_run_with_agent_spawn_regains_control_when_child_never_exits_after_sigkil
                 &cmd,
                 &runtime,
                 &[],
-                1,
+                Duration::ZERO,
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),
@@ -599,7 +599,7 @@ fn test_run_with_agent_spawn_regains_control_when_stdout_read_blocks_and_idle_ti
                 &cmd,
                 &runtime,
                 &[],
-                0,
+                Duration::ZERO,
                 Duration::from_millis(10),
                 crate::pipeline::idle_timeout::KillConfig::new(
                     Duration::from_millis(20),

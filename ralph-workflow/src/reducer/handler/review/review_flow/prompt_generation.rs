@@ -121,89 +121,9 @@ impl MainEffectHandler {
             (None, None)
         };
         let continuation_state = &self.state.continuation;
-        let is_xsd_retry = matches!(prompt_mode, PromptMode::XsdRetry);
-        if is_xsd_retry {
-            let last_output = match ctx.workspace.read(Path::new(xml_paths::ISSUES_XML)) {
-                Ok(output) => output,
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    // The canonical file was archived after successful validation or a previous retry.
-                    // Try reading from the archived .processed file as a fallback.
-                    let processed_path = Path::new(".agent/tmp/issues.xml.processed");
-                    if let Ok(output) = ctx.workspace.read(processed_path) {
-                        ctx.logger
-                            .info("XSD retry: using archived .processed file as last output");
-                        output
-                    } else {
-                        ctx.logger.warn(
-                            "Missing .agent/tmp/issues.xml and .processed fallback; using empty output for review XSD retry",
-                        );
-                        String::new()
-                    }
-                }
-                Err(err) => {
-                    return Err(ErrorEvent::WorkspaceReadFailed {
-                        path: xml_paths::ISSUES_XML.to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    }
-                    .into());
-                }
-            };
-
-            let content_id_sha256 = sha256_hex_str(&last_output);
-            let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-            let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
-            let last_output_bytes = last_output.len() as u64;
-
-            let already_materialized = self
-                .state
-                .prompt_inputs
-                .xsd_retry_last_output
-                .as_ref()
-                .is_some_and(|m| {
-                    m.phase == crate::reducer::event::PipelinePhase::Review
-                        && m.scope_id == pass
-                        && m.last_output.content_id_sha256 == content_id_sha256
-                        && m.last_output.consumer_signature_sha256 == consumer_signature_sha256
-                });
-
-            if !already_materialized {
-                let last_output_path = Path::new(".agent/tmp/last_output.xml");
-                ctx.workspace
-                    .write_atomic(last_output_path, &last_output)
-                    .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-                        path: last_output_path.display().to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    })?;
-
-                let input = MaterializedPromptInput {
-                    kind: PromptInputKind::LastOutput,
-                    content_id_sha256: content_id_sha256.clone(),
-                    consumer_signature_sha256,
-                    original_bytes: last_output_bytes,
-                    final_bytes: last_output_bytes,
-                    model_budget_bytes: None,
-                    inline_budget_bytes: Some(inline_budget_bytes),
-                    representation: PromptInputRepresentation::FileReference {
-                        path: last_output_path.to_path_buf(),
-                    },
-                    reason: PromptMaterializationReason::PolicyForcedReference,
-                };
-                additional_events.push(PipelineEvent::xsd_retry_last_output_materialized(
-                    crate::reducer::event::PipelinePhase::Review,
-                    pass,
-                    input,
-                ));
-                if last_output_bytes > inline_budget_bytes {
-                    additional_events.push(PipelineEvent::prompt_input_oversize_detected(
-                        crate::reducer::event::PipelinePhase::Review,
-                        PromptInputKind::LastOutput,
-                        content_id_sha256,
-                        last_output_bytes,
-                        inline_budget_bytes,
-                        "xsd-retry-context".to_string(),
-                    ));
-                }
-            }
+        if matches!(prompt_mode, PromptMode::XsdRetry) {
+            let xsd_retry_events = self.materialize_xsd_retry_last_output(ctx, pass)?;
+            additional_events.extend(xsd_retry_events);
         }
         let (
             prompt_key,
@@ -506,53 +426,6 @@ impl MainEffectHandler {
             ));
         }
 
-        Ok(result)
-    }
-
-    pub(in crate::reducer::handler) fn invoke_review_agent(
-        &mut self,
-        ctx: &mut PhaseContext<'_>,
-        pass: u32,
-    ) -> Result<EffectResult> {
-        use crate::agents::AgentRole;
-        use std::path::Path;
-
-        // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Reviewer);
-
-        let prompt = match ctx
-            .workspace
-            .read(Path::new(".agent/tmp/review_prompt.txt"))
-        {
-            Ok(s) => s,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return Err(ErrorEvent::ReviewPromptMissing { pass }.into());
-            }
-            Err(err) => {
-                return Err(ErrorEvent::WorkspaceReadFailed {
-                    path: ".agent/tmp/review_prompt.txt".to_string(),
-                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                }
-                .into());
-            }
-        };
-
-        let agent = self
-            .state
-            .agent_chain
-            .current_agent()
-            .cloned()
-            .unwrap_or_else(|| ctx.reviewer_agent.to_string());
-
-        let mut result = self.invoke_agent(ctx, AgentRole::Reviewer, &agent, None, prompt)?;
-        if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            result = result.with_additional_event(PipelineEvent::review_agent_invoked(pass));
-        }
         Ok(result)
     }
 }

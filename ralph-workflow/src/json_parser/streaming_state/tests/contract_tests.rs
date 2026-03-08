@@ -153,13 +153,33 @@ fn test_streaming_quality_metrics_comprehensive_tracking() {
 
 #[test]
 fn test_snapshot_threshold_default() {
-    // Ensure no env var is set for this test
-    std::env::remove_var("RALPH_STREAMING_SNAPSHOT_THRESHOLD");
-    // Note: Since we use OnceLock, we can't reset the value in tests.
-    // This test documents the default behavior.
-    let threshold = snapshot_threshold();
+    let threshold = snapshot_threshold_from_env_fn(|_| None);
     assert_eq!(
         threshold, DEFAULT_SNAPSHOT_THRESHOLD,
         "Default threshold should be 200"
     );
+}
+
+#[test]
+fn test_snapshot_threshold_parses_valid_override() {
+    let threshold = snapshot_threshold_from_env_fn(|k| {
+        (k == "RALPH_STREAMING_SNAPSHOT_THRESHOLD").then(|| "250".to_string())
+    });
+    assert_eq!(threshold, 250);
+}
+
+#[test]
+fn test_snapshot_threshold_out_of_range_falls_back_to_default() {
+    let threshold = snapshot_threshold_from_env_fn(|k| {
+        (k == "RALPH_STREAMING_SNAPSHOT_THRESHOLD").then(|| "1".to_string())
+    });
+    assert_eq!(threshold, DEFAULT_SNAPSHOT_THRESHOLD);
+}
+
+#[test]
+fn test_snapshot_threshold_invalid_value_falls_back_to_default() {
+    let threshold = snapshot_threshold_from_env_fn(|k| {
+        (k == "RALPH_STREAMING_SNAPSHOT_THRESHOLD").then(|| "not-a-number".to_string())
+    });
+    assert_eq!(threshold, DEFAULT_SNAPSHOT_THRESHOLD);
 }

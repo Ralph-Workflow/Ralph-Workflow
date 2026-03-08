@@ -138,15 +138,14 @@ mod tests {
 
     #[test]
     fn test_run_id_sortable() {
-        // Create two run IDs with a small delay
-        let first = RunId::new();
-        std::thread::sleep(std::time::Duration::from_millis(10));
-        let second = RunId::new();
-
-        // Lexicographic comparison should match chronological order
+        // The RunId format (YYYY-MM-DD_HH-mm-ss.SSSZ) is designed so that
+        // lexicographic order equals chronological order.
+        // Verify the format property with two known-ordered strings — no real clock needed.
+        let earlier = RunId::for_test("2024-01-01_00-00-01.000Z");
+        let later = RunId::for_test("2024-01-01_00-00-02.000Z");
         assert!(
-            first.as_str() < second.as_str(),
-            "Run IDs should sort chronologically"
+            earlier.as_str() < later.as_str(),
+            "RunId format should be lexicographically sortable in chronological order"
         );
     }
 }

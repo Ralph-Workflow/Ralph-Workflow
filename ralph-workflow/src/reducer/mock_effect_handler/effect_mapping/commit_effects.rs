@@ -32,10 +32,7 @@
 use crate::files::llm_output_extraction::try_extract_xml_commit_with_trace;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
-use crate::reducer::state::{
-    CommitState, MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
-    PromptMaterializationReason,
-};
+use crate::reducer::state::CommitState;
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
 
 use super::super::MockEffectHandler;
@@ -49,6 +46,10 @@ impl MockEffectHandler {
         &self,
         effect: Effect,
     ) -> Option<(PipelineEvent, Vec<UIEvent>)> {
+        // NOTE: `Effect::CheckCommitDiff` is handled in the workspace-backed mock
+        // handler implementation (`mock_effect_handler/handler.rs`) so it can write
+        // the diff to `.agent/tmp/commit_diff.txt` and compute a real sha256 content id.
+        // Do not map it here.
         match effect {
             Effect::RunRebase {
                 phase,
@@ -61,39 +62,6 @@ impl MockEffectHandler {
             Effect::ResolveRebaseConflicts { strategy: _ } => {
                 Some((PipelineEvent::rebase_conflict_resolved(vec![]), vec![]))
             }
-
-            Effect::CheckCommitDiff => {
-                let empty = self.simulate_empty_diff;
-                Some((
-                    PipelineEvent::commit_diff_prepared(empty, "id".to_string()),
-                    vec![],
-                ))
-            }
-
-            Effect::MaterializeCommitInputs { attempt } => Some((
-                PipelineEvent::commit_inputs_materialized(
-                    attempt,
-                    MaterializedPromptInput {
-                        kind: PromptInputKind::Diff,
-                        content_id_sha256: self
-                            .state
-                            .commit_diff_content_id_sha256
-                            .clone()
-                            .unwrap_or_else(|| "id".to_string()),
-                        consumer_signature_sha256: self
-                            .state
-                            .agent_chain
-                            .consumer_signature_sha256(),
-                        original_bytes: 1,
-                        final_bytes: 1,
-                        model_budget_bytes: None,
-                        inline_budget_bytes: None,
-                        representation: PromptInputRepresentation::Inline,
-                        reason: PromptMaterializationReason::WithinBudgets,
-                    },
-                ),
-                vec![],
-            )),
 
             Effect::PrepareCommitPrompt { prompt_mode: _ } => {
                 let attempt = match self.state.commit {
@@ -214,5 +182,23 @@ impl MockEffectHandler {
 
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
+        // `Effect::CheckCommitDiff` is workspace-backed in MockEffectHandler::execute so the
+        // content id is computed from the actual diff bytes written to workspace.
+        // The pure effect-mapping layer must not synthesize a fake content id.
+        let handler = MockEffectHandler::new(crate::reducer::state::PipelineState::initial(1, 0));
+        let mapped = handler.handle_commit_effect(Effect::CheckCommitDiff);
+        assert!(
+            mapped.is_none(),
+            "CheckCommitDiff should be handled by the workspace-backed execute path"
+        );
     }
 }

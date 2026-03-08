@@ -24,6 +24,7 @@
 //! - Tests are deterministic and verify effects, not real filesystem state
 
 mod diff_failure_fallback;
+mod multi_iteration_diff_freshness;
 mod pre_termination_safety;
 
 use crate::common::{

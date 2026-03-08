@@ -18,15 +18,20 @@
 //! ## Module Organization
 //!
 //! - `effect_enum`: The `Effect` enum with all variants
+//! - `effect_support_types`: Helper structs/enums used as `Effect` field types
+//! - `effect_impl`: Method implementations for `Effect`
 //! - `effect_result`: `EffectResult` struct and helper methods
 //! - `handler_trait`: `EffectHandler` trait definition
 //!
 //! See `docs/architecture/effect-system.md` for details.
 
 mod effect_enum;
+mod effect_impl;
 mod effect_result;
+mod effect_support_types;
 mod handler_trait;
 
-pub use effect_enum::{ContinuationContextData, Effect, RecoveryResetType};
+pub use effect_enum::Effect;
 pub use effect_result::EffectResult;
+pub use effect_support_types::{ContinuationContextData, RecoveryResetType};
 pub use handler_trait::EffectHandler;

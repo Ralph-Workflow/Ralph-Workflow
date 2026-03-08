@@ -5,8 +5,7 @@
 //! false timeout kills when agents are making progress through file updates.
 
 use crate::workspace::Workspace;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 /// Tracks file modification activity for timeout detection.
@@ -15,20 +14,17 @@ use std::time::{Duration, SystemTime};
 /// ongoing work that may not produce stdout/stderr output. It tracks modification
 /// times and distinguishes meaningful AI progress from log churn and system artifacts.
 pub struct FileActivityTracker {
-    /// Last observed modification times (path -> mtime)
-    last_seen: HashMap<PathBuf, SystemTime>,
+    _private: (),
 }
 
 impl FileActivityTracker {
     /// Create a new file activity tracker.
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            last_seen: HashMap::new(),
-        }
+    pub const fn new() -> Self {
+        Self { _private: () }
     }
 
-    /// Check if any AI-generated files have been modified within `timeout_secs`.
+    /// Check if any AI-generated files have been modified within `timeout`.
     ///
     /// This method scans the `.agent/` directory for files that represent meaningful
     /// AI progress (PLAN.md, ISSUES.md, NOTES.md, commit-message.txt, .agent/tmp/*.xml)
@@ -40,7 +36,7 @@ impl FileActivityTracker {
     /// # Arguments
     ///
     /// * `workspace` - The workspace to read files from
-    /// * `timeout_secs` - The recency window in seconds (typically 300)
+    /// * `timeout` - The recency window (typically 300 seconds)
     ///
     /// # Excluded Files
     ///
@@ -55,9 +51,9 @@ impl FileActivityTracker {
     ///
     /// Returns error if the operation fails.
     pub fn check_for_recent_activity(
-        &mut self,
+        &self,
         workspace: &dyn Workspace,
-        timeout_secs: u64,
+        timeout: Duration,
     ) -> std::io::Result<bool> {
         let agent_dir = Path::new(".agent");
 
@@ -68,7 +64,6 @@ impl FileActivityTracker {
 
         let entries = workspace.read_dir(agent_dir)?;
         let now = SystemTime::now();
-        let threshold = Duration::from_secs(timeout_secs);
 
         for entry in entries {
             // Only check files, not directories
@@ -89,13 +84,8 @@ impl FileActivityTracker {
             };
 
             let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-            let path_buf = path.to_path_buf();
-
-            // Update tracking map
-            self.last_seen.insert(path_buf, mtime);
-
             // Recent activity detected
-            if age < threshold {
+            if age < timeout {
                 return Ok(true);
             }
         }
@@ -121,11 +111,8 @@ impl FileActivityTracker {
                     };
 
                     let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                    let path_buf = path.to_path_buf();
 
-                    self.last_seen.insert(path_buf, mtime);
-
-                    if age < threshold {
+                    if age < timeout {
                         return Ok(true);
                     }
                 }

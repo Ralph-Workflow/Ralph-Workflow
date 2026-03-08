@@ -44,7 +44,10 @@ fn test_codex_reasoning_event() {
 
 #[test]
 fn test_codex_reasoning_completed_shows_text() {
-    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Verbose);
+    use crate::json_parser::terminal::TerminalMode;
+
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Verbose)
+        .with_terminal_mode(TerminalMode::None);
     let json = r#"{"type":"item.completed","item":{"type":"reasoning","id":"item_1","text":"I should analyze this file first"}}"#;
     let output = parser.parse_event(json);
     assert!(output.is_some());

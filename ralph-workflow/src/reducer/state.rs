@@ -3,7 +3,6 @@
 //! Defines immutable state structures that capture complete pipeline execution context.
 //! These state structures can be serialized as checkpoints for resume functionality.
 
-use crate::agents::AgentRole;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -23,7 +22,8 @@ pub mod continuation;
 pub use continuation::ContinuationState;
 
 // Agent fallback chain state and backoff computation
-include!("state/agent_chain.rs");
+pub mod agent_chain;
+pub use agent_chain::{AgentChainState, AgentRole, RateLimitContinuationPrompt};
 
 // Run-level execution metrics
 include!("state/metrics.rs");

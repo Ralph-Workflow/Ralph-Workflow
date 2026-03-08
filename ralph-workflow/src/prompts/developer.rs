@@ -3,6 +3,7 @@
 //! Prompts for developer agent actions including iteration and planning.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use super::partials::get_shared_partials;

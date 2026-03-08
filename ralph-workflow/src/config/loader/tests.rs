@@ -1,5 +1,6 @@
 use super::*;
 use crate::config::path_resolver::MemoryConfigEnvironment;
+use crate::config::Verbosity;
 use std::path::Path;
 
 #[test]

@@ -67,7 +67,7 @@ fn stdout_pump_applies_backpressure_when_receiver_is_not_consuming() {
 
     let handle = spawn_stdout_pump(reader, timestamp, tx, Arc::clone(&cancel));
 
-    std::thread::sleep(Duration::from_millis(200));
+    std::thread::sleep(Duration::from_millis(20));
 
     // With an unbounded channel, the pump can usually enqueue everything and exit.
     // With a bounded channel, it should block and remain alive.

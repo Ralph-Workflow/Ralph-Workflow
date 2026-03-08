@@ -72,26 +72,32 @@ pub(super) const DEFAULT_MAX_DELTA_HISTORY: usize = 10;
 /// - `RALPH_STREAMING_SNAPSHOT_THRESHOLD`: Threshold for detecting snapshot-as-delta
 ///   violations (default: 200). Deltas exceeding this size trigger warnings.
 ///
+/// Get the snapshot threshold from an injected environment accessor.
+///
+/// Reads `RALPH_STREAMING_SNAPSHOT_THRESHOLD`.
+/// Valid range: 50-1000 characters.
+/// Falls back to default of 200 if not set, not parseable, or out of range.
+pub(super) fn snapshot_threshold_from_env_fn(get: impl Fn(&str) -> Option<String>) -> usize {
+    get("RALPH_STREAMING_SNAPSHOT_THRESHOLD")
+        .and_then(|s| s.parse::<usize>().ok())
+        .and_then(|v| {
+            if (MIN_SNAPSHOT_THRESHOLD..=MAX_SNAPSHOT_THRESHOLD).contains(&v) {
+                Some(v)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(DEFAULT_SNAPSHOT_THRESHOLD)
+}
+
 /// Get the snapshot threshold from environment variable or use default.
 ///
 /// Reads `RALPH_STREAMING_SNAPSHOT_THRESHOLD` env var.
 /// Valid range: 50-1000 characters.
-/// Falls back to default of 200 if not set or out of range.
+/// Falls back to default of 200 if not set, not parseable, or out of range.
 pub(super) fn snapshot_threshold() -> usize {
     static THRESHOLD: OnceLock<usize> = OnceLock::new();
-    *THRESHOLD.get_or_init(|| {
-        std::env::var("RALPH_STREAMING_SNAPSHOT_THRESHOLD")
-            .ok()
-            .and_then(|s| s.parse::<usize>().ok())
-            .and_then(|v| {
-                if (MIN_SNAPSHOT_THRESHOLD..=MAX_SNAPSHOT_THRESHOLD).contains(&v) {
-                    Some(v)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(DEFAULT_SNAPSHOT_THRESHOLD)
-    })
+    *THRESHOLD.get_or_init(|| snapshot_threshold_from_env_fn(|k| std::env::var(k).ok()))
 }
 
 /// Streaming state for the current message lifecycle.

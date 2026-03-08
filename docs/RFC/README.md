@@ -50,6 +50,7 @@ An RFC is a design document that describes a proposed change to Ralph. RFCs are 
 | [RFC-004](./RFC-004-reducer-based-pipeline-architecture.md) | Reducer-Based Pipeline Architecture | Production Ready ✅ |
 | [RFC-005](./RFC-005-event-loop-savecheckpoint-bypass.md) | Event Loop Must Not Bypass SaveCheckpoint Effects | Implemented |
 | [RFC-006](./RFC-006-system-test-prompt-permissions.md) | System Test for PROMPT.md Permission Toggle | Implemented |
+| [RFC-007](./RFC-007-stale-prompt-replay-postmortem.md) | Post-Mortem: Stale Prompt Replay Across Iterations | Implemented |
 
 ## Creating a New RFC
 

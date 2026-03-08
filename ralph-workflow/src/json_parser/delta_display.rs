@@ -123,8 +123,11 @@ include!("delta_display/display_utils.rs");
 // Prefix debouncing (test-only)
 include!("delta_display/debouncer.rs");
 
-// Delta renderer trait and implementation
-include!("delta_display/renderer.rs");
+// Delta renderer trait and compute_append_only_suffix helper
+include!("delta_display/renderer_trait.rs");
+
+// Delta renderer implementations (TextDeltaRenderer, ThinkingDeltaRenderer)
+include!("delta_display/renderer_impls.rs");
 
 // Delta display formatter
 include!("delta_display/formatter.rs");

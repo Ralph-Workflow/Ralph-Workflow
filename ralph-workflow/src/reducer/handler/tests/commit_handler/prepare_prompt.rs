@@ -306,6 +306,66 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
     );
 }
 
+/// Test that commit prompt keys are unique per iteration, preventing cross-cycle prompt replay.
+///
+/// Root cause of the stale-commit-diff bug: commit prompt keys use only the attempt number
+/// (e.g. `commit_message_attempt_1`). Since attempt numbers reset to 1 on each new commit cycle
+/// and `prompt_history` is run-scoped, cycle 2 with attempt=1 looks up the same key as cycle 1
+/// and replays the stale cycle-1 prompt (which embeds cycle-1's diff content).
+///
+/// This test proves the bug: it pre-populates `prompt_history` with the cycle-1 key and asserts
+/// that a cycle-2 handler generates a fresh prompt (not replayed from history). It FAILS on code
+/// where the key is `commit_message_attempt_{attempt}` and PASSES when iteration is included.
+#[test]
+fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let mut ctx = fixture.ctx();
+
+    // Pre-populate prompt_history with the cycle-1 key as if cycle 1 already ran.
+    // On buggy code (key = "commit_message_attempt_1"), cycle 2 will find and replay this.
+    ctx.prompt_history.insert(
+        "commit_message_attempt_1".to_string(),
+        "STALE-CYCLE-1-PROMPT: old diff content from iteration 1".to_string(),
+    );
+
+    // Simulate cycle 2: iteration=2, attempt resets to 1.
+    let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.iteration = 2;
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    handler
+        .prepare_commit_prompt_with_diff_and_mode(
+            &mut ctx,
+            "FRESH-CYCLE-2-DIFF: unique cycle 2 changes",
+            PromptMode::Normal,
+        )
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        !prompt.contains("STALE-CYCLE-1-PROMPT"),
+        "Cycle-2 commit prompt must NOT contain stale cycle-1 content — \
+         prompt key collision caused cross-cycle replay; got: {prompt}"
+    );
+    assert!(
+        prompt.contains("FRESH-CYCLE-2-DIFF"),
+        "Cycle-2 commit prompt must contain fresh cycle-2 diff content; got: {prompt}"
+    );
+}
+
 /// Test that `prepare_commit_prompt` reads from materialized model-safe diff file.
 ///
 /// Once commit inputs are materialized, the `prepare_commit_prompt` effect should

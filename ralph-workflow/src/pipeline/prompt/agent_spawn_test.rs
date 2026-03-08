@@ -14,7 +14,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
     cmd: &PromptCommand<'_>,
     runtime: &PipelineRuntime<'_>,
     anthropic_env_vars_to_sanitize: &[&str],
-    idle_timeout_secs: u64,
+    idle_timeout: std::time::Duration,
     monitor_check_interval: std::time::Duration,
     kill_config: crate::pipeline::idle_timeout::KillConfig,
 ) -> io::Result<CommandResult> {
@@ -111,7 +111,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
                 &monitor_should_stop_clone,
                 &monitor_executor,
                 crate::pipeline::idle_timeout::MonitorConfig {
-                    timeout_secs: idle_timeout_secs,
+                    timeout: idle_timeout,
                     check_interval: monitor_check_interval,
                     kill_config,
                 },
@@ -215,10 +215,10 @@ pub fn run_with_agent_spawn_with_monitor_config(
                 ""
             };
             runtime.logger.warn(&format!(
-                "Agent killed due to idle timeout (no stdout/stderr for {} seconds, \
+                "Agent killed due to idle timeout (no stdout/stderr for {:.1} seconds, \
                  last activity {:.1}s ago, process exit code was {}{}, \
                  kill reason: IDLE_TIMEOUT_MONITOR)",
-                idle_timeout_secs,
+                idle_timeout.as_secs_f64(),
                 idle_duration.as_secs_f64(),
                 exit_code,
                 escalation_msg

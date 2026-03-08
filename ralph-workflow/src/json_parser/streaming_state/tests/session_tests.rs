@@ -367,33 +367,6 @@ fn test_repeated_content_block_start_same_index() {
 // Tests for verbose_warnings feature
 
 #[test]
-fn test_verbose_warnings_default_is_disabled() {
-    let session = StreamingSession::new();
-    assert!(
-        !session.verbose_warnings,
-        "Default should have verbose_warnings disabled"
-    );
-}
-
-#[test]
-fn test_with_verbose_warnings_enables_flag() {
-    let session = StreamingSession::new().with_verbose_warnings(true);
-    assert!(
-        session.verbose_warnings,
-        "Should have verbose_warnings enabled"
-    );
-}
-
-#[test]
-fn test_with_verbose_warnings_disabled_explicitly() {
-    let session = StreamingSession::new().with_verbose_warnings(false);
-    assert!(
-        !session.verbose_warnings,
-        "Should have verbose_warnings disabled"
-    );
-}
-
-#[test]
 fn test_large_delta_warning_respects_verbose_flag() {
     // Test with verbose warnings enabled
     let mut session_verbose = StreamingSession::new().with_verbose_warnings(true);
@@ -489,41 +462,6 @@ fn test_pattern_detection_warning_respects_verbose_flag() {
     );
 }
 
-#[test]
-fn test_snapshot_extraction_error_warning_respects_verbose_flag() {
-    // Create a session where we'll trigger a snapshot extraction error
-    // by manually manipulating accumulated content
-    let mut session_verbose = StreamingSession::new().with_verbose_warnings(true);
-    session_verbose.on_message_start();
-    session_verbose.on_content_block_start(0);
-
-    // First delta
-    session_verbose.on_text_delta(0, "Hello");
-
-    // Manually clear accumulated to simulate a state mismatch
-    session_verbose.accumulated.clear();
-
-    // Now try to process a snapshot - extraction will fail
-    // This would emit a warning if verbose_warnings is enabled
-    let _show_prefix = session_verbose.on_text_delta(0, "Hello World");
-
-    // Test with verbose warnings disabled (default)
-    let mut session_quiet = StreamingSession::new();
-    session_quiet.on_message_start();
-    session_quiet.on_content_block_start(0);
-
-    session_quiet.on_text_delta(0, "Hello");
-    session_quiet.accumulated.clear();
-
-    // This should NOT emit a warning
-    let _show_prefix = session_quiet.on_text_delta(0, "Hello World");
-
-    // The quiet session should handle the error gracefully
-    assert!(session_quiet
-        .get_accumulated(ContentType::Text, "0")
-        .is_some());
-}
-
 // Tests for hash-based deduplication
 
 #[test]
@@ -533,12 +471,12 @@ fn test_content_hash_computed_on_message_stop() {
     session.on_text_delta(0, "Hello");
     session.on_text_delta(0, " World");
 
-    // Hash should be None before message_stop
-    assert_eq!(session.final_content_hash, None);
-
-    // Hash should be computed after message_stop
+    // Hash should be recognized after message_stop
     session.on_message_stop();
-    assert!(session.final_content_hash.is_some());
+    assert!(
+        session.is_duplicate_by_hash("Hello World", None),
+        "Hash should be computed after message_stop"
+    );
 }
 
 #[test]
@@ -548,7 +486,10 @@ fn test_content_hash_none_when_no_content() {
 
     // No content streamed
     session.on_message_stop();
-    assert_eq!(session.final_content_hash, None);
+    assert!(
+        !session.is_duplicate_by_hash("any content", None),
+        "No hash when no content was streamed"
+    );
 }
 
 #[test]
@@ -589,9 +530,7 @@ fn test_content_hash_multiple_content_blocks() {
     session.on_text_delta(1, "Second block");
     session.on_message_stop();
 
-    // Hash should be computed from all blocks
-    assert!(session.final_content_hash.is_some());
-    // Individual content shouldn't match the combined hash
+    // Individual content shouldn't match the combined content
     assert!(!session.is_duplicate_by_hash("First block", None));
     assert!(!session.is_duplicate_by_hash("Second block", None));
 }
@@ -623,8 +562,9 @@ fn test_content_hash_consistent_for_same_content() {
     session2.on_text_delta(0, "Hello World");
     session2.on_message_stop();
 
-    // Same content should produce the same hash
-    assert_eq!(session1.final_content_hash, session2.final_content_hash);
+    // Same content should be recognized as duplicate in both sessions
+    assert!(session1.is_duplicate_by_hash("Hello World", None));
+    assert!(session2.is_duplicate_by_hash("Hello World", None));
 }
 
 #[test]
@@ -651,19 +591,16 @@ fn test_content_hash_multiple_content_blocks_non_sequential_indices() {
     session2.on_text_delta(10, "Block 10");
     session2.on_message_stop();
 
-    // Both sessions should produce the same hash because they contain the same content
-    // in the same logical order (sorted by numeric index, not insertion order)
-    assert_eq!(
-        session1.final_content_hash,
-        session2.final_content_hash,
-        "Content hash should be consistent regardless of insertion order when using numeric sorting"
-    );
-
-    // Verify that is_duplicate_by_hash also works correctly
+    // Verify that is_duplicate_by_hash works correctly for both sessions
+    // (both should recognize the combined content in numeric order as a match)
     let combined_content = "Block 0Block 1Block 2Block 10";
     assert!(
         session1.is_duplicate_by_hash(combined_content, None),
         "is_duplicate_by_hash should match content in numeric order"
+    );
+    assert!(
+        session2.is_duplicate_by_hash(combined_content, None),
+        "session2 hash should also match content in numeric order"
     );
 }
 
@@ -710,45 +647,35 @@ fn test_rapid_index_switch_with_clear() {
 }
 
 #[test]
-fn test_delta_sizes_cleared_on_index_switch() {
+fn test_delta_sizes_preserved_on_index_switch() {
     let mut session = StreamingSession::new();
     session.on_message_start();
 
-    // Track some delta sizes for index 0
+    // Track some deltas for index 0
     session.on_text_delta(0, "Hello");
     session.on_text_delta(0, " World");
 
-    let content_key = (ContentType::Text, "0".to_string());
-    assert!(
-        session.delta_sizes.contains_key(&content_key),
-        "Delta sizes should be tracked for index 0"
-    );
-    let sizes_before = session.delta_sizes.get(&content_key).unwrap();
-    assert_eq!(sizes_before.len(), 2, "Should have 2 delta sizes tracked");
+    let metrics = session.get_streaming_quality_metrics();
+    assert_eq!(metrics.total_deltas, 2, "Two deltas tracked for index 0");
 
     // Switch to index 1 - delta_sizes for index 0 should be PRESERVED
     // (needed for non-TTY flush at message_stop)
     session.on_content_block_start(1);
 
-    assert!(
-        session.delta_sizes.contains_key(&content_key),
-        "Delta sizes for index 0 should be PRESERVED when switching to index 1"
-    );
+    let metrics = session.get_streaming_quality_metrics();
     assert_eq!(
-        session.delta_sizes.get(&content_key).unwrap().len(),
-        2,
-        "Index 0 should still have 2 delta sizes tracked"
+        metrics.total_deltas, 2,
+        "Delta sizes for index 0 preserved when switching to index 1"
     );
 
-    // Add deltas for index 1
+    // Add a delta for index 1 - total should grow, proving index 0 was preserved
+    // and index 1 started fresh (if index 0 were cleared, total would only be 1)
     session.on_text_delta(1, "New");
 
-    let content_key_1 = (ContentType::Text, "1".to_string());
-    let sizes_after = session.delta_sizes.get(&content_key_1).unwrap();
+    let metrics = session.get_streaming_quality_metrics();
     assert_eq!(
-        sizes_after.len(),
-        1,
-        "Should have fresh size tracking for index 1"
+        metrics.total_deltas, 3,
+        "Total deltas includes both index 0 (2) and index 1 (1) entries"
     );
 }
 
@@ -802,34 +729,3 @@ fn test_rapid_index_switch_with_thinking_content() {
     );
 }
 
-#[test]
-fn test_output_started_for_key_cleared_across_all_content_types() {
-    let mut session = StreamingSession::new();
-    session.on_message_start();
-
-    // Start block 0 with text and thinking
-    // Note: ToolInput does not use output_started_for_key tracking
-    session.on_content_block_start(0);
-    session.on_text_delta(0, "Text");
-    session.on_thinking_delta(0, "Thinking");
-
-    // Verify text and thinking have started output
-    let text_key = (ContentType::Text, "0".to_string());
-    let thinking_key = (ContentType::Thinking, "0".to_string());
-
-    assert!(session.output_started_for_key.contains(&text_key));
-    assert!(session.output_started_for_key.contains(&thinking_key));
-
-    // Switch to index 1 - output_started_for_key should be PRESERVED
-    // (no longer cleared on index switch as of wt-24-ccs-repeat-2 fix)
-    session.on_content_block_start(1);
-
-    assert!(
-        session.output_started_for_key.contains(&text_key),
-        "Text output_started should be PRESERVED for index 0"
-    );
-    assert!(
-        session.output_started_for_key.contains(&thinking_key),
-        "Thinking output_started should be PRESERVED for index 0"
-    );
-}

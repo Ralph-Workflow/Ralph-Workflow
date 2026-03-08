@@ -49,7 +49,9 @@
 //!
 //! # Module Structure
 //!
-//! - `core_state`: Main `PipelineState` struct definition and initialization
+//! - `bounded_execution_history`: `BoundedExecutionHistory` newtype (ring-buffer API)
+//! - `core_state`: Main `PipelineState` struct definition
+//! - `core_state_methods`: `PipelineState` constructor and accessor methods
 //! - `phase_fields`: Phase-specific outcome types and prompt input structures
 //! - `helpers`: Pure query methods (e.g., `is_complete()`, `current_head()`)
 //! - `checkpoint_conversion`: Conversion from checkpoint format to runtime state
@@ -79,8 +81,14 @@ pub use prompt_permissions::PromptPermissionsState;
 // Phase-specific validated outcome types
 include!("phase_fields.rs");
 
+// Bounded execution history newtype
+include!("bounded_execution_history.rs");
+
 // Main PipelineState struct
 include!("core_state.rs");
+
+// PipelineState constructor and accessor methods
+include!("core_state_methods.rs");
 
 // Helper methods for state queries
 include!("helpers.rs");

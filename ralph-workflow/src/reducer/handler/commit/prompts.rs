@@ -77,8 +77,9 @@ impl MainEffectHandler {
                     "XML output failed validation. Provide valid XML output.".to_string()
                 });
 
+            let iteration = self.state.iteration;
             let prompt_key = format!(
-                "commit_message_attempt_{attempt}_xsd_retry_{}",
+                "commit_message_attempt_iter{iteration}_{attempt}_xsd_retry_{}",
                 self.state.continuation.xsd_retry_count
             );
             let (prompt, was_replayed) = get_stored_or_generate_prompt(
@@ -283,14 +284,16 @@ impl MainEffectHandler {
                     (rendered.content, true)
                 };
                 let prompt = format!("{retry_preamble}\n{base_prompt}");
+                let iteration = self.state.iteration;
                 let prompt_key = format!(
-                    "commit_message_attempt_{attempt}_same_agent_retry_{}",
+                    "commit_message_attempt_iter{iteration}_{attempt}_same_agent_retry_{}",
                     continuation_state.same_agent_retry_count
                 );
                 (prompt_key, prompt, false, should_validate)
             }
             PromptMode::Normal => {
-                let prompt_key = format!("commit_message_attempt_{attempt}");
+                let iteration = self.state.iteration;
+                let prompt_key = format!("commit_message_attempt_iter{iteration}_{attempt}");
                 let (prompt, was_replayed) =
                     get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
                         // Use log-based rendering

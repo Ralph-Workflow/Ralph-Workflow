@@ -48,6 +48,8 @@ use super::{
 };
 
 include!("input_materialization.rs");
+include!("xsd_retry_materialization.rs");
 include!("prompt_generation.rs");
+include!("agent_invocation.rs");
 include!("validation.rs");
 include!("output_rendering.rs");

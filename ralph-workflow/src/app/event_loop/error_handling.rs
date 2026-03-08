@@ -200,7 +200,7 @@ where
     let new_state = reduce(state.clone(), failure_event);
 
     // Log to event loop log (best-effort)
-    super::driver::log_effect_execution(
+    super::logging::log_effect_execution(
         ctx,
         event_loop_logger,
         &new_state,
@@ -276,7 +276,7 @@ where
     let new_state = reduce(state.clone(), failure_event);
 
     // Log to event loop log (best-effort)
-    super::driver::log_effect_execution(
+    super::logging::log_effect_execution(
         ctx,
         event_loop_logger,
         &new_state,

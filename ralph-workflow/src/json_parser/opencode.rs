@@ -211,8 +211,11 @@ use super::types::{format_tool_input, format_unknown_json_event, ContentType};
 // Event type definitions
 include!("opencode/event_types.rs");
 
-// Parser implementation
-include!("opencode/parser.rs");
+// Parser core: struct definition and constructor methods
+include!("opencode/parser_core.rs");
+
+// Parser stream processing: event parsing and stream handling methods
+include!("opencode/parser_stream.rs");
 
 // Event formatting methods
 include!("opencode/formatting/step.rs");

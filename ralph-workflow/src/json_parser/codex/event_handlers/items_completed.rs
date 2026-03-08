@@ -10,7 +10,7 @@
 // ## Architecture Overview
 //
 // 1. **Layer 1 (Suppression):** Delta renderers return empty strings in non-TTY modes
-//    - Implemented in `ralph-workflow/src/json_parser/delta_display/renderer.rs`
+//    - Implemented in `ralph-workflow/src/json_parser/delta_display/renderer_impls.rs`
 //
 // 2. **Layer 2 (Accumulation):** StreamingSession accumulates content across deltas
 //    - Implemented in `ralph-workflow/src/json_parser/streaming_state/session.rs`
@@ -42,7 +42,7 @@
 //
 // ## Cross-References
 //
-// - Renderer suppression: `ralph-workflow/src/json_parser/delta_display/renderer.rs`
+// - Renderer suppression: `ralph-workflow/src/json_parser/delta_display/renderer_impls.rs`
 // - Claude flush logic: `ralph-workflow/src/json_parser/claude/delta_handling.rs::handle_message_stop`
 // - Codex delta handling: `ralph-workflow/src/json_parser/codex/event_handlers/items_started.rs`
 

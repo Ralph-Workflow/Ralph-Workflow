@@ -170,8 +170,12 @@ fn test_fix_prompt_handles_empty_file_list() {
         "Fix prompt should indicate no specific files when extraction finds none"
     );
     assert!(
-        fix_prompt.contains("You may work on ANY files in the repository"),
-        "Fix prompt should allow working on any files in the repository when extraction finds none"
+        !fix_prompt.contains("FULL AUTO MODE"),
+        "Fix prompt must not widen permissions when extraction yields zero paths"
+    );
+    assert!(
+        fix_prompt.contains("ONLY work on files mentioned in the ISSUES content"),
+        "Fix prompt must preserve containment even without extracted paths"
     );
 }
 
@@ -431,6 +435,23 @@ fn test_context_based_commit_uses_workspace_paths() {
         result.contains("/test/repo/.agent/tmp/commit_message.xml")
             || result.contains("/test/repo/.agent/tmp/commit_message.xsd"),
         "Prompt should contain absolute paths from workspace"
+    );
+}
+
+#[test]
+fn test_commit_xsd_retry_prompt_warning_prefix_is_ascii_only() {
+    let context = TemplateContext::default();
+    let workspace = MemoryWorkspace::new_test();
+
+    let result = prompt_commit_xsd_retry_with_context(&context, "xsd error", &workspace);
+
+    assert!(
+        result.contains("WARNING: Required XSD retry files are missing:"),
+        "prompt should include a deterministic WARNING prefix when retry artifacts are missing"
+    );
+    assert!(
+        !result.contains('⚠'),
+        "prompt must not include non-ASCII glyphs"
     );
 }
 

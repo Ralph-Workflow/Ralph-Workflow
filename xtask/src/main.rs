@@ -1,4 +1,6 @@
+mod cache;
 mod compliance;
+mod scanner;
 mod verify;
 
 use std::path::PathBuf;
@@ -44,6 +46,7 @@ impl CommandRunner for RealRunner {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
         let output = Command::new(spec.program)
             .args(spec.args)
+            .envs(spec.extra_env.iter().copied())
             .current_dir(&self.repo_root)
             .output()?;
 
@@ -60,13 +63,15 @@ fn main() -> ExitCode {
 
     match args.next().as_deref() {
         Some("verify") => {
-            let runner = RealRunner::new();
-            let repo_root = runner.repo_root.clone();
-            let report = match verify::verify(
+            let real_runner = RealRunner::new();
+            let repo_root = real_runner.repo_root.clone();
+            let runner = cache::CachingCommandRunner::new(real_runner, repo_root.clone());
+            let report = match verify::verify_fast(
                 &runner,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
                 verify::REQUIRED_CHECKS,
+                verify::CARGO_PREFETCH_SPECS,
             ) {
                 Ok(report) => report,
                 Err(err) => {
@@ -74,6 +79,8 @@ fn main() -> ExitCode {
                     return ExitCode::from(1);
                 }
             };
+
+            runner.flush();
 
             if report.exit == VerifyExitCode::Failure {
                 print_verify_failure(&report);
