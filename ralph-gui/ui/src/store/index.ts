@@ -4,6 +4,8 @@ import sessionReducer from "./slices/sessionSlice";
 import worktreeReducer from "./slices/worktreeSlice";
 import configReducer from "./slices/configSlice";
 import runReducer from "./slices/runSlice";
+import promptReducer from "./slices/promptSlice";
+import agentProfileReducer from "./slices/agentProfileSlice";
 
 export const store = configureStore({
   reducer: {
@@ -11,6 +13,8 @@ export const store = configureStore({
     worktrees: worktreeReducer,
     config: configReducer,
     runs: runReducer,
+    prompt: promptReducer,
+    agentProfile: agentProfileReducer,
   },
 });
 

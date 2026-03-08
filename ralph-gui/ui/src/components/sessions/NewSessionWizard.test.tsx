@@ -8,6 +8,8 @@ import worktreeReducer from "../../store/slices/worktreeSlice";
 import sessionReducer from "../../store/slices/sessionSlice";
 import runReducer from "../../store/slices/runSlice";
 import configReducer from "../../store/slices/configSlice";
+import promptReducer from "../../store/slices/promptSlice";
+import agentProfileReducer from "../../store/slices/agentProfileSlice";
 import { NewSessionWizard } from "./NewSessionWizard";
 
 vi.mock("../../api/tauri", () => ({
@@ -43,6 +45,8 @@ function makeStore() {
       sessions: sessionReducer,
       runs: runReducer,
       config: configReducer,
+      prompt: promptReducer,
+      agentProfile: agentProfileReducer,
     },
   });
 }

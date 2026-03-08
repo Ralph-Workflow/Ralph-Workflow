@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
-import { useAppSelector } from "../../store";
-import { listAgentProfiles, launchRalphSession, savePromptFile } from "../../api/tauri";
-import type { AgentProfile } from "../../types";
+import { useAppSelector, useAppDispatch } from "../../store";
+import {
+  setPromptContent,
+  setPromptPath,
+} from "../../store/slices/promptSlice";
+import {
+  fetchAgentProfiles,
+  selectAgentProfile,
+  clearAgentProfileSelection,
+} from "../../store/slices/agentProfileSlice";
+import { launchRalphSession, savePromptFile } from "../../api/tauri";
 import { PreflightSummary } from "./PreflightSummary";
 import { PromptTemplatePicker } from "./PromptTemplatePicker";
 import { PROMPT_TEMPLATES } from "./promptTemplates";
@@ -41,8 +49,14 @@ export function NewSessionWizard({
   onClose,
   preselectedWorktreePath,
 }: NewSessionWizardProps) {
+  const dispatch = useAppDispatch();
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const activePath = useAppSelector((s) => s.worktrees.activeWorktreePath);
+  const promptContent = useAppSelector((s) => s.prompt.content);
+  const agentProfiles = useAppSelector((s) => s.agentProfile.profiles);
+  const selectedAgentProfile = useAppSelector(
+    (s) => s.agentProfile.selectedProfile,
+  );
 
   const [step, setStep] = useState<WizardStep>("template");
   const [repoPath, setRepoPath] = useState(
@@ -51,35 +65,30 @@ export function NewSessionWizard({
   const [worktreePath, setWorktreePath] = useState<string | null>(
     preselectedWorktreePath !== undefined ? preselectedWorktreePath : activePath,
   );
-  const [promptContent, setPromptContent] = useState(
-    PROMPT_TEMPLATES.find((t) => t.id === "feature")?.content ?? "",
-  );
   const [developerIterations, setDeveloperIterations] = useState(5);
   const [reviewerPasses, setReviewerPasses] = useState(2);
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
-  const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
-  const [selectedAgentProfile, setSelectedAgentProfile] = useState<
-    string | null
-  >(null);
 
   // Preset state
   const [presets, setPresets] = useState<LaunchPreset[]>(() => loadPresets());
   const [presetNameInput, setPresetNameInput] = useState("");
 
+  // Set default prompt content on first render if not already set
+  useEffect(() => {
+    if (!promptContent) {
+      const defaultContent =
+        PROMPT_TEMPLATES.find((t) => t.id === "feature")?.content ?? "";
+      dispatch(setPromptContent(defaultContent));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load agent profiles when repo path is known
   useEffect(() => {
     if (!repoPath) return;
-    listAgentProfiles(repoPath)
-      .then((profiles) => {
-        setAgentProfiles(profiles);
-      })
-      .catch(() => {
-        // Non-fatal: agent profiles are optional
-        setAgentProfiles([]);
-      });
-  }, [repoPath]);
+    void dispatch(fetchAgentProfiles(repoPath));
+  }, [repoPath, dispatch]);
 
   const promptPath = repoPath ? `${repoPath}/PROMPT.md` : "";
 
@@ -104,7 +113,11 @@ export function NewSessionWizard({
     if (!preset) return;
     setDeveloperIterations(preset.developerIterations);
     setReviewerPasses(preset.reviewerPasses);
-    setSelectedAgentProfile(preset.agentProfile);
+    if (preset.agentProfile) {
+      dispatch(selectAgentProfile(preset.agentProfile));
+    } else {
+      dispatch(clearAgentProfileSelection());
+    }
   }
 
   function handleDeletePreset(name: string) {
@@ -114,12 +127,13 @@ export function NewSessionWizard({
   }
 
   function handleTemplateSelect(content: string) {
-    setPromptContent(content);
+    dispatch(setPromptContent(content));
     setStep("config");
   }
 
   function handleNext() {
     if (!repoPath.trim()) return;
+    dispatch(setPromptPath(promptPath));
     setStep("preflight");
   }
 
@@ -255,7 +269,11 @@ export function NewSessionWizard({
             data-testid="agent-profile-select"
             className="input"
             value={selectedAgentProfile ?? ""}
-            onChange={(e) => setSelectedAgentProfile(e.target.value || null)}
+            onChange={(e) =>
+              e.target.value
+                ? dispatch(selectAgentProfile(e.target.value))
+                : dispatch(clearAgentProfileSelection())
+            }
             style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
           >
             <option value="">Default (from config)</option>
@@ -417,14 +435,16 @@ export function NewSessionWizard({
           className="input input-mono"
           rows={10}
           value={promptContent}
-          onChange={(e) => setPromptContent(e.target.value)}
+          onChange={(e) => dispatch(setPromptContent(e.target.value))}
           style={{ resize: "vertical", lineHeight: 1.6 }}
         />
         {showReviewPanel && (
           <div style={{ marginTop: 10 }}>
             <PromptReviewPanel
               promptContent={promptContent}
-              onApplyImprovedPrompt={(improved) => setPromptContent(improved)}
+              onApplyImprovedPrompt={(improved) =>
+                dispatch(setPromptContent(improved))
+              }
             />
           </div>
         )}
