@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 #[test]
 fn test_detects_recent_plan_md_modification() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Plan content");
 
     // Recent file should be detected
@@ -18,7 +18,7 @@ fn test_detects_recent_plan_md_modification() {
 
 #[test]
 fn test_detects_recent_issues_md_modification() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/ISSUES.md", "# Issues");
 
     assert!(
@@ -31,7 +31,7 @@ fn test_detects_recent_issues_md_modification() {
 
 #[test]
 fn test_detects_recent_notes_md_modification() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/NOTES.md", "# Notes");
 
     assert!(
@@ -44,7 +44,7 @@ fn test_detects_recent_notes_md_modification() {
 
 #[test]
 fn test_detects_recent_status_md_modification() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/STATUS.md", "# Status");
 
     assert!(
@@ -57,7 +57,7 @@ fn test_detects_recent_status_md_modification() {
 
 #[test]
 fn test_detects_recent_commit_message_modification() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/commit-message.txt", "commit msg");
 
     assert!(
@@ -70,7 +70,7 @@ fn test_detects_recent_commit_message_modification() {
 
 #[test]
 fn test_detects_xml_artifacts_in_tmp() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/tmp/output.xml", "<xml/>");
 
     assert!(
@@ -83,7 +83,7 @@ fn test_detects_xml_artifacts_in_tmp() {
 
 #[test]
 fn test_ignores_log_files() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test()
         .with_file(".agent/pipeline.log", "log content")
         .with_file(".agent/debug.log", "debug logs");
@@ -98,7 +98,7 @@ fn test_ignores_log_files() {
 
 #[test]
 fn test_ignores_checkpoint_json() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/checkpoint.json", "{}");
 
     assert!(
@@ -111,7 +111,7 @@ fn test_ignores_checkpoint_json() {
 
 #[test]
 fn test_ignores_start_commit() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/start_commit", "abc123");
 
     assert!(
@@ -124,7 +124,7 @@ fn test_ignores_start_commit() {
 
 #[test]
 fn test_ignores_review_baseline_txt() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/review_baseline.txt", "baseline");
 
     assert!(
@@ -137,7 +137,7 @@ fn test_ignores_review_baseline_txt() {
 
 #[test]
 fn test_ignores_old_modifications() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let old_time = SystemTime::now() - Duration::from_secs(400);
     let ws =
         MemoryWorkspace::new_test().with_file_at_time(".agent/PLAN.md", "old content", old_time);
@@ -152,7 +152,7 @@ fn test_ignores_old_modifications() {
 
 #[test]
 fn test_ignores_editor_temp_files() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test()
         .with_file(".agent/.PLAN.md.swp", "swap")
         .with_file(".agent/PLAN.md.tmp", "temp")
@@ -169,7 +169,7 @@ fn test_ignores_editor_temp_files() {
 
 #[test]
 fn test_handles_missing_agent_directory_gracefully() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test();
 
     // Should not panic, should return Ok(false)
@@ -183,7 +183,7 @@ fn test_handles_missing_agent_directory_gracefully() {
 
 #[test]
 fn test_tracks_modification_state_across_calls() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "initial");
 
     // First check should detect the file
@@ -206,7 +206,7 @@ fn test_tracks_modification_state_across_calls() {
 
 #[test]
 fn test_detects_new_modification_after_initial_check() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
 
     // Create workspace with old file
     let old_time = SystemTime::now() - Duration::from_secs(100);
@@ -234,7 +234,7 @@ fn test_detects_new_modification_after_initial_check() {
 
 #[test]
 fn test_multiple_ai_files_any_can_trigger() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
 
     // Create old PLAN.md
     let old_time = SystemTime::now() - Duration::from_secs(400);
@@ -252,7 +252,7 @@ fn test_multiple_ai_files_any_can_trigger() {
 
 #[test]
 fn test_xml_files_only_in_tmp_subdirectory() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
 
     // XML in .agent/ root should not be detected
     let ws = MemoryWorkspace::new_test().with_file(".agent/output.xml", "<xml/>");
@@ -267,7 +267,7 @@ fn test_xml_files_only_in_tmp_subdirectory() {
 
 #[test]
 fn test_non_xml_files_in_tmp_ignored() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
     let ws = MemoryWorkspace::new_test()
         .with_file(".agent/tmp/output.txt", "text")
         .with_file(".agent/tmp/data.json", "{}");
@@ -282,7 +282,7 @@ fn test_non_xml_files_in_tmp_ignored() {
 
 #[test]
 fn test_custom_timeout_window() {
-    let mut tracker = FileActivityTracker::new();
+    let tracker = FileActivityTracker::new();
 
     // File modified 150 seconds ago
     let time_150s_ago = SystemTime::now() - Duration::from_secs(150);
@@ -298,7 +298,7 @@ fn test_custom_timeout_window() {
     );
 
     // With 100s timeout, should not be detected
-    let mut tracker2 = FileActivityTracker::new();
+    let tracker2 = FileActivityTracker::new();
     assert!(
         !tracker2
             .check_for_recent_activity(&ws, Duration::from_secs(100))

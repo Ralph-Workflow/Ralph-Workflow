@@ -397,10 +397,10 @@ fn monitor_file_activity_with_old_files_times_out() {
 }
 
 #[test]
-fn monitor_does_not_timeout_on_file_activity_check_error() {
-    // Setup: .agent exists as a file (not directory), causing read_dir(.agent) to error.
-    // The monitor should treat this as indeterminate activity and skip timeout kill for
-    // that cycle, rather than failing closed.
+fn monitor_times_out_when_file_activity_check_errors() {
+    // Setup: `.agent` exists as a file (not directory), causing read_dir(".agent") to error.
+    // The monitor must fail closed: treat file-activity errors as "no activity" and proceed
+    // with timeout enforcement so a persistent workspace issue cannot disable the idle timeout.
     let timestamp = new_activity_timestamp();
     timestamp.store(0, Ordering::Release);
 
@@ -416,7 +416,7 @@ fn monitor_does_not_timeout_on_file_activity_check_error() {
         workspace: Arc::clone(&workspace_arc),
     });
 
-    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let (mock_child, controller) = MockAgentChild::new_running(0);
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
     let executor_impl = Arc::new(MockProcessExecutor::new());
@@ -439,22 +439,34 @@ fn monitor_does_not_timeout_on_file_activity_check_error() {
         )
     });
 
-    // Give the monitor time to attempt at least one idle check cycle.
-    // check_interval=10ms, so 25ms gives at least 2 full check cycles.
-    thread::sleep(Duration::from_millis(25));
-    should_stop.store(true, Ordering::Release);
+    // Wait until we observe a kill attempt, then simulate process exit so the
+    // kill path can complete without waiting for a long grace period.
+    let mut observed_kill = false;
+    for _ in 0..100_000 {
+        if !executor_impl.execute_calls_for("kill").is_empty() {
+            observed_kill = true;
+            controller.store(false, Ordering::Release);
+            break;
+        }
+        std::thread::yield_now();
+    }
+
+    if !observed_kill {
+        // Old behavior would skip timeout enforcement on file-activity errors and
+        // loop forever; stop the monitor so the test fails fast instead of hanging.
+        should_stop.store(true, Ordering::Release);
+    }
 
     let result = handle.join().expect("Monitor thread panicked");
 
-    assert_eq!(
-        result,
-        MonitorResult::ProcessCompleted,
-        "monitor should not force timeout when file activity check errors"
+    assert!(
+        observed_kill,
+        "monitor should enforce timeout (kill) when file activity check errors"
     );
 
     assert!(
-        executor_impl.execute_calls_for("kill").is_empty(),
-        "monitor should not send kill signals when file activity check errors"
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "monitor should time out when file activity check errors"
     );
 }
 

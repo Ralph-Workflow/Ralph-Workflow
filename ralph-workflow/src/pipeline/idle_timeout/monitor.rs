@@ -276,7 +276,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
         // Check file activity if config provided
         if let Some(config) = file_activity_config {
-            let mut locked_tracker = config
+            let locked_tracker = config
                 .tracker
                 .lock()
                 .expect("file activity tracker mutex poisoned - indicates panic in another thread");
@@ -293,9 +293,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                 }
                 Err(e) => {
                     eprintln!(
-                        "Warning: file activity check failed (treating as indeterminate, skipping timeout enforcement this cycle): {e}"
+                        "Warning: file activity check failed (treating as no recent file activity, proceeding with timeout enforcement): {e}"
                     );
-                    continue;
                 }
             }
         }
