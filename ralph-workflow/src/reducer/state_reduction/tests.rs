@@ -2,19 +2,19 @@
 //
 // Split into phase-specific test modules for maintainability.
 
-use super::*;
 use crate::agents::AgentRole;
-use crate::reducer::event::AgentErrorKind;
-use crate::reducer::event::CommitEvent;
-use crate::reducer::event::PipelineEvent;
-use crate::reducer::event::PipelinePhase;
-use crate::reducer::event::RebasePhase;
-use crate::reducer::state::AgentChainState;
-use crate::reducer::state::CommitState;
-use crate::reducer::state::ContinuationState;
-use crate::reducer::state::PipelineState;
-use crate::reducer::state::RebaseState;
-use crate::reducer::state::SameAgentRetryReason;
+use crate::reducer::event::{
+    AgentErrorKind, CommitEvent, PipelineEvent, PipelinePhase, RebasePhase,
+};
+use crate::reducer::state::{
+    AgentChainState, CommitState, ContinuationState, PipelineState, RebaseState,
+    SameAgentRetryReason,
+};
+
+#[must_use]
+fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
+    crate::reducer::reduce(state, event)
+}
 
 #[must_use]
 fn create_test_state() -> PipelineState {

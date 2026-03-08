@@ -369,6 +369,94 @@ fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
     );
 }
 
+/// Test that stored commit prompts are gated on the current commit diff content-id.
+///
+/// RFC-007 introduced optional content-id validation for prompt replay: if a stored
+/// prompt's content-id does not match the current materialized inputs, the stored
+/// entry must be treated as a cache miss and a fresh prompt must be generated.
+///
+/// For commit prompts, the relevant materialized input is the commit diff; this
+/// test ensures that when the diff content-id changes, we do not replay a stale
+/// stored commit prompt under the same prompt key.
+#[test]
+fn test_commit_prompt_replay_is_gated_on_commit_diff_content_id() {
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.iteration = 2;
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.commit_diff_content_id_sha256 = Some("new_hash".to_string());
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        2,
+        1,
+        crate::prompts::RetryMode::Normal,
+        handler.state.recovery_epoch,
+    );
+    let prompt_key = scope_key.to_string();
+
+    // Pre-populate prompt history with a stale prompt entry for the same key.
+    handler.state.prompt_history.insert(
+        prompt_key.clone(),
+        PromptHistoryEntry::new("STALE-PROMPT".to_string(), Some("old_hash".to_string())),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "FRESH-DIFF", PromptMode::Normal)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        !prompt.contains("STALE-PROMPT"),
+        "Commit prompt must not replay stale stored prompt when diff content-id changes; got: {prompt}"
+    );
+    assert!(
+        prompt.contains("FRESH-DIFF"),
+        "Commit prompt must be freshly generated using the current diff; got: {prompt}"
+    );
+
+    // Replay observability must report a cache miss (fresh generation).
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == &prompt_key
+        )),
+        "Expected PromptReplayHit with was_replayed=false for key {prompt_key}; got: {:?}",
+        result.ui_events
+    );
+
+    // Fresh generation must emit PromptCaptured so reducer-owned history can be updated.
+    assert!(
+        result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key,
+                content_id: Some(content_id),
+                ..
+            }) if key == &prompt_key && content_id == "new_hash"
+        )),
+        "Expected PromptCaptured with content_id=new_hash for key {prompt_key}; got: {:?}",
+        result.additional_events
+    );
+}
+
 /// Test that `prepare_commit_prompt` reads from materialized model-safe diff file.
 ///
 /// Once commit inputs are materialized, the `prepare_commit_prompt` effect should

@@ -335,7 +335,7 @@ impl MainEffectHandler {
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
-                    None,
+                    self.state.commit_diff_content_id_sha256.as_deref(),
                     || {
                         // Use log-based rendering
                         let rendered =
@@ -402,7 +402,7 @@ impl MainEffectHandler {
                 PromptInputEvent::PromptCaptured {
                     key: prompt_key.clone(),
                     content: prompt.clone(),
-                    content_id: None,
+                    content_id: self.state.commit_diff_content_id_sha256.clone(),
                 },
             ))
         };
