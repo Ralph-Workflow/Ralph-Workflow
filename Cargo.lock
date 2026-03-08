@@ -3105,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-workflow"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
