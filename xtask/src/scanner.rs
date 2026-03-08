@@ -96,16 +96,19 @@ pub struct NativeScanCheckResult {
 /// sorted Vec.  All subsequent lookups use Knuth's binary search algorithm
 /// (TAOCP Vol. 3, §6.2.1 Algorithm B) via `partition_point`, giving O(log L)
 /// per query instead of the O(n) linear scan in the original helpers.
-struct LineIndex {
+///
+/// `pub` visibility is intentional: `compliance.rs` shares this index for its
+/// Aho-Corasick timeout-wrapper scan, avoiding a duplicate implementation.
+pub struct LineIndex {
     /// Byte offsets of every b'\n' in the source, in ascending order.
-    newlines: Vec<usize>,
+    pub newlines: Vec<usize>,
     /// Total byte length of the source buffer.
-    content_len: usize,
+    pub content_len: usize,
 }
 
 impl LineIndex {
     /// Build the index from raw file bytes in O(n).
-    fn new(content: &[u8]) -> Self {
+    pub fn new(content: &[u8]) -> Self {
         let newlines: Vec<usize> = content
             .iter()
             .enumerate()
@@ -122,12 +125,12 @@ impl LineIndex {
     ///
     /// The number of newlines strictly before `offset` equals the 0-based
     /// line number of the line containing `offset`.
-    fn line_number(&self, offset: usize) -> usize {
+    pub fn line_number(&self, offset: usize) -> usize {
         self.newlines.partition_point(|&nl| nl < offset)
     }
 
     /// Byte offset of the first byte of the line containing `offset`.
-    fn line_start(&self, offset: usize) -> usize {
+    pub fn line_start(&self, offset: usize) -> usize {
         let idx = self.newlines.partition_point(|&nl| nl < offset);
         if idx == 0 {
             0
@@ -141,7 +144,7 @@ impl LineIndex {
     ///
     /// When `offset` is exactly at a `\n`, that newline is the line terminator,
     /// so its offset is returned (the line ends at the newline itself).
-    fn line_end(&self, offset: usize) -> usize {
+    pub fn line_end(&self, offset: usize) -> usize {
         // Use strict `<` so that when `offset` IS the newline byte,
         // we return that newline offset (not the next one).
         let idx = self.newlines.partition_point(|&nl| nl < offset);
@@ -154,10 +157,24 @@ impl LineIndex {
 
     /// Extract the raw bytes of the line containing `offset` (without the
     /// trailing `\n`).
-    fn extract_line<'a>(&self, content: &'a [u8], offset: usize) -> &'a [u8] {
+    pub fn extract_line<'a>(&self, content: &'a [u8], offset: usize) -> &'a [u8] {
         let start = self.line_start(offset);
         let end = self.line_end(offset);
         &content[start..end]
+    }
+
+    /// Byte offset of the first byte of line number `line_num` (0-based).
+    ///
+    /// O(1) direct index into the newlines vec, avoiding a binary search.
+    /// Returns `content_len` when `line_num` is past the end of the file.
+    pub fn start_of_line(&self, line_num: usize) -> usize {
+        if line_num == 0 {
+            0
+        } else if line_num <= self.newlines.len() {
+            self.newlines[line_num - 1] + 1
+        } else {
+            self.content_len
+        }
     }
 }
 
@@ -471,6 +488,30 @@ pub fn run_native_scan_checks(
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
+/// Read a slice of files in parallel using scoped threads.
+///
+/// Returns `Option<Vec<u8>>` per file in the **same order** as `files`, so
+/// callers can zip results with the original slice without re-sorting.
+/// For small groups (below `PARALLEL_THRESHOLD`) sequential reads are used
+/// to avoid thread-spawn overhead.
+fn read_scan_files_parallel(files: &[PathBuf]) -> Vec<Option<Vec<u8>>> {
+    const PARALLEL_THRESHOLD: usize = 4;
+    if files.len() < PARALLEL_THRESHOLD {
+        return files.iter().map(|p| std::fs::read(p).ok()).collect();
+    }
+    let mut results: Vec<Option<Vec<u8>>> = vec![None; files.len()];
+    std::thread::scope(|s| {
+        let handles: Vec<_> = files
+            .iter()
+            .map(|p| s.spawn(move || std::fs::read(p).ok()))
+            .collect();
+        for (i, h) in handles.into_iter().enumerate() {
+            results[i] = h.join().unwrap_or(None);
+        }
+    });
+    results
+}
+
 fn directory_group_key(check: &NativeScanCheck) -> String {
     let mut dirs: Vec<&str> = check.directories.to_vec();
     dirs.sort_unstable();
@@ -521,11 +562,12 @@ fn scan_group_collect(
         Err(_) => return violations,
     };
 
-    // Scan each file with the combined automaton.
-    for file_path in &files {
-        let content = match std::fs::read(file_path) {
-            Ok(c) => c,
-            Err(_) => continue,
+    // Read all files in parallel, then process in deterministic (sorted) order.
+    let contents = read_scan_files_parallel(&files);
+    for (file_path, content_opt) in files.iter().zip(contents.into_iter()) {
+        let content = match content_opt {
+            Some(c) => c,
+            None => continue,
         };
 
         // Build a LineIndex in a single O(n) pass.  All per-match line-context

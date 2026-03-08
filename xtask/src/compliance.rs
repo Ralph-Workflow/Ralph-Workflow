@@ -1,6 +1,15 @@
 use std::path::{Path, PathBuf};
 
+use aho_corasick::AhoCorasick;
+
+use crate::scanner::LineIndex;
 use crate::verify::{CheckStatus, NativeCheckResult};
+
+// Pattern IDs for the timeout-wrapper Aho-Corasick automaton (O(n+m+z) scan).
+const PAT_TEST_ATTR: usize = 0; // "#[test]"
+const PAT_DEFAULT_TIMEOUT: usize = 1; // "with_default_timeout"
+const PAT_TIMEOUT: usize = 2; // "with_timeout"
+const TIMEOUT_PATTERNS: &[&str] = &["#[test]", "with_default_timeout", "with_timeout"];
 
 /// Scans `scripts/` and `tests/integration_tests/` for `.sh` files.
 ///
@@ -54,6 +63,11 @@ fn collect_sh_files(dir: &Path, out: &mut Vec<String>) {
 /// Scans integration test files for `#[test]` functions that do not call
 /// `with_default_timeout` or `with_timeout` in their body.
 ///
+/// Uses a single Aho-Corasick O(n+m+z) pass over each file to locate all
+/// `#[test]`, `with_default_timeout`, and `with_timeout` byte-positions,
+/// then uses O(log L) binary-search (TAOCP Vol.3 §6.2.1 Algorithm B) via
+/// `LineIndex` to map positions to lines and byte ranges.
+///
 /// A test function body is the region from the opening brace `{` of the fn
 /// to the first unmatched closing brace `}`, scanning up to 40 lines.
 ///
@@ -79,10 +93,11 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
         }
     };
 
+    let ac = AhoCorasick::new(TIMEOUT_PATTERNS).expect("valid patterns");
     let mut violations: Vec<String> = Vec::new();
 
     for file_path in &files {
-        let contents = match std::fs::read_to_string(file_path) {
+        let content = match std::fs::read(file_path) {
             Ok(c) => c,
             Err(e) => {
                 violations.push(format!("{}: read error: {e}", file_path.display()));
@@ -90,8 +105,7 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
             }
         };
 
-        let lines: Vec<&str> = contents.lines().collect();
-        scan_file_for_violations(file_path, &lines, &mut violations);
+        scan_file_for_violations_ac(file_path, &content, &ac, &mut violations);
     }
 
     if violations.is_empty() {
@@ -144,71 +158,158 @@ fn should_skip_file(path: &Path) -> bool {
     matches!(file_name, "_TEMPLATE.rs" | "compliance_check.rs" | "mod.rs")
 }
 
-fn scan_file_for_violations(file_path: &Path, lines: &[&str], violations: &mut Vec<String>) {
+/// Scan a single file using Aho-Corasick O(n+m+z) to find all `#[test]`,
+/// `with_default_timeout`, and `with_timeout` byte-positions in one pass.
+///
+/// For each `#[test]` attribute, the enclosing test function body is located
+/// via byte-level brace tracking and the O(1) `LineIndex::start_of_line`
+/// lookup.  A violation is recorded when no timeout wrapper offset falls
+/// within the body byte range `[body_start, body_end)`.
+fn scan_file_for_violations_ac(
+    file_path: &Path,
+    content: &[u8],
+    ac: &AhoCorasick,
+    violations: &mut Vec<String>,
+) {
+    let line_idx = LineIndex::new(content);
+
+    // Build byte-slice view of each line once per file (O(n), done once).
+    let lines: Vec<&[u8]> = content.split(|&b| b == b'\n').collect();
     let n = lines.len();
 
-    for (i, line) in lines.iter().enumerate() {
-        if line.trim() != "#[test]" {
-            continue;
-        }
+    // Single O(n+m+z) Aho-Corasick pass over the file bytes.
+    let mut test_attr_offsets: Vec<usize> = Vec::new();
+    let mut timeout_offsets: Vec<usize> = Vec::new();
 
-        // Look for fn declaration on the next line
-        let fn_line_idx = i + 1;
+    for mat in ac.find_iter(content) {
+        match mat.pattern().as_usize() {
+            PAT_TEST_ATTR => {
+                // Accept only when the entire trimmed line equals "#[test]"
+                // (same semantics as the original line.trim() == "#[test]" check).
+                let line_bytes = line_idx.extract_line(content, mat.start());
+                let trimmed = trim_ascii(line_bytes);
+                if trimmed == b"#[test]" {
+                    test_attr_offsets.push(mat.start());
+                }
+            }
+            PAT_DEFAULT_TIMEOUT | PAT_TIMEOUT => {
+                timeout_offsets.push(mat.start());
+            }
+            _ => {}
+        }
+    }
+
+    for test_start in test_attr_offsets {
+        // O(log L) binary-search line lookup via LineIndex.
+        let test_line = line_idx.line_number(test_start); // 0-based
+        let fn_line_idx = test_line + 1;
         if fn_line_idx >= n {
             continue;
         }
 
-        if !is_fn_decl(lines[fn_line_idx]) {
+        let fn_line_str = match std::str::from_utf8(lines[fn_line_idx]) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if !is_fn_decl(fn_line_str) {
             continue;
         }
 
-        let test_name = extract_test_name(lines[fn_line_idx]).unwrap_or("<unknown>");
+        let test_name = extract_test_name(fn_line_str).unwrap_or("<unknown>");
 
-        // Find opening brace within the next 5 lines from the fn declaration
-        let brace_line_idx = find_opening_brace(lines, fn_line_idx, 5);
-
-        let Some(brace_idx) = brace_line_idx else {
-            continue;
+        // Find the line that contains the opening `{` (up to 5 lines lookahead).
+        let brace_line = match find_opening_brace_in_lines(&lines, fn_line_idx, 5) {
+            Some(l) => l,
+            None => continue,
         };
 
-        // Scan the function body using brace-depth tracking (capped at 40 lines as failsafe).
-        // This prevents false-negatives from bleeding into the next test function's body.
-        let cap = std::cmp::min(brace_idx + 40, n);
-        let body_end = find_function_end(lines, brace_idx, cap);
+        // O(1) byte offset of the brace line start via LineIndex.start_of_line.
+        let brace_line_byte_start = line_idx.start_of_line(brace_line);
 
-        let has_timeout = lines[brace_idx..body_end]
+        // Cap the body scan at 40 lines past the brace line (failsafe for
+        // malformed files), matching the original 40-line limit.
+        let cap_line = std::cmp::min(brace_line + 40, n);
+        let body_scan_end = if cap_line >= n {
+            content.len()
+        } else {
+            line_idx.start_of_line(cap_line)
+        };
+
+        // Brace-depth tracking over raw bytes to find the exact body end.
+        let fn_end_byte = find_function_end_bytes(content, brace_line_byte_start, body_scan_end);
+
+        // O(z) check: does any timeout wrapper offset fall inside the body?
+        let has_timeout = timeout_offsets
             .iter()
-            .any(|l| l.contains("with_default_timeout") || l.contains("with_timeout"));
+            .any(|&pos| pos >= brace_line_byte_start && pos < fn_end_byte);
 
         if !has_timeout {
             violations.push(format!(
                 "  {}:{}: test '{}' missing timeout wrapper (with_default_timeout or with_timeout)",
                 file_path.display(),
-                i + 1, // 1-based line number of #[test]
+                test_line + 1, // 1-based line number of #[test]
                 test_name,
             ));
         }
     }
 }
 
-/// Find the end of a function body by tracking brace depth.
-/// Returns the index one past the closing `}` of the function.
-/// Stops at `scan_end` as a failsafe for malformed files.
-fn find_function_end(lines: &[&str], brace_start: usize, scan_end: usize) -> usize {
+/// Find the end of a function body by tracking brace depth in raw bytes.
+///
+/// Scans `content[start..scan_end]` counting `{` and `}` bytes.  Returns the
+/// byte offset **one past** the closing `}` when depth reaches 0, or
+/// `scan_end` if the body is not closed within the scan window.
+fn find_function_end_bytes(content: &[u8], start: usize, scan_end: usize) -> usize {
+    let scan_end = scan_end.min(content.len());
     let mut depth: i32 = 0;
-    for (offset, line) in lines[brace_start..scan_end].iter().enumerate() {
-        for ch in line.chars() {
-            if ch == '{' {
-                depth += 1;
-            } else if ch == '}' {
-                depth -= 1;
-                if depth == 0 {
-                    return brace_start + offset + 1;
-                }
+    for (i, &b) in content[start..scan_end].iter().enumerate() {
+        if b == b'{' {
+            depth += 1;
+        } else if b == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return start + i + 1;
             }
         }
     }
     scan_end
+}
+
+/// Find the index of the first line (in `lines`) at or after `from_idx`
+/// that contains `{`, within `lookahead` additional lines.
+fn find_opening_brace_in_lines(
+    lines: &[&[u8]],
+    from_idx: usize,
+    lookahead: usize,
+) -> Option<usize> {
+    let end = std::cmp::min(from_idx + lookahead + 1, lines.len());
+    lines[from_idx..end]
+        .iter()
+        .enumerate()
+        .find_map(|(offset, line)| {
+            if line.contains(&b'{') {
+                Some(from_idx + offset)
+            } else {
+                None
+            }
+        })
+}
+
+/// Trim leading and trailing ASCII whitespace (space, tab, carriage-return)
+/// from a byte slice.
+fn trim_ascii(b: &[u8]) -> &[u8] {
+    let is_ws = |&x: &u8| x == b' ' || x == b'\t' || x == b'\r';
+    let start = b.iter().position(|x| !is_ws(x)).unwrap_or(b.len());
+    let end = b
+        .iter()
+        .rposition(|x| !is_ws(x))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    if start >= end {
+        &[]
+    } else {
+        &b[start..end]
+    }
 }
 
 fn is_fn_decl(line: &str) -> bool {
@@ -231,20 +332,6 @@ fn extract_test_name(line: &str) -> Option<&str> {
         return None;
     }
     Some(&after_fn[..name_end])
-}
-
-fn find_opening_brace(lines: &[&str], from_idx: usize, lookahead: usize) -> Option<usize> {
-    let end = std::cmp::min(from_idx + lookahead + 1, lines.len());
-    lines[from_idx..end]
-        .iter()
-        .enumerate()
-        .find_map(|(offset, line)| {
-            if line.contains('{') {
-                Some(from_idx + offset)
-            } else {
-                None
-            }
-        })
 }
 
 #[cfg(test)]
@@ -531,6 +618,141 @@ fn test_also_ok() {
         assert!(result.message.contains("test_missing"));
         assert!(!result.message.contains("test_ok"));
         assert!(!result.message.contains("test_also_ok"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── New Aho-Corasick specific tests ───────────────────────────────────────
+
+    #[test]
+    fn test_check_timeout_wrappers_fn_with_brace_on_same_line() {
+        // fn declaration and opening brace on the same line (e.g. `fn test_foo() {`)
+        let dir = make_temp_dir("brace-same-line");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        write_file(
+            &dir,
+            "tests/integration_tests/inline.rs",
+            "#[test]\nfn test_inline() {\n    with_default_timeout(|| assert!(true));\n}\n",
+        );
+
+        let result = check_timeout_wrappers(&dir);
+        assert_eq!(
+            result.status,
+            CheckStatus::Pass,
+            "fn with brace on same line should pass when wrapper present: {}",
+            result.message
+        );
+
+        // Also check missing wrapper on same-line-brace fn.
+        let dir2 = make_temp_dir("brace-same-line-missing");
+        let test_dir2 = dir2.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir2).unwrap();
+
+        write_file(
+            &dir2,
+            "tests/integration_tests/inline_missing.rs",
+            "#[test]\nfn test_inline_missing() {\n    assert!(true);\n}\n",
+        );
+
+        let result2 = check_timeout_wrappers(&dir2);
+        assert_eq!(result2.status, CheckStatus::Warning);
+        assert!(
+            result2.message.contains("test_inline_missing"),
+            "{}",
+            result2.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&dir2);
+    }
+
+    #[test]
+    fn test_check_timeout_wrappers_multiple_files_mixed() {
+        // Two files: one passing, one failing.
+        let dir = make_temp_dir("multi-file-mixed");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        write_file(
+            &dir,
+            "tests/integration_tests/good.rs",
+            r#"
+#[test]
+fn test_good() {
+    with_default_timeout(|| {
+        assert!(true);
+    });
+}
+"#,
+        );
+
+        write_file(
+            &dir,
+            "tests/integration_tests/bad.rs",
+            r#"
+#[test]
+fn test_bad() {
+    assert!(false);
+}
+"#,
+        );
+
+        let result = check_timeout_wrappers(&dir);
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert!(
+            result.message.contains("test_bad"),
+            "message must mention the bad test: {}",
+            result.message
+        );
+        assert!(
+            !result.message.contains("test_good"),
+            "message must not mention the good test: {}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_timeout_wrappers_timeout_outside_body_not_counted() {
+        // A timeout wrapper present in a sibling function must not satisfy
+        // the constraint for a test that lacks one.
+        let dir = make_temp_dir("timeout-outside-body");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+
+        write_file(
+            &dir,
+            "tests/integration_tests/sibling.rs",
+            r#"
+#[test]
+fn test_has_timeout() {
+    with_default_timeout(|| {
+        assert!(true);
+    });
+}
+
+#[test]
+fn test_lacks_timeout() {
+    assert!(true);
+}
+"#,
+        );
+
+        let result = check_timeout_wrappers(&dir);
+        assert_eq!(result.status, CheckStatus::Warning);
+        assert!(
+            result.message.contains("test_lacks_timeout"),
+            "test_lacks_timeout should be flagged: {}",
+            result.message
+        );
+        assert!(
+            !result.message.contains("test_has_timeout"),
+            "test_has_timeout should NOT be flagged: {}",
+            result.message
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 }
