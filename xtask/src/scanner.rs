@@ -90,6 +90,77 @@ pub struct NativeScanCheckResult {
     pub violations: Vec<NativeScanViolation>,
 }
 
+/// Pre-built line index enabling O(log L) line-context lookups via binary search.
+///
+/// Construction is a single O(n) pass collecting newline byte-offsets into a
+/// sorted Vec.  All subsequent lookups use Knuth's binary search algorithm
+/// (TAOCP Vol. 3, §6.2.1 Algorithm B) via `partition_point`, giving O(log L)
+/// per query instead of the O(n) linear scan in the original helpers.
+struct LineIndex {
+    /// Byte offsets of every b'\n' in the source, in ascending order.
+    newlines: Vec<usize>,
+    /// Total byte length of the source buffer.
+    content_len: usize,
+}
+
+impl LineIndex {
+    /// Build the index from raw file bytes in O(n).
+    fn new(content: &[u8]) -> Self {
+        let newlines: Vec<usize> = content
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &b)| if b == b'\n' { Some(i) } else { None })
+            .collect();
+        Self {
+            newlines,
+            content_len: content.len(),
+        }
+    }
+
+    /// 0-based line number of the line that contains `offset`.
+    /// Uses binary search (TAOCP Vol. 3, §6.2.1 Algorithm B): O(log L).
+    ///
+    /// The number of newlines strictly before `offset` equals the 0-based
+    /// line number of the line containing `offset`.
+    fn line_number(&self, offset: usize) -> usize {
+        self.newlines.partition_point(|&nl| nl < offset)
+    }
+
+    /// Byte offset of the first byte of the line containing `offset`.
+    fn line_start(&self, offset: usize) -> usize {
+        let idx = self.newlines.partition_point(|&nl| nl < offset);
+        if idx == 0 {
+            0
+        } else {
+            self.newlines[idx - 1] + 1
+        }
+    }
+
+    /// Byte offset of the `\n` terminating the line containing `offset`,
+    /// or `content_len` if the line has no trailing newline.
+    ///
+    /// When `offset` is exactly at a `\n`, that newline is the line terminator,
+    /// so its offset is returned (the line ends at the newline itself).
+    fn line_end(&self, offset: usize) -> usize {
+        // Use strict `<` so that when `offset` IS the newline byte,
+        // we return that newline offset (not the next one).
+        let idx = self.newlines.partition_point(|&nl| nl < offset);
+        if idx < self.newlines.len() {
+            self.newlines[idx]
+        } else {
+            self.content_len
+        }
+    }
+
+    /// Extract the raw bytes of the line containing `offset` (without the
+    /// trailing `\n`).
+    fn extract_line<'a>(&self, content: &'a [u8], offset: usize) -> &'a [u8] {
+        let start = self.line_start(offset);
+        let end = self.line_end(offset);
+        &content[start..end]
+    }
+}
+
 // ── Public constants ──────────────────────────────────────────────────────────
 
 /// All native scan checks, replacing 17 `rg` subprocess calls.
@@ -457,6 +528,11 @@ fn scan_group_collect(
             Err(_) => continue,
         };
 
+        // Build a LineIndex in a single O(n) pass.  All per-match line-context
+        // lookups below use O(log L) binary search (TAOCP Vol. 3, §6.2.1
+        // Algorithm B) instead of repeated O(n) linear scans.
+        let line_idx = LineIndex::new(&content);
+
         for mat in ac.find_iter(&content) {
             let check_idx = pattern_to_check[mat.pattern().as_usize()];
             let check = &all_checks[check_idx];
@@ -472,17 +548,17 @@ fn scan_group_collect(
             // Apply mode-specific post-filter.
             let is_violation = match check.mode {
                 MatchMode::AnyLiteral { skip_comment_lines } => {
-                    !(skip_comment_lines && line_is_comment(&content, byte_start))
+                    !(skip_comment_lines && line_is_comment(&content, &line_idx, byte_start))
                 }
                 MatchMode::StemWithBoolSuffix => {
                     word_boundary_at_start(&content, byte_start)
                         && matches_bool_suffix(&content, byte_end)
                 }
                 MatchMode::AnyLiteralAtLineStart { skip_comment_lines } => {
-                    if skip_comment_lines && line_is_comment(&content, byte_start) {
+                    if skip_comment_lines && line_is_comment(&content, &line_idx, byte_start) {
                         false
                     } else {
-                        only_whitespace_before_on_line(&content, byte_start)
+                        only_whitespace_before_on_line(&content, &line_idx, byte_start)
                     }
                 }
                 MatchMode::NegativeLookahead {
@@ -499,9 +575,11 @@ fn scan_group_collect(
                         false
                     } else {
                         // Violation only if negative_context is absent from the line.
-                        let line_start = find_line_start(&content, byte_start);
-                        let line_end_pos = find_line_end(&content, byte_start);
-                        let line_bytes = &content[line_start..line_end_pos];
+                        // Use LineIndex O(log L) lookups for line boundaries.
+                        // The windows() search for negative_context (always 8 bytes:
+                        // "https://") is intentionally left as-is — it is cache-friendly
+                        // and called only when boundary_ok is true.
+                        let line_bytes = line_idx.extract_line(&content, byte_start);
                         if negative_context.is_empty() {
                             false // empty negative_context always suppresses (degenerate)
                         } else {
@@ -514,8 +592,9 @@ fn scan_group_collect(
             };
 
             if is_violation {
-                let line_number = count_lines_before(&content, byte_start) + 1;
-                let line = extract_line(&content, byte_start);
+                let line_number = line_idx.line_number(byte_start) + 1;
+                let line = String::from_utf8_lossy(line_idx.extract_line(&content, byte_start))
+                    .to_string();
                 violations.push((
                     check_idx,
                     NativeScanViolation {
@@ -576,8 +655,10 @@ fn file_matches_exclude_glob(path: &Path, glob: &str) -> bool {
 
 /// Return true when the line containing `byte_offset` starts with `//`
 /// (ignoring leading whitespace).
-fn line_is_comment(content: &[u8], byte_offset: usize) -> bool {
-    let line_start = find_line_start(content, byte_offset);
+///
+/// Uses `line_idx` for O(log L) line-start lookup instead of O(n) linear scan.
+fn line_is_comment(content: &[u8], line_idx: &LineIndex, byte_offset: usize) -> bool {
+    let line_start = line_idx.line_start(byte_offset);
     let trimmed = &content[line_start..];
     let non_ws = trimmed.iter().position(|&b| b != b' ' && b != b'\t');
     match non_ws {
@@ -629,8 +710,14 @@ fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
 
 /// Return true when only whitespace (spaces or tabs) precedes `byte_offset`
 /// on the same line.  An empty prefix (match at column 0) also returns true.
-fn only_whitespace_before_on_line(content: &[u8], byte_offset: usize) -> bool {
-    let line_start = find_line_start(content, byte_offset);
+///
+/// Uses `line_idx` for O(log L) line-start lookup instead of O(n) linear scan.
+fn only_whitespace_before_on_line(
+    content: &[u8],
+    line_idx: &LineIndex,
+    byte_offset: usize,
+) -> bool {
+    let line_start = line_idx.line_start(byte_offset);
     content[line_start..byte_offset]
         .iter()
         .all(|&b| b == b' ' || b == b'\t')
@@ -644,32 +731,6 @@ fn is_word_boundary_at_end(content: &[u8], end: usize) -> bool {
     }
     let next = content[end];
     !next.is_ascii_alphanumeric() && next != b'_'
-}
-
-fn count_lines_before(content: &[u8], offset: usize) -> usize {
-    content[..offset].iter().filter(|&&b| b == b'\n').count()
-}
-
-fn find_line_start(content: &[u8], offset: usize) -> usize {
-    content[..offset]
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map(|p| p + 1)
-        .unwrap_or(0)
-}
-
-fn find_line_end(content: &[u8], offset: usize) -> usize {
-    content[offset..]
-        .iter()
-        .position(|&b| b == b'\n')
-        .map(|p| offset + p)
-        .unwrap_or(content.len())
-}
-
-fn extract_line(content: &[u8], offset: usize) -> String {
-    let start = find_line_start(content, offset);
-    let end = find_line_end(content, offset);
-    String::from_utf8_lossy(&content[start..end]).to_string()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -692,6 +753,152 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(full, content).unwrap();
+    }
+
+    // ── LineIndex unit tests ──────────────────────────────────────────────────
+
+    mod line_index_tests {
+        use super::super::LineIndex;
+
+        #[test]
+        fn test_empty_content_line_number() {
+            let idx = LineIndex::new(&[]);
+            assert_eq!(idx.line_number(0), 0);
+        }
+
+        #[test]
+        fn test_empty_content_line_start() {
+            let idx = LineIndex::new(&[]);
+            assert_eq!(idx.line_start(0), 0);
+        }
+
+        #[test]
+        fn test_empty_content_line_end() {
+            let idx = LineIndex::new(&[]);
+            assert_eq!(idx.line_end(0), 0);
+        }
+
+        #[test]
+        fn test_single_line_no_trailing_newline_line_number() {
+            let content = b"hello";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_number(0), 0);
+            assert_eq!(idx.line_number(4), 0);
+        }
+
+        #[test]
+        fn test_single_line_no_trailing_newline_line_start() {
+            let content = b"hello";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_start(0), 0);
+            assert_eq!(idx.line_start(4), 0);
+        }
+
+        #[test]
+        fn test_single_line_no_trailing_newline_line_end() {
+            let content = b"hello";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_end(0), 5);
+            assert_eq!(idx.line_end(4), 5);
+        }
+
+        #[test]
+        fn test_single_newline_only() {
+            // b"\n": offset 0 is before the newline (line 0), offset 1 is after (line 1).
+            let content = b"\n";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_number(0), 0, "offset 0 must be on line 0");
+            assert_eq!(
+                idx.line_number(1),
+                1,
+                "offset 1 (after newline) must be on line 1"
+            );
+        }
+
+        #[test]
+        fn test_two_lines_line_number() {
+            // b"abc\ndef": newline at offset 3.
+            let content = b"abc\ndef";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_number(0), 0);
+            assert_eq!(idx.line_number(2), 0);
+            assert_eq!(idx.line_number(3), 0, "newline itself is on line 0");
+            assert_eq!(idx.line_number(4), 1, "char after newline is on line 1");
+            assert_eq!(idx.line_number(6), 1);
+        }
+
+        #[test]
+        fn test_two_lines_line_start() {
+            let content = b"abc\ndef";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_start(0), 0);
+            assert_eq!(idx.line_start(5), 4, "line 'def' starts at offset 4");
+        }
+
+        #[test]
+        fn test_two_lines_line_end() {
+            let content = b"abc\ndef";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_end(0), 3, "line 'abc' ends at newline offset 3");
+            assert_eq!(idx.line_end(5), 7, "line 'def' ends at content_len 7");
+        }
+
+        #[test]
+        fn test_offset_exactly_at_newline() {
+            // Newline is at offset 3; line_start(3) should be 0 (still on line 0).
+            let content = b"abc\ndef";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.line_start(3), 0);
+            assert_eq!(idx.line_end(3), 3);
+        }
+
+        #[test]
+        fn test_last_line_no_trailing_newline_line_end() {
+            let content = b"first\nsecond";
+            let idx = LineIndex::new(content);
+            // "second" starts at offset 6, content_len == 12.
+            assert_eq!(idx.line_end(6), 12);
+            assert_eq!(idx.line_end(11), 12);
+        }
+
+        #[test]
+        fn test_extract_line_returns_correct_bytes() {
+            let content = b"line one\nline two\nline three";
+            let idx = LineIndex::new(content);
+            assert_eq!(idx.extract_line(content, 0), b"line one");
+            assert_eq!(idx.extract_line(content, 9), b"line two");
+            assert_eq!(idx.extract_line(content, 18), b"line three");
+        }
+
+        #[test]
+        fn test_line_number_monotonically_non_decreasing() {
+            let content = b"a\nb\nc\nd";
+            let idx = LineIndex::new(content);
+            let mut prev = 0usize;
+            for i in 0..content.len() {
+                let ln = idx.line_number(i);
+                assert!(
+                    ln >= prev,
+                    "line_number must be non-decreasing: offset {i}, got {ln}, prev {prev}"
+                );
+                prev = ln;
+            }
+        }
+
+        #[test]
+        fn test_multiline_with_trailing_newline() {
+            let content = b"alpha\nbeta\n";
+            let idx = LineIndex::new(content);
+            // Trailing newline at offset 10; offset 11 is on an empty line 2.
+            assert_eq!(
+                idx.line_number(10),
+                1,
+                "newline at offset 10 is still on line 1"
+            );
+            assert_eq!(idx.line_number(11), 2, "after trailing newline is line 2");
+            assert_eq!(idx.line_start(11), 11);
+            assert_eq!(idx.line_end(11), 11); // empty last line, content_len == 11
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
