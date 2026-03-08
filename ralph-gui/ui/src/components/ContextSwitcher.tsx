@@ -7,20 +7,45 @@ export function ContextSwitcher() {
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const activePath = useAppSelector((s) => s.worktrees.activeWorktreePath);
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
+        setSearchQuery("");
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  // Auto-focus search input when dropdown opens
+  useEffect(() => {
+    if (open && searchRef.current) {
+      searchRef.current.focus();
+    }
+    if (!open) {
+      setSearchQuery("");
+    }
+  }, [open]);
+
   const mainWorktree = worktrees.find((wt) => wt.is_main);
   const linkedWorktrees = worktrees.filter((wt) => !wt.is_main);
+
+  // Filter linked worktrees by search query (case-insensitive), then sort
+  // active-run worktrees first, then alphabetically by name.
+  const filteredWorktrees = linkedWorktrees
+    .filter((wt) =>
+      searchQuery === "" || wt.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    )
+    .sort((a, b) => {
+      if (a.has_active_run && !b.has_active_run) return -1;
+      if (!a.has_active_run && b.has_active_run) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
   const activeWorktree = activePath
     ? worktrees.find((wt) => wt.path === activePath)
@@ -40,6 +65,7 @@ export function ContextSwitcher() {
     void dispatch(switchActiveContext({ repoPath, worktreePath: path }));
     dispatch(setActiveWorktree(path));
     setOpen(false);
+    setSearchQuery("");
   }
 
   return (
@@ -89,7 +115,33 @@ export function ContextSwitcher() {
             animation: "fadeIn 120ms ease",
           }}
         >
-          {/* Direct repo option */}
+          {/* Search input for filtering worktrees */}
+          {linkedWorktrees.length > 0 && (
+            <div style={{ padding: "6px 8px 4px" }}>
+              <input
+                ref={searchRef}
+                data-testid="context-search"
+                aria-label="Search worktrees"
+                placeholder="Search worktrees…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "4px 8px",
+                  background: "var(--bg-base)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-sm)",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+          )}
+
+          {/* Direct repo option — always visible, never filtered */}
           <ContextOption
             label="Direct repository"
             sublabel={mainWorktree?.branch ?? "main"}
@@ -98,13 +150,13 @@ export function ContextSwitcher() {
             badge="repo"
           />
 
-          {linkedWorktrees.length > 0 && (
+          {filteredWorktrees.length > 0 && (
             <>
               <div style={{ height: 1, background: "var(--border-subtle)", margin: "2px 0" }} />
               <div style={{ padding: "4px 10px 2px", fontSize: 10, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                 Worktrees
               </div>
-              {linkedWorktrees.map((wt) => (
+              {filteredWorktrees.map((wt) => (
                 <ContextOption
                   key={wt.path}
                   label={wt.name}
@@ -112,6 +164,8 @@ export function ContextSwitcher() {
                   active={activePath === wt.path}
                   onClick={() => handleSelect(wt.path)}
                   badge={wt.has_active_run ? "active" : "wt"}
+                  worktreePath={wt.path}
+                  hasActiveRun={wt.has_active_run}
                 />
               ))}
             </>
@@ -128,12 +182,16 @@ function ContextOption({
   active,
   onClick,
   badge,
+  worktreePath,
+  hasActiveRun,
 }: {
   label: string;
   sublabel: string;
   active: boolean;
   onClick: () => void;
   badge: string;
+  worktreePath?: string;
+  hasActiveRun?: boolean;
 }) {
   return (
     <button
@@ -181,6 +239,26 @@ function ContextOption({
           {sublabel}
         </div>
       </div>
+      {hasActiveRun && worktreePath && (
+        <span
+          data-testid={`active-run-badge-${worktreePath}`}
+          style={{
+            fontSize: 9,
+            fontFamily: "var(--font-mono)",
+            fontWeight: 600,
+            color: "var(--status-running)",
+            background: "rgba(var(--status-running-rgb, 34,197,94), 0.12)",
+            border: "1px solid rgba(var(--status-running-rgb, 34,197,94), 0.25)",
+            borderRadius: 100,
+            padding: "1px 6px",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            flexShrink: 0,
+          }}
+        >
+          active
+        </span>
+      )}
     </button>
   );
 }

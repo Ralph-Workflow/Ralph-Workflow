@@ -1,12 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
+import { MemoryRouter } from "react-router-dom";
 import sessionReducer from "../../store/slices/sessionSlice";
 import worktreeReducer from "../../store/slices/worktreeSlice";
 import runReducer from "../../store/slices/runSlice";
 import configReducer from "../../store/slices/configSlice";
 import { SessionList } from "./SessionList";
+
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
 
 vi.mock("../../api/tauri", () => ({
   getSessions: vi.fn(),
@@ -34,13 +45,16 @@ function makeStore() {
 function renderList(repoPath = "/my/repo", onResume = vi.fn()) {
   return render(
     <Provider store={makeStore()}>
-      <SessionList repoPath={repoPath} onResume={onResume} />
+      <MemoryRouter>
+        <SessionList repoPath={repoPath} onResume={onResume} />
+      </MemoryRouter>
     </Provider>,
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockNavigate.mockReset();
 });
 
 describe("SessionList", () => {
@@ -251,15 +265,95 @@ describe("SessionList", () => {
     ]);
     render(
       <Provider store={makeStore()}>
-        <SessionList
-          repoPath="/my/repo"
-          filterWorktreePath="/my/wt-50"
-        />
+        <MemoryRouter>
+          <SessionList
+            repoPath="/my/repo"
+            filterWorktreePath="/my/wt-50"
+          />
+        </MemoryRouter>
       </Provider>,
     );
     await waitFor(() =>
       expect(screen.getByText(/wt-run/)).toBeInTheDocument(),
     );
     expect(screen.queryByText(/direct-run/)).not.toBeInTheDocument();
+  });
+
+  it("clicking a session row navigates to /runs/:runId", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "abc-nav-test",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Nav test",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Development",
+      },
+    ]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText(/abc-nav-test/)).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText(/abc-nav-test/));
+    expect(mockNavigate).toHaveBeenCalledWith("/runs/abc-nav-test");
+  });
+
+  it("clicking Resume button calls onResume without triggering navigation", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "paused-nav-test",
+        status: "paused",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Paused nav test",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Review",
+      },
+    ]);
+    const onResume = vi.fn();
+    renderList("/my/repo", onResume);
+    await waitFor(() =>
+      expect(screen.getByText("Resume")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Resume"));
+    expect(onResume).toHaveBeenCalledWith("paused-nav-test");
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("running and completed sessions do not show a Resume button", async () => {
+    mockGetSessions.mockResolvedValueOnce([
+      {
+        run_id: "run-running",
+        status: "running",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Running",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Development",
+      },
+      {
+        run_id: "run-completed",
+        status: "completed",
+        repo_path: "/my/repo",
+        worktree_path: null,
+        created_at: "2024-01-01",
+        description: "Completed",
+        developer_agent: "",
+        reviewer_agent: "",
+        phase: "Complete",
+      },
+    ]);
+    renderList();
+    await waitFor(() =>
+      expect(screen.getByText(/run-running/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Resume")).not.toBeInTheDocument();
   });
 });

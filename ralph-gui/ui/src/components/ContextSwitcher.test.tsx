@@ -188,4 +188,110 @@ describe("ContextSwitcher", () => {
     fireEvent.mouseDown(document.body);
     expect(screen.queryByText("Direct repository")).not.toBeInTheDocument();
   });
+
+  it("shows search input when dropdown is open and worktrees exist", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, linkedWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    expect(screen.getByTestId("context-search")).toBeInTheDocument();
+  });
+
+  it("typing in search filters worktrees by name (case-insensitive)", () => {
+    const secondWorktree = {
+      path: "/my/wt-other",
+      branch: "wt-other",
+      name: "wt-other-feature",
+      has_active_run: false,
+      is_main: false,
+    };
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, linkedWorktree, secondWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    const searchInput = screen.getByTestId("context-search");
+    fireEvent.change(searchInput, { target: { value: "WT-50" } });
+    expect(screen.queryAllByText("wt-50-feature").length).toBeGreaterThan(0);
+    expect(screen.queryByText("wt-other-feature")).not.toBeInTheDocument();
+  });
+
+  it("Direct repository option is always visible regardless of search text", () => {
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, linkedWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    const searchInput = screen.getByTestId("context-search");
+    fireEvent.change(searchInput, { target: { value: "zzznomatch" } });
+    expect(screen.getByText("Direct repository")).toBeInTheDocument();
+  });
+
+  it("clearing the search input shows all worktrees again", () => {
+    const secondWorktree = {
+      path: "/my/wt-other",
+      branch: "wt-other",
+      name: "wt-other-feature",
+      has_active_run: false,
+      is_main: false,
+    };
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, linkedWorktree, secondWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    const searchInput = screen.getByTestId("context-search");
+    fireEvent.change(searchInput, { target: { value: "WT-50" } });
+    expect(screen.queryByText("wt-other-feature")).not.toBeInTheDocument();
+    fireEvent.change(searchInput, { target: { value: "" } });
+    expect(screen.getByText("wt-other-feature")).toBeInTheDocument();
+  });
+
+  it("worktrees with has_active_run=true show an active-run indicator", () => {
+    const activeWorktree = {
+      path: "/my/wt-active",
+      branch: "wt-active",
+      name: "wt-active-run",
+      has_active_run: true,
+      is_main: false,
+    };
+    const store = makeStore({
+      worktrees: {
+        worktrees: [mainWorktree, activeWorktree],
+        status: "succeeded",
+        error: null,
+        activeWorktreePath: null,
+        lastRepoPath: "/my/repo",
+      },
+    });
+    renderContextSwitcher(store);
+    fireEvent.click(screen.getByText("direct repo"));
+    expect(screen.getByText("wt-active-run")).toBeInTheDocument();
+    expect(screen.getByTestId("active-run-badge-/my/wt-active")).toBeInTheDocument();
+  });
 });

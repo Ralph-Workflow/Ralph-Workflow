@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { fetchSessions, setActiveSession } from "../../store/slices/sessionSlice";
 import { RunStatusBadge } from "../RunStatusBadge";
@@ -30,6 +31,7 @@ interface SessionListProps {
 
 export function SessionList({ repoPath, onResume, filterStatus, filterWorktreePath }: SessionListProps) {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { sessions, status, selectedRunId } = useAppSelector((s) => s.sessions);
 
   useEffect(() => {
@@ -90,7 +92,10 @@ export function SessionList({ repoPath, onResume, filterStatus, filterWorktreePa
           key={session.run_id}
           session={session}
           selected={session.run_id === selectedRunId}
-          onSelect={() => dispatch(setActiveSession(session.run_id))}
+          onSelect={() => {
+            dispatch(setActiveSession(session.run_id));
+            navigate(`/runs/${session.run_id}`);
+          }}
           onResume={
             (session.status === "paused" || session.status === "interrupted") && onResume
               ? () => onResume(session.run_id)
@@ -115,7 +120,10 @@ function SessionRow({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onSelect(); }}
       style={{
         display: "flex",
         alignItems: "center",
@@ -123,9 +131,21 @@ function SessionRow({
         padding: "10px 14px",
         borderRadius: "var(--radius-md)",
         background: selected ? "var(--accent-bg)" : "transparent",
-        border: selected ? "1px solid var(--accent-dim)30" : "1px solid transparent",
+        border: selected ? "1px solid var(--accent-dim)30" : "1px solid var(--border-subtle)",
         cursor: "pointer",
         transition: "all var(--transition-fast)",
+      }}
+      onMouseEnter={(e) => {
+        if (!selected) {
+          (e.currentTarget as HTMLDivElement).style.background = "var(--bg-elevated)";
+          (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-default)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!selected) {
+          (e.currentTarget as HTMLDivElement).style.background = "transparent";
+          (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-subtle)";
+        }
       }}
     >
       <RunStatusBadge
@@ -150,6 +170,7 @@ function SessionRow({
           Resume
         </button>
       )}
+      <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>›</span>
     </div>
   );
 }

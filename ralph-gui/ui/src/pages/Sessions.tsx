@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAppSelector } from "../store";
 import { SessionList } from "../components/sessions/SessionList";
 import { NewSessionWizard } from "../components/sessions/NewSessionWizard";
@@ -16,6 +16,7 @@ const STATUS_CHIPS = [
 
 export function Sessions() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [view, setView] = useState<View>(() =>
     searchParams.get("new") === "true" ? "new" : "list",
   );
@@ -23,6 +24,14 @@ export function Sessions() {
   const worktrees = useAppSelector((s) => s.worktrees.worktrees);
   const activePath = useAppSelector((s) => s.worktrees.activeWorktreePath);
   const mainWorktree = worktrees.find((wt) => wt.is_main);
+
+  // Navigate to RunDetail page when resume is triggered from the session list.
+  // RunDetail shows full context (phase, checkpoint, agent profile) before the
+  // Resume button, which matches the spec principle: "confidence-oriented
+  // summaries before destructive or costly actions."
+  function handleResume(runId: string) {
+    navigate(`/runs/${runId}`);
+  }
 
   // Filter state — transient UI state, not stored in Redux
   const [activeStatusFilters, setActiveStatusFilters] = useState<string[]>([]);
@@ -217,6 +226,7 @@ export function Sessions() {
                     repoPath={repoPath}
                     filterStatus={activeStatusFilters}
                     filterWorktreePath={filterWorktreePath}
+                    onResume={handleResume}
                   />
                 </div>
               </>
