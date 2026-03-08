@@ -100,9 +100,11 @@ impl MainEffectHandler {
             PromptModeResult::Data(data) => data,
         };
 
-        if let Some(prompt_key) = prompt_key {
+        // Capture prompt to history and collect replay observability key.
+        let replay_key = prompt_key.as_deref().map(|k| (k.to_string(), was_replayed));
+        if let Some(prompt_key_str) = prompt_key.as_deref() {
             if !was_replayed {
-                ctx.capture_prompt(&prompt_key, &dev_prompt);
+                ctx.capture_prompt(prompt_key_str, &dev_prompt);
             }
         }
 
@@ -132,6 +134,14 @@ impl MainEffectHandler {
         // Build events: DevelopmentPromptPrepared is primary, with additional_events and TemplateRendered as additional
         let mut result = EffectResult::event(PipelineEvent::development_prompt_prepared(iteration));
 
+        // Emit replay observability event (RFC-007)
+        if let Some((key, replayed)) = replay_key {
+            result = result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                key,
+                was_replayed: replayed,
+            });
+        }
+
         // Add any additional events from XSD retry materialization, etc.
         for ev in additional_events {
             result = result.with_additional_event(ev);
@@ -157,12 +167,15 @@ impl MainEffectHandler {
         };
 
         let continuation_state = &self.state.continuation;
-        let prompt_key = format!(
-            "development_{}_continuation_{}",
-            iteration, continuation_state.continuation_attempt
+        let scope_key = crate::prompts::PromptScopeKey::for_development(
+            iteration,
+            Some(continuation_state.continuation_attempt),
+            crate::prompts::RetryMode::Normal,
+            self.state.recovery_epoch,
         );
+        let prompt_key = scope_key.to_string();
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+            get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                 prompt_developer_iteration_continuation_xml(
                     ctx.template_context,
                     continuation_state,

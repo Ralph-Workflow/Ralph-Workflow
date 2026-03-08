@@ -9,7 +9,7 @@ use crate::prompts::content_builder::PromptContentReferences;
 use crate::prompts::content_reference::{
     PlanContentReference, PromptContentReference, MAX_INLINE_CONTENT_SIZE,
 };
-use crate::prompts::{get_stored_or_generate_prompt, SubstitutionLog};
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SubstitutionLog};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::state::PromptInputRepresentation;
@@ -129,10 +129,15 @@ impl MainEffectHandler {
                 },
             );
         let prompt = format!("{retry_preamble}\n{base_prompt}");
-        let prompt_key = format!(
-            "development_{}_same_agent_retry_{}",
-            iteration, continuation_state.same_agent_retry_count
+        let scope_key = PromptScopeKey::for_development(
+            iteration,
+            None,
+            RetryMode::SameAgent {
+                count: continuation_state.same_agent_retry_count,
+            },
+            self.state.recovery_epoch,
         );
+        let prompt_key = scope_key.to_string();
         let rendered_log = if should_validate {
             let rendered = crate::prompts::prompt_developer_iteration_xml_with_references_and_log(
                 ctx.template_context,
@@ -216,7 +221,13 @@ impl MainEffectHandler {
             PromptInputRepresentation::FileReference { .. } => None,
         };
 
-        let prompt_key = format!("development_{iteration}");
+        let scope_key = PromptScopeKey::for_development(
+            iteration,
+            None,
+            RetryMode::Normal,
+            self.state.recovery_epoch,
+        );
+        let prompt_key = scope_key.to_string();
         let prompt_ref = match &inputs.prompt.representation {
             PromptInputRepresentation::Inline => {
                 let prompt_md =
@@ -246,7 +257,7 @@ impl MainEffectHandler {
             }
         };
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+            get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                 let prompt_ref = prompt_ref.clone();
                 let plan_ref = plan_ref.clone();
                 let refs = PromptContentReferences {

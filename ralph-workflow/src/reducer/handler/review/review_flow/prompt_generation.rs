@@ -37,7 +37,7 @@ impl MainEffectHandler {
         use crate::agents::AgentRole;
         use crate::prompts::{
             get_stored_or_generate_prompt, prompt_review_xml_with_references,
-            prompt_review_xsd_retry_with_context_files_and_log,
+            prompt_review_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
         };
         use std::path::Path;
 
@@ -134,10 +134,12 @@ impl MainEffectHandler {
             rendered_log,
         ) = match prompt_mode {
             PromptMode::XsdRetry => {
-                let prompt_key = format!(
-                    "review_{pass}_xsd_retry_{}",
-                    continuation_state.invalid_output_attempts
+                let scope_key = PromptScopeKey::for_review(
+                    pass,
+                    RetryMode::Xsd { count: continuation_state.invalid_output_attempts },
+                    self.state.recovery_epoch,
                 );
+                let prompt_key = scope_key.to_string();
                 // Use the actual XSD error from state, or fall back to generic message
                 let xsd_error = continuation_state
                     .last_review_xsd_error
@@ -244,10 +246,12 @@ impl MainEffectHandler {
                         }
                     };
                 let prompt = format!("{retry_preamble}\n{base_prompt}");
-                let prompt_key = format!(
-                    "review_{pass}_same_agent_retry_{}",
-                    continuation_state.same_agent_retry_count
+                let scope_key = PromptScopeKey::for_review(
+                    pass,
+                    RetryMode::SameAgent { count: continuation_state.same_agent_retry_count },
+                    self.state.recovery_epoch,
                 );
+                let prompt_key = scope_key.to_string();
                 let rendered_log = if should_validate {
                     let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
                         ctx.template_context,
@@ -287,7 +291,9 @@ impl MainEffectHandler {
                 let Some(inputs) = materialized_inputs else {
                     return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
                 };
-                let prompt_key = format!("review_{pass}");
+                let scope_key =
+                    PromptScopeKey::for_review(pass, RetryMode::Normal, self.state.recovery_epoch);
+                let prompt_key = scope_key.to_string();
                 let plan_ref = match &inputs.plan.representation {
                     PromptInputRepresentation::Inline => {
                         let plan_inline = plan_inline.unwrap_or_else(|| {
@@ -325,7 +331,7 @@ impl MainEffectHandler {
                     }
                 };
                 let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+                    get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                         let plan_ref = plan_ref.clone();
                         let diff_ref = diff_ref.clone();
 
@@ -410,7 +416,11 @@ impl MainEffectHandler {
         }
 
         // Build events: ReviewPromptPrepared is primary, with additional_events and TemplateRendered as additional
-        let mut result = EffectResult::event(PipelineEvent::review_prompt_prepared(pass));
+        let mut result = EffectResult::event(PipelineEvent::review_prompt_prepared(pass))
+            .with_ui_event(UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            });
 
         // Add any additional events from XSD retry materialization, etc.
         for ev in additional_events {

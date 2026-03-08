@@ -12,7 +12,9 @@ use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::{PromptContentReference, MAX_INLINE_CONTENT_SIZE};
-use crate::prompts::{get_stored_or_generate_prompt, prompt_planning_xml_with_references};
+use crate::prompts::{
+    get_stored_or_generate_prompt, prompt_planning_xml_with_references, PromptScopeKey, RetryMode,
+};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, PipelinePhase, WorkspaceIoErrorKind};
 use crate::reducer::prompt_inputs::sha256_hex_str;
@@ -21,6 +23,7 @@ use crate::reducer::state::{
     MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
     PromptMaterializationReason,
 };
+use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
 
@@ -218,10 +221,14 @@ impl MainEffectHandler {
                         ),
                     };
                     let prompt = format!("{retry_preamble}\n{base_prompt}");
-                    let prompt_key = format!(
-                        "planning_{iteration}_same_agent_retry_{}",
-                        continuation_state.same_agent_retry_count
+                    let scope_key = PromptScopeKey::for_planning(
+                        iteration,
+                        RetryMode::SameAgent {
+                            count: continuation_state.same_agent_retry_count,
+                        },
+                        self.state.recovery_epoch,
                     );
+                    let prompt_key = scope_key.to_string();
                     let rendered_log = if should_validate {
                         let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
                             ctx.template_context,
@@ -287,10 +294,15 @@ impl MainEffectHandler {
                         }
                     };
 
-                    let prompt_key = format!("planning_{iteration}");
+                    let scope_key = PromptScopeKey::for_planning(
+                        iteration,
+                        RetryMode::Normal,
+                        self.state.recovery_epoch,
+                    );
+                    let prompt_key = scope_key.to_string();
                     let prompt_ref_for_template = prompt_ref.clone();
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                             // Use log-based rendering
                             let rendered =
                                 crate::prompts::prompt_planning_xml_with_references_and_log(
@@ -347,9 +359,11 @@ impl MainEffectHandler {
                 }
             };
 
-        if let Some(prompt_key) = prompt_key {
+        // Capture prompt to history and collect replay observability key.
+        let replay_key = prompt_key.as_deref().map(|k| (k.to_string(), was_replayed));
+        if let Some(prompt_key_str) = prompt_key.as_deref() {
             if !was_replayed {
-                ctx.capture_prompt(&prompt_key, &prompt);
+                ctx.capture_prompt(prompt_key_str, &prompt);
             }
         }
 
@@ -368,6 +382,14 @@ impl MainEffectHandler {
 
         // Build events: PlanningPromptPrepared is primary, with additional_events and TemplateRendered as additional
         let mut result = EffectResult::event(PipelineEvent::planning_prompt_prepared(iteration));
+
+        // Emit replay observability event (RFC-007)
+        if let Some((key, replayed)) = replay_key {
+            result = result.with_ui_event(UIEvent::PromptReplayHit {
+                key,
+                was_replayed: replayed,
+            });
+        }
 
         // Add any additional events from XSD retry materialization, etc.
         for ev in additional_events {

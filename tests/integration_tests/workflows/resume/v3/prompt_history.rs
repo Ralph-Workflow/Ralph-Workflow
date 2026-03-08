@@ -7,8 +7,13 @@ use std::path::PathBuf;
 
 use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
 
+use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
+use ralph_workflow::reducer::ui_event::UIEvent;
+use ralph_workflow::reducer::PipelineState;
+
 use crate::common::{
     create_test_config_struct, mock_executor_with_success, run_ralph_cli_with_handler,
+    run_ralph_cli_with_handlers,
 };
 use crate::test_timeout::with_default_timeout;
 
@@ -173,6 +178,72 @@ fn ralph_v3_rejects_legacy_checkpoint_missing_prompt_md_checksum() {
                 || error_msg.contains("checkpoint")
                 || error_msg.contains("validation"),
             "Error message should mention legacy checkpoint rejection: {error_msg}"
+        );
+    });
+}
+
+/// Test that `UIEvent::PromptReplayHit` with `was_replayed=true` fires when a
+/// stored prompt is replayed from checkpoint history on resume.
+///
+/// RFC-007 Short-term #3: Replay observability — every prompt generation must emit
+/// a `UIEvent::PromptReplayHit`. When resuming from a checkpoint that contains
+/// `commit_message_attempt_iter1_1` in its prompt history, the commit prompt
+/// preparation must emit `was_replayed=true` instead of regenerating the prompt.
+#[test]
+fn test_prompt_replay_hit_fires_with_was_replayed_true_on_checkpoint_resume() {
+    crate::test_timeout::with_default_timeout(|| {
+        // Checkpoint at "CommitMessage" phase with stored commit prompt in history.
+        // The key "commit_message_attempt_iter1_1" corresponds to PromptScopeKey::for_commit
+        // with iteration=1, RetryMode::Normal, recovery_epoch=0.
+        let prompt_history_json = r#"{
+            "commit_message_attempt_iter1_1": "STORED COMMIT PROMPT FOR REPLAY TEST"
+        }"#;
+        let checkpoint_json = make_checkpoint_with_prompt_history(
+            MOCK_REPO_PATH,
+            "CommitMessage",
+            prompt_history_json,
+        );
+
+        let mut app_handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
+            .with_file("PROMPT.md", STANDARD_PROMPT)
+            .with_file(".agent/checkpoint.json", &checkpoint_json)
+            .with_file(".agent/PLAN.md", "Test plan\n")
+            .with_diff("diff --git a/test.txt b/test.txt\n+resumed change")
+            .with_staged_changes(true);
+
+        // MockEffectHandler captures UIEvents; staged diff needed for CheckCommitDiff.
+        // Mark the commit prompt key as replayed so PrepareCommitPrompt emits was_replayed=true.
+        let mut effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
+            .with_staged_diff_sequence(["resumed-diff-content"])
+            .with_replay_prompt_key("commit_message_attempt_iter1_1");
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handlers(
+            &["--resume"],
+            executor,
+            config,
+            &mut app_handler,
+            &mut effect_handler,
+        )
+        .unwrap();
+
+        // The commit prompt must have been replayed from checkpoint history, not regenerated.
+        let has_replay_hit = effect_handler.was_ui_event_emitted(|e| {
+            matches!(
+                e,
+                UIEvent::PromptReplayHit { key, was_replayed: true }
+                    if key == "commit_message_attempt_iter1_1"
+            )
+        });
+
+        assert!(
+            has_replay_hit,
+            "UIEvent::PromptReplayHit {{ was_replayed: true, key: \"commit_message_attempt_iter1_1\" }} \
+             must fire when resuming from CommitMessage phase with stored prompt in checkpoint history"
         );
     });
 }

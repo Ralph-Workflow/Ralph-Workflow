@@ -142,6 +142,14 @@ pub struct PipelineCheckpoint {
     #[serde(default)]
     pub dev_fix_attempt_count: u32,
 
+    /// Recovery epoch counter (RFC-007).
+    ///
+    /// Incremented each time an epoch-resetting recovery occurs (level-3/4 resets).
+    /// Preserved across checkpoint/resume to ensure replay identity advances correctly.
+    /// Defaults to 0 for backward-compatibility with old checkpoints.
+    #[serde(default)]
+    pub recovery_epoch: u32,
+
     /// Current recovery escalation level (0-4).
     ///
     /// Preserved across checkpoint/resume so recovery does not restart at level 1.
@@ -220,6 +228,7 @@ impl PipelineCheckpoint {
             log_run_id: None,
             last_substitution_log: None,
             dev_fix_attempt_count: 0,
+            recovery_epoch: 0,
             recovery_escalation_level: 0,
             failed_phase_for_recovery: None,
             interrupted_by_user: false,

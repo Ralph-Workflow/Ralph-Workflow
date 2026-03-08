@@ -163,6 +163,7 @@ impl PipelineState {
             continuation: ContinuationState::new(),
             dev_fix_triggered: false,
             dev_fix_attempt_count: checkpoint.dev_fix_attempt_count,
+            recovery_epoch: checkpoint.recovery_epoch,
             recovery_escalation_level: checkpoint.recovery_escalation_level,
             failed_phase_for_recovery: checkpoint.failed_phase_for_recovery,
             completion_marker_pending: false,

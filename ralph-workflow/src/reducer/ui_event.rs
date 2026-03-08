@@ -113,6 +113,20 @@ pub enum UIEvent {
         /// Optional context like iteration or pass number.
         context: Option<XmlOutputContext>,
     },
+
+    /// Prompt replay observability event (RFC-007 Short-term #3).
+    ///
+    /// Emitted by handlers after each `get_stored_or_generate_prompt` call.
+    /// Allows audit, debugging, and detection of unexpected replay behavior.
+    ///
+    /// This event does NOT affect pipeline state or checkpoints.
+    PromptReplayHit {
+        /// String representation of the `PromptScopeKey` used for history lookup.
+        key: String,
+        /// `true` if the prompt was found in checkpoint history (replayed),
+        /// `false` if freshly generated.
+        was_replayed: bool,
+    },
 }
 
 impl UIEvent {
@@ -209,6 +223,47 @@ mod tests {
         assert_eq!(UIEvent::phase_emoji(&PipelinePhase::Complete), "🎉");
         assert_eq!(UIEvent::phase_emoji(&PipelinePhase::AwaitingDevFix), "🔧");
         assert_eq!(UIEvent::phase_emoji(&PipelinePhase::Interrupted), "⏸️");
+    }
+
+    #[test]
+    fn test_prompt_replay_hit_replayed_display() {
+        let event = UIEvent::PromptReplayHit {
+            key: "planning_1".to_string(),
+            was_replayed: true,
+        };
+        let display = event.format_for_display();
+        assert!(display.contains("planning_1"));
+        assert!(
+            display.contains("Replayed")
+                || display.contains("replay")
+                || display.contains("stored")
+        );
+    }
+
+    #[test]
+    fn test_prompt_replay_hit_fresh_display() {
+        let event = UIEvent::PromptReplayHit {
+            key: "development_2".to_string(),
+            was_replayed: false,
+        };
+        let display = event.format_for_display();
+        assert!(display.contains("development_2"));
+        assert!(
+            display.contains("fresh")
+                || display.contains("Generated")
+                || display.contains("prompt")
+        );
+    }
+
+    #[test]
+    fn test_prompt_replay_hit_serialization() {
+        let event = UIEvent::PromptReplayHit {
+            key: "commit_message_attempt_iter1_1".to_string(),
+            was_replayed: false,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: UIEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(event, deserialized);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use super::types::{ConflictResolutionContext, ConflictResolutionResult};
 use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::phases::PhaseContext;
-use crate::prompts::{get_stored_or_generate_prompt, template_context::TemplateContext};
+use crate::prompts::template_context::TemplateContext;
 use anyhow::Context;
 
 /// Attempt to resolve rebase conflicts with AI.
@@ -27,12 +27,19 @@ pub fn try_resolve_conflicts(
 
     let conflicts = collect_conflict_info_or_error(conflicted_files, ctx.workspace, ctx.logger)?;
 
-    // Use stored_or_generate pattern for hardened resume
+    // Use stored_or_generate pattern for hardened resume.
+    // The rebase conflict key is a dynamic string (not a PromptScopeKey) because
+    // it is phase-name-based and outside the main pipeline phase hierarchy.
     let prompt_key = format!("{}_conflict_resolution", phase.to_lowercase());
-    let (resolution_prompt, was_replayed) =
-        get_stored_or_generate_prompt(&prompt_key, &phase_ctx.prompt_history, || {
-            build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace)
-        });
+    let (resolution_prompt, was_replayed) = phase_ctx.prompt_history.get(&prompt_key).map_or_else(
+        || {
+            (
+                build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
+                false,
+            )
+        },
+        |stored| (stored.clone(), true),
+    );
 
     // Capture the resolution prompt for deterministic resume (only if newly generated)
     if was_replayed {

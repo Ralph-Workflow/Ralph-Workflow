@@ -195,12 +195,18 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                     reset
                 }
                 3 => {
-                    // Level 3: Reset iteration counter - decrement iteration and restart from Planning
-                    new_state.reset_iteration()
+                    // Level 3: Reset iteration counter - decrement iteration and restart from Planning.
+                    // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    let mut s = new_state.reset_iteration();
+                    s.recovery_epoch += 1;
+                    s
                 }
                 _ => {
-                    // Level 4+: Complete reset - reset to iteration 0, restart from Planning
-                    new_state.reset_to_iteration_zero()
+                    // Level 4+: Complete reset - reset to iteration 0, restart from Planning.
+                    // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    let mut s = new_state.reset_to_iteration_zero();
+                    s.recovery_epoch += 1;
+                    s
                 }
             };
 
@@ -416,6 +422,136 @@ mod tests {
             Some("disk full")
         );
         assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
+    }
+
+    // =========================================================================
+    // recovery_epoch tests (RFC-007 corrective action #2)
+    // =========================================================================
+
+    #[test]
+    fn level_1_recovery_does_not_change_recovery_epoch() {
+        let mut state = PipelineState::initial(1, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 1,
+                attempt_count: 1,
+                target_phase: PipelinePhase::Development,
+            }),
+        );
+
+        assert_eq!(
+            new_state.recovery_epoch, 0,
+            "Level 1 recovery must not change recovery_epoch"
+        );
+    }
+
+    #[test]
+    fn level_2_recovery_does_not_change_recovery_epoch() {
+        let mut state = PipelineState::initial(1, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 2,
+                attempt_count: 4,
+                target_phase: PipelinePhase::Development,
+            }),
+        );
+
+        assert_eq!(
+            new_state.recovery_epoch, 0,
+            "Level 2 recovery must not change recovery_epoch"
+        );
+    }
+
+    #[test]
+    fn level_3_recovery_increments_recovery_epoch_by_1() {
+        let mut state = PipelineState::initial(2, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 3,
+                attempt_count: 7,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+
+        assert_eq!(
+            new_state.recovery_epoch, 1,
+            "Level 3 recovery must increment recovery_epoch by 1"
+        );
+    }
+
+    #[test]
+    fn level_4_recovery_increments_recovery_epoch_by_1() {
+        let mut state = PipelineState::initial(3, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 4,
+                attempt_count: 10,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+
+        assert_eq!(
+            new_state.recovery_epoch, 1,
+            "Level 4 recovery must increment recovery_epoch by 1"
+        );
+    }
+
+    #[test]
+    fn sequential_level_3_recoveries_each_increment_epoch() {
+        let mut state = PipelineState::initial(3, 0);
+        state.phase = PipelinePhase::AwaitingDevFix;
+        state.recovery_epoch = 0;
+        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        // First level-3 recovery: epoch 0 → 1
+        let state = reduce(
+            state,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 3,
+                attempt_count: 7,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+        assert_eq!(state.recovery_epoch, 1);
+
+        // Simulate returning to AwaitingDevFix for a second recovery
+        let mut state2 = state;
+        state2.phase = PipelinePhase::AwaitingDevFix;
+        state2.failed_phase_for_recovery = Some(PipelinePhase::Development);
+
+        // Second level-3 recovery: epoch 1 → 2
+        let state2 = reduce(
+            state2,
+            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
+                level: 3,
+                attempt_count: 7,
+                target_phase: PipelinePhase::Planning,
+            }),
+        );
+        assert_eq!(
+            state2.recovery_epoch, 2,
+            "Sequential level-3 recoveries must each increment epoch"
+        );
     }
 
     #[test]

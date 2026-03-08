@@ -209,7 +209,8 @@ fn map_ui_event_to_progress(
             Some(pull_request_created_progress(url, *number))
         }
         UIEvent::PullRequestFailed { error } => Some(pull_request_failed_progress(error)),
-        UIEvent::XmlOutput { .. } => None,
+        // XmlOutput and PromptReplayHit are informational only; not forwarded to cloud progress.
+        UIEvent::XmlOutput { .. } | UIEvent::PromptReplayHit { .. } => None,
     }
 }
 

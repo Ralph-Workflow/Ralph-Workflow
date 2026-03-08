@@ -70,6 +70,14 @@ pub struct MockEffectHandler {
     ///
     /// This supports integration tests that verify panic paths do not hang.
     pub(super) panic_on_next_execute: bool,
+
+    /// Prompt keys to report as replayed (`was_replayed=true`) in `PromptReplayHit` events.
+    ///
+    /// When `PrepareCommitPrompt` (or other prompt preparation effects) fire, the mock
+    /// emits `UIEvent::PromptReplayHit`. By default `was_replayed=false` (mock always
+    /// generates fresh). Add keys here to simulate a resume scenario where those prompts
+    /// were replayed from checkpoint history.
+    pub(super) replay_prompt_keys: Option<std::collections::HashSet<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +115,7 @@ impl MockEffectHandler {
             simulate_commit_message_xml: None,
             pre_termination_snapshot: PreTerminationSnapshotMock::Clean,
             panic_on_next_execute: false,
+            replay_prompt_keys: None,
         }
     }
 
@@ -159,6 +168,27 @@ impl MockEffectHandler {
     #[must_use]
     pub fn with_commit_message_xml(mut self, xml: impl Into<String>) -> Self {
         self.simulate_commit_message_xml = Some(xml.into());
+        self
+    }
+
+    /// Mark a prompt key as replayed, causing `PrepareCommitPrompt` (and other prompt-prep
+    /// effects) to emit `UIEvent::PromptReplayHit { was_replayed: true }` for that key.
+    ///
+    /// By default all prompts are emitted as `was_replayed: false` (fresh generation).
+    /// Use this in resume tests where a specific prompt key should appear as a checkpoint
+    /// replay.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let handler = MockEffectHandler::new(state)
+    ///     .with_replay_prompt_key("commit_message_attempt_iter1_1");
+    /// ```
+    #[must_use]
+    pub fn with_replay_prompt_key(mut self, key: impl Into<String>) -> Self {
+        self.replay_prompt_keys
+            .get_or_insert_with(std::collections::HashSet::new)
+            .insert(key.into());
         self
     }
 

@@ -34,6 +34,7 @@ pub mod content_builder;
 pub mod content_reference;
 mod developer;
 pub mod partials;
+pub mod prompt_scope_key;
 mod rebase;
 pub mod review;
 pub mod reviewer;
@@ -59,6 +60,7 @@ pub use crate::checkpoint::restore::ResumeContext;
 pub use prompt_config::PromptConfig;
 pub use prompt_dispatch::get_stored_or_generate_prompt;
 pub use prompt_dispatch::prompt_for_agent;
+pub use prompt_scope_key::{PromptPhase, PromptScopeKey, RetryMode};
 pub use resume_note::{generate_resume_note, BriefDescription};
 
 // Re-export public items for API convenience

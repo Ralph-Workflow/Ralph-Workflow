@@ -31,12 +31,13 @@ use super::current_commit_attempt;
 use crate::agents::AgentRole;
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::{DiffContentReference, MAX_INLINE_CONTENT_SIZE};
-use crate::prompts::get_stored_or_generate_prompt;
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::state::{PromptInputRepresentation, PromptMode};
+use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
 
@@ -77,13 +78,17 @@ impl MainEffectHandler {
                     "XML output failed validation. Provide valid XML output.".to_string()
                 });
 
-            let iteration = self.state.iteration;
-            let prompt_key = format!(
-                "commit_message_attempt_iter{iteration}_{attempt}_xsd_retry_{}",
-                self.state.continuation.xsd_retry_count
+            let scope_key = PromptScopeKey::for_commit(
+                self.state.iteration,
+                attempt,
+                RetryMode::Xsd {
+                    count: self.state.continuation.xsd_retry_count,
+                },
+                self.state.recovery_epoch,
             );
+            let prompt_key = scope_key.to_string();
             let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                &prompt_key,
+                &scope_key,
                 &ctx.prompt_history,
                 || {
                     // Generate with log-based validation
@@ -171,7 +176,11 @@ impl MainEffectHandler {
             let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
                 .with_ui_event(
                     self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
-                );
+                )
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                });
             if let Some(log) = rendered_log {
                 result = result.with_additional_event(PipelineEvent::template_rendered(
                     crate::reducer::event::PipelinePhase::CommitMessage,
@@ -284,18 +293,27 @@ impl MainEffectHandler {
                     (rendered.content, true)
                 };
                 let prompt = format!("{retry_preamble}\n{base_prompt}");
-                let iteration = self.state.iteration;
-                let prompt_key = format!(
-                    "commit_message_attempt_iter{iteration}_{attempt}_same_agent_retry_{}",
-                    continuation_state.same_agent_retry_count
+                let scope_key = PromptScopeKey::for_commit(
+                    self.state.iteration,
+                    attempt,
+                    RetryMode::SameAgent {
+                        count: continuation_state.same_agent_retry_count,
+                    },
+                    self.state.recovery_epoch,
                 );
+                let prompt_key = scope_key.to_string();
                 (prompt_key, prompt, false, should_validate)
             }
             PromptMode::Normal => {
-                let iteration = self.state.iteration;
-                let prompt_key = format!("commit_message_attempt_iter{iteration}_{attempt}");
+                let scope_key = PromptScopeKey::for_commit(
+                    self.state.iteration,
+                    attempt,
+                    RetryMode::Normal,
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
                 let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+                    get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                         // Use log-based rendering
                         let rendered =
                             crate::prompts::prompt_generate_commit_message_with_diff_with_log(
@@ -383,7 +401,11 @@ impl MainEffectHandler {
         let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
             .with_ui_event(
                 self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
-            );
+            )
+            .with_ui_event(UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            });
         if let Some(log) = rendered_log {
             result = result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::CommitMessage,

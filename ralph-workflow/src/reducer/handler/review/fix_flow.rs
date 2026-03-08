@@ -8,7 +8,7 @@ impl MainEffectHandler {
         use crate::agents::AgentRole;
         use crate::prompts::{
             get_stored_or_generate_prompt, prompt_fix_xml_with_context,
-            prompt_fix_xsd_retry_with_context,
+            prompt_fix_xsd_retry_with_context, PromptScopeKey, RetryMode,
         };
         use std::path::Path;
 
@@ -100,10 +100,12 @@ impl MainEffectHandler {
         let (prompt_key, fix_prompt, was_replayed, template_name, should_validate) =
             match prompt_mode {
                 PromptMode::XsdRetry => {
-                    let prompt_key = format!(
-                        "fix_{pass}_xsd_retry_{}",
-                        continuation_state.invalid_output_attempts
+                    let scope_key = PromptScopeKey::for_fix(
+                        pass,
+                        RetryMode::Xsd { count: continuation_state.invalid_output_attempts },
+                        self.state.recovery_epoch,
                     );
+                    let prompt_key = scope_key.to_string();
                     // Use the actual XSD error from state, or fall back to generic message
                     let xsd_error = continuation_state
                         .last_fix_xsd_error
@@ -111,7 +113,7 @@ impl MainEffectHandler {
                         .unwrap_or("XML output failed validation. Provide valid XML output.");
                     xsd_error_for_validation = Some(xsd_error.to_string());
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                             prompt_fix_xsd_retry_with_context(
                                 ctx.template_context,
                                 &issues_content,
@@ -149,16 +151,23 @@ impl MainEffectHandler {
                         ),
                     };
                     let prompt = format!("{retry_preamble}\n{base_prompt}");
-                    let prompt_key = format!(
-                        "fix_{pass}_same_agent_retry_{}",
-                        continuation_state.same_agent_retry_count
+                    let scope_key = PromptScopeKey::for_fix(
+                        pass,
+                        RetryMode::SameAgent { count: continuation_state.same_agent_retry_count },
+                        self.state.recovery_epoch,
                     );
+                    let prompt_key = scope_key.to_string();
                     (prompt_key, prompt, false, "fix_mode_xml", should_validate)
                 }
                 PromptMode::Normal => {
-                    let prompt_key = format!("fix_{pass}");
+                    let scope_key = PromptScopeKey::for_fix(
+                        pass,
+                        RetryMode::Normal,
+                        self.state.recovery_epoch,
+                    );
+                    let prompt_key = scope_key.to_string();
                     let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+                        get_stored_or_generate_prompt(&scope_key, &ctx.prompt_history, || {
                             // Use log-based rendering
                             let rendered = crate::prompts::review::prompt_fix_xml_with_log(
                                 ctx.template_context,
@@ -237,8 +246,11 @@ impl MainEffectHandler {
             ));
         }
 
-        let mut result =
-            EffectResult::event(PipelineEvent::fix_prompt_prepared(pass));
+        let mut result = EffectResult::event(PipelineEvent::fix_prompt_prepared(pass))
+            .with_ui_event(UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            });
         if let Some(log) = rendered_log {
             result = result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,

@@ -4,6 +4,7 @@
 //! based on role and action, as well as prompt replay functionality for checkpoint resume.
 
 use super::prompt_config::PromptConfig;
+use super::prompt_scope_key::PromptScopeKey;
 use super::resume_note::generate_resume_note;
 use super::types::{Action, Role};
 use super::ContextLevel;
@@ -95,9 +96,14 @@ pub fn prompt_for_agent(
 /// and returns the stored prompt for deterministic behavior. Otherwise, it
 /// generates a new prompt using the provided generator function.
 ///
+/// The lookup key is derived from `scope_key.to_string()`, which produces
+/// the same string format as the legacy `format!()` calls it replaces, ensuring
+/// backward-compatibility with existing checkpoint `prompt_history` entries.
+///
 /// # Arguments
 ///
-/// * `prompt_key` - Unique key identifying this prompt (e.g., "`development_1`", "`review_2`")
+/// * `scope_key` - Typed prompt scope key. Its `Display` string is used for
+///   the `HashMap` lookup.
 /// * `prompt_history` - The prompt history from the checkpoint (if available)
 /// * `generator` - Function to generate the prompt if not found in history
 ///
@@ -110,8 +116,9 @@ pub fn prompt_for_agent(
 /// # Example
 ///
 /// ```ignore
+/// let scope_key = PromptScopeKey::for_development(iteration, None, RetryMode::Normal, recovery_epoch);
 /// let (prompt, was_replayed) = get_stored_or_generate_prompt(
-///     "development_1",
+///     &scope_key,
 ///     &ctx.prompt_history,
 ///     || prompt_for_agent(role, action, context, template_context, config),
 /// );
@@ -120,14 +127,15 @@ pub fn prompt_for_agent(
 /// }
 /// ```
 pub fn get_stored_or_generate_prompt<F, S: std::hash::BuildHasher>(
-    prompt_key: &str,
+    scope_key: &PromptScopeKey,
     prompt_history: &std::collections::HashMap<String, String, S>,
     generator: F,
 ) -> (String, bool)
 where
     F: FnOnce() -> String,
 {
-    prompt_history.get(prompt_key).map_or_else(
+    let key = scope_key.to_string();
+    prompt_history.get(&key).map_or_else(
         || (generator(), false),
         |stored_prompt| (stored_prompt.clone(), true),
     )
@@ -136,14 +144,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::prompts::prompt_scope_key::RetryMode;
 
     #[test]
     fn test_get_stored_or_generate_prompt_replays_when_available() {
+        let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let mut history = std::collections::HashMap::new();
-        history.insert("test_key".to_string(), "stored prompt".to_string());
+        // Use the Display string as the key (matches legacy format!() output)
+        history.insert(scope_key.to_string(), "stored prompt".to_string());
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt("test_key", &history, || "generated prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, || "generated prompt".to_string());
 
         assert_eq!(prompt, "stored prompt");
         assert!(was_replayed, "Should have replayed the stored prompt");
@@ -151,11 +162,11 @@ mod tests {
 
     #[test]
     fn test_get_stored_or_generate_prompt_generates_when_not_available() {
+        let scope_key = PromptScopeKey::for_development(2, None, RetryMode::Normal, 0);
         let history = std::collections::HashMap::new();
 
-        let (prompt, was_replayed) = get_stored_or_generate_prompt("missing_key", &history, || {
-            "generated prompt".to_string()
-        });
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, || "generated prompt".to_string());
 
         assert_eq!(prompt, "generated prompt");
         assert!(!was_replayed, "Should have generated a new prompt");
@@ -163,15 +174,57 @@ mod tests {
 
     #[test]
     fn test_get_stored_or_generate_prompt_with_empty_history() {
+        let scope_key = PromptScopeKey::for_commit(1, 1, RetryMode::Normal, 0);
         let history = std::collections::HashMap::new();
 
         let (prompt, was_replayed) =
-            get_stored_or_generate_prompt("any_key", &history, || "fresh prompt".to_string());
+            get_stored_or_generate_prompt(&scope_key, &history, || "fresh prompt".to_string());
 
         assert_eq!(prompt, "fresh prompt");
         assert!(
             !was_replayed,
             "Should have generated a new prompt for empty history"
+        );
+    }
+
+    #[test]
+    fn test_key_lookup_uses_display_string() {
+        // Verify that the function uses the Display string for lookup,
+        // maintaining backward-compat with legacy format!() checkpoint keys.
+        let scope_key = PromptScopeKey::for_commit(2, 1, RetryMode::Xsd { count: 1 }, 0);
+        let expected_key = "commit_message_attempt_iter2_1_xsd_retry_1";
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            expected_key.to_string(),
+            "stored xsd retry prompt".to_string(),
+        );
+
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &history, || "new prompt".to_string());
+
+        assert_eq!(prompt, "stored xsd retry prompt");
+        assert!(
+            was_replayed,
+            "Should replay using Display string '{expected_key}' as key"
+        );
+    }
+
+    #[test]
+    fn test_recovery_epoch_does_not_affect_lookup_key() {
+        // Two keys with different recovery_epoch but same other dims produce the same
+        // Display string, so they look up the same entry in history.
+        let scope_key_epoch0 = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
+        let scope_key_epoch1 = PromptScopeKey::for_planning(1, RetryMode::Normal, 1);
+        let mut history = std::collections::HashMap::new();
+        history.insert(scope_key_epoch0.to_string(), "stored".to_string());
+
+        // epoch1 should still find the entry stored under epoch0's Display string
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key_epoch1, &history, || "new".to_string());
+        assert_eq!(prompt, "stored");
+        assert!(
+            was_replayed,
+            "Epoch change alone must not bust the history lookup key"
         );
     }
 }

@@ -178,18 +178,25 @@ Redux and Elm guidance maps directly to this incident class.
 - Commit prompt keys now include iteration dimension to prevent cross-cycle collisions.
 - Added behavior-first regression tests for multi-iteration freshness and size invariants.
 
-### Short term (recommended)
+### Short term (done)
 
-1. Introduce typed `PromptScopeKey` and remove hand-rolled key strings in handlers.
-2. Include recovery/reset epoch in replay identity (not just iteration/pass/attempt).
-3. Add replay observability: explicit event/metric for replay hit with key dimensions.
-4. Add invariants that replayed prompt content must match current materialized input IDs.
-5. Add compile-time constructors/builders for replay scope so missing identity dimensions are impossible.
+1. Introduced typed `PromptScopeKey` (`ralph-workflow/src/prompts/prompt_scope_key.rs`) replacing all
+   hand-rolled `format!()` key strings in handlers (planning, development, commit, review, fix phases).
+2. Added `recovery_epoch` field to `PipelineState` and `PipelineCheckpoint` (incremented on level-3/4
+   recovery); carried in `PromptScopeKey` for auditing and future isolation.
+3. Added `UIEvent::PromptReplayHit { key, was_replayed }` and rendering in all prompt-preparation
+   handlers; cloud progress handler ignores it (informational only).
+4. Compile-time phase-specific constructors on `PromptScopeKey` (`for_planning`, `for_development`,
+   `for_commit`, `for_review`, `for_fix`) enforce required identity dimensions at call sites.
+5. `Display` output of `PromptScopeKey` is byte-identical to the old `format!()` strings, preserving
+   checkpoint backward-compatibility for existing `prompt_history` maps.
+
+Items 4 (content-id invariant for replayed prompts) is deferred as medium-term work (see below).
 
 ### Medium term (recommended)
 
 1. Move replay metadata ownership into reducer-owned state (or reducer-versioned cache contract).
-2. Unify prompt keying/replay policy behind one API used by all phases.
+2. Add invariants that replayed prompt content must match current materialized input IDs.
 3. Reduce dual-path drift between legacy phase-runner and reducer pathways.
 4. Add checkpoint schema versioning for replay metadata and explicit migration tests.
 5. Add atomic reducer event for replay-scope rotation so "fresh-context" transitions are one-step and auditable.

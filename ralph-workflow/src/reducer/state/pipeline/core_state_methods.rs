@@ -109,6 +109,7 @@ impl PipelineState {
             continuation: continuation.clone(),
             dev_fix_triggered: false,
             dev_fix_attempt_count: 0,
+            recovery_epoch: 0,
             recovery_escalation_level: 0,
             failed_phase_for_recovery: None,
             completion_marker_pending: false,

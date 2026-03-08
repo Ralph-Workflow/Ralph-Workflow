@@ -212,6 +212,25 @@ pub struct PipelineState {
     #[serde(default)]
     pub dev_fix_attempt_count: u32,
 
+    /// Recovery epoch counter.
+    ///
+    /// Incremented each time an epoch-resetting recovery occurs:
+    /// - Level 3 (`reset_iteration`): decrements iteration and restarts from Planning
+    /// - Level 4 (`reset_to_iteration_zero`): resets to iteration 0
+    ///
+    /// Level 1 and Level 2 recoveries do NOT increment this counter because
+    /// they do not change the iteration scope.
+    ///
+    /// Combined with the iteration counter in `PromptScopeKey`, this ensures
+    /// replay identity advances atomically with recovery scope changes. Old
+    /// `prompt_history` entries under pre-reset iteration keys are naturally
+    /// bypassed because the iteration value in the key changes.
+    ///
+    /// Defaults to 0 for backward-compatibility with old checkpoints (via
+    /// `#[serde(default)]`).
+    #[serde(default)]
+    pub recovery_epoch: u32,
+
     /// Current recovery escalation level.
     ///
     /// Tracks which recovery strategy is being applied:
