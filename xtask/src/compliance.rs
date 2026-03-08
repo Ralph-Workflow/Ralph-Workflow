@@ -2,6 +2,55 @@ use std::path::{Path, PathBuf};
 
 use crate::verify::{CheckStatus, NativeCheckResult};
 
+/// Scans `scripts/` and `tests/integration_tests/` for `.sh` files.
+///
+/// Shell scripts were migrated to Rust xtask commands; their presence after
+/// migration is a regression.  Returns `Error` if any `.sh` file is found,
+/// listing the offending paths.  Returns `Pass` when the directories do not
+/// exist (e.g. in unit-test environments with fake repo paths).
+pub fn check_no_shell_scripts(repo_root: &Path) -> NativeCheckResult {
+    let scan_dirs = ["scripts", "tests/integration_tests"];
+    let mut found: Vec<String> = Vec::new();
+
+    for rel_dir in &scan_dirs {
+        let dir = repo_root.join(rel_dir);
+        if !dir.exists() {
+            continue;
+        }
+        collect_sh_files(&dir, &mut found);
+    }
+
+    if found.is_empty() {
+        NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        }
+    } else {
+        NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Found {} .sh file(s) that must not exist after the shell-script migration:\n{}",
+                found.len(),
+                found.join("\n")
+            ),
+        }
+    }
+}
+
+fn collect_sh_files(dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_sh_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("sh") {
+            out.push(path.display().to_string());
+        }
+    }
+}
+
 /// Scans integration test files for `#[test]` functions that do not call
 /// `with_default_timeout` or `with_timeout` in their body.
 ///
@@ -217,6 +266,71 @@ mod tests {
         }
         fs::write(full, content).unwrap();
     }
+
+    // ── check_no_shell_scripts tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_check_no_shell_scripts_pass_when_dirs_missing() {
+        let result = check_no_shell_scripts(Path::new("/nonexistent-fake-repo-path"));
+        assert_eq!(result.status, CheckStatus::Pass);
+        assert!(result.message.is_empty());
+    }
+
+    #[test]
+    fn test_check_no_shell_scripts_pass_when_no_sh_files() {
+        let dir = make_temp_dir("no-sh-pass");
+        fs::create_dir_all(dir.join("scripts")).unwrap();
+        fs::create_dir_all(dir.join("tests/integration_tests")).unwrap();
+        write_file(&dir, "scripts/README.md", "# no scripts here");
+        write_file(&dir, "tests/integration_tests/my_test.rs", "// rust file");
+
+        let result = check_no_shell_scripts(&dir);
+        assert_eq!(
+            result.status,
+            CheckStatus::Pass,
+            "message: {}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_no_shell_scripts_error_when_sh_file_found() {
+        let dir = make_temp_dir("sh-found");
+        fs::create_dir_all(dir.join("scripts")).unwrap();
+        write_file(&dir, "scripts/migrate.sh", "#!/bin/bash\necho hello");
+
+        let result = check_no_shell_scripts(&dir);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(
+            result.message.contains("migrate.sh"),
+            "message must mention the file: {}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_no_shell_scripts_error_when_sh_in_integration_tests() {
+        let dir = make_temp_dir("sh-in-integration");
+        let test_dir = dir.join("tests/integration_tests");
+        fs::create_dir_all(&test_dir).unwrap();
+        write_file(&dir, "tests/integration_tests/old_check.sh", "#!/bin/bash");
+
+        let result = check_no_shell_scripts(&dir);
+        assert_eq!(result.status, CheckStatus::Error);
+        assert!(
+            result.message.contains("old_check.sh"),
+            "{}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── check_timeout_wrappers tests ──────────────────────────────────────────
 
     #[test]
     fn test_check_timeout_wrappers_pass_when_dir_missing() {

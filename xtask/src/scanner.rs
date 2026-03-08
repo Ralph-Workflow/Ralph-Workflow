@@ -1,0 +1,1107 @@
+//! Native multi-pattern file scanner using the Aho-Corasick algorithm.
+//!
+//! Replaces 17 separate `rg` subprocess invocations with a single in-process scan
+//! that reads each source directory exactly once and searches all patterns
+//! simultaneously in O(n + m + z) time (Aho & Corasick, 1975).
+//!
+//! The key optimisation: checks that scan the same directories are grouped.
+//! Within a group, one Aho-Corasick automaton is built from every pattern,
+//! every file is read once, and matches are demultiplexed back to the
+//! originating check after any per-check post-filters are applied.
+
+use aho_corasick::AhoCorasick;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Matching strategy for a native scan check.
+///
+/// This is a `const`-constructible enum so `NativeScanCheck` instances can
+/// live in `static` arrays.
+#[derive(Clone, Copy)]
+pub enum MatchMode {
+    /// Fail if any of the check's `literals` appear in a scanned file.
+    /// When `skip_comment_lines` is true, matches on lines whose non-whitespace
+    /// prefix is `//` are ignored (avoids false positives in doc-comments).
+    AnyLiteral { skip_comment_lines: bool },
+    /// Fail if any of the check's `literals` (stem identifiers) appear in a
+    /// scanned file AND the text immediately following the match is
+    /// `<optional-whitespace>:<optional-whitespace>bool`.
+    ///
+    /// Also enforces a word-boundary check at the match start so that
+    /// `is_testing_mode` does not trigger on the `is_test` stem.
+    StemWithBoolSuffix,
+}
+
+/// A single native scan check definition.
+///
+/// `NativeScanCheck` values are `const`-constructible for use in static arrays.
+pub struct NativeScanCheck {
+    pub name: &'static str,
+    /// Literal byte-strings to search for with Aho-Corasick.
+    pub literals: &'static [&'static str],
+    /// Directories to scan, relative to the repo root.
+    pub directories: &'static [&'static str],
+    /// Glob pattern selecting which files to include (e.g. `"*.rs"`).
+    pub include_glob: &'static str,
+    /// File-name or path globs to exclude from scanning.
+    /// Supports `"<name>.rs"` (exact file-name) and `"**/<seg>/**"` (path component).
+    pub exclude_globs: &'static [&'static str],
+    pub mode: MatchMode,
+}
+
+/// A single line-level violation reported by a native scan check.
+pub struct NativeScanViolation {
+    pub file: PathBuf,
+    /// 1-based line number.
+    pub line_number: usize,
+    /// The full text of the offending line (without trailing newline).
+    pub line: String,
+}
+
+/// The result of running one `NativeScanCheck`.
+pub struct NativeScanCheckResult {
+    pub check_name: &'static str,
+    /// `true` iff no violations were found.
+    pub passed: bool,
+    /// Populated when `passed == false`.
+    pub violations: Vec<NativeScanViolation>,
+}
+
+// ── Public constants ──────────────────────────────────────────────────────────
+
+/// All native scan checks, replacing 17 `rg` subprocess calls.
+///
+/// Groups are inferred at runtime by identical `(sorted-directories, include_glob)` keys.
+pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
+    // ── ralph-workflow/src group ──────────────────────────────────────────────
+    NativeScanCheck {
+        name: "no-test-flags-cfg-test",
+        literals: &["cfg!(test)"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    NativeScanCheck {
+        name: "no-test-flags-test-mode-params",
+        literals: &["test_mode", "is_test", "is_testing", "testing_mode"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::StemWithBoolSuffix,
+    },
+    NativeScanCheck {
+        name: "no-test-flags-skip-params",
+        literals: &[
+            "skip_validation",
+            "skip_verify",
+            "skip_check",
+            "skip_auth",
+            "skip_api",
+        ],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::StemWithBoolSuffix,
+    },
+    NativeScanCheck {
+        name: "no-test-flags-mock-params",
+        literals: &[
+            "mock_mode",
+            "fake_mode",
+            "stub_mode",
+            "use_mock",
+            "use_fake",
+            "use_stub",
+        ],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::StemWithBoolSuffix,
+    },
+    NativeScanCheck {
+        name: "no-test-flags-testing-feature",
+        literals: &["#[cfg(feature = \"testing\")]"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    NativeScanCheck {
+        name: "no-test-flags-cfg-not-test",
+        literals: &["#[cfg(not(test))]"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-serial-src",
+        literals: &["#[serial]"],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-test-helpers-src",
+        literals: &[
+            "use test_helpers::",
+            "init_git_repo",
+            "commit_all",
+            "git_switch",
+        ],
+        directories: &["ralph-workflow/src"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    // ── tests/integration_tests group ────────────────────────────────────────
+    NativeScanCheck {
+        name: "compliance-no-process-spawn",
+        literals: &["std::process::Command::new", "assert_cmd::Command::new"],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &["_TEMPLATE.rs"],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "compliance-no-serial",
+        literals: &["#[serial]", "use serial_test"],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &["_TEMPLATE.rs"],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-cfg-test-integration",
+        literals: &["cfg!(test)"],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-real-fs-integration",
+        literals: &["std::fs::", "TempDir", "tempfile::"],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-real-process-integration",
+        literals: &["std::process::Command::new"],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-env-mutations-integration",
+        literals: &[
+            "std::env::set_var",
+            "std::env::remove_var",
+            "env::set_var",
+            "env::remove_var",
+        ],
+        directories: &["tests/integration_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    // ── tests/process_system_tests group ─────────────────────────────────────
+    NativeScanCheck {
+        name: "audit-no-serial-process-system",
+        literals: &["#[serial]"],
+        directories: &["tests/process_system_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: true,
+        },
+    },
+    NativeScanCheck {
+        name: "audit-no-git2-process-system",
+        literals: &["git2::", "init_git_repo"],
+        directories: &["tests/process_system_tests"],
+        include_glob: "*.rs",
+        exclude_globs: &[],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+    // ── ralph-workflow/src/reducer/handler/ group ─────────────────────────────
+    NativeScanCheck {
+        name: "no-string-errors-handlers",
+        literals: &[
+            "anyhow::anyhow!(",
+            "anyhow!(",
+            "anyhow::bail!(",
+            "bail!(",
+            "anyhow::ensure!(",
+            "ensure!(",
+            "anyhow::format_err!(",
+            "format_err!(",
+            "anyhow::Error::msg(",
+        ],
+        directories: &["ralph-workflow/src/reducer/handler"],
+        include_glob: "*.rs",
+        // Exclude test subdirectories (mirrors rg --glob !**/tests/**)
+        exclude_globs: &["**/tests/**"],
+        mode: MatchMode::AnyLiteral {
+            skip_comment_lines: false,
+        },
+    },
+];
+
+// ── Public entry point ────────────────────────────────────────────────────────
+
+/// Run all native scan checks against the repository root.
+///
+/// Checks are grouped by their `(sorted-directories, include_glob)` key.
+/// Within each group, files are read once and a single Aho-Corasick automaton
+/// (built from every pattern in the group) scans each file in a single pass.
+/// Matches are demultiplexed back to their originating check; per-check
+/// post-filters (comment-line skipping, `\s*:\s*bool` suffix matching,
+/// file-exclusion globs) are applied before recording violations.
+///
+/// Returns one `NativeScanCheckResult` per input check, in the same order.
+pub fn run_native_scan_checks(
+    repo_root: &Path,
+    checks: &[NativeScanCheck],
+) -> Vec<NativeScanCheckResult> {
+    let mut results: Vec<NativeScanCheckResult> = checks
+        .iter()
+        .map(|c| NativeScanCheckResult {
+            check_name: c.name,
+            passed: true,
+            violations: Vec::new(),
+        })
+        .collect();
+
+    if checks.is_empty() {
+        return results;
+    }
+
+    // Group check indices by (sorted directories + include_glob) key.
+    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+    for (idx, check) in checks.iter().enumerate() {
+        groups
+            .entry(directory_group_key(check))
+            .or_default()
+            .push(idx);
+    }
+
+    for check_indices in groups.values() {
+        scan_group(repo_root, checks, check_indices, &mut results);
+    }
+
+    results
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+fn directory_group_key(check: &NativeScanCheck) -> String {
+    let mut dirs: Vec<&str> = check.directories.to_vec();
+    dirs.sort_unstable();
+    format!("{}:{}", dirs.join(","), check.include_glob)
+}
+
+/// Scan one directory group: collect files once, build a single Aho-Corasick
+/// automaton from all patterns in the group, search each file, demultiplex.
+fn scan_group(
+    repo_root: &Path,
+    all_checks: &[NativeScanCheck],
+    check_indices: &[usize],
+    results: &mut [NativeScanCheckResult],
+) {
+    let first = &all_checks[check_indices[0]];
+
+    // Collect all matching files for the group's directories.
+    let mut files: Vec<PathBuf> = Vec::new();
+    for dir in first.directories {
+        let full_dir = repo_root.join(dir);
+        if full_dir.exists() {
+            collect_files_with_glob(&full_dir, first.include_glob, &mut files);
+        }
+    }
+    files.sort();
+
+    // Build a flat pattern list with a mapping from pattern ID → check index.
+    let mut all_patterns: Vec<&str> = Vec::new();
+    let mut pattern_to_check: Vec<usize> = Vec::new();
+
+    for &ci in check_indices {
+        for literal in all_checks[ci].literals {
+            all_patterns.push(literal);
+            pattern_to_check.push(ci);
+        }
+    }
+
+    if all_patterns.is_empty() {
+        return;
+    }
+
+    let ac = match AhoCorasick::new(&all_patterns) {
+        Ok(ac) => ac,
+        Err(_) => return,
+    };
+
+    // Scan each file with the combined automaton.
+    for file_path in &files {
+        let content = match std::fs::read(file_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        for mat in ac.find_iter(&content) {
+            let check_idx = pattern_to_check[mat.pattern().as_usize()];
+            let check = &all_checks[check_idx];
+
+            // Skip files excluded by this check.
+            if file_is_excluded(file_path, check.exclude_globs) {
+                continue;
+            }
+
+            let byte_start = mat.start();
+            let byte_end = mat.end();
+
+            // Apply mode-specific post-filter.
+            let is_violation = match check.mode {
+                MatchMode::AnyLiteral { skip_comment_lines } => {
+                    !(skip_comment_lines && line_is_comment(&content, byte_start))
+                }
+                MatchMode::StemWithBoolSuffix => {
+                    word_boundary_at_start(&content, byte_start)
+                        && matches_bool_suffix(&content, byte_end)
+                }
+            };
+
+            if is_violation {
+                let line_number = count_lines_before(&content, byte_start) + 1;
+                let line = extract_line(&content, byte_start);
+                results[check_idx].passed = false;
+                results[check_idx].violations.push(NativeScanViolation {
+                    file: file_path.clone(),
+                    line_number,
+                    line,
+                });
+            }
+        }
+    }
+}
+
+fn collect_files_with_glob(dir: &Path, include_glob: &str, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files_with_glob(&path, include_glob, files);
+        } else if file_matches_include_glob(&path, include_glob) {
+            files.push(path);
+        }
+    }
+}
+
+fn file_matches_include_glob(path: &Path, glob: &str) -> bool {
+    if let Some(ext_pattern) = glob.strip_prefix("*.") {
+        return path.extension().and_then(|e| e.to_str()) == Some(ext_pattern);
+    }
+    path.file_name().and_then(|n| n.to_str()) == Some(glob)
+}
+
+fn file_is_excluded(path: &Path, exclude_globs: &[&str]) -> bool {
+    exclude_globs
+        .iter()
+        .any(|g| file_matches_exclude_glob(path, g))
+}
+
+fn file_matches_exclude_glob(path: &Path, glob: &str) -> bool {
+    // Exact file-name match (no path separators or wildcards): "_TEMPLATE.rs"
+    if !glob.contains('/') && !glob.contains('*') {
+        return path.file_name().and_then(|n| n.to_str()) == Some(glob);
+    }
+    // "**/<segment>/**" — any path component equals `segment`.
+    if glob.starts_with("**/") && glob.ends_with("/**") {
+        let segment = &glob[3..glob.len() - 3];
+        return path
+            .components()
+            .any(|c| c.as_os_str().to_str() == Some(segment));
+    }
+    // Fallback: exact file-name match.
+    path.file_name().and_then(|n| n.to_str()) == Some(glob)
+}
+
+/// Return true when the line containing `byte_offset` starts with `//`
+/// (ignoring leading whitespace).
+fn line_is_comment(content: &[u8], byte_offset: usize) -> bool {
+    let line_start = find_line_start(content, byte_offset);
+    let trimmed = &content[line_start..];
+    let non_ws = trimmed.iter().position(|&b| b != b' ' && b != b'\t');
+    match non_ws {
+        Some(i) => trimmed[i..].starts_with(b"//"),
+        None => false,
+    }
+}
+
+/// Return true when the character immediately before `start` is NOT an
+/// ASCII alphanumeric character or underscore (word-boundary at start).
+fn word_boundary_at_start(content: &[u8], start: usize) -> bool {
+    if start == 0 {
+        return true;
+    }
+    let prev = content[start - 1];
+    !prev.is_ascii_alphanumeric() && prev != b'_'
+}
+
+/// Return true when the bytes at `end` match `\s*:\s*bool` followed by a
+/// non-identifier character (or end of input).
+fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
+    let rest = &content[end..];
+    let mut i = 0;
+    // Skip optional whitespace.
+    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+        i += 1;
+    }
+    if i >= rest.len() || rest[i] != b':' {
+        return false;
+    }
+    i += 1;
+    // Skip optional whitespace.
+    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+        i += 1;
+    }
+    if !rest[i..].starts_with(b"bool") {
+        return false;
+    }
+    let after = i + 4;
+    // Must be followed by a non-identifier character or end of input.
+    if after < rest.len() {
+        let next = rest[after];
+        if next.is_ascii_alphanumeric() || next == b'_' {
+            return false;
+        }
+    }
+    true
+}
+
+fn count_lines_before(content: &[u8], offset: usize) -> usize {
+    content[..offset].iter().filter(|&&b| b == b'\n').count()
+}
+
+fn find_line_start(content: &[u8], offset: usize) -> usize {
+    content[..offset]
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map(|p| p + 1)
+        .unwrap_or(0)
+}
+
+fn find_line_end(content: &[u8], offset: usize) -> usize {
+    content[offset..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map(|p| offset + p)
+        .unwrap_or(content.len())
+}
+
+fn extract_line(content: &[u8], offset: usize) -> String {
+    let start = find_line_start(content, offset);
+    let end = find_line_end(content, offset);
+    String::from_utf8_lossy(&content[start..end]).to_string()
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn make_temp_dir(name: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!("xtask-scanner-{name}"));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        base
+    }
+
+    fn write_file(dir: &Path, rel_path: &str, content: &str) {
+        let full = dir.join(rel_path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(full, content).unwrap();
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    fn simple_check(name: &'static str, literals: &'static [&'static str]) -> NativeScanCheck {
+        NativeScanCheck {
+            name,
+            literals,
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        }
+    }
+
+    // ── basic literal matching ────────────────────────────────────────────────
+
+    #[test]
+    fn test_literal_match_found_returns_failure() {
+        let dir = make_temp_dir("literal-match");
+        write_file(&dir, "src/lib.rs", "let forbidden_pattern = true;\n");
+
+        let check = NativeScanCheck {
+            name: "test-simple",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed, "should fail when pattern found");
+        assert!(!results[0].violations.is_empty());
+        assert_eq!(results[0].violations[0].line_number, 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_literal_match_not_found_returns_pass() {
+        let dir = make_temp_dir("literal-no-match");
+        write_file(&dir, "src/lib.rs", "let safe_code = true;\n");
+
+        let check = NativeScanCheck {
+            name: "test-simple",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(results[0].passed);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_empty_directory_returns_pass() {
+        let dir = make_temp_dir("empty-dir");
+        fs::create_dir_all(dir.join("src")).unwrap();
+
+        let check = NativeScanCheck {
+            name: "test-empty",
+            literals: &["anything"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(results[0].passed);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_missing_directory_returns_pass() {
+        let dir = make_temp_dir("missing-dir");
+        // Do NOT create src/ subdirectory.
+
+        let check = NativeScanCheck {
+            name: "test-missing",
+            literals: &["anything"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(results[0].passed);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── comment-line exclusion ────────────────────────────────────────────────
+
+    #[test]
+    fn test_comment_line_skipped_when_flag_set() {
+        let dir = make_temp_dir("comment-skip");
+        write_file(&dir, "src/lib.rs", "// forbidden_pattern\n");
+
+        let check = NativeScanCheck {
+            name: "test-comment-skip",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "comment-line match must not trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_comment_line_not_skipped_when_flag_unset() {
+        let dir = make_temp_dir("comment-noskip");
+        write_file(&dir, "src/lib.rs", "// forbidden_pattern\n");
+
+        let check = NativeScanCheck {
+            name: "test-comment-noskip",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "comment-line match must trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_indented_comment_line_skipped() {
+        let dir = make_temp_dir("indented-comment");
+        write_file(&dir, "src/lib.rs", "    // forbidden_pattern\n");
+
+        let check = NativeScanCheck {
+            name: "test-indented-comment",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "indented comment-line match must not trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── StemWithBoolSuffix ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_stem_with_bool_suffix_matches() {
+        let dir = make_temp_dir("stem-bool-match");
+        write_file(&dir, "src/lib.rs", "fn foo(test_mode: bool) {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-stem",
+            literals: &["test_mode"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed, "test_mode: bool must trigger failure");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_stem_with_bool_suffix_no_match_without_bool() {
+        let dir = make_temp_dir("stem-no-bool");
+        write_file(&dir, "src/lib.rs", "let test_mode = false;\n");
+
+        let check = NativeScanCheck {
+            name: "test-stem-nobool",
+            literals: &["test_mode"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "test_mode without ': bool' must not trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_stem_with_bool_suffix_with_spaces() {
+        let dir = make_temp_dir("stem-bool-spaces");
+        write_file(&dir, "src/lib.rs", "fn foo(test_mode : bool) {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-stem-spaces",
+            literals: &["test_mode"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            !results[0].passed,
+            "test_mode : bool (spaces) must trigger failure"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_stem_word_boundary_prevents_false_positive() {
+        // "is_testing_mode: bool" should NOT trigger the "is_test" stem check
+        // because the char before "testing_mode" is "is_", forming a longer identifier.
+        let dir = make_temp_dir("stem-word-boundary");
+        write_file(&dir, "src/lib.rs", "fn foo(is_testing_mode: bool) {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-boundary",
+            literals: &["is_test"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "is_testing_mode: bool must NOT trigger is_test stem check"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── file exclusion globs ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_excluded_file_not_scanned() {
+        let dir = make_temp_dir("exclude-file");
+        write_file(&dir, "src/_TEMPLATE.rs", "forbidden_pattern\n");
+        write_file(&dir, "src/lib.rs", "safe\n");
+
+        let check = NativeScanCheck {
+            name: "test-exclude",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &["_TEMPLATE.rs"],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(results[0].passed, "_TEMPLATE.rs must be excluded from scan");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_path_component_exclude_glob() {
+        let dir = make_temp_dir("exclude-path-component");
+        write_file(&dir, "src/tests/test_foo.rs", "forbidden_pattern\n");
+        write_file(&dir, "src/lib.rs", "safe\n");
+
+        let check = NativeScanCheck {
+            name: "test-path-exclude",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &["**/tests/**"],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(
+            results[0].passed,
+            "files under tests/ must be excluded from scan"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── multi-check isolation ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_two_checks_independent_results() {
+        let dir = make_temp_dir("multi-check");
+        write_file(&dir, "src/lib.rs", "pattern_a\n");
+
+        let checks = [
+            simple_check("check-a", &["pattern_a"]),
+            simple_check("check-b", &["pattern_b"]),
+        ];
+
+        let results = run_native_scan_checks(&dir, &checks);
+        assert!(!results[0].passed, "check-a must fail (pattern_a present)");
+        assert!(results[1].passed, "check-b must pass (pattern_b absent)");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_result_order_matches_input_order() {
+        let dir = make_temp_dir("result-order");
+        write_file(&dir, "src/lib.rs", "alpha beta\n");
+
+        let checks = [
+            simple_check("first", &["alpha"]),
+            simple_check("second", &["beta"]),
+            simple_check("third", &["gamma"]),
+        ];
+
+        let results = run_native_scan_checks(&dir, &checks);
+        assert_eq!(results[0].check_name, "first");
+        assert_eq!(results[1].check_name, "second");
+        assert_eq!(results[2].check_name, "third");
+        assert!(!results[0].passed);
+        assert!(!results[1].passed);
+        assert!(results[2].passed);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── directory grouping ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_two_checks_same_directory_both_detected() {
+        // Two checks with the same directory are grouped: files read once,
+        // but both patterns are detected.
+        let dir = make_temp_dir("same-dir-group");
+        write_file(&dir, "src/lib.rs", "pattern_x\npattern_y\n");
+
+        let checks = [
+            simple_check("check-x", &["pattern_x"]),
+            simple_check("check-y", &["pattern_y"]),
+        ];
+
+        let results = run_native_scan_checks(&dir, &checks);
+        assert!(!results[0].passed);
+        assert!(!results[1].passed);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── alternation patterns ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_any_of_multiple_literals_triggers_failure() {
+        let dir = make_temp_dir("alternation");
+        write_file(&dir, "src/lib.rs", "let skip_auth = true;\n");
+
+        let check = NativeScanCheck {
+            name: "test-alternation",
+            literals: &[
+                "skip_validation",
+                "skip_verify",
+                "skip_check",
+                "skip_auth",
+                "skip_api",
+            ],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        // skip_auth = true (not `: bool`) → must NOT match
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(results[0].passed, "skip_auth without ': bool' must pass");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_any_of_multiple_literals_with_bool_triggers_failure() {
+        let dir = make_temp_dir("alternation-bool");
+        write_file(&dir, "src/lib.rs", "fn f(skip_auth: bool) {}\n");
+
+        let check = NativeScanCheck {
+            name: "test-alternation-bool",
+            literals: &[
+                "skip_validation",
+                "skip_verify",
+                "skip_check",
+                "skip_auth",
+                "skip_api",
+            ],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::StemWithBoolSuffix,
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed, "skip_auth: bool must fail");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── violation details ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_violation_contains_correct_line_number() {
+        let dir = make_temp_dir("line-number");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn foo() {}\nfn bar() {}\nforbidden_here\nfn baz() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "test-lineno",
+            literals: &["forbidden_here"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed);
+        assert_eq!(results[0].violations[0].line_number, 3);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_violation_contains_line_text() {
+        let dir = make_temp_dir("line-text");
+        write_file(&dir, "src/lib.rs", "    let forbidden_pattern = 42;\n");
+
+        let check = NativeScanCheck {
+            name: "test-linetext",
+            literals: &["forbidden_pattern"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        assert!(!results[0].passed);
+        assert!(results[0].violations[0].line.contains("forbidden_pattern"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── NATIVE_SCAN_CHECKS sanity ─────────────────────────────────────────────
+
+    #[test]
+    fn test_native_scan_checks_all_have_non_empty_literals() {
+        for check in NATIVE_SCAN_CHECKS {
+            assert!(
+                !check.literals.is_empty(),
+                "check '{}' must have at least one literal",
+                check.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_native_scan_checks_all_have_non_empty_directories() {
+        for check in NATIVE_SCAN_CHECKS {
+            assert!(
+                !check.directories.is_empty(),
+                "check '{}' must specify at least one directory",
+                check.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_no_string_errors_handlers_check_is_in_native_scan_checks() {
+        assert!(
+            NATIVE_SCAN_CHECKS
+                .iter()
+                .any(|c| c.name == "no-string-errors-handlers"),
+            "NATIVE_SCAN_CHECKS must include no-string-errors-handlers"
+        );
+    }
+
+    #[test]
+    fn test_no_string_errors_handlers_scans_handler_directory() {
+        let check = NATIVE_SCAN_CHECKS
+            .iter()
+            .find(|c| c.name == "no-string-errors-handlers")
+            .expect("no-string-errors-handlers must be in NATIVE_SCAN_CHECKS");
+        assert!(
+            check
+                .directories
+                .iter()
+                .any(|d| d.contains("reducer/handler")),
+            "no-string-errors-handlers must scan the handler directory, got: {:?}",
+            check.directories
+        );
+    }
+}

@@ -59,10 +59,16 @@ pub struct NativeCheck {
     pub run: fn(&std::path::Path) -> NativeCheckResult,
 }
 
-pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[NativeCheck {
-    name: "compliance-timeout-wrapper",
-    run: crate::compliance::check_timeout_wrappers,
-}];
+pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
+    NativeCheck {
+        name: "compliance-timeout-wrapper",
+        run: crate::compliance::check_timeout_wrappers,
+    },
+    NativeCheck {
+        name: "audit-no-shell-scripts",
+        run: crate::compliance::check_no_shell_scripts,
+    },
+];
 
 fn has_line_prefix(output: &str, prefix: &str) -> bool {
     output
@@ -130,10 +136,11 @@ pub fn run_checks(
 }
 
 /// Index in REQUIRED_CHECKS where the rg fast-scan group ends (exclusive).
-/// Checks at indices [0, RG_SCAN_END) are independent rg pattern scans and
-/// can run concurrently. Checks at indices [RG_SCAN_END, ..) invoke cargo
-/// and must run sequentially to avoid target/ lock conflicts.
-pub const RG_SCAN_END: usize = 20;
+/// Checks at indices [0, RG_SCAN_END) are independent rg pattern scans (complex
+/// PCRE2 patterns that cannot be expressed as Aho-Corasick literals) and can
+/// run concurrently. Checks at indices [RG_SCAN_END, ..) invoke cargo and must
+/// run sequentially to avoid target/ lock conflicts.
+pub const RG_SCAN_END: usize = 2;
 
 /// Run checks concurrently using scoped threads.
 ///
@@ -206,6 +213,15 @@ pub fn run_checks_concurrent(
     })
 }
 
+/// Format native scan violations in rg-compatible `path:line:content` format.
+fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) -> String {
+    violations
+        .iter()
+        .map(|v| format!("{}:{}:{}", v.file.display(), v.line_number, v.line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Fast verification: rg checks run concurrently, cargo checks via prefetch + sequential.
 ///
 /// `prefetch_specs` are run concurrently in a background thread during the cargo phase to
@@ -235,10 +251,30 @@ pub fn verify_fast(
         }
     }
 
+    // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces 17 rg subprocess calls).
+    // Groups checks by directory, reads each source file once, O(n + m + z) per group.
+    let scan_results =
+        crate::scanner::run_native_scan_checks(repo_root, crate::scanner::NATIVE_SCAN_CHECKS);
+    for result in &scan_results {
+        if !result.passed {
+            let output = format_scan_violations(&result.violations);
+            return Ok(VerifyReport {
+                exit: VerifyExitCode::Failure,
+                failure: Some(CheckFailure {
+                    name: result.check_name,
+                    status: CheckStatus::Error,
+                    exit_code: 1,
+                    stdout: output,
+                    stderr: String::new(),
+                }),
+            });
+        }
+    }
+
     let rg_end = RG_SCAN_END.min(checks.len());
     let (rg_checks, cargo_checks) = checks.split_at(rg_end);
 
-    // Phase 1: parallel rg pattern scans.
+    // Phase 1: parallel rg pattern scans (complex PCRE2 checks only).
     let rg_report = run_checks_concurrent(runner, rg_checks)?;
     if rg_report.exit == VerifyExitCode::Failure {
         return Ok(rg_report);
@@ -249,6 +285,7 @@ pub fn verify_fast(
 }
 
 pub const REQUIRED_CHECKS: &[CommandSpec] = &[
+    // ── rg pattern scans (PCRE2 patterns that cannot be expressed as Aho-Corasick literals) ──
     CommandSpec {
         name: "forbidden-allow-expect-scan",
         program: "rg",
@@ -269,234 +306,8 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[1],
         extra_env: &[],
     },
-    // ── no-test-flags group (replaces no_test_flags_check.sh) ──────────────
     CommandSpec {
-        name: "no-test-flags-cfg-test",
-        program: "rg",
-        args: &[
-            "-n",
-            r"cfg!\(test\)",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-test-flags-test-mode-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(test_mode|is_test|is_testing|testing_mode)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-test-flags-skip-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(skip_validation|skip_verify|skip_check|skip_auth|skip_api)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-test-flags-mock-params",
-        program: "rg",
-        args: &[
-            "-n",
-            r"(mock_mode|fake_mode|stub_mode|use_mock|use_fake|use_stub)\s*:\s*bool",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-test-flags-testing-feature",
-        program: "rg",
-        args: &[
-            "-n",
-            r#"#\[cfg\(feature\s*=\s*"testing"\)\]"#,
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-test-flags-cfg-not-test",
-        program: "rg",
-        args: &[
-            "-n",
-            r"#\[cfg\(not\(test\)\)\]",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    // ── compliance group (process-spawn and serial checks from compliance_check.sh) ──
-    CommandSpec {
-        name: "compliance-no-process-spawn",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines (// prefix) to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*(std::process::Command::new|assert_cmd::Command::new)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-            "--glob",
-            "!_TEMPLATE.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "compliance-no-serial",
-        program: "rg",
-        args: &[
-            "-n",
-            r"#\[serial\]|use serial_test",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-            "--glob",
-            "!_TEMPLATE.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    // ── audit group (replaces audit_tests.sh critical gates) ────────────────
-    CommandSpec {
-        name: "audit-no-cfg-test-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*cfg!\(test\)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-real-fs-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*(std::fs::|TempDir|tempfile::)",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-real-process-integration",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*std::process::Command::new",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-serial-src",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*#\[serial\]",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-test-helpers-src",
-        program: "rg",
-        args: &[
-            "-n",
-            r"use test_helpers::|init_git_repo|commit_all|git_switch",
-            "ralph-workflow/src/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-env-mutations-integration",
-        program: "rg",
-        args: &[
-            "-n",
-            r"std::env::set_var|std::env::remove_var|env::set_var|env::remove_var",
-            "tests/integration_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-serial-process-system",
-        program: "rg",
-        args: &[
-            "--pcre2",
-            "-n",
-            // Exclude comment lines to avoid false positives from doc comments.
-            r"^(?!\s*//)[^\n]*#\[serial\]",
-            "tests/process_system_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "audit-no-git2-process-system",
-        program: "rg",
-        args: &[
-            "-n",
-            r"git2::|init_git_repo",
-            "tests/process_system_tests/",
-            "--glob",
-            "*.rs",
-        ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
+        // PCRE2 negative lookahead: cannot be expressed as Aho-Corasick literals.
         name: "audit-ignore-has-url",
         program: "rg",
         args: &[
@@ -508,40 +319,6 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
             "--glob",
             "*.rs",
         ],
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    // Regression guard: no .sh files may be committed after the shell-script migration.
-    // rg --files exits 1 (no matches) = pass; exits 0 (matches found) = fail.
-    CommandSpec {
-        name: "audit-no-shell-scripts",
-        program: "rg",
-        args: &[
-            "--files",
-            "--glob",
-            "*.sh",
-            // Scope to directories where shell scripts previously lived.
-            // This aligns with the documented policy and avoids unintentionally forbidding
-            // intentionally committed .sh files elsewhere (e.g., fixtures).
-            "scripts/",
-            "tests/integration_tests/",
-        ],
-        // Exit code 1 means "no matches found" which is the success condition.
-        success_exit_codes: &[1],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "no-string-errors-handlers",
-        program: "rg",
-        args: &[
-            "-n",
-            "--pcre2",
-            r"\banyhow::anyhow!\(|\banyhow!\(|\banyhow::bail!\(|\bbail!\(|\banyhow::ensure!\(|\bensure!\(|\banyhow::format_err!\(|\bformat_err!\(|\banyhow::Error::msg\(",
-            "ralph-workflow/src/reducer/handler/",
-            "--glob",
-            "!**/tests/**",
-        ],
-        // Exit code 1 means "no matches" which is success.
         success_exit_codes: &[1],
         extra_env: &[],
     },
@@ -1120,33 +897,15 @@ mod tests {
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(report.failure, None);
+        // After the Aho-Corasick migration, REQUIRED_CHECKS contains only the 2 complex
+        // PCRE2 rg checks and the cargo checks.  The 17 literal pattern checks and
+        // audit-no-shell-scripts are now handled natively (no CommandRunner involvement).
         assert_eq!(
             runner.ran(),
             vec![
-                // rg pattern checks
+                // PCRE2 rg checks (complex patterns kept as rg)
                 "forbidden-allow-expect-scan",
-                // no-test-flags group
-                "no-test-flags-cfg-test",
-                "no-test-flags-test-mode-params",
-                "no-test-flags-skip-params",
-                "no-test-flags-mock-params",
-                "no-test-flags-testing-feature",
-                "no-test-flags-cfg-not-test",
-                // compliance group
-                "compliance-no-process-spawn",
-                "compliance-no-serial",
-                // audit group
-                "audit-no-cfg-test-integration",
-                "audit-no-real-fs-integration",
-                "audit-no-real-process-integration",
-                "audit-no-serial-src",
-                "audit-no-test-helpers-src",
-                "audit-no-env-mutations-integration",
-                "audit-no-serial-process-system",
-                "audit-no-git2-process-system",
                 "audit-ignore-has-url",
-                "audit-no-shell-scripts",
-                "no-string-errors-handlers",
                 // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
@@ -1193,49 +952,37 @@ mod tests {
     }
 
     #[test]
-    fn test_no_string_errors_handlers_check_is_in_required_checks() {
-        // TDD anchor: this test fails until the CommandSpec is added to REQUIRED_CHECKS
+    fn test_no_string_errors_handlers_check_is_in_native_scan_checks() {
+        // TDD anchor: no-string-errors-handlers is now a native Aho-Corasick scan check,
+        // not a rg subprocess check.  Verify it is registered in NATIVE_SCAN_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            crate::scanner::NATIVE_SCAN_CHECKS
                 .iter()
                 .any(|c| c.name == "no-string-errors-handlers"),
-            "REQUIRED_CHECKS must include the no-string-errors-handlers audit check"
+            "NATIVE_SCAN_CHECKS must include the no-string-errors-handlers audit check"
         );
     }
 
     #[test]
-    fn test_audit_no_shell_scripts_check_is_in_required_checks() {
-        // TDD anchor: this test fails until audit-no-shell-scripts is added to REQUIRED_CHECKS.
-        // Policy: no .sh files may exist in scripts/ or tests/integration_tests/.
-        // This check prevents regression after the shell-script migration.
+    fn test_audit_no_shell_scripts_check_is_in_native_required_checks() {
+        // TDD anchor: audit-no-shell-scripts is now a NativeCheck (file-existence check),
+        // not a rg subprocess check.  Verify it is registered in NATIVE_REQUIRED_CHECKS.
+        assert!(
+            NATIVE_REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-no-shell-scripts"),
+            "NATIVE_REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
+        );
+    }
+
+    #[test]
+    fn test_audit_ignore_has_url_check_is_in_required_checks() {
+        // TDD anchor: audit-ignore-has-url uses PCRE2 negative lookahead and must stay as rg.
         assert!(
             REQUIRED_CHECKS
                 .iter()
-                .any(|c| c.name == "audit-no-shell-scripts"),
-            "REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
-        );
-    }
-
-    #[test]
-    fn test_audit_no_shell_scripts_check_only_scans_scripts_and_integration_tests() {
-        // TDD anchor: this test fails until audit-no-shell-scripts is scoped to the intended
-        // directories (scripts/ and tests/integration_tests/) instead of scanning the entire repo.
-        let spec = REQUIRED_CHECKS
-            .iter()
-            .find(|c| c.name == "audit-no-shell-scripts")
-            .expect("audit-no-shell-scripts check must exist");
-
-        assert!(
-            spec.args.contains(&"scripts/"),
-            "audit-no-shell-scripts must scan scripts/"
-        );
-        assert!(
-            spec.args.contains(&"tests/integration_tests/"),
-            "audit-no-shell-scripts must scan tests/integration_tests/"
-        );
-        assert!(
-            !spec.args.contains(&"."),
-            "audit-no-shell-scripts must not scan the entire repository"
+                .any(|c| c.name == "audit-ignore-has-url"),
+            "REQUIRED_CHECKS must include the audit-ignore-has-url rg check (complex PCRE2)"
         );
     }
 
@@ -1248,12 +995,18 @@ mod tests {
             "at least one native check should be registered"
         );
 
-        // Confirm the expected native check is present
+        // Confirm the expected native checks are present
         assert!(
             NATIVE_REQUIRED_CHECKS
                 .iter()
                 .any(|c| c.name == "compliance-timeout-wrapper"),
             "compliance-timeout-wrapper native check must be registered"
+        );
+        assert!(
+            NATIVE_REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "audit-no-shell-scripts"),
+            "audit-no-shell-scripts native check must be registered"
         );
     }
 

@@ -65,29 +65,11 @@ pub fn scope_memo_key(scope: &CheckScope) -> String {
 /// are assumed to have Build scope (most conservative: any change triggers re-run).
 pub fn scope_for(check_name: &str) -> CheckScope {
     match check_name {
-        // rg checks on ralph-workflow/src/
-        "forbidden-allow-expect-scan"
-        | "no-test-flags-cfg-test"
-        | "no-test-flags-test-mode-params"
-        | "no-test-flags-skip-params"
-        | "no-test-flags-mock-params"
-        | "no-test-flags-testing-feature"
-        | "no-test-flags-cfg-not-test"
-        | "audit-no-serial-src"
-        | "audit-no-test-helpers-src"
-        | "no-string-errors-handlers" => CheckScope::Directories(&["ralph-workflow/src"]),
-        // rg checks on tests/integration_tests/
-        "compliance-no-process-spawn"
-        | "compliance-no-serial"
-        | "audit-no-cfg-test-integration"
-        | "audit-no-real-fs-integration"
-        | "audit-no-real-process-integration"
-        | "audit-no-env-mutations-integration"
-        | "audit-no-shell-scripts" => CheckScope::Directories(&["tests/integration_tests"]),
-        // checks spanning both src and tests
+        // rg check spanning both src and tests (complex PCRE2 negative lookahead)
         "audit-ignore-has-url" => CheckScope::Directories(&["tests", "ralph-workflow/src"]),
-        "audit-no-serial-process-system" | "audit-no-git2-process-system" => {
-            CheckScope::Directories(&["tests/process_system_tests"])
+        // rg check spanning all .rs files (complex PCRE2 multiline)
+        "forbidden-allow-expect-scan" => {
+            CheckScope::Directories(&["ralph-workflow/src", "tests", "xtask/src"])
         }
         // fmt-check: only .rs file content matters, not Cargo.lock
         "fmt-check" => CheckScope::Directories(&[

@@ -1,5 +1,6 @@
 mod cache;
 mod compliance;
+mod scanner;
 mod verify;
 
 use std::path::PathBuf;
