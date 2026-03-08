@@ -40,7 +40,7 @@ pub fn prompt_commit_xsd_retry_with_log(
     // Build diagnostic prefix for missing files
     let mut diagnostic_prefix = String::new();
     if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
+        diagnostic_prefix.push_str("WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
             writeln!(
                 diagnostic_prefix,
@@ -210,7 +210,7 @@ pub fn prompt_commit_xsd_retry_with_context(
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
     let mut diagnostic_prefix = String::new();
     if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
+        diagnostic_prefix.push_str("WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
             writeln!(
                 diagnostic_prefix,

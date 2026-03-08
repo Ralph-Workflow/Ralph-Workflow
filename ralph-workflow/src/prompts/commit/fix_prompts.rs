@@ -135,11 +135,13 @@ FILES YOU MAY MODIFY
 
 (No specific files were extracted from ISSUES content)
 
-PERMISSIONS: FULL AUTO MODE - You may work on ANY files in the repository
+PERMISSIONS: FAIL CLOSED (NO FILE LIST PROVIDED)
 
-You are authorized to modify any files in the repository that are needed to fix
-the issues described in the ISSUES content above. Use your judgment to determine
-which files need modification - you are not limited to files mentioned in ISSUES.
+IMPORTANT: In fix mode, you MUST ONLY work on files mentioned in the ISSUES content.
+
+If no file paths were extracted, do NOT modify any files. Report `issues_remain`
+and include that the orchestrator must provide an explicit file list (or update
+the issue format to include file paths) to proceed safely.
 
 The ISSUES content is already embedded in this prompt - review it carefully.
 

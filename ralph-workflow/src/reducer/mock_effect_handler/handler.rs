@@ -132,6 +132,10 @@ If you determine there are NO actual changes to commit, respond with:
                 };
                 use std::path::Path;
 
+                self.captured_effects
+                    .borrow_mut()
+                    .push(Effect::MaterializeCommitInputs { attempt });
+
                 let diff_path = Path::new(".agent/tmp/commit_diff.txt");
                 let content = match ctx.workspace.read(diff_path) {
                     Ok(content) => content,
@@ -153,10 +157,6 @@ If you determine there are NO actual changes to commit, respond with:
                 let original_bytes = content.len() as u64;
                 let content_id_sha256 = sha256_hex_str(&content);
                 let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
-
-                self.captured_effects
-                    .borrow_mut()
-                    .push(Effect::MaterializeCommitInputs { attempt });
 
                 let input = MaterializedPromptInput {
                     kind: PromptInputKind::Diff,
