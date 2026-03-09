@@ -15,8 +15,9 @@
 //!
 //! `recovery_epoch` is carried for auditing/future isolation but is NOT included
 //! in the `Display` string to preserve checkpoint backward-compatibility.
-//! Level-3/4 resets already change the iteration counter, which changes the key
-//! string, so stale history entries are naturally bypassed.
+//! Level-3/4 recovery increments `recovery_epoch` and clears `PipelineState.prompt_history`
+//! atomically. This is the safety mechanism that prevents stale prompt replay across
+//! epoch boundaries, even if iteration counters are reset or reused.
 //!
 //! # Backward Compatibility
 //!

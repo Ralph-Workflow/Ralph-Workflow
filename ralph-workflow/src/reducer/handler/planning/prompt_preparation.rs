@@ -135,39 +135,66 @@ impl MainEffectHandler {
                             ));
                         }
                     }
-                    let rendered =
-                        crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
-                            ctx.template_context,
-                            "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
-                            ctx.workspace,
-                            "planning_xsd_retry",
-                        );
+                    let scope_key = PromptScopeKey::for_planning(
+                        iteration,
+                        RetryMode::Xsd {
+                            count: continuation_state.xsd_retry_count,
+                        },
+                        self.state.recovery_epoch,
+                    );
+                    let prompt_key = scope_key.to_string();
+                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        None,
+                        || {
+                            crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
+                                ctx.template_context,
+                                "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
+                                ctx.workspace,
+                                "planning_xsd_retry",
+                            )
+                            .content
+                        },
+                    );
 
-                    if !rendered.log.is_complete() {
-                        let missing = rendered.log.unsubstituted.clone();
-                        let result = EffectResult::event(PipelineEvent::template_rendered(
-                            PipelinePhase::Planning,
-                            "planning_xsd_retry".to_string(),
-                            rendered.log,
-                        ))
-                        .with_additional_event(
-                            PipelineEvent::agent_template_variables_invalid(
-                                AgentRole::Developer,
+                    let rendered_log = if was_replayed {
+                        None
+                    } else {
+                        let rendered =
+                            crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
+                                ctx.template_context,
+                                "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
+                                ctx.workspace,
+                                "planning_xsd_retry",
+                            );
+                        if !rendered.log.is_complete() {
+                            let missing = rendered.log.unsubstituted.clone();
+                            let result = EffectResult::event(PipelineEvent::template_rendered(
+                                PipelinePhase::Planning,
                                 "planning_xsd_retry".to_string(),
-                                missing,
-                                Vec::new(),
-                            ),
-                        );
-                        return Ok(result);
-                    }
+                                rendered.log,
+                            ))
+                            .with_additional_event(
+                                PipelineEvent::agent_template_variables_invalid(
+                                    AgentRole::Developer,
+                                    "planning_xsd_retry".to_string(),
+                                    missing,
+                                    Vec::new(),
+                                ),
+                            );
+                            return Ok(result);
+                        }
+                        Some(rendered.log)
+                    };
 
                     (
-                        rendered.content,
+                        prompt,
                         "planning_xsd_retry",
-                        None,
-                        false,
+                        Some(prompt_key),
+                        was_replayed,
                         true,
-                        Some(rendered.log),
+                        rendered_log,
                     )
                 }
                 PromptMode::SameAgentRetry => {
@@ -202,31 +229,6 @@ impl MainEffectHandler {
                         }
                     };
 
-                    let (base_prompt, should_validate) = ctx
-                        .workspace
-                        .read(Path::new(PLANNING_PROMPT_PATH))
-                        .map_or_else(
-                            |_| {
-                                (
-                                    prompt_planning_xml_with_references(
-                                        ctx.template_context,
-                                        &prompt_ref,
-                                        ctx.workspace,
-                                    ),
-                                    true,
-                                )
-                            },
-                            |previous_prompt| {
-                                (
-                                    super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                                        &previous_prompt,
-                                    )
-                                    .to_string(),
-                                    false,
-                                )
-                            },
-                        );
-                    let prompt = format!("{retry_preamble}\n{base_prompt}");
                     let scope_key = PromptScopeKey::for_planning(
                         iteration,
                         RetryMode::SameAgent {
@@ -235,7 +237,43 @@ impl MainEffectHandler {
                         self.state.recovery_epoch,
                     );
                     let prompt_key = scope_key.to_string();
-                    let rendered_log = if should_validate {
+
+                    let mut should_validate = false;
+                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        None,
+                        || {
+                            let (base_prompt, local_should_validate) = ctx
+                                .workspace
+                                .read(Path::new(PLANNING_PROMPT_PATH))
+                                .map_or_else(
+                                    |_| {
+                                        (
+                                            prompt_planning_xml_with_references(
+                                                ctx.template_context,
+                                                &prompt_ref,
+                                                ctx.workspace,
+                                            ),
+                                            true,
+                                        )
+                                    },
+                                    |previous_prompt| {
+                                        (
+                                            super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                                &previous_prompt,
+                                            )
+                                            .to_string(),
+                                            false,
+                                        )
+                                    },
+                                );
+                            should_validate = local_should_validate;
+                            format!("{retry_preamble}\n{base_prompt}")
+                        },
+                    );
+
+                    let rendered_log = if should_validate && !was_replayed {
                         let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
                             ctx.template_context,
                             &prompt_ref,
@@ -267,7 +305,7 @@ impl MainEffectHandler {
                         prompt,
                         "planning_xml",
                         Some(prompt_key),
-                        false,
+                        was_replayed,
                         should_validate,
                         rendered_log,
                     )

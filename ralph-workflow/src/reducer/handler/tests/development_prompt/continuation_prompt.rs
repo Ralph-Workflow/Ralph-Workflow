@@ -2,6 +2,144 @@ use super::*;
 use crate::prompts::PromptHistoryEntry;
 
 #[test]
+fn test_prepare_development_prompt_xsd_retry_captures_prompt_and_replays_from_history() {
+    use crate::reducer::ui_event::UIEvent;
+
+    let invalid_xml = "<ralph-development-result><ralph-status>completed</ralph-status>";
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(".agent/tmp/development_result.xml", invalid_xml);
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.continuation.xsd_retry_count = 1;
+
+    let first = handler
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_development_prompt should succeed");
+
+    let key = "development_0_xsd_retry_1";
+    assert!(
+        first.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: false
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=false) for {key}; got: {:?}",
+        first.ui_events
+    );
+    assert!(
+        first.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Expected PromptCaptured for {key}; got: {:?}",
+        first.additional_events
+    );
+
+    handler.state = crate::reducer::reduce(handler.state.clone(), first.event);
+    for ev in first.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let second = handler
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_development_prompt should succeed");
+    assert!(
+        second.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        second.ui_events
+    );
+    assert!(
+        !second.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        second.additional_events
+    );
+}
+
+#[test]
+fn test_prepare_development_prompt_same_agent_retry_replays_from_prompt_history_when_available() {
+    use crate::reducer::ui_event::UIEvent;
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file("PROMPT.md", "Prompt")
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::Timeout),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(1, 0)
+    });
+
+    let materialize = handler
+        .materialize_development_inputs(&ctx, 0)
+        .expect("materialize_development_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let key = "development_0_same_agent_retry_1";
+    handler.state.prompt_history.insert(
+        key.to_string(),
+        PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+    );
+
+    let result = handler
+        .prepare_development_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_development_prompt should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/development_prompt.txt"))
+        .expect("development prompt should be written");
+    assert_eq!(prompt, "STORED-PROMPT");
+
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        result.ui_events
+    );
+    assert!(
+        !result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        result.additional_events
+    );
+}
+
+#[test]
 fn test_prepare_development_prompt_xsd_retry_includes_real_last_output() {
     let invalid_xml = "<ralph-development-result><ralph-status>completed</ralph-status>";
     let workspace = MemoryWorkspace::new_test()

@@ -239,7 +239,11 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> Result<PromptModeResult> {
-        use crate::prompts::prompt_developer_iteration_xsd_retry_with_context_files_and_log;
+        use crate::prompts::{
+            get_stored_or_generate_prompt,
+            prompt_developer_iteration_xsd_retry_with_context_files_and_log, PromptScopeKey,
+            RetryMode,
+        };
 
         let last_output = ctx
             .workspace
@@ -329,35 +333,62 @@ impl MainEffectHandler {
             }
         }
 
-        let rendered = prompt_developer_iteration_xsd_retry_with_context_files_and_log(
-            ctx.template_context,
-            "XML output failed validation. Provide valid XML output.",
-            ctx.workspace,
-            "developer_iteration_xsd_retry",
+        let scope_key = PromptScopeKey::for_development(
+            iteration,
+            None,
+            RetryMode::Xsd {
+                count: self.state.continuation.xsd_retry_count,
+            },
+            self.state.recovery_epoch,
         );
+        let prompt_key = scope_key.to_string();
 
-        if !rendered.log.is_complete() {
-            let missing = rendered.log.unsubstituted.clone();
-            let result = EffectResult::event(PipelineEvent::template_rendered(
-                crate::reducer::event::PipelinePhase::Development,
-                "developer_iteration_xsd_retry".to_string(),
-                rendered.log,
-            ))
-            .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                AgentRole::Developer,
-                "developer_iteration_xsd_retry".to_string(),
-                missing,
-                Vec::new(),
-            ));
-            return Ok(PromptModeResult::EarlyReturn(result));
-        }
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+                prompt_developer_iteration_xsd_retry_with_context_files_and_log(
+                    ctx.template_context,
+                    "XML output failed validation. Provide valid XML output.",
+                    ctx.workspace,
+                    "developer_iteration_xsd_retry",
+                )
+                .content
+            });
+
+        let rendered_log = if was_replayed {
+            None
+        } else {
+            let rendered = prompt_developer_iteration_xsd_retry_with_context_files_and_log(
+                ctx.template_context,
+                "XML output failed validation. Provide valid XML output.",
+                ctx.workspace,
+                "developer_iteration_xsd_retry",
+            );
+            if !rendered.log.is_complete() {
+                let missing = rendered.log.unsubstituted.clone();
+                let result = EffectResult::event(PipelineEvent::template_rendered(
+                    crate::reducer::event::PipelinePhase::Development,
+                    "developer_iteration_xsd_retry".to_string(),
+                    rendered.log,
+                ))
+                .with_additional_event(
+                    PipelineEvent::agent_template_variables_invalid(
+                        AgentRole::Developer,
+                        "developer_iteration_xsd_retry".to_string(),
+                        missing,
+                        Vec::new(),
+                    ),
+                );
+                return Ok(PromptModeResult::EarlyReturn(result));
+            }
+            Some(rendered.log)
+        };
 
         Ok(PromptModeResult::Data(PromptModeData {
-            prompt: rendered.content,
+            prompt,
             template_name: "developer_iteration_xsd_retry",
-            prompt_key: None,
-            was_replayed: false,
-            rendered_log: Some(rendered.log),
+            prompt_key: Some(prompt_key),
+            was_replayed,
+            rendered_log,
             additional_events,
         }))
     }

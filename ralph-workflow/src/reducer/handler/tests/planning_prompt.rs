@@ -165,6 +165,143 @@ fn materialize_and_reduce(
 }
 
 #[test]
+fn test_prepare_planning_prompt_xsd_retry_captures_prompt_and_replays_from_history() {
+    use crate::prompts::PromptHistoryEntry;
+    use crate::reducer::ui_event::UIEvent;
+
+    let invalid_xml = "<ralph-plan><ralph-status>incomplete</ralph-status>";
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(".agent/tmp/plan.xml", invalid_xml);
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    init_agent_chain(&mut handler);
+    handler.state.continuation.xsd_retry_count = 1;
+
+    let first = handler
+        .prepare_planning_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_planning_prompt should succeed");
+
+    let key = "planning_0_xsd_retry_1";
+    assert!(
+        first.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: false
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=false) for {key}; got: {:?}",
+        first.ui_events
+    );
+    assert!(
+        first.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Expected PromptCaptured for {key}; got: {:?}",
+        first.additional_events
+    );
+
+    // Reduce events into handler state to simulate checkpointed prompt history.
+    handler.state = crate::reducer::reduce(handler.state.clone(), first.event);
+    for ev in first.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    // Sanity: ensure history contains the captured prompt.
+    assert!(
+        handler
+            .state
+            .prompt_history
+            .get(key)
+            .is_some_and(|e: &PromptHistoryEntry| !e.content.trim().is_empty()),
+        "Expected non-empty stored prompt content for {key}"
+    );
+
+    let second = handler
+        .prepare_planning_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_planning_prompt should succeed");
+    assert!(
+        second.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        second.ui_events
+    );
+    assert!(
+        !second.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        second.additional_events
+    );
+}
+
+#[test]
+fn test_prepare_planning_prompt_same_agent_retry_replays_from_prompt_history_when_available() {
+    use crate::reducer::ui_event::UIEvent;
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file("PROMPT.md", "Prompt")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(same_agent_retry_state(1));
+    init_agent_chain(&mut handler);
+    materialize_and_reduce(&mut handler, &ctx, 0);
+
+    let key = "planning_0_same_agent_retry_1";
+    handler.state.prompt_history.insert(
+        key.to_string(),
+        crate::prompts::PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+    );
+
+    let result = handler
+        .prepare_planning_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_planning_prompt should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/planning_prompt.txt"))
+        .expect("planning prompt should be written");
+    assert_eq!(prompt, "STORED-PROMPT");
+
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        result.ui_events
+    );
+    assert!(
+        !result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        result.additional_events
+    );
+}
+
+#[test]
 fn test_prepare_planning_prompt_same_agent_retry_uses_previous_prepared_prompt() {
     let marker = "<<<PREVIOUS_PLANNING_PROMPT_MARKER>>>";
     let workspace = MemoryWorkspace::new_test()

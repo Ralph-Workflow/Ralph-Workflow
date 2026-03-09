@@ -604,6 +604,7 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
 
     let mut state = PipelineState::initial(1, 0);
     state.interrupted_by_user = true;
+    state.recovery_epoch = 7;
     let mut handler = MockEffectHandler::new(state);
 
     let _ = handler
@@ -631,6 +632,12 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
             .and_then(serde_json::Value::as_bool),
         Some(true),
         "Mock checkpoint must persist interrupted_by_user=true for parity with real handler"
+    );
+
+    assert_eq!(
+        v.get("recovery_epoch").and_then(serde_json::Value::as_u64),
+        Some(7),
+        "Mock checkpoint must persist recovery_epoch for parity with real handler"
     );
 }
 

@@ -307,6 +307,76 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
     );
 }
 
+#[test]
+fn test_prepare_commit_prompt_same_agent_retry_replays_from_prompt_history_when_available() {
+    use crate::reducer::ui_event::UIEvent;
+
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::Timeout),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(1, 0)
+    });
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        handler.state.iteration,
+        1,
+        crate::prompts::RetryMode::SameAgent { count: 1 },
+        handler.state.recovery_epoch,
+    );
+    let key = scope_key.to_string();
+    handler.state.prompt_history.insert(
+        key.clone(),
+        PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "DIFF", PromptMode::SameAgentRetry)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
+        .expect("commit_prompt.txt should be written");
+    assert_eq!(prompt, "STORED-PROMPT");
+
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == &key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        result.ui_events
+    );
+    assert!(
+        !result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == &key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        result.additional_events
+    );
+}
+
 /// Test that commit prompt keys are unique per iteration, preventing cross-cycle prompt replay.
 ///
 /// Root cause of the stale-commit-diff bug: commit prompt keys use only the attempt number

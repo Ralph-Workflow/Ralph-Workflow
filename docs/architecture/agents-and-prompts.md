@@ -86,7 +86,7 @@ The `Display` output of `PromptScopeKey` is byte-identical to the legacy `format
 2. If found and content-IDs match (or neither is `Some`), returns the stored prompt with `was_replayed = true`.
 3. If not found, or content-IDs differ (stale-content cache miss), calls the generator closure and returns the fresh prompt with `was_replayed = false`.
 
-The caller is responsible for inserting newly generated prompts into `prompt_history` and emitting `PromptInputEvent::PromptCaptured` so the reducer can write to `PipelineState.prompt_history` atomically.
+The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a fresh prompt is generated so the reducer can update `PipelineState.prompt_history` atomically.
 
 **`UIEvent::PromptReplayHit { key, was_replayed }`** is emitted after each prompt lookup for observability. When `was_replayed = true`, the stored checkpoint prompt was used; when `was_replayed = false`, a fresh prompt was generated.
 

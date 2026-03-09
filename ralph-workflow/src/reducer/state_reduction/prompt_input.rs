@@ -106,30 +106,41 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
             // is generated (not replayed). The reducer inserts it here so subsequent
             // effects and resumed runs can replay the same prompt deterministically.
             //
-            // Idempotency: if the key already exists with the same content-id (or the
-            // incoming entry has no content-id), preserve the existing entry.
+            // PromptCaptured is authoritative for the given key.
             //
-            // RFC-007 stale-content guard: if both existing and incoming content-ids are
-            // `Some` and differ, replace the entry so checkpoints/resume replay the
-            // latest prompt for the latest materialized inputs under this key.
+            // This event is emitted by handlers when a prompt was freshly generated and
+            // used for an effect attempt. Reducer-owned `prompt_history` must reflect the
+            // prompt that was actually used so resume can replay deterministically.
+            //
+            // Many capture sites legitimately emit `content_id: None` (legacy / not yet
+            // wired). In that case we still overwrite when content differs, otherwise a
+            // checkpoint can retain stale prompt content under the same key.
             let entry = crate::prompts::PromptHistoryEntry {
                 content,
                 content_id,
             };
             let mut new_history = state.prompt_history.clone();
 
-            let should_replace = new_history.get(&key).is_some_and(|existing| {
-                match (existing.content_id.as_deref(), entry.content_id.as_deref()) {
-                    (Some(existing_id), Some(incoming_id)) => existing_id != incoming_id,
-                    (None, Some(_)) => true,
-                    _ => false,
+            match new_history.get(&key) {
+                None => {
+                    let _ = new_history.insert(key, entry);
                 }
-            });
-
-            if should_replace {
-                new_history.insert(key, entry);
-            } else {
-                new_history.entry(key).or_insert(entry);
+                Some(existing) => {
+                    // Preserve richer metadata: do not downgrade an existing content-id to None
+                    // when the prompt content itself is identical.
+                    let is_same_content = existing.content == entry.content;
+                    let would_downgrade_id =
+                        existing.content_id.is_some() && entry.content_id.is_none();
+                    if is_same_content && would_downgrade_id {
+                        // Keep existing.
+                    } else if existing.content == entry.content
+                        && existing.content_id == entry.content_id
+                    {
+                        // Exact same entry: idempotent no-op.
+                    } else {
+                        let _ = new_history.insert(key, entry);
+                    }
+                }
             }
             PipelineState {
                 prompt_history: new_history,
@@ -179,8 +190,9 @@ mod tests {
     }
 
     #[test]
-    fn test_prompt_captured_does_not_overwrite_existing_if_was_replayed() {
-        // Simulate state where a prompt was already captured (replayed scenario).
+    fn test_prompt_captured_overwrites_existing_when_content_differs_even_if_content_id_same() {
+        // PromptCaptured is authoritative: if a handler emits a new captured prompt under the
+        // same key, the reducer must store the latest content actually used.
         let mut state = PipelineState::initial(1, 0);
         state.prompt_history.insert(
             "planning_1".to_string(),
@@ -191,7 +203,7 @@ mod tests {
         );
 
         // Attempt to capture a different prompt with the same key and same content-id.
-        // This must not overwrite to preserve deterministic resume behavior.
+        // Even if content-id matches, the capture event represents the prompt actually used.
         let new_state = reduce(
             state,
             PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
@@ -206,12 +218,38 @@ mod tests {
             .get("planning_1")
             .expect("entry must still be present");
 
-        // Must preserve the original — PromptCaptured is idempotent (or_insert semantics).
-        assert_eq!(
-            entry.content, "original prompt",
-            "existing entry must not be overwritten by PromptCaptured"
-        );
+        assert_eq!(entry.content, "replacement prompt");
         assert_eq!(entry.content_id, Some("sha256-same".to_string()));
+    }
+
+    #[test]
+    fn test_prompt_captured_does_not_downgrade_existing_content_id_when_content_is_identical() {
+        let mut state = PipelineState::initial(1, 0);
+        state.prompt_history.insert(
+            "planning_1".to_string(),
+            crate::prompts::PromptHistoryEntry {
+                content: "same prompt".to_string(),
+                content_id: Some("sha256-keep".to_string()),
+            },
+        );
+
+        // Incoming capture has identical content but no id (common in legacy capture sites).
+        // Keep the richer metadata already stored.
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "same prompt".to_string(),
+                content_id: None,
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present");
+        assert_eq!(entry.content, "same prompt");
+        assert_eq!(entry.content_id.as_deref(), Some("sha256-keep"));
     }
 
     #[test]
@@ -295,5 +333,38 @@ mod tests {
             entry.content_id.is_none(),
             "content_id must be None when not provided"
         );
+    }
+
+    #[test]
+    fn test_prompt_captured_overwrites_existing_when_incoming_has_no_content_id_and_content_differs(
+    ) {
+        // Regression: many handlers emit PromptCaptured with content_id=None.
+        // If a prompt is regenerated under the same key with different content, the
+        // reducer must treat the new capture as authoritative so resume replays the
+        // prompt that was actually used.
+        let mut state = PipelineState::initial(1, 0);
+        state.prompt_history.insert(
+            "planning_1".to_string(),
+            crate::prompts::PromptHistoryEntry {
+                content: "stale prompt".to_string(),
+                content_id: None,
+            },
+        );
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "fresh prompt".to_string(),
+                content_id: None,
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present");
+        assert_eq!(entry.content, "fresh prompt");
+        assert!(entry.content_id.is_none());
     }
 }

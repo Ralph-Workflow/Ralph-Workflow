@@ -104,31 +104,6 @@ impl MainEffectHandler {
             diff: None,
         };
 
-        let (base_prompt, should_validate) = ctx
-            .workspace
-            .read(Path::new(".agent/tmp/development_prompt.txt"))
-            .map_or_else(
-                |_| {
-                    (
-                        crate::prompts::prompt_developer_iteration_xml_with_references(
-                            ctx.template_context,
-                            &refs,
-                            ctx.workspace,
-                        ),
-                        true,
-                    )
-                },
-                |previous_prompt| {
-                    (
-                        super::super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                            &previous_prompt,
-                        )
-                        .to_string(),
-                        false,
-                    )
-                },
-            );
-        let prompt = format!("{retry_preamble}\n{base_prompt}");
         let scope_key = PromptScopeKey::for_development(
             iteration,
             None,
@@ -138,7 +113,42 @@ impl MainEffectHandler {
             self.state.recovery_epoch,
         );
         let prompt_key = scope_key.to_string();
-        let rendered_log = if should_validate {
+        let mut should_validate = false;
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            None,
+            || {
+                let (base_prompt, local_should_validate) = ctx
+                    .workspace
+                    .read(Path::new(".agent/tmp/development_prompt.txt"))
+                    .map_or_else(
+                        |_| {
+                            (
+                                crate::prompts::prompt_developer_iteration_xml_with_references(
+                                    ctx.template_context,
+                                    &refs,
+                                    ctx.workspace,
+                                ),
+                                true,
+                            )
+                        },
+                        |previous_prompt| {
+                            (
+                                super::super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                    &previous_prompt,
+                                )
+                                .to_string(),
+                                false,
+                            )
+                        },
+                    );
+                should_validate = local_should_validate;
+                format!("{retry_preamble}\n{base_prompt}")
+            },
+        );
+
+        let rendered_log = if should_validate && !was_replayed {
             let rendered = crate::prompts::prompt_developer_iteration_xml_with_references_and_log(
                 ctx.template_context,
                 &refs,
@@ -171,7 +181,7 @@ impl MainEffectHandler {
             prompt,
             template_name: "developer_iteration_xml",
             prompt_key: Some(prompt_key),
-            was_replayed: false,
+            was_replayed,
             rendered_log,
             additional_events: Vec::new(),
         }))

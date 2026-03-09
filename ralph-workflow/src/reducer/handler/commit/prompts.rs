@@ -287,32 +287,6 @@ impl MainEffectHandler {
                 // phase (preserves XSD retry context if present).
                 let retry_preamble =
                     super::super::retry_guidance::same_agent_retry_preamble(continuation_state);
-                let (base_prompt, should_validate) = ctx
-                    .workspace
-                    .read(Path::new(".agent/tmp/commit_prompt.txt"))
-                    .map_or_else(
-                        |_| {
-                            // Use log-based rendering
-                            let rendered =
-                                crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                                    ctx.template_context,
-                                    diff_for_prompt,
-                                    ctx.workspace,
-                                    "commit_message_xml",
-                                );
-                            (rendered.content, true)
-                        },
-                        |previous_prompt| {
-                            (
-                                super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                                    &previous_prompt,
-                                )
-                                .to_string(),
-                                false,
-                            )
-                        },
-                    );
-                let prompt = format!("{retry_preamble}\n{base_prompt}");
                 let scope_key = PromptScopeKey::for_commit(
                     self.state.iteration,
                     attempt,
@@ -322,7 +296,41 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
-                (prompt_key, prompt, false, should_validate)
+                let mut should_validate = false;
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    self.state.commit_diff_content_id_sha256.as_deref(),
+                    || {
+                        let (base_prompt, local_should_validate) = ctx
+                            .workspace
+                            .read(Path::new(".agent/tmp/commit_prompt.txt"))
+                            .map_or_else(
+                                |_| {
+                                    // Use log-based rendering
+                                    let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+                                        ctx.template_context,
+                                        diff_for_prompt,
+                                        ctx.workspace,
+                                        "commit_message_xml",
+                                    );
+                                    (rendered.content, true)
+                                },
+                                |previous_prompt| {
+                                    (
+                                        super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                            &previous_prompt,
+                                        )
+                                        .to_string(),
+                                        false,
+                                    )
+                                },
+                            );
+                        should_validate = local_should_validate;
+                        format!("{retry_preamble}\n{base_prompt}")
+                    },
+                );
+                (prompt_key, prompt, was_replayed, should_validate)
             }
             PromptMode::Normal => {
                 let scope_key = PromptScopeKey::for_commit(
