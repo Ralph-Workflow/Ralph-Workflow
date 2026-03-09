@@ -46,13 +46,11 @@ impl ResumeContext {
             PipelinePhase::Planning => "Planning".to_string(),
             PipelinePhase::Development => format!(
                 "Development iteration {}/{}",
-                self.iteration + 1,
-                self.total_iterations
+                self.iteration, self.total_iterations
             ),
             PipelinePhase::Review => format!(
                 "Review (pass {}/{})",
-                self.reviewer_pass + 1,
-                self.total_reviewer_passes
+                self.reviewer_pass, self.total_reviewer_passes
             ),
             PipelinePhase::CommitMessage => "Commit Message Generation".to_string(),
             PipelinePhase::FinalValidation => "Final Validation".to_string(),
@@ -172,15 +170,6 @@ pub(crate) fn restore_environment_impl(
 
     // Restore RALPH_* variables (safe only)
     for (key, value) in &env_snap.ralph_vars {
-        if crate::checkpoint::state::is_sensitive_env_key(key) {
-            continue;
-        }
-        set_var(key, value);
-        restored += 1;
-    }
-
-    // Restore other relevant variables (safe only)
-    for (key, value) in &env_snap.other_vars {
         if crate::checkpoint::state::is_sensitive_env_key(key) {
             continue;
         }

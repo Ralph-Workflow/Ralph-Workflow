@@ -158,6 +158,8 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
 #[test]
 fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_content_id_changes()
 {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
     let workspace = MemoryWorkspace::new_test()
         .with_dir(".agent/tmp")
         .with_file(
@@ -182,6 +184,22 @@ fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_c
     handler.state.continuation.last_xsd_error = Some("XSD validation failed".to_string());
     handler.state.commit_diff_content_id_sha256 = Some("new_hash".to_string());
 
+    let expected_prompt_content_id = sha256_hex_str(&format!(
+        "commit_xsd_retry|diff:{}|xsd_error:{}|consumer:{}",
+        handler
+            .state
+            .commit_diff_content_id_sha256
+            .as_deref()
+            .expect("diff content id must be set for test"),
+        handler
+            .state
+            .continuation
+            .last_xsd_error
+            .as_deref()
+            .expect("xsd error must be set for test"),
+        handler.state.agent_chain.consumer_signature_sha256(),
+    ));
+
     // Arrange: store a stale prompt for the same key but with a different content-id.
     handler.state.prompt_history.insert(
         "commit_message_attempt_iter1_1_xsd_retry_1".to_string(),
@@ -200,7 +218,7 @@ fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_c
     assert!(result.additional_events.iter().any(|ev| matches!(
         ev,
         PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key, content_id: Some(id), .. })
-            if key == "commit_message_attempt_iter1_1_xsd_retry_1" && id == "new_hash"
+            if key == "commit_message_attempt_iter1_1_xsd_retry_1" && id == &expected_prompt_content_id
     )));
 
     let prompt = fixture

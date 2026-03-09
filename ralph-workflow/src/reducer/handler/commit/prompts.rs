@@ -79,6 +79,18 @@ impl MainEffectHandler {
                     "XML output failed validation. Provide valid XML output.".to_string()
                 });
 
+            // Content-id validation for replay determinism: the XSD-retry commit prompt depends
+            // on the diff inputs AND the specific validation error context.
+            let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+                "commit_xsd_retry|diff:{}|xsd_error:{}|consumer:{}",
+                self.state
+                    .commit_diff_content_id_sha256
+                    .as_deref()
+                    .unwrap_or(""),
+                xsd_error.as_str(),
+                self.state.agent_chain.consumer_signature_sha256(),
+            ));
+
             let scope_key = PromptScopeKey::for_commit(
                 self.state.iteration,
                 attempt,
@@ -91,7 +103,7 @@ impl MainEffectHandler {
             let (prompt, was_replayed) = get_stored_or_generate_prompt(
                 &scope_key,
                 &self.state.prompt_history,
-                self.state.commit_diff_content_id_sha256.as_deref(),
+                Some(&prompt_content_id),
                 || {
                     // Generate with log-based validation
                     let rendered = crate::prompts::prompt_commit_xsd_retry_with_log(
@@ -183,7 +195,7 @@ impl MainEffectHandler {
                     PromptInputEvent::PromptCaptured {
                         key: prompt_key.clone(),
                         content: prompt,
-                        content_id: self.state.commit_diff_content_id_sha256.clone(),
+                        content_id: Some(prompt_content_id),
                     },
                 ))
             };

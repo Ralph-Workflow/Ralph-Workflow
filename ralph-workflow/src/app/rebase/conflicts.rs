@@ -53,16 +53,22 @@ where
 
     let conflicts = collect_conflict_info_or_error(conflicted_files, ctx.workspace, ctx.logger)?;
 
+    // Content-id validation for replay determinism: conflict-resolution prompts must not replay
+    // across different conflict sets/content.
+    let current_content_id = conflict_resolution_content_id(phase, &conflicts);
+
     // Use typed PromptScopeKey for conflict resolution (RFC-007 arch correction #2).
     // Display output is byte-identical to the former format!("{}_conflict_resolution", ...).
     // recovery_epoch is 0: the rebase handler owns epoch semantics via PromptCaptured events;
     // this helper function is not a reducer.
     let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
     let prompt_key = scope_key.to_string();
-    let (resolution_prompt, was_replayed) =
-        get_stored_or_generate_prompt(&scope_key, prompt_history, None, || {
-            build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace)
-        });
+    let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
+        &scope_key,
+        prompt_history,
+        Some(&current_content_id),
+        || build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
+    );
 
     // Capture the resolution prompt for deterministic resume (only if newly generated).
     // get_stored_or_generate_prompt reads from history; insert must be done by callers.
@@ -73,7 +79,10 @@ where
     } else {
         prompt_history.insert(
             prompt_key,
-            crate::prompts::PromptHistoryEntry::from_string(resolution_prompt.clone()),
+            crate::prompts::PromptHistoryEntry::new(
+                resolution_prompt.clone(),
+                Some(current_content_id),
+            ),
         );
     }
 
@@ -84,6 +93,32 @@ where
         Ok(ConflictResolutionResult::Failed) => Ok(handle_failed_resolution(ctx.logger, executor)),
         Err(e) => Ok(handle_error_resolution(ctx.logger, executor, &e)),
     }
+}
+
+fn conflict_resolution_content_id(
+    phase: &str,
+    conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
+) -> String {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
+    let mut keys: Vec<&String> = conflicts.keys().collect();
+    keys.sort();
+
+    let mut s = String::new();
+    s.push_str("conflict_resolution|");
+    s.push_str(&phase.to_lowercase());
+    s.push('\n');
+    for k in keys {
+        if let Some(c) = conflicts.get(k) {
+            s.push_str(k);
+            s.push('\n');
+            s.push_str(&c.conflict_content);
+            s.push('\n');
+            s.push_str(&c.current_content);
+            s.push('\n');
+        }
+    }
+    sha256_hex_str(&s)
 }
 
 fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {

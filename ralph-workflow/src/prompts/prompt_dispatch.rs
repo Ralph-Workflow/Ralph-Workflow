@@ -97,9 +97,14 @@ pub fn prompt_for_agent(
 /// and returns the stored prompt for deterministic behavior. Otherwise, it
 /// generates a new prompt using the provided generator function.
 ///
-/// The lookup key is derived from `scope_key.to_string()`, which produces
-/// the same string format as the legacy `format!()` calls it replaces, ensuring
-/// backward-compatibility with existing checkpoint `prompt_history` entries.
+/// The lookup key is derived from `scope_key.to_string()`.
+///
+/// Backward-compatibility notes:
+/// - Planning/Development/Review/Fix/ConflictResolution keys preserve the legacy
+///   `format!()` shapes for existing checkpoint `prompt_history` maps.
+/// - Commit keys intentionally include the iteration dimension (`..._iter{iter}_...`).
+///   Older checkpoints that stored attempt-only commit keys (pre-RFC-007) will
+///   regenerate commit prompts on resume rather than replay potentially-stale entries.
 ///
 /// # Content-ID Validation (RFC-007)
 ///

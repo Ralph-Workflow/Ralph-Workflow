@@ -28,6 +28,15 @@ fn test_usage_limit_triggers_rate_limited_event_not_timeout() {
     // - No session_id is returned (provider is unavailable)
 
     use crate::executor::AgentCommandResult;
+    use crate::interrupt::{
+        interrupt_test_lock, reset_user_interrupted_occurred, take_user_interrupt_request,
+    };
+
+    // This test must not be affected by other tests that toggle the process-global
+    // interrupt flags.
+    let _lock = interrupt_test_lock();
+    let _ = take_user_interrupt_request();
+    reset_user_interrupted_occurred();
 
     let colors = Colors { enabled: false };
     let logger = Logger::new(colors);

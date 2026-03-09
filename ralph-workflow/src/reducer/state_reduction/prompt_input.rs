@@ -60,15 +60,20 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
         },
         PromptInputEvent::HandlerError { error, .. } => super::error::reduce_error(&state, &error),
 
-        PromptInputEvent::PromptPermissionsLocked { warning } => PipelineState {
-            prompt_permissions: crate::reducer::state::PromptPermissionsState {
-                locked: true,
-                restore_needed: true,
-                restored: false,
-                last_warning: warning,
-            },
-            ..state
-        },
+        PromptInputEvent::PromptPermissionsLocked { warning } => {
+            // If permission lock failed (warning present), do not claim the prompt is locked and
+            // do not schedule a restore at exit.
+            let locked = warning.is_none();
+            PipelineState {
+                prompt_permissions: crate::reducer::state::PromptPermissionsState {
+                    locked,
+                    restore_needed: locked,
+                    restored: false,
+                    last_warning: warning,
+                },
+                ..state
+            }
+        }
         PromptInputEvent::PromptPermissionsRestoreWarning { warning } => PipelineState {
             prompt_permissions: crate::reducer::state::PromptPermissionsState {
                 last_warning: Some(warning),

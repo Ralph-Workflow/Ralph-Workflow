@@ -112,6 +112,14 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
                 history.contains_key("prerebase_conflict_resolution"),
                 "hook must observe prompt_history after conflict resolution prompt capture"
             );
+
+            let entry = history
+                .get("prerebase_conflict_resolution")
+                .expect("entry must exist");
+            assert!(
+                entry.content_id.as_deref().is_some_and(|id| id.len() == 64),
+                "expected conflict-resolution prompt history entry to include a sha256 content_id"
+            );
         },
     )
     .expect("try_resolve_conflicts_with_hook should succeed");

@@ -83,12 +83,13 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             // orchestration can keep the unattended recovery loop running.
             state
         }
-        AwaitingDevFixEvent::CompletionMarkerEmitted { .. } => {
+        AwaitingDevFixEvent::CompletionMarkerEmitted { is_failure } => {
             // Completion marker emitted, transition to Interrupted
             PipelineState {
                 phase: PipelinePhase::Interrupted,
                 previous_phase: Some(state.phase),
                 completion_marker_pending: false,
+                completion_marker_is_failure: is_failure,
                 completion_marker_reason: None,
                 ..state
             }

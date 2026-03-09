@@ -5,6 +5,16 @@ use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ConflictStrategy, PipelineEvent, RebasePhase};
 use anyhow::Result;
 
+fn event_for_continue_strategy_remaining_conflicts(
+    files: Vec<std::path::PathBuf>,
+) -> PipelineEvent {
+    if files.is_empty() {
+        PipelineEvent::rebase_conflict_resolved(Vec::new())
+    } else {
+        PipelineEvent::rebase_conflict_detected(files)
+    }
+}
+
 impl MainEffectHandler {
     pub(super) fn run_rebase(
         &self,
@@ -102,7 +112,7 @@ impl MainEffectHandler {
                         .map(std::convert::Into::into)
                         .collect();
 
-                    EffectResult::event(PipelineEvent::rebase_conflict_resolved(files))
+                    EffectResult::event(event_for_continue_strategy_remaining_conflicts(files))
                 }
                 Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
                     RebasePhase::PostReview,
@@ -170,6 +180,29 @@ fn prompt_captured_events_for_prompt_history_delta(
 mod tests {
     use super::*;
     use crate::prompts::PromptHistoryEntry;
+
+    #[test]
+    fn continue_strategy_reports_detected_when_conflicts_remain() {
+        use crate::reducer::event::RebaseEvent;
+        use std::path::PathBuf;
+
+        let event = event_for_continue_strategy_remaining_conflicts(vec![PathBuf::from("a.txt")]);
+        assert!(matches!(
+            event,
+            PipelineEvent::Rebase(RebaseEvent::ConflictDetected { files })
+                if files == vec![PathBuf::from("a.txt")]
+        ));
+    }
+
+    #[test]
+    fn continue_strategy_reports_resolved_when_no_conflicts_remain() {
+        use crate::reducer::event::RebaseEvent;
+        let event = event_for_continue_strategy_remaining_conflicts(Vec::new());
+        assert!(matches!(
+            event,
+            PipelineEvent::Rebase(RebaseEvent::ConflictResolved { files }) if files.is_empty()
+        ));
+    }
 
     #[test]
     fn emits_prompt_captured_when_rebase_updates_existing_prompt_history_entry() {

@@ -212,12 +212,12 @@ impl PromptScopeKey {
     }
 }
 
-/// Display implementation producing strings backward-compatible with existing checkpoint data.
+/// Display implementation producing strings largely backward-compatible with existing checkpoint data.
 ///
 /// Output format per phase:
 /// - Planning: `planning_{iter}[_{retry_suffix}]`
 /// - Development: `development_{iter}[_continuation_{n}][_{retry_suffix}]`
-/// - Commit: `commit_message_attempt_iter{iter}_{attempt}[_{retry_suffix}]`
+/// - Commit: `commit_message_attempt_iter{iter}_{attempt}[_{retry_suffix}]` (NOTE: includes iteration; this intentionally differs from pre-RFC-007 attempt-only commit keys)
 /// - Review: `review_{pass}[_{retry_suffix}]`
 /// - Fix: `fix_{pass}[_{retry_suffix}]`
 ///

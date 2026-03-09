@@ -252,7 +252,7 @@ impl MainEffectHandler {
                     PromptInputRepresentation::FileReference { path } => {
                         DiffContentReference::ReadFromFile {
                             path: path.clone(),
-                            start_commit: baseline_oid_for_prompts,
+                            start_commit: baseline_oid_for_prompts.clone(),
                             description: format!(
                                 "Diff is {} bytes (exceeds {} limit)",
                                 inputs.diff.final_bytes, MAX_INLINE_CONTENT_SIZE
@@ -273,11 +273,22 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
+
+                // Content-id validation for replay determinism: even in same-agent retry, the
+                // prompt depends on the effective PLAN/DIFF inputs and baseline.
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "review_same_agent_retry|plan:{}|diff:{}|baseline:{}|consumer:{}",
+                    inputs.plan.content_id_sha256,
+                    inputs.diff.content_id_sha256,
+                    baseline_oid_for_prompts.as_str(),
+                    self.state.agent_chain.consumer_signature_sha256(),
+                ));
+
                 let mut should_validate = false;
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
-                    None,
+                    Some(&current_prompt_content_id),
                     || {
                         let (base_prompt, local_should_validate) = ctx
                             .workspace
@@ -339,7 +350,7 @@ impl MainEffectHandler {
                     prompt,
                     was_replayed,
                     "review_xml",
-                    None,
+                    Some(current_prompt_content_id),
                     rendered_log,
                 )
             }
@@ -378,7 +389,7 @@ impl MainEffectHandler {
                     PromptInputRepresentation::FileReference { path } => {
                         DiffContentReference::ReadFromFile {
                             path: path.clone(),
-                            start_commit: baseline_oid_for_prompts,
+                            start_commit: baseline_oid_for_prompts.clone(),
                             description: format!(
                                 "Diff is {} bytes (exceeds {} limit)",
                                 inputs.diff.final_bytes, MAX_INLINE_CONTENT_SIZE
@@ -386,10 +397,17 @@ impl MainEffectHandler {
                         }
                     }
                 };
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "review_normal|plan:{}|diff:{}|baseline:{}|consumer:{}",
+                    inputs.plan.content_id_sha256,
+                    inputs.diff.content_id_sha256,
+                    baseline_oid_for_prompts.as_str(),
+                    self.state.agent_chain.consumer_signature_sha256(),
+                ));
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
-                    None,
+                    Some(&current_prompt_content_id),
                     || {
                         let plan_ref = plan_ref.clone();
                         let diff_ref = diff_ref.clone();
@@ -451,7 +469,7 @@ impl MainEffectHandler {
                     prompt,
                     was_replayed,
                     "review_xml",
-                    None,
+                    Some(current_prompt_content_id),
                     rendered_log,
                 )
             }

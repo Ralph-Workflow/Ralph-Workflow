@@ -168,6 +168,27 @@ fn completion_marker_write_failed_sets_pending_flag_for_deterministic_retry() {
     assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
 }
 
+#[test]
+fn completion_marker_emitted_records_is_failure_and_clears_pending_state() {
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::AwaitingDevFix;
+    state.completion_marker_pending = true;
+    state.completion_marker_is_failure = true;
+    state.completion_marker_reason = Some("previous error".to_string());
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::CompletionMarkerEmitted {
+            is_failure: false,
+        }),
+    );
+
+    assert_eq!(new_state.phase, PipelinePhase::Interrupted);
+    assert!(!new_state.completion_marker_pending);
+    assert!(!new_state.completion_marker_is_failure);
+    assert!(new_state.completion_marker_reason.is_none());
+}
+
 // =========================================================================
 // recovery_epoch tests (RFC-007 corrective action #2)
 // =========================================================================

@@ -395,6 +395,76 @@ fn test_prepare_development_prompt_xsd_retry_emits_oversize_detected_for_last_ou
 }
 
 #[test]
+fn test_development_xsd_retry_rematerializes_last_output_when_state_present_but_file_missing() {
+    use crate::reducer::event::PipelinePhase;
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+    use crate::reducer::state::{
+        MaterializedPromptInput, PromptInputKind, PromptInputRepresentation,
+    };
+    use crate::reducer::state::{MaterializedXsdRetryLastOutput, PromptMaterializationReason};
+    use std::path::Path;
+
+    let invalid_xml = "<ralph-development-result><ralph-status>completed</ralph-status>";
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(".agent/tmp/development_result.xml", invalid_xml);
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.continuation.xsd_retry_count = 1;
+
+    // Arrange: reducer state claims last_output was already materialized, but the file is missing.
+    let content_id_sha256 = sha256_hex_str(invalid_xml);
+    let consumer_signature_sha256 = handler.state.agent_chain.consumer_signature_sha256();
+    handler.state.prompt_inputs.xsd_retry_last_output = Some(MaterializedXsdRetryLastOutput {
+        phase: PipelinePhase::Development,
+        scope_id: 0,
+        last_output: MaterializedPromptInput {
+            kind: PromptInputKind::LastOutput,
+            content_id_sha256,
+            consumer_signature_sha256,
+            original_bytes: invalid_xml.len() as u64,
+            final_bytes: invalid_xml.len() as u64,
+            model_budget_bytes: None,
+            inline_budget_bytes: Some(crate::prompts::MAX_INLINE_CONTENT_SIZE as u64),
+            representation: PromptInputRepresentation::FileReference {
+                path: Path::new(".agent/tmp/last_output.xml").to_path_buf(),
+            },
+            reason: PromptMaterializationReason::PolicyForcedReference,
+        },
+    });
+
+    assert!(
+        !ctx.workspace
+            .exists(Path::new(".agent/tmp/last_output.xml")),
+        "precondition: last_output.xml must be missing"
+    );
+
+    let result = handler
+        .prepare_development_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_development_prompt should succeed");
+
+    assert!(
+        result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::XsdRetryLastOutputMaterialized {
+                phase: PipelinePhase::Development,
+                scope_id: 0,
+                ..
+            })
+        )),
+        "Expected rematerialization event when last_output.xml is missing"
+    );
+    assert!(
+        ctx.workspace
+            .exists(Path::new(".agent/tmp/last_output.xml")),
+        "Expected last_output.xml to be re-written when missing"
+    );
+}
+
+#[test]
 fn test_development_xsd_retry_oversize_detected_is_deduped_across_retries() {
     use crate::reducer::event::PromptInputEvent;
     use crate::reducer::state::PromptInputKind;

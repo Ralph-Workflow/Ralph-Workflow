@@ -197,3 +197,57 @@ fn test_prepare_review_prompt_missing_diff_backup_without_baseline_uses_generic_
         "Review prompt should include generic git diff fallback instructions; got: {prompt}"
     );
 }
+
+#[test]
+fn test_prepare_review_prompt_normal_does_not_replay_when_content_id_mismatches() {
+    use crate::prompts::{PromptHistoryEntry, PromptScopeKey, RetryMode};
+    use crate::reducer::ui_event::UIEvent;
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_file(".agent/DIFF.base", "abc123")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
+    let materialize = handler
+        .materialize_review_inputs(&ctx, 0)
+        .expect("materialize_review_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let scope_key = PromptScopeKey::for_review(0, RetryMode::Normal, 0);
+    handler.state.prompt_history.insert(
+        scope_key.to_string(),
+        PromptHistoryEntry::new("OLD REVIEW PROMPT".to_string(), Some("0".repeat(64))),
+    );
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
+        .expect("prepare_review_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == &scope_key.to_string()
+    )));
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert_ne!(prompt, "OLD REVIEW PROMPT");
+
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::event::PipelineEvent::PromptInput(
+            crate::reducer::event::PromptInputEvent::PromptCaptured { key, content_id: Some(id), .. }
+        ) if key == &scope_key.to_string() && id.len() == 64
+    )));
+}

@@ -297,6 +297,9 @@ impl MainEffectHandler {
                     && m.scope_id == iteration
                     && m.last_output.content_id_sha256 == content_id_sha256
                     && m.last_output.consumer_signature_sha256 == consumer_signature_sha256
+                    && ctx
+                        .workspace
+                        .exists(std::path::Path::new(".agent/tmp/last_output.xml"))
             });
 
         let mut additional_events: Vec<PipelineEvent> = Vec::new();
