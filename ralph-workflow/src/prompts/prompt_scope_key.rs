@@ -84,20 +84,20 @@ pub enum RetryMode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PromptScopeKey {
     /// Pipeline phase this prompt belongs to.
-    pub phase: PromptPhase,
+    phase: PromptPhase,
     /// Development iteration (0-based). Used by Planning, Development, Commit phases.
-    pub iteration: u32,
+    iteration: u32,
     /// Review/fix pass number (0-based). Used by Review and Fix phases.
-    pub pass: Option<u32>,
+    pass: Option<u32>,
     /// Commit attempt number within the iteration. Used by Commit phase.
-    pub attempt: Option<u32>,
+    attempt: Option<u32>,
     /// Continuation attempt within a development iteration. Used by Development phase.
-    pub continuation: Option<u32>,
+    continuation: Option<u32>,
     /// Retry mode for this invocation.
-    pub retry_mode: RetryMode,
+    retry_mode: RetryMode,
     /// Recovery epoch counter — number of epoch-resetting recoveries (level-3/4) that have
     /// occurred. NOT included in `Display` but carried for auditing and future isolation.
-    pub recovery_epoch: u32,
+    recovery_epoch: u32,
 }
 
 impl PromptScopeKey {

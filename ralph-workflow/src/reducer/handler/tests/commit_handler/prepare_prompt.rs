@@ -20,6 +20,7 @@ fn test_prepare_commit_prompt_does_not_emit_generation_started() {
     let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -60,6 +61,7 @@ fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
     let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -111,6 +113,7 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
     let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -144,6 +147,62 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
         !prompt.contains("diff --git"),
         "XSD retry prompt should not include diff content, got: {prompt}"
     );
+}
+
+#[test]
+fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_content_id_changes()
+{
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(
+            ".agent/tmp/commit_message.xml",
+            "<ralph-commit><ralph-subject>test: subject</ralph-subject></ralph-commit>",
+        );
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.continuation.xsd_retry_count = 1;
+    handler.state.continuation.last_xsd_error = Some("XSD validation failed".to_string());
+    handler.state.commit_diff_content_id_sha256 = Some("new_hash".to_string());
+
+    // Arrange: store a stale prompt for the same key but with a different content-id.
+    handler.state.prompt_history.insert(
+        "commit_message_attempt_iter1_1_xsd_retry_1".to_string(),
+        PromptHistoryEntry::new("OLD PROMPT".to_string(), Some("old_hash".to_string())),
+    );
+
+    let result = handler
+        .prepare_commit_prompt(&ctx, PromptMode::XsdRetry)
+        .expect("prepare_commit_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "commit_message_attempt_iter1_1_xsd_retry_1"
+    )));
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key, content_id: Some(id), .. })
+            if key == "commit_message_attempt_iter1_1_xsd_retry_1" && id == "new_hash"
+    )));
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
+        .expect("commit_prompt.txt should be written");
+    assert_ne!(prompt, "OLD PROMPT");
+    assert!(prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"));
 }
 
 #[test]

@@ -91,7 +91,7 @@ impl MainEffectHandler {
             let (prompt, was_replayed) = get_stored_or_generate_prompt(
                 &scope_key,
                 &self.state.prompt_history,
-                None,
+                self.state.commit_diff_content_id_sha256.as_deref(),
                 || {
                     // Generate with log-based validation
                     let rendered = crate::prompts::prompt_commit_xsd_retry_with_log(
@@ -181,7 +181,7 @@ impl MainEffectHandler {
                     PromptInputEvent::PromptCaptured {
                         key: prompt_key.clone(),
                         content: prompt,
-                        content_id: None,
+                        content_id: self.state.commit_diff_content_id_sha256.clone(),
                     },
                 ))
             };

@@ -4,9 +4,11 @@
 //! and prepends retry notes correctly without stacking duplicate notes.
 
 use super::super::super::common::TestFixture;
+use crate::prompts::{PromptHistoryEntry, PromptScopeKey, RetryMode};
 use crate::reducer::event::{PipelineEvent, PromptInputEvent};
 use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode, SameAgentRetryReason};
+use crate::reducer::ui_event::UIEvent;
 use crate::workspace::{MemoryWorkspace, Workspace};
 use std::path::Path;
 
@@ -124,4 +126,71 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
         !prompt.contains("## Retry Note (attempt 1)"),
         "Expected previous retry note to be replaced, got: {prompt}"
     );
+}
+
+#[test]
+fn test_prepare_review_prompt_same_agent_retry_replays_from_prompt_history() {
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    // Arrange: materialize review inputs so SameAgentRetry mode can build refs if needed,
+    // but the prompt itself should be replayed from history.
+    let materialize = handler
+        .materialize_review_inputs(&ctx, 0)
+        .expect("materialize_review_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let scope_key = PromptScopeKey::for_review(0, RetryMode::SameAgent { count: 1 }, 0);
+    let stored_prompt = "REPLAYED REVIEW SAME-AGENT RETRY PROMPT";
+    handler.state.prompt_history.insert(
+        scope_key.to_string(),
+        PromptHistoryEntry::from_string(stored_prompt.to_string()),
+    );
+
+    // Act
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    // Assert: prompt is replayed and PromptCaptured is not emitted.
+    assert!(result.ui_events.iter().any(|ev| {
+        matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: true
+            } if key == &scope_key.to_string()
+        )
+    }));
+    assert!(
+        !result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { .. })
+        )),
+        "replayed prompts must not emit PromptCaptured"
+    );
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert_eq!(prompt, stored_prompt);
 }

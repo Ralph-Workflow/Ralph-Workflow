@@ -4,7 +4,9 @@ use crate::reducer::event::{
     AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent, ReviewEvent,
 };
 use crate::reducer::handler::MainEffectHandler;
+use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptInputKind, PromptMode};
+use crate::reducer::ui_event::UIEvent;
 use crate::workspace::Workspace;
 use std::path::Path;
 
@@ -63,6 +65,71 @@ fn test_prepare_review_prompt_uses_xsd_retry_prompt_key() {
         )),
         "Review XSD retry should emit TemplateRendered for log-based validation"
     );
+}
+
+#[test]
+fn test_prepare_review_prompt_xsd_retry_replays_from_prompt_history_when_content_id_matches() {
+    // Arrange: create a stable last_output and XSD error so we can compute content-id.
+    let last_output = "<ralph-issues>invalid</ralph-issues>";
+    let xsd_error = "XSD validation failed: missing <status>";
+
+    let workspace = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_file(".agent/tmp/issues.xml", last_output)
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some(xsd_error.to_string()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let last_output_id = sha256_hex_str(last_output);
+    let current_prompt_content_id =
+        sha256_hex_str(&format!("review_xsd_retry|{xsd_error}|{last_output_id}"));
+
+    let stored_prompt = "REPLAYED REVIEW XSD RETRY PROMPT";
+    handler.state.prompt_history.insert(
+        "review_0_xsd_retry_1".to_string(),
+        PromptHistoryEntry::new(stored_prompt.to_string(), Some(current_prompt_content_id)),
+    );
+
+    // Act
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    // Assert: prompt is replayed and PromptCaptured is not emitted.
+    assert!(result.ui_events.iter().any(|ev| {
+        matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: true
+            } if key == "review_0_xsd_retry_1"
+        )
+    }));
+    assert!(
+        !result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { .. })
+        )),
+        "replayed prompts must not emit PromptCaptured"
+    );
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert_eq!(prompt, stored_prompt);
 }
 
 #[test]
@@ -206,13 +273,22 @@ fn test_prepare_review_prompt_uses_xsd_retry_template_name() {
         matches!(result.event, PipelineEvent::Review(_)),
         "expected retry prompt to be prepared even if prompt_history contains stale placeholders"
     );
+    assert!(result.ui_events.iter().any(|ev| {
+        matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: true
+            } if key == "review_0_xsd_retry_1"
+        )
+    }));
     let prompt = fixture
         .workspace
         .read(Path::new(".agent/tmp/review_prompt.txt"))
         .expect("review prompt file should be written");
     assert!(
-        prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"),
-        "expected review XSD retry template to be used"
+        prompt.contains("retry prompt {{UNRESOLVED}}"),
+        "expected stored prompt to be replayed for deterministic resume"
     );
 }
 

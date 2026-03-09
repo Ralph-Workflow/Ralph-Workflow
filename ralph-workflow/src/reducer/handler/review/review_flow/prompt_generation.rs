@@ -39,6 +39,7 @@ impl MainEffectHandler {
             get_stored_or_generate_prompt, prompt_review_xml_with_references,
             prompt_review_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
         };
+        use crate::reducer::prompt_inputs::sha256_hex_str;
         use std::path::Path;
 
         let tmp_dir = Path::new(".agent/tmp");
@@ -130,13 +131,15 @@ impl MainEffectHandler {
             review_prompt_xml,
             was_replayed,
             template_name,
-            _should_validate,
+            prompt_content_id,
             rendered_log,
         ) = match prompt_mode {
             PromptMode::XsdRetry => {
                 let scope_key = PromptScopeKey::for_review(
                     pass,
-                    RetryMode::Xsd { count: continuation_state.invalid_output_attempts },
+                    RetryMode::Xsd {
+                        count: continuation_state.invalid_output_attempts,
+                    },
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
@@ -145,35 +148,70 @@ impl MainEffectHandler {
                     .last_review_xsd_error
                     .as_deref()
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
-                let rendered = prompt_review_xsd_retry_with_context_files_and_log(
-                    ctx.template_context,
-                    xsd_error,
-                    ctx.workspace,
-                    "review_xsd_retry",
+
+                // Content-id validation for replay determinism: include both the XSD error and
+                // the last output content (via sha256) so resume can replay safely and stale
+                // entries are treated as cache misses.
+                let last_output_path = Path::new(".agent/tmp/last_output.xml");
+                let last_output = ctx
+                    .workspace
+                    .read(last_output_path)
+                    .unwrap_or_else(|_| String::new());
+                let last_output_id = sha256_hex_str(&last_output);
+                let current_prompt_content_id =
+                    sha256_hex_str(&format!("review_xsd_retry|{xsd_error}|{last_output_id}"));
+
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&current_prompt_content_id),
+                    || {
+                        let rendered = prompt_review_xsd_retry_with_context_files_and_log(
+                            ctx.template_context,
+                            xsd_error,
+                            ctx.workspace,
+                            "review_xsd_retry",
+                        );
+                        rendered.content
+                    },
                 );
-                if !rendered.log.is_complete() {
-                    let missing = rendered.log.unsubstituted.clone();
-                    let result = EffectResult::event(PipelineEvent::template_rendered(
-                        crate::reducer::event::PipelinePhase::Review,
-                        "review_xsd_retry".to_string(),
-                        rendered.log,
-                    ))
-                    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                        AgentRole::Reviewer,
-                        "review_xsd_retry".to_string(),
-                        missing,
-                        Vec::new(),
-                    ));
-                    return Ok(result);
-                }
-                // XSD retry prompts must not replay potentially stale prompt history content.
+
+                let rendered_log = if was_replayed {
+                    None
+                } else {
+                    let rendered = prompt_review_xsd_retry_with_context_files_and_log(
+                        ctx.template_context,
+                        xsd_error,
+                        ctx.workspace,
+                        "review_xsd_retry",
+                    );
+                    if !rendered.log.is_complete() {
+                        let missing = rendered.log.unsubstituted.clone();
+                        let result = EffectResult::event(PipelineEvent::template_rendered(
+                            crate::reducer::event::PipelinePhase::Review,
+                            "review_xsd_retry".to_string(),
+                            rendered.log,
+                        ))
+                        .with_additional_event(
+                            PipelineEvent::agent_template_variables_invalid(
+                                AgentRole::Reviewer,
+                                "review_xsd_retry".to_string(),
+                                missing,
+                                Vec::new(),
+                            ),
+                        );
+                        return Ok(result);
+                    }
+                    Some(rendered.log)
+                };
+
                 (
                     prompt_key,
-                    rendered.content,
-                    false,
+                    prompt,
+                    was_replayed,
                     "review_xsd_retry",
-                    true,
-                    Some(rendered.log),
+                    Some(current_prompt_content_id),
+                    rendered_log,
                 )
             }
             PromptMode::SameAgentRetry => {
@@ -227,36 +265,48 @@ impl MainEffectHandler {
                     plan: Some(plan_ref),
                     diff: Some(diff_ref),
                 };
-                let (base_prompt, should_validate) = ctx
-                    .workspace
-                    .read(Path::new(".agent/tmp/review_prompt.txt"))
-                    .map_or_else(
-                        |_| {
-                            (
-                                prompt_review_xml_with_references(
-                                    ctx.template_context,
-                                    &refs,
-                                    ctx.workspace,
-                                ),
-                                true,
-                            )
-                        },
-                        |previous_prompt| {
-                            (
-                                crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                    .to_string(),
-                                false,
-                            )
-                        },
-                    );
-                let prompt = format!("{retry_preamble}\n{base_prompt}");
                 let scope_key = PromptScopeKey::for_review(
                     pass,
-                    RetryMode::SameAgent { count: continuation_state.same_agent_retry_count },
+                    RetryMode::SameAgent {
+                        count: continuation_state.same_agent_retry_count,
+                    },
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
-                let rendered_log = if should_validate {
+                let mut should_validate = false;
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    None,
+                    || {
+                        let (base_prompt, local_should_validate) = ctx
+                            .workspace
+                            .read(Path::new(".agent/tmp/review_prompt.txt"))
+                            .map_or_else(
+                                |_| {
+                                    (
+                                        prompt_review_xml_with_references(
+                                            ctx.template_context,
+                                            &refs,
+                                            ctx.workspace,
+                                        ),
+                                        true,
+                                    )
+                                },
+                                |previous_prompt| {
+                                    (
+                                        crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                            .to_string(),
+                                        false,
+                                    )
+                                },
+                            );
+                        should_validate = local_should_validate;
+                        format!("{retry_preamble}\n{base_prompt}")
+                    },
+                );
+
+                let rendered_log = if !was_replayed && should_validate {
                     let rendered = crate::prompts::prompt_review_xml_with_references_and_log(
                         ctx.template_context,
                         &refs,
@@ -270,12 +320,14 @@ impl MainEffectHandler {
                             "review_xml".to_string(),
                             rendered.log,
                         ))
-                        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                            AgentRole::Reviewer,
-                            "review_xml".to_string(),
-                            missing,
-                            Vec::new(),
-                        ));
+                        .with_additional_event(
+                            PipelineEvent::agent_template_variables_invalid(
+                                AgentRole::Reviewer,
+                                "review_xml".to_string(),
+                                missing,
+                                Vec::new(),
+                            ),
+                        );
                         return Ok(result);
                     }
                     Some(rendered.log)
@@ -285,9 +337,9 @@ impl MainEffectHandler {
                 (
                     prompt_key,
                     prompt,
-                    false,
+                    was_replayed,
                     "review_xml",
-                    should_validate,
+                    None,
                     rendered_log,
                 )
             }
@@ -334,8 +386,11 @@ impl MainEffectHandler {
                         }
                     }
                 };
-                let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    None,
+                    || {
                         let plan_ref = plan_ref.clone();
                         let diff_ref = diff_ref.clone();
 
@@ -352,7 +407,8 @@ impl MainEffectHandler {
                             "review_xml",
                         );
                         rendered.content
-                    });
+                    },
+                );
 
                 // Validate freshly generated prompts (not replayed ones)
                 let rendered_log = if was_replayed {
@@ -377,12 +433,14 @@ impl MainEffectHandler {
                             "review_xml".to_string(),
                             rendered.log,
                         ))
-                        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                            AgentRole::Reviewer,
-                            "review_xml".to_string(),
-                            missing,
-                            Vec::new(),
-                        ));
+                        .with_additional_event(
+                            PipelineEvent::agent_template_variables_invalid(
+                                AgentRole::Reviewer,
+                                "review_xml".to_string(),
+                                missing,
+                                Vec::new(),
+                            ),
+                        );
                         return Ok(result);
                     }
                     Some(rendered.log)
@@ -393,7 +451,7 @@ impl MainEffectHandler {
                     prompt,
                     was_replayed,
                     "review_xml",
-                    true,
+                    None,
                     rendered_log,
                 )
             }
@@ -410,7 +468,7 @@ impl MainEffectHandler {
                 crate::reducer::event::PromptInputEvent::PromptCaptured {
                     key: prompt_key.clone(),
                     content: review_prompt_xml.clone(),
-                    content_id: None,
+                    content_id: prompt_content_id,
                 },
             ))
         };

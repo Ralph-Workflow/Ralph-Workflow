@@ -1,5 +1,6 @@
 use super::MainEffectHandler;
 use crate::phases::PhaseContext;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ConflictStrategy, PipelineEvent, RebasePhase};
 use anyhow::Result;
@@ -38,16 +39,11 @@ impl MainEffectHandler {
             // conflict resolution, so the reducer-owned PipelineState.prompt_history
             // stays consistent with what was saved to disk in the interim checkpoints.
             let mut result = EffectResult::event(event);
-            for (key, entry) in &local_prompt_history {
-                if !self.state.prompt_history.contains_key(key) {
-                    result = result.with_additional_event(PipelineEvent::PromptInput(
-                        crate::reducer::event::PromptInputEvent::PromptCaptured {
-                            key: key.clone(),
-                            content: entry.content.clone(),
-                            content_id: entry.content_id.clone(),
-                        },
-                    ));
-                }
+            for ev in prompt_captured_events_for_prompt_history_delta(
+                &self.state.prompt_history,
+                &local_prompt_history,
+            ) {
+                result = result.with_additional_event(ev);
             }
 
             return Ok(result);
@@ -142,5 +138,82 @@ impl MainEffectHandler {
                 EffectResult::event(PipelineEvent::rebase_conflict_resolved(Vec::new()))
             }
         }
+    }
+}
+
+fn prompt_captured_events_for_prompt_history_delta(
+    original: &std::collections::HashMap<String, PromptHistoryEntry>,
+    updated: &std::collections::HashMap<String, PromptHistoryEntry>,
+) -> Vec<PipelineEvent> {
+    updated
+        .iter()
+        .filter_map(|(key, entry)| {
+            let should_emit = original.get(key).is_none_or(|existing| {
+                existing.content != entry.content || existing.content_id != entry.content_id
+            });
+            if should_emit {
+                Some(PipelineEvent::PromptInput(
+                    crate::reducer::event::PromptInputEvent::PromptCaptured {
+                        key: key.clone(),
+                        content: entry.content.clone(),
+                        content_id: entry.content_id.clone(),
+                    },
+                ))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prompts::PromptHistoryEntry;
+
+    #[test]
+    fn emits_prompt_captured_when_rebase_updates_existing_prompt_history_entry() {
+        let mut original = std::collections::HashMap::new();
+        original.insert(
+            "planning_conflict_resolution".to_string(),
+            PromptHistoryEntry::new("old".to_string(), Some("id1".to_string())),
+        );
+        let mut updated = original.clone();
+        updated.insert(
+            "planning_conflict_resolution".to_string(),
+            PromptHistoryEntry::new("new".to_string(), Some("id1".to_string())),
+        );
+
+        let events = prompt_captured_events_for_prompt_history_delta(&original, &updated);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            PipelineEvent::PromptInput(crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: Some(id),
+            }) if key == "planning_conflict_resolution" && content == "new" && id == "id1"
+        ));
+    }
+
+    #[test]
+    fn emits_prompt_captured_when_rebase_adds_new_prompt_history_entry() {
+        let original = std::collections::HashMap::new();
+        let mut updated = std::collections::HashMap::new();
+        updated.insert(
+            "development_conflict_resolution".to_string(),
+            PromptHistoryEntry::from_string("prompt".to_string()),
+        );
+
+        let events = prompt_captured_events_for_prompt_history_delta(&original, &updated);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            PipelineEvent::PromptInput(crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: None,
+            }) if key == "development_conflict_resolution" && content == "prompt"
+        ));
     }
 }
