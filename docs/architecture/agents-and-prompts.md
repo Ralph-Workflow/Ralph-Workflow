@@ -69,11 +69,11 @@ Prompt generation is integrated with the checkpoint resume system. Every prompt 
 
 **`PromptScopeKey`** (`ralph-workflow/src/prompts/prompt_scope_key.rs`) is the typed identity for a prompt. It replaces all ad-hoc `format!()` key strings with phase-specific constructors that enforce required identity dimensions at compile time:
 
-- `for_planning(iteration, retry_mode, recovery_epoch)` → key like `"planning_1"`
-- `for_development(iteration, continuation, retry_mode, recovery_epoch)` → key like `"development_1"` or `"development_1_continuation_3"`
-- `for_commit(iteration, attempt, retry_mode, recovery_epoch)` → key like `"commit_message_attempt_iter1_1"`
-- `for_review(pass, retry_mode, recovery_epoch)` → key like `"review_1"`
-- `for_fix(pass, retry_mode, recovery_epoch)` → key like `"fix_1"`
+- `for_planning(iteration, retry_mode, recovery_epoch)` → key like `"planning_0"`
+- `for_development(iteration, continuation, retry_mode, recovery_epoch)` → key like `"development_0"` or `"development_0_continuation_3"`
+- `for_commit(iteration, attempt, retry_mode, recovery_epoch)` → key like `"commit_message_attempt_iter0_1"`
+- `for_review(pass, retry_mode, recovery_epoch)` → key like `"review_0"`
+- `for_fix(pass, retry_mode, recovery_epoch)` → key like `"fix_0"`
 - `for_conflict_resolution(phase, recovery_epoch)` → key like `"planning_conflict_resolution"`
 
 The `Display` output of `PromptScopeKey` is byte-identical to the legacy `format!()` strings it replaces, preserving backward-compatibility with existing checkpoint `prompt_history` maps.

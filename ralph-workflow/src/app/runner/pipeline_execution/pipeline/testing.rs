@@ -131,11 +131,13 @@ where
     let initial_phase = resume_checkpoint
         .as_ref()
         .map_or(PipelinePhase::Planning, |checkpoint| checkpoint.phase);
-    let initial_prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry> =
-        resume_checkpoint
-            .as_ref()
-            .and_then(|c| c.prompt_history.clone())
-            .unwrap_or_default();
+    let initial_prompt_history: std::collections::HashMap<
+        String,
+        crate::prompts::PromptHistoryEntry,
+    > = resume_checkpoint
+        .as_ref()
+        .and_then(|c| c.prompt_history.clone())
+        .unwrap_or_default();
 
     setup_interrupt_context_for_pipeline(
         initial_phase,
@@ -264,6 +266,14 @@ where
             .with_prompt_history(loop_result.final_state.prompt_history.clone());
 
         if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {
+            let mut checkpoint = checkpoint;
+            checkpoint.dev_fix_attempt_count = loop_result.final_state.dev_fix_attempt_count;
+            checkpoint.recovery_epoch = loop_result.final_state.recovery_epoch;
+            checkpoint.recovery_escalation_level =
+                loop_result.final_state.recovery_escalation_level;
+            checkpoint.failed_phase_for_recovery =
+                loop_result.final_state.failed_phase_for_recovery;
+            checkpoint.interrupted_by_user = loop_result.final_state.interrupted_by_user;
             let _ = save_checkpoint_with_workspace(&*ctx.workspace, &checkpoint);
         }
     }

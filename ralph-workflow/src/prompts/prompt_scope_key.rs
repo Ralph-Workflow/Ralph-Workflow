@@ -84,9 +84,9 @@ pub enum RetryMode {
 pub struct PromptScopeKey {
     /// Pipeline phase this prompt belongs to.
     pub phase: PromptPhase,
-    /// Development iteration (1-based). Used by Planning, Development, Commit phases.
+    /// Development iteration (0-based). Used by Planning, Development, Commit phases.
     pub iteration: u32,
-    /// Review/fix pass number (1-based). Used by Review and Fix phases.
+    /// Review/fix pass number (0-based). Used by Review and Fix phases.
     pub pass: Option<u32>,
     /// Commit attempt number within the iteration. Used by Commit phase.
     pub attempt: Option<u32>,
@@ -263,8 +263,8 @@ mod tests {
 
     #[test]
     fn planning_normal_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
-        assert_eq!(key.to_string(), "planning_1");
+        let key = PromptScopeKey::for_planning(0, RetryMode::Normal, 0);
+        assert_eq!(key.to_string(), "planning_0");
     }
 
     #[test]
@@ -275,8 +275,8 @@ mod tests {
 
     #[test]
     fn planning_same_agent_retry_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_planning(1, RetryMode::SameAgent { count: 2 }, 0);
-        assert_eq!(key.to_string(), "planning_1_same_agent_retry_2");
+        let key = PromptScopeKey::for_planning(0, RetryMode::SameAgent { count: 2 }, 0);
+        assert_eq!(key.to_string(), "planning_0_same_agent_retry_2");
     }
 
     // =========================================================================
@@ -285,14 +285,14 @@ mod tests {
 
     #[test]
     fn development_normal_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_development(1, None, RetryMode::Normal, 0);
-        assert_eq!(key.to_string(), "development_1");
+        let key = PromptScopeKey::for_development(0, None, RetryMode::Normal, 0);
+        assert_eq!(key.to_string(), "development_0");
     }
 
     #[test]
     fn development_continuation_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_development(1, Some(3), RetryMode::Normal, 0);
-        assert_eq!(key.to_string(), "development_1_continuation_3");
+        let key = PromptScopeKey::for_development(0, Some(3), RetryMode::Normal, 0);
+        assert_eq!(key.to_string(), "development_0_continuation_3");
     }
 
     #[test]
@@ -307,25 +307,25 @@ mod tests {
 
     #[test]
     fn commit_normal_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_commit(2, 1, RetryMode::Normal, 0);
-        assert_eq!(key.to_string(), "commit_message_attempt_iter2_1");
+        let key = PromptScopeKey::for_commit(0, 1, RetryMode::Normal, 0);
+        assert_eq!(key.to_string(), "commit_message_attempt_iter0_1");
     }
 
     #[test]
     fn commit_same_agent_retry_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_commit(2, 1, RetryMode::SameAgent { count: 1 }, 0);
+        let key = PromptScopeKey::for_commit(0, 1, RetryMode::SameAgent { count: 1 }, 0);
         assert_eq!(
             key.to_string(),
-            "commit_message_attempt_iter2_1_same_agent_retry_1"
+            "commit_message_attempt_iter0_1_same_agent_retry_1"
         );
     }
 
     #[test]
     fn commit_xsd_retry_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_commit(2, 1, RetryMode::Xsd { count: 1 }, 0);
+        let key = PromptScopeKey::for_commit(0, 1, RetryMode::Xsd { count: 1 }, 0);
         assert_eq!(
             key.to_string(),
-            "commit_message_attempt_iter2_1_xsd_retry_1"
+            "commit_message_attempt_iter0_1_xsd_retry_1"
         );
     }
 
@@ -335,8 +335,8 @@ mod tests {
 
     #[test]
     fn review_normal_key_matches_legacy_format() {
-        let key = PromptScopeKey::for_review(2, RetryMode::Normal, 0);
-        assert_eq!(key.to_string(), "review_2");
+        let key = PromptScopeKey::for_review(0, RetryMode::Normal, 0);
+        assert_eq!(key.to_string(), "review_0");
     }
 
     #[test]

@@ -48,13 +48,13 @@ impl MainEffectHandler {
 }
 
 fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
-    // When the user pressed Ctrl+C, we must write a checkpoint for resume
-    // support, but we skip large optional fields (execution_history,
-    // prompt_history, last_substitution_log, env_snapshot) to avoid slow JSON
-    // serialization in debug builds under CPU contention.
+    // When the user pressed Ctrl+C, we must write a checkpoint for resume.
     //
-    // These fields are "nice to have" for resume quality but are not required
-    // for correctness: the pipeline can resume from the phase/iteration alone.
+    // RFC-007 requires deterministic prompt replay on resume, so `prompt_history`
+    // is correctness-critical and must always be persisted.
+    //
+    // We may still omit other large optional fields on interrupt to reduce
+    // serialization overhead in debug builds under CPU contention.
     //
     // We still write the full file_system_state because that is critical for
     // resume validation -- but capture_git_state already skips git commands
@@ -77,18 +77,8 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
             &ctx.run_context,
         )
         .with_executor_from_context(std::sync::Arc::clone(&ctx.executor_arc))
-        .with_execution_history(if skip_large_fields {
-            // Omit execution history to avoid slow serialization on interrupt.
-            crate::checkpoint::ExecutionHistory::new()
-        } else {
-            ctx.execution_history.clone()
-        })
-        .with_prompt_history(if skip_large_fields {
-            // Omit prompt history (can be very large) on interrupt.
-            std::collections::HashMap::new()
-        } else {
-            state.prompt_history.clone()
-        })
+        .with_execution_history(ctx.execution_history.clone())
+        .with_prompt_history(state.prompt_history.clone())
         .with_prompt_inputs(state.prompt_inputs.clone())
         .with_prompt_permissions(state.prompt_permissions.clone())
         .with_last_substitution_log(if skip_large_fields {
@@ -101,6 +91,7 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
     if let Some(checkpoint) = builder.build_with_workspace(ctx.workspace) {
         let mut checkpoint = checkpoint;
         checkpoint.dev_fix_attempt_count = state.dev_fix_attempt_count;
+        checkpoint.recovery_epoch = state.recovery_epoch;
         checkpoint.recovery_escalation_level = state.recovery_escalation_level;
         checkpoint.failed_phase_for_recovery = state.failed_phase_for_recovery;
         checkpoint.interrupted_by_user = state.interrupted_by_user;
@@ -125,5 +116,198 @@ const fn map_to_checkpoint_phase(phase: crate::reducer::event::PipelinePhase) ->
         crate::reducer::event::PipelinePhase::Complete => CheckpointPhase::Complete,
         crate::reducer::event::PipelinePhase::AwaitingDevFix => CheckpointPhase::AwaitingDevFix,
         crate::reducer::event::PipelinePhase::Interrupted => CheckpointPhase::Interrupted,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::save_checkpoint_from_state;
+    use crate::agents::AgentRegistry;
+    use crate::checkpoint::execution_history::{ExecutionHistory, ExecutionStep, StepOutcome};
+    use crate::checkpoint::load_checkpoint_with_workspace;
+    use crate::checkpoint::RunContext;
+    use crate::config::Config;
+    use crate::executor::MockProcessExecutor;
+    use crate::interrupt::{
+        interrupt_test_lock, request_user_interrupt, reset_user_interrupted_occurred,
+        take_user_interrupt_request,
+    };
+    use crate::logger::{Colors, Logger};
+    use crate::logging::RunLogContext;
+    use crate::phases::PhaseContext;
+    use crate::pipeline::Timer;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::prompts::PromptHistoryEntry;
+    use crate::reducer::state::PipelineState;
+    use crate::workspace::MemoryWorkspace;
+    use std::path::Path;
+    use std::sync::Arc;
+
+    #[test]
+    fn interrupt_checkpoint_from_reducer_state_persists_prompt_history_and_recovery_epoch() {
+        // Arrange
+        // The interrupt flags are process-global; coordinate test access.
+        let _lock = interrupt_test_lock();
+        let _ = take_user_interrupt_request();
+        reset_user_interrupted_occurred();
+
+        request_user_interrupt();
+
+        let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+        let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn crate::workspace::Workspace>;
+        let run_log_context = RunLogContext::new(&workspace).expect("run log context");
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let config = Config::default();
+        let registry = AgentRegistry::new().expect("registry");
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new());
+        let mut timer = Timer::new();
+
+        // `CheckpointBuilder::capture_from_context` requires the agent configs to exist in the
+        // registry, otherwise checkpoint build returns None.
+        let developer_agent = "codex";
+        let reviewer_agent = "codex";
+
+        let ctx = PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent,
+            reviewer_agent,
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context: RunContext::new(),
+            execution_history: ExecutionHistory::new(),
+            executor: executor.as_ref(),
+            executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+            repo_root: Path::new("/test/repo"),
+            workspace: &workspace,
+            workspace_arc: Arc::clone(&workspace_arc),
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &config.cloud,
+        };
+
+        let mut state = PipelineState::initial(1, 0);
+        state.recovery_epoch = 7;
+        state.prompt_history.insert(
+            "planning_0".to_string(),
+            PromptHistoryEntry::from_string("prompt".to_string()),
+        );
+
+        // Act
+        save_checkpoint_from_state(&state, &ctx);
+
+        // Assert
+        let checkpoint = load_checkpoint_with_workspace(&workspace)
+            .expect("checkpoint load should succeed")
+            .expect("checkpoint should exist");
+
+        assert_eq!(
+            checkpoint.recovery_epoch, 7,
+            "checkpoint must preserve reducer recovery_epoch for deterministic resume"
+        );
+        assert!(
+            checkpoint
+                .prompt_history
+                .as_ref()
+                .is_some_and(|history| history.contains_key("planning_0")),
+            "checkpoint must preserve prompt_history on interrupt so resume does not regenerate prompts"
+        );
+
+        // Cleanup: restore interrupt flags for other tests.
+        let _ = take_user_interrupt_request();
+        reset_user_interrupted_occurred();
+    }
+
+    #[test]
+    fn interrupt_checkpoint_from_reducer_state_persists_execution_history_for_diagnostics() {
+        // Arrange
+        // The interrupt flags are process-global; coordinate test access.
+        let _lock = interrupt_test_lock();
+        let _ = take_user_interrupt_request();
+        reset_user_interrupted_occurred();
+
+        request_user_interrupt();
+
+        let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+        let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn crate::workspace::Workspace>;
+        let run_log_context = RunLogContext::new(&workspace).expect("run log context");
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let config = Config::default();
+        let registry = AgentRegistry::new().expect("registry");
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new());
+        let mut timer = Timer::new();
+
+        let mut execution_history = ExecutionHistory::new();
+        execution_history.add_step_bounded(
+            ExecutionStep::new(
+                "planning",
+                0,
+                "checkpoint",
+                StepOutcome::success(None, Vec::new()),
+            ),
+            100,
+        );
+
+        let ctx = PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent: "codex",
+            reviewer_agent: "codex",
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context: RunContext::new(),
+            execution_history,
+            executor: executor.as_ref(),
+            executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+            repo_root: Path::new("/test/repo"),
+            workspace: &workspace,
+            workspace_arc: Arc::clone(&workspace_arc),
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &config.cloud,
+        };
+
+        let state = PipelineState::initial(1, 0);
+
+        // Act
+        save_checkpoint_from_state(&state, &ctx);
+
+        // Assert
+        let checkpoint = load_checkpoint_with_workspace(&workspace)
+            .expect("checkpoint load should succeed")
+            .expect("checkpoint should exist");
+
+        let history = checkpoint
+            .execution_history
+            .as_ref()
+            .expect("checkpoint must include execution_history");
+        assert_eq!(
+            history.steps.len(),
+            1,
+            "interrupt-time reducer checkpoint should retain execution history for debugging"
+        );
+        assert_eq!(
+            history
+                .steps
+                .front()
+                .map(|step| step.phase.as_ref())
+                .unwrap_or_default(),
+            "planning",
+            "execution history should preserve step content"
+        );
+
+        // Cleanup
+        let _ = take_user_interrupt_request();
+        reset_user_interrupted_occurred();
     }
 }

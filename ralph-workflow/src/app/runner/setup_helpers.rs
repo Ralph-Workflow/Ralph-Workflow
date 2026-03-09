@@ -198,10 +198,12 @@ fn setup_interrupt_context_for_pipeline(
 /// This function should be called after each major phase to keep the
 /// interrupt context up-to-date with the latest execution history.
 ///
-/// `prompt_history` reflects the state at the time of the last checkpoint load;
-/// it is not updated during the event loop (which owns prompt history via
-/// `PipelineState`). This is a known limitation: an interrupt mid-run will
-/// checkpoint with the initial prompt history, not newly captured prompts.
+/// `prompt_history` reflects the state at the time of the last checkpoint load.
+///
+/// While the reducer event loop is active, Ctrl+C triggers a reducer-driven
+/// checkpoint write from live `PipelineState` (including up-to-date
+/// `prompt_history`). This interrupt context is used only for early interrupts
+/// before the event loop starts.
 fn update_interrupt_context_from_phase(
     execution_history: &crate::checkpoint::ExecutionHistory,
     prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
