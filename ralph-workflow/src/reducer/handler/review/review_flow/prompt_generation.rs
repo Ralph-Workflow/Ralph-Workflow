@@ -339,11 +339,18 @@ impl MainEffectHandler {
                                     )
                                 },
                                 |previous_prompt| {
-                                    (
-                                        crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                            .to_string(),
-                                        false,
-                                    )
+                                    let previous_base = crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                        .to_string();
+                                    let freshly_rendered_base = prompt_review_xml_with_references(
+                                        ctx.template_context,
+                                        &refs,
+                                        ctx.workspace,
+                                    );
+                                    if previous_base == freshly_rendered_base {
+                                        (previous_base, false)
+                                    } else {
+                                        (freshly_rendered_base, true)
+                                    }
                                 },
                             );
                         should_validate = local_should_validate;

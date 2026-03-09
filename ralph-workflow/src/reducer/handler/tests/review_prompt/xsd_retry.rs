@@ -616,7 +616,7 @@ fn test_prepare_fix_prompt_xsd_retry_ignores_xsd_error_placeholders() {
 }
 
 #[test]
-fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
+fn test_prepare_fix_prompt_xsd_retry_falls_back_to_generic_message_when_xsd_error_blank() {
     let workspace = crate::workspace::MemoryWorkspace::new_test()
         .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
         .with_file(".agent/PLAN.md", "# Plan\n")
@@ -646,26 +646,18 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
             if key == "fix_0_xsd_retry_1"
     )));
 
-    match result.event {
-        PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
-            phase,
-            template_name,
-            log,
-        }) => {
-            assert_eq!(phase, PipelinePhase::Review);
-            assert_eq!(template_name, "fix_mode_xsd_retry");
-            assert!(log.unsubstituted.contains(&"XSD_ERROR".to_string()));
-        }
-        other => panic!("expected TemplateRendered event, got {other:?}"),
-    }
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Review(ReviewEvent::FixPromptPrepared { .. })
+    ));
 
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/fix_prompt.txt"))
+        .expect("fix prompt file should be written");
     assert!(
-        result.additional_events.iter().any(|event| matches!(
-            event,
-            PipelineEvent::Agent(AgentEvent::TemplateVariablesInvalid { missing_variables, .. })
-                if missing_variables.contains(&"XSD_ERROR".to_string())
-        )),
-        "expected TemplateVariablesInvalid with missing variables"
+        prompt.contains("XML output failed validation. Provide valid XML output."),
+        "Expected fallback generic XSD error message in fix prompt; got: {prompt}"
     );
 }
 

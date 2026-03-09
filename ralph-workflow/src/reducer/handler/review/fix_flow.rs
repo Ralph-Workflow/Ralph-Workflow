@@ -119,6 +119,7 @@ impl MainEffectHandler {
                 let xsd_error = continuation_state
                     .last_fix_xsd_error
                     .as_deref()
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
                 xsd_error_for_validation = Some(xsd_error.to_string());
 
