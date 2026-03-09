@@ -87,8 +87,10 @@ The `Display` output of `PromptScopeKey` is designed for backward-compatible che
 
 1. Looks up the scope key's `Display` string in `prompt_history`.
 2. If found, performs stale-content validation when possible:
-   - If both the stored entry and the caller provide `content_id` values and they differ, treat as a cache miss.
-   - Otherwise (one/both missing, or both present and equal), replay the stored prompt.
+   - If the caller provides `current_content_id = None`, replay proceeds without validation (resume determinism wins).
+   - If the caller provides `current_content_id = Some(...)`, replay only occurs when the stored entry also has
+     `content_id = Some(...)` and the values are equal. Legacy stored entries with `content_id = None` are treated
+     as a cache miss when the current id is known.
 3. If not found (or treated as a cache miss due to a content-id mismatch), calls the generator closure and returns a fresh prompt with `was_replayed = false`.
 
 The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a fresh prompt is generated so the reducer can update `PipelineState.prompt_history` atomically.

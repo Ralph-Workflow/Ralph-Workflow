@@ -73,54 +73,55 @@ impl MainEffectHandler {
             }
         };
 
-        let (plan_inline, diff_inline) = if matches!(prompt_mode, PromptMode::Normal) {
-            let Some(inputs) = materialized_inputs else {
-                return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
-            };
-            let plan_inline = match &inputs.plan.representation {
-                PromptInputRepresentation::Inline => {
-                    // Use sentinel if .agent/PLAN.md is missing.
-                    let plan = match ctx.workspace.read(Path::new(".agent/PLAN.md")) {
-                        Ok(plan) => plan,
-                        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                            Self::sentinel_plan_content(ctx.config.isolation_mode)
-                        }
-                        Err(err) => {
-                            return Err(ErrorEvent::WorkspaceReadFailed {
-                                path: ".agent/PLAN.md".to_string(),
-                                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+        let (plan_inline, diff_inline) =
+            if matches!(prompt_mode, PromptMode::Normal | PromptMode::SameAgentRetry) {
+                let Some(inputs) = materialized_inputs else {
+                    return Err(ErrorEvent::ReviewInputsNotMaterialized { pass }.into());
+                };
+                let plan_inline = match &inputs.plan.representation {
+                    PromptInputRepresentation::Inline => {
+                        // Use sentinel if .agent/PLAN.md is missing.
+                        let plan = match ctx.workspace.read(Path::new(".agent/PLAN.md")) {
+                            Ok(plan) => plan,
+                            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                                Self::sentinel_plan_content(ctx.config.isolation_mode)
                             }
-                            .into());
-                        }
-                    };
-                    Some(plan)
-                }
-                PromptInputRepresentation::FileReference { .. } => None,
-            };
-            let diff_inline = match &inputs.diff.representation {
-                PromptInputRepresentation::Inline => {
-                    // Use fallback if .agent/DIFF.backup is missing.
-                    let diff = match ctx.workspace.read(Path::new(".agent/DIFF.backup")) {
-                        Ok(diff) => diff,
-                        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                            Self::fallback_diff_instructions(&baseline_oid_for_prompts)
-                        }
-                        Err(err) => {
-                            return Err(ErrorEvent::WorkspaceReadFailed {
-                                path: ".agent/DIFF.backup".to_string(),
-                                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                            Err(err) => {
+                                return Err(ErrorEvent::WorkspaceReadFailed {
+                                    path: ".agent/PLAN.md".to_string(),
+                                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                                }
+                                .into());
                             }
-                            .into());
-                        }
-                    };
-                    Some(diff)
-                }
-                PromptInputRepresentation::FileReference { .. } => None,
+                        };
+                        Some(plan)
+                    }
+                    PromptInputRepresentation::FileReference { .. } => None,
+                };
+                let diff_inline = match &inputs.diff.representation {
+                    PromptInputRepresentation::Inline => {
+                        // Use fallback if .agent/DIFF.backup is missing.
+                        let diff = match ctx.workspace.read(Path::new(".agent/DIFF.backup")) {
+                            Ok(diff) => diff,
+                            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                                Self::fallback_diff_instructions(&baseline_oid_for_prompts)
+                            }
+                            Err(err) => {
+                                return Err(ErrorEvent::WorkspaceReadFailed {
+                                    path: ".agent/DIFF.backup".to_string(),
+                                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                                }
+                                .into());
+                            }
+                        };
+                        Some(diff)
+                    }
+                    PromptInputRepresentation::FileReference { .. } => None,
+                };
+                (plan_inline, diff_inline)
+            } else {
+                (None, None)
             };
-            (plan_inline, diff_inline)
-        } else {
-            (None, None)
-        };
         let continuation_state = &self.state.continuation;
         if matches!(prompt_mode, PromptMode::XsdRetry) {
             let xsd_retry_events = self.materialize_xsd_retry_last_output(ctx, pass)?;
@@ -192,6 +193,10 @@ impl MainEffectHandler {
                             "review_xsd_retry".to_string(),
                             rendered.log,
                         ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        })
                         .with_additional_event(
                             PipelineEvent::agent_template_variables_invalid(
                                 AgentRole::Reviewer,
@@ -331,6 +336,10 @@ impl MainEffectHandler {
                             "review_xml".to_string(),
                             rendered.log,
                         ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        })
                         .with_additional_event(
                             PipelineEvent::agent_template_variables_invalid(
                                 AgentRole::Reviewer,
@@ -451,6 +460,10 @@ impl MainEffectHandler {
                             "review_xml".to_string(),
                             rendered.log,
                         ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        })
                         .with_additional_event(
                             PipelineEvent::agent_template_variables_invalid(
                                 AgentRole::Reviewer,

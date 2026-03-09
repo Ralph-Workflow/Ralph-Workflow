@@ -306,6 +306,10 @@ impl MainEffectHandler {
                     template_name.to_string(),
                     rendered.log,
                 ))
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                })
                 .with_additional_event(
                     PipelineEvent::agent_template_variables_invalid(
                         AgentRole::Reviewer,

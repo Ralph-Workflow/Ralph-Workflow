@@ -442,6 +442,12 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
         .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_fix_prompt should succeed");
 
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "fix_0_xsd_retry_1"
+    )));
+
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
             phase,
@@ -463,6 +469,43 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
         )),
         "expected TemplateVariablesInvalid with missing variables"
     );
+}
+
+#[test]
+fn test_prepare_review_prompt_xsd_retry_emits_prompt_replay_hit_on_template_validation_early_return(
+) {
+    let workspace = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some(String::new()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "review_0_xsd_retry_1"
+    )));
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered { .. })
+    ));
 }
 
 #[test]

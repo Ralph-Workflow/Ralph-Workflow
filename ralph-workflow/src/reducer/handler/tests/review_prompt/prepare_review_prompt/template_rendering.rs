@@ -10,6 +10,7 @@ use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
 use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode};
+use crate::reducer::ui_event::UIEvent;
 use crate::workspace::{MemoryWorkspace, Workspace};
 use std::fs;
 use std::path::Path;
@@ -86,6 +87,17 @@ fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
     let result = handler
         .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
+
+    assert!(
+        result.ui_events.iter().any(|ev| matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == "review_0"
+        )),
+        "expected PromptReplayHit observability event on template validation early return"
+    );
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {

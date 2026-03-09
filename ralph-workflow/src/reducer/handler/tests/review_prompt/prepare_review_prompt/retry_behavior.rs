@@ -212,3 +212,57 @@ fn test_prepare_review_prompt_same_agent_retry_replays_from_prompt_history() {
         .expect("review prompt file should be written");
     assert_eq!(prompt, stored_prompt);
 }
+
+#[test]
+fn test_prepare_review_prompt_same_agent_retry_regenerates_with_inline_plan_and_diff_when_prompt_file_missing(
+) {
+    let plan_marker = "<<<PLAN_MARKER>>>";
+    let diff_marker = "<<<DIFF_MARKER>>>";
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", &format!("# Plan\n{plan_marker}\n"))
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(
+            ".agent/DIFF.backup",
+            &format!("diff --git a/a b/a\n+{diff_marker}\n"),
+        )
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let materialize = handler
+        .materialize_review_inputs(&ctx, 0)
+        .expect("materialize_review_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let _result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+
+    assert!(
+        prompt.contains(plan_marker),
+        "Expected regenerated prompt to include inline PLAN content; got: {prompt}"
+    );
+    assert!(
+        prompt.contains(diff_marker),
+        "Expected regenerated prompt to include inline DIFF content; got: {prompt}"
+    );
+}
