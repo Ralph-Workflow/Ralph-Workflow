@@ -1,4 +1,5 @@
 use super::super::common::TestFixture;
+use super::prepare_review_prompt::helpers::ReadFailingWorkspace;
 use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{
     AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent, ReviewEvent,
@@ -8,7 +9,9 @@ use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptInputKind, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use crate::workspace::Workspace;
+use std::io;
 use std::path::Path;
+use std::path::PathBuf;
 
 #[test]
 fn test_prepare_review_prompt_uses_xsd_retry_prompt_key() {
@@ -305,6 +308,201 @@ fn test_prepare_review_prompt_uses_xsd_retry_template_name() {
 }
 
 #[test]
+fn test_prepare_review_prompt_xsd_retry_preserves_materialization_events_on_template_validation_failure(
+) {
+    // Regression: even if template validation fails (missing variables), we must not drop
+    // XSD-retry materialization events emitted earlier in the handler.
+    //
+    // If these events are dropped, dedupe / "already materialized" logic loses state updates
+    // and observability.
+    use crate::prompts::template_context::TemplateContext;
+    use crate::prompts::template_registry::TemplateRegistry;
+    use std::fs;
+    use tempfile::tempdir;
+
+    let tempdir = tempdir().expect("create temp dir");
+    let template_path = tempdir.path().join("review_xsd_retry.txt");
+    fs::write(
+        &template_path,
+        "XSD error: {{XSD_ERROR}}\nLast output: {{LAST_OUTPUT_XML_PATH}}\nMissing: {{MISSING}}\n",
+    )
+    .expect("write review_xsd_retry template override");
+
+    let workspace = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_file(".agent/tmp/issues.xml", "<ralph-issues>bad</ralph-issues>")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    fixture.template_context =
+        TemplateContext::new(TemplateRegistry::new(Some(tempdir.path().to_path_buf())));
+    let ctx = fixture.ctx();
+
+    let handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some("Bad XML".to_string()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed (returns events) even when template invalid");
+
+    assert!(
+        result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::XsdRetryLastOutputMaterialized {
+                phase: PipelinePhase::Review,
+                scope_id: 0,
+                ..
+            })
+        )),
+        "expected XsdRetryLastOutputMaterialized to be preserved in additional_events"
+    );
+    assert!(
+        result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::Agent(AgentEvent::TemplateVariablesInvalid { .. })
+        )),
+        "expected TemplateVariablesInvalid to be emitted for incomplete templates"
+    );
+}
+
+#[test]
+fn test_prepare_review_prompt_xsd_retry_does_not_replay_when_last_output_read_errors() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+    use crate::reducer::state::{
+        MaterializedPromptInput, MaterializedXsdRetryLastOutput, PromptInputKind,
+        PromptInputRepresentation, PromptMaterializationReason,
+    };
+
+    let xsd_error = "XSD validation failed: missing <status>";
+    let issues_xml = "<ralph-issues>invalid</ralph-issues>";
+
+    let inner = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_file(".agent/tmp/issues.xml", issues_xml)
+        .with_dir(".agent/tmp");
+
+    // Force a non-NotFound error when reading last_output.xml (e.g. PermissionDenied).
+    let faulty = ReadFailingWorkspace::new(
+        inner,
+        PathBuf::from(".agent/tmp/last_output.xml"),
+        io::ErrorKind::PermissionDenied,
+    );
+
+    let mut fixture = TestFixture::with_workspace(faulty.inner().clone());
+    let mut ctx = fixture.ctx_with_workspace(&faulty);
+    ctx.developer_agent = "claude";
+    ctx.reviewer_agent = "codex";
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some(xsd_error.to_string()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    // Arrange: trick the handler into thinking last_output.xml was already materialized,
+    // so it won't re-write the file before it attempts to read it for content-id.
+    let content_id_sha256 = sha256_hex_str(issues_xml);
+    let consumer_signature_sha256 = handler.state.agent_chain.consumer_signature_sha256();
+    handler.state.prompt_inputs.xsd_retry_last_output = Some(MaterializedXsdRetryLastOutput {
+        phase: PipelinePhase::Review,
+        scope_id: 0,
+        last_output: MaterializedPromptInput {
+            kind: PromptInputKind::LastOutput,
+            content_id_sha256,
+            consumer_signature_sha256,
+            original_bytes: issues_xml.len() as u64,
+            final_bytes: issues_xml.len() as u64,
+            model_budget_bytes: None,
+            inline_budget_bytes: Some(crate::prompts::MAX_INLINE_CONTENT_SIZE as u64),
+            representation: PromptInputRepresentation::FileReference {
+                path: Path::new(".agent/tmp/last_output.xml").to_path_buf(),
+            },
+            reason: PromptMaterializationReason::PolicyForcedReference,
+        },
+    });
+
+    // Seed prompt_history with the content-id we'd compute if the read error were silently
+    // swallowed and treated as empty string. We must NOT replay from that entry.
+    let empty_output_id = sha256_hex_str("");
+    let expected_unsafe_content_id =
+        sha256_hex_str(&format!("review_xsd_retry|{xsd_error}|{empty_output_id}"));
+    handler.state.prompt_history.insert(
+        "review_0_xsd_retry_1".to_string(),
+        PromptHistoryEntry::new(
+            "UNSAFE REPLAY".to_string(),
+            Some(expected_unsafe_content_id),
+        ),
+    );
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    assert!(
+        result.ui_events.iter().any(|ev| {
+            matches!(
+                ev,
+                UIEvent::PromptReplayHit {
+                    key,
+                    was_replayed: false
+                } if key == "review_0_xsd_retry_1"
+            )
+        }),
+        "expected PromptReplayHit(was_replayed=false) when last_output.xml cannot be read"
+    );
+}
+
+#[test]
+fn test_prepare_review_prompt_xsd_retry_uses_generic_error_when_state_error_empty() {
+    let workspace = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_file(".agent/tmp/issues.xml", "<ralph-issues>bad</ralph-issues>")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let mut ctx = fixture.ctx();
+    ctx.developer_agent = "claude";
+    ctx.reviewer_agent = "codex";
+
+    let handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some(String::new()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert!(
+        prompt.contains("XML output failed validation"),
+        "expected empty state XSD error to fall back to generic message"
+    );
+}
+
+#[test]
 fn test_prepare_review_prompt_xsd_retry_allows_missing_issues_xml() {
     let workspace = crate::workspace::MemoryWorkspace::new_test()
         .with_file(".agent/PLAN.md", "# Plan\n")
@@ -418,7 +616,7 @@ fn test_prepare_fix_prompt_xsd_retry_ignores_xsd_error_placeholders() {
 }
 
 #[test]
-fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
+fn test_prepare_fix_prompt_xsd_retry_falls_back_to_generic_message_when_xsd_error_blank() {
     let workspace = crate::workspace::MemoryWorkspace::new_test()
         .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
         .with_file(".agent/PLAN.md", "# Plan\n")
@@ -442,27 +640,61 @@ fn test_prepare_fix_prompt_xsd_retry_reports_missing_xsd_error() {
         .prepare_fix_prompt(&ctx, 0, PromptMode::XsdRetry)
         .expect("prepare_fix_prompt should succeed");
 
-    match result.event {
-        PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
-            phase,
-            template_name,
-            log,
-        }) => {
-            assert_eq!(phase, PipelinePhase::Review);
-            assert_eq!(template_name, "fix_mode_xsd_retry");
-            assert!(log.unsubstituted.contains(&"XSD_ERROR".to_string()));
-        }
-        other => panic!("expected TemplateRendered event, got {other:?}"),
-    }
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "fix_0_xsd_retry_1"
+    )));
 
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Review(ReviewEvent::FixPromptPrepared { .. })
+    ));
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/fix_prompt.txt"))
+        .expect("fix prompt file should be written");
     assert!(
-        result.additional_events.iter().any(|event| matches!(
-            event,
-            PipelineEvent::Agent(AgentEvent::TemplateVariablesInvalid { missing_variables, .. })
-                if missing_variables.contains(&"XSD_ERROR".to_string())
-        )),
-        "expected TemplateVariablesInvalid with missing variables"
+        prompt.contains("XML output failed validation. Provide valid XML output."),
+        "Expected fallback generic XSD error message in fix prompt; got: {prompt}"
     );
+}
+
+#[test]
+fn test_prepare_review_prompt_xsd_retry_emits_prompt_replay_hit_when_xsd_error_missing() {
+    let workspace = crate::workspace::MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            invalid_output_attempts: 1,
+            last_review_xsd_error: Some(String::new()),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::XsdRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "review_0_xsd_retry_1"
+    )));
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Review(ReviewEvent::PromptPrepared { .. })
+    ));
 }
 
 #[test]

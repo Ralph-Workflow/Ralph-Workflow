@@ -119,6 +119,7 @@ impl MainEffectHandler {
                 let xsd_error = continuation_state
                     .last_fix_xsd_error
                     .as_deref()
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
                 xsd_error_for_validation = Some(xsd_error.to_string());
 
@@ -306,6 +307,10 @@ impl MainEffectHandler {
                     template_name.to_string(),
                     rendered.log,
                 ))
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                })
                 .with_additional_event(
                     PipelineEvent::agent_template_variables_invalid(
                         AgentRole::Reviewer,

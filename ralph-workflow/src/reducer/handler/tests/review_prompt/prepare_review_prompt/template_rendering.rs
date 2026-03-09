@@ -10,6 +10,7 @@ use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
 use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode};
+use crate::reducer::ui_event::UIEvent;
 use crate::workspace::{MemoryWorkspace, Workspace};
 use std::fs;
 use std::path::Path;
@@ -86,6 +87,17 @@ fn test_prepare_review_prompt_emits_template_rendered_on_validation_failure() {
     let result = handler
         .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
+
+    assert!(
+        result.ui_events.iter().any(|ev| matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == "review_0"
+        )),
+        "expected PromptReplayHit observability event on template validation early return"
+    );
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
@@ -172,6 +184,38 @@ fn test_prepare_review_prompt_normal_mode_ignores_retry_state() {
     let result = handler
         .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
+
+    assert!(
+        result.ui_events.iter().any(|ev| matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == "review_0"
+        )),
+        "expected PromptReplayHit with was_replayed=false for normal-mode generation"
+    );
+
+    assert!(
+        result.additional_events.iter().any(|event| matches!(
+            event,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: Some(_)
+            }) if key == "review_0" && !content.contains("{{UNRESOLVED}}")
+        )),
+        "expected PromptCaptured for fresh normal prompt (and not the stale legacy placeholder)"
+    );
+
+    let written_prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert!(
+        !written_prompt.contains("{{UNRESOLVED}}"),
+        "normal mode must not write the stale legacy prompt from prompt_history"
+    );
 
     // Replayed prompts are trusted and not re-validated, so we expect ReviewPromptPrepared
     assert!(matches!(

@@ -14,25 +14,16 @@ use std::path::Path;
 
 #[test]
 fn test_prepare_review_prompt_same_agent_retry_uses_previous_prepared_prompt() {
-    let marker = "<<<PREVIOUS_REVIEW_PROMPT_MARKER>>>";
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/PLAN.md", "# Plan\n")
         .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
         .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
-        .with_dir(".agent/tmp")
-        .with_file(".agent/tmp/review_prompt.txt", marker);
+        .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
 
-    let mut handler = MainEffectHandler::new(PipelineState {
-        continuation: ContinuationState {
-            same_agent_retry_count: 1,
-            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
-            ..ContinuationState::new()
-        },
-        ..PipelineState::initial(0, 1)
-    });
+    let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
         .materialize_review_inputs(&ctx, 0)
         .expect("materialize_review_inputs should succeed");
@@ -40,18 +31,34 @@ fn test_prepare_review_prompt_same_agent_retry_uses_previous_prepared_prompt() {
     for ev in materialize.additional_events {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
+
+    // Arrange: generate a "base" prompt first so the on-disk prompt matches what would be
+    // rendered from current inputs.
+    let _ = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
+        .expect("prepare_review_prompt (normal) should succeed");
+    let base_prompt = ctx
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+
+    handler.state.continuation = ContinuationState {
+        same_agent_retry_count: 1,
+        same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+        ..ContinuationState::new()
+    };
     let result = handler
         .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
         .expect("prepare_review_prompt should succeed");
 
-    let prompt = fixture
+    let prompt = ctx
         .workspace
         .read(Path::new(".agent/tmp/review_prompt.txt"))
         .expect("review prompt file should be written");
 
     assert!(
-        prompt.contains(marker),
-        "Same-agent retry should reuse the previously prepared prompt; got: {prompt}"
+        prompt.contains(&base_prompt),
+        "Same-agent retry should keep the previously prepared base prompt; got: {prompt}"
     );
     assert!(
         prompt.contains("## Retry Note (attempt 1)"),
@@ -67,14 +74,15 @@ fn test_prepare_review_prompt_same_agent_retry_uses_previous_prepared_prompt() {
 }
 
 #[test]
-fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
-    let marker = "<<<PREVIOUS_REVIEW_PROMPT_MARKER>>>";
+fn test_prepare_review_prompt_same_agent_retry_regenerates_when_previous_prompt_mismatches_current_inputs(
+) {
+    let stale_marker = "<<<STALE_PREVIOUS_REVIEW_PROMPT_MARKER>>>";
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/PLAN.md", "# Plan\n")
         .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
         .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
         .with_dir(".agent/tmp")
-        .with_file(".agent/tmp/review_prompt.txt", marker);
+        .with_file(".agent/tmp/review_prompt.txt", stale_marker);
 
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
@@ -94,6 +102,64 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
     for ev in materialize.additional_events {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
+
+    let result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    let prompt = ctx
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+
+    assert!(
+        !prompt.contains(stale_marker),
+        "Expected same-agent retry to regenerate when previous prompt is stale; got: {prompt}"
+    );
+    assert!(
+        result.additional_events.iter().any(|ev| matches!(
+            ev,
+            PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered { .. })
+        )),
+        "Expected TemplateRendered when regenerating a same-agent retry base prompt"
+    );
+}
+
+#[test]
+fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", "# Plan\n")
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(".agent/DIFF.backup", "diff --git a/a b/a\n+change\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+    let materialize = handler
+        .materialize_review_inputs(&ctx, 0)
+        .expect("materialize_review_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    // Arrange: generate a matching base prompt first.
+    let _ = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
+        .expect("prepare_review_prompt (normal) should succeed");
+    let base_prompt = ctx
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
 
     let _ = handler
         .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
@@ -110,7 +176,7 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
         .expect("review prompt file should be written");
 
     assert!(
-        prompt.contains(marker),
+        prompt.contains(&base_prompt),
         "Same-agent retry should keep the base prompt content; got: {prompt}"
     );
     assert_eq!(
@@ -211,4 +277,58 @@ fn test_prepare_review_prompt_same_agent_retry_replays_from_prompt_history() {
         .read(Path::new(".agent/tmp/review_prompt.txt"))
         .expect("review prompt file should be written");
     assert_eq!(prompt, stored_prompt);
+}
+
+#[test]
+fn test_prepare_review_prompt_same_agent_retry_regenerates_with_inline_plan_and_diff_when_prompt_file_missing(
+) {
+    let plan_marker = "<<<PLAN_MARKER>>>";
+    let diff_marker = "<<<DIFF_MARKER>>>";
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file(".agent/PLAN.md", &format!("# Plan\n{plan_marker}\n"))
+        .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+        .with_file(
+            ".agent/DIFF.backup",
+            &format!("diff --git a/a b/a\n+{diff_marker}\n"),
+        )
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(0, 1)
+    });
+
+    let materialize = handler
+        .materialize_review_inputs(&ctx, 0)
+        .expect("materialize_review_inputs should succeed");
+    handler.state = crate::reducer::reduce(handler.state.clone(), materialize.event);
+    for ev in materialize.additional_events {
+        handler.state = crate::reducer::reduce(handler.state.clone(), ev);
+    }
+
+    let _result = handler
+        .prepare_review_prompt(&ctx, 0, PromptMode::SameAgentRetry)
+        .expect("prepare_review_prompt should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+
+    assert!(
+        prompt.contains(plan_marker),
+        "Expected regenerated prompt to include inline PLAN content; got: {prompt}"
+    );
+    assert!(
+        prompt.contains(diff_marker),
+        "Expected regenerated prompt to include inline DIFF content; got: {prompt}"
+    );
 }
