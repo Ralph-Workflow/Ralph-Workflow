@@ -360,6 +360,38 @@ mod tests {
         );
     }
 
+    /// SC-2: Iteration 2 development prompt is not replayed from iteration 1's history entry.
+    ///
+    /// Verifies that `get_stored_or_generate_prompt` generates a fresh prompt for iter2
+    /// even when iter1's development prompt exists in history (same Normal retry mode).
+    #[test]
+    fn iteration_2_development_does_not_replay_iteration_1_prompt() {
+        // Arrange: history contains the iter1 development prompt
+        let iter1_key = PromptScopeKey::for_development(1, None, RetryMode::Normal, 0);
+        let mut history = std::collections::HashMap::new();
+        history.insert(
+            iter1_key.to_string(),
+            PromptHistoryEntry::from_string("iter 1 development prompt".to_string()),
+        );
+
+        // Act: request iter2 development prompt
+        let iter2_key = PromptScopeKey::for_development(2, None, RetryMode::Normal, 0);
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&iter2_key, &history, None, || {
+                "iter 2 fresh development prompt".to_string()
+            });
+
+        // Assert: iter2 must generate a fresh prompt, not replay iter1's prompt
+        assert!(
+            !was_replayed,
+            "iter2 development must NOT replay iter1 development prompt"
+        );
+        assert_eq!(
+            prompt, "iter 2 fresh development prompt",
+            "iter2 development must receive a freshly generated prompt"
+        );
+    }
+
     /// Regression test for RFC-007 root cause: commit prompt stale replay across iterations.
     ///
     /// Before the fix, commit keys were `commit_message_attempt_{attempt}` with no iteration

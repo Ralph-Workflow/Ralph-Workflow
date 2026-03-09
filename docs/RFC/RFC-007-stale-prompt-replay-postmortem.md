@@ -279,10 +279,13 @@ Redux and Elm guidance maps directly to this incident class.
 
 1. ~~Should replay cache be reducer-owned state, or remain external but strictly reducer-versioned?~~
    **Resolved**: replay cache (`prompt_history`) is now reducer-owned state in `PipelineState`.
-2. Which identity dimensions are mandatory globally (`phase`, `iteration`, `pass`, `attempt`, `retry_mode`, `recovery_epoch`, `content_id`)?
-   `PromptScopeKey` encodes all dimensions except `content_id`. Content-id is computed from
-   materialized prompt inputs and stored in `PromptHistoryEntry`. Mandatory dimensions per phase
-   are enforced by the phase-specific constructors on `PromptScopeKey`.
+2. ~~Which identity dimensions are mandatory globally (`phase`, `iteration`, `pass`, `attempt`, `retry_mode`, `recovery_epoch`, `content_id`)?~~
+   **Resolved**: `PromptScopeKey` encodes all dimensions except `content_id`. Content-id is
+   computed from materialized prompt inputs and stored in `PromptHistoryEntry`. Mandatory
+   dimensions per phase are enforced at compile time by the phase-specific constructors:
+   Planning and Development require `iteration`; Commit requires `iteration` + `attempt`;
+   Review and Fix require `pass`; all phases carry `recovery_epoch` for auditing. No ad-hoc
+   `format!()` keys remain.
 3. ~~What is the deprecation plan for duplicate legacy prompt execution pathways?~~
    **Resolved**: Full migration complete. `for_conflict_resolution` constructor added to
    `PromptScopeKey`; `app/rebase/conflicts.rs` migrated to typed keys via

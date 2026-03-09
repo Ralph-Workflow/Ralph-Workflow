@@ -425,6 +425,21 @@ mod tests {
         assert_ne!(iter1, iter2);
     }
 
+    /// SC-2: Development phase keys are unique across iterations.
+    ///
+    /// Ensures that iteration 2's development prompt key cannot collide with
+    /// iteration 1's key, so a checkpoint from cycle 1 cannot be replayed in cycle 2.
+    #[test]
+    fn development_keys_are_unique_across_iterations() {
+        let iter1 = PromptScopeKey::for_development(1, None, RetryMode::Normal, 0).to_string();
+        let iter2 = PromptScopeKey::for_development(2, None, RetryMode::Normal, 0).to_string();
+        assert_ne!(
+            iter1, iter2,
+            "Development keys must differ across iterations to prevent stale replay. \
+             iter1='{iter1}', iter2='{iter2}'"
+        );
+    }
+
     /// Regression test for the root cause of the stale prompt replay bug (RFC-007).
     ///
     /// The bug: commit attempt numbers reset to 1 on each new commit cycle. Before
