@@ -17,6 +17,6 @@
 
 mod diff_handling;
 mod error_handling;
-mod helpers;
+pub(super) mod helpers;
 mod retry_behavior;
 mod template_rendering;

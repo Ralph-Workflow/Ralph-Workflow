@@ -8,14 +8,14 @@ use std::path::{Path, PathBuf};
 /// This helper enables testing of error handling when reading review inputs like
 /// DIFF.backup or DIFF.base fails with non-NotFound errors (e.g., `PermissionDenied`).
 #[derive(Debug, Clone)]
-pub(super) struct ReadFailingWorkspace {
+pub(in crate::reducer::handler::tests::review_prompt) struct ReadFailingWorkspace {
     inner: MemoryWorkspace,
     forbidden_read_path: PathBuf,
     kind: io::ErrorKind,
 }
 
 impl ReadFailingWorkspace {
-    pub(super) fn new(
+    pub(in crate::reducer::handler::tests::review_prompt) fn new(
         inner: MemoryWorkspace,
         forbidden_read_path: PathBuf,
         kind: io::ErrorKind,
@@ -25,6 +25,10 @@ impl ReadFailingWorkspace {
             forbidden_read_path,
             kind,
         }
+    }
+
+    pub(in crate::reducer::handler::tests::review_prompt) fn inner(&self) -> &MemoryWorkspace {
+        &self.inner
     }
 }
 

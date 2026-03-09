@@ -40,6 +40,7 @@ impl MainEffectHandler {
             prompt_review_xsd_retry_with_context_files_and_log, PromptScopeKey, RetryMode,
         };
         use crate::reducer::prompt_inputs::sha256_hex_str;
+        use std::io::ErrorKind;
         use std::path::Path;
 
         let tmp_dir = Path::new(".agent/tmp");
@@ -144,21 +145,46 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
-                // Use the actual XSD error from state, or fall back to generic message
+                // Use the actual XSD error from state, or fall back to generic message.
+                // Treat empty/whitespace-only strings as missing.
                 let xsd_error = continuation_state
                     .last_review_xsd_error
                     .as_deref()
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
 
                 // Content-id validation for replay determinism: include both the XSD error and
                 // the last output content (via sha256) so resume can replay safely and stale
                 // entries are treated as cache misses.
                 let last_output_path = Path::new(".agent/tmp/last_output.xml");
-                let last_output = ctx
-                    .workspace
-                    .read(last_output_path)
-                    .unwrap_or_else(|_| String::new());
-                let last_output_id = sha256_hex_str(&last_output);
+                let (last_output, last_output_id_seed) = match ctx.workspace.read(last_output_path)
+                {
+                    Ok(output) => (output, None),
+                    Err(err) if err.kind() == ErrorKind::NotFound => {
+                        // Resilience: allow missing last_output.xml to fall back to empty output.
+                        // Use a dedicated content-id seed so we don't accidentally replay prompts
+                        // generated with a real last_output value.
+                        (String::new(), Some("missing_last_output.xml".to_string()))
+                    }
+                    Err(err) => {
+                        // Preserve observability: do not silently swallow read errors.
+                        // Continue with empty output but invalidate prompt replay by using an
+                        // error-specific content-id seed.
+                        ctx.logger.warn(&format!(
+                            "Failed to read {} ({:?}); using empty last output and invalidating XSD-retry prompt replay",
+                            last_output_path.display(),
+                            err.kind()
+                        ));
+                        (
+                            String::new(),
+                            Some(format!("last_output_read_error:{:?}", err.kind())),
+                        )
+                    }
+                };
+                let last_output_id = last_output_id_seed.map_or_else(
+                    || sha256_hex_str(&last_output),
+                    |seed| sha256_hex_str(&seed),
+                );
                 let current_prompt_content_id =
                     sha256_hex_str(&format!("review_xsd_retry|{xsd_error}|{last_output_id}"));
 
@@ -188,7 +214,7 @@ impl MainEffectHandler {
                     );
                     if !rendered.log.is_complete() {
                         let missing = rendered.log.unsubstituted.clone();
-                        let result = EffectResult::event(PipelineEvent::template_rendered(
+                        let mut result = EffectResult::event(PipelineEvent::template_rendered(
                             crate::reducer::event::PipelinePhase::Review,
                             "review_xsd_retry".to_string(),
                             rendered.log,
@@ -205,6 +231,9 @@ impl MainEffectHandler {
                                 Vec::new(),
                             ),
                         );
+                        for event in additional_events {
+                            result = result.with_additional_event(event);
+                        }
                         return Ok(result);
                     }
                     Some(rendered.log)
