@@ -16,7 +16,6 @@ use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
 use anyhow::Context as _;
-use std::collections::HashMap;
 use std::path::Path;
 
 include!("commit/diff_truncation.rs");

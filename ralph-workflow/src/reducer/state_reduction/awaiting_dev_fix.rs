@@ -83,12 +83,13 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             // orchestration can keep the unattended recovery loop running.
             state
         }
-        AwaitingDevFixEvent::CompletionMarkerEmitted { .. } => {
+        AwaitingDevFixEvent::CompletionMarkerEmitted { is_failure } => {
             // Completion marker emitted, transition to Interrupted
             PipelineState {
                 phase: PipelinePhase::Interrupted,
                 previous_phase: Some(state.phase),
                 completion_marker_pending: false,
+                completion_marker_is_failure: is_failure,
                 completion_marker_reason: None,
                 ..state
             }
@@ -195,12 +196,22 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                     reset
                 }
                 3 => {
-                    // Level 3: Reset iteration counter - decrement iteration and restart from Planning
-                    new_state.reset_iteration()
+                    // Level 3: Reset iteration counter - decrement iteration and restart from Planning.
+                    // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
+                    let mut s = new_state.reset_iteration();
+                    s.recovery_epoch += 1;
+                    s.prompt_history.clear();
+                    s
                 }
                 _ => {
-                    // Level 4+: Complete reset - reset to iteration 0, restart from Planning
-                    new_state.reset_to_iteration_zero()
+                    // Level 4+: Complete reset - reset to iteration 0, restart from Planning.
+                    // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
+                    // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
+                    let mut s = new_state.reset_to_iteration_zero();
+                    s.recovery_epoch += 1;
+                    s.prompt_history.clear();
+                    s
                 }
             };
 
@@ -247,203 +258,5 @@ pub(super) fn reduce_awaiting_dev_fix_event(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::agents::AgentRole;
-    use crate::reducer::event::{AwaitingDevFixEvent, PipelineEvent, PipelinePhase};
-    use crate::reducer::reduce;
-    use crate::reducer::state::AgentChainState;
-
-    #[test]
-    fn dev_fix_completed_does_not_directly_interrupt_when_attempts_exhausted() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.dev_fix_attempt_count = 12;
-        state.recovery_escalation_level = 4;
-        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixCompleted {
-                success: false,
-                summary: Some("attempt 13".to_string()),
-            }),
-        );
-
-        assert_eq!(
-            new_state.phase,
-            PipelinePhase::AwaitingDevFix,
-            "expected to remain in AwaitingDevFix so orchestration can emit completion marker"
-        );
-        assert_eq!(new_state.dev_fix_attempt_count, 13);
-    }
-
-    #[test]
-    fn recovery_attempted_uses_event_target_phase_not_state_snapshot() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.failed_phase_for_recovery = Some(PipelinePhase::Development);
-        state.recovery_escalation_level = 2;
-        state.dev_fix_attempt_count = 4;
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
-                level: 2,
-                attempt_count: 4,
-                target_phase: PipelinePhase::Planning,
-            }),
-        );
-
-        assert_eq!(new_state.phase, PipelinePhase::Planning);
-    }
-
-    #[test]
-    fn recovery_attempted_resets_agent_chain_when_exhausted() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-
-        let mut chain = AgentChainState::initial()
-            .with_agents(
-                vec!["dev".to_string()],
-                vec![vec!["model".to_string()]],
-                AgentRole::Developer,
-            )
-            .with_max_cycles(1);
-        chain.retry_cycle = 1;
-        chain.current_agent_index = 0;
-        chain.current_model_index = 0;
-        assert!(chain.is_exhausted());
-        state.agent_chain = chain;
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
-                level: 1,
-                attempt_count: 1,
-                target_phase: PipelinePhase::Development,
-            }),
-        );
-
-        assert!(!new_state.agent_chain.is_exhausted());
-        assert_eq!(new_state.agent_chain.retry_cycle, 0);
-        assert_eq!(new_state.phase, PipelinePhase::Development);
-    }
-
-    #[test]
-    fn dev_fix_skipped_advances_recovery_state_to_avoid_infinite_trigger_loop() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.dev_fix_triggered = false;
-        state.dev_fix_attempt_count = 0;
-        state.recovery_escalation_level = 0;
-        state.failed_phase_for_recovery = Some(PipelinePhase::CommitMessage);
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::DevFixSkipped {
-                reason: "disabled".to_string(),
-            }),
-        );
-
-        assert!(
-            new_state.dev_fix_triggered,
-            "DevFixSkipped should mark dev-fix as handled so orchestration can progress"
-        );
-        assert_eq!(new_state.dev_fix_attempt_count, 1);
-        assert_eq!(new_state.recovery_escalation_level, 1);
-        assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
-        assert_eq!(
-            new_state.failed_phase_for_recovery,
-            Some(PipelinePhase::CommitMessage)
-        );
-    }
-
-    #[test]
-    fn level_2_phase_start_recovery_clears_retry_and_continuation_flags() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-
-        // Simulate being stuck in a retry/continuation path before recovery.
-        state.continuation.xsd_retry_pending = true;
-        state.continuation.xsd_retry_session_reuse_pending = true;
-        state.continuation.same_agent_retry_pending = true;
-        state.continuation.same_agent_retry_reason =
-            Some(crate::reducer::state::SameAgentRetryReason::Timeout);
-        state.continuation.continue_pending = true;
-        state.continuation.fix_continue_pending = true;
-        state.continuation.context_write_pending = true;
-        state.continuation.context_cleanup_pending = true;
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
-                level: 2,
-                attempt_count: 4,
-                target_phase: PipelinePhase::CommitMessage,
-            }),
-        );
-
-        assert_eq!(new_state.phase, PipelinePhase::CommitMessage);
-        assert!(!new_state.continuation.xsd_retry_pending);
-        assert!(!new_state.continuation.xsd_retry_session_reuse_pending);
-        assert!(!new_state.continuation.same_agent_retry_pending);
-        assert!(new_state.continuation.same_agent_retry_reason.is_none());
-        assert!(!new_state.continuation.continue_pending);
-        assert!(!new_state.continuation.fix_continue_pending);
-        assert!(!new_state.continuation.context_write_pending);
-        assert!(!new_state.continuation.context_cleanup_pending);
-    }
-
-    #[test]
-    fn completion_marker_write_failed_sets_pending_flag_for_deterministic_retry() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.completion_marker_pending = false;
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::CompletionMarkerWriteFailed {
-                is_failure: true,
-                error: "disk full".to_string(),
-            }),
-        );
-
-        assert!(new_state.completion_marker_pending);
-        assert!(new_state.completion_marker_is_failure);
-        assert_eq!(
-            new_state.completion_marker_reason.as_deref(),
-            Some("disk full")
-        );
-        assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
-    }
-
-    #[test]
-    fn level_2_planning_phase_start_recovery_resets_context_and_gitignore_prereqs() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-
-        // Simulate having already satisfied global Planning prerequisites.
-        state.context_cleaned = true;
-        state.gitignore_entries_ensured = true;
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
-                level: 2,
-                attempt_count: 4,
-                target_phase: PipelinePhase::Planning,
-            }),
-        );
-
-        assert_eq!(new_state.phase, PipelinePhase::Planning);
-        assert!(
-            !new_state.context_cleaned,
-            "Level 2 Planning recovery should re-run CleanupContext"
-        );
-        assert!(
-            !new_state.gitignore_entries_ensured,
-            "Level 2 Planning recovery should re-run EnsureGitignoreEntries"
-        );
-    }
-}
+#[path = "awaiting_dev_fix/tests.rs"]
+mod tests;

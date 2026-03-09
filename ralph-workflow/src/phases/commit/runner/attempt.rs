@@ -14,9 +14,6 @@ pub enum CommitMessageOutcome {
 #[derive(Debug)]
 pub struct CommitMessageResult {
     pub outcome: CommitMessageOutcome,
-
-    /// Prompts that were generated during this commit generation (key -> prompt)
-    pub generated_prompts: HashMap<String, String>,
 }
 
 /// Outcome from a single commit attempt.
@@ -57,35 +54,16 @@ pub fn run_commit_attempt(
     // The diff passed here is already truncated to the effective model budget.
     // See: reducer/handler/commit.rs::materialize_commit_inputs
 
-    // Prompt replay keys must be unique per commit cycle to prevent stale replay.
-    // Cycle identity is derived from run_context (legacy phase runner) and the
-    // model-safe diff content id.
-    let commit_cycle = ctx.run_context.actual_developer_runs;
-    let diff_id_sha256 = crate::reducer::prompt_inputs::sha256_hex_str(model_safe_diff);
-    let diff_id_short = diff_id_sha256.get(..12).unwrap_or(diff_id_sha256.as_str());
-    let prompt_key =
-        format!("commit_message_attempt_cycle{commit_cycle}_diff{diff_id_short}_attempt{attempt}");
-    let (prompt, was_replayed, substitution_log) = build_commit_prompt(
-        &prompt_key,
-        ctx.template_context,
-        model_safe_diff,
-        ctx.workspace,
-        &ctx.prompt_history,
-    );
+    let (prompt, substitution_log) =
+        build_commit_prompt(ctx.template_context, model_safe_diff, ctx.workspace);
 
     // Legacy phase-based code
     // Validate freshly rendered prompts using substitution logs (no regex scanning).
-    if let Some(log) = substitution_log {
-        if !log.is_complete() {
-            return Err(anyhow::anyhow!(
-                "Commit prompt has unresolved placeholders: {:?}",
-                log.unsubstituted
-            ));
-        }
-    }
-
-    if !was_replayed {
-        ctx.capture_prompt(&prompt_key, &prompt);
+    if !substitution_log.is_complete() {
+        return Err(anyhow::anyhow!(
+            "Commit prompt has unresolved placeholders: {:?}",
+            substitution_log.unsubstituted
+        ));
     }
 
     let mut runtime = PipelineRuntime {
@@ -99,7 +77,11 @@ pub fn run_commit_attempt(
         workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
     };
 
-    let log_dir = Path::new(".agent/logs/commit_generation");
+    let log_dir = ctx
+        .run_log_context
+        .run_dir()
+        .join("debug")
+        .join("commit_generation");
     let mut session = CommitLogSession::new(
         log_dir
             .to_str()

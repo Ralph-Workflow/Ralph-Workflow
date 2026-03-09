@@ -54,6 +54,13 @@ pub fn render_ui_event(event: &UIEvent) -> String {
             content,
             context,
         } => super::xml::render_xml(xml_type, content, context),
+        UIEvent::PromptReplayHit { key, was_replayed } => {
+            if *was_replayed {
+                format!("📋 [prompt-replay] Replayed stored prompt: {key}")
+            } else {
+                format!("📋 [prompt-replay] Generated fresh prompt: {key}")
+            }
+        }
     }
 }
 

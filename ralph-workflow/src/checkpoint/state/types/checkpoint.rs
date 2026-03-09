@@ -110,8 +110,25 @@ pub struct PipelineCheckpoint {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_system_state: Option<crate::checkpoint::FileSystemState>,
     /// Stored prompts used during this run
+    /// Stored prompts used during this run.
+    ///
+    /// Value type changed from `String` to [`PromptHistoryEntry`] in `replay_metadata_version` 1.
+    /// The [`crate::prompts::PromptHistoryEntry`] custom deserializer accepts both the legacy
+    /// bare-string format (version 0) and the new object format (version 1) for backward compatibility.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompt_history: Option<std::collections::HashMap<String, String>>,
+    pub prompt_history:
+        Option<std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>>,
+
+    /// Prompt history schema version.
+    ///
+    /// - `0` (default): legacy format where `prompt_history` values were bare strings.
+    /// - `1`: current format where values are [`crate::prompts::PromptHistoryEntry`] objects.
+    ///
+    /// Defaults to `0` via `#[serde(default)]` so old checkpoints without the field
+    /// deserialize with the expected legacy semantics.
+    #[serde(default)]
+    pub replay_metadata_version: u32,
+
     /// Environment snapshot for idempotent recovery
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env_snapshot: Option<EnvironmentSnapshot>,
@@ -141,6 +158,14 @@ pub struct PipelineCheckpoint {
     /// Preserved across checkpoint/resume so escalation is deterministic.
     #[serde(default)]
     pub dev_fix_attempt_count: u32,
+
+    /// Recovery epoch counter (RFC-007).
+    ///
+    /// Incremented each time an epoch-resetting recovery occurs (level-3/4 resets).
+    /// Preserved across checkpoint/resume to ensure replay identity advances correctly.
+    /// Defaults to 0 for backward-compatibility with old checkpoints.
+    #[serde(default)]
+    pub recovery_epoch: u32,
 
     /// Current recovery escalation level (0-4).
     ///
@@ -214,12 +239,14 @@ impl PipelineCheckpoint {
             execution_history: None,
             file_system_state: None,
             prompt_history: None,
+            replay_metadata_version: 1,
             env_snapshot: None,
             prompt_inputs: None,
             prompt_permissions: crate::reducer::state::PromptPermissionsState::default(),
             log_run_id: None,
             last_substitution_log: None,
             dev_fix_attempt_count: 0,
+            recovery_epoch: 0,
             recovery_escalation_level: 0,
             failed_phase_for_recovery: None,
             interrupted_by_user: false,

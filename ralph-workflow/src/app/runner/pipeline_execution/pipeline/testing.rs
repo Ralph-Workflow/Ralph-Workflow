@@ -131,12 +131,20 @@ where
     let initial_phase = resume_checkpoint
         .as_ref()
         .map_or(PipelinePhase::Planning, |checkpoint| checkpoint.phase);
+    let initial_prompt_history: std::collections::HashMap<
+        String,
+        crate::prompts::PromptHistoryEntry,
+    > = resume_checkpoint
+        .as_ref()
+        .and_then(|c| c.prompt_history.clone())
+        .unwrap_or_default();
+
     setup_interrupt_context_for_pipeline(
         initial_phase,
         config.developer_iters,
         config.reviewer_reviews,
         &phase_ctx.execution_history,
-        &phase_ctx.prompt_history,
+        &initial_prompt_history,
         &run_context,
         std::sync::Arc::clone(&ctx.workspace),
     );
@@ -149,7 +157,8 @@ where
 
     // Update interrupt context before entering the reducer event loop.
     update_interrupt_context_from_phase(
-        &phase_ctx,
+        &phase_ctx.execution_history,
+        initial_prompt_history,
         initial_phase,
         config.developer_iters,
         config.reviewer_reviews,
@@ -254,9 +263,17 @@ where
 
         let builder = builder
             .with_execution_history(phase_ctx.execution_history.clone())
-            .with_prompt_history(phase_ctx.clone_prompt_history());
+            .with_prompt_history(loop_result.final_state.prompt_history.clone());
 
         if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {
+            let mut checkpoint = checkpoint;
+            checkpoint.dev_fix_attempt_count = loop_result.final_state.dev_fix_attempt_count;
+            checkpoint.recovery_epoch = loop_result.final_state.recovery_epoch;
+            checkpoint.recovery_escalation_level =
+                loop_result.final_state.recovery_escalation_level;
+            checkpoint.failed_phase_for_recovery =
+                loop_result.final_state.failed_phase_for_recovery;
+            checkpoint.interrupted_by_user = loop_result.final_state.interrupted_by_user;
             let _ = save_checkpoint_with_workspace(&*ctx.workspace, &checkpoint);
         }
     }

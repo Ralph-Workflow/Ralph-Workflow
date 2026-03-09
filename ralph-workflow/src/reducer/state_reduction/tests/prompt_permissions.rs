@@ -41,7 +41,14 @@ fn test_reduce_prompt_permissions_locked_with_warning() {
     });
     let new_state = reduce(state, event);
 
-    assert!(new_state.prompt_permissions.locked);
+    assert!(
+        !new_state.prompt_permissions.locked,
+        "locked should be false when lock attempt failed"
+    );
+    assert!(
+        !new_state.prompt_permissions.restore_needed,
+        "restore_needed should be false when no lock was applied"
+    );
     assert_eq!(new_state.prompt_permissions.last_warning, Some(warning_msg));
 }
 

@@ -51,7 +51,7 @@ pub struct CheckpointBuilder {
     run_context: Option<RunContext>,
     // Hardened resume fields
     execution_history: Option<ExecutionHistory>,
-    prompt_history: Option<std::collections::HashMap<String, String>>,
+    prompt_history: Option<std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>>,
     prompt_inputs: Option<PromptInputsState>,
     prompt_permissions: PromptPermissionsState,
     last_substitution_log: Option<crate::prompts::SubstitutionLog>,
@@ -294,15 +294,15 @@ impl CheckpointBuilder {
 
     /// Set the entire prompt history from a `HashMap`.
     ///
-    /// This is useful when transferring prompts from a `PhaseContext`.
+    /// This is used when building checkpoints from reducer-owned `PipelineState::prompt_history`.
     ///
     /// # Arguments
     ///
-    /// * `history` - `HashMap` of prompt keys to prompt text
+    /// * `history` - `HashMap` of prompt keys to `PromptHistoryEntry` values
     #[must_use]
     pub fn with_prompt_history(
         mut self,
-        history: std::collections::HashMap<String, String>,
+        history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     ) -> Self {
         self.prompt_history = if history.is_empty() {
             None

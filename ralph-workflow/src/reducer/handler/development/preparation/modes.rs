@@ -9,7 +9,7 @@ use crate::prompts::content_builder::PromptContentReferences;
 use crate::prompts::content_reference::{
     PlanContentReference, PromptContentReference, MAX_INLINE_CONTENT_SIZE,
 };
-use crate::prompts::{get_stored_or_generate_prompt, SubstitutionLog};
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode, SubstitutionLog};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::reducer::state::PromptInputRepresentation;
@@ -33,6 +33,12 @@ pub(super) struct PromptModeData {
     pub template_name: &'static str,
     pub prompt_key: Option<String>,
     pub was_replayed: bool,
+    /// Stable content-id for the materialized inputs used to build this prompt.
+    ///
+    /// When `Some`, it is stored in `PromptHistoryEntry` and passed back into
+    /// `get_stored_or_generate_prompt` on subsequent runs so stale-content replay
+    /// can be detected.
+    pub prompt_content_id: Option<String>,
     pub rendered_log: Option<SubstitutionLog>,
     /// Additional events to attach (used by XSD retry materialization).
     pub additional_events: Vec<PipelineEvent>,
@@ -104,36 +110,58 @@ impl MainEffectHandler {
             diff: None,
         };
 
-        let (base_prompt, should_validate) = ctx
-            .workspace
-            .read(Path::new(".agent/tmp/development_prompt.txt"))
-            .map_or_else(
-                |_| {
-                    (
-                        crate::prompts::prompt_developer_iteration_xml_with_references(
-                            ctx.template_context,
-                            &refs,
-                            ctx.workspace,
-                        ),
-                        true,
-                    )
-                },
-                |previous_prompt| {
-                    (
-                        super::super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                            &previous_prompt,
-                        )
-                        .to_string(),
-                        false,
-                    )
-                },
-            );
-        let prompt = format!("{retry_preamble}\n{base_prompt}");
-        let prompt_key = format!(
-            "development_{}_same_agent_retry_{}",
-            iteration, continuation_state.same_agent_retry_count
+        let scope_key = PromptScopeKey::for_development(
+            iteration,
+            None,
+            RetryMode::SameAgent {
+                count: continuation_state.same_agent_retry_count,
+            },
+            self.state.recovery_epoch,
         );
-        let rendered_log = if should_validate {
+        let prompt_key = scope_key.to_string();
+        let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+            "development_same_agent_retry:prompt:{}:plan:{}:prompt_consumer:{}:plan_consumer:{}",
+            inputs.prompt.content_id_sha256,
+            inputs.plan.content_id_sha256,
+            inputs.prompt.consumer_signature_sha256,
+            inputs.plan.consumer_signature_sha256
+        ));
+        let mut should_validate = false;
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(&prompt_content_id),
+            || {
+                let (base_prompt, local_should_validate) = ctx
+                    .workspace
+                    .read(Path::new(".agent/tmp/development_prompt.txt"))
+                    .map_or_else(
+                        |_| {
+                            (
+                                crate::prompts::prompt_developer_iteration_xml_with_references(
+                                    ctx.template_context,
+                                    &refs,
+                                    ctx.workspace,
+                                ),
+                                true,
+                            )
+                        },
+                        |previous_prompt| {
+                            (
+                                super::super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                    &previous_prompt,
+                                )
+                                .to_string(),
+                                false,
+                            )
+                        },
+                    );
+                should_validate = local_should_validate;
+                format!("{retry_preamble}\n{base_prompt}")
+            },
+        );
+
+        let rendered_log = if should_validate && !was_replayed {
             let rendered = crate::prompts::prompt_developer_iteration_xml_with_references_and_log(
                 ctx.template_context,
                 &refs,
@@ -155,7 +183,12 @@ impl MainEffectHandler {
                         Vec::new(),
                     ),
                 );
-                return Ok(PromptModeResult::EarlyReturn(result));
+                return Ok(PromptModeResult::EarlyReturn(result.with_ui_event(
+                    crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    },
+                )));
             }
             Some(rendered.log)
         } else {
@@ -166,7 +199,8 @@ impl MainEffectHandler {
             prompt,
             template_name: "developer_iteration_xml",
             prompt_key: Some(prompt_key),
-            was_replayed: false,
+            was_replayed,
+            prompt_content_id: Some(prompt_content_id),
             rendered_log,
             additional_events: Vec::new(),
         }))
@@ -216,7 +250,20 @@ impl MainEffectHandler {
             PromptInputRepresentation::FileReference { .. } => None,
         };
 
-        let prompt_key = format!("development_{iteration}");
+        let scope_key = PromptScopeKey::for_development(
+            iteration,
+            None,
+            RetryMode::Normal,
+            self.state.recovery_epoch,
+        );
+        let prompt_key = scope_key.to_string();
+        let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+            "development_normal:prompt:{}:plan:{}:prompt_consumer:{}:plan_consumer:{}",
+            inputs.prompt.content_id_sha256,
+            inputs.plan.content_id_sha256,
+            inputs.prompt.consumer_signature_sha256,
+            inputs.plan.consumer_signature_sha256
+        ));
         let prompt_ref = match &inputs.prompt.representation {
             PromptInputRepresentation::Inline => {
                 let prompt_md =
@@ -245,8 +292,11 @@ impl MainEffectHandler {
                 }
             }
         };
-        let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(&prompt_content_id),
+            || {
                 let prompt_ref = prompt_ref.clone();
                 let plan_ref = plan_ref.clone();
                 let refs = PromptContentReferences {
@@ -263,7 +313,8 @@ impl MainEffectHandler {
                         "developer_iteration_xml",
                     );
                 rendered.content
-            });
+            },
+        );
 
         // Validate freshly generated prompts (not replayed ones)
         let rendered_log = if was_replayed {
@@ -296,7 +347,12 @@ impl MainEffectHandler {
                         Vec::new(),
                     ),
                 );
-                return Ok(PromptModeResult::EarlyReturn(result));
+                return Ok(PromptModeResult::EarlyReturn(result.with_ui_event(
+                    crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    },
+                )));
             }
             Some(rendered.log)
         };
@@ -306,6 +362,7 @@ impl MainEffectHandler {
             template_name: "developer_iteration_xml",
             prompt_key: Some(prompt_key),
             was_replayed,
+            prompt_content_id: Some(prompt_content_id),
             rendered_log,
             additional_events: Vec::new(),
         }))

@@ -41,7 +41,8 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     let resume_state = load_resume_and_config_state(ctx)?;
     let mut git_helpers = crate::git_helpers::GitHelpers::new();
     prepare_agent_phase(ctx, &mut git_helpers);
-    let mut agent_phase_guard = AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
+    let mut agent_phase_guard =
+        AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
 
     let (cloud_reporter, _heartbeat_guard) = create_cloud_runtime(&resume_state.config);
 
@@ -76,12 +77,28 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
         .as_ref()
         .map_or(PipelinePhase::Planning, |checkpoint| checkpoint.phase);
 
+    // Snapshot the initial prompt history from the checkpoint (if any) for the interrupt
+    // context.
+    //
+    // Note: while the reducer event loop is active, Ctrl+C triggers a reducer-driven
+    // graceful shutdown and checkpoint write from live `PipelineState` (including
+    // prompt_history). The global interrupt context is only used for early interrupts
+    // before the event loop starts.
+    let initial_prompt_history: std::collections::HashMap<
+        String,
+        crate::prompts::PromptHistoryEntry,
+    > = resume_state
+        .resume_checkpoint
+        .as_ref()
+        .and_then(|c| c.prompt_history.clone())
+        .unwrap_or_default();
+
     setup_interrupt_context_for_pipeline(
         initial_phase,
         resume_state.config.developer_iters,
         resume_state.config.reviewer_reviews,
         &phase_ctx.execution_history,
-        &phase_ctx.prompt_history,
+        &initial_prompt_history,
         &resume_state.run_context,
         std::sync::Arc::clone(&ctx.workspace),
     );
@@ -89,7 +106,8 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     let _interrupt_guard = defer_clear_interrupt_context();
 
     update_interrupt_context_from_phase(
-        &phase_ctx,
+        &phase_ctx.execution_history,
+        initial_prompt_history,
         initial_phase,
         resume_state.config.developer_iters,
         resume_state.config.reviewer_reviews,

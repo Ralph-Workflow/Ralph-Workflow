@@ -1,15 +1,16 @@
 impl MainEffectHandler {
     pub(super) fn prepare_fix_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         pass: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
         use crate::agents::AgentRole;
         use crate::prompts::{
             get_stored_or_generate_prompt, prompt_fix_xml_with_context,
-            prompt_fix_xsd_retry_with_context,
+            prompt_fix_xsd_retry_with_context, PromptScopeKey, RetryMode,
         };
+        use crate::reducer::prompt_inputs::sha256_hex_str;
         use std::path::Path;
 
         let tmp_dir = Path::new(".agent/tmp");
@@ -76,14 +77,14 @@ impl MainEffectHandler {
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                     // Try reading from the archived .processed file as a fallback
                     let processed_path = Path::new(".agent/tmp/fix_result.xml.processed");
-                    match ctx.workspace.read(processed_path) {
-                        Ok(output) => {
+                    ctx.workspace.read(processed_path).map_or_else(
+                        |_| String::new(),
+                        |output| {
                             ctx.logger
                                 .info("XSD retry: using archived .processed file as last output");
                             output
-                        }
-                        Err(_) => String::new(),
-                    }
+                        },
+                    )
                 }
                 Err(err) => {
                     return Err(ErrorEvent::WorkspaceReadFailed {
@@ -97,86 +98,181 @@ impl MainEffectHandler {
             String::new()
         };
         let mut xsd_error_for_validation: Option<String> = None;
-        let (prompt_key, fix_prompt, was_replayed, template_name, should_validate) =
-            match prompt_mode {
-                PromptMode::XsdRetry => {
-                    let prompt_key = format!(
-                        "fix_{pass}_xsd_retry_{}",
-                        continuation_state.invalid_output_attempts
+        let (
+            prompt_key,
+            fix_prompt,
+            was_replayed,
+            template_name,
+            prompt_content_id,
+            should_validate,
+        ) = match prompt_mode {
+            PromptMode::XsdRetry => {
+                let scope_key = PromptScopeKey::for_fix(
+                    pass,
+                    RetryMode::Xsd {
+                        count: continuation_state.invalid_output_attempts,
+                    },
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
+                // Use the actual XSD error from state, or fall back to generic message
+                let xsd_error = continuation_state
+                    .last_fix_xsd_error
+                    .as_deref()
+                    .unwrap_or("XML output failed validation. Provide valid XML output.");
+                xsd_error_for_validation = Some(xsd_error.to_string());
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let last_output_id = sha256_hex_str(&last_output);
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "fix_xsd_retry|{prompt_id}|{plan_id}|{issues_id}|{xsd_error}|{last_output_id}"
+                ));
+
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&current_prompt_content_id),
+                    || {
+                        prompt_fix_xsd_retry_with_context(
+                            ctx.template_context,
+                            &issues_content,
+                            xsd_error,
+                            &last_output,
+                            ctx.workspace,
+                        )
+                    },
+                );
+                (
+                    prompt_key,
+                    prompt,
+                    was_replayed,
+                    "fix_mode_xsd_retry",
+                    Some(current_prompt_content_id),
+                    true,
+                )
+            }
+            PromptMode::SameAgentRetry => {
+                // Same-agent retry: prepend retry guidance to the last prepared prompt for this
+                // phase (preserves XSD retry / continuation context if present).
+                let retry_preamble =
+                    crate::reducer::handler::retry_guidance::same_agent_retry_preamble(
+                        continuation_state,
                     );
-                    // Use the actual XSD error from state, or fall back to generic message
-                    let xsd_error = continuation_state
-                        .last_fix_xsd_error
-                        .as_deref()
-                        .unwrap_or("XML output failed validation. Provide valid XML output.");
-                    xsd_error_for_validation = Some(xsd_error.to_string());
-                    let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
-                            prompt_fix_xsd_retry_with_context(
-                                ctx.template_context,
-                                &issues_content,
-                                xsd_error,
-                                &last_output,
-                                ctx.workspace,
-                            )
-                        });
-                    (prompt_key, prompt, was_replayed, "fix_mode_xsd_retry", true)
-                }
-                PromptMode::SameAgentRetry => {
-                    // Same-agent retry: prepend retry guidance to the last prepared prompt for this
-                    // phase (preserves XSD retry / continuation context if present).
-                    let retry_preamble =
-                        crate::reducer::handler::retry_guidance::same_agent_retry_preamble(
-                            continuation_state,
+                let scope_key = PromptScopeKey::for_fix(
+                    pass,
+                    RetryMode::SameAgent {
+                        count: continuation_state.same_agent_retry_count,
+                    },
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "fix_same_agent_retry|count:{}|{prompt_id}|{plan_id}|{issues_id}",
+                    continuation_state.same_agent_retry_count
+                ));
+
+                let mut should_validate = false;
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&current_prompt_content_id),
+                    || {
+                        let (base_prompt, local_should_validate) = ctx
+                                .workspace
+                                .read(Path::new(".agent/tmp/fix_prompt.txt"))
+                                .map_or_else(
+                                    |_| {
+                                        (
+                                            prompt_fix_xml_with_context(
+                                                ctx.template_context,
+                                                &prompt_content,
+                                                &plan_content,
+                                                &issues_content,
+                                                &[],
+                                                ctx.workspace,
+                                            ),
+                                            true,
+                                        )
+                                    },
+                                    |previous_prompt| {
+                                        let previous_base = crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                            .to_string();
+                                        let freshly_rendered_base = prompt_fix_xml_with_context(
+                                            ctx.template_context,
+                                            &prompt_content,
+                                            &plan_content,
+                                            &issues_content,
+                                            &[],
+                                            ctx.workspace,
+                                        );
+                                        if previous_base == freshly_rendered_base {
+                                            (previous_base, false)
+                                        } else {
+                                            (freshly_rendered_base, true)
+                                        }
+                                    },
+                                );
+                        should_validate = local_should_validate;
+                        format!("{retry_preamble}\n{base_prompt}")
+                    },
+                );
+                (
+                    prompt_key,
+                    prompt,
+                    was_replayed,
+                    "fix_mode_xml",
+                    Some(current_prompt_content_id),
+                    should_validate,
+                )
+            }
+            PromptMode::Normal => {
+                let scope_key =
+                    PromptScopeKey::for_fix(pass, RetryMode::Normal, self.state.recovery_epoch);
+                let prompt_key = scope_key.to_string();
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let current_prompt_content_id =
+                    sha256_hex_str(&format!("fix_xml|{prompt_id}|{plan_id}|{issues_id}"));
+
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&current_prompt_content_id),
+                    || {
+                        // Use log-based rendering
+                        let rendered = crate::prompts::review::prompt_fix_xml_with_log(
+                            ctx.template_context,
+                            &prompt_content,
+                            &plan_content,
+                            &issues_content,
+                            &[],
+                            ctx.workspace,
+                            "fix_mode_xml",
                         );
-                    let (base_prompt, should_validate) =
-                    match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
-                        Ok(previous_prompt) => (
-                            crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                .to_string(),
-                            false,
-                        ),
-                        Err(_) => (
-                            prompt_fix_xml_with_context(
-                                ctx.template_context,
-                                &prompt_content,
-                                &plan_content,
-                                &issues_content,
-                                &[],
-                                ctx.workspace,
-                            ),
-                            true,
-                        ),
-                    };
-                    let prompt = format!("{retry_preamble}\n{base_prompt}");
-                    let prompt_key = format!(
-                        "fix_{pass}_same_agent_retry_{}",
-                        continuation_state.same_agent_retry_count
-                    );
-                    (prompt_key, prompt, false, "fix_mode_xml", should_validate)
-                }
-                PromptMode::Normal => {
-                    let prompt_key = format!("fix_{pass}");
-                    let (prompt, was_replayed) =
-                        get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
-                            // Use log-based rendering
-                            let rendered = crate::prompts::review::prompt_fix_xml_with_log(
-                                ctx.template_context,
-                                &prompt_content,
-                                &plan_content,
-                                &issues_content,
-                                &[],
-                                ctx.workspace,
-                                "fix_mode_xml",
-                            );
-                            rendered.content
-                        });
-                    (prompt_key, prompt, was_replayed, "fix_mode_xml", true)
-                }
-                PromptMode::Continuation => {
-                    return Err(ErrorEvent::FixContinuationNotSupported.into());
-                }
-            };
+                        rendered.content
+                    },
+                );
+                (
+                    prompt_key,
+                    prompt,
+                    was_replayed,
+                    "fix_mode_xml",
+                    Some(current_prompt_content_id),
+                    true,
+                )
+            }
+            PromptMode::Continuation => {
+                return Err(ErrorEvent::FixContinuationNotSupported.into());
+            }
+        };
         let rendered_log = if should_validate && !was_replayed {
             // Re-generate to get the log for validation
             // Only validate freshly generated prompts, not replayed ones
@@ -210,12 +306,14 @@ impl MainEffectHandler {
                     template_name.to_string(),
                     rendered.log,
                 ))
-                .with_additional_event(PipelineEvent::agent_template_variables_invalid(
-                    AgentRole::Reviewer,
-                    template_name.to_string(),
-                    missing,
-                    Vec::new(),
-                ));
+                .with_additional_event(
+                    PipelineEvent::agent_template_variables_invalid(
+                        AgentRole::Reviewer,
+                        template_name.to_string(),
+                        missing,
+                        Vec::new(),
+                    ),
+                );
                 return Ok(result);
             }
             Some(rendered.log)
@@ -223,9 +321,18 @@ impl MainEffectHandler {
             None
         };
 
-        if !was_replayed {
-            ctx.capture_prompt(&prompt_key, &fix_prompt);
-        }
+        // Prepare PromptCaptured event if this is a freshly generated prompt
+        let prompt_captured_event = if was_replayed {
+            None
+        } else {
+            Some(crate::reducer::event::PipelineEvent::PromptInput(
+                crate::reducer::event::PromptInputEvent::PromptCaptured {
+                    key: prompt_key.clone(),
+                    content: fix_prompt.clone(),
+                    content_id: prompt_content_id,
+                },
+            ))
+        };
 
         // Write prompt file (non-fatal: if write fails, log warning and continue)
         if let Err(err) = ctx
@@ -237,8 +344,17 @@ impl MainEffectHandler {
             ));
         }
 
-        let mut result =
-            EffectResult::event(PipelineEvent::fix_prompt_prepared(pass));
+        let mut result = EffectResult::event(PipelineEvent::fix_prompt_prepared(pass))
+            .with_ui_event(UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            });
+
+        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
+        }
+
         if let Some(log) = rendered_log {
             result = result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,
@@ -294,19 +410,13 @@ impl MainEffectHandler {
         Ok(result)
     }
 
-    pub(super) fn extract_fix_result_xml(
-        &self,
-        ctx: &PhaseContext<'_>,
-        pass: u32,
-    ) -> EffectResult {
+    pub(super) fn extract_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
         use std::path::Path;
 
         let fix_xml = Path::new(xml_paths::FIX_RESULT_XML);
         match ctx.workspace.read(fix_xml) {
-            Ok(_) => EffectResult::event(
-                PipelineEvent::fix_result_xml_extracted(pass),
-            ),
+            Ok(_) => EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass)),
             Err(err) => {
                 let detail = if err.kind() == std::io::ErrorKind::NotFound {
                     None
@@ -347,13 +457,11 @@ impl MainEffectHandler {
                         err
                     ))
                 };
-                return EffectResult::event(
-                    PipelineEvent::fix_output_validation_failed(
-                        pass,
-                        self.state.continuation.invalid_output_attempts,
-                        detail,
-                    ),
-                );
+                return EffectResult::event(PipelineEvent::fix_output_validation_failed(
+                    pass,
+                    self.state.continuation.invalid_output_attempts,
+                    detail,
+                ));
             }
         };
 
@@ -374,13 +482,11 @@ impl MainEffectHandler {
                     }],
                 )
             }
-            Err(err) => EffectResult::event(
-                PipelineEvent::fix_output_validation_failed(
-                    pass,
-                    self.state.continuation.invalid_output_attempts,
-                    Some(err.format_for_ai_retry()),
-                ),
-            ),
+            Err(err) => EffectResult::event(PipelineEvent::fix_output_validation_failed(
+                pass,
+                self.state.continuation.invalid_output_attempts,
+                Some(err.format_for_ai_retry()),
+            )),
         }
     }
 
@@ -400,17 +506,12 @@ impl MainEffectHandler {
         )))
     }
 
-    pub(super) fn archive_fix_result_xml(
-        ctx: &PhaseContext<'_>,
-        pass: u32,
-    ) -> EffectResult {
+    pub(super) fn archive_fix_result_xml(ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
         use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
         use std::path::Path;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
-        EffectResult::event(PipelineEvent::fix_result_xml_archived(
-            pass,
-        ))
+        EffectResult::event(PipelineEvent::fix_result_xml_archived(pass))
     }
 }

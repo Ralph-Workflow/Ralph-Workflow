@@ -1,11 +1,23 @@
 use super::MainEffectHandler;
 use crate::phases::PhaseContext;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{ConflictStrategy, PipelineEvent, RebasePhase};
 use anyhow::Result;
 
+fn event_for_continue_strategy_remaining_conflicts(
+    files: Vec<std::path::PathBuf>,
+) -> PipelineEvent {
+    if files.is_empty() {
+        PipelineEvent::rebase_conflict_resolved(Vec::new())
+    } else {
+        PipelineEvent::rebase_conflict_detected(files)
+    }
+}
+
 impl MainEffectHandler {
     pub(super) fn run_rebase(
+        &self,
         ctx: &mut PhaseContext<'_>,
         phase: RebasePhase,
         target_branch: &str,
@@ -14,9 +26,17 @@ impl MainEffectHandler {
 
         if matches!(phase, RebasePhase::Initial) {
             let run_context = ctx.run_context.clone();
-            let outcome = crate::app::rebase::run_initial_rebase(ctx, &run_context, ctx.executor)?;
+            // Start with the current reducer-owned prompt history so rebase conflict
+            // resolution can replay stored prompts and new ones are emitted as events.
+            let mut local_prompt_history = self.state.prompt_history.clone();
+            let run_result = crate::app::rebase::run_initial_rebase(
+                ctx,
+                &run_context,
+                ctx.executor,
+                &mut local_prompt_history,
+            )?;
 
-            let event = match outcome {
+            let event = match run_result.outcome {
                 crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {
                     PipelineEvent::rebase_succeeded(phase, new_head)
                 }
@@ -25,7 +45,26 @@ impl MainEffectHandler {
                 }
             };
 
-            return Ok(EffectResult::event(event));
+            // Emit PromptCaptured events for any prompts newly captured during rebase
+            // conflict resolution, so the reducer-owned PipelineState.prompt_history
+            // stays consistent with what was saved to disk in the interim checkpoints.
+            let mut result = EffectResult::event(event);
+
+            // Observability: emit PromptReplayHit for conflict resolution prompts.
+            for (key, was_replayed) in run_result.prompt_replay_hits {
+                result = result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                    key,
+                    was_replayed,
+                });
+            }
+            for ev in prompt_captured_events_for_prompt_history_delta(
+                &self.state.prompt_history,
+                &local_prompt_history,
+            ) {
+                result = result.with_additional_event(ev);
+            }
+
+            return Ok(result);
         }
 
         match rebase_onto(target_branch, ctx.executor) {
@@ -81,7 +120,7 @@ impl MainEffectHandler {
                         .map(std::convert::Into::into)
                         .collect();
 
-                    EffectResult::event(PipelineEvent::rebase_conflict_resolved(files))
+                    EffectResult::event(event_for_continue_strategy_remaining_conflicts(files))
                 }
                 Err(e) => EffectResult::event(PipelineEvent::rebase_failed(
                     RebasePhase::PostReview,
@@ -117,5 +156,105 @@ impl MainEffectHandler {
                 EffectResult::event(PipelineEvent::rebase_conflict_resolved(Vec::new()))
             }
         }
+    }
+}
+
+fn prompt_captured_events_for_prompt_history_delta(
+    original: &std::collections::HashMap<String, PromptHistoryEntry>,
+    updated: &std::collections::HashMap<String, PromptHistoryEntry>,
+) -> Vec<PipelineEvent> {
+    updated
+        .iter()
+        .filter_map(|(key, entry)| {
+            let should_emit = original.get(key).is_none_or(|existing| {
+                existing.content != entry.content || existing.content_id != entry.content_id
+            });
+            if should_emit {
+                Some(PipelineEvent::PromptInput(
+                    crate::reducer::event::PromptInputEvent::PromptCaptured {
+                        key: key.clone(),
+                        content: entry.content.clone(),
+                        content_id: entry.content_id.clone(),
+                    },
+                ))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prompts::PromptHistoryEntry;
+
+    #[test]
+    fn continue_strategy_reports_detected_when_conflicts_remain() {
+        use crate::reducer::event::RebaseEvent;
+        use std::path::PathBuf;
+
+        let event = event_for_continue_strategy_remaining_conflicts(vec![PathBuf::from("a.txt")]);
+        assert!(matches!(
+            event,
+            PipelineEvent::Rebase(RebaseEvent::ConflictDetected { files })
+                if files == vec![PathBuf::from("a.txt")]
+        ));
+    }
+
+    #[test]
+    fn continue_strategy_reports_resolved_when_no_conflicts_remain() {
+        use crate::reducer::event::RebaseEvent;
+        let event = event_for_continue_strategy_remaining_conflicts(Vec::new());
+        assert!(matches!(
+            event,
+            PipelineEvent::Rebase(RebaseEvent::ConflictResolved { files }) if files.is_empty()
+        ));
+    }
+
+    #[test]
+    fn emits_prompt_captured_when_rebase_updates_existing_prompt_history_entry() {
+        let mut original = std::collections::HashMap::new();
+        original.insert(
+            "planning_conflict_resolution".to_string(),
+            PromptHistoryEntry::new("old".to_string(), Some("id1".to_string())),
+        );
+        let mut updated = original.clone();
+        updated.insert(
+            "planning_conflict_resolution".to_string(),
+            PromptHistoryEntry::new("new".to_string(), Some("id1".to_string())),
+        );
+
+        let events = prompt_captured_events_for_prompt_history_delta(&original, &updated);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            PipelineEvent::PromptInput(crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: Some(id),
+            }) if key == "planning_conflict_resolution" && content == "new" && id == "id1"
+        ));
+    }
+
+    #[test]
+    fn emits_prompt_captured_when_rebase_adds_new_prompt_history_entry() {
+        let original = std::collections::HashMap::new();
+        let mut updated = std::collections::HashMap::new();
+        updated.insert(
+            "development_conflict_resolution".to_string(),
+            PromptHistoryEntry::from_string("prompt".to_string()),
+        );
+
+        let events = prompt_captured_events_for_prompt_history_delta(&original, &updated);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            PipelineEvent::PromptInput(crate::reducer::event::PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: None,
+            }) if key == "development_conflict_resolution" && content == "prompt"
+        ));
     }
 }

@@ -24,11 +24,11 @@ fn test_prepare_review_prompt_returns_error_when_inputs_not_materialized() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let err = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_review_prompt should return an error when inputs not materialized");
 
     assert!(
@@ -50,7 +50,7 @@ fn test_prepare_review_prompt_workspace_write_failure_is_non_fatal() {
         AtomicWriteEnforcingWorkspace::new(inner, PathBuf::from(".agent/tmp/review_prompt.txt"));
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     let materialize = handler
@@ -64,7 +64,7 @@ fn test_prepare_review_prompt_workspace_write_failure_is_non_fatal() {
     // Per AC #5: Write failure should NOT return an error; it should succeed
     // with a warning logged instead.
     let result = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed even when write fails (non-fatal)");
 
     // Verify that the prompt was prepared in memory even though the write failed
@@ -92,7 +92,7 @@ fn test_prepare_review_prompt_does_not_mask_non_not_found_diff_backup_read_error
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     handler.state.prompt_inputs.review = Some(MaterializedReviewInputs {
@@ -122,7 +122,7 @@ fn test_prepare_review_prompt_does_not_mask_non_not_found_diff_backup_read_error
     });
 
     let err = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_review_prompt should surface non-NotFound DIFF read failures");
 
     let error_event = err
@@ -155,7 +155,7 @@ fn test_prepare_review_prompt_does_not_mask_non_not_found_diff_baseline_read_err
     );
 
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx_with_workspace(&workspace);
+    let ctx = fixture.ctx_with_workspace(&workspace);
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
     handler.state.prompt_inputs.review = Some(MaterializedReviewInputs {
@@ -185,7 +185,7 @@ fn test_prepare_review_prompt_does_not_mask_non_not_found_diff_baseline_read_err
     });
 
     let err = handler
-        .prepare_review_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err("prepare_review_prompt should surface non-NotFound baseline read failures");
 
     let error_event = err

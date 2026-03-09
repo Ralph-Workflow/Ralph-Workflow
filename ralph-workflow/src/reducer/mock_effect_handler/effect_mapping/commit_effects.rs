@@ -30,9 +30,10 @@
 //! - **`RunRebase`** always succeeds with a fake head OID
 
 use crate::files::llm_output_extraction::try_extract_xml_commit_with_trace;
+use crate::prompts::prompt_scope_key::{PromptScopeKey, RetryMode};
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
-use crate::reducer::state::CommitState;
+use crate::reducer::state::{CommitState, PromptMode};
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
 
 use super::super::MockEffectHandler;
@@ -63,15 +64,35 @@ impl MockEffectHandler {
                 Some((PipelineEvent::rebase_conflict_resolved(vec![]), vec![]))
             }
 
-            Effect::PrepareCommitPrompt { prompt_mode: _ } => {
+            Effect::PrepareCommitPrompt { prompt_mode } => {
                 let attempt = match self.state.commit {
                     CommitState::Generating { attempt, .. } => attempt,
                     _ => 1,
                 };
-                let ui = vec![UIEvent::PhaseTransition {
-                    from: Some(self.state.phase),
-                    to: PipelinePhase::CommitMessage,
-                }];
+                // Compute the prompt key the same way the real handler does,
+                // using Normal retry mode for Normal/SameAgentRetry modes.
+                let retry_mode = match prompt_mode {
+                    PromptMode::XsdRetry => RetryMode::Xsd { count: 1 },
+                    _ => RetryMode::Normal,
+                };
+                let scope_key = PromptScopeKey::for_commit(
+                    self.state.iteration,
+                    attempt,
+                    retry_mode,
+                    self.state.recovery_epoch,
+                );
+                let key = scope_key.to_string();
+                let was_replayed = self
+                    .replay_prompt_keys
+                    .as_ref()
+                    .is_some_and(|keys| keys.contains(&key));
+                let ui = vec![
+                    UIEvent::PhaseTransition {
+                        from: Some(self.state.phase),
+                        to: PipelinePhase::CommitMessage,
+                    },
+                    UIEvent::PromptReplayHit { key, was_replayed },
+                ];
                 Some((PipelineEvent::commit_prompt_prepared(attempt), ui))
             }
 

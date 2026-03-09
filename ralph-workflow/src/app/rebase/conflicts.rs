@@ -1,23 +1,73 @@
 use super::types::{ConflictResolutionContext, ConflictResolutionResult};
 use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
-use crate::phases::PhaseContext;
-use crate::prompts::{get_stored_or_generate_prompt, template_context::TemplateContext};
-use anyhow::Context;
+use crate::prompts::template_context::TemplateContext;
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConflictResolutionPromptReplay {
+    pub key: String,
+    pub was_replayed: bool,
+    /// When `was_replayed` is false, contains the prompt entry that should be captured.
+    pub captured_entry: Option<crate::prompts::PromptHistoryEntry>,
+}
 
 /// Attempt to resolve rebase conflicts with AI.
 ///
-/// This function accepts `PhaseContext` to capture prompts and track
-/// execution history for hardened resume functionality.
+/// This function uses the provided `prompt_history` to replay stored prompts
+/// for deterministic resume. Captured prompts are written directly into the
+/// mutable `prompt_history` map so callers can persist them as needed.
 pub fn try_resolve_conflicts(
     conflicted_files: &[String],
     ctx: &ConflictResolutionContext<'_>,
-    phase_ctx: &mut PhaseContext<'_>,
+    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: &str,
     executor: &dyn ProcessExecutor,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<(bool, ConflictResolutionPromptReplay)> {
+    try_resolve_conflicts_with_hook(
+        conflicted_files,
+        ctx,
+        prompt_history,
+        phase,
+        executor,
+        |replay, history| {
+            // Default behavior: capture newly generated prompts into the provided history map.
+            // Callers that need custom checkpoint timing can use `try_resolve_conflicts_with_hook`.
+            if let Some(entry) = replay.captured_entry.clone() {
+                history.insert(replay.key.clone(), entry);
+            }
+        },
+    )
+}
+
+/// Attempt to resolve rebase conflicts with AI, invoking a hook after prompt capture.
+///
+/// This is used by callers that need to checkpoint immediately after the conflict
+/// resolution prompt is captured into `prompt_history` (before invoking the agent),
+/// ensuring deterministic prompt replay on resume.
+pub fn try_resolve_conflicts_with_hook<F>(
+    conflicted_files: &[String],
+    ctx: &ConflictResolutionContext<'_>,
+    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+    phase: &str,
+    executor: &dyn ProcessExecutor,
+    after_prompt_capture: F,
+) -> anyhow::Result<(bool, ConflictResolutionPromptReplay)>
+where
+    F: FnOnce(
+        &ConflictResolutionPromptReplay,
+        &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+    ),
+{
     if conflicted_files.is_empty() {
-        return Ok(false);
+        return Ok((
+            false,
+            ConflictResolutionPromptReplay {
+                key: PromptScopeKey::for_conflict_resolution(phase, 0).to_string(),
+                was_replayed: false,
+                captured_entry: None,
+            },
+        ));
     }
 
     ctx.logger.info(&format!(
@@ -27,27 +77,72 @@ pub fn try_resolve_conflicts(
 
     let conflicts = collect_conflict_info_or_error(conflicted_files, ctx.workspace, ctx.logger)?;
 
-    // Use stored_or_generate pattern for hardened resume
-    let prompt_key = format!("{}_conflict_resolution", phase.to_lowercase());
-    let (resolution_prompt, was_replayed) =
-        get_stored_or_generate_prompt(&prompt_key, &phase_ctx.prompt_history, || {
-            build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace)
-        });
+    // Content-id validation for replay determinism: conflict-resolution prompts must not replay
+    // across different conflict sets/content.
+    let current_content_id = conflict_resolution_content_id(phase, &conflicts);
 
-    // Capture the resolution prompt for deterministic resume (only if newly generated)
-    if was_replayed {
-        ctx.logger.info(&format!(
-            "Using stored prompt from checkpoint for determinism: {prompt_key}"
-        ));
-    } else {
-        phase_ctx.capture_prompt(&prompt_key, &resolution_prompt);
-    }
+    // Use typed PromptScopeKey for conflict resolution (RFC-007 arch correction #2).
+    // Display output is byte-identical to the former format!("{}_conflict_resolution", ...).
+    // recovery_epoch is 0: the rebase handler owns epoch semantics via PromptCaptured events;
+    // this helper function is not a reducer.
+    let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
+    let prompt_key = scope_key.to_string();
+    let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
+        &scope_key,
+        prompt_history,
+        Some(&current_content_id),
+        || build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
+    );
 
-    match run_ai_conflict_resolution(&resolution_prompt, ctx) {
-        Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger),
-        Ok(ConflictResolutionResult::Failed) => Ok(handle_failed_resolution(ctx.logger, executor)),
-        Err(e) => Ok(handle_error_resolution(ctx.logger, executor, &e)),
+    let replay = ConflictResolutionPromptReplay {
+        key: prompt_key,
+        was_replayed,
+        captured_entry: if was_replayed {
+            None
+        } else {
+            Some(crate::prompts::PromptHistoryEntry::new(
+                resolution_prompt.clone(),
+                Some(current_content_id),
+            ))
+        },
+    };
+
+    // Allow callers to checkpoint/capture *before* invoking the agent.
+    after_prompt_capture(&replay, prompt_history);
+
+    let resolved = match run_ai_conflict_resolution(&resolution_prompt, ctx) {
+        Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger)?,
+        Ok(ConflictResolutionResult::Failed) => handle_failed_resolution(ctx.logger, executor),
+        Err(e) => handle_error_resolution(ctx.logger, executor, &e),
+    };
+
+    Ok((resolved, replay))
+}
+
+fn conflict_resolution_content_id(
+    phase: &str,
+    conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
+) -> String {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
+    let mut keys: Vec<&String> = conflicts.keys().collect();
+    keys.sort();
+
+    let mut s = String::new();
+    s.push_str("conflict_resolution|");
+    s.push_str(&phase.to_lowercase());
+    s.push('\n');
+    for k in keys {
+        if let Some(c) = conflicts.get(k) {
+            s.push_str(k);
+            s.push('\n');
+            s.push_str(&c.conflict_content);
+            s.push('\n');
+            s.push_str(&c.current_content);
+            s.push('\n');
+        }
     }
+    sha256_hex_str(&s)
 }
 
 fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
@@ -224,9 +319,10 @@ fn run_ai_conflict_resolution(
     }
 }
 
-/// Wrapper for conflict resolution without `PhaseContext`.
+/// Wrapper for conflict resolution without a prompt history map.
 ///
-/// This is used for --rebase-only mode where we don't have a full pipeline context.
+/// This is used for `--rebase-only` mode where we don't have a full pipeline context.
+/// Captured prompts are not persisted since `--rebase-only` has no checkpoint mechanism.
 pub fn try_resolve_conflicts_without_phase_ctx(
     conflicted_files: &[String],
     config: &crate::config::Config,
@@ -237,48 +333,15 @@ pub fn try_resolve_conflicts_without_phase_ctx(
     repo_root: &std::path::Path,
 ) -> anyhow::Result<bool> {
     use crate::agents::AgentRegistry;
-    use crate::checkpoint::execution_history::ExecutionHistory;
-    use crate::logging::RunLogContext;
-    use crate::pipeline::Timer;
+    use anyhow::Context;
 
     let registry = AgentRegistry::new()?;
-    let mut timer = Timer::new();
 
     let workspace = crate::workspace::WorkspaceFs::new(repo_root.to_path_buf());
     let workspace_arc: std::sync::Arc<dyn crate::workspace::Workspace> =
         std::sync::Arc::new(workspace.clone());
 
-    let reviewer_agent = config.reviewer_agent.as_deref().unwrap_or("codex");
-    let developer_agent = config.developer_agent.as_deref().unwrap_or("codex");
-
     let executor_arc = std::sync::Arc::clone(executor);
-
-    // Create run log context for per-run logging
-    let run_log_context = RunLogContext::new(&workspace)
-        .context("Failed to create run log context for conflict resolution")?;
-
-    let mut phase_ctx = PhaseContext {
-        config,
-        registry: &registry,
-        logger,
-        colors: &colors,
-        timer: &mut timer,
-        developer_agent,
-        reviewer_agent,
-        review_guidelines: None,
-        template_context,
-        run_context: crate::checkpoint::RunContext::new(),
-        execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
-        executor: &**executor,
-        executor_arc: std::sync::Arc::clone(&executor_arc),
-        repo_root,
-        workspace: &workspace,
-        workspace_arc: std::sync::Arc::clone(&workspace_arc),
-        run_log_context: &run_log_context,
-        cloud_reporter: None,
-        cloud: &config.cloud,
-    };
 
     let ctx = ConflictResolutionContext {
         config,
@@ -291,13 +354,20 @@ pub fn try_resolve_conflicts_without_phase_ctx(
         workspace_arc: std::sync::Arc::clone(&workspace_arc),
     };
 
-    try_resolve_conflicts(
+    // Ephemeral prompt history for --rebase-only: prompts are captured for intra-run determinism
+    // but not persisted (no checkpoint in this mode).
+    let mut prompt_history = std::collections::HashMap::new();
+
+    let (resolved, _replay) = try_resolve_conflicts(
         conflicted_files,
         &ctx,
-        &mut phase_ctx,
+        &mut prompt_history,
         "RebaseOnly",
         &**executor,
     )
+    .context("Conflict resolution failed in --rebase-only mode")?;
+
+    Ok(resolved)
 }
 
 #[cfg(test)]

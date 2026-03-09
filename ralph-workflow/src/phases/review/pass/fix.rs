@@ -76,40 +76,24 @@ pub fn run_fix_pass(
 
     let files_to_modify = extract_file_paths_from_issues(&issues_content);
 
-    let prompt_key = format!("fix_{j}");
-    let (fix_prompt, was_replayed, substitution_log) =
-        if let Some(stored_prompt) = ctx.prompt_history.get(&prompt_key) {
-            (stored_prompt.clone(), true, None)
-        } else {
-            let rendered = prompt_fix_xml_with_log(
-                ctx.template_context,
-                &prompt_content,
-                &plan_content,
-                &issues_content,
-                &files_to_modify,
-                ctx.workspace,
-                "fix_mode_xml",
-            );
-            (rendered.content, false, Some(rendered.log))
-        };
+    let rendered = prompt_fix_xml_with_log(
+        ctx.template_context,
+        &prompt_content,
+        &plan_content,
+        &issues_content,
+        &files_to_modify,
+        ctx.workspace,
+        "fix_mode_xml",
+    );
+    let fix_prompt = rendered.content;
 
     // Legacy phase-based code
     // Validate freshly rendered prompts using substitution logs (no regex scanning).
-    if let Some(log) = substitution_log {
-        if !log.is_complete() {
-            return Err(anyhow::anyhow!(
-                "Fix prompt has unresolved placeholders: {:?}",
-                log.unsubstituted
-            ));
-        }
-    }
-
-    if was_replayed {
-        ctx.logger.info(&format!(
-            "Using stored prompt from checkpoint for determinism: {prompt_key}"
+    if !rendered.log.is_complete() {
+        return Err(anyhow::anyhow!(
+            "Fix prompt has unresolved placeholders: {:?}",
+            rendered.log.unsubstituted
         ));
-    } else {
-        ctx.capture_prompt(&prompt_key, &fix_prompt);
     }
 
     if ctx.config.verbosity.is_debug() {

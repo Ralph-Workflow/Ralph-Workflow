@@ -52,7 +52,8 @@ Commit prompt replay used non-cycle-unique keys. Attempt numbers reset to `1` on
 Relevant path:
 
 - Replay function: `ralph-workflow/src/prompts/prompt_dispatch.rs`
-- Run-scoped prompt storage: `ralph-workflow/src/phases/context.rs`
+- Historical (pre-RFC-007): run-scoped prompt storage lived outside the reducer in `PhaseContext` (`ralph-workflow/src/phases/context.rs`).
+- Current: reducer-owned prompt storage is `PipelineState.prompt_history` (`ralph-workflow/src/reducer/state/pipeline/core_state.rs`).
 - Commit prompt keying (fixed): `ralph-workflow/src/reducer/handler/commit/prompts.rs`
 
 ### Why state-reset fixes failed
@@ -67,7 +68,9 @@ This incident is not only a commit bug. It exposed a broader architecture mismat
 
 ### 1) Split-brain state between reducer and prompt replay
 
-The reducer architecture defines `PipelineState` as canonical application state, but prompt replay state (`prompt_history`) lives in `PhaseContext` outside reducer control.
+Historical issue: the reducer architecture defines `PipelineState` as canonical application state, but prompt replay state (`prompt_history`) lived in `PhaseContext` outside reducer control.
+
+Current state: `prompt_history` is reducer-owned (`PipelineState.prompt_history`) and updated only via `PromptInputEvent::PromptCaptured` so replay eligibility is tied to reducer state transitions.
 
 Consequence: reducer-level recovery/reset can be correct while replay still reintroduces stale text.
 
@@ -178,21 +181,41 @@ Redux and Elm guidance maps directly to this incident class.
 - Commit prompt keys now include iteration dimension to prevent cross-cycle collisions.
 - Added behavior-first regression tests for multi-iteration freshness and size invariants.
 
-### Short term (recommended)
+### Short term (done)
 
-1. Introduce typed `PromptScopeKey` and remove hand-rolled key strings in handlers.
-2. Include recovery/reset epoch in replay identity (not just iteration/pass/attempt).
-3. Add replay observability: explicit event/metric for replay hit with key dimensions.
-4. Add invariants that replayed prompt content must match current materialized input IDs.
-5. Add compile-time constructors/builders for replay scope so missing identity dimensions are impossible.
+1. Introduced typed `PromptScopeKey` (`ralph-workflow/src/prompts/prompt_scope_key.rs`) replacing all
+   hand-rolled `format!()` key strings in handlers (planning, development, commit, review, fix phases).
+2. Added `recovery_epoch` field to `PipelineState` and `PipelineCheckpoint` (incremented on level-3/4
+   recovery); carried in `PromptScopeKey` for auditing and future isolation.
+3. Added `UIEvent::PromptReplayHit { key, was_replayed }` and rendering in all prompt-preparation
+   handlers; cloud progress handler ignores it (informational only).
+4. Compile-time phase-specific constructors on `PromptScopeKey` (`for_planning`, `for_development`,
+   `for_commit`, `for_review`, `for_fix`) enforce required identity dimensions at call sites.
+5. `Display` output of `PromptScopeKey` is byte-identical to the old `format!()` strings, preserving
+   checkpoint backward-compatibility for existing `prompt_history` maps.
 
-### Medium term (recommended)
+### Medium term (done)
 
-1. Move replay metadata ownership into reducer-owned state (or reducer-versioned cache contract).
-2. Unify prompt keying/replay policy behind one API used by all phases.
-3. Reduce dual-path drift between legacy phase-runner and reducer pathways.
-4. Add checkpoint schema versioning for replay metadata and explicit migration tests.
-5. Add atomic reducer event for replay-scope rotation so "fresh-context" transitions are one-step and auditable.
+1. `prompt_history` moved into reducer-owned `PipelineState` (`HashMap<String, PromptHistoryEntry>`);
+   checkpoint handler uses `state.prompt_history` rather than `ctx.clone_prompt_history()`. The
+   final completion checkpoint uses `loop_result.final_state.prompt_history` for the same reason.
+2. `get_stored_or_generate_prompt` validates `content_id` when both stored and current are `Some`;
+   mismatch is treated as a cache miss and a fresh prompt is generated. `PromptHistoryEntry` carries
+   an optional SHA-256 hex digest of materialized inputs so replay/miss is auditable.
+3. Type migration complete: all prompt-history maps changed from `HashMap<String, String>` to
+   `HashMap<String, PromptHistoryEntry>` across both reducer and legacy pipeline paths. Full
+   event-capture migration complete: all paths (including rebase conflict resolution via
+   `app/rebase/conflicts.rs`) use `PromptScopeKey` for key generation and
+   `get_stored_or_generate_prompt` for replay. No remaining ad-hoc `format!()` prompt keys.
+4. `PromptHistoryEntry` uses backward-compatible serde (bare string → v0; object with `content_id`
+   → v1). `PipelineCheckpoint` carries `replay_metadata_version` for explicit migration signaling.
+   The custom `Deserialize` impl handles old checkpoints transparently.
+5. `PromptInputEvent::PromptCaptured { key, content, content_id }` added; all reducer-path prompt
+   handlers (planning, development, commit, review, fix) now emit this event instead of calling
+   `ctx.capture_prompt()`. The reducer handles the event and writes to `state.prompt_history`
+   atomically. Level-3 and level-4 recovery in `awaiting_dev_fix.rs` now clears `prompt_history`
+   alongside the `recovery_epoch` increment so stale replay candidates cannot survive an epoch
+   boundary.
 
 ---
 
@@ -237,6 +260,8 @@ Redux and Elm guidance maps directly to this incident class.
 - `ralph-workflow/src/reducer/handler/commit/prompts.rs`
 - `ralph-workflow/src/reducer/state/pipeline/helpers.rs`
 - `ralph-workflow/src/reducer/state_reduction/awaiting_dev_fix.rs`
+- `ralph-workflow/src/prompts/prompt_history_entry.rs`
+- `ralph-workflow/src/reducer/event/prompt_input.rs`
 - Rust API Guidelines (Type Safety, Dependability, Predictability): `https://rust-lang.github.io/api-guidelines/`
 - Rust API Guidelines (Type Safety chapter): `https://rust-lang.github.io/api-guidelines/type-safety.html`
 - Rust API Guidelines (Dependability chapter): `https://rust-lang.github.io/api-guidelines/dependability.html`
@@ -255,6 +280,17 @@ Redux and Elm guidance maps directly to this incident class.
 
 ## Open Questions
 
-1. Should replay cache be reducer-owned state, or remain external but strictly reducer-versioned?
-2. Which identity dimensions are mandatory globally (`phase`, `iteration`, `pass`, `attempt`, `retry_mode`, `recovery_epoch`, `content_id`)?
-3. What is the deprecation plan for duplicate legacy prompt execution pathways?
+1. ~~Should replay cache be reducer-owned state, or remain external but strictly reducer-versioned?~~
+   **Resolved**: replay cache (`prompt_history`) is now reducer-owned state in `PipelineState`.
+2. ~~Which identity dimensions are mandatory globally (`phase`, `iteration`, `pass`, `attempt`, `retry_mode`, `recovery_epoch`, `content_id`)?~~
+   **Resolved**: `PromptScopeKey` encodes all dimensions except `content_id`. Content-id is
+   computed from materialized prompt inputs and stored in `PromptHistoryEntry`. Mandatory
+   dimensions per phase are enforced at compile time by the phase-specific constructors:
+   Planning and Development require `iteration`; Commit requires `iteration` + `attempt`;
+   Review and Fix require `pass`; all phases carry `recovery_epoch` for auditing. No ad-hoc
+   `format!()` keys remain.
+3. ~~What is the deprecation plan for duplicate legacy prompt execution pathways?~~
+   **Resolved**: Full migration complete. `for_conflict_resolution` constructor added to
+   `PromptScopeKey`; `app/rebase/conflicts.rs` migrated to typed keys via
+   `get_stored_or_generate_prompt`. All prompt-history keys across the codebase now
+   use typed `PromptScopeKey` constructors. No remaining ad-hoc `format!()` keys.

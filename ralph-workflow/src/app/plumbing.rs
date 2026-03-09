@@ -232,7 +232,6 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         &agents,
         config.template_context,
         config.workspace,
-        &std::collections::HashMap::new(), // Empty prompt history for plumbing command
     )
     .map_err(|e| anyhow::anyhow!("Failed to generate commit message: {e}"))?;
     let commit_message = match result.outcome {

@@ -132,7 +132,7 @@ fn test_resume_context_phase_name_development() {
         execution_history: None,
     };
 
-    assert_eq!(ctx.phase_name(), "Development iteration 3/5");
+    assert_eq!(ctx.phase_name(), "Development iteration 2/5");
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn test_resume_context_phase_name_review() {
         execution_history: None,
     };
 
-    assert_eq!(ctx.phase_name(), "Review (pass 2/3)");
+    assert_eq!(ctx.phase_name(), "Review (pass 1/3)");
 }
 
 #[test]
@@ -178,8 +178,8 @@ fn test_restore_environment_skips_sensitive_vars() {
         set_calls.push((k.to_string(), v.to_string()));
     });
 
-    // Assert: safe vars set, sensitive vars skipped
-    assert_eq!(restored, 2);
+    // Assert: safe RALPH_* vars set, non-RALPH vars are not restored
+    assert_eq!(restored, 1);
     assert!(
         set_calls
             .iter()
@@ -187,8 +187,8 @@ fn test_restore_environment_skips_sensitive_vars() {
         "RALPH_SAFE_SETTING should be restored; got: {set_calls:?}"
     );
     assert!(
-        set_calls.iter().any(|(k, v)| k == "EDITOR" && v == "vim"),
-        "EDITOR should be restored; got: {set_calls:?}"
+        !set_calls.iter().any(|(k, _)| k == "EDITOR"),
+        "Non-RALPH vars must not be restored; got: {set_calls:?}"
     );
     assert!(
         !set_calls.iter().any(|(k, _)| k == "RALPH_API_TOKEN"),

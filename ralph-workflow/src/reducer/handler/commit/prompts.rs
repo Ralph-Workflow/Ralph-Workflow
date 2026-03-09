@@ -31,12 +31,14 @@ use super::current_commit_attempt;
 use crate::agents::AgentRole;
 use crate::phases::PhaseContext;
 use crate::prompts::content_reference::{DiffContentReference, MAX_INLINE_CONTENT_SIZE};
-use crate::prompts::get_stored_or_generate_prompt;
+use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey, RetryMode};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PromptInputEvent;
 use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::state::{PromptInputRepresentation, PromptMode};
+use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
 use std::path::Path;
 
@@ -59,7 +61,7 @@ impl MainEffectHandler {
     /// - `CommitInputsNotMaterialized` - Inputs not materialized for this attempt
     pub(in crate::reducer::handler) fn prepare_commit_prompt(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
         if matches!(prompt_mode, PromptMode::Continuation) {
@@ -77,14 +79,44 @@ impl MainEffectHandler {
                     "XML output failed validation. Provide valid XML output.".to_string()
                 });
 
-            let iteration = self.state.iteration;
-            let prompt_key = format!(
-                "commit_message_attempt_iter{iteration}_{attempt}_xsd_retry_{}",
-                self.state.continuation.xsd_retry_count
+            let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
+            let diff_content_id = self
+                .state
+                .commit_diff_content_id_sha256
+                .clone()
+                .or_else(|| {
+                    // If the diff content-id is unexpectedly missing, derive a stable id from the
+                    // materialized model-safe diff content.
+                    let model_safe_path = Path::new(".agent/tmp/commit_diff.model_safe.txt");
+                    ctx.workspace
+                        .read(model_safe_path)
+                        .ok()
+                        .map(|diff| crate::reducer::prompt_inputs::sha256_hex_str(&diff))
+                })
+                .unwrap_or_else(|| "missing_commit_diff_content_id".to_string());
+
+            // Content-id validation for replay determinism: the XSD-retry commit prompt depends
+            // on the diff inputs AND the specific validation error context.
+            let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+                "commit_xsd_retry|diff:{}|xsd_error:{}|consumer:{}",
+                diff_content_id,
+                xsd_error.as_str(),
+                consumer_sig,
+            ));
+
+            let scope_key = PromptScopeKey::for_commit(
+                self.state.iteration,
+                attempt,
+                RetryMode::Xsd {
+                    count: self.state.continuation.xsd_retry_count,
+                },
+                self.state.recovery_epoch,
             );
+            let prompt_key = scope_key.to_string();
             let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                &prompt_key,
-                &ctx.prompt_history,
+                &scope_key,
+                &self.state.prompt_history,
+                Some(&prompt_content_id),
                 || {
                     // Generate with log-based validation
                     let rendered = crate::prompts::prompt_commit_xsd_retry_with_log(
@@ -129,18 +161,19 @@ impl MainEffectHandler {
                         "commit_xsd_retry".to_string(),
                         rendered.log,
                     ))
-                    .with_additional_event(
-                        PipelineEvent::agent_template_variables_invalid(
-                            AgentRole::Commit,
-                            "commit_xsd_retry".to_string(),
-                            missing,
-                            Vec::new(),
-                        ),
-                    );
+                    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                        AgentRole::Commit,
+                        "commit_xsd_retry".to_string(),
+                        missing,
+                        Vec::new(),
+                    ))
+                    .with_ui_event(UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    });
                     return Ok(result);
                 }
 
-                ctx.capture_prompt(&prompt_key, &prompt);
                 Some(rendered.log)
             };
 
@@ -167,11 +200,31 @@ impl MainEffectHandler {
                 ));
             }
 
+            // Prepare PromptCaptured event if this is a freshly generated prompt
+            let prompt_captured_event = if was_replayed {
+                None
+            } else {
+                Some(PipelineEvent::PromptInput(
+                    PromptInputEvent::PromptCaptured {
+                        key: prompt_key.clone(),
+                        content: prompt,
+                        content_id: Some(prompt_content_id),
+                    },
+                ))
+            };
+
             // Build events: CommitPromptPrepared is primary, TemplateRendered is additional (if log exists)
             let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
                 .with_ui_event(
                     self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
-                );
+                )
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                });
+            if let Some(event) = prompt_captured_event {
+                result = result.with_additional_event(event);
+            }
             if let Some(log) = rendered_log {
                 result = result.with_additional_event(PipelineEvent::template_rendered(
                     crate::reducer::event::PipelinePhase::CommitMessage,
@@ -248,77 +301,118 @@ impl MainEffectHandler {
     /// emits `agent_template_variables_invalid` event.
     pub(in crate::reducer::handler) fn prepare_commit_prompt_with_diff_and_mode(
         &self,
-        ctx: &mut PhaseContext<'_>,
+        ctx: &PhaseContext<'_>,
         diff_for_prompt: &str,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
         let attempt = current_commit_attempt(&self.state.commit);
 
         let continuation_state = &self.state.continuation;
-        let (prompt_key, prompt, was_replayed, should_validate) = match prompt_mode {
-            PromptMode::SameAgentRetry => {
-                // Same-agent retry: prepend retry guidance to the last prepared prompt for this
-                // phase (preserves XSD retry context if present).
-                let retry_preamble =
-                    super::super::retry_guidance::same_agent_retry_preamble(continuation_state);
-                let (base_prompt, should_validate) = if let Ok(previous_prompt) = ctx
-                    .workspace
-                    .read(Path::new(".agent/tmp/commit_prompt.txt"))
-                {
-                    (
-                        super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
-                            &previous_prompt,
-                        )
-                        .to_string(),
-                        false,
-                    )
-                } else {
-                    // Use log-based rendering
-                    let rendered =
-                        crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                            ctx.template_context,
-                            diff_for_prompt,
-                            ctx.workspace,
-                            "commit_message_xml",
-                        );
-                    (rendered.content, true)
-                };
-                let prompt = format!("{retry_preamble}\n{base_prompt}");
-                let iteration = self.state.iteration;
-                let prompt_key = format!(
-                    "commit_message_attempt_iter{iteration}_{attempt}_same_agent_retry_{}",
-                    continuation_state.same_agent_retry_count
-                );
-                (prompt_key, prompt, false, should_validate)
-            }
-            PromptMode::Normal => {
-                let iteration = self.state.iteration;
-                let prompt_key = format!("commit_message_attempt_iter{iteration}_{attempt}");
-                let (prompt, was_replayed) =
-                    get_stored_or_generate_prompt(&prompt_key, &ctx.prompt_history, || {
-                        // Use log-based rendering
-                        let rendered =
-                            crate::prompts::prompt_generate_commit_message_with_diff_with_log(
-                                ctx.template_context,
-                                diff_for_prompt,
-                                ctx.workspace,
-                                "commit_message_xml",
+        let diff_content_id = self
+            .state
+            .commit_diff_content_id_sha256
+            .clone()
+            .unwrap_or_else(|| crate::reducer::prompt_inputs::sha256_hex_str(diff_for_prompt));
+        let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
+        let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+            "commit_prompt|diff:{diff_content_id}|consumer:{consumer_sig}"
+        ));
+
+        let (prompt_key, prompt, was_replayed, prompt_content_id, should_validate) =
+            match prompt_mode {
+                PromptMode::SameAgentRetry => {
+                    // Same-agent retry: prepend retry guidance to the last prepared prompt for this
+                    // phase (preserves XSD retry context if present).
+                    let retry_preamble =
+                        super::super::retry_guidance::same_agent_retry_preamble(continuation_state);
+                    let scope_key = PromptScopeKey::for_commit(
+                        self.state.iteration,
+                        attempt,
+                        RetryMode::SameAgent {
+                            count: continuation_state.same_agent_retry_count,
+                        },
+                        self.state.recovery_epoch,
+                    );
+                    let prompt_key = scope_key.to_string();
+                    let mut should_validate = false;
+                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        Some(&prompt_content_id),
+                        || {
+                            let (base_prompt, local_should_validate) = ctx
+                            .workspace
+                            .read(Path::new(".agent/tmp/commit_prompt.txt"))
+                            .map_or_else(
+                                |_| {
+                                    // Use log-based rendering
+                                    let rendered = crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+                                        ctx.template_context,
+                                        diff_for_prompt,
+                                        ctx.workspace,
+                                        "commit_message_xml",
+                                    );
+                                    (rendered.content, true)
+                                },
+                                |previous_prompt| {
+                                    (
+                                        super::super::retry_guidance::strip_existing_same_agent_retry_preamble(
+                                            &previous_prompt,
+                                        )
+                                        .to_string(),
+                                        false,
+                                    )
+                                },
                             );
-                        rendered.content
-                    });
-                (prompt_key, prompt, was_replayed, true)
-            }
-            PromptMode::XsdRetry => {
-                // XsdRetry is handled in prepare_commit_prompt() which returns early.
-                // This branch is unreachable but required for exhaustiveness.
-                unreachable!(
+                            should_validate = local_should_validate;
+                            format!("{retry_preamble}\n{base_prompt}")
+                        },
+                    );
+                    (
+                        prompt_key,
+                        prompt,
+                        was_replayed,
+                        prompt_content_id,
+                        should_validate,
+                    )
+                }
+                PromptMode::Normal => {
+                    let scope_key = PromptScopeKey::for_commit(
+                        self.state.iteration,
+                        attempt,
+                        RetryMode::Normal,
+                        self.state.recovery_epoch,
+                    );
+                    let prompt_key = scope_key.to_string();
+                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        Some(&prompt_content_id),
+                        || {
+                            // Use log-based rendering
+                            let rendered =
+                                crate::prompts::prompt_generate_commit_message_with_diff_with_log(
+                                    ctx.template_context,
+                                    diff_for_prompt,
+                                    ctx.workspace,
+                                    "commit_message_xml",
+                                );
+                            rendered.content
+                        },
+                    );
+                    (prompt_key, prompt, was_replayed, prompt_content_id, true)
+                }
+                PromptMode::XsdRetry => {
+                    // XsdRetry is handled in prepare_commit_prompt() which returns early.
+                    // This branch is unreachable but required for exhaustiveness.
+                    unreachable!(
                     "XsdRetry mode should be handled by prepare_commit_prompt() before calling this function"
                 )
-            }
-            PromptMode::Continuation => {
-                return Err(ErrorEvent::CommitContinuationNotSupported.into());
-            }
-        };
+                }
+                PromptMode::Continuation => {
+                    return Err(ErrorEvent::CommitContinuationNotSupported.into());
+                }
+            };
 
         let rendered_log = if should_validate && !was_replayed {
             // Generate again to get the log for validation
@@ -337,14 +431,16 @@ impl MainEffectHandler {
                     "commit_message_xml".to_string(),
                     rendered.log,
                 ))
-                .with_additional_event(
-                    PipelineEvent::agent_template_variables_invalid(
-                        AgentRole::Commit,
-                        "commit_message_xml".to_string(),
-                        missing,
-                        Vec::new(),
-                    ),
-                );
+                .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                    AgentRole::Commit,
+                    "commit_message_xml".to_string(),
+                    missing,
+                    Vec::new(),
+                ))
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                });
                 return Ok(result);
             }
             Some(rendered.log)
@@ -352,9 +448,18 @@ impl MainEffectHandler {
             None
         };
 
-        if !was_replayed {
-            ctx.capture_prompt(&prompt_key, &prompt);
-        }
+        // Prepare PromptCaptured event if this is a freshly generated prompt
+        let prompt_captured_event = if was_replayed {
+            None
+        } else {
+            Some(PipelineEvent::PromptInput(
+                PromptInputEvent::PromptCaptured {
+                    key: prompt_key.clone(),
+                    content: prompt.clone(),
+                    content_id: Some(prompt_content_id),
+                },
+            ))
+        };
 
         let tmp_dir = Path::new(".agent/tmp");
         if !ctx.workspace.exists(tmp_dir) {
@@ -383,7 +488,14 @@ impl MainEffectHandler {
         let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
             .with_ui_event(
                 self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
-            );
+            )
+            .with_ui_event(UIEvent::PromptReplayHit {
+                key: prompt_key,
+                was_replayed,
+            });
+        if let Some(event) = prompt_captured_event {
+            result = result.with_additional_event(event);
+        }
         if let Some(log) = rendered_log {
             result = result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::CommitMessage,

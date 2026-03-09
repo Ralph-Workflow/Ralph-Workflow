@@ -43,7 +43,6 @@ fn mock_effect_handler_simulates_empty_diff() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -113,7 +112,6 @@ fn mock_effect_handler_captures_materialize_commit_inputs_even_when_diff_missing
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -267,7 +265,6 @@ fn mock_effect_handler_trigger_dev_fix_flow_does_not_write_completion_marker() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -344,7 +341,6 @@ fn mock_effect_handler_trigger_dev_fix_flow_emits_events_on_marker_write_failure
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -596,7 +592,6 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -609,6 +604,7 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
 
     let mut state = PipelineState::initial(1, 0);
     state.interrupted_by_user = true;
+    state.recovery_epoch = 7;
     let mut handler = MockEffectHandler::new(state);
 
     let _ = handler
@@ -636,6 +632,12 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
             .and_then(serde_json::Value::as_bool),
         Some(true),
         "Mock checkpoint must persist interrupted_by_user=true for parity with real handler"
+    );
+
+    assert_eq!(
+        v.get("recovery_epoch").and_then(serde_json::Value::as_u64),
+        Some(7),
+        "Mock checkpoint must persist recovery_epoch for parity with real handler"
     );
 }
 
@@ -679,7 +681,6 @@ fn mock_execute_save_checkpoint_captures_effect_once() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,
@@ -752,7 +753,6 @@ fn mock_execute_emit_completion_marker_captures_effect_once() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,

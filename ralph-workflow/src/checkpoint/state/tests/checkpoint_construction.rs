@@ -356,3 +356,176 @@ fn test_rebase_state() {
     };
     assert!(matches!(state, RebaseState::Failed { .. }));
 }
+
+/// Checkpoints written before `replay_metadata_version` was added lack the field.
+/// The `#[serde(default)]` attribute must deserialize them with version 0.
+///
+/// This is the RFC-007 backward-compatibility invariant: old checkpoints never had
+/// `replay_metadata_version`, so they implicitly carry version 0 (legacy format).
+#[test]
+fn test_checkpoint_missing_replay_metadata_version_defaults_to_zero() {
+    // A v3 checkpoint JSON that does NOT include `replay_metadata_version`.
+    let json = r#"{
+        "version": 3,
+        "phase": "Development",
+        "iteration": 1,
+        "total_iterations": 3,
+        "reviewer_pass": 0,
+        "total_reviewer_passes": 1,
+        "timestamp": "2024-01-01 00:00:00",
+        "developer_agent": "claude",
+        "reviewer_agent": "claude",
+        "cli_args": {"developer_iters": 3, "reviewer_reviews": 1, "commit_msg": "", "review_depth": null},
+        "developer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": true, "model_override": null, "provider_override": null, "context_level": 1},
+        "reviewer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": false, "model_override": null, "provider_override": null, "context_level": 1},
+        "rebase_state": "NotStarted",
+        "config_path": null,
+        "config_checksum": null,
+        "working_dir": "/test",
+        "prompt_md_checksum": "abc123",
+        "git_user_name": null,
+        "git_user_email": null,
+        "run_id": "test-run-id",
+        "parent_run_id": null,
+        "resume_count": 0,
+        "actual_developer_runs": 1,
+        "actual_reviewer_runs": 0
+    }"#;
+
+    let checkpoint: PipelineCheckpoint = serde_json::from_str(json)
+        .expect("checkpoint missing replay_metadata_version must deserialize successfully");
+
+    assert_eq!(
+        checkpoint.replay_metadata_version, 0,
+        "Checkpoint without replay_metadata_version field must default to 0 (legacy format)"
+    );
+}
+
+/// A v3 checkpoint with `prompt_history` stored as bare strings (v0 format) must
+/// deserialize into `PromptHistoryEntry` values with `content_id: None`.
+///
+/// This tests the RFC-007 backward-compatibility requirement: checkpoints saved
+/// before `PromptHistoryEntry` was introduced used `HashMap<String, String>` for
+/// `prompt_history`. The custom `Deserialize` impl on `PromptHistoryEntry` handles
+/// this via the `#[serde(untagged)]` enum.
+#[test]
+fn test_checkpoint_v0_prompt_history_bare_strings_deserialize_with_no_content_id() {
+    let json = r#"{
+        "version": 3,
+        "phase": "Development",
+        "iteration": 1,
+        "total_iterations": 3,
+        "reviewer_pass": 0,
+        "total_reviewer_passes": 1,
+        "timestamp": "2024-01-01 00:00:00",
+        "developer_agent": "claude",
+        "reviewer_agent": "claude",
+        "cli_args": {"developer_iters": 3, "reviewer_reviews": 1, "commit_msg": "", "review_depth": null},
+        "developer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": true, "model_override": null, "provider_override": null, "context_level": 1},
+        "reviewer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": false, "model_override": null, "provider_override": null, "context_level": 1},
+        "rebase_state": "NotStarted",
+        "config_path": null,
+        "config_checksum": null,
+        "working_dir": "/test",
+        "prompt_md_checksum": "abc123",
+        "git_user_name": null,
+        "git_user_email": null,
+        "run_id": "test-run-id",
+        "parent_run_id": null,
+        "resume_count": 0,
+        "actual_developer_runs": 1,
+        "actual_reviewer_runs": 0,
+        "prompt_history": {
+            "planning_1": "PLANNING PROMPT TEXT",
+            "development_1": "DEVELOPMENT PROMPT TEXT"
+        }
+    }"#;
+
+    let checkpoint: PipelineCheckpoint = serde_json::from_str(json)
+        .expect("v0 bare-string prompt_history must deserialize successfully");
+
+    let history = checkpoint
+        .prompt_history
+        .expect("prompt_history must be Some");
+    assert_eq!(history.len(), 2);
+
+    let planning = &history["planning_1"];
+    assert_eq!(planning.content, "PLANNING PROMPT TEXT");
+    assert_eq!(
+        planning.content_id, None,
+        "Bare-string entries must have content_id: None (v0 backward compat)"
+    );
+
+    let development = &history["development_1"];
+    assert_eq!(development.content, "DEVELOPMENT PROMPT TEXT");
+    assert_eq!(development.content_id, None);
+}
+
+/// A v3 checkpoint with `prompt_history` stored as v1 objects (`content` + `content_id`) must
+/// deserialize with full fidelity.
+#[test]
+fn test_checkpoint_v1_prompt_history_round_trip_with_content_id() {
+    let json = r#"{
+        "version": 3,
+        "phase": "Development",
+        "iteration": 1,
+        "total_iterations": 3,
+        "reviewer_pass": 0,
+        "total_reviewer_passes": 1,
+        "timestamp": "2024-01-01 00:00:00",
+        "developer_agent": "claude",
+        "reviewer_agent": "claude",
+        "cli_args": {"developer_iters": 3, "reviewer_reviews": 1, "commit_msg": "", "review_depth": null},
+        "developer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": true, "model_override": null, "provider_override": null, "context_level": 1},
+        "reviewer_agent_config": {"name": "claude", "cmd": "claude", "output_flag": "", "yolo_flag": null, "can_commit": false, "model_override": null, "provider_override": null, "context_level": 1},
+        "rebase_state": "NotStarted",
+        "config_path": null,
+        "config_checksum": null,
+        "working_dir": "/test",
+        "prompt_md_checksum": "abc123",
+        "git_user_name": null,
+        "git_user_email": null,
+        "run_id": "test-run-id",
+        "parent_run_id": null,
+        "resume_count": 0,
+        "actual_developer_runs": 1,
+        "actual_reviewer_runs": 0,
+        "replay_metadata_version": 1,
+        "prompt_history": {
+            "planning_1": {"content": "PLANNING PROMPT TEXT", "content_id": "sha256abcdef"},
+            "development_1": {"content": "DEV PROMPT TEXT", "content_id": null}
+        }
+    }"#;
+
+    let checkpoint: PipelineCheckpoint = serde_json::from_str(json)
+        .expect("v1 object prompt_history must deserialize successfully");
+
+    assert_eq!(checkpoint.replay_metadata_version, 1);
+
+    let history = checkpoint
+        .prompt_history
+        .clone()
+        .expect("prompt_history must be Some");
+    assert_eq!(history.len(), 2);
+
+    let planning = &history["planning_1"];
+    assert_eq!(planning.content, "PLANNING PROMPT TEXT");
+    assert_eq!(
+        planning.content_id.as_deref(),
+        Some("sha256abcdef"),
+        "v1 entries must preserve content_id"
+    );
+
+    let development = &history["development_1"];
+    assert_eq!(development.content, "DEV PROMPT TEXT");
+    assert_eq!(development.content_id, None);
+
+    // Verify round-trip: serialize and deserialize again
+    let serialized = serde_json::to_string(&checkpoint).expect("serialize must succeed");
+    let roundtrip: PipelineCheckpoint =
+        serde_json::from_str(&serialized).expect("deserialize must succeed");
+
+    let rt_history = roundtrip.prompt_history.expect("must be Some");
+    assert_eq!(rt_history["planning_1"].content_id.as_deref(), Some("sha256abcdef"));
+    assert_eq!(rt_history["development_1"].content_id, None);
+}

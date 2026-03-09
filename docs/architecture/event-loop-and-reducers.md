@@ -72,6 +72,16 @@ In practice this means a lot of "single-task sequencing" fields (for example: "p
 - hidden control flags that are not driven by events
 - anything that would make `reduce(state, event)` depend on time, environment, or I/O
 
+### Prompt replay history is reducer-owned state
+
+`PipelineState` includes `prompt_history: HashMap<String, PromptHistoryEntry>` which stores generated prompts keyed by a typed `PromptScopeKey` Display string. This is canonical state — it is serialized in checkpoints and participates in recovery semantics.
+
+- Prompts are written to `prompt_history` via `PromptInputEvent::PromptCaptured { key, content, content_id }` reducer events (not by direct mutation from handlers).
+- All prompt-preparation handlers use `get_stored_or_generate_prompt()` to replay from history or generate fresh, then emit `PromptCaptured` if a fresh prompt was generated.
+- `UIEvent::PromptReplayHit { key, was_replayed }` is emitted alongside every prompt generation for observability; it does not affect state.
+- Level-3 and level-4 recovery clear `prompt_history` atomically with the `recovery_epoch` increment so stale prompts cannot survive an epoch boundary.
+- All prompt keys are constructed via typed `PromptScopeKey` constructors (never ad-hoc `format!()` strings), with phase-specific constructors enforcing required identity dimensions at compile time.
+
 ## Terminal State Semantics
 
 The event loop terminates based on `PipelineState::is_complete()`, not on orchestration returning "no effect".
@@ -135,8 +145,8 @@ The recovery hierarchy implements escalating reset strategies:
 
 - **Level 1 - Retry same operation** (attempts 1-3): Dev-fix agent runs, reset error state, retry the failed effect from the same point
 - **Level 2 - Reset to phase start** (attempts 4-6): Clear phase-specific progress flags and restart the entire phase from the beginning
-- **Level 3 - Reset iteration** (attempts 7-9): Decrement iteration counter and redo Planning → Development → Commit sequence
-- **Level 4 - Reset everything** (attempts 10+): Reset to iteration 0 and start completely fresh from the beginning (and keep trying)
+- **Level 3 - Reset iteration** (attempts 7-9): Decrement iteration counter and redo Planning → Development → Commit sequence; increments `recovery_epoch` and clears `prompt_history` atomically to prevent stale prompt replay after scope rotation
+- **Level 4 - Reset everything** (attempts 10+): Reset to iteration 0 and start completely fresh from the beginning (and keep trying); increments `recovery_epoch` and clears `prompt_history` atomically for the same reason
 
 ### Recovery State Tracking
 
@@ -145,6 +155,7 @@ The recovery hierarchy implements escalating reset strategies:
 - `dev_fix_attempt_count: u32` - Number of recovery attempts for the current failure
 - `recovery_escalation_level: u32` - Current recovery strategy (0-4)
 - `failed_phase_for_recovery: Option<PipelinePhase>` - Snapshot of the phase where failure occurred
+- `recovery_epoch: u32` - Epoch counter incremented on level-3/4 recovery; carried in `PromptScopeKey` for audit and future isolation
 
 These fields enable deterministic escalation decisions and are preserved in checkpoints to maintain recovery context across resumption.
 

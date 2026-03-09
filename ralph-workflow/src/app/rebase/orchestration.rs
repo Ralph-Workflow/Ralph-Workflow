@@ -1,4 +1,3 @@
-use super::conflicts::try_resolve_conflicts;
 use super::types::{ConflictResolutionContext, InitialRebaseOutcome};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::{
@@ -12,6 +11,12 @@ use crate::git_helpers::{
 use crate::logger::{Colors, Logger};
 use crate::phases::PhaseContext;
 use crate::workspace::Workspace;
+
+pub struct InitialRebaseRunResult {
+    pub outcome: InitialRebaseOutcome,
+    /// Prompt replay observability for conflict-resolution prompts.
+    pub prompt_replay_hits: Vec<(String, bool)>,
+}
 
 /// Run rebase to the default branch.
 ///
@@ -47,47 +52,70 @@ pub fn run_initial_rebase(
     phase_ctx: &mut PhaseContext<'_>,
     run_context: &RunContext,
     executor: &dyn ProcessExecutor,
-) -> anyhow::Result<InitialRebaseOutcome> {
+    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) -> anyhow::Result<InitialRebaseRunResult> {
     phase_ctx
         .logger
         .header("Pre-development rebase", Colors::cyan);
 
+    let mut prompt_replay_hits: Vec<(String, bool)> = Vec::new();
+
     record_rebase_start(phase_ctx);
-    save_pre_rebase_checkpoint(phase_ctx, run_context);
+    save_pre_rebase_checkpoint(phase_ctx, run_context, prompt_history);
 
     match run_rebase_to_default(phase_ctx.logger, *phase_ctx.colors, executor) {
         Ok(RebaseResult::Success) => {
-            handle_rebase_success(phase_ctx, run_context);
-            Ok(InitialRebaseOutcome::Succeeded {
-                new_head: read_repo_head_or_unknown(phase_ctx.workspace),
+            handle_rebase_success(phase_ctx, run_context, prompt_history);
+            Ok(InitialRebaseRunResult {
+                outcome: InitialRebaseOutcome::Succeeded {
+                    new_head: read_repo_head_or_unknown(phase_ctx.workspace),
+                },
+                prompt_replay_hits,
             })
         }
         Ok(RebaseResult::NoOp { reason }) => {
-            handle_rebase_noop(phase_ctx, run_context, &reason);
-            Ok(InitialRebaseOutcome::Skipped { reason })
+            handle_rebase_noop(phase_ctx, run_context, &reason, prompt_history);
+            Ok(InitialRebaseRunResult {
+                outcome: InitialRebaseOutcome::Skipped { reason },
+                prompt_replay_hits,
+            })
         }
         Ok(RebaseResult::Conflicts(_)) => {
-            let resolved = handle_rebase_conflicts(phase_ctx, run_context, executor)?;
+            let (resolved, replay) =
+                handle_rebase_conflicts(phase_ctx, run_context, executor, prompt_history)?;
+            prompt_replay_hits.push((replay.key, replay.was_replayed));
             if resolved {
-                Ok(InitialRebaseOutcome::Succeeded {
-                    new_head: read_repo_head_or_unknown(phase_ctx.workspace),
+                Ok(InitialRebaseRunResult {
+                    outcome: InitialRebaseOutcome::Succeeded {
+                        new_head: read_repo_head_or_unknown(phase_ctx.workspace),
+                    },
+                    prompt_replay_hits,
                 })
             } else {
-                Ok(InitialRebaseOutcome::Skipped {
-                    reason: "Rebase conflicts unresolved".to_string(),
+                Ok(InitialRebaseRunResult {
+                    outcome: InitialRebaseOutcome::Skipped {
+                        reason: "Rebase conflicts unresolved".to_string(),
+                    },
+                    prompt_replay_hits,
                 })
             }
         }
         Ok(RebaseResult::Failed(err)) => {
             handle_rebase_failed(phase_ctx, &err);
-            Ok(InitialRebaseOutcome::Skipped {
-                reason: "Rebase failed".to_string(),
+            Ok(InitialRebaseRunResult {
+                outcome: InitialRebaseOutcome::Skipped {
+                    reason: "Rebase failed".to_string(),
+                },
+                prompt_replay_hits,
             })
         }
         Err(e) => {
             handle_rebase_error(phase_ctx, &e);
-            Ok(InitialRebaseOutcome::Skipped {
-                reason: "Rebase error".to_string(),
+            Ok(InitialRebaseRunResult {
+                outcome: InitialRebaseOutcome::Skipped {
+                    reason: "Rebase error".to_string(),
+                },
+                prompt_replay_hits,
             })
         }
     }
@@ -107,13 +135,22 @@ fn record_rebase_start(phase_ctx: &mut PhaseContext<'_>) {
 }
 
 /// Save checkpoint at the start of pre-rebase phase.
-fn save_pre_rebase_checkpoint(phase_ctx: &PhaseContext<'_>, run_context: &RunContext) {
+fn save_pre_rebase_checkpoint(
+    phase_ctx: &PhaseContext<'_>,
+    run_context: &RunContext,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) {
     if !phase_ctx.config.features.checkpoint_enabled {
         return;
     }
 
     let default_branch = get_default_branch().unwrap_or_else(|_| "main".to_string());
-    let builder = create_checkpoint_builder(phase_ctx, run_context, PipelinePhase::PreRebase);
+    let builder = create_checkpoint_builder(
+        phase_ctx,
+        run_context,
+        PipelinePhase::PreRebase,
+        prompt_history,
+    );
 
     if let Some(mut checkpoint) = builder.build_with_workspace(phase_ctx.workspace) {
         checkpoint.rebase_state = RebaseState::PreRebaseInProgress {
@@ -124,7 +161,11 @@ fn save_pre_rebase_checkpoint(phase_ctx: &PhaseContext<'_>, run_context: &RunCon
 }
 
 /// Handle successful rebase completion.
-fn handle_rebase_success(phase_ctx: &mut PhaseContext<'_>, run_context: &RunContext) {
+fn handle_rebase_success(
+    phase_ctx: &mut PhaseContext<'_>,
+    run_context: &RunContext,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) {
     phase_ctx.logger.success("Rebase completed successfully");
 
     let step = ExecutionStep::new(
@@ -137,11 +178,16 @@ fn handle_rebase_success(phase_ctx: &mut PhaseContext<'_>, run_context: &RunCont
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 
-    save_post_rebase_checkpoint(phase_ctx, run_context);
+    save_post_rebase_checkpoint(phase_ctx, run_context, prompt_history);
 }
 
 /// Handle rebase that was not needed.
-fn handle_rebase_noop(phase_ctx: &mut PhaseContext<'_>, run_context: &RunContext, reason: &str) {
+fn handle_rebase_noop(
+    phase_ctx: &mut PhaseContext<'_>,
+    run_context: &RunContext,
+    reason: &str,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) {
     phase_ctx
         .logger
         .info(&format!("No rebase needed: {reason}"));
@@ -156,7 +202,7 @@ fn handle_rebase_noop(phase_ctx: &mut PhaseContext<'_>, run_context: &RunContext
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 
-    save_post_rebase_checkpoint(phase_ctx, run_context);
+    save_post_rebase_checkpoint(phase_ctx, run_context, prompt_history);
 }
 
 /// Handle rebase conflicts by attempting AI resolution.
@@ -164,18 +210,31 @@ fn handle_rebase_conflicts(
     phase_ctx: &mut PhaseContext<'_>,
     run_context: &RunContext,
     executor: &dyn ProcessExecutor,
-) -> anyhow::Result<bool> {
+    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) -> anyhow::Result<(
+    bool,
+    crate::app::rebase::conflicts::ConflictResolutionPromptReplay,
+)> {
+    use crate::app::rebase::conflicts::ConflictResolutionPromptReplay;
+    use crate::prompts::PromptScopeKey;
+
     let conflicted_files = get_conflicted_files()?;
     if conflicted_files.is_empty() {
         phase_ctx
             .logger
             .warn("Rebase reported conflicts but no conflicted files found");
         let _ = abort_rebase(executor);
-        return Ok(false);
+        return Ok((
+            false,
+            ConflictResolutionPromptReplay {
+                key: PromptScopeKey::for_conflict_resolution("PreRebase", 0).to_string(),
+                was_replayed: false,
+                captured_entry: None,
+            },
+        ));
     }
 
     record_conflict_detected(phase_ctx, conflicted_files.len());
-    save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files);
 
     phase_ctx.logger.warn(&format!(
         "Rebase resulted in {} conflict(s), attempting AI resolution",
@@ -193,24 +252,37 @@ fn handle_rebase_conflicts(
         workspace_arc: std::sync::Arc::clone(&phase_ctx.workspace_arc),
     };
 
-    match try_resolve_conflicts(
+    match crate::app::rebase::conflicts::try_resolve_conflicts_with_hook(
         &conflicted_files,
         &resolution_ctx,
-        phase_ctx,
+        prompt_history,
         "PreRebase",
         executor,
+        |replay, prompt_history| {
+            if let Some(entry) = replay.captured_entry.clone() {
+                prompt_history.insert(replay.key.clone(), entry);
+            }
+            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, prompt_history);
+        },
     ) {
-        Ok(true) => {
-            handle_conflicts_resolved(phase_ctx, run_context, executor);
-            Ok(true)
+        Ok((true, replay)) => {
+            handle_conflicts_resolved(phase_ctx, run_context, executor, prompt_history);
+            Ok((true, replay))
         }
-        Ok(false) => {
+        Ok((false, replay)) => {
             handle_resolution_failed(phase_ctx, executor);
-            Ok(false)
+            Ok((false, replay))
         }
         Err(e) => {
             handle_resolution_error(phase_ctx, executor, &e);
-            Ok(false)
+            Ok((
+                false,
+                ConflictResolutionPromptReplay {
+                    key: PromptScopeKey::for_conflict_resolution("PreRebase", 0).to_string(),
+                    was_replayed: false,
+                    captured_entry: None,
+                },
+            ))
         }
     }
 }
@@ -236,13 +308,18 @@ fn save_conflict_checkpoint(
     phase_ctx: &PhaseContext<'_>,
     run_context: &RunContext,
     conflicted_files: &[String],
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) {
     if !phase_ctx.config.features.checkpoint_enabled {
         return;
     }
 
-    let builder =
-        create_checkpoint_builder(phase_ctx, run_context, PipelinePhase::PreRebaseConflict);
+    let builder = create_checkpoint_builder(
+        phase_ctx,
+        run_context,
+        PipelinePhase::PreRebaseConflict,
+        prompt_history,
+    );
 
     if let Some(mut checkpoint) = builder.build_with_workspace(phase_ctx.workspace) {
         checkpoint.rebase_state = RebaseState::HasConflicts {
@@ -257,6 +334,7 @@ fn handle_conflicts_resolved(
     phase_ctx: &mut PhaseContext<'_>,
     run_context: &RunContext,
     executor: &dyn ProcessExecutor,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) {
     phase_ctx
         .logger
@@ -278,7 +356,7 @@ fn handle_conflicts_resolved(
                 .execution_history
                 .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 
-            save_post_rebase_checkpoint(phase_ctx, run_context);
+            save_post_rebase_checkpoint(phase_ctx, run_context, prompt_history);
         }
         Err(e) => {
             phase_ctx
@@ -376,26 +454,21 @@ fn handle_rebase_error(phase_ctx: &mut PhaseContext<'_>, e: &std::io::Error) {
 }
 
 /// Save checkpoint after successful rebase completion.
-fn save_post_rebase_checkpoint(phase_ctx: &PhaseContext<'_>, run_context: &RunContext) {
+fn save_post_rebase_checkpoint(
+    phase_ctx: &PhaseContext<'_>,
+    run_context: &RunContext,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+) {
     if !phase_ctx.config.features.checkpoint_enabled {
         return;
     }
 
-    let builder = CheckpointBuilder::new()
-        .phase(PipelinePhase::Planning, 0, phase_ctx.config.developer_iters)
-        .reviewer_pass(0, phase_ctx.config.reviewer_reviews)
-        .capture_from_context(
-            phase_ctx.config,
-            phase_ctx.registry,
-            phase_ctx.developer_agent,
-            phase_ctx.reviewer_agent,
-            phase_ctx.logger,
-            run_context,
-        )
-        .with_executor_from_context(std::sync::Arc::clone(&phase_ctx.executor_arc))
-        .with_execution_history(phase_ctx.execution_history.clone())
-        .with_prompt_history(phase_ctx.clone_prompt_history())
-        .with_log_run_id(phase_ctx.run_log_context.run_id().to_string());
+    let builder = create_checkpoint_builder(
+        phase_ctx,
+        run_context,
+        PipelinePhase::Planning,
+        prompt_history,
+    );
 
     if let Some(checkpoint) = builder.build_with_workspace(phase_ctx.workspace) {
         let _ = save_checkpoint_with_workspace(phase_ctx.workspace, &checkpoint);
@@ -407,6 +480,7 @@ fn create_checkpoint_builder(
     phase_ctx: &PhaseContext<'_>,
     run_context: &RunContext,
     phase: PipelinePhase,
+    prompt_history: &std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) -> CheckpointBuilder {
     CheckpointBuilder::new()
         .phase(phase, 0, phase_ctx.config.developer_iters)
@@ -421,7 +495,7 @@ fn create_checkpoint_builder(
         )
         .with_executor_from_context(std::sync::Arc::clone(&phase_ctx.executor_arc))
         .with_execution_history(phase_ctx.execution_history.clone())
-        .with_prompt_history(phase_ctx.clone_prompt_history())
+        .with_prompt_history(prompt_history.clone())
         .with_log_run_id(phase_ctx.run_log_context.run_id().to_string())
 }
 

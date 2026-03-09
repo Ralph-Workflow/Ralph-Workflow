@@ -63,6 +63,43 @@ There are two distinct template systems:
 
 Agent prompts use a small template language (variables, partials) and are rendered with context derived from pipeline state, config, and captured artifacts.
 
+### Prompt Replay and Scope Identity
+
+Prompt generation is integrated with the checkpoint resume system. Every prompt generated during a run is stored in `PipelineState.prompt_history` (a reducer-owned `HashMap<String, PromptHistoryEntry>`) and replayed deterministically on resume.
+
+**`PromptScopeKey`** (`ralph-workflow/src/prompts/prompt_scope_key.rs`) is the typed identity for a prompt. It replaces all ad-hoc `format!()` key strings with phase-specific constructors that enforce required identity dimensions at compile time:
+
+- `for_planning(iteration, retry_mode, recovery_epoch)` → key like `"planning_0"`
+- `for_development(iteration, continuation, retry_mode, recovery_epoch)` → key like `"development_0"` or `"development_0_continuation_3"`
+- `for_commit(iteration, attempt, retry_mode, recovery_epoch)` → key like `"commit_message_attempt_iter0_1"`
+- `for_review(pass, retry_mode, recovery_epoch)` → key like `"review_0"`
+- `for_fix(pass, retry_mode, recovery_epoch)` → key like `"fix_0"`
+- `for_conflict_resolution(phase, recovery_epoch)` → key like `"planning_conflict_resolution"`
+
+The `Display` output of `PromptScopeKey` is designed for backward-compatible checkpoint replay.
+
+- Planning, development, review, fix, and conflict-resolution keys remain byte-identical to their legacy `format!()` strings.
+- Commit keys intentionally include the iteration dimension (e.g. `commit_message_attempt_iter{iter}_{attempt}`) to prevent cross-iteration collisions when `attempt` resets.
+
+**`PromptHistoryEntry`** (`ralph-workflow/src/prompts/prompt_history_entry.rs`) stores a prompt alongside an optional SHA-256 content-ID of the materialized inputs at generation time. It uses backward-compatible serde: v0 checkpoints stored bare strings; v1 stores an object with `content` and an optional `content_id` (omitted when `None`).
+
+**`get_stored_or_generate_prompt`** (`ralph-workflow/src/prompts/prompt_dispatch.rs`) is the central dispatch function used by all prompt-preparation handlers:
+
+1. Looks up the scope key's `Display` string in `prompt_history`.
+2. If found, performs stale-content validation when possible:
+   - If both the stored entry and the caller provide `content_id` values and they differ, treat as a cache miss.
+   - Otherwise (one/both missing, or both present and equal), replay the stored prompt.
+3. If not found (or treated as a cache miss due to a content-id mismatch), calls the generator closure and returns a fresh prompt with `was_replayed = false`.
+
+The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a fresh prompt is generated so the reducer can update `PipelineState.prompt_history` atomically.
+
+**`UIEvent::PromptReplayHit { key, was_replayed }`** is emitted after each prompt lookup for observability. When `was_replayed = true`, the stored checkpoint prompt was used; when `was_replayed = false`, a fresh prompt was generated.
+
+**Prompt history lifecycle**:
+- Prompt history lives in `PipelineState` (reducer-owned), not in `PhaseContext`.
+- `recovery_epoch` is incremented on Level-3/Level-4 recovery, and `prompt_history` is cleared atomically at the same time, preventing stale replay candidates from surviving epoch boundaries.
+- The epoch value is carried in `PromptScopeKey` for auditing but excluded from the `Display` string.
+
 ### Workspace-Rooted Path Resolution
 
 All prompt generation functions accept a `&dyn Workspace` parameter and use `workspace.absolute_str()` to generate absolute paths for output files. This ensures prompts embed paths rooted at the workspace directory, not the process's current working directory (`std::env::current_dir()`).

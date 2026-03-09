@@ -69,7 +69,8 @@ fn save_complete_checkpoint_if_needed(
     phase_ctx: &PhaseContext<'_>,
     loop_result: &crate::app::event_loop::EventLoopResult,
 ) {
-    if !config.features.checkpoint_enabled || !should_write_complete_checkpoint(loop_result.final_phase)
+    if !config.features.checkpoint_enabled
+        || !should_write_complete_checkpoint(loop_result.final_phase)
     {
         return;
     }
@@ -93,11 +94,16 @@ fn save_complete_checkpoint_if_needed(
 
     let builder = builder
         .with_execution_history(phase_ctx.execution_history.clone())
-        .with_prompt_history(phase_ctx.clone_prompt_history())
+        .with_prompt_history(loop_result.final_state.prompt_history.clone())
         .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
     if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {
         let mut checkpoint = checkpoint;
+        checkpoint.dev_fix_attempt_count = loop_result.final_state.dev_fix_attempt_count;
+        checkpoint.recovery_epoch = loop_result.final_state.recovery_epoch;
+        checkpoint.recovery_escalation_level = loop_result.final_state.recovery_escalation_level;
+        checkpoint.failed_phase_for_recovery = loop_result.final_state.failed_phase_for_recovery;
+        checkpoint.interrupted_by_user = loop_result.final_state.interrupted_by_user;
         if loop_result.final_state.cloud.enabled {
             checkpoint.cloud_state = Some(
                 crate::checkpoint::state::CloudCheckpointState::from_pipeline_state(
@@ -270,5 +276,117 @@ mod cloud_completion_payload_tests {
 
         let _ = take_user_interrupt_request();
         reset_user_interrupted_occurred();
+    }
+}
+
+#[cfg(test)]
+mod completion_checkpoint_tests {
+    use super::save_complete_checkpoint_if_needed;
+    use crate::agents::AgentRegistry;
+    use crate::app::context::PipelineContext;
+    use crate::checkpoint::execution_history::ExecutionHistory;
+    use crate::checkpoint::{load_checkpoint_with_workspace, RunContext};
+    use crate::cli::Args;
+    use crate::config::Config;
+    use crate::executor::MockProcessExecutor;
+    use crate::logger::{Colors, Logger};
+    use crate::logging::RunLogContext;
+    use crate::phases::PhaseContext;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::reducer::event::PipelinePhase;
+    use crate::reducer::PipelineState;
+    use crate::workspace::MemoryWorkspace;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    #[test]
+    fn completion_checkpoint_preserves_recovery_epoch_for_idempotent_resume() {
+        // Arrange
+        let workspace = Arc::new(MemoryWorkspace::new_test().with_dir(".agent/tmp"));
+        let run_log_context = RunLogContext::new(&*workspace).expect("run log context");
+
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+
+        let registry = AgentRegistry::new().expect("registry");
+        let executor =
+            Arc::new(MockProcessExecutor::new()) as Arc<dyn crate::executor::ProcessExecutor>;
+
+        let config = Config::default();
+        // `CheckpointBuilder::capture_from_context` requires agent configs to exist in the
+        // registry; use a known built-in agent key.
+        let developer_agent = "codex".to_string();
+        let reviewer_agent = "codex".to_string();
+
+        let ctx = PipelineContext {
+            args: Args::default(),
+            config,
+            registry,
+            developer_agent,
+            reviewer_agent,
+            developer_display: "codex".to_string(),
+            reviewer_display: "codex".to_string(),
+            repo_root: PathBuf::from("/test/repo"),
+            workspace: Arc::clone(&workspace) as Arc<dyn crate::workspace::Workspace>,
+            logger,
+            colors,
+            template_context: TemplateContext::default(),
+            executor: Arc::clone(&executor),
+            run_log_context,
+        };
+
+        let run_context = RunContext::new();
+
+        let mut timer = crate::pipeline::Timer::new();
+        let phase_ctx = PhaseContext {
+            config: &ctx.config,
+            registry: &ctx.registry,
+            logger: &ctx.logger,
+            colors: &ctx.colors,
+            timer: &mut timer,
+            developer_agent: &ctx.developer_agent,
+            reviewer_agent: &ctx.reviewer_agent,
+            review_guidelines: None,
+            template_context: &ctx.template_context,
+            run_context: RunContext::new(),
+            execution_history: ExecutionHistory::new(),
+            executor: executor.as_ref(),
+            executor_arc: Arc::clone(&executor),
+            repo_root: std::path::Path::new("/test/repo"),
+            workspace: &*workspace,
+            workspace_arc: Arc::clone(&ctx.workspace),
+            run_log_context: &ctx.run_log_context,
+            cloud_reporter: None,
+            cloud: &ctx.config.cloud,
+        };
+
+        let mut final_state = PipelineState::initial(1, 0);
+        final_state.recovery_epoch = 5;
+
+        let loop_result = crate::app::event_loop::EventLoopResult {
+            completed: true,
+            events_processed: 0,
+            final_phase: PipelinePhase::Complete,
+            final_state,
+        };
+
+        // Act
+        save_complete_checkpoint_if_needed(
+            &ctx,
+            &ctx.config,
+            &run_context,
+            &phase_ctx,
+            &loop_result,
+        );
+
+        // Assert
+        let checkpoint = load_checkpoint_with_workspace(&*workspace)
+            .expect("checkpoint load")
+            .expect("checkpoint exists");
+
+        assert_eq!(
+            checkpoint.recovery_epoch, 5,
+            "completion checkpoint must preserve reducer recovery_epoch"
+        );
     }
 }

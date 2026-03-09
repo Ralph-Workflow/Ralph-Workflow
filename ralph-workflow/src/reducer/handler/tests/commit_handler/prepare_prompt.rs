@@ -1,6 +1,7 @@
 use super::super::common::TestFixture;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
 use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{
@@ -16,9 +17,10 @@ use tempfile::tempdir;
 #[test]
 fn test_prepare_commit_prompt_does_not_emit_generation_started() {
     let mut fixture = TestFixture::new();
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -26,7 +28,7 @@ fn test_prepare_commit_prompt_does_not_emit_generation_started() {
     );
     let result = handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "diff --git a/a b/a\n+change\n",
             crate::reducer::state::PromptMode::Normal,
         )
@@ -56,9 +58,10 @@ fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
     let mut fixture = TestFixture::with_workspace(workspace);
     fixture.template_context =
         TemplateContext::new(TemplateRegistry::new(Some(tempdir.path().to_path_buf())));
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -67,11 +70,17 @@ fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
 
     let result = handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "diff --git a/a b/a\n+change\n",
             PromptMode::Normal,
         )
         .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "commit_message_attempt_iter1_1"
+    )));
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
@@ -107,9 +116,10 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
             "<ralph-commit><ralph-subject>test: subject</ralph-subject></ralph-commit>",
         );
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
     handler.state.agent_chain = AgentChainState::initial().with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -124,7 +134,7 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
         Some("XSD validation failed: MISSING REQUIRED ELEMENT".to_string());
 
     handler
-        .prepare_commit_prompt(&mut ctx, PromptMode::XsdRetry)
+        .prepare_commit_prompt(&ctx, PromptMode::XsdRetry)
         .expect("prepare_commit_prompt should succeed");
 
     let prompt = fixture
@@ -146,12 +156,86 @@ fn test_prepare_commit_prompt_xsd_retry_uses_commit_xsd_retry_template() {
 }
 
 #[test]
+fn test_prepare_commit_prompt_xsd_retry_does_not_replay_stale_prompt_when_diff_content_id_changes()
+{
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_dir(".agent/tmp")
+        .with_file(
+            ".agent/tmp/commit_message.xml",
+            "<ralph-commit><ralph-subject>test: subject</ralph-subject></ralph-commit>",
+        );
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.iteration = 1;
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.continuation.xsd_retry_count = 1;
+    handler.state.continuation.last_xsd_error = Some("XSD validation failed".to_string());
+    handler.state.commit_diff_content_id_sha256 = Some("new_hash".to_string());
+
+    let expected_prompt_content_id = sha256_hex_str(&format!(
+        "commit_xsd_retry|diff:{}|xsd_error:{}|consumer:{}",
+        handler
+            .state
+            .commit_diff_content_id_sha256
+            .as_deref()
+            .expect("diff content id must be set for test"),
+        handler
+            .state
+            .continuation
+            .last_xsd_error
+            .as_deref()
+            .expect("xsd error must be set for test"),
+        handler.state.agent_chain.consumer_signature_sha256(),
+    ));
+
+    // Arrange: store a stale prompt for the same key but with a different content-id.
+    handler.state.prompt_history.insert(
+        "commit_message_attempt_iter1_1_xsd_retry_1".to_string(),
+        PromptHistoryEntry::new("OLD PROMPT".to_string(), Some("old_hash".to_string())),
+    );
+
+    let result = handler
+        .prepare_commit_prompt(&ctx, PromptMode::XsdRetry)
+        .expect("prepare_commit_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "commit_message_attempt_iter1_1_xsd_retry_1"
+    )));
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key, content_id: Some(id), .. })
+            if key == "commit_message_attempt_iter1_1_xsd_retry_1" && id == &expected_prompt_content_id
+    )));
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
+        .expect("commit_prompt.txt should be written");
+    assert_ne!(prompt, "OLD PROMPT");
+    assert!(prompt.contains("XSD VALIDATION FAILED - FIX XML ONLY"));
+}
+
+#[test]
 fn test_prepare_commit_prompt_does_not_panic_when_materialized_attempt_mismatch() {
     let workspace = MemoryWorkspace::new_test()
         .with_dir(".agent/tmp")
         .with_file(".agent/tmp/commit_diff.model_safe.txt", "diff");
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     handler.state.commit = CommitState::Generating {
@@ -180,7 +264,7 @@ fn test_prepare_commit_prompt_does_not_panic_when_materialized_attempt_mismatch(
     });
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        handler.prepare_commit_prompt(&mut ctx, PromptMode::Normal)
+        handler.prepare_commit_prompt(&ctx, PromptMode::Normal)
     }));
     assert!(
         result.is_ok(),
@@ -195,7 +279,7 @@ fn test_prepare_commit_prompt_same_agent_retry_uses_previous_prepared_prompt() {
         .with_dir(".agent/tmp")
         .with_file(".agent/tmp/commit_prompt.txt", marker);
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -217,7 +301,7 @@ fn test_prepare_commit_prompt_same_agent_retry_uses_previous_prepared_prompt() {
 
     handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "diff --git a/a b/a\n+change\n",
             PromptMode::SameAgentRetry,
         )
@@ -245,7 +329,7 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
         .with_dir(".agent/tmp")
         .with_file(".agent/tmp/commit_prompt.txt", marker);
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
@@ -267,7 +351,7 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
 
     handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "diff --git a/a b/a\n+change\n",
             PromptMode::SameAgentRetry,
         )
@@ -276,7 +360,7 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
     handler.state.continuation.same_agent_retry_count = 2;
     handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "diff --git a/a b/a\n+change\n",
             PromptMode::SameAgentRetry,
         )
@@ -306,6 +390,82 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
     );
 }
 
+#[test]
+fn test_prepare_commit_prompt_same_agent_retry_replays_from_prompt_history_when_available() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+    use crate::reducer::ui_event::UIEvent;
+
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState {
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            same_agent_retry_reason: Some(SameAgentRetryReason::Timeout),
+            ..ContinuationState::new()
+        },
+        ..PipelineState::initial(1, 0)
+    });
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        handler.state.iteration,
+        1,
+        crate::prompts::RetryMode::SameAgent { count: 1 },
+        handler.state.recovery_epoch,
+    );
+    let key = scope_key.to_string();
+    let diff_content_id = sha256_hex_str("DIFF");
+    let consumer_sig = handler.state.agent_chain.consumer_signature_sha256();
+    let prompt_content_id = sha256_hex_str(&format!(
+        "commit_prompt|diff:{diff_content_id}|consumer:{consumer_sig}"
+    ));
+    handler.state.prompt_history.insert(
+        key.clone(),
+        PromptHistoryEntry::new("STORED-PROMPT".to_string(), Some(prompt_content_id)),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "DIFF", PromptMode::SameAgentRetry)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .read(std::path::Path::new(".agent/tmp/commit_prompt.txt"))
+        .expect("commit_prompt.txt should be written");
+    assert_eq!(prompt, "STORED-PROMPT");
+
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            UIEvent::PromptReplayHit {
+                key: k,
+                was_replayed: true
+            } if k == &key
+        )),
+        "Expected PromptReplayHit(was_replayed=true) for {key}; got: {:?}",
+        result.ui_events
+    );
+    assert!(
+        !result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
+                if k == &key
+        )),
+        "Prompt replay should not emit PromptCaptured for {key}; got: {:?}",
+        result.additional_events
+    );
+}
+
 /// Test that commit prompt keys are unique per iteration, preventing cross-cycle prompt replay.
 ///
 /// Root cause of the stale-commit-diff bug: commit prompt keys use only the attempt number
@@ -320,17 +480,19 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
 fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
-
-    // Pre-populate prompt_history with the cycle-1 key as if cycle 1 already ran.
-    // On buggy code (key = "commit_message_attempt_1"), cycle 2 will find and replay this.
-    ctx.prompt_history.insert(
-        "commit_message_attempt_1".to_string(),
-        "STALE-CYCLE-1-PROMPT: old diff content from iteration 1".to_string(),
-    );
+    let ctx = fixture.ctx();
 
     // Simulate cycle 2: iteration=2, attempt resets to 1.
+    // Pre-populate state.prompt_history with the cycle-1 key as if cycle 1 already ran.
+    // On buggy code (key = "commit_message_attempt_1"), cycle 2 will find and replay this.
+    // Since handlers now read from self.state.prompt_history, insert into the handler state.
     let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.prompt_history.insert(
+        "commit_message_attempt_1".to_string(),
+        PromptHistoryEntry::from_string(
+            "STALE-CYCLE-1-PROMPT: old diff content from iteration 1".to_string(),
+        ),
+    );
     handler.state.iteration = 2;
     handler.state.commit = CommitState::Generating {
         attempt: 1,
@@ -344,7 +506,7 @@ fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
 
     handler
         .prepare_commit_prompt_with_diff_and_mode(
-            &mut ctx,
+            &ctx,
             "FRESH-CYCLE-2-DIFF: unique cycle 2 changes",
             PromptMode::Normal,
         )
@@ -366,6 +528,164 @@ fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
     );
 }
 
+/// Test that stored commit prompts are gated on the current commit diff content-id.
+///
+/// RFC-007 introduced optional content-id validation for prompt replay: if a stored
+/// prompt's content-id does not match the current materialized inputs, the stored
+/// entry must be treated as a cache miss and a fresh prompt must be generated.
+///
+/// For commit prompts, the relevant materialized input is the commit diff; this
+/// test ensures that when the diff content-id changes, we do not replay a stale
+/// stored commit prompt under the same prompt key.
+#[test]
+fn test_commit_prompt_replay_is_gated_on_commit_diff_content_id() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.iteration = 2;
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.commit_diff_content_id_sha256 = Some("new_hash".to_string());
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    let consumer_sig = handler.state.agent_chain.consumer_signature_sha256();
+    let expected_prompt_content_id = sha256_hex_str(&format!(
+        "commit_prompt|diff:new_hash|consumer:{consumer_sig}"
+    ));
+
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        2,
+        1,
+        crate::prompts::RetryMode::Normal,
+        handler.state.recovery_epoch,
+    );
+    let prompt_key = scope_key.to_string();
+
+    // Pre-populate prompt history with a stale prompt entry for the same key.
+    handler.state.prompt_history.insert(
+        prompt_key.clone(),
+        PromptHistoryEntry::new("STALE-PROMPT".to_string(), Some("old_hash".to_string())),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "FRESH-DIFF", PromptMode::Normal)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        !prompt.contains("STALE-PROMPT"),
+        "Commit prompt must not replay stale stored prompt when diff content-id changes; got: {prompt}"
+    );
+    assert!(
+        prompt.contains("FRESH-DIFF"),
+        "Commit prompt must be freshly generated using the current diff; got: {prompt}"
+    );
+
+    // Replay observability must report a cache miss (fresh generation).
+    assert!(
+        result.ui_events.iter().any(|e| matches!(
+            e,
+            crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == &prompt_key
+        )),
+        "Expected PromptReplayHit with was_replayed=false for key {prompt_key}; got: {:?}",
+        result.ui_events
+    );
+
+    // Fresh generation must emit PromptCaptured so reducer-owned history can be updated.
+    assert!(
+        result.additional_events.iter().any(|e| matches!(
+            e,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key,
+                content_id: Some(content_id),
+                ..
+            }) if key == &prompt_key && content_id == &expected_prompt_content_id
+        )),
+        "Expected PromptCaptured with computed prompt content id for key {prompt_key}; got: {:?}",
+        result.additional_events
+    );
+}
+
+/// Commit prompt replay must also be gated on the agent-chain consumer signature.
+///
+/// If the consumer signature changes (e.g., agent selection changes), replaying a stored
+/// prompt based only on diff id can return a prompt rendered for a different consumer.
+#[test]
+fn test_commit_prompt_replay_is_gated_on_consumer_signature() {
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.iteration = 2;
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.commit_diff_content_id_sha256 = Some("diff_id".to_string());
+
+    // Current consumer signature (new chain)
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["codex".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    // Stored prompt was captured under a different consumer signature (old chain), but legacy
+    // checkpoints may only store a diff content-id in PromptHistoryEntry.content_id.
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        2,
+        1,
+        crate::prompts::RetryMode::Normal,
+        handler.state.recovery_epoch,
+    );
+    let prompt_key = scope_key.to_string();
+    handler.state.prompt_history.insert(
+        prompt_key.clone(),
+        PromptHistoryEntry::new(
+            "PROMPT-FOR-OLD-CONSUMER".to_string(),
+            Some("diff_id".to_string()),
+        ),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "FRESH-DIFF", PromptMode::Normal)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        !prompt.contains("PROMPT-FOR-OLD-CONSUMER"),
+        "Commit prompt must not replay a prompt captured for a different consumer signature; got: {prompt}"
+    );
+
+    assert!(result.ui_events.iter().any(|e| matches!(
+        e,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == &prompt_key
+    )));
+}
+
 /// Test that `prepare_commit_prompt` reads from materialized model-safe diff file.
 ///
 /// Once commit inputs are materialized, the `prepare_commit_prompt` effect should
@@ -383,7 +703,7 @@ fn test_prepare_commit_prompt_uses_materialized_diff() {
         .with_file(".agent/tmp/commit_diff.model_safe.txt", model_safe_diff)
         .with_dir(".agent/tmp");
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     handler.state.commit = CommitState::Generating {
@@ -416,7 +736,7 @@ fn test_prepare_commit_prompt_uses_materialized_diff() {
     };
 
     let result = handler
-        .prepare_commit_prompt(&mut ctx, PromptMode::Normal)
+        .prepare_commit_prompt(&ctx, PromptMode::Normal)
         .expect("prepare_commit_prompt should succeed");
 
     // Should succeed with a prompt containing the truncated diff, not the original
@@ -452,7 +772,7 @@ fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_model_safe_di
         )
         .with_dir(".agent/tmp");
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     handler.state.commit = CommitState::Generating {
@@ -486,7 +806,7 @@ fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_model_safe_di
     };
 
     let result = handler
-        .prepare_commit_prompt(&mut ctx, PromptMode::Normal)
+        .prepare_commit_prompt(&ctx, PromptMode::Normal)
         .expect("prepare_commit_prompt should return an EffectResult");
 
     assert!(
@@ -508,7 +828,7 @@ fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_diff_file_ref
         )
         .with_dir(".agent/tmp");
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
     handler.state.commit = CommitState::Generating {
@@ -547,7 +867,7 @@ fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_diff_file_ref
     // The handler should invalidate diff-prepared state by emitting DiffInvalidated, forcing
     // CheckCommitDiff (and subsequent rematerialization) on the next orchestration loop.
     let result = handler
-        .prepare_commit_prompt(&mut ctx, PromptMode::Normal)
+        .prepare_commit_prompt(&ctx, PromptMode::Normal)
         .expect("prepare_commit_prompt should return an EffectResult");
 
     assert!(

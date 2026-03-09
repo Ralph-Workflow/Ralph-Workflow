@@ -26,6 +26,7 @@ use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::{CommitEvent, PipelineEvent, PromptInputEvent};
 use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
+use ralph_workflow::reducer::ui_event::UIEvent;
 use ralph_workflow::reducer::PipelineState;
 use std::path::PathBuf;
 
@@ -224,6 +225,57 @@ fn test_second_commit_cycle_diff_size_does_not_exceed_first_cycle() {
             cycle_2_bytes <= cycle_1_bytes,
             "Cycle 2 diff input size ({cycle_2_bytes}) must not exceed cycle 1 ({cycle_1_bytes}) — \
              second commit context must not grow due to stale reuse"
+        );
+    });
+}
+
+/// Test that `UIEvent::PromptReplayHit` with `was_replayed=false` fires for freshly
+/// generated commit prompts in a 2-iteration pipeline.
+///
+/// RFC-007 Short-term #3: Replay observability — every prompt generation must emit
+/// a `UIEvent::PromptReplayHit` so operators can distinguish fresh generation from
+/// checkpoint replay. In a fresh run (no prior history), all prompts should be
+/// generated fresh and `was_replayed` must be `false`.
+#[test]
+fn test_prompt_replay_hit_fires_with_was_replayed_false_on_fresh_generation() {
+    with_default_timeout(|| {
+        let mut app_handler = create_multi_iter_app_handler();
+        let mut effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
+            .with_staged_diff_sequence(["iter-1-diff", "iter-2-diff"]);
+        let config = create_test_config_struct().with_developer_iters(2);
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handlers(&[], executor, config, &mut app_handler, &mut effect_handler)
+            .unwrap();
+
+        let ui_events = effect_handler.captured_ui_events();
+        let commit_prompt_hits: Vec<(&str, bool)> = ui_events
+            .iter()
+            .filter_map(|e| match e {
+                UIEvent::PromptReplayHit { key, was_replayed }
+                    if key.starts_with("commit_message_attempt_iter") =>
+                {
+                    Some((key.as_str(), *was_replayed))
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            commit_prompt_hits
+                .iter()
+                .any(|(k, was_replayed)| *k == "commit_message_attempt_iter0_1" && !*was_replayed),
+            "Expected commit prompt replay hit for iter0 to be was_replayed=false; got: {commit_prompt_hits:?}"
+        );
+        assert!(
+            commit_prompt_hits
+                .iter()
+                .any(|(k, was_replayed)| *k == "commit_message_attempt_iter1_1" && !*was_replayed),
+            "Expected commit prompt replay hit for iter1 to be was_replayed=false; got: {commit_prompt_hits:?}"
+        );
+        assert!(
+            !commit_prompt_hits.iter().any(|(_k, was_replayed)| *was_replayed),
+            "Expected zero commit prompt replay hits with was_replayed=true in a fresh run; got: {commit_prompt_hits:?}"
         );
     });
 }

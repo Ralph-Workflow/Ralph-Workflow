@@ -1,6 +1,7 @@
 use super::*;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
+use crate::prompts::PromptHistoryEntry;
 use crate::reducer::event::{AgentEvent, PipelinePhase};
 use std::fs;
 use tempfile::tempdir;
@@ -20,7 +21,7 @@ fn test_prepare_development_prompt_emits_template_invalid_event() {
         .with_file(".agent/PLAN.md", "Plan content");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
     let materialize = handler
@@ -31,7 +32,7 @@ fn test_prepare_development_prompt_emits_template_invalid_event() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_development_prompt should succeed");
 
     // Verify that {{LITERAL}} braces in PROMPT.md don't cause false positive validation errors
@@ -45,6 +46,15 @@ fn test_prepare_development_prompt_emits_template_invalid_event() {
     assert!(result.additional_events.iter().any(|ev| matches!(
         ev,
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered { .. })
+    )));
+
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+            key,
+            content_id: Some(id),
+            ..
+        }) if key == "development_0" && id.len() == 64
     )));
 }
 
@@ -66,7 +76,7 @@ fn test_prepare_development_prompt_emits_template_rendered_on_validation_failure
     let mut fixture = TestFixture::with_workspace(workspace);
     fixture.template_context =
         TemplateContext::new(TemplateRegistry::new(Some(tempdir.path().to_path_buf())));
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
     let materialize = handler
@@ -78,8 +88,14 @@ fn test_prepare_development_prompt_emits_template_rendered_on_validation_failure
     }
 
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_development_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "development_0"
+    )));
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
@@ -112,15 +128,11 @@ fn test_prepare_development_prompt_normal_mode_ignores_continuation_state() {
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
-    // Store a continuation prompt containing unresolved placeholders.
+    // Store a continuation prompt containing unresolved placeholders in state.prompt_history.
     // Normal mode must NOT replay this continuation prompt.
-    ctx.prompt_history.insert(
-        "development_0_continuation_1".to_string(),
-        "{{UNRESOLVED}}".to_string(),
-    );
-
+    // Handlers read from self.state.prompt_history, so we insert there.
     let mut handler = MainEffectHandler::new(PipelineState {
         continuation: ContinuationState {
             continuation_attempt: 1,
@@ -128,6 +140,10 @@ fn test_prepare_development_prompt_normal_mode_ignores_continuation_state() {
         },
         ..PipelineState::initial(1, 1)
     });
+    handler.state.prompt_history.insert(
+        "development_0_continuation_1".to_string(),
+        PromptHistoryEntry::from_string("{{UNRESOLVED}}".to_string()),
+    );
 
     let materialize = handler
         .materialize_development_inputs(&ctx, 0)
@@ -138,7 +154,7 @@ fn test_prepare_development_prompt_normal_mode_ignores_continuation_state() {
     }
 
     let result = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_development_prompt should succeed");
 
     // Even though a stored continuation prompt contains unresolved placeholders,
@@ -169,11 +185,11 @@ fn test_prepare_development_prompt_returns_error_when_inputs_not_materialized() 
         .with_dir(".agent/tmp");
 
     let mut fixture = TestFixture::with_workspace(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let handler = MainEffectHandler::new(PipelineState::initial(1, 1));
     let err = handler
-        .prepare_development_prompt(&mut ctx, 0, PromptMode::Normal)
+        .prepare_development_prompt(&ctx, 0, PromptMode::Normal)
         .expect_err(
             "prepare_development_prompt should return an error when inputs not materialized",
         );

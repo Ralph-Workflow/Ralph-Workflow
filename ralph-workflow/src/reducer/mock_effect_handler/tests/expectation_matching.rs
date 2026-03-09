@@ -101,7 +101,6 @@ fn mock_effect_handler_trait_execute_with_phase_context() {
         template_context: &template_context,
         run_context: RunContext::new(),
         execution_history: ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: &*executor,
         executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
         repo_root: &repo_root,

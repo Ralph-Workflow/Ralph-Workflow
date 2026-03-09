@@ -6,6 +6,7 @@
 mod execution_history;
 mod file_system_state;
 mod prompt_history;
+mod rebase_conflict_replay;
 mod smoke;
 
 use super::STANDARD_PROMPT_CHECKSUM;

@@ -486,7 +486,6 @@ fn dev_fix_agent_unavailable_log_does_not_claim_termination() {
         template_context: &fixture.template_context,
         run_context: crate::checkpoint::RunContext::new(),
         execution_history: crate::checkpoint::ExecutionHistory::new(),
-        prompt_history: std::collections::HashMap::new(),
         executor: executor_arc.as_ref(),
         executor_arc: Arc::clone(&executor_arc),
         repo_root: fixture.repo_root.as_path(),
