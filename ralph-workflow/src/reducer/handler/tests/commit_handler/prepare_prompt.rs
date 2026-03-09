@@ -392,6 +392,7 @@ fn test_prepare_commit_prompt_same_agent_retry_does_not_stack_retry_notes() {
 
 #[test]
 fn test_prepare_commit_prompt_same_agent_retry_replays_from_prompt_history_when_available() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
     use crate::reducer::ui_event::UIEvent;
 
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
@@ -423,9 +424,14 @@ fn test_prepare_commit_prompt_same_agent_retry_replays_from_prompt_history_when_
         handler.state.recovery_epoch,
     );
     let key = scope_key.to_string();
+    let diff_content_id = sha256_hex_str("DIFF");
+    let consumer_sig = handler.state.agent_chain.consumer_signature_sha256();
+    let prompt_content_id = sha256_hex_str(&format!(
+        "commit_prompt|diff:{diff_content_id}|consumer:{consumer_sig}"
+    ));
     handler.state.prompt_history.insert(
         key.clone(),
-        PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+        PromptHistoryEntry::new("STORED-PROMPT".to_string(), Some(prompt_content_id)),
     );
 
     let result = handler
@@ -533,6 +539,8 @@ fn test_commit_prompt_key_is_unique_per_cycle_prevents_stale_replay() {
 /// stored commit prompt under the same prompt key.
 #[test]
 fn test_commit_prompt_replay_is_gated_on_commit_diff_content_id() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
     let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
     let mut fixture = TestFixture::with_workspace(workspace);
     let ctx = fixture.ctx();
@@ -549,6 +557,11 @@ fn test_commit_prompt_replay_is_gated_on_commit_diff_content_id() {
         vec![vec![]],
         crate::agents::AgentRole::Commit,
     );
+
+    let consumer_sig = handler.state.agent_chain.consumer_signature_sha256();
+    let expected_prompt_content_id = sha256_hex_str(&format!(
+        "commit_prompt|diff:new_hash|consumer:{consumer_sig}"
+    ));
 
     let scope_key = crate::prompts::PromptScopeKey::for_commit(
         2,
@@ -603,11 +616,74 @@ fn test_commit_prompt_replay_is_gated_on_commit_diff_content_id() {
                 key,
                 content_id: Some(content_id),
                 ..
-            }) if key == &prompt_key && content_id == "new_hash"
+            }) if key == &prompt_key && content_id == &expected_prompt_content_id
         )),
-        "Expected PromptCaptured with content_id=new_hash for key {prompt_key}; got: {:?}",
+        "Expected PromptCaptured with computed prompt content id for key {prompt_key}; got: {:?}",
         result.additional_events
     );
+}
+
+/// Commit prompt replay must also be gated on the agent-chain consumer signature.
+///
+/// If the consumer signature changes (e.g., agent selection changes), replaying a stored
+/// prompt based only on diff id can return a prompt rendered for a different consumer.
+#[test]
+fn test_commit_prompt_replay_is_gated_on_consumer_signature() {
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(2, 0));
+    handler.state.iteration = 2;
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.commit_diff_content_id_sha256 = Some("diff_id".to_string());
+
+    // Current consumer signature (new chain)
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["codex".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+
+    // Stored prompt was captured under a different consumer signature (old chain), but legacy
+    // checkpoints may only store a diff content-id in PromptHistoryEntry.content_id.
+    let scope_key = crate::prompts::PromptScopeKey::for_commit(
+        2,
+        1,
+        crate::prompts::RetryMode::Normal,
+        handler.state.recovery_epoch,
+    );
+    let prompt_key = scope_key.to_string();
+    handler.state.prompt_history.insert(
+        prompt_key.clone(),
+        PromptHistoryEntry::new(
+            "PROMPT-FOR-OLD-CONSUMER".to_string(),
+            Some("diff_id".to_string()),
+        ),
+    );
+
+    let result = handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "FRESH-DIFF", PromptMode::Normal)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        !prompt.contains("PROMPT-FOR-OLD-CONSUMER"),
+        "Commit prompt must not replay a prompt captured for a different consumer signature; got: {prompt}"
+    );
+
+    assert!(result.ui_events.iter().any(|e| matches!(
+        e,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == &prompt_key
+    )));
 }
 
 /// Test that `prepare_commit_prompt` reads from materialized model-safe diff file.

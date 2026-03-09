@@ -105,6 +105,8 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
             content,
             content_id,
         } => {
+            use std::collections::hash_map::Entry;
+
             // Insert the captured prompt into the reducer-owned prompt history.
             //
             // This event is emitted by prompt preparation handlers when a fresh prompt
@@ -124,33 +126,32 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
                 content,
                 content_id,
             };
-            let mut new_history = state.prompt_history.clone();
 
-            match new_history.get(&key) {
-                None => {
-                    let _ = new_history.insert(key, entry);
+            let mut state = state;
+            match state.prompt_history.entry(key) {
+                Entry::Vacant(v) => {
+                    let _ = v.insert(entry);
                 }
-                Some(existing) => {
+                Entry::Occupied(mut o) => {
+                    let existing = o.get();
                     // Preserve richer metadata: do not downgrade an existing content-id to None
                     // when the prompt content itself is identical.
                     let is_same_content = existing.content == entry.content;
                     let would_downgrade_id =
                         existing.content_id.is_some() && entry.content_id.is_none();
+                    let is_exact_same = existing.content == entry.content
+                        && existing.content_id == entry.content_id;
+
                     if is_same_content && would_downgrade_id {
                         // Keep existing.
-                    } else if existing.content == entry.content
-                        && existing.content_id == entry.content_id
-                    {
-                        // Exact same entry: idempotent no-op.
+                    } else if is_exact_same {
+                        // Idempotent no-op.
                     } else {
-                        let _ = new_history.insert(key, entry);
+                        let _ = o.insert(entry);
                     }
                 }
             }
-            PipelineState {
-                prompt_history: new_history,
-                ..state
-            }
+            state
         }
     }
 }

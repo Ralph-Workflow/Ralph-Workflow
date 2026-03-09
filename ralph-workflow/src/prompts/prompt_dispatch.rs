@@ -113,9 +113,10 @@ pub fn prompt_for_agent(
 /// generated. This prevents stale-content replay when the materialized inputs
 /// have changed since the prompt was generated.
 ///
-/// If `current_content_id` is `None` or the stored entry has no `content_id`
-/// (legacy entries), replay proceeds without content-id validation for backward
-/// compatibility.
+/// If `current_content_id` is `None`, replay proceeds without content-id validation.
+/// If `current_content_id` is `Some` but the stored entry has no `content_id`
+/// (legacy entries), the entry is treated as a cache miss and a fresh prompt is
+/// generated.
 ///
 /// # Arguments
 ///
@@ -157,13 +158,10 @@ where
 {
     let key = scope_key.to_string();
     if let Some(entry) = prompt_history.get(&key) {
-        // Content-id validation: if both stored and current content-ids are Some
-        // and differ, treat as cache miss to prevent stale-content replay.
-        let content_id_mismatch = match (entry.content_id.as_deref(), current_content_id) {
-            (Some(stored_id), Some(current_id)) => stored_id != current_id,
-            // One or both content-ids absent → replay without validation (backward compat)
-            _ => false,
-        };
+        // Content-id validation (RFC-007): when the caller can compute a content-id for
+        // current materialized inputs, only replay when the stored entry has a matching id.
+        let content_id_mismatch = current_content_id
+            .is_some_and(|current_id| entry.content_id.as_deref() != Some(current_id));
 
         if content_id_mismatch {
             // Content changed: generate fresh prompt, do not replay stale entry
@@ -321,8 +319,10 @@ mod tests {
     }
 
     #[test]
-    fn test_no_content_id_in_stored_entry_replays_without_validation() {
-        // Legacy entries (content_id: None) always replay without validation
+    fn test_legacy_entry_without_content_id_is_treated_as_miss_when_current_content_id_is_known() {
+        // When the caller can compute a content-id for the current materialized inputs,
+        // legacy entries with no stored content-id must be treated as stale/miss.
+        // Otherwise we can replay stale prompt text even when inputs changed.
         let scope_key = PromptScopeKey::for_planning(1, RetryMode::Normal, 0);
         let mut history = std::collections::HashMap::new();
         history.insert(
@@ -335,10 +335,10 @@ mod tests {
                 "generated".to_string()
             });
 
-        assert_eq!(prompt, "legacy prompt");
+        assert_eq!(prompt, "generated");
         assert!(
-            was_replayed,
-            "Legacy entries with no content_id replay without content-id validation"
+            !was_replayed,
+            "Legacy entries with no stored content_id must not replay when current_content_id is Some"
         );
     }
 

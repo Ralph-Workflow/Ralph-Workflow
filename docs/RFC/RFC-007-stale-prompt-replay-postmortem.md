@@ -52,7 +52,8 @@ Commit prompt replay used non-cycle-unique keys. Attempt numbers reset to `1` on
 Relevant path:
 
 - Replay function: `ralph-workflow/src/prompts/prompt_dispatch.rs`
-- Run-scoped prompt storage: `ralph-workflow/src/phases/context.rs`
+- Historical (pre-RFC-007): run-scoped prompt storage lived outside the reducer in `PhaseContext` (`ralph-workflow/src/phases/context.rs`).
+- Current: reducer-owned prompt storage is `PipelineState.prompt_history` (`ralph-workflow/src/reducer/state/pipeline/core_state.rs`).
 - Commit prompt keying (fixed): `ralph-workflow/src/reducer/handler/commit/prompts.rs`
 
 ### Why state-reset fixes failed
@@ -67,7 +68,9 @@ This incident is not only a commit bug. It exposed a broader architecture mismat
 
 ### 1) Split-brain state between reducer and prompt replay
 
-The reducer architecture defines `PipelineState` as canonical application state, but prompt replay state (`prompt_history`) lives in `PhaseContext` outside reducer control.
+Historical issue: the reducer architecture defines `PipelineState` as canonical application state, but prompt replay state (`prompt_history`) lived in `PhaseContext` outside reducer control.
+
+Current state: `prompt_history` is reducer-owned (`PipelineState.prompt_history`) and updated only via `PromptInputEvent::PromptCaptured` so replay eligibility is tied to reducer state transitions.
 
 Consequence: reducer-level recovery/reset can be correct while replay still reintroduces stale text.
 

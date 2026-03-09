@@ -54,11 +54,8 @@ pub fn run_commit_attempt(
     // The diff passed here is already truncated to the effective model budget.
     // See: reducer/handler/commit.rs::materialize_commit_inputs
 
-    let (prompt, substitution_log) = build_commit_prompt(
-        ctx.template_context,
-        model_safe_diff,
-        ctx.workspace,
-    );
+    let (prompt, substitution_log) =
+        build_commit_prompt(ctx.template_context, model_safe_diff, ctx.workspace);
 
     // Legacy phase-based code
     // Validate freshly rendered prompts using substitution logs (no regex scanning).
@@ -80,7 +77,11 @@ pub fn run_commit_attempt(
         workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
     };
 
-    let log_dir = Path::new(".agent/logs/commit_generation");
+    let log_dir = ctx
+        .run_log_context
+        .run_dir()
+        .join("debug")
+        .join("commit_generation");
     let mut session = CommitLogSession::new(
         log_dir
             .to_str()

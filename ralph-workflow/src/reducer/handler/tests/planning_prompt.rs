@@ -338,9 +338,22 @@ fn test_prepare_planning_prompt_same_agent_retry_replays_from_prompt_history_whe
     materialize_and_reduce(&mut handler, &ctx, 0);
 
     let key = "planning_0_same_agent_retry_1";
+    let inputs = handler
+        .state
+        .prompt_inputs
+        .planning
+        .as_ref()
+        .expect("precondition: planning inputs must be materialized");
+    let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+        "planning_same_agent_retry:prompt:{}:consumer:{}",
+        inputs.prompt.content_id_sha256, inputs.prompt.consumer_signature_sha256,
+    ));
     handler.state.prompt_history.insert(
         key.to_string(),
-        crate::prompts::PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+        crate::prompts::PromptHistoryEntry::new(
+            "STORED-PROMPT".to_string(),
+            Some(prompt_content_id),
+        ),
     );
 
     let result = handler

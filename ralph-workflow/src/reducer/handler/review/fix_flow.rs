@@ -168,11 +168,20 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "fix_same_agent_retry|count:{}|{prompt_id}|{plan_id}|{issues_id}",
+                    continuation_state.same_agent_retry_count
+                ));
+
                 let mut should_validate = false;
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
-                    None,
+                    Some(&current_prompt_content_id),
                     || {
                         let (base_prompt, local_should_validate) = ctx
                                 .workspace
@@ -192,11 +201,21 @@ impl MainEffectHandler {
                                         )
                                     },
                                     |previous_prompt| {
-                                        (
-                                            crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
-                                                .to_string(),
-                                            false,
-                                        )
+                                        let previous_base = crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                            .to_string();
+                                        let freshly_rendered_base = prompt_fix_xml_with_context(
+                                            ctx.template_context,
+                                            &prompt_content,
+                                            &plan_content,
+                                            &issues_content,
+                                            &[],
+                                            ctx.workspace,
+                                        );
+                                        if previous_base == freshly_rendered_base {
+                                            (previous_base, false)
+                                        } else {
+                                            (freshly_rendered_base, true)
+                                        }
                                     },
                                 );
                         should_validate = local_should_validate;
@@ -208,7 +227,7 @@ impl MainEffectHandler {
                     prompt,
                     was_replayed,
                     "fix_mode_xml",
-                    None,
+                    Some(current_prompt_content_id),
                     should_validate,
                 )
             }
@@ -216,10 +235,17 @@ impl MainEffectHandler {
                 let scope_key =
                     PromptScopeKey::for_fix(pass, RetryMode::Normal, self.state.recovery_epoch);
                 let prompt_key = scope_key.to_string();
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let current_prompt_content_id =
+                    sha256_hex_str(&format!("fix_xml|{prompt_id}|{plan_id}|{issues_id}"));
+
                 let (prompt, was_replayed) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
-                    None,
+                    Some(&current_prompt_content_id),
                     || {
                         // Use log-based rendering
                         let rendered = crate::prompts::review::prompt_fix_xml_with_log(
@@ -234,7 +260,14 @@ impl MainEffectHandler {
                         rendered.content
                     },
                 );
-                (prompt_key, prompt, was_replayed, "fix_mode_xml", None, true)
+                (
+                    prompt_key,
+                    prompt,
+                    was_replayed,
+                    "fix_mode_xml",
+                    Some(current_prompt_content_id),
+                    true,
+                )
             }
             PromptMode::Continuation => {
                 return Err(ErrorEvent::FixContinuationNotSupported.into());

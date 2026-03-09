@@ -248,22 +248,34 @@ fn test_prompt_replay_hit_fires_with_was_replayed_false_on_fresh_generation() {
         run_ralph_cli_with_handlers(&[], executor, config, &mut app_handler, &mut effect_handler)
             .unwrap();
 
-        // At least one PromptReplayHit with was_replayed=false must have been emitted
-        // (for the commit prompt(s) — no prior history exists in a fresh run).
-        let has_fresh_hit = effect_handler.was_ui_event_emitted(|e| {
-            matches!(
-                e,
-                UIEvent::PromptReplayHit {
-                    was_replayed: false,
-                    ..
+        let ui_events = effect_handler.captured_ui_events();
+        let commit_prompt_hits: Vec<(&str, bool)> = ui_events
+            .iter()
+            .filter_map(|e| match e {
+                UIEvent::PromptReplayHit { key, was_replayed }
+                    if key.starts_with("commit_message_attempt_iter") =>
+                {
+                    Some((key.as_str(), *was_replayed))
                 }
-            )
-        });
+                _ => None,
+            })
+            .collect();
 
         assert!(
-            has_fresh_hit,
-            "UIEvent::PromptReplayHit {{ was_replayed: false }} must fire for freshly generated \
-             commit prompts in a 2-iteration run with no prior checkpoint history"
+            commit_prompt_hits
+                .iter()
+                .any(|(k, was_replayed)| *k == "commit_message_attempt_iter0_1" && !*was_replayed),
+            "Expected commit prompt replay hit for iter0 to be was_replayed=false; got: {commit_prompt_hits:?}"
+        );
+        assert!(
+            commit_prompt_hits
+                .iter()
+                .any(|(k, was_replayed)| *k == "commit_message_attempt_iter1_1" && !*was_replayed),
+            "Expected commit prompt replay hit for iter1 to be was_replayed=false; got: {commit_prompt_hits:?}"
+        );
+        assert!(
+            !commit_prompt_hits.iter().any(|(_k, was_replayed)| *was_replayed),
+            "Expected zero commit prompt replay hits with was_replayed=true in a fresh run; got: {commit_prompt_hits:?}"
         );
     });
 }

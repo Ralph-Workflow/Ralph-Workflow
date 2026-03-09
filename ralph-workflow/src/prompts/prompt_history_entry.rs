@@ -22,8 +22,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///
 /// The `content_id` field, when `Some`, must match the content-id of the
 /// current materialized prompt inputs before the entry is replayed. When
-/// `None` (entries loaded from legacy checkpoints), replay proceeds without
-/// content-id validation for backward compatibility.
+/// `None` (entries loaded from legacy checkpoints), replay is allowed only when
+/// the caller does not provide a current content-id (i.e., `current_content_id = None`).
+/// When the caller provides a current content-id, legacy entries are treated as
+/// a cache miss to prevent stale prompt replay.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PromptHistoryEntry {
     /// The stored prompt text.

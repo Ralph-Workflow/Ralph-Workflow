@@ -234,7 +234,15 @@ mod tests {
         let _ = run_commit_attempt(&mut ctx, 1, model_safe_diff, "claude")
             .expect("run_commit_attempt should succeed");
 
-        let log_files = workspace.list_files_in_dir(".agent/logs/commit_generation");
+        let log_base_dir = run_log_context
+            .run_dir()
+            .join("debug")
+            .join("commit_generation");
+        let log_files = workspace.list_files_in_dir(
+            log_base_dir
+                .to_str()
+                .expect("log base dir must be valid UTF-8"),
+        );
         let attempt_log_path = log_files
             .iter()
             .find(|p| {
@@ -491,8 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_commit_message_with_chain_always_generates_fresh_prompt_for_diff(
-    ) {
+    fn test_generate_commit_message_with_chain_always_generates_fresh_prompt_for_diff() {
         // The legacy path always generates fresh prompts; verify the diff content
         // appears in the generated prompt.
 
@@ -867,8 +874,13 @@ mod tests {
         assert_eq!(result.skip_reason.as_deref(), Some("No changes found"));
 
         // Ensure the extraction attempt is recorded as success (not failure).
+        let log_base_dir = run_log_context
+            .run_dir()
+            .join("debug")
+            .join("commit_generation");
+
         let runs = workspace
-            .read_dir(std::path::Path::new(".agent/logs/commit_generation"))
+            .read_dir(&log_base_dir)
             .expect("read_dir commit_generation");
         let run_dir = runs
             .into_iter()

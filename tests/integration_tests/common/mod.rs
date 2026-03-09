@@ -462,6 +462,74 @@ pub fn run_ralph_cli_with_handlers(
     result
 }
 
+/// Run ralph workflow with a custom reducer effect handler.
+///
+/// This is like `run_ralph_cli_with_handlers`, but allows injecting any reducer-layer
+/// `EffectHandler` (e.g., `MainEffectHandler`) while still using `MockAppEffectHandler`
+/// and `MemoryWorkspace` for isolation.
+pub fn run_ralph_cli_with_custom_effect_handler<'ctx, E>(
+    args: &[&str],
+    executor: Arc<dyn ralph_workflow::executor::ProcessExecutor>,
+    config: ralph_workflow::config::Config,
+    app_handler: &mut ralph_workflow::app::mock_effect_handler::MockAppEffectHandler,
+    effect_handler: &mut E,
+) -> anyhow::Result<()>
+where
+    E: ralph_workflow::reducer::EffectHandler<'ctx>
+        + ralph_workflow::app::event_loop::StatefulHandler,
+{
+    // Build argv: binary name + args
+    let mut arg_vec: Vec<String> = vec!["ralph".to_string()];
+    arg_vec.extend(args.iter().map(std::string::ToString::to_string));
+
+    // Parse args using clap directly
+    let parsed_args = match ralph_workflow::cli::Args::try_parse_from(&arg_vec) {
+        Ok(args) => args,
+        Err(e) if matches!(e.kind(), ErrorKind::DisplayVersion | ErrorKind::DisplayHelp) => {
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    // Create test registry with built-in agents only
+    let registry = create_test_registry();
+
+    // Create a MemoryConfigEnvironment for full isolation.
+    // Configure paths based on handler's cwd.
+    let cwd = app_handler.get_cwd();
+    let config_env = ralph_workflow::config::MemoryConfigEnvironment::new()
+        .with_prompt_path(cwd.join("PROMPT.md"))
+        .with_unified_config_path(cwd.join(".config/ralph-workflow.toml"));
+
+    // Create a MemoryWorkspace that syncs with the MockAppEffectHandler's files.
+    let (workspace, initial_files, initial_handler_files) =
+        create_workspace_from_handler(app_handler);
+
+    let result = ralph_workflow::app::run_with_config_and_handlers(
+        ralph_workflow::app::RunWithHandlersParams {
+            args: parsed_args,
+            executor,
+            config,
+            registry,
+            path_resolver: &config_env,
+            app_handler,
+            effect_handler,
+            workspace: Some(workspace.clone() as Arc<dyn ralph_workflow::workspace::Workspace>),
+            _marker: std::marker::PhantomData::<&'ctx ()>,
+        },
+    );
+
+    // Sync workspace files back to handler so tests can verify file side effects
+    sync_workspace_to_handler(
+        &workspace,
+        app_handler,
+        &initial_files,
+        &initial_handler_files,
+    );
+
+    result
+}
+
 /// Run ralph workflow with a custom `MemoryConfigEnvironment`.
 ///
 /// This variant of `run_ralph_cli_with_handler` allows passing a custom

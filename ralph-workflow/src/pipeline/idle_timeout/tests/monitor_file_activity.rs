@@ -442,13 +442,14 @@ fn monitor_times_out_when_file_activity_check_errors() {
     // Wait until we observe a kill attempt, then simulate process exit so the
     // kill path can complete without waiting for a long grace period.
     let mut observed_kill = false;
-    for _ in 0..100_000 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while std::time::Instant::now() < deadline {
         if !executor_impl.execute_calls_for("kill").is_empty() {
             observed_kill = true;
             controller.store(false, Ordering::Release);
             break;
         }
-        std::thread::yield_now();
+        std::thread::sleep(Duration::from_millis(1));
     }
 
     if !observed_kill {

@@ -29,14 +29,14 @@ impl MainEffectHandler {
             // Start with the current reducer-owned prompt history so rebase conflict
             // resolution can replay stored prompts and new ones are emitted as events.
             let mut local_prompt_history = self.state.prompt_history.clone();
-            let outcome = crate::app::rebase::run_initial_rebase(
+            let run_result = crate::app::rebase::run_initial_rebase(
                 ctx,
                 &run_context,
                 ctx.executor,
                 &mut local_prompt_history,
             )?;
 
-            let event = match outcome {
+            let event = match run_result.outcome {
                 crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {
                     PipelineEvent::rebase_succeeded(phase, new_head)
                 }
@@ -49,6 +49,14 @@ impl MainEffectHandler {
             // conflict resolution, so the reducer-owned PipelineState.prompt_history
             // stays consistent with what was saved to disk in the interim checkpoints.
             let mut result = EffectResult::event(event);
+
+            // Observability: emit PromptReplayHit for conflict resolution prompts.
+            for (key, was_replayed) in run_result.prompt_replay_hits {
+                result = result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                    key,
+                    was_replayed,
+                });
+            }
             for ev in prompt_captured_events_for_prompt_history_delta(
                 &self.state.prompt_history,
                 &local_prompt_history,

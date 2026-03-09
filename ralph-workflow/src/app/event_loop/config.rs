@@ -109,6 +109,7 @@ pub fn overlay_checkpoint_progress_onto_base_state(
         .replace_execution_history_bounded(migrated_execution_history, execution_history_limit);
     base_state.prompt_inputs = migrated.prompt_inputs;
     base_state.prompt_permissions = migrated.prompt_permissions;
+    base_state.prompt_history = migrated.prompt_history;
     base_state.metrics = migrated.metrics;
 
     // Restore cloud resume continuity from checkpoint-migrated state.

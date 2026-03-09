@@ -100,14 +100,19 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
     let mut prompt_history = std::collections::HashMap::new();
     let hook_called = Cell::new(false);
 
-    let _ = try_resolve_conflicts_with_hook(
+    let (_resolved, replay) = try_resolve_conflicts_with_hook(
         &["src/lib.rs".to_string()],
         &ctx,
         &mut prompt_history,
         "PreRebase",
         &*executor,
-        |history| {
+        |replay, history| {
             hook_called.set(true);
+
+            if let Some(entry) = replay.captured_entry.clone() {
+                history.insert(replay.key.clone(), entry);
+            }
+
             assert!(
                 history.contains_key("prerebase_conflict_resolution"),
                 "hook must observe prompt_history after conflict resolution prompt capture"
@@ -123,6 +128,11 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
         },
     )
     .expect("try_resolve_conflicts_with_hook should succeed");
+
+    assert_eq!(
+        replay.key, "prerebase_conflict_resolution",
+        "Expected replay info to return the typed prompt key"
+    );
 
     assert!(
         hook_called.get(),

@@ -105,9 +105,22 @@ fn test_prepare_development_prompt_same_agent_retry_replays_from_prompt_history_
     }
 
     let key = "development_0_same_agent_retry_1";
+    let inputs = handler
+        .state
+        .prompt_inputs
+        .development
+        .as_ref()
+        .expect("precondition: development inputs must be materialized");
+    let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+        "development_same_agent_retry:prompt:{}:plan:{}:prompt_consumer:{}:plan_consumer:{}",
+        inputs.prompt.content_id_sha256,
+        inputs.plan.content_id_sha256,
+        inputs.prompt.consumer_signature_sha256,
+        inputs.plan.consumer_signature_sha256,
+    ));
     handler.state.prompt_history.insert(
         key.to_string(),
-        PromptHistoryEntry::from_string("STORED-PROMPT".to_string()),
+        PromptHistoryEntry::new("STORED-PROMPT".to_string(), Some(prompt_content_id)),
     );
 
     let result = handler
@@ -348,9 +361,17 @@ fn test_prepare_development_prompt_continuation_replay_skips_template_rendered()
         ..PipelineState::initial(1, 0)
     });
     // Insert into state.prompt_history (handler reads from self.state.prompt_history).
+    let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+        "development_continuation:attempt:{}:consumer:{}",
+        handler.state.continuation.continuation_attempt,
+        handler.state.agent_chain.consumer_signature_sha256(),
+    ));
     handler.state.prompt_history.insert(
         "development_0_continuation_1".to_string(),
-        PromptHistoryEntry::from_string("stored continuation prompt".to_string()),
+        PromptHistoryEntry::new(
+            "stored continuation prompt".to_string(),
+            Some(prompt_content_id),
+        ),
     );
 
     let result = handler

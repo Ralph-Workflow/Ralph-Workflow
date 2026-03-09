@@ -130,6 +130,8 @@ fn test_prepare_review_prompt_same_agent_retry_does_not_stack_retry_notes() {
 
 #[test]
 fn test_prepare_review_prompt_same_agent_retry_replays_from_prompt_history() {
+    use crate::reducer::prompt_inputs::sha256_hex_str;
+
     let workspace = MemoryWorkspace::new_test()
         .with_file(".agent/PLAN.md", "# Plan\n")
         .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
@@ -158,11 +160,27 @@ fn test_prepare_review_prompt_same_agent_retry_replays_from_prompt_history() {
         handler.state = crate::reducer::reduce(handler.state.clone(), ev);
     }
 
+    let inputs = handler
+        .state
+        .prompt_inputs
+        .review
+        .as_ref()
+        .expect("precondition: review inputs must be materialized");
+    // Baseline oid is read from .agent/tmp/diff_baseline_oid.txt; absent in this fixture.
+    let baseline_oid_for_prompts = "";
+    let current_prompt_content_id = sha256_hex_str(&format!(
+        "review_same_agent_retry|plan:{}|diff:{}|baseline:{}|consumer:{}",
+        inputs.plan.content_id_sha256,
+        inputs.diff.content_id_sha256,
+        baseline_oid_for_prompts,
+        handler.state.agent_chain.consumer_signature_sha256(),
+    ));
+
     let scope_key = PromptScopeKey::for_review(0, RetryMode::SameAgent { count: 1 }, 0);
     let stored_prompt = "REPLAYED REVIEW SAME-AGENT RETRY PROMPT";
     handler.state.prompt_history.insert(
         scope_key.to_string(),
-        PromptHistoryEntry::from_string(stored_prompt.to_string()),
+        PromptHistoryEntry::new(stored_prompt.to_string(), Some(current_prompt_content_id)),
     );
 
     // Act
