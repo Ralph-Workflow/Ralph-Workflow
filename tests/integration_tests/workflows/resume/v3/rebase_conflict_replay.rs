@@ -152,8 +152,8 @@ fn rebase_conflict_prompt_replay_hit_fires_with_was_replayed_true() {
 
 /// Legacy checkpoints stored conflict resolution prompts as bare strings (v0 format).
 /// The `PromptHistoryEntry` custom deserializer must handle both v0 and v1 formats.
-/// This test verifies that a v0-format conflict resolution entry is replayed correctly
-/// by the typed scope key lookup.
+/// This test verifies that a v0-format conflict resolution entry is replayed when
+/// the caller does not provide a `current_content_id` (i.e., no validation).
 #[test]
 fn rebase_conflict_prompt_replays_from_legacy_v0_checkpoint_entry() {
     with_default_timeout(|| {
@@ -174,6 +174,35 @@ fn rebase_conflict_prompt_replays_from_legacy_v0_checkpoint_entry() {
 
         assert!(was_replayed, "Legacy v0 conflict entry must be replayed");
         assert_eq!(prompt, "Legacy stored conflict prompt from v0 checkpoint");
+    });
+}
+
+/// When the caller provides a `current_content_id`, legacy entries with no stored
+/// content-id must be treated as a cache miss to avoid stale prompt replay.
+///
+/// This covers the production call-shape used by rebase conflict resolution.
+#[test]
+fn rebase_conflict_prompt_legacy_v0_entry_is_miss_when_current_content_id_is_known() {
+    with_default_timeout(|| {
+        let scope_key = PromptScopeKey::for_conflict_resolution("planning", 0);
+
+        let legacy_entry: PromptHistoryEntry =
+            serde_json::from_str(r#""Legacy stored conflict prompt from v0 checkpoint""#)
+                .expect("v0 bare-string deserialization must succeed");
+
+        let mut prompt_history = std::collections::HashMap::new();
+        prompt_history.insert(scope_key.to_string(), legacy_entry);
+
+        let (prompt, was_replayed) =
+            get_stored_or_generate_prompt(&scope_key, &prompt_history, Some("known_hash"), || {
+                "generated".to_string()
+            });
+
+        assert!(
+            !was_replayed,
+            "Legacy v0 conflict entry must be treated as a miss when current_content_id is Some"
+        );
+        assert_eq!(prompt, "generated");
     });
 }
 

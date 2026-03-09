@@ -112,6 +112,15 @@ pub fn overlay_checkpoint_progress_onto_base_state(
     base_state.prompt_history = migrated.prompt_history;
     base_state.metrics = migrated.metrics;
 
+    // Restore resume-critical recovery/dev-fix/interrupt fields.
+    // These are checkpoint-derived and must not be dropped, otherwise resumed runs
+    // can behave as if recovery/dev-fix state never happened.
+    base_state.recovery_epoch = migrated.recovery_epoch;
+    base_state.recovery_escalation_level = migrated.recovery_escalation_level;
+    base_state.dev_fix_attempt_count = migrated.dev_fix_attempt_count;
+    base_state.failed_phase_for_recovery = migrated.failed_phase_for_recovery;
+    base_state.interrupted_by_user = migrated.interrupted_by_user;
+
     // Restore cloud resume continuity from checkpoint-migrated state.
     // Keep `base_state.cloud` (runtime env-derived, redacted).
     base_state.pending_push_commit = migrated.pending_push_commit;
@@ -141,6 +150,7 @@ pub const MAX_EVENT_LOOP_ITERATIONS: usize = 1_000_000;
 mod resume_overlay_tests {
     use super::overlay_checkpoint_progress_onto_base_state;
     use crate::config::{CloudStateConfig, GitAuthStateMethod, GitRemoteStateConfig};
+    use crate::reducer::event::PipelinePhase;
     use crate::reducer::PipelineState;
 
     #[test]
@@ -197,6 +207,29 @@ mod resume_overlay_tests {
         assert_eq!(base.last_push_error.as_deref(), Some("push failed"));
         assert_eq!(base.unpushed_commits, vec!["deadbeef".to_string()]);
         assert_eq!(base.last_pushed_commit.as_deref(), Some("beadfeed"));
+    }
+
+    #[test]
+    fn resume_overlay_restores_recovery_and_interrupt_fields() {
+        let mut base = PipelineState::initial(3, 2);
+
+        let mut migrated = PipelineState::initial(999, 999);
+        migrated.dev_fix_attempt_count = 42;
+        migrated.recovery_epoch = 7;
+        migrated.recovery_escalation_level = 3;
+        migrated.failed_phase_for_recovery = Some(PipelinePhase::Review);
+        migrated.interrupted_by_user = true;
+
+        overlay_checkpoint_progress_onto_base_state(&mut base, migrated, 1000);
+
+        assert_eq!(base.dev_fix_attempt_count, 42);
+        assert_eq!(base.recovery_epoch, 7);
+        assert_eq!(base.recovery_escalation_level, 3);
+        assert_eq!(base.failed_phase_for_recovery, Some(PipelinePhase::Review));
+        assert!(
+            base.interrupted_by_user,
+            "interrupted_by_user must be restored from the migrated checkpoint state"
+        );
     }
 }
 

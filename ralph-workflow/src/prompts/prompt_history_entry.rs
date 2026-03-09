@@ -33,7 +33,9 @@ pub struct PromptHistoryEntry {
     /// SHA-256 hex digest of the materialized inputs at generation time.
     ///
     /// When `None`, the entry was created from a legacy checkpoint (v0 format)
-    /// that did not record a content-id. Replay proceeds without validation.
+    /// that did not record a content-id. When the caller provides a
+    /// `current_content_id`, this entry is treated as a cache miss to avoid stale
+    /// prompt replay.
     pub content_id: Option<String>,
 }
 
