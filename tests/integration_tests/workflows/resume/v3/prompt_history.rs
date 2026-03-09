@@ -6,79 +6,107 @@
 use std::path::PathBuf;
 
 use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
-
-use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
+use ralph_workflow::reducer::effect::{Effect, EffectHandler};
+use ralph_workflow::reducer::handler::MainEffectHandler;
+use ralph_workflow::reducer::state::{
+    AgentChainState, CommitState, MaterializedCommitInputs, MaterializedPromptInput,
+    PromptInputKind, PromptInputRepresentation, PromptInputsState, PromptMaterializationReason,
+    PromptMode,
+};
 use ralph_workflow::reducer::ui_event::UIEvent;
 use ralph_workflow::reducer::PipelineState;
+use ralph_workflow::workspace::MemoryWorkspace;
 
 use crate::common::{
     create_test_config_struct, mock_executor_with_success, run_ralph_cli_with_handler,
-    run_ralph_cli_with_handlers,
 };
 use crate::test_timeout::with_default_timeout;
 
-use super::super::{
-    make_checkpoint_json, make_checkpoint_with_prompt_history, MOCK_REPO_PATH, STANDARD_PROMPT,
-};
+use super::super::{make_checkpoint_json, MOCK_REPO_PATH, STANDARD_PROMPT};
 
 use super::make_checkpoint_without_new_fields;
 
 // ============================================================================
-// V3 Hardened Resume Tests - Prompt Replay
+// V3 Hardened Resume Tests - Prompt Replay (Production Lookup Path)
 // ============================================================================
 
-#[test]
-fn ralph_v3_prompt_replay_is_deterministic() {
-    with_default_timeout(|| {
-        // Create prompt history JSON
-        let prompt_history_json = r#"{
-            "development_1": "DETERMINISTIC PROMPT FOR DEVELOPMENT ITERATION 1",
-            "planning_1": "DETERMINISTIC PROMPT FOR PLANNING"
-        }"#;
+fn assert_commit_prompt_replay_hit_true_uses_prompt_history_lookup() {
+    let workspace = MemoryWorkspace::new(PathBuf::from(MOCK_REPO_PATH))
+        .with_dir(".agent/tmp")
+        .with_file(
+            ".agent/tmp/commit_diff.model_safe.txt",
+            "diff --git a/a b/a\n+change\n",
+        );
+    let workspace_arc: std::sync::Arc<dyn ralph_workflow::workspace::Workspace> =
+        std::sync::Arc::new(workspace);
 
-        let checkpoint_json =
-            make_checkpoint_with_prompt_history(MOCK_REPO_PATH, "Complete", prompt_history_json);
+    let mut fixture = crate::common::IntegrationFixture::with_workspace(workspace_arc);
+    let mut ctx = fixture.ctx(None);
 
-        let mut handler = MockAppEffectHandler::new()
-            .with_head_oid("a".repeat(40))
-            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
-            .with_file(".agent/checkpoint.json", &checkpoint_json)
-            .with_file(".agent/PLAN.md", "Test plan\n")
-            .with_file(".agent/commit-message.txt", "feat: test\n");
+    let mut state = PipelineState::initial(1, 0);
+    state.iteration = 1;
+    state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 1,
+    };
+    state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["commit-agent".to_string()],
+        vec![vec![]],
+        ralph_workflow::agents::AgentRole::Commit,
+    );
 
-        let config = create_test_config_struct();
-        let executor = mock_executor_with_success();
+    // Content-id ties replay to the materialized diff inputs.
+    state.commit_diff_content_id_sha256 = Some("diff-id".to_string());
+    state.prompt_history.insert(
+        "commit_message_attempt_iter1_1".to_string(),
+        ralph_workflow::prompts::PromptHistoryEntry::new(
+            "STORED COMMIT PROMPT".to_string(),
+            Some("diff-id".to_string()),
+        ),
+    );
 
-        run_ralph_cli_with_handler(&["--resume"], executor, config, &mut handler).unwrap();
-    });
-}
+    state.prompt_inputs = PromptInputsState {
+        commit: Some(MaterializedCommitInputs {
+            attempt: 1,
+            diff: MaterializedPromptInput {
+                kind: PromptInputKind::Diff,
+                content_id_sha256: "diff-id".to_string(),
+                consumer_signature_sha256: state.agent_chain.consumer_signature_sha256(),
+                original_bytes: 1,
+                final_bytes: 1,
+                model_budget_bytes: None,
+                inline_budget_bytes: None,
+                representation: PromptInputRepresentation::Inline,
+                reason: PromptMaterializationReason::WithinBudgets,
+            },
+        }),
+        ..PromptInputsState::default()
+    };
 
-#[test]
-fn ralph_v3_prompt_replay_across_multiple_iterations() {
-    with_default_timeout(|| {
-        // Create prompt history JSON with multiple iterations
-        let prompt_history_json = r#"{
-            "planning_1": "PLANNING PROMPT ITERATION 1",
-            "development_1": "DEVELOPMENT PROMPT ITERATION 1",
-            "planning_2": "PLANNING PROMPT ITERATION 2"
-        }"#;
+    let mut handler = MainEffectHandler::new(state);
+    let result = handler
+        .execute(
+            Effect::PrepareCommitPrompt {
+                prompt_mode: PromptMode::Normal,
+            },
+            &mut ctx,
+        )
+        .expect("PrepareCommitPrompt should succeed");
 
-        let checkpoint_json =
-            make_checkpoint_with_prompt_history(MOCK_REPO_PATH, "Complete", prompt_history_json);
-
-        let mut handler = MockAppEffectHandler::new()
-            .with_head_oid("a".repeat(40))
-            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
-            .with_file(".agent/checkpoint.json", &checkpoint_json)
-            .with_file(".agent/PLAN.md", "Test plan\n")
-            .with_file(".agent/commit-message.txt", "feat: test\n");
-
-        let config = create_test_config_struct();
-        let executor = mock_executor_with_success();
-
-        // Resume from Complete phase
-        run_ralph_cli_with_handler(&["--resume"], executor, config, &mut handler).unwrap();
-    });
+    assert!(result.ui_events.iter().any(|e| matches!(
+        e,
+        UIEvent::PromptReplayHit { key, was_replayed: true }
+            if key == "commit_message_attempt_iter1_1"
+    )));
+    assert!(
+        !result.additional_events.iter().any(|e| matches!(
+            e,
+            ralph_workflow::reducer::event::PipelineEvent::PromptInput(
+                ralph_workflow::reducer::event::PromptInputEvent::PromptCaptured { .. }
+            )
+        )),
+        "Prompt replay must not emit PromptCaptured"
+    );
 }
 
 // ============================================================================
@@ -114,35 +142,6 @@ fn ralph_v3_interactive_resume_offer_on_existing_checkpoint() {
 // ============================================================================
 // Prompt Replay Determinism Tests
 // ============================================================================
-
-#[test]
-fn ralph_resume_replays_prompts_deterministically() {
-    with_default_timeout(|| {
-        // Create prompt history JSON
-        let prompt_history_json = r#"{
-            "development_1": "DEVELOPMENT ITERATION 1 OF 2\n\nContext:\nTest plan content",
-            "review_1": "REVIEW MODE\n\nReview the following changes..."
-        }"#;
-
-        let checkpoint_json =
-            make_checkpoint_with_prompt_history(MOCK_REPO_PATH, "Complete", prompt_history_json);
-
-        let mut handler = MockAppEffectHandler::new()
-            .with_head_oid("a".repeat(40))
-            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
-            .with_file("PROMPT.md", STANDARD_PROMPT)
-            .with_file(".agent/checkpoint.json", &checkpoint_json)
-            .with_file(".agent/PLAN.md", "# Plan\n\n1. Step 1\n2. Step 2")
-            .with_file(".agent/ISSUES.md", "No issues\n")
-            .with_file(".agent/commit-message.txt", "feat: test\n");
-
-        let config = create_test_config_struct();
-        let executor = mock_executor_with_success();
-
-        // Resume and verify
-        run_ralph_cli_with_handler(&["--resume"], executor, config, &mut handler).unwrap();
-    });
-}
 
 /// Test that checkpoints missing `prompt_md_checksum` are rejected as legacy.
 ///
@@ -191,59 +190,8 @@ fn ralph_v3_rejects_legacy_checkpoint_missing_prompt_md_checksum() {
 /// preparation must emit `was_replayed=true` instead of regenerating the prompt.
 #[test]
 fn test_prompt_replay_hit_fires_with_was_replayed_true_on_checkpoint_resume() {
-    crate::test_timeout::with_default_timeout(|| {
-        // Checkpoint at "CommitMessage" phase with stored commit prompt in history.
-        // The key "commit_message_attempt_iter1_1" corresponds to PromptScopeKey::for_commit
-        // with iteration=1, RetryMode::Normal, recovery_epoch=0.
-        let prompt_history_json = r#"{
-            "commit_message_attempt_iter1_1": "STORED COMMIT PROMPT FOR REPLAY TEST"
-        }"#;
-        let checkpoint_json = make_checkpoint_with_prompt_history(
-            MOCK_REPO_PATH,
-            "CommitMessage",
-            prompt_history_json,
-        );
-
-        let mut app_handler = MockAppEffectHandler::new()
-            .with_head_oid("a".repeat(40))
-            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
-            .with_file("PROMPT.md", STANDARD_PROMPT)
-            .with_file(".agent/checkpoint.json", &checkpoint_json)
-            .with_file(".agent/PLAN.md", "Test plan\n")
-            .with_diff("diff --git a/test.txt b/test.txt\n+resumed change")
-            .with_staged_changes(true);
-
-        // MockEffectHandler captures UIEvents; staged diff needed for CheckCommitDiff.
-        // Mark the commit prompt key as replayed so PrepareCommitPrompt emits was_replayed=true.
-        let mut effect_handler = MockEffectHandler::new(PipelineState::initial(0, 0))
-            .with_staged_diff_sequence(["resumed-diff-content"])
-            .with_replay_prompt_key("commit_message_attempt_iter1_1");
-
-        let config = create_test_config_struct();
-        let executor = mock_executor_with_success();
-
-        run_ralph_cli_with_handlers(
-            &["--resume"],
-            executor,
-            config,
-            &mut app_handler,
-            &mut effect_handler,
-        )
-        .unwrap();
-
-        // The commit prompt must have been replayed from checkpoint history, not regenerated.
-        let has_replay_hit = effect_handler.was_ui_event_emitted(|e| {
-            matches!(
-                e,
-                UIEvent::PromptReplayHit { key, was_replayed: true }
-                    if key == "commit_message_attempt_iter1_1"
-            )
-        });
-
-        assert!(
-            has_replay_hit,
-            "UIEvent::PromptReplayHit {{ was_replayed: true, key: \"commit_message_attempt_iter1_1\" }} \
-             must fire when resuming from CommitMessage phase with stored prompt in checkpoint history"
-        );
+    with_default_timeout(|| {
+        // This test exercises the production lookup path via `MainEffectHandler`.
+        assert_commit_prompt_replay_hit_true_uses_prompt_history_lookup();
     });
 }

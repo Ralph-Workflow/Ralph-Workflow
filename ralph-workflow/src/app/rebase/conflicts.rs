@@ -16,6 +16,32 @@ pub fn try_resolve_conflicts(
     phase: &str,
     executor: &dyn ProcessExecutor,
 ) -> anyhow::Result<bool> {
+    try_resolve_conflicts_with_hook(
+        conflicted_files,
+        ctx,
+        prompt_history,
+        phase,
+        executor,
+        |_| {},
+    )
+}
+
+/// Attempt to resolve rebase conflicts with AI, invoking a hook after prompt capture.
+///
+/// This is used by callers that need to checkpoint immediately after the conflict
+/// resolution prompt is captured into `prompt_history` (before invoking the agent),
+/// ensuring deterministic prompt replay on resume.
+pub fn try_resolve_conflicts_with_hook<F>(
+    conflicted_files: &[String],
+    ctx: &ConflictResolutionContext<'_>,
+    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+    phase: &str,
+    executor: &dyn ProcessExecutor,
+    after_prompt_capture: F,
+) -> anyhow::Result<bool>
+where
+    F: FnOnce(&std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>),
+{
     if conflicted_files.is_empty() {
         return Ok(false);
     }
@@ -50,6 +76,8 @@ pub fn try_resolve_conflicts(
             crate::prompts::PromptHistoryEntry::from_string(resolution_prompt.clone()),
         );
     }
+
+    after_prompt_capture(prompt_history);
 
     match run_ai_conflict_resolution(&resolution_prompt, ctx) {
         Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger),

@@ -35,8 +35,11 @@ fn test_prepare_development_prompt_xsd_retry_captures_prompt_and_replays_from_hi
     assert!(
         first.additional_events.iter().any(|e| matches!(
             e,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
-                if k == key
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: k,
+                content_id: Some(id),
+                ..
+            }) if k == key && id.len() == 64
         )),
         "Expected PromptCaptured for {key}; got: {:?}",
         first.additional_events

@@ -76,15 +76,20 @@ Prompt generation is integrated with the checkpoint resume system. Every prompt 
 - `for_fix(pass, retry_mode, recovery_epoch)` → key like `"fix_0"`
 - `for_conflict_resolution(phase, recovery_epoch)` → key like `"planning_conflict_resolution"`
 
-The `Display` output of `PromptScopeKey` is byte-identical to the legacy `format!()` strings it replaces, preserving backward-compatibility with existing checkpoint `prompt_history` maps.
+The `Display` output of `PromptScopeKey` is designed for backward-compatible checkpoint replay.
 
-**`PromptHistoryEntry`** (`ralph-workflow/src/prompts/prompt_history_entry.rs`) stores a prompt alongside an optional SHA-256 content-ID of the materialized inputs at generation time. It uses backward-compatible serde: v0 checkpoints stored bare strings; v1 stores an object with `content` and optional `content_id`.
+- Planning, development, review, fix, and conflict-resolution keys remain byte-identical to their legacy `format!()` strings.
+- Commit keys intentionally include the iteration dimension (e.g. `commit_message_attempt_iter{iter}_{attempt}`) to prevent cross-iteration collisions when `attempt` resets.
+
+**`PromptHistoryEntry`** (`ralph-workflow/src/prompts/prompt_history_entry.rs`) stores a prompt alongside an optional SHA-256 content-ID of the materialized inputs at generation time. It uses backward-compatible serde: v0 checkpoints stored bare strings; v1 stores an object with `content` and an optional `content_id` (omitted when `None`).
 
 **`get_stored_or_generate_prompt`** (`ralph-workflow/src/prompts/prompt_dispatch.rs`) is the central dispatch function used by all prompt-preparation handlers:
 
 1. Looks up the scope key's `Display` string in `prompt_history`.
-2. If found and content-IDs match (or neither is `Some`), returns the stored prompt with `was_replayed = true`.
-3. If not found, or content-IDs differ (stale-content cache miss), calls the generator closure and returns the fresh prompt with `was_replayed = false`.
+2. If found, performs stale-content validation when possible:
+   - If both the stored entry and the caller provide `content_id` values and they differ, treat as a cache miss.
+   - Otherwise (one/both missing, or both present and equal), replay the stored prompt.
+3. If not found (or treated as a cache miss due to a content-id mismatch), calls the generator closure and returns a fresh prompt with `was_replayed = false`.
 
 The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a fresh prompt is generated so the reducer can update `PipelineState.prompt_history` atomically.
 

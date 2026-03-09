@@ -47,6 +47,15 @@ fn test_prepare_development_prompt_emits_template_invalid_event() {
         ev,
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered { .. })
     )));
+
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+            key,
+            content_id: Some(id),
+            ..
+        }) if key == "development_0" && id.len() == 64
+    )));
 }
 
 #[test]
@@ -81,6 +90,12 @@ fn test_prepare_development_prompt_emits_template_rendered_on_validation_failure
     let result = handler
         .prepare_development_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_development_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "development_0"
+    )));
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {

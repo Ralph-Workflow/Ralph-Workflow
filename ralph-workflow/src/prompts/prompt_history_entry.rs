@@ -65,9 +65,14 @@ impl PromptHistoryEntry {
 impl Serialize for PromptHistoryEntry {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("PromptHistoryEntry", 2)?;
+        let mut s = serializer.serialize_struct(
+            "PromptHistoryEntry",
+            if self.content_id.is_some() { 2 } else { 1 },
+        )?;
         s.serialize_field("content", &self.content)?;
-        s.serialize_field("content_id", &self.content_id)?;
+        if let Some(content_id) = &self.content_id {
+            s.serialize_field("content_id", content_id)?;
+        }
         s.end()
     }
 }
@@ -126,6 +131,10 @@ mod tests {
             content_id: None,
         };
         let json = serde_json::to_string(&entry).unwrap();
+        assert!(
+            !json.contains("content_id"),
+            "When content_id is None, serialization should omit the field; got: {json}"
+        );
         let deserialized: PromptHistoryEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(entry, deserialized);
     }

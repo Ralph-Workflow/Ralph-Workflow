@@ -76,6 +76,12 @@ fn test_prepare_commit_prompt_emits_template_rendered_on_validation_failure() {
         )
         .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
 
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "commit_message_attempt_iter1_1"
+    )));
+
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {
             phase,

@@ -93,6 +93,7 @@ impl MainEffectHandler {
             template_name,
             prompt_key,
             was_replayed,
+            prompt_content_id,
             rendered_log,
             additional_events,
         } = match mode_result {
@@ -110,7 +111,7 @@ impl MainEffectHandler {
                     crate::reducer::event::PromptInputEvent::PromptCaptured {
                         key: prompt_key_str.to_string(),
                         content: dev_prompt.clone(),
-                        content_id: None,
+                        content_id: prompt_content_id.clone(),
                     },
                 ))
             }
@@ -187,14 +188,23 @@ impl MainEffectHandler {
             self.state.recovery_epoch,
         );
         let prompt_key = scope_key.to_string();
-        let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+        let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
+            "development_continuation:attempt:{}:consumer:{}",
+            continuation_state.continuation_attempt,
+            self.state.agent_chain.consumer_signature_sha256()
+        ));
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(&prompt_content_id),
+            || {
                 prompt_developer_iteration_continuation_xml(
                     ctx.template_context,
                     continuation_state,
                     ctx.workspace,
                 )
-            });
+            },
+        );
         let rendered_log = if was_replayed {
             None
         } else {
@@ -219,7 +229,12 @@ impl MainEffectHandler {
                         Vec::new(),
                     ),
                 );
-                return PromptModeResult::EarlyReturn(result);
+                return PromptModeResult::EarlyReturn(result.with_ui_event(
+                    crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    },
+                ));
             }
             Some(rendered.log)
         };
@@ -228,6 +243,7 @@ impl MainEffectHandler {
             template_name: "developer_iteration_continuation_xml",
             prompt_key: Some(prompt_key),
             was_replayed,
+            prompt_content_id: Some(prompt_content_id),
             rendered_log,
             additional_events: Vec::new(),
         })
@@ -306,7 +322,7 @@ impl MainEffectHandler {
             let input = MaterializedPromptInput {
                 kind: PromptInputKind::LastOutput,
                 content_id_sha256: content_id_sha256.clone(),
-                consumer_signature_sha256,
+                consumer_signature_sha256: consumer_signature_sha256.clone(),
                 original_bytes: last_output_bytes,
                 final_bytes: last_output_bytes,
                 model_budget_bytes: None,
@@ -325,7 +341,7 @@ impl MainEffectHandler {
                 additional_events.push(PipelineEvent::prompt_input_oversize_detected(
                     crate::reducer::event::PipelinePhase::Development,
                     PromptInputKind::LastOutput,
-                    content_id_sha256,
+                    content_id_sha256.clone(),
                     last_output_bytes,
                     inline_budget_bytes,
                     "xsd-retry-context".to_string(),
@@ -343,8 +359,15 @@ impl MainEffectHandler {
         );
         let prompt_key = scope_key.to_string();
 
-        let (prompt, was_replayed) =
-            get_stored_or_generate_prompt(&scope_key, &self.state.prompt_history, None, || {
+        let prompt_content_id = sha256_hex_str(&format!(
+            "development_xsd_retry:last_output:{content_id_sha256}:consumer:{consumer_signature_sha256}"
+        ));
+
+        let (prompt, was_replayed) = get_stored_or_generate_prompt(
+            &scope_key,
+            &self.state.prompt_history,
+            Some(&prompt_content_id),
+            || {
                 prompt_developer_iteration_xsd_retry_with_context_files_and_log(
                     ctx.template_context,
                     "XML output failed validation. Provide valid XML output.",
@@ -352,7 +375,8 @@ impl MainEffectHandler {
                     "developer_iteration_xsd_retry",
                 )
                 .content
-            });
+            },
+        );
 
         let rendered_log = if was_replayed {
             None
@@ -378,7 +402,12 @@ impl MainEffectHandler {
                         Vec::new(),
                     ),
                 );
-                return Ok(PromptModeResult::EarlyReturn(result));
+                return Ok(PromptModeResult::EarlyReturn(result.with_ui_event(
+                    crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    },
+                )));
             }
             Some(rendered.log)
         };
@@ -388,6 +417,7 @@ impl MainEffectHandler {
             template_name: "developer_iteration_xsd_retry",
             prompt_key: Some(prompt_key),
             was_replayed,
+            prompt_content_id: Some(prompt_content_id),
             rendered_log,
             additional_events,
         }))

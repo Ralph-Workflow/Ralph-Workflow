@@ -51,200 +51,217 @@ impl MainEffectHandler {
 
         let continuation_state = &self.state.continuation;
 
-        let (prompt, template_name, prompt_key, was_replayed, _should_validate, rendered_log) =
-            match prompt_mode {
-                PromptMode::XsdRetry => {
-                    // Materialize last invalid output to a stable path so the retry prompt can
-                    // reference it without inlining content into the prompt itself.
-                    let last_output = ctx
-                        .workspace
-                        .read(Path::new(xml_paths::PLAN_XML))
-                        .or_else(|err| {
-                            if err.kind() == std::io::ErrorKind::NotFound {
-                                // Try reading from the archived .processed file as a fallback
-                                let processed_path = Path::new(".agent/tmp/plan.xml.processed");
-                                ctx.workspace.read(processed_path).inspect(|output| {
-                                    ctx.logger.info(
-                                        "XSD retry: using archived .processed file as last output",
-                                    );
-                                    let _ = output;
-                                })
-                            } else {
-                                Err(err)
-                            }
-                        })
-                        .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-                            path: xml_paths::PLAN_XML.to_string(),
+        let (
+            prompt,
+            template_name,
+            prompt_key,
+            was_replayed,
+            _should_validate,
+            rendered_log,
+            prompt_content_id,
+        ) = match prompt_mode {
+            PromptMode::XsdRetry => {
+                // Materialize last invalid output to a stable path so the retry prompt can
+                // reference it without inlining content into the prompt itself.
+                let last_output = ctx
+                    .workspace
+                    .read(Path::new(xml_paths::PLAN_XML))
+                    .or_else(|err| {
+                        if err.kind() == std::io::ErrorKind::NotFound {
+                            // Try reading from the archived .processed file as a fallback
+                            let processed_path = Path::new(".agent/tmp/plan.xml.processed");
+                            ctx.workspace.read(processed_path).inspect(|output| {
+                                ctx.logger.info(
+                                    "XSD retry: using archived .processed file as last output",
+                                );
+                                let _ = output;
+                            })
+                        } else {
+                            Err(err)
+                        }
+                    })
+                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                        path: xml_paths::PLAN_XML.to_string(),
+                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                    })?;
+
+                let content_id_sha256 = sha256_hex_str(&last_output);
+                let consumer_signature_sha256 = self.state.agent_chain.consumer_signature_sha256();
+                let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
+                let last_output_bytes = last_output.len() as u64;
+
+                let already_materialized = self
+                    .state
+                    .prompt_inputs
+                    .xsd_retry_last_output
+                    .as_ref()
+                    .is_some_and(|m| {
+                        m.phase == PipelinePhase::Planning
+                            && m.scope_id == iteration
+                            && m.last_output.content_id_sha256 == content_id_sha256
+                            && m.last_output.consumer_signature_sha256 == consumer_signature_sha256
+                    });
+
+                if !already_materialized {
+                    let last_output_path = Path::new(".agent/tmp/last_output.xml");
+                    ctx.workspace
+                        .write_atomic(last_output_path, &last_output)
+                        .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
+                            path: last_output_path.display().to_string(),
                             kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                         })?;
 
-                    let content_id_sha256 = sha256_hex_str(&last_output);
-                    let consumer_signature_sha256 =
-                        self.state.agent_chain.consumer_signature_sha256();
-                    let inline_budget_bytes = MAX_INLINE_CONTENT_SIZE as u64;
-                    let last_output_bytes = last_output.len() as u64;
-
-                    let already_materialized = self
-                        .state
-                        .prompt_inputs
-                        .xsd_retry_last_output
-                        .as_ref()
-                        .is_some_and(|m| {
-                            m.phase == PipelinePhase::Planning
-                                && m.scope_id == iteration
-                                && m.last_output.content_id_sha256 == content_id_sha256
-                                && m.last_output.consumer_signature_sha256
-                                    == consumer_signature_sha256
-                        });
-
-                    if !already_materialized {
-                        let last_output_path = Path::new(".agent/tmp/last_output.xml");
-                        ctx.workspace
-                            .write_atomic(last_output_path, &last_output)
-                            .map_err(|err| ErrorEvent::WorkspaceWriteFailed {
-                                path: last_output_path.display().to_string(),
-                                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                            })?;
-
-                        let input = MaterializedPromptInput {
-                            kind: PromptInputKind::LastOutput,
-                            content_id_sha256: content_id_sha256.clone(),
-                            consumer_signature_sha256,
-                            original_bytes: last_output_bytes,
-                            final_bytes: last_output_bytes,
-                            model_budget_bytes: None,
-                            inline_budget_bytes: Some(inline_budget_bytes),
-                            representation: PromptInputRepresentation::FileReference {
-                                path: last_output_path.to_path_buf(),
-                            },
-                            reason: PromptMaterializationReason::PolicyForcedReference,
-                        };
-                        additional_events.push(PipelineEvent::xsd_retry_last_output_materialized(
-                            PipelinePhase::Planning,
-                            iteration,
-                            input,
-                        ));
-                        if last_output_bytes > inline_budget_bytes {
-                            additional_events.push(PipelineEvent::prompt_input_oversize_detected(
-                                PipelinePhase::Planning,
-                                PromptInputKind::LastOutput,
-                                content_id_sha256,
-                                last_output_bytes,
-                                inline_budget_bytes,
-                                "xsd-retry-context".to_string(),
-                            ));
-                        }
-                    }
-                    let scope_key = PromptScopeKey::for_planning(
-                        iteration,
-                        RetryMode::Xsd {
-                            count: continuation_state.xsd_retry_count,
+                    let input = MaterializedPromptInput {
+                        kind: PromptInputKind::LastOutput,
+                        content_id_sha256: content_id_sha256.clone(),
+                        consumer_signature_sha256: consumer_signature_sha256.clone(),
+                        original_bytes: last_output_bytes,
+                        final_bytes: last_output_bytes,
+                        model_budget_bytes: None,
+                        inline_budget_bytes: Some(inline_budget_bytes),
+                        representation: PromptInputRepresentation::FileReference {
+                            path: last_output_path.to_path_buf(),
                         },
-                        self.state.recovery_epoch,
-                    );
-                    let prompt_key = scope_key.to_string();
-                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                        &scope_key,
-                        &self.state.prompt_history,
-                        None,
-                        || {
-                            crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
+                        reason: PromptMaterializationReason::PolicyForcedReference,
+                    };
+                    additional_events.push(PipelineEvent::xsd_retry_last_output_materialized(
+                        PipelinePhase::Planning,
+                        iteration,
+                        input,
+                    ));
+                    if last_output_bytes > inline_budget_bytes {
+                        additional_events.push(PipelineEvent::prompt_input_oversize_detected(
+                            PipelinePhase::Planning,
+                            PromptInputKind::LastOutput,
+                            content_id_sha256.clone(),
+                            last_output_bytes,
+                            inline_budget_bytes,
+                            "xsd-retry-context".to_string(),
+                        ));
+                    }
+                }
+                let scope_key = PromptScopeKey::for_planning(
+                    iteration,
+                    RetryMode::Xsd {
+                        count: continuation_state.xsd_retry_count,
+                    },
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
+
+                let prompt_content_id = sha256_hex_str(&format!(
+                        "planning_xsd_retry:last_output:{content_id_sha256}:consumer:{consumer_signature_sha256}"
+                    ));
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&prompt_content_id),
+                    || {
+                        crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
                                 ctx.template_context,
                                 "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
                                 ctx.workspace,
                                 "planning_xsd_retry",
                             )
                             .content
-                        },
-                    );
+                    },
+                );
 
-                    let rendered_log = if was_replayed {
-                        None
-                    } else {
-                        let rendered =
+                let rendered_log = if was_replayed {
+                    None
+                } else {
+                    let rendered =
                             crate::prompts::prompt_planning_xsd_retry_with_context_files_and_log(
                                 ctx.template_context,
                                 "Previous XML output failed XSD validation. Please provide valid XML conforming to the schema.",
                                 ctx.workspace,
                                 "planning_xsd_retry",
                             );
-                        if !rendered.log.is_complete() {
-                            let missing = rendered.log.unsubstituted.clone();
-                            let result = EffectResult::event(PipelineEvent::template_rendered(
-                                PipelinePhase::Planning,
-                                "planning_xsd_retry".to_string(),
-                                rendered.log,
-                            ))
-                            .with_additional_event(
-                                PipelineEvent::agent_template_variables_invalid(
-                                    AgentRole::Developer,
-                                    "planning_xsd_retry".to_string(),
-                                    missing,
-                                    Vec::new(),
-                                ),
-                            );
-                            return Ok(result);
-                        }
-                        Some(rendered.log)
-                    };
+                    if !rendered.log.is_complete() {
+                        let missing = rendered.log.unsubstituted.clone();
+                        let result = EffectResult::event(PipelineEvent::template_rendered(
+                            PipelinePhase::Planning,
+                            "planning_xsd_retry".to_string(),
+                            rendered.log,
+                        ))
+                        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                            AgentRole::Developer,
+                            "planning_xsd_retry".to_string(),
+                            missing,
+                            Vec::new(),
+                        ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        });
+                        return Ok(result);
+                    }
+                    Some(rendered.log)
+                };
 
-                    (
-                        prompt,
-                        "planning_xsd_retry",
-                        Some(prompt_key),
-                        was_replayed,
-                        true,
-                        rendered_log,
-                    )
-                }
-                PromptMode::SameAgentRetry => {
-                    // Same-agent retry: prepend retry guidance to the last prepared prompt for this
-                    // phase (preserves XSD retry / continuation context if present).
-                    let retry_preamble =
-                        super::super::retry_guidance::same_agent_retry_preamble(continuation_state);
-                    let inputs = self
-                        .state
-                        .prompt_inputs
-                        .planning
-                        .as_ref()
-                        .filter(|p| p.iteration == iteration)
-                        .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
+                (
+                    prompt,
+                    "planning_xsd_retry",
+                    Some(prompt_key),
+                    was_replayed,
+                    true,
+                    rendered_log,
+                    Some(prompt_content_id),
+                )
+            }
+            PromptMode::SameAgentRetry => {
+                // Same-agent retry: prepend retry guidance to the last prepared prompt for this
+                // phase (preserves XSD retry / continuation context if present).
+                let retry_preamble =
+                    super::super::retry_guidance::same_agent_retry_preamble(continuation_state);
+                let inputs = self
+                    .state
+                    .prompt_inputs
+                    .planning
+                    .as_ref()
+                    .filter(|p| p.iteration == iteration)
+                    .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
 
-                    let prompt_ref = match &inputs.prompt.representation {
-                        PromptInputRepresentation::Inline => {
-                            let prompt_md =
-                                ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
-                                    ErrorEvent::WorkspaceReadFailed {
-                                        path: "PROMPT.md".to_string(),
-                                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                                    }
-                                })?;
-                            PromptContentReference::inline(prompt_md)
-                        }
-                        PromptInputRepresentation::FileReference { path } => {
-                            PromptContentReference::file_path(
-                                path.clone(),
-                                "Original user requirements from PROMPT.md",
-                            )
-                        }
-                    };
+                let prompt_ref = match &inputs.prompt.representation {
+                    PromptInputRepresentation::Inline => {
+                        let prompt_md =
+                            ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
+                                ErrorEvent::WorkspaceReadFailed {
+                                    path: "PROMPT.md".to_string(),
+                                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                                }
+                            })?;
+                        PromptContentReference::inline(prompt_md)
+                    }
+                    PromptInputRepresentation::FileReference { path } => {
+                        PromptContentReference::file_path(
+                            path.clone(),
+                            "Original user requirements from PROMPT.md",
+                        )
+                    }
+                };
 
-                    let scope_key = PromptScopeKey::for_planning(
-                        iteration,
-                        RetryMode::SameAgent {
-                            count: continuation_state.same_agent_retry_count,
-                        },
-                        self.state.recovery_epoch,
-                    );
-                    let prompt_key = scope_key.to_string();
+                let scope_key = PromptScopeKey::for_planning(
+                    iteration,
+                    RetryMode::SameAgent {
+                        count: continuation_state.same_agent_retry_count,
+                    },
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
 
-                    let mut should_validate = false;
-                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                        &scope_key,
-                        &self.state.prompt_history,
-                        None,
-                        || {
-                            let (base_prompt, local_should_validate) = ctx
+                let prompt_content_id = sha256_hex_str(&format!(
+                    "planning_same_agent_retry:prompt:{}:consumer:{}",
+                    inputs.prompt.content_id_sha256, inputs.prompt.consumer_signature_sha256
+                ));
+
+                let mut should_validate = false;
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&prompt_content_id),
+                    || {
+                        let (base_prompt, local_should_validate) = ctx
                                 .workspace
                                 .read(Path::new(PLANNING_PROMPT_PATH))
                                 .map_or_else(
@@ -268,144 +285,154 @@ impl MainEffectHandler {
                                         )
                                     },
                                 );
-                            should_validate = local_should_validate;
-                            format!("{retry_preamble}\n{base_prompt}")
-                        },
-                    );
+                        should_validate = local_should_validate;
+                        format!("{retry_preamble}\n{base_prompt}")
+                    },
+                );
 
-                    let rendered_log = if should_validate && !was_replayed {
+                let rendered_log = if should_validate && !was_replayed {
+                    let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
+                        ctx.template_context,
+                        &prompt_ref,
+                        ctx.workspace,
+                        "planning_xml",
+                    );
+                    if !rendered.log.is_complete() {
+                        let missing = rendered.log.unsubstituted.clone();
+                        let result = EffectResult::event(PipelineEvent::template_rendered(
+                            PipelinePhase::Planning,
+                            "planning_xml".to_string(),
+                            rendered.log,
+                        ))
+                        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                            AgentRole::Developer,
+                            "planning_xml".to_string(),
+                            missing,
+                            Vec::new(),
+                        ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        });
+                        return Ok(result);
+                    }
+                    Some(rendered.log)
+                } else {
+                    None
+                };
+                (
+                    prompt,
+                    "planning_xml",
+                    Some(prompt_key),
+                    was_replayed,
+                    should_validate,
+                    rendered_log,
+                    Some(prompt_content_id),
+                )
+            }
+            PromptMode::Normal => {
+                let inputs = self
+                    .state
+                    .prompt_inputs
+                    .planning
+                    .as_ref()
+                    .filter(|p| p.iteration == iteration)
+                    .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
+
+                let prompt_ref = match &inputs.prompt.representation {
+                    PromptInputRepresentation::Inline => {
+                        let prompt_md =
+                            ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
+                                ErrorEvent::WorkspaceReadFailed {
+                                    path: "PROMPT.md".to_string(),
+                                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                                }
+                            })?;
+                        PromptContentReference::inline(prompt_md)
+                    }
+                    PromptInputRepresentation::FileReference { path } => {
+                        PromptContentReference::file_path(
+                            path.clone(),
+                            "Original user requirements from PROMPT.md",
+                        )
+                    }
+                };
+
+                let scope_key = PromptScopeKey::for_planning(
+                    iteration,
+                    RetryMode::Normal,
+                    self.state.recovery_epoch,
+                );
+                let prompt_key = scope_key.to_string();
+
+                let prompt_content_id = sha256_hex_str(&format!(
+                    "planning_normal:prompt:{}:consumer:{}",
+                    inputs.prompt.content_id_sha256, inputs.prompt.consumer_signature_sha256
+                ));
+                let prompt_ref_for_template = prompt_ref.clone();
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&prompt_content_id),
+                    || {
+                        // Use log-based rendering
                         let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
                             ctx.template_context,
-                            &prompt_ref,
+                            &prompt_ref_for_template,
                             ctx.workspace,
                             "planning_xml",
                         );
-                        if !rendered.log.is_complete() {
-                            let missing = rendered.log.unsubstituted.clone();
-                            let result = EffectResult::event(PipelineEvent::template_rendered(
-                                PipelinePhase::Planning,
-                                "planning_xml".to_string(),
-                                rendered.log,
-                            ))
-                            .with_additional_event(
-                                PipelineEvent::agent_template_variables_invalid(
-                                    AgentRole::Developer,
-                                    "planning_xml".to_string(),
-                                    missing,
-                                    Vec::new(),
-                                ),
-                            );
-                            return Ok(result);
-                        }
-                        Some(rendered.log)
-                    } else {
-                        None
-                    };
-                    (
-                        prompt,
+                        rendered.content
+                    },
+                );
+
+                // Validate freshly generated prompts (not replayed ones)
+                let rendered_log = if was_replayed {
+                    None
+                } else {
+                    let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
+                        ctx.template_context,
+                        &prompt_ref,
+                        ctx.workspace,
                         "planning_xml",
-                        Some(prompt_key),
-                        was_replayed,
-                        should_validate,
-                        rendered_log,
-                    )
-                }
-                PromptMode::Normal => {
-                    let inputs = self
-                        .state
-                        .prompt_inputs
-                        .planning
-                        .as_ref()
-                        .filter(|p| p.iteration == iteration)
-                        .ok_or(ErrorEvent::PlanningInputsNotMaterialized { iteration })?;
-
-                    let prompt_ref = match &inputs.prompt.representation {
-                        PromptInputRepresentation::Inline => {
-                            let prompt_md =
-                                ctx.workspace.read(Path::new("PROMPT.md")).map_err(|err| {
-                                    ErrorEvent::WorkspaceReadFailed {
-                                        path: "PROMPT.md".to_string(),
-                                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                                    }
-                                })?;
-                            PromptContentReference::inline(prompt_md)
-                        }
-                        PromptInputRepresentation::FileReference { path } => {
-                            PromptContentReference::file_path(
-                                path.clone(),
-                                "Original user requirements from PROMPT.md",
-                            )
-                        }
-                    };
-
-                    let scope_key = PromptScopeKey::for_planning(
-                        iteration,
-                        RetryMode::Normal,
-                        self.state.recovery_epoch,
-                    );
-                    let prompt_key = scope_key.to_string();
-                    let prompt_ref_for_template = prompt_ref.clone();
-                    let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                        &scope_key,
-                        &self.state.prompt_history,
-                        None,
-                        || {
-                            // Use log-based rendering
-                            let rendered =
-                                crate::prompts::prompt_planning_xml_with_references_and_log(
-                                    ctx.template_context,
-                                    &prompt_ref_for_template,
-                                    ctx.workspace,
-                                    "planning_xml",
-                                );
-                            rendered.content
-                        },
                     );
 
-                    // Validate freshly generated prompts (not replayed ones)
-                    let rendered_log = if was_replayed {
-                        None
-                    } else {
-                        let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
-                            ctx.template_context,
-                            &prompt_ref,
-                            ctx.workspace,
-                            "planning_xml",
-                        );
+                    if !rendered.log.is_complete() {
+                        let missing = rendered.log.unsubstituted.clone();
+                        let result = EffectResult::event(PipelineEvent::template_rendered(
+                            PipelinePhase::Planning,
+                            "planning_xml".to_string(),
+                            rendered.log,
+                        ))
+                        .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                            AgentRole::Developer,
+                            "planning_xml".to_string(),
+                            missing,
+                            Vec::new(),
+                        ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key,
+                            was_replayed,
+                        });
+                        return Ok(result);
+                    }
+                    Some(rendered.log)
+                };
 
-                        if !rendered.log.is_complete() {
-                            let missing = rendered.log.unsubstituted.clone();
-                            let result = EffectResult::event(PipelineEvent::template_rendered(
-                                PipelinePhase::Planning,
-                                "planning_xml".to_string(),
-                                rendered.log,
-                            ))
-                            .with_additional_event(
-                                PipelineEvent::agent_template_variables_invalid(
-                                    AgentRole::Developer,
-                                    "planning_xml".to_string(),
-                                    missing,
-                                    Vec::new(),
-                                ),
-                            );
-                            return Ok(result);
-                        }
-                        Some(rendered.log)
-                    };
-
-                    (
-                        prompt,
-                        "planning_xml",
-                        Some(prompt_key),
-                        was_replayed,
-                        true,
-                        rendered_log,
-                    )
-                }
-                PromptMode::Continuation => {
-                    return Err(ErrorEvent::PlanningContinuationNotSupported.into());
-                }
-            };
+                (
+                    prompt,
+                    "planning_xml",
+                    Some(prompt_key),
+                    was_replayed,
+                    true,
+                    rendered_log,
+                    Some(prompt_content_id),
+                )
+            }
+            PromptMode::Continuation => {
+                return Err(ErrorEvent::PlanningContinuationNotSupported.into());
+            }
+        };
 
         // Collect replay observability key and prepare PromptCaptured event if needed.
         let replay_key = prompt_key.as_deref().map(|k| (k.to_string(), was_replayed));
@@ -417,7 +444,7 @@ impl MainEffectHandler {
                     PromptInputEvent::PromptCaptured {
                         key: prompt_key_str.to_string(),
                         content: prompt.clone(),
-                        content_id: None,
+                        content_id: prompt_content_id.clone(),
                     },
                 ))
             }

@@ -1,4 +1,3 @@
-use super::conflicts::try_resolve_conflicts;
 use super::types::{ConflictResolutionContext, InitialRebaseOutcome};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::{
@@ -196,7 +195,6 @@ fn handle_rebase_conflicts(
     }
 
     record_conflict_detected(phase_ctx, conflicted_files.len());
-    save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, prompt_history);
 
     phase_ctx.logger.warn(&format!(
         "Rebase resulted in {} conflict(s), attempting AI resolution",
@@ -214,12 +212,15 @@ fn handle_rebase_conflicts(
         workspace_arc: std::sync::Arc::clone(&phase_ctx.workspace_arc),
     };
 
-    match try_resolve_conflicts(
+    match crate::app::rebase::conflicts::try_resolve_conflicts_with_hook(
         &conflicted_files,
         &resolution_ctx,
         prompt_history,
         "PreRebase",
         executor,
+        |prompt_history| {
+            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, prompt_history);
+        },
     ) {
         Ok(true) => {
             handle_conflicts_resolved(phase_ctx, run_context, executor, prompt_history);

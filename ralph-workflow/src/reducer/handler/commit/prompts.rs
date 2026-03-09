@@ -136,14 +136,16 @@ impl MainEffectHandler {
                         "commit_xsd_retry".to_string(),
                         rendered.log,
                     ))
-                    .with_additional_event(
-                        PipelineEvent::agent_template_variables_invalid(
-                            AgentRole::Commit,
-                            "commit_xsd_retry".to_string(),
-                            missing,
-                            Vec::new(),
-                        ),
-                    );
+                    .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                        AgentRole::Commit,
+                        "commit_xsd_retry".to_string(),
+                        missing,
+                        Vec::new(),
+                    ))
+                    .with_ui_event(UIEvent::PromptReplayHit {
+                        key: prompt_key,
+                        was_replayed,
+                    });
                     return Ok(result);
                 }
 
@@ -387,14 +389,16 @@ impl MainEffectHandler {
                     "commit_message_xml".to_string(),
                     rendered.log,
                 ))
-                .with_additional_event(
-                    PipelineEvent::agent_template_variables_invalid(
-                        AgentRole::Commit,
-                        "commit_message_xml".to_string(),
-                        missing,
-                        Vec::new(),
-                    ),
-                );
+                .with_additional_event(PipelineEvent::agent_template_variables_invalid(
+                    AgentRole::Commit,
+                    "commit_message_xml".to_string(),
+                    missing,
+                    Vec::new(),
+                ))
+                .with_ui_event(UIEvent::PromptReplayHit {
+                    key: prompt_key,
+                    was_replayed,
+                });
                 return Ok(result);
             }
             Some(rendered.log)

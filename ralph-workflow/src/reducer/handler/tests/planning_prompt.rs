@@ -200,8 +200,11 @@ fn test_prepare_planning_prompt_xsd_retry_captures_prompt_and_replays_from_histo
     assert!(
         first.additional_events.iter().any(|e| matches!(
             e,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured { key: k, .. })
-                if k == key
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: k,
+                content_id: Some(id),
+                ..
+            }) if k == key && id.len() == 64
         )),
         "Expected PromptCaptured for {key}; got: {:?}",
         first.additional_events
@@ -302,6 +305,33 @@ fn test_prepare_planning_prompt_same_agent_retry_replays_from_prompt_history_whe
 }
 
 #[test]
+fn test_prepare_planning_prompt_normal_captures_prompt_with_content_id() {
+    let workspace = MemoryWorkspace::new_test()
+        .with_file("PROMPT.md", "# Prompt\n")
+        .with_dir(".agent/tmp");
+
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    init_agent_chain(&mut handler);
+    seed_materialized_planning_inputs(&mut handler);
+
+    let result = handler
+        .prepare_planning_prompt(&ctx, 0, PromptMode::Normal)
+        .expect("prepare_planning_prompt should succeed");
+
+    assert!(result.additional_events.iter().any(|ev| matches!(
+        ev,
+        PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+            key,
+            content_id: Some(id),
+            ..
+        }) if key == "planning_0" && id.len() == 64
+    )));
+}
+
+#[test]
 fn test_prepare_planning_prompt_same_agent_retry_uses_previous_prepared_prompt() {
     let marker = "<<<PREVIOUS_PLANNING_PROMPT_MARKER>>>";
     let workspace = MemoryWorkspace::new_test()
@@ -369,6 +399,12 @@ fn test_prepare_planning_prompt_emits_template_rendered_on_validation_failure() 
     let result = handler
         .prepare_planning_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_planning_prompt should succeed");
+
+    assert!(result.ui_events.iter().any(|ev| matches!(
+        ev,
+        crate::reducer::ui_event::UIEvent::PromptReplayHit { key, was_replayed: false }
+            if key == "planning_0"
+    )));
 
     match result.event {
         PipelineEvent::PromptInput(PromptInputEvent::TemplateRendered {

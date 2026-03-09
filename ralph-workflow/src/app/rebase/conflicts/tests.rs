@@ -62,3 +62,62 @@ fn handle_error_resolution_accepts_error_reference() {
 
     assert!(!continued);
 }
+
+#[test]
+fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
+    use std::cell::Cell;
+
+    let config = crate::config::Config::default();
+    let registry = crate::agents::AgentRegistry::new().expect("registry");
+
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let template_context = TemplateContext::default();
+
+    let executor: Arc<MockProcessExecutor> = Arc::new(MockProcessExecutor::new());
+    let executor_arc = Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>;
+
+    let workspace = MemoryWorkspace::new_test()
+        .with_file("PROMPT.md", "Prompt")
+        .with_file(".agent/PLAN.md", "Plan")
+        .with_file(
+            "src/lib.rs",
+            "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> branch\n",
+        );
+    let workspace_arc = Arc::new(workspace.clone());
+
+    let ctx = ConflictResolutionContext {
+        config: &config,
+        registry: &registry,
+        template_context: &template_context,
+        logger: &logger,
+        colors,
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc,
+    };
+
+    let mut prompt_history = std::collections::HashMap::new();
+    let hook_called = Cell::new(false);
+
+    let _ = try_resolve_conflicts_with_hook(
+        &["src/lib.rs".to_string()],
+        &ctx,
+        &mut prompt_history,
+        "PreRebase",
+        &*executor,
+        |history| {
+            hook_called.set(true);
+            assert!(
+                history.contains_key("prerebase_conflict_resolution"),
+                "hook must observe prompt_history after conflict resolution prompt capture"
+            );
+        },
+    )
+    .expect("try_resolve_conflicts_with_hook should succeed");
+
+    assert!(
+        hook_called.get(),
+        "Expected after_prompt_capture hook to run"
+    );
+}
