@@ -185,6 +185,38 @@ fn test_prepare_review_prompt_normal_mode_ignores_retry_state() {
         .prepare_review_prompt(&ctx, 0, PromptMode::Normal)
         .expect("prepare_review_prompt should succeed");
 
+    assert!(
+        result.ui_events.iter().any(|ev| matches!(
+            ev,
+            UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == "review_0"
+        )),
+        "expected PromptReplayHit with was_replayed=false for normal-mode generation"
+    );
+
+    assert!(
+        result.additional_events.iter().any(|event| matches!(
+            event,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key,
+                content,
+                content_id: Some(_)
+            }) if key == "review_0" && !content.contains("{{UNRESOLVED}}")
+        )),
+        "expected PromptCaptured for fresh normal prompt (and not the stale legacy placeholder)"
+    );
+
+    let written_prompt = fixture
+        .workspace
+        .read(Path::new(".agent/tmp/review_prompt.txt"))
+        .expect("review prompt file should be written");
+    assert!(
+        !written_prompt.contains("{{UNRESOLVED}}"),
+        "normal mode must not write the stale legacy prompt from prompt_history"
+    );
+
     // Replayed prompts are trusted and not re-validated, so we expect ReviewPromptPrepared
     assert!(matches!(
         result.event,
