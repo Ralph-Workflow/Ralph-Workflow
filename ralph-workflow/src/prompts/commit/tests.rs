@@ -482,3 +482,13 @@ fn commit_message_xsd_disallows_mixed_simple_and_detailed_body_forms() {
         "commit_message.xsd must not allow ralph-body and detailed tags in the same sequence"
     );
 }
+
+#[test]
+fn commit_message_xsd_is_valid_xsd10_structure() {
+    // Standard XSD 1.0 validators reject `xs:all` in many nested positions.
+    // Keep this schema within the widely supported subset so external tooling can compile it.
+    assert!(
+        !super::COMMIT_MESSAGE_XSD_SCHEMA.contains("<xs:all"),
+        "commit_message.xsd must not use xs:all (not reliably supported in nested structures)"
+    );
+}

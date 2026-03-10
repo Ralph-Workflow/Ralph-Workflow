@@ -417,10 +417,13 @@ impl MainEffectHandler {
                                     .join("\n");
                                 format!(
                                     "NOTE: The following files were carried forward from a \
-                                     previous commit pass and must be included in this commit:\n\
-                                     {file_list}\n\n{}",
-                                    rendered.content
-                                )
+                                     previous commit pass and must be accounted for in this commit run:\n\
+                                     {file_list}\n\n\
+                                     If you do not include a file above in `<ralph-files>`, you must list it in \
+                                     `<ralph-excluded-files>` with an explicit `reason` (e.g., `internal-ignore`, \
+                                     `not-task-related`, `sensitive`, `deferred`).\n\n{}",
+                                     rendered.content
+                                 )
                             }
                         },
                     );

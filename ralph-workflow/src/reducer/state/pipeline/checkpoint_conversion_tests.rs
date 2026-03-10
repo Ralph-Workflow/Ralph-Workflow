@@ -280,4 +280,63 @@ mod tests {
         assert!(state.unpushed_commits.iter().any(|c| c == "deadbeef"));
         assert_eq!(state.last_pushed_commit.as_deref(), Some("beadfeed"));
     }
+
+    #[test]
+    fn checkpoint_resume_preserves_commit_residual_state() {
+        use crate::checkpoint::state::{AgentConfigSnapshot, CliArgsSnapshot, RebaseState};
+        use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
+
+        let mut checkpoint = CheckpointBuilder::new()
+            .phase(CheckpointPhase::CommitMessage, 1, 1)
+            .reviewer_pass(0, 0)
+            .agents("dev", "rev")
+            .cli_args(CliArgsSnapshot {
+                developer_iters: 1,
+                reviewer_reviews: 0,
+                review_depth: None,
+                isolation_mode: true,
+                verbosity: 2,
+                show_streaming_metrics: false,
+                reviewer_json_parser: None,
+            })
+            .developer_config(AgentConfigSnapshot {
+                name: "dev".to_string(),
+                cmd: "dev".to_string(),
+                output_flag: "-o".to_string(),
+                yolo_flag: None,
+                can_commit: true,
+                model_override: None,
+                provider_override: None,
+                context_level: 1,
+            })
+            .reviewer_config(AgentConfigSnapshot {
+                name: "rev".to_string(),
+                cmd: "rev".to_string(),
+                output_flag: "-o".to_string(),
+                yolo_flag: None,
+                can_commit: true,
+                model_override: None,
+                provider_override: None,
+                context_level: 1,
+            })
+            .rebase_state(RebaseState::default())
+            .git_identity(None, None)
+            .build()
+            .expect("checkpoint should build");
+
+        checkpoint.commit_is_second_pass = true;
+        checkpoint.commit_residual_files = vec!["src/leftover.rs".to_string()];
+
+        let state = PipelineState::from_checkpoint_with_execution_history_limit(checkpoint, 1000);
+
+        assert!(
+            state.commit_is_second_pass,
+            "commit_is_second_pass must survive resume when pass-2 was in progress"
+        );
+        assert_eq!(
+            state.commit_residual_files,
+            vec!["src/leftover.rs".to_string()],
+            "commit_residual_files must survive resume for unattended carry-forward"
+        );
+    }
 }

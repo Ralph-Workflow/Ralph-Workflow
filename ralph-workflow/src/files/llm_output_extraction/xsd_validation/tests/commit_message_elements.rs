@@ -189,7 +189,10 @@ fn test_validate_xml_with_excluded_files_internal_ignore() {
 </ralph-commit>"#;
 
     let result = validate_xml_against_xsd(xml);
-    assert!(result.is_ok(), "Expected OK for valid excluded-files, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Expected OK for valid excluded-files, got: {result:?}"
+    );
     let elements = result.unwrap();
     assert_eq!(elements.excluded_files.len(), 1);
     assert_eq!(elements.excluded_files[0].path, ".agent/tmp/trace.log");
@@ -201,7 +204,12 @@ fn test_validate_xml_with_excluded_files_internal_ignore() {
 
 #[test]
 fn test_validate_xml_with_excluded_files_all_reason_values() {
-    for reason_attr in ["internal-ignore", "not-task-related", "sensitive", "deferred"] {
+    for reason_attr in [
+        "internal-ignore",
+        "not-task-related",
+        "sensitive",
+        "deferred",
+    ] {
         let xml = format!(
             r#"<ralph-commit>
 <ralph-subject>feat: test</ralph-subject>
@@ -244,10 +252,7 @@ fn test_validate_xml_excluded_files_unknown_reason_is_rejected() {
 </ralph-commit>"#;
 
     let result = validate_xml_against_xsd(xml);
-    assert!(
-        result.is_err(),
-        "Expected Err when reason value is unknown"
-    );
+    assert!(result.is_err(), "Expected Err when reason value is unknown");
 }
 
 #[test]
@@ -296,6 +301,23 @@ fn test_validate_xml_excluded_files_coexist_with_files() {
     let elements = result.unwrap();
     assert_eq!(elements.files.len(), 1);
     assert_eq!(elements.excluded_files.len(), 1);
+}
+
+#[test]
+fn test_validate_xml_excluded_files_rejects_non_whitespace_cdata() {
+    let xml = r#"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-excluded-files>
+<![CDATA[not allowed]]>
+<ralph-excluded-file reason="deferred">src/other.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-excluded-files contains non-whitespace CDATA"
+    );
 }
 
 #[test]

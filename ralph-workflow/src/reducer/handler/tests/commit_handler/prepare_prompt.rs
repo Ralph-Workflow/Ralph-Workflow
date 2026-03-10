@@ -764,6 +764,47 @@ fn test_prepare_commit_prompt_uses_materialized_diff() {
 }
 
 #[test]
+fn test_commit_prompt_residual_files_are_accounted_for_not_forced_into_commit() {
+    let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(1, 0));
+    handler.state.commit = CommitState::Generating {
+        attempt: 1,
+        max_attempts: 2,
+    };
+    handler.state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["claude".to_string()],
+        vec![vec![]],
+        crate::agents::AgentRole::Commit,
+    );
+    handler.state.commit_residual_files = vec!["src/leftover.rs".to_string()];
+
+    handler
+        .prepare_commit_prompt_with_diff_and_mode(&ctx, "DIFF", PromptMode::Normal)
+        .expect("prepare_commit_prompt_with_diff_and_mode should succeed");
+
+    let prompt = fixture
+        .workspace
+        .get_file(".agent/tmp/commit_prompt.txt")
+        .expect("commit_prompt.txt should be written");
+
+    assert!(
+        prompt.contains("must be accounted for"),
+        "Residual file guidance must require accounting, not forced inclusion; got: {prompt}"
+    );
+    assert!(
+        prompt.contains("ralph-excluded-files"),
+        "Residual file guidance must mention the exclusion metadata section; got: {prompt}"
+    );
+    assert!(
+        prompt.contains("- src/leftover.rs"),
+        "Residual file list must be included; got: {prompt}"
+    );
+}
+
+#[test]
 fn test_prepare_commit_prompt_invalidates_materialized_inputs_when_model_safe_diff_missing() {
     let workspace = MemoryWorkspace::new_test()
         .with_file(

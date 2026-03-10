@@ -17,6 +17,36 @@ use std::path::Path;
 /// never written to the local exclude to avoid masking uncommitted work.
 const APPROVED_PREFIXES: &[&str] = &[".agent/tmp/", ".agent/logs-"];
 
+fn is_safe_exclude_pattern(pattern: &str) -> bool {
+    // `.git/info/exclude` uses gitignore syntax, where newlines create additional rules.
+    // Reject control characters and glob metacharacters to avoid injection and overly-broad rules.
+    if pattern.chars().any(char::is_control) {
+        return false;
+    }
+    if pattern.contains('\\') {
+        return false;
+    }
+    if pattern.contains(['*', '?', '[', ']', '{', '}']) {
+        return false;
+    }
+
+    let path = Path::new(pattern);
+    if path.is_absolute() {
+        return false;
+    }
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir
+            | std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return false,
+            std::path::Component::Normal(_) => {}
+        }
+    }
+
+    true
+}
+
 /// Add `patterns` to `.git/info/exclude` that are not already present.
 ///
 /// Only patterns whose path begins with an approved prefix are accepted;
@@ -32,6 +62,7 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
         .iter()
         .copied()
         .filter(|p| APPROVED_PREFIXES.iter().any(|prefix| p.starts_with(prefix)))
+        .filter(|p| is_safe_exclude_pattern(p))
         .collect();
 
     if approved.is_empty() {
@@ -239,6 +270,22 @@ mod tests {
         assert!(
             !content.contains("src/sensitive.rs"),
             "Unapproved not added"
+        );
+    }
+
+    #[test]
+    fn test_rejects_patterns_with_newlines_to_prevent_injection() {
+        let repo = setup_fake_git_repo();
+        let root = repo.path();
+        let exclude = root.join(".git/info/exclude");
+
+        ensure_local_excludes(root, &[".agent/tmp/ok.log", ".agent/tmp/x\nsrc/"]).unwrap();
+
+        let content = fs::read_to_string(&exclude).unwrap();
+        assert!(content.contains(".agent/tmp/ok.log"), "Valid pattern added");
+        assert!(
+            !content.lines().any(|l| l.trim() == "src/"),
+            "Newline injection must not create extra ignore rules: {content}"
         );
     }
 }

@@ -94,6 +94,20 @@ fn test_validate_missing_closing_tag() {
 }
 
 #[test]
+fn test_validate_rejects_invalid_escape_sequences() {
+    // The validator must not downgrade unescape errors into empty strings.
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: test &bad;</ralph-subject>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err for invalid XML escape/entity sequences"
+    );
+}
+
+#[test]
 fn test_validate_missing_subject() {
     let xml = r"<ralph-commit>
 <ralph-body>Some body text</ralph-body>

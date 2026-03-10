@@ -49,16 +49,16 @@
       <xs:choice>
         <!-- Normal commit message -->
         <xs:sequence>
-          <xs:element name="ralph-subject" type="TextWithCodeType"/>
-          <!-- Body is mutually exclusive: either simple <ralph-body> OR detailed tags. -->
-          <xs:choice minOccurs="0">
-            <xs:element name="ralph-body" type="TextWithCodeType"/>
-            <xs:all>
-              <xs:element name="ralph-body-summary" type="TextWithCodeType" minOccurs="0"/>
-              <xs:element name="ralph-body-details" type="TextWithCodeType" minOccurs="0"/>
-              <xs:element name="ralph-body-footer" type="TextWithCodeType" minOccurs="0"/>
-            </xs:all>
-          </xs:choice>
+           <xs:element name="ralph-subject" type="TextWithCodeType"/>
+           <!-- Body is mutually exclusive: either simple <ralph-body> OR detailed tags. -->
+           <xs:choice minOccurs="0">
+             <xs:element name="ralph-body" type="TextWithCodeType"/>
+             <xs:sequence>
+               <xs:element name="ralph-body-summary" type="TextWithCodeType" minOccurs="0"/>
+               <xs:element name="ralph-body-details" type="TextWithCodeType" minOccurs="0"/>
+               <xs:element name="ralph-body-footer" type="TextWithCodeType" minOccurs="0"/>
+             </xs:sequence>
+           </xs:choice>
           <!-- Optional file list: when present, only these files are committed -->
           <xs:element name="ralph-files" type="FileListType" minOccurs="0"/>
           <!-- Optional: audit/observability metadata for files excluded from this commit -->

@@ -358,7 +358,7 @@ pub fn validate_xml_against_xsd(
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default();
+                let text = unescape_text(&e, "ralph-commit")?;
                 let trimmed = text.trim();
                 if !trimmed.is_empty() {
                     return Err(text_outside_tags_error(trimmed, "ralph-commit"));
@@ -465,6 +465,24 @@ pub fn validate_xml_against_xsd(
     })
 }
 
+fn unescape_text(
+    text: &quick_xml::events::BytesText<'_>,
+    element_path: &str,
+) -> Result<String, XsdValidationError> {
+    text.unescape()
+        .map(|t| t.to_string())
+        .map_err(|e| XsdValidationError {
+            error_type: XsdErrorType::MalformedXml,
+            element_path: element_path.to_string(),
+            expected: "valid XML text content".to_string(),
+            found: format!("unescape error: {e}"),
+            suggestion:
+                "Ensure text content uses valid XML escaping (e.g., &amp; for '&', &lt; for '<')."
+                    .to_string(),
+            example: Some(EXAMPLE_COMMIT_XML.into()),
+        })
+}
+
 /// Parse the `<ralph-files>` section and return the list of file paths.
 fn parse_files_section(
     reader: &mut quick_xml::Reader<&[u8]>,
@@ -497,7 +515,7 @@ fn parse_files_section(
             }
             Ok(Event::End(ref e)) if e.name().as_ref() == b"ralph-files" => break,
             Ok(Event::Text(ref t)) => {
-                let text = t.unescape().unwrap_or_default();
+                let text = unescape_text(t, "ralph-commit/ralph-files")?;
                 if !text.trim().is_empty() {
                     return Err(XsdValidationError {
                         error_type: XsdErrorType::InvalidContent,
@@ -637,7 +655,7 @@ fn parse_excluded_files_section(
             }
             Ok(Event::End(ref e)) if e.name().as_ref() == b"ralph-excluded-files" => break,
             Ok(Event::Text(ref t)) => {
-                let text = t.unescape().unwrap_or_default();
+                let text = unescape_text(t, "ralph-commit/ralph-excluded-files")?;
                 if !text.trim().is_empty() {
                     return Err(XsdValidationError {
                         error_type: XsdErrorType::InvalidContent,
@@ -662,6 +680,35 @@ fn parse_excluded_files_section(
                     example: Some(EXAMPLE_COMMIT_XML.into()),
                 });
             }
+            Ok(Event::CData(ref c)) => {
+                let text = String::from_utf8_lossy(c.as_ref());
+                if !text.trim().is_empty() {
+                    return Err(XsdValidationError {
+                        error_type: XsdErrorType::InvalidContent,
+                        element_path: "ralph-commit/ralph-excluded-files".to_string(),
+                        expected: "whitespace-only CDATA between <ralph-excluded-file> elements"
+                            .to_string(),
+                        found: format!("CDATA content: {}", format_content_preview(text.trim())),
+                        suggestion:
+                            "Remove any non-whitespace CDATA inside <ralph-excluded-files>."
+                                .to_string(),
+                        example: Some(EXAMPLE_COMMIT_XML.into()),
+                    });
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let other_end = e.name().as_ref().to_vec();
+                let other_end_name = String::from_utf8_lossy(&other_end);
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MalformedXml,
+                    element_path: "ralph-commit/ralph-excluded-files".to_string(),
+                    expected: "</ralph-excluded-files> closing tag".to_string(),
+                    found: format!("unexpected closing tag </{other_end_name}>"),
+                    suggestion: "Ensure <ralph-excluded-files> contains only <ralph-excluded-file> elements and is properly closed with </ralph-excluded-files>."
+                        .to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
             Ok(_) => {}
             Err(e) => return Err(malformed_xml_error(&e)),
         }
@@ -672,8 +719,9 @@ fn parse_excluded_files_section(
             element_path: "ralph-commit/ralph-excluded-files".to_string(),
             expected: "at least one ralph-excluded-file child element".to_string(),
             found: "ralph-excluded-files with no ralph-excluded-file children".to_string(),
-            suggestion: "Either add ralph-excluded-file elements or omit ralph-excluded-files entirely."
-                .to_string(),
+            suggestion:
+                "Either add ralph-excluded-file elements or omit ralph-excluded-files entirely."
+                    .to_string(),
             example: Some(EXAMPLE_COMMIT_XML.into()),
         });
     }

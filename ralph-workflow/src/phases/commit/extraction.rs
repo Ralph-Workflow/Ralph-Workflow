@@ -4,6 +4,7 @@ enum CommitExtractionOutcome {
     Valid {
         extracted: CommitExtractionResult,
         files: Vec<String>,
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
     },
     Skipped(String),
 }
@@ -20,7 +21,8 @@ fn extract_commit_message_from_file_with_workspace(
         );
     };
 
-    let (message, skip_reason, files, _excluded_files, detail) = try_extract_xml_commit_with_trace(&xml);
+    let (message, skip_reason, files, excluded_files, detail) =
+        try_extract_xml_commit_with_trace(&xml);
 
     // Check for skip first
     if let Some(reason) = skip_reason {
@@ -31,6 +33,7 @@ fn extract_commit_message_from_file_with_workspace(
         CommitExtractionOutcome::Valid {
             extracted: CommitExtractionResult::new(msg),
             files,
+            excluded_files,
         }
     })
 }
