@@ -3,7 +3,7 @@
 use crate::files::{cleanup_generated_files_with_workspace, make_prompt_writable_with_workspace};
 use crate::git_helpers::{
     disable_git_wrapper, end_agent_phase_in_repo, uninstall_hooks_in_repo, verify_hooks_removed,
-    GitHelpers,
+    verify_wrapper_cleaned, GitHelpers,
 };
 use crate::logger::Logger;
 use crate::workspace::Workspace;
@@ -73,6 +73,13 @@ impl Drop for AgentPhaseGuard<'_> {
         end_agent_phase_in_repo(repo_root);
         disable_git_wrapper(self.git_helpers);
         let _ = uninstall_hooks_in_repo(repo_root, self.logger);
+        let wrapper_remaining = verify_wrapper_cleaned(repo_root);
+        if !wrapper_remaining.is_empty() {
+            self.logger.warn(&format!(
+                "Wrapper artifacts still present after guard cleanup: {}",
+                wrapper_remaining.join(", ")
+            ));
+        }
         match verify_hooks_removed(repo_root) {
             Ok(remaining) => {
                 if !remaining.is_empty() {

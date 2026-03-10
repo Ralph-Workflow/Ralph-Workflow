@@ -91,6 +91,15 @@ pub fn finalize_pipeline(
         }
     }
 
+    let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
+    if !wrapper_remaining.is_empty() {
+        cleanup_ok = false;
+        ctx.logger.warn(&format!(
+            "Wrapper artifacts still present after cleanup: {}",
+            wrapper_remaining.join(", ")
+        ));
+    }
+
     match crate::git_helpers::verify_hooks_removed(repo_root) {
         Ok(remaining) => {
             if !remaining.is_empty() {
@@ -282,6 +291,14 @@ mod tests {
         assert!(
             GENERATED_FILES.contains(&".agent/checkpoint.json.tmp"),
             "GENERATED_FILES must include .agent/checkpoint.json.tmp"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".agent/head-oid.txt"),
+            "GENERATED_FILES must include .agent/head-oid.txt"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".agent/git-wrapper-dir.txt"),
+            "GENERATED_FILES must include .agent/git-wrapper-dir.txt"
         );
     }
 }

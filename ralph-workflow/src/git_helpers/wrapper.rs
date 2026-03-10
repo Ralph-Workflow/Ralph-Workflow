@@ -528,6 +528,12 @@ fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &st
 
 /// Enable git wrapper that blocks commits during agent phase.
 pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
+    // Clean up orphaned wrapper dir from a prior crashed run before creating a new one.
+    // This prevents /tmp leaks on every crash-restart cycle.
+    if let Ok(repo_root) = get_repo_root() {
+        cleanup_prior_wrapper_from_track_file(&repo_root);
+    }
+
     helpers.init_real_git();
     let Some(real_git) = helpers.real_git.as_ref() else {
         // Ralph's git operations use libgit2 and should work without the `git` CLI installed.
@@ -1282,6 +1288,61 @@ fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
     let _ = fs::remove_file(track_file);
 }
 
+/// Clean up a prior wrapper dir tracked in the track file.
+///
+/// This prevents /tmp leaks when a prior run was SIGKILL'd and the
+/// track file still points to an orphaned wrapper dir. It also removes
+/// stale PATH entries for the old wrapper dir.
+fn cleanup_prior_wrapper_from_track_file(repo_root: &Path) {
+    let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let Ok(content) = fs::read_to_string(&track_file) else {
+        return;
+    };
+    let wrapper_dir = PathBuf::from(content.trim());
+    if wrapper_dir_is_safe_existing_dir(&wrapper_dir) {
+        // Remove from PATH first.
+        if let Ok(path) = env::var("PATH") {
+            let new_path: String = path
+                .split(':')
+                .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir.as_path())
+                .collect::<Vec<_>>()
+                .join(":");
+            env::set_var("PATH", new_path);
+        }
+        let _ = fs::remove_dir_all(&wrapper_dir);
+    }
+    let _ = fs::remove_file(&track_file);
+}
+
+/// Clean up orphaned wrapper temp dir from a prior crashed run.
+///
+/// This is the public entry point for startup-time cleanup in
+/// `prepare_agent_phase`. It delegates to `cleanup_prior_wrapper_from_track_file`.
+pub fn cleanup_orphaned_wrapper_at(repo_root: &Path) {
+    cleanup_prior_wrapper_from_track_file(repo_root);
+}
+
+/// Verify that the wrapper temp dir and track file have been cleaned up.
+///
+/// Returns a list of remaining artifacts for diagnostic purposes.
+/// An empty list means cleanup was successful.
+#[must_use]
+pub fn verify_wrapper_cleaned(repo_root: &Path) -> Vec<String> {
+    let mut remaining = Vec::new();
+    let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    if track_file.exists() {
+        remaining.push(format!("track file still exists: {}", track_file.display()));
+        // Also check if the tracked dir still exists.
+        if let Ok(content) = fs::read_to_string(&track_file) {
+            let dir = PathBuf::from(content.trim());
+            if dir.exists() {
+                remaining.push(format!("wrapper temp dir still exists: {}", dir.display()));
+            }
+        }
+    }
+    remaining
+}
+
 /// Best-effort cleanup for unexpected exits (Ctrl+C, early-return, panics).
 ///
 /// Prefers the stored repo root (set during `start_agent_phase`) over CWD-based
@@ -1309,7 +1370,6 @@ pub fn cleanup_agent_phase_silent() {
 /// artifacts. All sub-operations use the provided repo root instead of
 /// CWD-based discovery, ensuring reliability even if CWD has changed.
 pub fn cleanup_agent_phase_silent_at(repo_root: &Path) {
-    remove_head_oid_file(repo_root);
     end_agent_phase_in_repo(repo_root);
     cleanup_git_wrapper_dir_silent_at(repo_root);
     uninstall_hooks_silent_at(repo_root);
@@ -2065,5 +2125,139 @@ mod tests {
             AGENT_PHASE_REPO_ROOT.try_lock().is_ok(),
             "AGENT_PHASE_REPO_ROOT mutex should be lockable"
         );
+    }
+
+    // =========================================================================
+    // cleanup_prior_wrapper / cleanup_orphaned_wrapper_at tests
+    // =========================================================================
+
+    #[test]
+    fn test_cleanup_prior_wrapper_removes_tracked_dir() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create a fake wrapper dir in temp with the correct prefix.
+        let wrapper_dir = tempfile::Builder::new()
+            .prefix(WRAPPER_DIR_PREFIX)
+            .tempdir()
+            .unwrap();
+        let wrapper_dir_path = wrapper_dir.keep();
+
+        // Write track file pointing to the wrapper dir.
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
+
+        assert!(
+            wrapper_dir_path.exists(),
+            "precondition: wrapper dir exists"
+        );
+
+        cleanup_orphaned_wrapper_at(repo_root);
+
+        assert!(
+            !wrapper_dir_path.exists(),
+            "wrapper dir should be removed by cleanup"
+        );
+        assert!(
+            !track_file.exists(),
+            "track file should be removed by cleanup"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_prior_wrapper_no_track_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // No track file exists — cleanup should be a no-op.
+        cleanup_orphaned_wrapper_at(repo_root);
+
+        // No panic, no error.
+    }
+
+    #[test]
+    fn test_cleanup_prior_wrapper_stale_track_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Track file points to a non-existent dir.
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, "/nonexistent/ralph-git-wrapper-stale\n").unwrap();
+
+        cleanup_orphaned_wrapper_at(repo_root);
+
+        assert!(
+            !track_file.exists(),
+            "stale track file should be removed by cleanup"
+        );
+    }
+
+    // =========================================================================
+    // verify_wrapper_cleaned tests
+    // =========================================================================
+
+    #[test]
+    fn test_verify_wrapper_cleaned_empty_when_clean() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        let remaining = verify_wrapper_cleaned(repo_root);
+        assert!(
+            remaining.is_empty(),
+            "verify_wrapper_cleaned should return empty when no artifacts remain"
+        );
+    }
+
+    #[test]
+    fn test_verify_wrapper_cleaned_reports_remaining_track_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, "/nonexistent/dir\n").unwrap();
+
+        let remaining = verify_wrapper_cleaned(repo_root);
+        assert!(
+            !remaining.is_empty(),
+            "verify_wrapper_cleaned should report remaining track file"
+        );
+        assert!(
+            remaining[0].contains("track file still exists"),
+            "should mention track file: {remaining:?}"
+        );
+    }
+
+    #[test]
+    fn test_verify_wrapper_cleaned_reports_remaining_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create a real wrapper dir that still exists.
+        let wrapper_dir = tempfile::Builder::new()
+            .prefix(WRAPPER_DIR_PREFIX)
+            .tempdir()
+            .unwrap();
+        let wrapper_dir_path = wrapper_dir.keep();
+
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
+
+        let remaining = verify_wrapper_cleaned(repo_root);
+        assert!(
+            remaining.len() >= 2,
+            "should report both track file and wrapper dir: {remaining:?}"
+        );
+
+        // Clean up the wrapper dir manually.
+        let _ = fs::remove_dir_all(&wrapper_dir_path);
     }
 }

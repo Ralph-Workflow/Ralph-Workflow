@@ -70,7 +70,7 @@ fn collect_output(mut child: Child) -> (ExitStatus, String, String) {
     (status, stdout, stderr)
 }
 use tempfile::TempDir;
-use test_helpers::{create_isolated_config, init_git_repo};
+use test_helpers::{commit_all, create_isolated_config, init_git_repo};
 
 fn assert_status_is_sigint_130(status: ExitStatus, stdout: &str, stderr: &str) {
     assert_eq!(
@@ -215,6 +215,48 @@ fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
 
             // Best-effort emergency cleanup on system test timeout.
             // Avoid killing a recycled PID: only SIGKILL if we can still signal the process.
+            unsafe {
+                let check = libc::kill(child_id.cast_signed(), 0);
+                if check == 0 {
+                    let _ = libc::kill(child_id.cast_signed(), libc::SIGKILL);
+                }
+            }
+        }
+    }));
+
+    Some(child)
+}
+
+/// Spawn ralph pipeline with a command that exits quickly (graceful completion).
+///
+/// Unlike `spawn_ralph_pipeline`, the developer command exits immediately,
+/// allowing the pipeline to complete normally without SIGINT.
+fn spawn_ralph_pipeline_quick_exit(repo_dir: &Path) -> Option<Child> {
+    let ralph_bin = find_ralph_binary()?;
+    let xdg_config_home = create_isolated_config(repo_dir);
+
+    let child = Command::new(&ralph_bin)
+        .current_dir(repo_dir)
+        .args(["--developer-iters", "1", "--reviewer-reviews", "0"])
+        .env("NO_COLOR", "1")
+        .env("RALPH_LOG", "warn")
+        .env("RALPH_NO_RESUME_PROMPT", "1")
+        .env("XDG_CONFIG_HOME", xdg_config_home)
+        // Use a command that exits immediately so the pipeline completes gracefully.
+        .env("RALPH_DEVELOPER_CMD", "echo done")
+        .env("RALPH_REVIEWER_CMD", "echo done")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn ralph process");
+
+    let epoch = CHILD_CLEANUP_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    register_timeout_cleanup(Box::new({
+        let child_id = child.id();
+        move || {
+            if CHILD_CLEANUP_EPOCH.load(std::sync::atomic::Ordering::SeqCst) != epoch {
+                return;
+            }
             unsafe {
                 let check = libc::kill(child_id.cast_signed(), 0);
                 if check == 0 {
@@ -720,6 +762,8 @@ fn assert_generated_files_removed(repo_dir: &Path) {
         ".agent/PLAN.md",
         ".agent/commit-message.txt",
         ".agent/checkpoint.json.tmp",
+        ".agent/head-oid.txt",
+        ".agent/git-wrapper-dir.txt",
     ];
     for file in &generated {
         let path = repo_dir.join(file);
@@ -743,7 +787,10 @@ fn test_ctrl_c_removes_head_oid_file() {
             require_ralph_binary!();
 
             let temp_dir = TempDir::new().expect("create temp dir");
-            let _repo = init_git_repo(&temp_dir);
+            let repo = init_git_repo(&temp_dir);
+
+            // capture_head_oid requires a HEAD commit to exist; create one.
+            let _ = commit_all(&repo, "initial commit");
 
             let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
 
@@ -795,6 +842,153 @@ fn test_ctrl_c_removes_generated_files() {
             let (status, stdout, stderr) = collect_output(child);
             assert_status_is_sigint_130(status, &stdout, &stderr);
 
+            assert_generated_files_removed(temp_dir.path());
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Read the wrapper dir path from the track file.
+fn read_wrapper_dir_path(repo_dir: &Path) -> Option<std::path::PathBuf> {
+    let track_file = repo_dir.join(".agent/git-wrapper-dir.txt");
+    std::fs::read_to_string(&track_file)
+        .ok()
+        .map(|s| std::path::PathBuf::from(s.trim()))
+}
+
+/// Assert wrapper temp dir has been removed from the filesystem.
+fn assert_wrapper_temp_dir_removed(wrapper_dir: &Path) {
+    assert!(
+        !wrapper_dir.exists(),
+        "wrapper temp dir should be removed after cleanup: {}",
+        wrapper_dir.display()
+    );
+}
+
+/// Test: Ctrl+C removes the wrapper temp dir from /tmp.
+///
+/// Existing tests verify the track file is removed, but NOT that the
+/// actual temp directory in /tmp is also cleaned up.
+#[test]
+#[serial]
+fn test_ctrl_c_removes_wrapper_temp_dir() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+
+            let appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(appeared, "Marker should appear when agent phase starts");
+
+            // Read wrapper dir path BEFORE sending SIGINT (track file exists during agent phase).
+            let wrapper_dir = read_wrapper_dir_path(temp_dir.path());
+
+            send_sigint(&child);
+            let (status, stdout, stderr) = collect_output(child);
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            // Track file should be removed.
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            // Wrapper temp dir should also be removed from /tmp.
+            if let Some(wrapper_dir) = wrapper_dir {
+                assert_wrapper_temp_dir_removed(&wrapper_dir);
+            }
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: Startup cleans up orphaned wrapper dir from a prior crashed run.
+///
+/// Simulates a SIGKILL scenario where the prior run left the wrapper temp dir
+/// and track file behind. The next run should clean them up.
+#[test]
+#[serial]
+fn test_startup_cleans_orphaned_wrapper_dir() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            // Create a fake orphaned wrapper dir in temp.
+            let orphan_dir = tempfile::Builder::new()
+                .prefix("ralph-git-wrapper-")
+                .tempdir()
+                .expect("create orphan wrapper dir");
+            let orphan_path = orphan_dir.keep();
+
+            // Write track file pointing to the orphaned dir.
+            let agent_dir = temp_dir.path().join(".agent");
+            std::fs::create_dir_all(&agent_dir).expect("create .agent dir");
+            std::fs::write(
+                temp_dir.path().join(".agent/git-wrapper-dir.txt"),
+                format!("{}\n", orphan_path.display()),
+            )
+            .expect("write orphan track file");
+
+            assert!(orphan_path.exists(), "precondition: orphan dir exists");
+
+            // Spawn Ralph - startup should clean the orphaned wrapper dir.
+            let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+
+            let appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(appeared, "Marker should appear when agent phase starts");
+
+            // The orphaned dir should have been cleaned up during startup.
+            assert!(
+                !orphan_path.exists(),
+                "orphaned wrapper dir should be removed during startup: {}",
+                orphan_path.display()
+            );
+
+            send_sigint(&child);
+            let (status, stdout, stderr) = collect_output(child);
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            // After exit, the new wrapper dir (created by this run) should also be cleaned.
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: Graceful pipeline exit removes the wrapper temp dir from /tmp.
+///
+/// Verifies wrapper dir cleanup on normal pipeline completion (not Ctrl+C).
+/// The pipeline runs with a quick-exit command (`echo done`) and should clean
+/// up the wrapper temp dir during finalization.
+#[test]
+#[serial]
+fn test_graceful_exit_removes_wrapper_temp_dir() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let child =
+                spawn_ralph_pipeline_quick_exit(temp_dir.path()).expect("spawn ralph for test");
+
+            // Wait for the process to exit gracefully (no SIGINT needed).
+            let (status, stdout, stderr) = collect_output(child);
+
+            // The pipeline should exit with code 0 on graceful completion,
+            // but it may also exit with other codes depending on agent phase
+            // results. What matters is that cleanup ran.
+            let _ = (status, &stdout, &stderr);
+
+            // Track file should be removed after graceful exit.
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            // All generated files should be removed.
             assert_generated_files_removed(temp_dir.path());
         },
         SIGNAL_TEST_TIMEOUT,

@@ -29,6 +29,8 @@ pub const GENERATED_FILES: &[&str] = &[
     ".agent/PLAN.md",
     ".agent/commit-message.txt",
     ".agent/checkpoint.json.tmp",
+    ".agent/head-oid.txt",
+    ".agent/git-wrapper-dir.txt",
 ];
 
 /// Check if a file contains a specific marker string.

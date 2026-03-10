@@ -22,6 +22,9 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
             .warn(&format!("Failed to create agent phase marker: {err}"));
     }
 
+    // Clean up orphaned wrapper temp dir from a prior crashed run (SIGKILL scenario).
+    crate::git_helpers::cleanup_orphaned_wrapper_at(&ctx.repo_root);
+
     let hooks_dir = crate::git_helpers::get_hooks_dir_in_repo(&ctx.repo_root);
     let ralph_hook_detected = hooks_dir.ok().is_some_and(|dir| {
         crate::git_helpers::RALPH_HOOK_NAMES.iter().any(|name| {
