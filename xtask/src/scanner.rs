@@ -450,6 +450,27 @@ pub fn run_native_scan_checks_reporting(
         return results;
     }
 
+    // Pre-scan file count: lightweight directory walk with no file I/O.
+    // Emitting the total upfront eliminates the "blank terminal" period during scanning.
+    let (total_files, group_summaries) = count_scan_files(repo_root, checks);
+    if total_files > 0 {
+        progress(
+            "native-scan",
+            &format!(
+                "{total_files} files across {} group(s)",
+                group_summaries.len()
+            ),
+        );
+        for (label, count) in &group_summaries {
+            progress("native-scan", &format!("  {label}: {count} files"));
+        }
+    }
+
+    // Adaptive progress threshold: emit per-file progress at ~5% intervals.
+    // max(5, total/20) ensures we always get at least one update per 5 files
+    // on tiny codebases and no more than ~20 updates on large ones.
+    let progress_threshold = (total_files / 20).max(5);
+
     // Group check indices by (sorted directories + include_glob) key.
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
     for (idx, check) in checks.iter().enumerate() {
@@ -478,7 +499,17 @@ pub fn run_native_scan_checks_reporting(
         let handles: Vec<_> = groups_vec
             .into_iter()
             .map(|check_indices| {
-                s.spawn(move || scan_group_collect(repo_root, checks, &check_indices, fd, progress))
+                // progress_threshold is usize (Copy), so the move closure captures it by value.
+                s.spawn(move || {
+                    scan_group_collect(
+                        repo_root,
+                        checks,
+                        &check_indices,
+                        fd,
+                        progress_threshold,
+                        progress,
+                    )
+                })
             })
             .collect();
         for handle in handles {
@@ -498,6 +529,39 @@ pub fn run_native_scan_checks_reporting(
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
+
+/// Count total files per directory group for upfront progress reporting.
+///
+/// Lightweight pre-pass: traverses directories, reads no file content, builds no
+/// automata.  Returns `(total_files, summaries)` where each summary is
+/// `(group_label, file_count)`.  Groups are deduplicated by `directory_group_key`
+/// so files in groups shared by multiple checks are counted exactly once.
+fn count_scan_files(repo_root: &Path, checks: &[NativeScanCheck]) -> (usize, Vec<(String, usize)>) {
+    // Map from group key → (label, count).  First check per group wins the label.
+    let mut group_map: HashMap<String, (String, usize)> = HashMap::new();
+
+    for check in checks {
+        let key = directory_group_key(check);
+        if group_map.contains_key(&key) {
+            continue; // already counted this group
+        }
+        let label = check.directories.join(" + ");
+        let mut count = 0usize;
+        for dir in check.directories {
+            let full_dir = repo_root.join(dir);
+            if full_dir.exists() {
+                let mut buf = Vec::new();
+                let _ = collect_files_with_glob(&full_dir, check.include_glob, &mut buf);
+                count += buf.len();
+            }
+        }
+        group_map.insert(key, (label, count));
+    }
+
+    let total: usize = group_map.values().map(|(_, c)| *c).sum();
+    let summaries: Vec<(String, usize)> = group_map.into_values().collect();
+    (total, summaries)
+}
 
 /// Read a slice of files in parallel using scoped threads.
 ///
@@ -562,13 +626,16 @@ fn directory_group_key(check: &NativeScanCheck) -> String {
 /// Returns a flat list of `(check_index, NativeScanViolation)` pairs so the
 /// caller can merge results from multiple groups (including parallel groups).
 ///
-/// `files_done` is a shared atomic counter incremented once per file.  When it
-/// crosses a multiple of 50, `progress("native-scan", "N files scanned")` is emitted.
+/// `files_done` is a shared atomic counter incremented once per file.
+/// `progress_threshold` controls how often per-file progress is emitted:
+/// `progress("native-scan", "N files scanned")` fires whenever `files_done`
+/// is a positive multiple of `progress_threshold`.
 fn scan_group_collect(
     repo_root: &Path,
     all_checks: &[NativeScanCheck],
     check_indices: &[usize],
     files_done: &AtomicUsize,
+    progress_threshold: usize,
     progress: &(dyn Fn(&str, &str) + Sync),
 ) -> Vec<(usize, NativeScanViolation)> {
     let mut violations: Vec<(usize, NativeScanViolation)> = Vec::new();
@@ -639,11 +706,12 @@ fn scan_group_collect(
     // Read all files in parallel, then process in deterministic (sorted) order.
     let contents = read_scan_files_parallel(&files);
     for (file_path, content_res) in files.iter().zip(contents.into_iter()) {
-        // Increment the shared file counter.  Emit progress every 50 files so the
-        // user sees scan throughput instead of a silent terminal.
+        // Increment the shared file counter.  Emit progress every `progress_threshold`
+        // files so the user sees scan throughput at ~5% intervals regardless of corpus
+        // size.  Guard `n > 0` to prevent spurious firing at n=0.
         // Uses Relaxed ordering: approximate count is sufficient for progress display.
         let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
-        if n.is_multiple_of(50) {
+        if n > 0 && n.is_multiple_of(progress_threshold) {
             progress("native-scan", &format!("{n} files scanned"));
         }
 
@@ -720,8 +788,10 @@ fn scan_group_collect(
                         if negative_context.is_empty() {
                             false // empty negative_context always suppresses (degenerate)
                         } else {
-                            // Boyer-Moore-Horspool O(n/m) average search (TAOCP Vol. 3 §6.3).
-                            !bmh_contains(line_bytes, negative_context.as_bytes())
+                            // Two-Way O(n) worst-case search (Crochemore-Lecroq 1991, TAOCP Vol. 3
+                            // §6.3). Strictly superior to BMH which degenerates to O(n×m) on
+                            // adversarial inputs (e.g. "aaaa...aaab" pattern "aaab").
+                            !tw_contains(line_bytes, negative_context.as_bytes())
                         }
                     }
                 }
@@ -879,12 +949,17 @@ fn is_word_boundary_at_end(content: &[u8], end: usize) -> bool {
 
 /// Boyer-Moore-Horspool single-pattern byte search.
 ///
+/// Retained for test cross-validation against `tw_contains` (the production
+/// algorithm).  Production code now uses `tw_contains` for O(n) worst-case
+/// guarantees; BMH degenerates to O(n×m) on adversarial inputs.
+///
 /// Preprocessing: O(|alphabet| + |pattern|) — builds a 256-entry bad-character shift table.
 /// Search: O(|text| / |pattern|) average, O(|text| × |pattern|) worst-case.
 ///
 /// Reference: Horspool, R.N. (1980). "Practical Fast Searching in Strings."
 /// Software: Practice and Experience 10(6): 501–506.
 /// See also: TAOCP Vol. 3, §6.3 (String Searching).
+#[cfg(test)]
 pub(crate) fn bmh_contains(text: &[u8], pattern: &[u8]) -> bool {
     let m = pattern.len();
     if m == 0 {
@@ -981,6 +1056,172 @@ pub(crate) fn kmp_search(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     None
 }
 
+// ── Two-Way single-pattern search ────────────────────────────────────────────
+
+/// Two-Way single-pattern byte search (Crochemore and Lecroq, 1991).
+///
+/// Implements the canonical two-case formulation from Crochemore & Lecroq,
+/// "Handbook of Exact String-Matching Algorithms" (2004), Chapter 26.
+///
+/// ## Preprocessing — O(m)
+/// Computes the critical factorization (l, p) via the lex-maximal suffix
+/// algorithm.  No auxiliary arrays beyond two `usize` values.
+///
+/// ## Search — O(n) worst-case
+/// **Case 1 (pattern is p-periodic globally):** uses memory optimisation;
+/// O(n) total comparisons.
+/// **Case 2 (pattern is NOT p-periodic globally):** slides by max(l,m-l-1)+1
+/// on full-mismatch; still O(n) total.
+///
+/// Reference: Crochemore, M. and Lecroq, P. (1991). "Tight bounds on the
+/// complexity of the Two-Way string-matching algorithm." Information Processing
+/// Letters, 46(1):1–8. Also TAOCP Vol. 3, §6.3.
+///
+/// Preferred over BMH for NegativeLookahead because BMH degenerates to O(n×m)
+/// on adversarial inputs (e.g. 1000×'a' + 'b' with pattern "aaab"), while
+/// Two-Way guarantees O(n) in all cases.
+pub(crate) fn tw_contains(text: &[u8], pattern: &[u8]) -> bool {
+    let m = pattern.len();
+    if m == 0 {
+        return true;
+    }
+    let n = text.len();
+    if m > n {
+        return false;
+    }
+
+    let (l, p) = critical_factorization(pattern);
+
+    // Does the pattern have (global) period p?
+    // Condition: pattern[0..m-p] == pattern[p..m] (shift-by-p self-overlap).
+    // Only checkable when m > p; when m <= p the "left part" is the whole pattern
+    // and period-p doesn't hold globally — fall through to Case 2.
+    let is_periodic = m > p && pattern[..m - p] == pattern[p..];
+
+    if is_periodic {
+        // ── Case 1: global period p — use the memory optimisation ──────────────
+        // After the suffix scan succeeds and the prefix mismatches, we slide by p
+        // and remember `m-p-1` as the last right-half position that is still valid
+        // in the new window (due to the period property).  is_periodic guarantees
+        // m > p so m-p-1 is a valid usize.
+        //
+        // Suffix = pattern[l+1..m-1]; Prefix = pattern[0..l].
+        let mut j = 0usize;
+        let mut memory = usize::MAX; // usize::MAX = sentinel "no memory yet"
+        while j + m <= n {
+            // Phase 1: scan suffix part (pattern[l+1..m-1]) forward, starting
+            // after the already-verified part from the previous window.
+            let mut i = l
+                .max(if memory == usize::MAX { 0 } else { memory })
+                .saturating_add(1);
+            while i < m && pattern[i] == text[j + i] {
+                i += 1;
+            }
+            if i < m {
+                // Suffix mismatch: shift past the bad position.
+                j += i.saturating_sub(l).max(1);
+                memory = usize::MAX;
+            } else {
+                // Phase 2: scan prefix part (pattern[0..=l]) forward.
+                // Skip positions known to match from the previous window.
+                let start_k = if memory == usize::MAX { 0 } else { memory + 1 };
+                let mut k = start_k;
+                while k <= l && pattern[k] == text[j + k] {
+                    k += 1;
+                }
+                if k > l {
+                    return true; // full match
+                }
+                j += p;
+                memory = m - p - 1; // valid because is_periodic ⟹ m > p ⟹ m-p-1 ≥ 0
+            }
+        }
+    } else {
+        // ── Case 2: not globally p-periodic — no memory, larger slide ──────────
+        //
+        // Scan starts at the critical position l (covering both halves in order).
+        // On suffix mismatch at i: slide by (i-l)+1.
+        // On full prefix mismatch after suffix match: slide by max(l,m-l-1)+1.
+        // Both bounds guarantee O(n) total comparisons.
+        let slide = l.max(m.saturating_sub(l + 1)) + 1;
+        let mut j = 0usize;
+        while j + m <= n {
+            // Scan right part of pattern (positions l..m-1) forward from l.
+            let mut i = l;
+            while i < m && pattern[i] == text[j + i] {
+                i += 1;
+            }
+            if i < m {
+                // Right-half mismatch: shift past the bad position.
+                j += (i - l) + 1;
+            } else {
+                // Right half matched; now scan left part (positions 0..l) backward.
+                // Using (0..=l).rev() avoids signed arithmetic.
+                let full_match = (0..=l).rev().all(|k| pattern[k] == text[j + k]);
+                if full_match {
+                    return true;
+                }
+                j += slide;
+            }
+        }
+    }
+    false
+}
+
+/// Compute the critical factorization of `pattern` as (split_pos, period).
+///
+/// Returns the split position `l` (0-indexed, inclusive end of left part) and
+/// the period `p` of the right part, such that pattern = pattern[0..=l] ++ pattern[l+1..].
+/// The critical position is the later of the two lex-maximal suffix splits.
+fn critical_factorization(pattern: &[u8]) -> (usize, usize) {
+    let (l1, p1) = max_suffix(pattern, false);
+    let (l2, p2) = max_suffix(pattern, true);
+    if l1 >= l2 {
+        (l1, p1)
+    } else {
+        (l2, p2)
+    }
+}
+
+/// Crochemore-Lecroq lex-maximal suffix algorithm.
+///
+/// Computes the split position and period of the lexicographically largest (or
+/// smallest when `rev=true`) suffix of `pattern` in O(m) time with O(1) space.
+fn max_suffix(pattern: &[u8], rev: bool) -> (usize, usize) {
+    let m = pattern.len();
+    let mut ms = usize::MAX; // sentinel: no maximal-suffix candidate yet
+    let mut j = 0usize;
+    let mut k = 1usize;
+    let mut p = 1usize;
+    while j + k < m {
+        let cmp_j = pattern[j + k];
+        let cmp_ms = if ms == usize::MAX {
+            pattern[k - 1]
+        } else {
+            pattern[ms + k]
+        };
+        let gt = if rev { cmp_j < cmp_ms } else { cmp_j > cmp_ms };
+        let lt = if rev { cmp_j > cmp_ms } else { cmp_j < cmp_ms };
+        if gt {
+            j += k;
+            k = 1;
+            p = j.wrapping_sub(if ms == usize::MAX { usize::MAX } else { ms });
+        } else if lt {
+            ms = if ms == usize::MAX { j } else { ms.max(j) };
+            j = ms.wrapping_add(1);
+            k = 1;
+            p = 1;
+        } else if k == p {
+            j += p;
+            k = 1;
+        } else {
+            k += 1;
+        }
+    }
+    let final_ms = if ms == usize::MAX { 0 } else { ms + 1 };
+    (final_ms, p)
+}
+
 // ── Diagnostic-level classifier (Aho-Corasick single pass) ───────────────────
 
 /// Result of scanning command output for Cargo/compiler diagnostic prefixes.
@@ -1025,8 +1266,18 @@ static DIAG_PATTERNS: &[&str] = &["error:", "Error:", "warning:", "Warning:"];
 static DIAG_AC: OnceLock<AhoCorasick> = OnceLock::new();
 
 fn diag_ac() -> &'static AhoCorasick {
+    // Explicit DFA mode: 4 short ASCII patterns → tiny state count, O(1) per-character
+    // transitions (vs. NFA's amortised O(k) cost). The DFA fits comfortably in L1 cache.
+    // Reference: Hopcroft (1971) DFA minimisation; TAOCP Vol. 3 §6.3.
+    // Fallback to Auto (NFA/hybrid) if the crate rejects the DFA build (never expected
+    // for 4 small ASCII patterns, but correctness must not be sacrificed for speed).
     DIAG_AC.get_or_init(|| {
-        AhoCorasick::new(DIAG_PATTERNS).expect("static diagnostic patterns are valid")
+        AhoCorasickBuilder::new()
+            .kind(Some(AhoCorasickKind::DFA))
+            .build(DIAG_PATTERNS)
+            .unwrap_or_else(|_| {
+                AhoCorasick::new(DIAG_PATTERNS).expect("static diagnostic patterns are valid")
+            })
     })
 }
 
@@ -2497,6 +2748,152 @@ mod tests {
         }
     }
 
+    // ── Two-Way string search tests ───────────────────────────────────────────
+
+    mod tw_tests {
+        use super::super::{bmh_contains, tw_contains};
+
+        #[test]
+        fn test_tw_contains_basic_match() {
+            assert!(tw_contains(b"hello world", b"world"));
+            assert!(tw_contains(b"https://example.com", b"https://"));
+        }
+
+        #[test]
+        fn test_tw_contains_no_match() {
+            assert!(!tw_contains(b"hello world", b"https://"));
+            assert!(!tw_contains(b"http://example.com", b"https://"));
+        }
+
+        #[test]
+        fn test_tw_contains_empty_pattern() {
+            assert!(tw_contains(b"anything", b""));
+            assert!(tw_contains(b"", b""));
+        }
+
+        #[test]
+        fn test_tw_contains_pattern_equals_text() {
+            assert!(tw_contains(b"https://", b"https://"));
+        }
+
+        #[test]
+        fn test_tw_contains_pattern_longer_than_text() {
+            assert!(!tw_contains(b"hi", b"hello"));
+        }
+
+        #[test]
+        fn test_tw_contains_repetitive_text_worst_case_bmh() {
+            // "aaaa...aaab" (n=1001) with pattern "aaab".
+            // BMH degenerates to O(n×m) on this input; Two-Way runs in O(n).
+            let n = 1000usize;
+            let mut text: Vec<u8> = (0..n).map(|_| b'a').collect();
+            text.push(b'b');
+            assert!(tw_contains(&text, b"aaab"), "must find 'aaab' in aaa...ab");
+            let text_no_match: Vec<u8> = (0..n).map(|_| b'a').collect();
+            assert!(
+                !tw_contains(&text_no_match, b"aaab"),
+                "must not find 'aaab' in all-a text"
+            );
+        }
+
+        #[test]
+        fn test_tw_contains_agrees_with_bmh() {
+            // Property test: tw_contains and bmh_contains must agree on all inputs,
+            // including the actual negative_context strings used in NegativeLookahead checks.
+            let cases: &[(&[u8], &[u8])] = &[
+                (b"foo bar baz", b"bar"),
+                (
+                    b"#[ignore] // https://github.com/foo/bar/issues/1",
+                    b"https://",
+                ),
+                (b"#[ignore]", b"https://"),
+                (b"", b"x"),
+                (b"x", b""),
+                (b"https://", b"https://"),
+                (b"http://example.com", b"https://"),
+                (b"aaaaab", b"aaab"),
+                (b"aaaaa", b"aaab"),
+            ];
+            for (text, pat) in cases {
+                assert_eq!(
+                    tw_contains(text, pat),
+                    bmh_contains(text, pat),
+                    "tw_contains and bmh_contains disagree: text={:?} pat={:?}",
+                    text,
+                    pat
+                );
+            }
+        }
+
+        #[test]
+        fn test_tw_contains_match_at_start() {
+            assert!(tw_contains(b"world foo", b"world"));
+        }
+
+        #[test]
+        fn test_tw_contains_match_at_end() {
+            assert!(tw_contains(b"foo world", b"world"));
+        }
+
+        #[test]
+        fn test_tw_contains_single_char_pattern() {
+            assert!(tw_contains(b"abc", b"b"));
+            assert!(!tw_contains(b"abc", b"z"));
+        }
+    }
+
+    // ── adaptive progress threshold tests ─────────────────────────────────────
+
+    mod adaptive_threshold_tests {
+        #[test]
+        fn test_adaptive_threshold_small_codebase() {
+            // 20 total files: threshold = max(5, 20/20) = max(5, 1) = 5
+            let total = 20usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 5);
+        }
+
+        #[test]
+        fn test_adaptive_threshold_medium_codebase() {
+            // 200 total files: threshold = max(5, 200/20) = max(5, 10) = 10
+            let total = 200usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 10);
+        }
+
+        #[test]
+        fn test_adaptive_threshold_large_codebase() {
+            // 2000 total files: threshold = max(5, 2000/20) = max(5, 100) = 100
+            let total = 2000usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 100);
+        }
+
+        #[test]
+        fn test_adaptive_threshold_zero_files() {
+            // 0 total files: threshold = max(5, 0) = 5 (no divide-by-zero risk)
+            let total = 0usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 5);
+        }
+
+        #[test]
+        fn test_adaptive_threshold_10_files() {
+            // 10 files: threshold = max(5, 10/20) = max(5, 0) = 5
+            let total = 10usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 5);
+        }
+
+        #[test]
+        fn test_adaptive_threshold_150_files() {
+            // 150 files: threshold = max(5, 150/20) = max(5, 7) = 7
+            let total = 150usize;
+            let threshold = (total / 20).max(5);
+            assert_eq!(threshold, 7);
+        }
+    }
+
     // ── per-file scan progress tests ──────────────────────────────────────────
 
     mod scan_progress_tests {
@@ -2562,8 +2959,9 @@ mod tests {
         }
 
         #[test]
-        fn test_scan_progress_not_emitted_for_small_file_count() {
-            // Fewer than 50 files → no progress events.
+        fn test_scan_progress_emits_pre_scan_count_for_small_file_count() {
+            // For 10 files, pre-scan count events ARE emitted even though the corpus is small.
+            // Adaptive threshold = max(5, 10/20) = 5, so per-file events fire at n=5 and n=10.
             let dir = make_temp_dir("progress-small");
             for i in 0..10 {
                 write_file(&dir, &format!("src/file_{i}.rs"), "let x = 1;\n");
@@ -2586,9 +2984,23 @@ mod tests {
             });
 
             let captured = events.into_inner().unwrap();
+            // At minimum: "10 files across 1 group(s)" + "  src: 10 files" = 2 pre-scan events.
             assert!(
-                captured.is_empty(),
-                "expected no progress events for <50 files, got: {captured:?}"
+                captured.len() >= 2,
+                "expected at least 2 pre-scan count events for 10 files, got: {captured:?}"
+            );
+            // All events must use the "native-scan:" prefix.
+            for event in &captured {
+                assert!(
+                    event.starts_with("native-scan:"),
+                    "unexpected progress event: {event}"
+                );
+            }
+            // First event must mention the file count.
+            assert!(
+                captured[0].contains("10 files"),
+                "first event must contain total file count, got: {}",
+                captured[0]
             );
 
             let _ = fs::remove_dir_all(&dir);

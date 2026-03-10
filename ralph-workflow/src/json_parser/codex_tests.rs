@@ -22,6 +22,30 @@ fn test_parse_codex_turn_completed() {
     assert!(output.unwrap().contains("Turn completed"));
 }
 
+/// Companion test: Normal verbosity uses "Thinking:" label (not "Thought:").
+///
+/// Guards against regressions where a refactor swaps the verbose/non-verbose branches
+/// in `handle_reasoning_completed`. Verbose uses "Thought:", Normal uses "Thinking:".
+#[test]
+fn test_codex_reasoning_completed_normal_verbosity_uses_thinking_label() {
+    use crate::json_parser::terminal::TerminalMode;
+
+    let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Normal)
+        .with_terminal_mode(TerminalMode::None);
+    let json = r#"{"type":"item.completed","item":{"type":"reasoning","id":"item_1","text":"some reasoning text"}}"#;
+    let output = parser.parse_event(json);
+    assert!(output.is_some());
+    let out = output.unwrap();
+    assert!(
+        out.contains("Thinking"),
+        "Expected 'Thinking' in normal-verbosity output: {out}"
+    );
+    assert!(
+        !out.contains("Thought:"),
+        "Should not use 'Thought:' in normal-verbosity: {out}"
+    );
+}
+
 #[test]
 fn test_codex_file_operations_shown() {
     let parser = CodexParser::new(Colors { enabled: false }, Verbosity::Verbose);
