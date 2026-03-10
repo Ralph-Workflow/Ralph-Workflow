@@ -13,6 +13,76 @@ ALWAYS USE test-driven-development!
 This repository welcomes automated code assistants ("agents") and human contributors.
 Follow these rules so changes stay safe, consistent, and easy to review.
 
+---
+
+## FORBIDDEN GIT COMMANDS (CRITICAL — NO EXCEPTIONS)
+
+**YOU ARE STRICTLY PROHIBITED from running ANY git command that writes, modifies history, or changes repository state.**
+
+Ralph is the ONLY entity allowed to commit. Accidental commits break the deterministic pipeline and cannot be automatically undone.
+
+### NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
+
+- `git commit` — Ralph orchestrates ALL commits
+- `git push` — Ralph orchestrates ALL pushes
+- `git tag` — Ralph orchestrates ALL tagging
+- `git merge` — Ralph controls branching strategy
+- `git rebase` — Ralph controls history (use rebase effects only)
+- `git reset --hard` — Destroys uncommitted work irreversibly
+- `git reset --soft` / `--mixed` — Modifies commit history
+- `git checkout -- .` / `git restore .` — Destroys uncommitted changes
+- `git stash drop` / `git stash pop` / `git stash apply` — Can overwrite or destroy work
+- `git branch -D` / `git branch -d` — Destroys branches
+- `git clean -f` / `-fd` / `-fx` — Destroys untracked files
+- `git cherry-pick` — Modifies history
+- `git revert` — Modifies history
+- `git am` / `git apply` — Modifies working tree in uncontrolled way
+
+### ONLY these git commands are allowed (read-only, non-destructive):
+
+- `git status` — check working tree state
+- `git log` — view commit history
+- `git diff` — view changes (unstaged/staged)
+- `git show` — inspect a commit or object
+- `git branch` (list only, no `-D`/`-d`) — list branches
+- `git remote -v` — view remote URLs
+- `git stash list` — list stashes (do NOT pop/apply/drop)
+- `git rev-parse` — resolve refs and paths
+- `git ls-files` — list tracked files
+- `git describe` — describe a commit
+
+### Enforcement
+
+Git hooks (pre-commit, pre-push) and a PATH wrapper are installed automatically by Ralph during the agent phase. If you attempt a forbidden command, it WILL be blocked with exit code 1 and a message like: "blocked (agent phase): .no_agent_commit exists."
+
+**Do not attempt to bypass these hooks.** If you need a commit, write your changes to files and let Ralph's commit effect handle it.
+
+### ADDITIONAL PROHIBITED ACTIONS — HOOKS AND MARKERS (CRITICAL)
+
+**Deleting or modifying git hooks or the `.no_agent_commit` marker IS equivalent to an unauthorized commit. It WILL be detected and Ralph will treat it as a security violation.**
+
+You MUST NEVER:
+
+- Delete or modify `.git/hooks/pre-commit` — this hook blocks unauthorized commits
+- Delete or modify `.git/hooks/pre-push` — this hook blocks unauthorized pushes
+- Delete `.no_agent_commit` — this marker activates commit blocking in all hooks and the PATH wrapper
+- Use an absolute path (e.g., `/usr/bin/git`, `/opt/homebrew/bin/git`) to invoke git directly and bypass the PATH wrapper
+- Delete or modify any file in `.git/hooks/` that contains `RALPH_RUST_MANAGED_HOOK`
+- Modify the `PATH` environment variable to remove or reorder Ralph's git wrapper directory
+
+**Why this matters:**
+- Ralph reinstalls hooks before every agent invocation — tampering will be detected immediately
+- The `.no_agent_commit` marker is also recreated before every agent invocation
+- Ralph's deterministic pipeline depends on ALL commits going through its commit effect
+- A commit made outside Ralph cannot be undone automatically and breaks the review pipeline
+
+**What to do instead:**
+- Write changes to files as normal — Ralph's commit effect will commit them at the right time
+- If you believe a commit is needed, write the required file changes and let Ralph orchestrate the commit
+- NEVER attempt to commit, even if you think the hooks are "in the way"
+
+---
+
 ## Priorities (in order)
 
 1. **Correctness** - tests pass, behavior matches intent

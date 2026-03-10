@@ -6,8 +6,9 @@
 use ralph_workflow::git_helpers::get_hooks_dir;
 use ralph_workflow::git_helpers::hooks::HOOK_MARKER;
 use ralph_workflow::git_helpers::{
-    self, cleanup_orphaned_marker, disable_git_wrapper, end_agent_phase, git_snapshot,
-    git_snapshot_in_repo, hooks, start_agent_phase, uninstall_hooks, GitHelpers,
+    self, cleanup_orphaned_marker, disable_git_wrapper, end_agent_phase,
+    ensure_agent_phase_protections, git_snapshot, git_snapshot_in_repo, hooks,
+    reinstall_hooks_if_tampered, start_agent_phase, uninstall_hooks, GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -593,6 +594,199 @@ fn test_git_diff_in_repo_is_head_based_after_multiple_commits() {
             !diff2.contains("file2.txt"),
             "diff after commit B must NOT show file2.txt (committed in B) — \
              regression: stale diff would reinclude file2.txt; got: {diff2}"
+        );
+    });
+}
+
+// =========================================================================
+// Hook integrity enforcement tests
+// =========================================================================
+
+#[test]
+#[serial]
+fn test_reinstall_hooks_if_tampered_when_missing() {
+    // When hooks are completely missing, reinstall_hooks_if_tampered must reinstall them.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+
+        // Precondition: no hooks exist.
+        assert!(
+            !hooks_dir.join("pre-commit").exists(),
+            "precondition: pre-commit must not exist"
+        );
+
+        reinstall_hooks_if_tampered(&logger).unwrap();
+
+        // Both hooks must now exist with the marker.
+        let pre_commit = hooks_dir.join("pre-commit");
+        let pre_push = hooks_dir.join("pre-push");
+        assert!(pre_commit.exists(), "pre-commit must be reinstalled");
+        assert!(pre_push.exists(), "pre-push must be reinstalled");
+        let content = fs::read_to_string(&pre_commit).unwrap();
+        assert!(
+            content.contains(HOOK_MARKER),
+            "reinstalled pre-commit must contain HOOK_MARKER"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_reinstall_hooks_if_tampered_when_marker_stripped() {
+    // When a hook exists but the HOOK_MARKER has been stripped (tampered),
+    // reinstall_hooks_if_tampered must reinstall it.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        // Install hooks normally first.
+        hooks::install_hooks().unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let pre_commit = hooks_dir.join("pre-commit");
+
+        // Tamper: overwrite with content that lacks the marker.
+        fs::write(&pre_commit, "#!/bin/bash\necho tampered\nexit 0\n").unwrap();
+
+        let content = fs::read_to_string(&pre_commit).unwrap();
+        assert!(
+            !content.contains(HOOK_MARKER),
+            "precondition: tampered hook must not contain HOOK_MARKER"
+        );
+
+        reinstall_hooks_if_tampered(&logger).unwrap();
+
+        // Hook must now contain the marker again.
+        let restored = fs::read_to_string(&pre_commit).unwrap();
+        assert!(
+            restored.contains(HOOK_MARKER),
+            "reinstalled hook must contain HOOK_MARKER after tamper detection"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_marker() {
+    // When the marker is deleted mid-agent-phase but hooks still exist,
+    // ensure_agent_phase_protections must recreate the marker.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        assert!(marker.exists(), "precondition: marker must exist");
+
+        // Simulate agent deleting the marker.
+        fs::remove_file(&marker).unwrap();
+        assert!(!marker.exists(), "precondition: marker must be deleted");
+
+        ensure_agent_phase_protections(&logger);
+
+        assert!(
+            marker.exists(),
+            ".no_agent_commit must be recreated by ensure_agent_phase_protections"
+        );
+
+        // Cleanup.
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_hooks() {
+    // When hooks are deleted mid-agent-phase but the marker still exists,
+    // ensure_agent_phase_protections must reinstall hooks.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+
+        // Precondition: hooks exist.
+        assert!(
+            hooks_dir.join("pre-commit").exists(),
+            "precondition: pre-commit must exist"
+        );
+
+        // Simulate agent deleting hooks.
+        fs::remove_file(hooks_dir.join("pre-commit")).unwrap();
+        fs::remove_file(hooks_dir.join("pre-push")).unwrap();
+
+        ensure_agent_phase_protections(&logger);
+
+        // Hooks must be reinstalled.
+        assert!(
+            hooks_dir.join("pre-commit").exists(),
+            "pre-commit must be reinstalled by ensure_agent_phase_protections"
+        );
+        assert!(
+            hooks_dir.join("pre-push").exists(),
+            "pre-push must be reinstalled by ensure_agent_phase_protections"
+        );
+        let content = fs::read_to_string(hooks_dir.join("pre-commit")).unwrap();
+        assert!(
+            content.contains(HOOK_MARKER),
+            "reinstalled hook must contain HOOK_MARKER"
+        );
+
+        // Cleanup.
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
+    // When neither marker nor hooks exist (agent phase ended normally),
+    // ensure_agent_phase_protections must be a no-op and not recreate anything.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let marker = std::path::Path::new(".no_agent_commit");
+        assert!(!marker.exists(), "precondition: marker must not exist");
+
+        ensure_agent_phase_protections(&logger);
+
+        // Nothing should be created.
+        assert!(
+            !marker.exists(),
+            ".no_agent_commit must NOT be created when agent phase is not active"
+        );
+        let hooks_dir = get_hooks_dir().unwrap();
+        assert!(
+            !hooks_dir.join("pre-commit").exists(),
+            "pre-commit must NOT be created when agent phase is not active"
         );
     });
 }

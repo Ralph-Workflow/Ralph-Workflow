@@ -24,6 +24,10 @@ pub fn run_with_prompt(
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
     ];
 
+    // Verify commit protections are intact before each agent run.
+    // This self-heals against a prior agent that deleted .no_agent_commit or git hooks.
+    crate::git_helpers::ensure_agent_phase_protections(runtime.logger);
+
     runtime.timer.start_phase();
     runtime.logger.step(&format!(
         "{}{}{}",

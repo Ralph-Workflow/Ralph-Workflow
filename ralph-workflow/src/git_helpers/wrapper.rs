@@ -11,7 +11,7 @@
 //! The wrapper is automatically cleaned up when the agent phase ends, even on
 //! unexpected exits (Ctrl+C, panics) via [`cleanup_agent_phase_silent`].
 
-use super::hooks::{install_hooks, uninstall_hooks_silent};
+use super::hooks::{install_hooks, reinstall_hooks_if_tampered, uninstall_hooks_silent};
 use super::repo::get_repo_root;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
@@ -283,6 +283,65 @@ pub fn end_agent_phase() {
     };
     let marker_path = repo_root.join(".no_agent_commit");
     let _ = fs::remove_file(marker_path);
+}
+
+/// Verify and restore agent-phase commit protections before each agent invocation.
+///
+/// This is the composite integrity check that self-heals against a prior agent
+/// that deleted the `.no_agent_commit` marker or tampered with git hooks during
+/// its run. It is designed to be called from `run_with_prompt` before every
+/// agent spawn.
+///
+/// The function is a no-op when neither the marker file nor hooks exist, which
+/// indicates the agent phase has ended normally (e.g., during the commit phase).
+///
+/// # Limitations
+///
+/// This check protects the *next* agent invocation. If an agent deletes both
+/// the marker and hooks within a single invocation, the PATH wrapper is the
+/// only remaining defense until this check runs again.
+///
+/// Errors are logged as warnings only — a missing git repo (e.g., in tests
+/// without a real repo) should not crash the pipeline.
+pub fn ensure_agent_phase_protections(logger: &Logger) {
+    let Ok(repo_root) = get_repo_root() else {
+        return;
+    };
+
+    let marker_path = repo_root.join(MARKER_FILE);
+    let marker_exists = marker_path.exists();
+
+    // Check if hooks exist (any Ralph hook present means we're in agent phase).
+    let hooks_present = super::repo::get_hooks_dir_from(&repo_root)
+        .ok()
+        .is_some_and(|hooks_dir| {
+            ["pre-commit", "pre-push"].iter().any(|name| {
+                let path = hooks_dir.join(name);
+                path.exists()
+                    && matches!(
+                        crate::files::file_contains_marker(&path, super::hooks::HOOK_MARKER),
+                        Ok(true)
+                    )
+            })
+        });
+
+    // If neither marker nor hooks exist, we're not in the agent phase — no-op.
+    if !marker_exists && !hooks_present {
+        return;
+    }
+
+    // Recreate marker if missing (but hooks exist → agent phase is active).
+    if !marker_exists {
+        logger.warn(".no_agent_commit marker missing — recreating");
+        if let Err(e) = File::create(&marker_path) {
+            logger.warn(&format!("Failed to recreate .no_agent_commit: {e}"));
+        }
+    }
+
+    // Reinstall hooks if tampered (best-effort).
+    if let Err(e) = reinstall_hooks_if_tampered(logger) {
+        logger.warn(&format!("Failed to verify/reinstall hooks: {e}"));
+    }
 }
 
 fn cleanup_git_wrapper_dir_silent() {

@@ -297,6 +297,39 @@ pub fn uninstall_hooks_silent() {
     }
 }
 
+/// Reinstall hooks if they have been tampered with or removed.
+///
+/// Checks each Ralph-managed hook (`pre-commit`, `pre-push`) for the presence
+/// of [`HOOK_MARKER`]. If any hook is missing or lacks the marker, all hooks
+/// are reinstalled.
+///
+/// This function is designed to be called before each agent invocation to
+/// self-heal against a prior agent that deleted or modified the hooks.
+///
+/// # Errors
+///
+/// Returns error if hook reinstallation fails.
+pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<()> {
+    let Ok(hooks_dir) = get_hooks_dir() else {
+        return Ok(()); // No git repo — nothing to protect
+    };
+
+    let needs_reinstall = ["pre-commit", "pre-push"].iter().any(|name| {
+        let path = hooks_dir.join(name);
+        if !path.exists() {
+            return true;
+        }
+        !matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true))
+    });
+
+    if needs_reinstall {
+        logger.warn("Git hooks tampered with or missing — reinstalling");
+        install_hooks()?;
+    }
+
+    Ok(())
+}
+
 /// Check if a file contains a specific marker string using the Workspace trait.
 ///
 /// This is a workspace-aware version of `file_contains_marker` that uses the
