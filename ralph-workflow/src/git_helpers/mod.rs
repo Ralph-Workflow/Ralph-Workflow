@@ -131,9 +131,10 @@ pub use start_commit::{
     reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
 };
 pub use wrapper::{
-    capture_head_oid, cleanup_agent_phase_silent, cleanup_orphaned_marker,
-    detect_unauthorized_commit, disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo,
-    ensure_agent_phase_protections, start_agent_phase, GitHelpers, ProtectionCheckResult,
+    capture_head_oid, cleanup_agent_phase_silent, cleanup_agent_phase_silent_at,
+    cleanup_orphaned_marker, detect_unauthorized_commit, disable_git_wrapper, end_agent_phase,
+    end_agent_phase_in_repo, ensure_agent_phase_protections, start_agent_phase, GitHelpers,
+    ProtectionCheckResult,
 };
 
 // Workspace-aware variants (used by tests and by code paths that must operate

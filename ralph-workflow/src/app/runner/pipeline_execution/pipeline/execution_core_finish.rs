@@ -167,6 +167,16 @@ fn finish_pipeline(
     }
 
     if exit_after_cleanup_due_to_sigint {
+        // Perform explicit cleanup even on interrupt path.
+        // The guard's Drop is a fallback, but we want deterministic cleanup with
+        // all artifact types removed. All operations are idempotent so double-cleanup
+        // from the guard's Drop (if it fires) is harmless.
+        let repo_root = ctx.workspace.root();
+        crate::git_helpers::end_agent_phase_in_repo(repo_root);
+        crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
+        let _ = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger);
+        crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
+        agent_phase_guard.disarm(); // Prevent redundant cleanup in Drop
         crate::interrupt::request_exit_130_after_run();
     }
 

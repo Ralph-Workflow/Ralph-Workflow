@@ -132,6 +132,12 @@ pub fn finalize_pipeline(
     // Effect::RestorePromptPermissions during the Finalizing phase.
     // This ensures the operation goes through the effect system for testability.
 
+    // Clean up generated files before disarming the guard.
+    // This must happen BEFORE disarm() because the guard's Drop is the only
+    // other place that calls cleanup_generated_files_with_workspace, and
+    // disarm() prevents Drop from running.
+    crate::files::cleanup_generated_files_with_workspace(ctx.workspace);
+
     if cleanup_ok {
         agent_phase_guard.disarm();
     } else {
@@ -254,5 +260,28 @@ mod tests {
         assert_eq!(state.metrics.max_dev_iterations, 10);
         assert_eq!(state.metrics.review_passes_completed, 1);
         assert_eq!(state.metrics.max_review_passes, 5);
+    }
+
+    #[test]
+    fn test_generated_files_includes_all_artifacts() {
+        use crate::files::io::agent_files::GENERATED_FILES;
+        // Verify GENERATED_FILES contains all known generated artifacts.
+        // If a new artifact is added to the pipeline, add it here too.
+        assert!(
+            GENERATED_FILES.contains(&".no_agent_commit"),
+            "GENERATED_FILES must include .no_agent_commit"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".agent/PLAN.md"),
+            "GENERATED_FILES must include .agent/PLAN.md"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".agent/commit-message.txt"),
+            "GENERATED_FILES must include .agent/commit-message.txt"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".agent/checkpoint.json.tmp"),
+            "GENERATED_FILES must include .agent/checkpoint.json.tmp"
+        );
     }
 }

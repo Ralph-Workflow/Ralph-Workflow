@@ -703,6 +703,104 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
     );
 }
 
+/// Assert head-oid tracking file has been removed.
+fn assert_head_oid_removed(repo_dir: &Path) {
+    let head_oid = repo_dir.join(".agent/head-oid.txt");
+    assert!(
+        !head_oid.exists(),
+        "head-oid.txt should be removed after cleanup: {}",
+        head_oid.display()
+    );
+}
+
+/// Assert generated files have been removed.
+fn assert_generated_files_removed(repo_dir: &Path) {
+    let generated = [
+        ".no_agent_commit",
+        ".agent/PLAN.md",
+        ".agent/commit-message.txt",
+        ".agent/checkpoint.json.tmp",
+    ];
+    for file in &generated {
+        let path = repo_dir.join(file);
+        assert!(
+            !path.exists(),
+            "generated file {file} should be removed after cleanup: {}",
+            path.display()
+        );
+    }
+}
+
+/// Test: Ctrl+C removes `.agent/head-oid.txt` tracking file.
+///
+/// The head-oid file is used for unauthorized commit detection and must
+/// be cleaned up on interrupt to avoid false positives on the next run.
+#[test]
+#[serial]
+fn test_ctrl_c_removes_head_oid_file() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+
+            let appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(appeared, "Marker should appear when agent phase starts");
+
+            // Head-oid should exist during agent phase
+            // (it's created by start_agent_phase -> capture_head_oid)
+            let head_oid = temp_dir.path().join(".agent/head-oid.txt");
+            // Give a brief moment for the file to be written
+            std::thread::sleep(Duration::from_millis(200));
+            assert!(
+                head_oid.exists(),
+                "head-oid.txt should exist during agent phase"
+            );
+
+            send_sigint(&child);
+            let (status, stdout, stderr) = collect_output(child);
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            assert_head_oid_removed(temp_dir.path());
+            assert_git_wrapper_track_file_removed(temp_dir.path());
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
+/// Test: Ctrl+C removes all generated files.
+///
+/// Verifies that `.agent/PLAN.md`, `.agent/commit-message.txt`,
+/// `.agent/checkpoint.json.tmp`, and `.no_agent_commit` are all removed
+/// after Ctrl+C cleanup.
+#[test]
+#[serial]
+fn test_ctrl_c_removes_generated_files() {
+    with_timeout(
+        || {
+            require_ralph_binary!();
+
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
+
+            let appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
+            assert!(appeared, "Marker should appear when agent phase starts");
+
+            send_sigint(&child);
+            let (status, stdout, stderr) = collect_output(child);
+            assert_status_is_sigint_130(status, &stdout, &stderr);
+
+            assert_generated_files_removed(temp_dir.path());
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

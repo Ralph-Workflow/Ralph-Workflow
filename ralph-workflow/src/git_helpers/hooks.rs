@@ -326,13 +326,19 @@ pub fn uninstall_hooks(logger: &Logger) -> io::Result<()> {
     Ok(())
 }
 
-/// Silently uninstall all Ralph-managed hooks (for signal handlers).
+/// Silently uninstall all Ralph-managed hooks for a specific repo root.
 ///
-/// Does not log output; safe to call during cleanup.
-pub fn uninstall_hooks_silent() {
-    let Ok(hooks_dir) = get_hooks_dir() else {
+/// This variant accepts an explicit repo root instead of relying on CWD-based
+/// discovery, making it reliable even when the process CWD has changed.
+pub fn uninstall_hooks_silent_at(repo_root: &Path) {
+    let Ok(hooks_dir) = super::repo::get_hooks_dir_from(repo_root) else {
         return;
     };
+    uninstall_hooks_silent_in_dir(&hooks_dir);
+}
+
+/// Shared implementation for silent hook uninstallation.
+fn uninstall_hooks_silent_in_dir(hooks_dir: &Path) {
     if !hooks_dir.exists() {
         return;
     }
@@ -739,5 +745,96 @@ mod tests {
                 "verify_hooks_removed checks RALPH_HOOK_NAMES which must contain {hook}"
             );
         }
+    }
+
+    // =========================================================================
+    // uninstall_hooks_silent_at tests
+    // =========================================================================
+
+    #[test]
+    fn test_uninstall_hooks_silent_at_removes_ralph_hooks() {
+        // Create a temp dir simulating a git repo with hooks
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let hooks_dir = repo_root.join(".git/hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Create a Ralph-managed hook
+        let hook_content = format!("#!/bin/bash\n# {HOOK_MARKER}\nexit 0\n");
+        let hook_path = hooks_dir.join("pre-commit");
+        fs::write(&hook_path, &hook_content).unwrap();
+
+        // Initialize git repo so get_hooks_dir_from works
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        uninstall_hooks_silent_at(repo_root);
+
+        assert!(
+            !hook_path.exists(),
+            "Ralph hook should be removed by uninstall_hooks_silent_at"
+        );
+    }
+
+    #[test]
+    fn test_uninstall_hooks_silent_at_restores_orig() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let hooks_dir = repo_root.join(".git/hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        // Initialize git repo
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        // Create a Ralph-managed hook with a .ralph.orig backup
+        let hook_content = format!("#!/bin/bash\n# {HOOK_MARKER}\nexit 0\n");
+        let hook_path = hooks_dir.join("pre-commit");
+        fs::write(&hook_path, &hook_content).unwrap();
+
+        let orig_content = "#!/bin/bash\necho 'original'\n";
+        let hook_abs = fs::canonicalize(&hook_path).unwrap();
+        let orig_path = PathBuf::from(format!("{}.ralph.orig", hook_abs.display()));
+        fs::write(&orig_path, orig_content).unwrap();
+
+        uninstall_hooks_silent_at(repo_root);
+
+        let restored = fs::read_to_string(&hook_path).unwrap();
+        assert_eq!(
+            restored, orig_content,
+            "original hook should be restored by uninstall_hooks_silent_at"
+        );
+        assert!(
+            !orig_path.exists(),
+            ".ralph.orig backup should be removed after restore"
+        );
+    }
+
+    #[test]
+    fn test_uninstall_hooks_silent_at_preserves_non_ralph_hooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let hooks_dir = repo_root.join(".git/hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        // Create a non-Ralph hook
+        let user_hook = "#!/bin/bash\necho 'user hook'\n";
+        let hook_path = hooks_dir.join("pre-commit");
+        fs::write(&hook_path, user_hook).unwrap();
+
+        uninstall_hooks_silent_at(repo_root);
+
+        let content = fs::read_to_string(&hook_path).unwrap();
+        assert_eq!(
+            content, user_hook,
+            "non-Ralph hooks should be preserved by uninstall_hooks_silent_at"
+        );
+    }
+
+    #[test]
+    fn test_uninstall_hooks_silent_at_nonexistent_repo() {
+        // Should not panic when repo root doesn't exist
+        let nonexistent = Path::new("/nonexistent/repo/root");
+        uninstall_hooks_silent_at(nonexistent);
     }
 }

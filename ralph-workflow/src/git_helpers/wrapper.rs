@@ -11,7 +11,7 @@
 //! The wrapper is automatically cleaned up when the agent phase ends, even on
 //! unexpected exits (Ctrl+C, panics) via [`cleanup_agent_phase_silent`].
 
-use super::hooks::{install_hooks, reinstall_hooks_if_tampered, uninstall_hooks_silent};
+use super::hooks::{install_hooks, reinstall_hooks_if_tampered, uninstall_hooks_silent_at};
 use super::repo::get_repo_root;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
@@ -19,12 +19,20 @@ use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use which::which;
 
 const WRAPPER_DIR_TRACK_FILE: &str = ".agent/git-wrapper-dir.txt";
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
 const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
 const HEAD_OID_FILE: &str = ".agent/head-oid.txt";
+
+/// Process-global repo root set during `start_agent_phase` for signal handler fallback.
+///
+/// The signal handler needs a reliable repo root when CWD-based discovery may fail.
+/// This is set in `start_agent_phase` and cleared in `end_agent_phase_in_repo`.
+/// The signal handler uses `try_lock` to avoid deadlock risk.
+static AGENT_PHASE_REPO_ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Result of checking and self-healing agent-phase protections.
 ///
@@ -721,6 +729,11 @@ pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     let repo_root = get_repo_root()?;
     helpers.wrapper_repo_root = Some(repo_root.clone());
 
+    // Store repo root for signal handler fallback.
+    if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
+        *guard = Some(repo_root.clone());
+    }
+
     // Self-heal: treat non-regular marker path as tampering and recover.
     repair_marker_path_if_tampered(&repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
@@ -754,6 +767,11 @@ pub fn end_agent_phase_in_repo(repo_root: &Path) {
 
     // Clean up HEAD OID tracking file.
     remove_head_oid_file(repo_root);
+
+    // Clear stored repo root since agent phase is ending.
+    if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
+        *guard = None;
+    }
 }
 
 /// Verify and restore agent-phase commit protections before each agent invocation.
@@ -1248,10 +1266,8 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     result
 }
 
-fn cleanup_git_wrapper_dir_silent() {
-    let Ok(repo_root) = crate::git_helpers::get_repo_root() else {
-        return;
-    };
+/// Remove the git wrapper temp directory using an explicit repo root.
+fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
     let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
     let wrapper_dir = fs::read_to_string(&track_file)
         .ok()
@@ -1267,27 +1283,41 @@ fn cleanup_git_wrapper_dir_silent() {
 }
 
 /// Best-effort cleanup for unexpected exits (Ctrl+C, early-return, panics).
-pub fn cleanup_agent_phase_silent() {
-    // Remove HEAD OID file before end_agent_phase (which also removes it,
-    // but we do it here explicitly for the silent cleanup path).
-    if let Ok(repo_root) = crate::git_helpers::get_repo_root() {
-        remove_head_oid_file(&repo_root);
-    }
-    end_agent_phase();
-    cleanup_git_wrapper_dir_silent();
-    uninstall_hooks_silent();
-    cleanup_generated_files_silent();
-}
-
-/// Cleanup generated files silently without workspace.
 ///
-/// This is a minimal implementation for cleanup in signal handlers where
-/// workspace context is not available. Uses `std::fs` directly which is
-/// acceptable for this emergency cleanup scenario.
-fn cleanup_generated_files_silent() {
-    let Ok(repo_root) = crate::git_helpers::get_repo_root() else {
+/// Prefers the stored repo root (set during `start_agent_phase`) over CWD-based
+/// discovery. Falls back to CWD-based `get_repo_root()` if the stored root is
+/// unavailable.
+pub fn cleanup_agent_phase_silent() {
+    // Prefer stored repo root over CWD-based discovery.
+    // Use try_lock to avoid deadlock if the main thread holds the lock
+    // when SIGINT arrives.
+    let repo_root = AGENT_PHASE_REPO_ROOT
+        .try_lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .or_else(|| crate::git_helpers::get_repo_root().ok());
+
+    let Some(repo_root) = repo_root else {
         return;
     };
+    cleanup_agent_phase_silent_at(&repo_root);
+}
+
+/// Best-effort cleanup using an explicit repo root.
+///
+/// This is the consolidated cleanup function that removes all agent-phase
+/// artifacts. All sub-operations use the provided repo root instead of
+/// CWD-based discovery, ensuring reliability even if CWD has changed.
+pub fn cleanup_agent_phase_silent_at(repo_root: &Path) {
+    remove_head_oid_file(repo_root);
+    end_agent_phase_in_repo(repo_root);
+    cleanup_git_wrapper_dir_silent_at(repo_root);
+    uninstall_hooks_silent_at(repo_root);
+    cleanup_generated_files_silent_at(repo_root);
+}
+
+/// Remove generated files silently using an explicit repo root.
+fn cleanup_generated_files_silent_at(repo_root: &Path) {
     for file in crate::files::io::agent_files::GENERATED_FILES {
         let absolute_path = repo_root.join(file);
         let _ = std::fs::remove_file(absolute_path);
@@ -1932,6 +1962,108 @@ mod tests {
         assert!(
             meta.is_file(),
             "marker should be recreated as a regular file"
+        );
+    }
+
+    // =========================================================================
+    // cleanup_agent_phase_silent_at tests
+    // =========================================================================
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let marker = repo_root.join(MARKER_FILE);
+        fs::write(&marker, "").unwrap();
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !marker.exists(),
+            "marker should be removed by cleanup_agent_phase_silent_at"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_head_oid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+        let head_oid = repo_root.join(HEAD_OID_FILE);
+        fs::write(&head_oid, "abc123\n").unwrap();
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !head_oid.exists(),
+            "head-oid.txt should be removed by cleanup_agent_phase_silent_at"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_generated_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create all generated files
+        fs::write(repo_root.join(".no_agent_commit"), "").unwrap();
+        fs::write(agent_dir.join("PLAN.md"), "plan").unwrap();
+        fs::write(agent_dir.join("commit-message.txt"), "msg").unwrap();
+        fs::write(agent_dir.join("checkpoint.json.tmp"), "{}").unwrap();
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        for file in crate::files::io::agent_files::GENERATED_FILES {
+            let path = repo_root.join(file);
+            assert!(
+                !path.exists(),
+                "{file} should be removed by cleanup_agent_phase_silent_at"
+            );
+        }
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_wrapper_track_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create a track file pointing to a non-existent wrapper dir (safe to clean)
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, "/nonexistent/wrapper/dir\n").unwrap();
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !track_file.exists(),
+            "wrapper track file should be removed by cleanup_agent_phase_silent_at"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // Running on an empty directory should not panic or error
+        cleanup_agent_phase_silent_at(repo_root);
+        cleanup_agent_phase_silent_at(repo_root);
+    }
+
+    // =========================================================================
+    // AGENT_PHASE_REPO_ROOT global tests
+    // =========================================================================
+
+    #[test]
+    fn test_agent_phase_repo_root_mutex_is_accessible() {
+        // Verify the global Mutex is lockable (not poisoned or stuck).
+        assert!(
+            AGENT_PHASE_REPO_ROOT.try_lock().is_ok(),
+            "AGENT_PHASE_REPO_ROOT mutex should be lockable"
         );
     }
 }
