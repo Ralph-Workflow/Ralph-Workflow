@@ -332,6 +332,74 @@ fn test_create_commit_uses_selected_files_from_state() {
 }
 
 #[test]
+fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
+    // Verify that files specified in CommitXmlValidated propagate through state
+    // reductions and end up in Effect::CreateCommit.files, closing the end-to-end
+    // coverage gap for the file-selection feature.
+    use crate::reducer::state::AgentChainState;
+
+    let selected_files = vec![
+        "src/auth/token.rs".to_string(),
+        "tests/auth/token_test.rs".to_string(),
+    ];
+
+    // Set up state ready for validation: agent invoked, XML extracted.
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+
+    // Emit CommitXmlValidated with files — this stores them in commit_selected_files.
+    state = reduce(
+        state,
+        PipelineEvent::commit_xml_validated(
+            "fix(auth): prevent token expiry race".to_string(),
+            selected_files.clone(),
+            1,
+        ),
+    );
+    assert_eq!(
+        state.commit_selected_files, selected_files,
+        "CommitXmlValidated must populate commit_selected_files"
+    );
+
+    // Drive through MessageGenerated (from ApplyCommitMessageOutcome).
+    state = reduce(
+        state,
+        PipelineEvent::commit_message_generated(
+            "fix(auth): prevent token expiry race".to_string(),
+            1,
+        ),
+    );
+
+    // Drive through CommitXmlArchived (from ArchiveCommitXml).
+    state = reduce(state, PipelineEvent::commit_xml_archived(1));
+
+    // Now determine_next_effect must produce CreateCommit with the selected files.
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit { message, files } => {
+            assert_eq!(message, "fix(auth): prevent token expiry race");
+            assert_eq!(
+                files, selected_files,
+                "Effect::CreateCommit.files must equal the files from CommitXmlValidated"
+            );
+        }
+        _ => panic!("expected CreateCommit effect, got {effect:?}"),
+    }
+}
+
+#[test]
 fn test_commit_inputs_materialization_invalidated_when_diff_content_id_changes() {
     // Regression test: if the prepared diff content id changes (e.g. diff rewritten/updated),
     // we must not reuse previously materialized commit inputs for the same attempt even when

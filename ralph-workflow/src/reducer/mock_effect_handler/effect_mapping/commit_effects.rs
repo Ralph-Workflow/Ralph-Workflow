@@ -128,14 +128,13 @@ impl MockEffectHandler {
                         .to_string()
                 });
 
-                let (message, skip_reason, _files, detail) =
-                    try_extract_xml_commit_with_trace(&xml);
+                let (message, skip_reason, files, detail) = try_extract_xml_commit_with_trace(&xml);
 
                 let event = skip_reason.map_or_else(
                     || {
                         message.map_or_else(
                             || PipelineEvent::commit_xml_validation_failed(detail, attempt),
-                            |message| PipelineEvent::commit_xml_validated(message, vec![], attempt),
+                            |message| PipelineEvent::commit_xml_validated(message, files, attempt),
                         )
                     },
                     PipelineEvent::commit_skipped,
