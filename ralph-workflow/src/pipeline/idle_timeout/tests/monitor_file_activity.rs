@@ -151,6 +151,8 @@ fn monitor_prevents_timeout_with_file_activity() {
         timeout,
         check_interval: Duration::ZERO,
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -224,6 +226,8 @@ fn monitor_times_out_without_any_activity() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -266,6 +270,8 @@ fn monitor_respects_output_activity() {
         timeout: Duration::from_millis(200),
         check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     // Update activity timestamp periodically to simulate stdout (6 updates at 20ms = 120ms total)
@@ -321,6 +327,8 @@ fn monitor_uses_configurable_check_interval() {
         timeout: Duration::from_secs(60),
         check_interval: Duration::from_secs(30),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -374,6 +382,8 @@ fn monitor_file_activity_with_old_files_times_out() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -426,6 +436,8 @@ fn monitor_times_out_when_file_activity_check_errors() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -487,6 +499,8 @@ fn monitor_without_file_activity_config_works() {
         timeout: Duration::from_secs(60),
         check_interval: Duration::from_millis(10),
         kill_config: DEFAULT_KILL_CONFIG,
+        required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {

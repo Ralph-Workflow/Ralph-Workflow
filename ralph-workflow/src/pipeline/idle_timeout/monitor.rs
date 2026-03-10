@@ -29,6 +29,24 @@ pub struct MonitorConfig {
     pub check_interval: Duration,
     /// Kill configuration for process termination.
     pub kill_config: KillConfig,
+    /// Number of consecutive idle observations required before killing the process.
+    ///
+    /// Requiring more than one confirmation prevents false kills when the agent is
+    /// transiently quiet (e.g., waiting for an LLM API response, running a slow
+    /// compilation, or transitioning between work phases). Each additional
+    /// confirmation adds one `check_interval` of grace time before enforcement.
+    ///
+    /// Default: 2 (one extra `check_interval` of confirmation before kill).
+    pub required_idle_confirmations: u32,
+    /// Whether to check for active child processes before declaring the agent idle.
+    ///
+    /// When `true` (the default), the monitor queries the `ProcessExecutor` for
+    /// active child processes of the agent. If any are found the idle counter is
+    /// reset, preventing false kills when the agent is running a long subprocess
+    /// (e.g. `cargo test`, `npm install`, `cargo build`).
+    ///
+    /// Set to `false` in tests that deliberately do not want this check to run.
+    pub check_child_processes: bool,
 }
 
 impl Default for MonitorConfig {
@@ -37,6 +55,8 @@ impl Default for MonitorConfig {
             timeout: Duration::from_secs(super::IDLE_TIMEOUT_SECS),
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
+            required_idle_confirmations: 2,
+            check_child_processes: true,
         }
     }
 }
@@ -109,6 +129,7 @@ pub fn monitor_idle_timeout(
             timeout,
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
+            ..Default::default()
         },
     )
 }
@@ -132,6 +153,7 @@ pub fn monitor_idle_timeout_with_interval(
             timeout,
             check_interval,
             kill_config: DEFAULT_KILL_CONFIG,
+            ..Default::default()
         },
     )
 }
@@ -160,8 +182,12 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let timeout = config.timeout;
     let check_interval = config.check_interval;
     let kill_config = config.kill_config;
+    let required_idle_confirmations = config.required_idle_confirmations;
+    let check_child_processes = config.check_child_processes;
 
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
+    let mut last_file_activity: Option<std::time::Instant> = None;
+    let mut consecutive_idle_count: u32 = 0;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -264,6 +290,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         }
 
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+            consecutive_idle_count = 0;
             continue;
         }
 
@@ -276,19 +303,47 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
         // Check file activity if config provided
         if let Some(config) = file_activity_config {
+            // Fast path: if we confirmed file activity recently (monotonic clock),
+            // skip an expensive filesystem re-scan. This prevents the multi-iteration
+            // false positive where the same file falls outside the window on the next
+            // check because check_interval has elapsed.
+            if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
+                consecutive_idle_count = 0;
+                eprintln!(
+                    "Continuing monitoring: file activity was confirmed within the last timeout window"
+                );
+                continue;
+            }
+
+            // Widen the scan window to cover check_interval jitter plus scan overhead:
+            //   - A file written just before output stopped will be ~(timeout + check_interval)
+            //     old when the monitor first fires.
+            //   - The file scan itself takes time, so `actual_idle` computed before the scan
+            //     is slightly smaller than the true elapsed time at comparison; adding
+            //     `scan_overhead_buffer` compensates for that.
+            //   - `cap` bounds the maximum window so that after `last_file_activity` expires
+            //     and we re-scan, old files written long before output stopped do not
+            //     indefinitely prevent a correct kill.
+            let scan_overhead_buffer = Duration::from_secs(1);
+            let cap = timeout + check_interval + scan_overhead_buffer;
+            let actual_idle = super::time_since_activity(activity_timestamp);
+            let file_window = (actual_idle + scan_overhead_buffer).min(cap);
+
             let locked_tracker = config
                 .tracker
                 .lock()
                 .expect("file activity tracker mutex poisoned - indicates panic in another thread");
 
-            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), timeout) {
+            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), file_window) {
                 Ok(true) => {
+                    consecutive_idle_count = 0;
+                    last_file_activity = Some(std::time::Instant::now());
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
                 }
                 Ok(false) => {
                     eprintln!(
-                        "No AI-generated file updates in the last {timeout:?}, proceeding with timeout"
+                        "No AI-generated file updates in the last {file_window:?}, proceeding with timeout"
                     );
                 }
                 Err(e) => {
@@ -297,6 +352,45 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                     );
                 }
             }
+        }
+
+        // Re-check output timestamp: the agent may have produced output during the
+        // file scan. This closes the race window between "scan said no activity" and
+        // "kill is sent".
+        if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+            consecutive_idle_count = 0;
+            eprintln!("Output activity detected after file scan; continuing monitoring");
+            continue;
+        }
+
+        // Check for active child processes: the agent may have spawned a subprocess
+        // (e.g. cargo test, cargo build, npm install) that is still running even
+        // though there is no stdout/stderr output and no file-system activity in
+        // tracked locations. If children exist the agent is working; reset the
+        // idle counter and wait for the next check interval.
+        if check_child_processes {
+            let child_pid = {
+                let locked_child = child.lock().expect("child process mutex poisoned");
+                locked_child.id()
+            };
+            if executor.has_active_child_processes(child_pid) {
+                consecutive_idle_count = 0;
+                eprintln!(
+                    "Agent has active child processes (pid {child_pid}); continuing monitoring"
+                );
+                continue;
+            }
+        }
+
+        // Require multiple consecutive idle observations before killing to avoid
+        // false positives during transient quiet periods (LLM API waits, slow
+        // compilations, transitions between work phases, etc.).
+        consecutive_idle_count += 1;
+        if consecutive_idle_count < required_idle_confirmations {
+            eprintln!(
+                "Idle confirmed {consecutive_idle_count}/{required_idle_confirmations} times; waiting for next check interval before kill"
+            );
+            continue;
         }
 
         let child_id = {

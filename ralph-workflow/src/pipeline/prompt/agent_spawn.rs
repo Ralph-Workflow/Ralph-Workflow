@@ -192,6 +192,7 @@ pub(super) fn run_with_agent_spawn(
                 timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
                 check_interval: Duration::from_secs(30), // 30-second check interval
                 kill_config: DEFAULT_KILL_CONFIG,
+                ..MonitorConfig::default()
             },
         );
         if matches!(result, MonitorResult::TimedOut { .. }) {

@@ -163,4 +163,236 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             Err(_) => false,
         }
     }
+
+    /// Returns true if the process identified by `parent_pid` has at least one
+    /// live child process.
+    ///
+    /// Used by the idle-timeout monitor to avoid false-positive kills when the
+    /// agent has spawned a subprocess (e.g. `cargo test`, `npm install`) that is
+    /// still running even though the agent produces no stdout/stderr output.
+    ///
+    /// Default implementation: invokes `pgrep -P <pid>` on Unix platforms and
+    /// falls back to parsing `ps` output (PID/PPID pairs) if `pgrep` is unavailable.
+    /// Returns `false` (conservative no-op) on non-Unix.
+    ///
+    /// Any execution error is treated as "no children" to avoid blocking the
+    /// timeout system. If both `pgrep` and the `ps` fallback are unavailable or
+    /// fail unexpectedly, a one-time warning is emitted to stderr so operators can
+    /// diagnose reduced protection against false-positive idle kills.
+    fn has_active_child_processes(&self, parent_pid: u32) -> bool {
+        #[cfg(unix)]
+        {
+            use std::sync::OnceLock;
+
+            fn parse_ps_pid_ppid_pairs(stdout: &str, parent_pid: u32) -> Option<bool> {
+                let mut saw_parseable_line = false;
+                for line in stdout.lines() {
+                    let mut parts = line.split_whitespace();
+                    let Some(child_pid_text) = parts.next() else {
+                        continue;
+                    };
+                    let Some(parent_pid_text) = parts.next() else {
+                        continue;
+                    };
+
+                    let Ok(_pid) = child_pid_text.parse::<u32>() else {
+                        continue;
+                    };
+                    let Ok(ppid) = parent_pid_text.parse::<u32>() else {
+                        continue;
+                    };
+
+                    saw_parseable_line = true;
+                    if ppid == parent_pid {
+                        return Some(true);
+                    }
+                }
+
+                if saw_parseable_line {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
+
+            fn warn_child_process_detection_degraded() {
+                static WARNED: OnceLock<()> = OnceLock::new();
+                if WARNED.set(()).is_ok() {
+                    eprintln!(
+                        "Warning: child-process detection degraded (pgrep/ps unavailable or failing); idle-timeout false-positive prevention may be reduced"
+                    );
+                }
+            }
+
+            let pid_str = parent_pid.to_string();
+
+            // Primary: `pgrep -P <pid>`
+            if let Ok(out) = self.execute("pgrep", &["-P", &pid_str], &[], None) {
+                let stdout = out.stdout.trim();
+
+                // pgrep exit codes: 0 = match, 1 = no match, 2 = error.
+                if !stdout.is_empty() {
+                    return true;
+                }
+
+                if out.status.code() == Some(1) {
+                    return false;
+                }
+            }
+
+            // Fallback: parse `ps` output. Avoid GNU-only flags like `--ppid`.
+            //
+            // - BSD/macOS: `ps -ax -o pid= -o ppid=`
+            // - GNU procps: `ps -e -o pid= -o ppid=`
+            let ps_attempts: [&[&str]; 2] = [
+                &["-ax", "-o", "pid=", "-o", "ppid="],
+                &["-e", "-o", "pid=", "-o", "ppid="],
+            ];
+
+            for args in ps_attempts {
+                if let Ok(out) = self.execute("ps", args, &[], None) {
+                    if out.status.success() {
+                        if let Some(has_children) = parse_ps_pid_ppid_pairs(&out.stdout, parent_pid)
+                        {
+                            return has_children;
+                        }
+                    }
+                }
+            }
+
+            warn_child_process_detection_degraded();
+            false
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = parent_pid;
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::io;
+    use std::sync::Mutex;
+
+    #[cfg(unix)]
+    fn ok_output(stdout: &str) -> ProcessOutput {
+        use std::os::unix::process::ExitStatusExt;
+
+        ProcessOutput {
+            status: std::process::ExitStatus::from_raw(0),
+            stdout: stdout.to_string(),
+            stderr: String::new(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Debug, Clone)]
+    enum TestResult {
+        Ok(ProcessOutput),
+        Err {
+            kind: io::ErrorKind,
+            message: String,
+        },
+    }
+
+    #[cfg(unix)]
+    impl TestResult {
+        fn to_io_result(&self) -> io::Result<ProcessOutput> {
+            match self {
+                Self::Ok(out) => Ok(out.clone()),
+                Self::Err { kind, message } => Err(io::Error::new(*kind, message.clone())),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Debug)]
+    struct TestExecutor {
+        calls: Mutex<Vec<(String, Vec<String>)>>,
+        results: HashMap<(String, Vec<String>), TestResult>,
+    }
+
+    #[cfg(unix)]
+    impl TestExecutor {
+        fn new(results: HashMap<(String, Vec<String>), TestResult>) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                results,
+            }
+        }
+
+        fn calls_for(&self, command: &str) -> Vec<(String, Vec<String>)> {
+            self.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(c, _)| c == command)
+                .cloned()
+                .collect()
+        }
+    }
+
+    #[cfg(unix)]
+    impl ProcessExecutor for TestExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&std::path::Path>,
+        ) -> std::io::Result<ProcessOutput> {
+            let key = (
+                command.to_string(),
+                args.iter().map(ToString::to_string).collect(),
+            );
+            self.calls.lock().unwrap().push(key.clone());
+            self.results.get(&key).map_or_else(
+                || Err(std::io::Error::other("unexpected execute")),
+                TestResult::to_io_result,
+            )
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn has_active_child_processes_falls_back_to_ps_when_pgrep_missing() {
+        let pid = 4242;
+        let pid_str = pid.to_string();
+
+        let mut results: HashMap<(String, Vec<String>), TestResult> = HashMap::new();
+        results.insert(
+            ("pgrep".to_string(), vec!["-P".to_string(), pid_str]),
+            TestResult::Err {
+                kind: io::ErrorKind::NotFound,
+                message: "pgrep missing".to_string(),
+            },
+        );
+        results.insert(
+            (
+                "ps".to_string(),
+                vec![
+                    "-ax".to_string(),
+                    "-o".to_string(),
+                    "pid=".to_string(),
+                    "-o".to_string(),
+                    "ppid=".to_string(),
+                ],
+            ),
+            TestResult::Ok(ok_output("12345 4242\n")),
+        );
+
+        let exec = TestExecutor::new(results);
+        assert!(
+            exec.has_active_child_processes(pid),
+            "ps fallback should detect children when pgrep is unavailable"
+        );
+        assert!(
+            !exec.calls_for("ps").is_empty(),
+            "ps should be invoked as a fallback"
+        );
+    }
 }

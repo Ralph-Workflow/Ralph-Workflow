@@ -6,7 +6,93 @@
 
 use crate::workspace::Workspace;
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
+
+fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
+    // If the filesystem reports a future mtime (clock skew, network FS), treat it
+    // as fresh activity rather than extremely old.
+    now.duration_since(mtime).unwrap_or(Duration::ZERO)
+}
+
+/// Maximum depth for recursive workspace scan.
+///
+/// Depth 0 = workspace root files only (no recursion).
+/// Depth 1 = workspace root subdirectory files (previous behaviour).
+/// Depth 8 = covers standard Rust workspace layouts (crate/src/module/submod/…).
+const MAX_SCAN_DEPTH: usize = 8;
+
+static WORKSPACE_SCAN_UNREADABLE_DIR_WARNED: OnceLock<()> = OnceLock::new();
+
+/// Recursively scan a directory for recently modified, non-noise files.
+///
+/// Returns `Ok(true)` as soon as a file younger than `timeout` is found.
+/// Excluded directories and extensions are skipped at every level.
+/// `remaining_depth` bounds worst-case traversal to prevent hangs on deep trees.
+///
+/// `#[inline(never)]` prevents this function from being merged into its caller's
+/// stack frame, keeping each frame independently bounded.
+#[inline(never)]
+fn scan_dir_recursive(
+    workspace: &dyn Workspace,
+    dir: &Path,
+    now: SystemTime,
+    timeout: Duration,
+    remaining_depth: usize,
+    is_root: bool,
+) -> std::io::Result<bool> {
+    let entries = match workspace.read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            if is_root {
+                return Err(e);
+            }
+
+            // Subdirectories may be unreadable due to permissions or transient
+            // filesystem issues. Skipping them is fine, but we must not silently
+            // treat that as "no activity".
+            if WORKSPACE_SCAN_UNREADABLE_DIR_WARNED.set(()).is_ok() {
+                eprintln!(
+                    "Warning: workspace scan skipped unreadable directory '{}' ({e}); file-activity detection may be incomplete",
+                    dir.display()
+                );
+            }
+
+            return Ok(false);
+        }
+    };
+    for entry in entries {
+        let path = entry.path();
+        if entry.is_file() {
+            if FileActivityTracker::is_excluded_workspace_file(path) {
+                continue;
+            }
+            if let Some(mtime) = entry.modified() {
+                let age = file_age(now, mtime);
+                if age <= timeout {
+                    return Ok(true);
+                }
+            }
+        } else if entry.is_dir() {
+            if FileActivityTracker::is_excluded_workspace_dir(path) {
+                continue;
+            }
+            if remaining_depth > 0
+                && scan_dir_recursive(
+                    workspace,
+                    entry.path(),
+                    now,
+                    timeout,
+                    remaining_depth - 1,
+                    false,
+                )?
+            {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
 
 /// Tracks file modification activity for timeout detection.
 ///
@@ -26,71 +112,60 @@ impl FileActivityTracker {
 
     /// Check if any AI-generated files have been modified within `timeout`.
     ///
-    /// This method scans the `.agent/` directory for files that represent meaningful
-    /// AI progress (PLAN.md, ISSUES.md, NOTES.md, commit-message.txt, .agent/tmp/*.xml)
-    /// and checks if any have been modified recently.
+    /// This method scans two areas for evidence of recent agent work:
     ///
-    /// Returns `Ok(true)` if recent activity is detected, `Ok(false)` if no recent
-    /// activity, or `Err` if the directory cannot be read.
+    /// 1. **`.agent/` whitelist** – files representing meaningful AI progress
+    ///    (PLAN.md, ISSUES.md, NOTES.md, STATUS.md, commit-message.txt,
+    ///    `.agent/tmp/*.xml`).
+    /// 2. **Workspace recursive scan (max depth 8)** – any file outside excluded
+    ///    noise directories (`.git/`, `target/`, `tmp/`, `node_modules/`,
+    ///    `.agent/`) and excluded extensions (`*.log`, `*.swp`, `*.tmp`,
+    ///    `*.bak`, `*~`). This detects coding work (source edits, test writes,
+    ///    `Cargo.toml` changes) that produces no stdout/stderr output, including
+    ///    files nested deeply inside workspace crates (e.g. `crate/src/mod/file.rs`).
+    ///
+    /// Returns `Ok(true)` if recent activity is detected, `Ok(false)` if no
+    /// recent activity, or `Err` if a required directory read fails.
     ///
     /// # Arguments
     ///
     /// * `workspace` - The workspace to read files from
     /// * `timeout` - The recency window (typically 300 seconds)
     ///
-    /// # Excluded Files
-    ///
-    /// The following patterns are excluded from activity tracking:
-    /// - `*.log` - Log files (append-only, not user-facing progress)
-    /// - `checkpoint.json` - Internal state tracking
-    /// - `start_commit` - One-time initialization artifact
-    /// - `review_baseline.txt` - One-time baseline tracking
-    /// - `logs-*/` - Log directories
-    ///
     /// # Errors
     ///
-    /// Returns error if the operation fails.
+    /// Returns error if the `.agent/` directory exists but cannot be read.
     pub fn check_for_recent_activity(
         &self,
         workspace: &dyn Workspace,
         timeout: Duration,
     ) -> std::io::Result<bool> {
+        let now = SystemTime::now();
         let agent_dir = Path::new(".agent");
 
-        // If .agent directory doesn't exist, no activity
-        if !workspace.exists(agent_dir) {
-            return Ok(false);
-        }
+        // Check .agent/ whitelist if the directory exists.
+        if workspace.exists(agent_dir) {
+            let entries = workspace.read_dir(agent_dir)?;
 
-        let entries = workspace.read_dir(agent_dir)?;
-        let now = SystemTime::now();
-
-        for entry in entries {
-            // Only check files, not directories
-            if !entry.is_file() {
-                continue;
-            }
-
-            let path = entry.path();
-
-            // Skip non-AI-generated files
-            if !Self::is_ai_generated_file(path) {
-                continue;
-            }
-
-            // Get modification time
-            let Some(mtime) = entry.modified() else {
-                continue;
-            };
-
-            let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-            // Recent activity detected
-            if age < timeout {
-                return Ok(true);
+            for entry in &entries {
+                if !entry.is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                if !Self::is_ai_generated_file(path) {
+                    continue;
+                }
+                let Some(mtime) = entry.modified() else {
+                    continue;
+                };
+                let age = file_age(now, mtime);
+                if age <= timeout {
+                    return Ok(true);
+                }
             }
         }
 
-        // Also check .agent/tmp/ for XML artifacts
+        // Also check .agent/tmp/ for XML artifacts.
         let tmp_dir = Path::new(".agent/tmp");
         if workspace.exists(tmp_dir) {
             if let Ok(tmp_entries) = workspace.read_dir(tmp_dir) {
@@ -98,25 +173,28 @@ impl FileActivityTracker {
                     if !entry.is_file() {
                         continue;
                     }
-
                     let path = entry.path();
-
-                    // Only check .xml files in tmp/
                     if path.extension().is_none_or(|ext| ext != "xml") {
                         continue;
                     }
-
                     let Some(mtime) = entry.modified() else {
                         continue;
                     };
-
-                    let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-
-                    if age < timeout {
+                    let age = file_age(now, mtime);
+                    if age <= timeout {
                         return Ok(true);
                     }
                 }
             }
+        }
+
+        // Recursively scan workspace for recently modified source files.
+        // Excludes noise directories (.git, target, tmp, node_modules, .agent)
+        // and noise extensions (*.log, *.swp, *.tmp, *.bak, *~).
+        // Short-circuits on first match for performance.
+        // The .agent/ directory is excluded here; it is handled above.
+        if scan_dir_recursive(workspace, Path::new(""), now, timeout, MAX_SCAN_DEPTH, true)? {
+            return Ok(true);
         }
 
         Ok(false)
@@ -164,6 +242,40 @@ impl FileActivityTracker {
             file_name,
             "PLAN.md" | "ISSUES.md" | "NOTES.md" | "STATUS.md" | "commit-message.txt"
         )
+    }
+
+    /// Check if a workspace-root directory should be excluded from the activity scan.
+    ///
+    /// Excludes directories that contain noise or are handled elsewhere:
+    /// - `.git/` – version-control metadata
+    /// - `target/` – Cargo build artifacts
+    /// - `tmp/` – temporary files
+    /// - `node_modules/` – npm dependencies
+    /// - `.agent/` – already handled by the dedicated whitelist scan above
+    fn is_excluded_workspace_dir(path: &Path) -> bool {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        matches!(name, ".git" | "target" | "tmp" | "node_modules" | ".agent")
+    }
+
+    /// Check if a workspace file should be excluded from the activity scan.
+    ///
+    /// Excludes file types that represent noise rather than productive work:
+    /// - `*.log` – log output, append-only
+    /// - `*.swp` – Vim swap files
+    /// - `*.tmp` – generic temporaries
+    /// - `*.bak` – backup copies
+    /// - `*~` – editor backup suffix
+    fn is_excluded_workspace_file(path: &Path) -> bool {
+        let has_excluded_ext = path.extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("log")
+                || ext.eq_ignore_ascii_case("swp")
+                || ext.eq_ignore_ascii_case("tmp")
+                || ext.eq_ignore_ascii_case("bak")
+        });
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        has_excluded_ext || file_name.ends_with('~')
     }
 }
 
