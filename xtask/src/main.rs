@@ -66,12 +66,14 @@ fn main() -> ExitCode {
             let real_runner = RealRunner::new();
             let repo_root = real_runner.repo_root.clone();
             let runner = cache::CachingCommandRunner::new(real_runner, repo_root.clone());
+            eprintln!("=== cargo xtask verify ===");
             let report = match verify::verify_fast(
                 &runner,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
                 verify::REQUIRED_CHECKS,
                 verify::CARGO_PREFETCH_SPECS,
+                &verify::StderrProgressReporter,
             ) {
                 Ok(report) => report,
                 Err(err) => {

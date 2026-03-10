@@ -12,6 +12,7 @@
 use aho_corasick::AhoCorasick;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 /// Matching strategy for a native scan check.
 ///
@@ -920,12 +921,29 @@ const DIAG_PAT_WARNING_TC: usize = 3; // "Warning:" (defensive; kept for complet
 
 static DIAG_PATTERNS: &[&str] = &["error:", "Error:", "warning:", "Warning:"];
 
+/// Process-global cached Aho-Corasick automaton for diagnostic-prefix detection.
+///
+/// Built exactly once via `OnceLock` (Knuth, TAOCP Vol. 2 §4.3: avoid redundant
+/// computation by memoising results that are guaranteed identical on every call).
+/// The automaton is constructed from the static `DIAG_PATTERNS` slice which is
+/// never mutated, so the cached value is correct for the entire process lifetime.
+static DIAG_AC: OnceLock<AhoCorasick> = OnceLock::new();
+
+fn diag_ac() -> &'static AhoCorasick {
+    DIAG_AC.get_or_init(|| {
+        AhoCorasick::new(DIAG_PATTERNS).expect("static diagnostic patterns are valid")
+    })
+}
+
 /// Scan command output (stdout or stderr) for diagnostic-level prefixes in O(n+m).
 ///
 /// Uses a single Aho-Corasick pass (Aho & Corasick, 1975) over the raw bytes.
 /// For each match, verifies the pattern appears at the start of a trimmed line
 /// (equivalent to `line.trim_start().starts_with(pattern)`) via a LineIndex O(log L)
 /// lookup (TAOCP Vol. 3 §6.2.1 Algorithm B).
+///
+/// The Aho-Corasick automaton is constructed once per process via `OnceLock`
+/// and reused on every call, eliminating redundant O(m) construction overhead.
 ///
 /// Returns `DiagnosticLevel::Error` if any error pattern is found at line start,
 /// `DiagnosticLevel::Warning` if any warning pattern (but no error) is found,
@@ -936,7 +954,7 @@ pub fn scan_has_diagnostic_prefix(text: &str) -> DiagnosticLevel {
     }
     let bytes = text.as_bytes();
     let line_idx = LineIndex::new(bytes);
-    let ac = AhoCorasick::new(DIAG_PATTERNS).expect("static patterns are valid");
+    let ac = diag_ac();
     let mut level = DiagnosticLevel::Clean;
     for mat in ac.find_iter(bytes) {
         let byte_start = mat.start();
@@ -2376,6 +2394,28 @@ mod tests {
                 DiagnosticLevel::Warning.max_level(DiagnosticLevel::Error),
                 DiagnosticLevel::Error
             );
+        }
+
+        #[test]
+        fn test_scan_has_diagnostic_prefix_consistent_across_repeated_calls() {
+            // Verify that the cached OnceLock automaton produces consistent results
+            // across many calls (regression guard for OnceLock correctness).
+            // Calling 1000 times exercises the cached path after the first construction.
+            let inputs = [
+                ("error: something bad", DiagnosticLevel::Error),
+                ("warning: something mild", DiagnosticLevel::Warning),
+                ("  info: no prefix match", DiagnosticLevel::Clean),
+                ("", DiagnosticLevel::Clean),
+            ];
+            for _ in 0..1_000 {
+                for (text, expected) in &inputs {
+                    assert_eq!(
+                        scan_has_diagnostic_prefix(text),
+                        *expected,
+                        "inconsistent result for: {text:?}"
+                    );
+                }
+            }
         }
     }
 }

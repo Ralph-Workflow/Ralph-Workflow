@@ -34,6 +34,47 @@ pub enum CheckStatus {
     Error,
 }
 
+/// Observer interface for verification progress.
+///
+/// Implementors receive callbacks as each check starts and finishes.
+/// The trait is `Sync` so it can be shared across scoped threads.
+pub trait ProgressReporter: Sync {
+    fn check_started(&self, name: &str);
+    fn check_passed(&self, name: &str);
+    fn check_failed(&self, name: &str, status: CheckStatus);
+}
+
+/// No-op implementation used in tests and when progress output is not desired.
+pub struct NoopProgressReporter;
+
+impl ProgressReporter for NoopProgressReporter {
+    fn check_started(&self, _name: &str) {}
+    fn check_passed(&self, _name: &str) {}
+    fn check_failed(&self, _name: &str, _status: CheckStatus) {}
+}
+
+/// Progress reporter that prints check names to stderr in real time.
+///
+/// Output format:
+///   checking: <name>
+///   done:     <name>
+///   FAILED:   <name> (Error|Warning)
+///
+/// Stderr is used so stdout can be piped without interference.
+pub struct StderrProgressReporter;
+
+impl ProgressReporter for StderrProgressReporter {
+    fn check_started(&self, name: &str) {
+        eprintln!("  checking: {name}");
+    }
+    fn check_passed(&self, name: &str) {
+        eprintln!("  done:     {name}");
+    }
+    fn check_failed(&self, name: &str, status: CheckStatus) {
+        eprintln!("  FAILED:   {name} ({status:?})");
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckFailure {
     pub name: &'static str,
@@ -86,8 +127,10 @@ fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i3
 pub fn run_checks(
     runner: &(dyn CommandRunner + Sync),
     checks: &[CommandSpec],
+    reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
     for spec in checks {
+        reporter.check_started(spec.name);
         let output = runner
             .run(spec)
             .with_context(|| format!("run {}", spec.name))?;
@@ -100,8 +143,11 @@ pub fn run_checks(
         );
 
         match status {
-            CheckStatus::Pass => {}
+            CheckStatus::Pass => {
+                reporter.check_passed(spec.name);
+            }
             CheckStatus::Warning | CheckStatus::Error => {
+                reporter.check_failed(spec.name, status);
                 return Ok(VerifyReport {
                     exit: VerifyExitCode::Failure,
                     failure: Some(CheckFailure {
@@ -142,11 +188,14 @@ pub fn verify_fast(
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
     prefetch_specs: &[CommandSpec],
+    reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
     // Phase 0: native checks (always sequential, very fast).
     for check in native_checks {
+        reporter.check_started(check.name);
         let result = (check.run)(repo_root);
         if result.status != CheckStatus::Pass {
+            reporter.check_failed(check.name, result.status);
             return Ok(VerifyReport {
                 exit: VerifyExitCode::Failure,
                 failure: Some(CheckFailure {
@@ -158,14 +207,17 @@ pub fn verify_fast(
                 }),
             });
         }
+        reporter.check_passed(check.name);
     }
 
     // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces all rg subprocess calls).
     // Groups checks by directory, reads each source file once, O(n + m + z) per group.
+    reporter.check_started("native-scan");
     let scan_results =
         crate::scanner::run_native_scan_checks(repo_root, crate::scanner::NATIVE_SCAN_CHECKS);
     for result in &scan_results {
         if !result.passed {
+            reporter.check_failed(result.check_name, CheckStatus::Error);
             let output = format_scan_violations(&result.violations);
             return Ok(VerifyReport {
                 exit: VerifyExitCode::Failure,
@@ -179,10 +231,11 @@ pub fn verify_fast(
             });
         }
     }
+    reporter.check_passed("native-scan");
 
     // Phase 2: cargo checks with optional concurrent prefetch.
     // All scanning is now native (Phase 0.5), so we go directly to cargo checks.
-    run_cargo_prefetch(runner, prefetch_specs, checks)
+    run_cargo_prefetch(runner, prefetch_specs, checks, reporter)
 }
 
 /// All verification checks.  All scanning is now native (Aho-Corasick, Phase 0.5).
@@ -414,18 +467,20 @@ pub fn run_cargo_prefetch(
     runner: &(dyn CommandRunner + Sync),
     prefetch_specs: &[CommandSpec],
     main_specs: &[CommandSpec],
+    reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
     std::thread::scope(|s| {
         // Spawn background prefetch thread.
+        // Prefetch is best-effort; use NoopProgressReporter to avoid interleaving output.
         if !prefetch_specs.is_empty() {
             s.spawn(|| {
                 // Best-effort: ignore errors and failures.
-                let _ = run_checks(runner, prefetch_specs);
+                let _ = run_checks(runner, prefetch_specs, &NoopProgressReporter);
             });
         }
 
         // Main thread runs main specs sequentially.
-        let main_report = run_checks(runner, main_specs)?;
+        let main_report = run_checks(runner, main_specs, reporter)?;
 
         // Wait for prefetch to finish (scope join).
         Ok::<_, anyhow::Error>(main_report)
@@ -456,7 +511,7 @@ fn verify(
         }
     }
 
-    run_checks(runner, checks)
+    run_checks(runner, checks, &NoopProgressReporter)
 }
 
 #[cfg(test)]
@@ -552,7 +607,8 @@ mod tests {
         let checks = [check("a"), check("b")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should succeed");
+        let report =
+            run_checks(&runner, &checks, &NoopProgressReporter).expect("run_checks should succeed");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -576,7 +632,8 @@ mod tests {
         }];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should succeed");
+        let report =
+            run_checks(&runner, &checks, &NoopProgressReporter).expect("run_checks should succeed");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -594,7 +651,8 @@ mod tests {
         let checks = [check("a")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should not error");
+        let report = run_checks(&runner, &checks, &NoopProgressReporter)
+            .expect("run_checks should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -611,7 +669,8 @@ mod tests {
         let checks = [check("a")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should not error");
+        let report = run_checks(&runner, &checks, &NoopProgressReporter)
+            .expect("run_checks should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -628,7 +687,8 @@ mod tests {
         let checks = [check("disallowed-exit")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should not error");
+        let report = run_checks(&runner, &checks, &NoopProgressReporter)
+            .expect("run_checks should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -651,7 +711,8 @@ mod tests {
         let checks = [check("warning-check")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should not error");
+        let report = run_checks(&runner, &checks, &NoopProgressReporter)
+            .expect("run_checks should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -674,7 +735,8 @@ mod tests {
         let checks = [check("error-check")];
 
         // Act
-        let report = run_checks(&runner, &checks).expect("run_checks should not error");
+        let report = run_checks(&runner, &checks, &NoopProgressReporter)
+            .expect("run_checks should not error");
 
         // Assert
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -699,8 +761,10 @@ mod tests {
         let runner_b = FakeRunner::new(outputs);
 
         // Act
-        let report_a = run_checks(&runner_a, &checks).expect("run_checks A should succeed");
-        let report_b = run_checks(&runner_b, &checks).expect("run_checks B should succeed");
+        let report_a = run_checks(&runner_a, &checks, &NoopProgressReporter)
+            .expect("run_checks A should succeed");
+        let report_b = run_checks(&runner_b, &checks, &NoopProgressReporter)
+            .expect("run_checks B should succeed");
 
         // Assert
         assert_eq!(report_a, report_b);
@@ -1030,6 +1094,7 @@ mod tests {
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
             &[], // no prefetch in tests
+            &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
 
@@ -1066,6 +1131,7 @@ mod tests {
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
             &[], // no prefetch in tests
+            &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
 
@@ -1090,6 +1156,7 @@ mod tests {
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
             &[], // no prefetch in tests
+            &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
 
@@ -1145,7 +1212,7 @@ mod tests {
 
         let prefetch_specs = CARGO_PREFETCH_SPECS;
 
-        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs, &NoopProgressReporter)
             .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -1181,7 +1248,7 @@ mod tests {
             extra_env: &[],
         }];
 
-        let report = run_cargo_prefetch(&runner, &[], main_specs)
+        let report = run_cargo_prefetch(&runner, &[], main_specs, &NoopProgressReporter)
             .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -1227,7 +1294,7 @@ mod tests {
             extra_env: &[],
         }];
 
-        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs)
+        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs, &NoopProgressReporter)
             .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -1236,5 +1303,87 @@ mod tests {
         let ran = runner.ran();
         assert!(ran.contains(&"prefetch-fails"));
         assert!(ran.contains(&"main-passes"));
+    }
+
+    // ── TDD tests for ProgressReporter ──────────────────────────────────────
+
+    #[derive(Debug, Default)]
+    struct RecordingProgressReporter {
+        events: Mutex<Vec<String>>,
+    }
+
+    impl RecordingProgressReporter {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl ProgressReporter for RecordingProgressReporter {
+        fn check_started(&self, name: &str) {
+            self.events.lock().unwrap().push(format!("start:{name}"));
+        }
+        fn check_passed(&self, name: &str) {
+            self.events.lock().unwrap().push(format!("pass:{name}"));
+        }
+        fn check_failed(&self, name: &str, _status: CheckStatus) {
+            self.events.lock().unwrap().push(format!("fail:{name}"));
+        }
+    }
+
+    #[test]
+    fn test_progress_reporter_called_for_each_passing_check() {
+        let reporter = RecordingProgressReporter::default();
+        let runner = FakeRunner::new([
+            CommandOutput {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+            CommandOutput {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        ]);
+        let checks = [check("alpha"), check("beta")];
+        let _ = run_checks(&runner, &checks, &reporter).unwrap();
+        let events = reporter.events();
+        assert_eq!(
+            events,
+            vec!["start:alpha", "pass:alpha", "start:beta", "pass:beta",]
+        );
+    }
+
+    #[test]
+    fn test_progress_reporter_reports_failure_and_stops() {
+        let reporter = RecordingProgressReporter::default();
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: String::new(),
+        }]);
+        let checks = [check("failing"), check("never-runs")];
+        let _ = run_checks(&runner, &checks, &reporter).unwrap();
+        let events = reporter.events();
+        // Only "failing" must appear; "never-runs" must not.
+        assert!(events.contains(&"start:failing".to_string()));
+        assert!(events.contains(&"fail:failing".to_string()));
+        assert!(
+            !events.iter().any(|e| e.contains("never-runs")),
+            "never-runs check must not appear in reporter events"
+        );
+    }
+
+    #[test]
+    fn test_noop_progress_reporter_does_not_panic() {
+        let reporter = NoopProgressReporter;
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }]);
+        let checks = [check("ok")];
+        let report = run_checks(&runner, &checks, &reporter).unwrap();
+        assert_eq!(report.exit, VerifyExitCode::Success);
     }
 }
