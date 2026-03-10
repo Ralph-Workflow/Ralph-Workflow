@@ -2,7 +2,7 @@
 //!
 //! This module handles the lifecycle of Ralph-managed git hooks, including:
 //!
-//! - **Installation**: Creating `pre-commit`, `pre-push`, and `pre-merge-commit`
+//! - **Installation**: Creating `pre-commit`, `pre-push`, `pre-merge-commit`, and `commit-msg`
 //!   hooks that block git operations during the agent phase (when `.no_agent_commit` exists)
 //! - **Backup**: Preserving existing hooks as `.ralph.orig` files before overwriting
 //! - **Restoration**: Restoring original hooks when uninstalling Ralph hooks
@@ -92,7 +92,7 @@ pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
 /// This constant is the single source of truth for which hooks Ralph installs,
 /// uninstalls, monitors, and enforces permissions on. Adding a new hook here
 /// automatically propagates to all lifecycle operations.
-pub const RALPH_HOOK_NAMES: &[&str] = &["pre-commit", "pre-push", "pre-merge-commit"];
+pub const RALPH_HOOK_NAMES: &[&str] = &["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"];
 
 /// Make a file writable before removal (hooks are installed as 0o555).
 #[cfg(unix)]
@@ -240,6 +240,7 @@ pub fn install_hooks() -> io::Result<()> {
             "pre-commit" => "Commit",
             "pre-push" => "Push",
             "pre-merge-commit" => "Merge commit",
+            "commit-msg" => "Commit message",
             _ => hook_name,
         };
         install_hook(label, &hooks_dir.join(hook_name))?;
@@ -353,6 +354,25 @@ pub fn uninstall_hooks_silent() {
             }
         }
     }
+}
+
+/// Verify that no Ralph-managed hooks remain after cleanup.
+///
+/// Returns a list of hook names that still contain the Ralph marker.
+/// An empty list means cleanup was successful.
+#[must_use]
+pub fn verify_hooks_removed() -> Vec<&'static str> {
+    let Ok(hooks_dir) = get_hooks_dir() else {
+        return Vec::new();
+    };
+    RALPH_HOOK_NAMES
+        .iter()
+        .filter(|name| {
+            let path = hooks_dir.join(name);
+            path.exists() && matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true))
+        })
+        .copied()
+        .collect()
 }
 
 /// Reinstall hooks if they have been tampered with or removed.
@@ -506,10 +526,11 @@ mod tests {
 
     #[test]
     fn test_ralph_hook_names_contains_all_hooks() {
-        assert_eq!(RALPH_HOOK_NAMES.len(), 3);
+        assert_eq!(RALPH_HOOK_NAMES.len(), 4);
         assert!(RALPH_HOOK_NAMES.contains(&"pre-commit"));
         assert!(RALPH_HOOK_NAMES.contains(&"pre-push"));
         assert!(RALPH_HOOK_NAMES.contains(&"pre-merge-commit"));
+        assert!(RALPH_HOOK_NAMES.contains(&"commit-msg"));
     }
 
     #[test]
@@ -647,5 +668,35 @@ mod tests {
             hook_content.contains("agent phase"),
             "hook blocking message should mention 'agent phase'; got:\n{hook_content}"
         );
+    }
+
+    #[test]
+    fn test_commit_msg_hook_content_generated() {
+        // commit-msg hook provides a second blocking layer that fires even if
+        // pre-commit is somehow bypassed.
+        let hook_content = generate_hook_content_for_test("Commit message", "/tmp/test-repo");
+        assert!(
+            hook_content.contains(HOOK_MARKER),
+            "commit-msg hook must contain the Ralph marker; got:\n{hook_content}"
+        );
+        assert!(
+            hook_content.contains("Commit message blocked"),
+            "commit-msg hook must reference 'Commit message' in blocking msg; got:\n{hook_content}"
+        );
+    }
+
+    #[test]
+    fn test_verify_hooks_removed_with_workspace() {
+        // verify_hooks_removed works on the real hooks dir, so we test the logic
+        // indirectly by checking that RALPH_HOOK_NAMES includes all hooks that
+        // would be checked. This is a unit-level sanity check; system tests
+        // cover the full install-uninstall-verify lifecycle.
+        let expected_hooks = ["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"];
+        for hook in &expected_hooks {
+            assert!(
+                RALPH_HOOK_NAMES.contains(hook),
+                "verify_hooks_removed checks RALPH_HOOK_NAMES which must contain {hook}"
+            );
+        }
     }
 }

@@ -77,6 +77,13 @@ pub fn finalize_pipeline(
         ctx.logger
             .warn(&format!("Failed to uninstall Ralph hooks: {err}"));
     }
+    let remaining = crate::git_helpers::verify_hooks_removed();
+    if !remaining.is_empty() {
+        ctx.logger.warn(&format!(
+            "Ralph hooks still present after cleanup: {}",
+            remaining.join(", ")
+        ));
+    }
 
     // Note: Individual commits were created per-iteration during development
     // and per-cycle during review. The final commit phase has been removed.

@@ -301,10 +301,10 @@ fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &st
       continue
     fi
     case "$arg" in
-      -C|--git-dir|--work-tree|--namespace|-c|--exec-path)
+      -C|--git-dir|--work-tree|--namespace|-c|--config|--exec-path)
         skip_next=1
         ;;
-      --git-dir=*|--work-tree=*|--namespace=*|--exec-path=*|-c=*)
+      --git-dir=*|--work-tree=*|--namespace=*|--exec-path=*|-c=*|--config=*)
         ;;
       -*)
         ;;
@@ -1359,6 +1359,24 @@ mod tests {
     fn test_marker_file_constant() {
         // Verify the constant matches expected value
         assert_eq!(MARKER_FILE, ".no_agent_commit");
+    }
+
+    #[test]
+    fn test_wrapper_script_handles_config_flag_before_subcommand() {
+        // Verify the wrapper script handles --config (git 2.46+ alias for -c)
+        // as a flag that takes a value argument, so that
+        // `git --config core.hooksPath=/dev/null commit` correctly identifies
+        // "commit" as the subcommand (by skipping the --config value argument).
+        let content = make_wrapper_content("git", "/tmp/repo");
+
+        assert!(
+            content.contains("--config|"),
+            "wrapper must recognize --config as a flag with separate value; got:\n{content}"
+        );
+        assert!(
+            content.contains("--config=*"),
+            "wrapper must handle --config=value syntax; got:\n{content}"
+        );
     }
 
     #[test]

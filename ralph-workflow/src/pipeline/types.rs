@@ -69,6 +69,13 @@ impl Drop for AgentPhaseGuard<'_> {
         end_agent_phase();
         disable_git_wrapper(self.git_helpers);
         let _ = uninstall_hooks(self.logger);
+        let remaining = crate::git_helpers::verify_hooks_removed();
+        if !remaining.is_empty() {
+            self.logger.warn(&format!(
+                "Ralph hooks still present after guard cleanup: {}",
+                remaining.join(", ")
+            ));
+        }
         cleanup_generated_files_with_workspace(self.workspace);
     }
 }

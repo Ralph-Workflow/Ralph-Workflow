@@ -9,7 +9,7 @@ use ralph_workflow::git_helpers::{
     self, capture_head_oid, cleanup_orphaned_marker, detect_unauthorized_commit,
     disable_git_wrapper, end_agent_phase, ensure_agent_phase_protections, git_snapshot,
     git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered,
-    start_agent_phase, uninstall_hooks, GitHelpers,
+    start_agent_phase, uninstall_hooks, verify_hooks_removed, GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -2042,5 +2042,123 @@ fn test_finalize_cleanup_leaves_no_artifacts() {
                 "{hook_name}.ralph.orig should not exist after cleanup"
             );
         }
+
+        // verify_hooks_removed should confirm cleanup.
+        let remaining = verify_hooks_removed();
+        assert!(
+            remaining.is_empty(),
+            "verify_hooks_removed should return empty after cleanup; got: {remaining:?}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_commit_msg_hook_installed_and_blocks() {
+    // commit-msg hook provides a second blocking layer that fires even if
+    // pre-commit is somehow bypassed.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("commit-msg");
+        assert!(hook_path.exists(), "commit-msg hook must be installed");
+
+        let content = fs::read_to_string(&hook_path).unwrap();
+        assert!(
+            content.contains(HOOK_MARKER),
+            "commit-msg hook must contain HOOK_MARKER"
+        );
+
+        // Create the marker file to activate blocking.
+        let marker = dir.path().join(".no_agent_commit");
+        File::create(&marker).unwrap();
+
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available to run hook script");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}{stderr}");
+
+        assert_ne!(
+            output.status.code(),
+            Some(0),
+            "commit-msg hook should exit non-zero when .no_agent_commit is present; output: {combined}"
+        );
+        assert!(
+            combined.to_lowercase().contains("blocked"),
+            "commit-msg hook output should mention 'blocked'; got: {combined}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_commit_msg_hook_cleaned_up_on_exit() {
+    // commit-msg hook must be removed during cleanup, just like other hooks.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        assert!(
+            hooks_dir.join("commit-msg").exists(),
+            "commit-msg hook must exist after start_agent_phase"
+        );
+
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+
+        assert!(
+            !hooks_dir.join("commit-msg").exists(),
+            "commit-msg hook must be removed after cleanup"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_verify_hooks_removed_detects_remaining() {
+    // verify_hooks_removed should detect hooks that remain after a partial cleanup.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        // Hooks are installed — verify_hooks_removed should detect them.
+        let remaining = verify_hooks_removed();
+        assert_eq!(
+            remaining.len(),
+            RALPH_HOOK_NAMES.len(),
+            "all hooks should be detected as remaining; got: {remaining:?}"
+        );
+
+        // Uninstall hooks.
+        uninstall_hooks(&logger).unwrap();
+
+        // Now verify_hooks_removed should return empty.
+        let remaining = verify_hooks_removed();
+        assert!(
+            remaining.is_empty(),
+            "no hooks should remain after uninstall; got: {remaining:?}"
+        );
     });
 }

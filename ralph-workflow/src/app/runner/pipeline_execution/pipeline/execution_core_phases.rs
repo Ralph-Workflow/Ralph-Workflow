@@ -24,12 +24,10 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
 
     let hooks_dir = crate::git_helpers::get_hooks_dir_in_repo(&ctx.repo_root);
     let ralph_hook_detected = hooks_dir.ok().is_some_and(|dir| {
-        ["pre-commit", "pre-push", "pre-merge-commit"]
-            .into_iter()
-            .any(|name| {
-                crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
-                    .unwrap_or(false)
-            })
+        crate::git_helpers::RALPH_HOOK_NAMES.iter().any(|name| {
+            crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
+                .unwrap_or(false)
+        })
     });
 
     if ralph_hook_detected {
