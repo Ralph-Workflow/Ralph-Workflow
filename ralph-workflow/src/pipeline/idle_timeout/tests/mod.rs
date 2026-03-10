@@ -1,6 +1,7 @@
 mod clock;
 mod file_activity;
 mod monitor_basic;
+mod monitor_child_processes;
 mod monitor_file_activity;
 mod monitor_idle_confirmations;
 mod monitor_regressions;

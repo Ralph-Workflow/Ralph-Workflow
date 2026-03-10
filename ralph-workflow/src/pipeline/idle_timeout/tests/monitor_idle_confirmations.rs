@@ -58,6 +58,7 @@ fn monitor_one_confirmation_required_kills_on_first_idle_check() {
         check_interval: Duration::ZERO,
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
+        check_child_processes: true,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -93,6 +94,7 @@ fn monitor_two_consecutive_idle_checks_kill_when_two_confirmations_required() {
         check_interval: Duration::ZERO,
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let result = monitor_idle_timeout_with_interval_and_kill_config(
@@ -134,6 +136,7 @@ fn monitor_single_idle_check_does_not_kill_when_two_confirmations_required() {
         check_interval: Duration::from_millis(50),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {
@@ -190,6 +193,7 @@ fn monitor_activity_between_checks_resets_idle_confirmation_count() {
         check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let timestamp_for_touch = timestamp.clone();
@@ -262,6 +266,7 @@ fn monitor_file_activity_resets_idle_confirmation_count() {
         check_interval: Duration::ZERO,
         kill_config: DEFAULT_KILL_CONFIG,
         required_idle_confirmations: 2,
+        check_child_processes: true,
     };
 
     let handle = thread::spawn(move || {

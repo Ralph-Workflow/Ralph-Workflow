@@ -115,6 +115,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     check_interval: monitor_check_interval,
                     kill_config,
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             );
         if matches!(result, MonitorResult::TimedOut { .. }) {

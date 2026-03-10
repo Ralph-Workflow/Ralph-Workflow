@@ -163,4 +163,29 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             Err(_) => false,
         }
     }
+
+    /// Returns true if the process identified by `parent_pid` has at least one
+    /// live child process.
+    ///
+    /// Used by the idle-timeout monitor to avoid false-positive kills when the
+    /// agent has spawned a subprocess (e.g. `cargo test`, `npm install`) that is
+    /// still running even though the agent produces no stdout/stderr output.
+    ///
+    /// Default implementation: invokes `pgrep -P <pid>` on Unix platforms and
+    /// returns `false` (conservative no-op) on non-Unix. Any execution error is
+    /// treated as "no children" to avoid blocking the timeout system.
+    fn has_active_child_processes(&self, parent_pid: u32) -> bool {
+        #[cfg(unix)]
+        {
+            let pid_str = parent_pid.to_string();
+            self.execute("pgrep", &["-P", &pid_str], &[], None)
+                .map(|o| !o.stdout.trim().is_empty())
+                .unwrap_or(false)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = parent_pid;
+            false
+        }
+    }
 }

@@ -4,7 +4,7 @@ use super::super::{
 use super::agent_child::MockAgentChild;
 use super::agent_output::generate_mock_agent_output;
 use super::ExecuteCall;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Cursor};
 use std::path::Path;
 use std::process::ExitStatus;
@@ -59,6 +59,7 @@ pub struct MockProcessExecutor {
     agent_calls: Mutex<Vec<AgentSpawnConfig>>,
     agent_results: Mutex<HashMap<String, MockResult<AgentCommandResult>>>,
     default_agent_result: Mutex<MockResult<AgentCommandResult>>,
+    active_children: Mutex<HashSet<u32>>,
 }
 
 impl Default for MockProcessExecutor {
@@ -84,6 +85,7 @@ impl Default for MockProcessExecutor {
             agent_calls: Mutex::new(Vec::new()),
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(MockResult::Ok(AgentCommandResult::success())),
+            active_children: Mutex::new(HashSet::new()),
         }
     }
 }
@@ -110,6 +112,7 @@ impl MockProcessExecutor {
             agent_calls: Mutex::new(Vec::new()),
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(err_result("mock agent error")),
+            active_children: Mutex::new(HashSet::new()),
         }
     }
 
@@ -241,6 +244,30 @@ impl MockProcessExecutor {
             .collect()
     }
 
+    /// Configure this mock to report active child processes for the given parent PID.
+    ///
+    /// When `has_active_child_processes` is called with `parent_pid`, returns `true`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn with_active_children_for(self, parent_pid: u32) -> Self {
+        self.active_children.lock().unwrap().insert(parent_pid);
+        self
+    }
+
+    /// Remove a PID from the set of active children.
+    ///
+    /// Call this to simulate a child process completing while the monitor is running.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn remove_active_children_for(&self, parent_pid: u32) {
+        self.active_children.lock().unwrap().remove(&parent_pid);
+    }
+
     fn find_agent_result(&self, command: &str) -> AgentCommandResult {
         if let Some(result) = self.agent_results.lock().unwrap().get(command) {
             return result
@@ -268,6 +295,10 @@ impl MockProcessExecutor {
 }
 
 impl ProcessExecutor for MockProcessExecutor {
+    fn has_active_child_processes(&self, parent_pid: u32) -> bool {
+        self.active_children.lock().unwrap().contains(&parent_pid)
+    }
+
     fn spawn(
         &self,
         _command: &str,

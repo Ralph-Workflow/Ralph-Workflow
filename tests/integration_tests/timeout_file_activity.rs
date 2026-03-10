@@ -235,6 +235,7 @@ fn active_ai_file_updates_prevent_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -305,6 +306,7 @@ fn log_only_activity_does_not_prevent_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -362,6 +364,7 @@ fn no_output_and_no_ai_files_times_out() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -443,6 +446,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -518,6 +522,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -598,6 +603,7 @@ fn workspace_source_file_update_prevents_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -671,6 +677,7 @@ fn only_excluded_workspace_files_still_produce_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -734,6 +741,7 @@ fn deep_nested_source_file_prevents_timeout() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -814,6 +822,7 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -882,6 +891,7 @@ fn output_activity_during_file_scan_prevents_kill() {
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
                     required_idle_confirmations: 2,
+                    check_child_processes: true,
                 },
             )
         });
@@ -899,6 +909,108 @@ fn output_activity_during_file_scan_prevents_kill() {
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
             "no kill signals when output timestamp was reset after file scan"
+        );
+    });
+}
+
+/// When the agent has active child processes (e.g. a running `cargo build`),
+/// the monitor must not kill it even though stdout/stderr is idle.
+#[test]
+fn active_subprocess_prevents_idle_kill() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        // Force output to appear idle.
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id(); // 12345
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        // Configure the executor to report active child processes for our PID.
+        let executor_impl =
+            Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        let handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(5),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        // While children are present the monitor must not kill.
+        thread::sleep(Duration::from_millis(40));
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "no kill signals should be sent when active child processes are present"
+        );
+
+        should_stop.store(true, Ordering::Release);
+
+        let result = handle.join().expect("monitor thread panicked");
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "active subprocess should prevent idle kill"
+        );
+    });
+}
+
+/// When output is idle, no file activity is present, and no child processes are
+/// running, the monitor must enforce the idle timeout.
+#[test]
+fn no_active_subprocess_and_no_file_activity_times_out() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        // No children configured; the mock executor reports no active children.
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "no active subprocess and no file activity should time out"
         );
     });
 }

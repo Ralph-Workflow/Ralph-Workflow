@@ -52,6 +52,7 @@ fn monitor_does_not_skip_timeout_enforcement_when_try_wait_errors_before_kill() 
                 Duration::from_millis(5),
             ),
             required_idle_confirmations: 2,
+            check_child_processes: true,
         },
     );
 

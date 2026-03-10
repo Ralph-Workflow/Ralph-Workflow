@@ -38,6 +38,15 @@ pub struct MonitorConfig {
     ///
     /// Default: 2 (one extra `check_interval` of confirmation before kill).
     pub required_idle_confirmations: u32,
+    /// Whether to check for active child processes before declaring the agent idle.
+    ///
+    /// When `true` (the default), the monitor queries the `ProcessExecutor` for
+    /// active child processes of the agent. If any are found the idle counter is
+    /// reset, preventing false kills when the agent is running a long subprocess
+    /// (e.g. `cargo test`, `npm install`, `cargo build`).
+    ///
+    /// Set to `false` in tests that deliberately do not want this check to run.
+    pub check_child_processes: bool,
 }
 
 impl Default for MonitorConfig {
@@ -47,6 +56,7 @@ impl Default for MonitorConfig {
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
             required_idle_confirmations: 2,
+            check_child_processes: true,
         }
     }
 }
@@ -173,6 +183,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let check_interval = config.check_interval;
     let kill_config = config.kill_config;
     let required_idle_confirmations = config.required_idle_confirmations;
+    let check_child_processes = config.check_child_processes;
 
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
     let mut last_file_activity: Option<std::time::Instant> = None;
@@ -350,6 +361,25 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             consecutive_idle_count = 0;
             eprintln!("Output activity detected after file scan; continuing monitoring");
             continue;
+        }
+
+        // Check for active child processes: the agent may have spawned a subprocess
+        // (e.g. cargo test, cargo build, npm install) that is still running even
+        // though there is no stdout/stderr output and no file-system activity in
+        // tracked locations. If children exist the agent is working; reset the
+        // idle counter and wait for the next check interval.
+        if check_child_processes {
+            let child_pid = {
+                let locked_child = child.lock().expect("child process mutex poisoned");
+                locked_child.id()
+            };
+            if executor.has_active_child_processes(child_pid) {
+                consecutive_idle_count = 0;
+                eprintln!(
+                    "Agent has active child processes (pid {child_pid}); continuing monitoring"
+                );
+                continue;
+            }
         }
 
         // Require multiple consecutive idle observations before killing to avoid
