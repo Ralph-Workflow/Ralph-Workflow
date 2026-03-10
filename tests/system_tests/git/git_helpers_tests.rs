@@ -18,6 +18,10 @@ use serial_test::serial;
 use std::fs::{self, File};
 use std::process::Command;
 
+fn program_exists(name: &str) -> bool {
+    Command::new(name).arg("--version").output().is_ok()
+}
+
 #[test]
 #[serial]
 fn test_agent_phase_cleanup_removes_git_wrapper_track_file() {
@@ -363,12 +367,17 @@ fn test_git_snapshot_excludes_gitignored_files() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_pre_commit_hook_blocks_when_marker_exists() {
     // Verify the installed pre-commit hook exits non-zero and prints a blocking
     // message when .no_agent_commit is present.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -413,11 +422,16 @@ fn test_pre_commit_hook_blocks_when_marker_exists() {
     });
 }
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_pre_commit_hook_passes_when_no_marker() {
     // Verify the installed pre-commit hook exits 0 when .no_agent_commit is absent.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -859,12 +873,222 @@ fn run_wrapper(wrapper_path: &std::path::Path, args: &[&str]) -> (i32, String) {
     (code, combined)
 }
 
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_start_agent_phase_creates_marker_in_repo_root_not_cwd() {
+    // Regression: start_agent_phase must create the marker in the repo root, not in CWD.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        // Move CWD into a subdirectory within the repo.
+        let subdir = dir.path().join("subdir");
+        fs::create_dir_all(&subdir).unwrap();
+        std::env::set_current_dir(&subdir).unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        assert!(
+            dir.path().join(".no_agent_commit").exists(),
+            "marker must be created in repo root"
+        );
+        assert!(
+            !subdir.join(".no_agent_commit").exists(),
+            "marker must not be created in CWD subdir"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_start_agent_phase_repairs_marker_symlink_without_clobbering_target() {
+    // Security: start_agent_phase must not follow a marker symlink.
+    // It may self-heal by removing the symlink and creating a real marker file.
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        // Create a target file inside the repo and point the marker symlink at it.
+        let target = dir.path().join("marker-target.txt");
+        fs::write(&target, "do-not-touch").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        symlink(&target, &marker).unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let meta = fs::symlink_metadata(&marker).unwrap();
+        assert!(
+            !meta.file_type().is_symlink(),
+            "marker must be recreated as a real file (not a symlink)"
+        );
+        assert_eq!(
+            fs::read_to_string(&target).unwrap(),
+            "do-not-touch",
+            "marker creation must not clobber symlink target"
+        );
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "marker code must not chmod symlink target");
+
+        let marker_mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
+        assert_eq!(marker_mode, 0o444, "marker must be 0o444");
+
+        // Best-effort cleanup for partial installs.
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let _ = uninstall_hooks(&logger);
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_end_agent_phase_does_not_chmod_marker_symlink_target() {
+    // Security: end_agent_phase must not chmod through a marker symlink.
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let target = dir.path().join("marker-target.txt");
+        fs::write(&target, "x").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        symlink(&target, &marker).unwrap();
+
+        end_agent_phase();
+
+        assert!(
+            !marker.exists(),
+            "end_agent_phase should remove the marker directory entry"
+        );
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "end_agent_phase must not chmod symlink target; mode was {mode:#o}"
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_capture_head_oid_refuses_agent_dir_symlink() {
+    // Security: capture_head_oid must not write through a symlinked .agent directory.
+    use std::os::unix::fs::symlink;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Create an initial commit so HEAD exists.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write("init.txt", "init").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("init.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        let outside = tempfile::tempdir().unwrap();
+        fs::remove_dir_all(dir.path().join(".agent")).ok();
+        symlink(outside.path(), dir.path().join(".agent")).unwrap();
+
+        capture_head_oid(dir.path());
+
+        assert!(
+            !outside.path().join("head-oid.txt").exists(),
+            "capture_head_oid must not write outside repo via .agent symlink"
+        );
+        assert!(
+            !outside.path().join("git-wrapper-dir.txt").exists(),
+            "no wrapper track file should be written in this test"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_detect_unauthorized_commit_uses_repo_root_not_cwd() {
+    // Regression: detect_unauthorized_commit must compare HEAD in the provided repo_root,
+    // not whatever repository happens to be discoverable from CWD.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo_a = dir.path().join("repo_a");
+        let repo_b = dir.path().join("repo_b");
+        fs::create_dir_all(&repo_a).unwrap();
+        fs::create_dir_all(&repo_b).unwrap();
+
+        let repo = git2::Repository::init(&repo_a).unwrap();
+        git2::Repository::init(&repo_b).unwrap();
+
+        // Commit in repo_a.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write(repo_a.join("file1.txt"), "c1").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file1.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "c1", &tree, &[])
+            .unwrap();
+
+        // Capture baseline for repo_a, but set CWD to repo_b.
+        std::env::set_current_dir(&repo_b).unwrap();
+        capture_head_oid(&repo_a);
+        assert!(
+            !detect_unauthorized_commit(&repo_a),
+            "precondition: no unauthorized commit yet"
+        );
+
+        // Create second commit in repo_a.
+        fs::write(repo_a.join("file2.txt"), "c2").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file2.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "c2", &tree, &[&parent])
+            .unwrap();
+
+        assert!(
+            detect_unauthorized_commit(&repo_a),
+            "must detect HEAD change in repo_root regardless of CWD"
+        );
+    });
+}
+
 #[test]
 #[serial]
 fn test_git_wrapper_blocks_merge_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["merge", "main"]);
         assert_eq!(code, 1, "merge should be blocked; output: {output}");
@@ -883,6 +1107,9 @@ fn test_git_wrapper_blocks_merge_when_marker_missing_but_wrapper_active() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
 
         // Simulate agent deleting the marker.
@@ -891,10 +1118,7 @@ fn test_git_wrapper_blocks_merge_when_marker_missing_but_wrapper_active() {
         assert!(!marker.exists(), "precondition: marker must be deleted");
 
         let (_code, output) = run_wrapper(&ctx.wrapper_path, &["merge", "main"]);
-        assert!(
-            output.contains("Blocked:"),
-            "wrapper should block even when marker is missing; got: {output}"
-        );
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
     });
 }
 
@@ -904,6 +1128,9 @@ fn test_git_wrapper_blocks_rebase_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["rebase", "main"]);
         assert_eq!(code, 1, "rebase should be blocked; output: {output}");
@@ -917,6 +1144,9 @@ fn test_git_wrapper_blocks_reset_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["reset", "--hard"]);
         assert_eq!(code, 1, "reset should be blocked; output: {output}");
@@ -930,6 +1160,9 @@ fn test_git_wrapper_allows_status_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, _output) = run_wrapper(&ctx.wrapper_path, &["status"]);
         assert_eq!(code, 0, "status should be allowed");
@@ -942,6 +1175,9 @@ fn test_git_wrapper_allows_stash_list_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, _output) = run_wrapper(&ctx.wrapper_path, &["stash", "list"]);
         assert_eq!(code, 0, "stash list should be allowed");
@@ -954,6 +1190,9 @@ fn test_git_wrapper_blocks_stash_pop_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["stash", "pop"]);
         assert_eq!(code, 1, "stash pop should be blocked; output: {output}");
@@ -969,6 +1208,9 @@ fn test_git_wrapper_blocks_bare_stash_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["stash"]);
         assert_eq!(code, 1, "bare stash should be blocked; output: {output}");
@@ -984,6 +1226,9 @@ fn test_git_wrapper_blocks_branch_create_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["branch", "new-branch"]);
         assert_eq!(code, 1, "branch create should be blocked; output: {output}");
@@ -999,6 +1244,9 @@ fn test_git_wrapper_blocks_checkout_switch_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["checkout", "HEAD"]);
         assert_eq!(code, 1, "checkout should be blocked; output: {output}");
@@ -1012,6 +1260,9 @@ fn test_git_wrapper_blocks_add_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
 
         // Create a test file to add.
@@ -1032,6 +1283,9 @@ fn test_git_wrapper_blocks_init_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
+        if !program_exists("git") || !program_exists("sh") {
+            return;
+        }
         let ctx = setup_wrapper_test(dir.path());
         let (code, output) = run_wrapper(&ctx.wrapper_path, &["init"]);
         assert_eq!(code, 1, "git init should be blocked; output: {output}");
@@ -1329,11 +1583,16 @@ fn test_pre_merge_commit_hook_installed() {
     });
 }
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_pre_merge_commit_hook_blocks_when_marker_exists() {
     // The pre-merge-commit hook should block when .no_agent_commit is present.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -1691,12 +1950,17 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
 // Hook dual-check tests (marker + track file)
 // =========================================================================
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_hook_blocks_when_only_track_file_exists() {
     // Defense-in-depth: if an agent deletes the marker but the track file remains,
     // the hook must still block commits.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -1736,11 +2000,16 @@ fn test_hook_blocks_when_only_track_file_exists() {
     });
 }
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_hook_passes_when_neither_marker_nor_track_file() {
     // When neither marker nor track file exists, the hook should pass.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -2044,20 +2313,22 @@ fn test_finalize_cleanup_leaves_no_artifacts() {
         }
 
         // verify_hooks_removed should confirm cleanup.
-        let remaining = verify_hooks_removed();
-        assert!(
-            remaining.is_empty(),
-            "verify_hooks_removed should return empty after cleanup; got: {remaining:?}"
-        );
+        let remaining = verify_hooks_removed(dir.path()).unwrap();
+        assert!(remaining.is_empty(), "got: {remaining:?}");
     });
 }
 
+#[cfg(unix)]
 #[test]
 #[serial]
 fn test_commit_msg_hook_installed_and_blocks() {
     // commit-msg hook provides a second blocking layer that fires even if
     // pre-commit is somehow bypassed.
     use test_helpers::with_temp_cwd;
+
+    if !program_exists("bash") {
+        return;
+    }
 
     with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
@@ -2138,13 +2409,13 @@ fn test_verify_hooks_removed_detects_remaining() {
 
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
 
-    with_temp_cwd(|_dir| {
+    with_temp_cwd(|dir| {
         git2::Repository::init(".").unwrap();
 
         hooks::install_hooks().unwrap();
 
         // Hooks are installed — verify_hooks_removed should detect them.
-        let remaining = verify_hooks_removed();
+        let remaining = verify_hooks_removed(dir.path()).unwrap();
         assert_eq!(
             remaining.len(),
             RALPH_HOOK_NAMES.len(),
@@ -2155,10 +2426,21 @@ fn test_verify_hooks_removed_detects_remaining() {
         uninstall_hooks(&logger).unwrap();
 
         // Now verify_hooks_removed should return empty.
-        let remaining = verify_hooks_removed();
-        assert!(
-            remaining.is_empty(),
-            "no hooks should remain after uninstall; got: {remaining:?}"
-        );
+        let remaining = verify_hooks_removed(dir.path()).unwrap();
+        assert!(remaining.is_empty(), "got: {remaining:?}");
     });
+}
+
+#[test]
+#[serial]
+fn test_verify_hooks_removed_errors_when_repo_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let err = verify_hooks_removed(dir.path()).unwrap_err();
+    assert!(
+        matches!(
+            err.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::Other
+        ),
+        "unexpected error kind: {err:?}"
+    );
 }

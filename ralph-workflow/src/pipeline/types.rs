@@ -1,7 +1,10 @@
 //! Core pipeline types (cleanup guards and command results).
 
 use crate::files::{cleanup_generated_files_with_workspace, make_prompt_writable_with_workspace};
-use crate::git_helpers::{disable_git_wrapper, end_agent_phase, uninstall_hooks, GitHelpers};
+use crate::git_helpers::{
+    disable_git_wrapper, end_agent_phase_in_repo, uninstall_hooks_in_repo, verify_hooks_removed,
+    GitHelpers,
+};
 use crate::logger::Logger;
 use crate::workspace::Workspace;
 
@@ -66,15 +69,23 @@ impl Drop for AgentPhaseGuard<'_> {
         // read-only, so we always attempt restoration.
         let _ = make_prompt_writable_with_workspace(self.workspace);
 
-        end_agent_phase();
+        let repo_root = self.workspace.root();
+        end_agent_phase_in_repo(repo_root);
         disable_git_wrapper(self.git_helpers);
-        let _ = uninstall_hooks(self.logger);
-        let remaining = crate::git_helpers::verify_hooks_removed();
-        if !remaining.is_empty() {
-            self.logger.warn(&format!(
-                "Ralph hooks still present after guard cleanup: {}",
-                remaining.join(", ")
-            ));
+        let _ = uninstall_hooks_in_repo(repo_root, self.logger);
+        match verify_hooks_removed(repo_root) {
+            Ok(remaining) => {
+                if !remaining.is_empty() {
+                    self.logger.warn(&format!(
+                        "Ralph hooks still present after guard cleanup: {}",
+                        remaining.join(", ")
+                    ));
+                }
+            }
+            Err(err) => {
+                self.logger
+                    .warn(&format!("Failed to verify hook cleanup: {err}"));
+            }
         }
         cleanup_generated_files_with_workspace(self.workspace);
     }

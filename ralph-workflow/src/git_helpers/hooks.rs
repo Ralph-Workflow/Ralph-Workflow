@@ -360,19 +360,27 @@ pub fn uninstall_hooks_silent() {
 ///
 /// Returns a list of hook names that still contain the Ralph marker.
 /// An empty list means cleanup was successful.
-#[must_use]
-pub fn verify_hooks_removed() -> Vec<&'static str> {
-    let Ok(hooks_dir) = get_hooks_dir() else {
-        return Vec::new();
-    };
-    RALPH_HOOK_NAMES
+///
+/// # Errors
+///
+/// Returns an error if the git repository cannot be opened or the hooks directory
+/// cannot be located for `repo_root`.
+pub fn verify_hooks_removed(repo_root: &Path) -> io::Result<Vec<&'static str>> {
+    let hooks_dir = super::repo::get_hooks_dir_from(repo_root)?;
+    if !hooks_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let remaining = RALPH_HOOK_NAMES
         .iter()
         .filter(|name| {
             let path = hooks_dir.join(name);
             path.exists() && matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true))
         })
         .copied()
-        .collect()
+        .collect();
+
+    Ok(remaining)
 }
 
 /// Reinstall hooks if they have been tampered with or removed.
@@ -420,10 +428,10 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<bool> {
 /// This is called from `ensure_agent_phase_protections()` after
 /// `reinstall_hooks_if_tampered()`.
 #[cfg(unix)]
-pub fn enforce_hook_permissions(logger: &Logger) {
+pub fn enforce_hook_permissions(repo_root: &Path, logger: &Logger) {
     use std::os::unix::fs::PermissionsExt;
 
-    let Ok(hooks_dir) = get_hooks_dir() else {
+    let Ok(hooks_dir) = super::repo::get_hooks_dir_from(repo_root) else {
         return;
     };
 
@@ -433,6 +441,12 @@ pub fn enforce_hook_permissions(logger: &Logger) {
             continue;
         }
         if !matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true)) {
+            continue;
+        }
+        if matches!(fs::symlink_metadata(&path), Ok(m) if m.file_type().is_symlink()) {
+            logger.warn(&format!(
+                "{hook_name} is a symlink — refusing to chmod hook permissions"
+            ));
             continue;
         }
         if let Ok(meta) = fs::metadata(&path) {

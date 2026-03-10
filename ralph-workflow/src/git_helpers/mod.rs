@@ -127,12 +127,12 @@ pub use review_baseline::{
 #[cfg(any(test, feature = "test-utils"))]
 pub use start_commit::load_start_point_with_workspace;
 pub use start_commit::{
-    get_current_head_oid, get_start_commit_summary, load_start_point, reset_start_commit,
-    save_start_commit, save_start_commit_with_workspace, StartPoint,
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
+    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
 };
 pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_silent, cleanup_orphaned_marker,
-    detect_unauthorized_commit, disable_git_wrapper, end_agent_phase,
+    detect_unauthorized_commit, disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo,
     ensure_agent_phase_protections, start_agent_phase, GitHelpers, ProtectionCheckResult,
 };
 

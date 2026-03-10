@@ -16,7 +16,7 @@ use super::repo::get_repo_root;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
 use std::env;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use which::which;
@@ -41,6 +41,89 @@ pub struct ProtectionCheckResult {
 
 /// Marker file path for blocking commits during agent phase.
 const MARKER_FILE: &str = ".no_agent_commit";
+
+fn remove_if_symlink(path: &Path) {
+    if matches!(fs::symlink_metadata(path), Ok(meta) if meta.file_type().is_symlink()) {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
+    let marker_path = repo_root.join(MARKER_FILE);
+
+    if let Ok(meta) = fs::symlink_metadata(&marker_path) {
+        if meta.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                ".no_agent_commit exists as a symlink; refusing to follow",
+            ));
+        }
+        if meta.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                ".no_agent_commit exists as a directory; refusing to use as marker",
+            ));
+        }
+        return Ok(());
+    }
+
+    let open_res = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&marker_path)
+        }
+        #[cfg(not(unix))]
+        {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&marker_path)
+        }
+    };
+
+    match open_res {
+        Ok(mut f) => {
+            f.write_all(b"")?;
+            f.flush()?;
+            let _ = f.sync_all();
+        }
+        Err(ref e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+
+    Ok(())
+}
+
+#[cfg(unix)]
+fn add_owner_write_if_not_symlink(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if matches!(fs::symlink_metadata(path), Ok(meta) if meta.file_type().is_symlink()) {
+        return;
+    }
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200);
+        let _ = fs::set_permissions(path, perms);
+    }
+}
+
+#[cfg(unix)]
+fn set_readonly_mode_if_not_symlink(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    if matches!(fs::symlink_metadata(path), Ok(meta) if meta.file_type().is_symlink()) {
+        return;
+    }
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        perms.set_mode(mode);
+        let _ = fs::set_permissions(path, perms);
+    }
+}
 
 /// Git helper state.
 pub struct GitHelpers {
@@ -582,22 +665,20 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
 ///
 /// Returns error if the operation fails.
 pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
-    File::create(".no_agent_commit")?;
+    let repo_root = get_repo_root()?;
+    helpers.wrapper_repo_root = Some(repo_root.clone());
+
+    // Self-heal: remove a malicious symlink entry and recreate safely.
+    remove_if_symlink(&repo_root.join(MARKER_FILE));
+    create_marker_in_repo_root(&repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(".no_agent_commit")?.permissions();
-        perms.set_mode(0o444);
-        fs::set_permissions(".no_agent_commit", perms)?;
-    }
+    set_readonly_mode_if_not_symlink(&repo_root.join(MARKER_FILE), 0o444);
     install_hooks()?;
     enable_git_wrapper(helpers)?;
 
     // Capture HEAD OID baseline for unauthorized commit detection.
-    if let Ok(repo_root) = get_repo_root() {
-        capture_head_oid(&repo_root);
-    }
+    capture_head_oid(&repo_root);
     Ok(())
 }
 
@@ -606,21 +687,21 @@ pub fn end_agent_phase() {
     let Ok(repo_root) = crate::git_helpers::get_repo_root() else {
         return;
     };
-    let marker_path = repo_root.join(".no_agent_commit");
+    end_agent_phase_in_repo(&repo_root);
+}
+
+/// End agent phase for an explicit repository.
+///
+/// This avoids relying on the process current working directory to locate the repo.
+pub fn end_agent_phase_in_repo(repo_root: &Path) {
+    let marker_path = repo_root.join(MARKER_FILE);
     // Make writable before removal (marker is created as read-only 0o444).
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&marker_path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o200);
-            let _ = fs::set_permissions(&marker_path, perms);
-        }
-    }
+    add_owner_write_if_not_symlink(&marker_path);
     let _ = fs::remove_file(marker_path);
 
     // Clean up HEAD OID tracking file.
-    remove_head_oid_file(&repo_root);
+    remove_head_oid_file(repo_root);
 }
 
 /// Verify and restore agent-phase commit protections before each agent invocation.
@@ -657,7 +738,11 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     };
 
     let marker_path = repo_root.join(MARKER_FILE);
-    let marker_exists = marker_path.exists();
+    let marker_meta = fs::symlink_metadata(&marker_path).ok();
+    let marker_is_symlink = marker_meta
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_symlink());
+    let marker_exists = marker_meta.is_some() && !marker_is_symlink;
 
     // Ensure the PATH wrapper is present and intact.
     //
@@ -927,23 +1012,36 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
             .push("Marker and hooks missing before agent spawn — reinstalling".to_string());
     }
 
-    // Recreate marker if missing.
+    // Repair marker if missing or replaced with a symlink.
+    if marker_is_symlink {
+        logger.warn(".no_agent_commit marker is a symlink — removing and recreating");
+        let _ = fs::remove_file(&marker_path);
+        result.tampering_detected = true;
+        result
+            .details
+            .push(".no_agent_commit marker was a symlink — removed".to_string());
+    }
     if !marker_exists {
         logger.warn(".no_agent_commit marker missing — recreating");
-        if let Err(e) = File::create(&marker_path) {
+        if let Err(e) = create_marker_in_repo_root(&repo_root) {
             logger.warn(&format!("Failed to recreate .no_agent_commit: {e}"));
+        } else {
+            #[cfg(unix)]
+            set_readonly_mode_if_not_symlink(&marker_path, 0o444);
         }
         result.tampering_detected = true;
         result
             .details
-            .push(".no_agent_commit marker was deleted — recreated".to_string());
+            .push(".no_agent_commit marker was missing — recreated".to_string());
     }
 
     // Verify/restore marker permissions (read-only 0o444).
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&marker_path) {
+        if marker_is_symlink {
+            // Never chmod through a symlink.
+        } else if let Ok(meta) = fs::metadata(&marker_path) {
             let mode = meta.permissions().mode() & 0o777;
             if mode != 0o444 {
                 logger.warn(&format!(
@@ -976,13 +1074,25 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
 
     // Verify/restore hook permissions (read-only executable 0o555).
     #[cfg(unix)]
-    super::hooks::enforce_hook_permissions(logger);
+    super::hooks::enforce_hook_permissions(&repo_root, logger);
 
     // Verify/restore track file permissions (read-only 0o444).
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&track_file_path) {
+        if matches!(fs::symlink_metadata(&track_file_path), Ok(m) if m.file_type().is_symlink()) {
+            logger.warn("Track file path is a symlink — refusing to chmod and attempting repair");
+            result.tampering_detected = true;
+            result
+                .details
+                .push("Track file was a symlink — refused chmod".to_string());
+            let _ = fs::remove_file(&track_file_path);
+            if let Some(dir) =
+                find_wrapper_dir_on_path().filter(|p| wrapper_dir_is_safe_existing_dir(p))
+            {
+                let _ = write_wrapper_track_file_atomic(&repo_root, &dir);
+            }
+        } else if let Ok(meta) = fs::metadata(&track_file_path) {
             let mode = meta.permissions().mode() & 0o777;
             if mode != 0o444 {
                 logger.warn(&format!(
@@ -1069,16 +1179,11 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     let repo_root = get_repo_root()?;
     let marker_path = repo_root.join(".no_agent_commit");
 
-    if marker_path.exists() {
+    if fs::symlink_metadata(&marker_path).is_ok() {
         // Make writable before removal (marker is created as read-only 0o444).
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            if let Ok(meta) = fs::metadata(&marker_path) {
-                let mut perms = meta.permissions();
-                perms.set_mode(perms.mode() | 0o200);
-                let _ = fs::set_permissions(&marker_path, perms);
-            }
+            add_owner_write_if_not_symlink(&marker_path);
         }
         fs::remove_file(&marker_path)?;
         logger.success("Removed orphaned .no_agent_commit marker");
@@ -1094,41 +1199,69 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
 /// This is called at agent-phase start and after each Ralph-orchestrated commit
 /// to establish the baseline for unauthorized commit detection.
 pub fn capture_head_oid(repo_root: &Path) {
-    let Ok(head_oid) = crate::git_helpers::get_current_head_oid() else {
+    let Ok(head_oid) = crate::git_helpers::get_current_head_oid_at(repo_root) else {
         return; // No HEAD yet (empty repo) — nothing to capture
     };
-    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    let _ = write_head_oid_file_atomic(repo_root, head_oid.trim());
+}
 
-    // Ensure .agent dir exists
+fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
     let agent_dir = repo_root.join(".agent");
-    let _ = fs::create_dir_all(&agent_dir);
-
-    // Make writable if it already exists (file is 0o444)
-    #[cfg(unix)]
-    if head_oid_path.exists() {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&head_oid_path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o200);
-            let _ = fs::set_permissions(&head_oid_path, perms);
+    if let Ok(meta) = fs::symlink_metadata(&agent_dir) {
+        if meta.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                ".agent path is a symlink; refusing to write head-oid baseline",
+            ));
         }
     }
+    fs::create_dir_all(&agent_dir)?;
 
-    if let Ok(mut f) = File::create(&head_oid_path) {
-        let _ = f.write_all(head_oid.as_bytes());
-        let _ = f.write_all(b"\n");
+    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    if matches!(fs::symlink_metadata(&head_oid_path), Ok(m) if m.file_type().is_symlink()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "head-oid path is a symlink; refusing to write baseline",
+        ));
     }
 
-    // Make read-only (0o444) like the marker
-    #[cfg(unix)]
+    let tmp_path = agent_dir.join(format!(
+        ".head-oid.tmp.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+
     {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&head_oid_path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(0o444);
-            let _ = fs::set_permissions(&head_oid_path, perms);
+        let mut tf = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)?;
+        tf.write_all(oid.as_bytes())?;
+        tf.write_all(b"\n")?;
+        tf.flush()?;
+        let _ = tf.sync_all();
+    }
+
+    #[cfg(unix)]
+    set_readonly_mode_if_not_symlink(&tmp_path, 0o444);
+    #[cfg(windows)]
+    {
+        let mut perms = fs::metadata(&tmp_path)?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&tmp_path, perms)?;
+    }
+
+    // Rename is symlink-safe: it replaces the directory entry.
+    #[cfg(windows)]
+    {
+        if head_oid_path.exists() {
+            let _ = fs::remove_file(&head_oid_path);
         }
     }
+    fs::rename(&tmp_path, &head_oid_path)
 }
 
 /// Detect unauthorized commits by comparing current HEAD against stored OID.
@@ -1138,6 +1271,9 @@ pub fn capture_head_oid(repo_root: &Path) {
 #[must_use]
 pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
     let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    if matches!(fs::symlink_metadata(&head_oid_path), Ok(m) if m.file_type().is_symlink()) {
+        return false;
+    }
     let Ok(stored_oid) = fs::read_to_string(&head_oid_path) else {
         return false; // No stored OID — cannot compare
     };
@@ -1146,7 +1282,7 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
         return false;
     }
 
-    let Ok(current_oid) = crate::git_helpers::get_current_head_oid() else {
+    let Ok(current_oid) = crate::git_helpers::get_current_head_oid_at(repo_root) else {
         return false; // Cannot determine current HEAD
     };
 
@@ -1156,17 +1292,12 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
 /// Remove the head-oid tracking file, making it writable first if needed.
 fn remove_head_oid_file(repo_root: &Path) {
     let head_oid_path = repo_root.join(HEAD_OID_FILE);
-    if !head_oid_path.exists() {
+    if fs::symlink_metadata(&head_oid_path).is_err() {
         return;
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(&head_oid_path) {
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o200);
-            let _ = fs::set_permissions(&head_oid_path, perms);
-        }
+        add_owner_write_if_not_symlink(&head_oid_path);
     }
     let _ = fs::remove_file(&head_oid_path);
 }

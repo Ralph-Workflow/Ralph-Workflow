@@ -57,6 +57,19 @@ pub fn get_current_head_oid() -> io::Result<String> {
     get_current_head_oid_impl(&repo)
 }
 
+/// Get the current HEAD commit OID for an explicit repository root.
+///
+/// This avoids accidentally discovering a different repository when the process
+/// current working directory is not inside `repo_root`.
+///
+/// # Errors
+///
+/// Returns an error if the repository cannot be opened or HEAD cannot be resolved.
+pub fn get_current_head_oid_at(repo_root: &Path) -> io::Result<String> {
+    let repo = git2::Repository::open(repo_root).map_err(|e| to_io_error(&e))?;
+    get_current_head_oid_impl(&repo)
+}
+
 /// Implementation of `get_current_head_oid`.
 fn get_current_head_oid_impl(repo: &git2::Repository) -> io::Result<String> {
     let head = repo.head().map_err(|e| {
