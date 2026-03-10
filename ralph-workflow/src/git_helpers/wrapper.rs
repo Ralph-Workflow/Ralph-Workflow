@@ -87,6 +87,42 @@ fn escape_shell_single_quoted(path: &str) -> io::Result<String> {
     Ok(path.replace('\'', "'\\''"))
 }
 
+fn find_git_in_path_excluding_dir(exclude_dir: &Path) -> Option<PathBuf> {
+    let path_var = env::var("PATH").ok()?;
+    let exclude = exclude_dir.to_string_lossy();
+    let wrapper_path = exclude_dir.join("git");
+    for entry in path_var.split(':') {
+        if entry.is_empty() {
+            continue;
+        }
+        // Exclude the wrapper dir so we don't resolve the wrapper as "real git".
+        if entry == exclude {
+            continue;
+        }
+        let candidate = Path::new(entry).join("git");
+        if candidate == wrapper_path {
+            continue;
+        }
+        if !candidate.exists() {
+            continue;
+        }
+        if matches!(fs::metadata(&candidate), Ok(meta) if meta.file_type().is_file()) {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = fs::metadata(&candidate) {
+                    let mode = meta.permissions().mode() & 0o777;
+                    if (mode & 0o111) == 0 {
+                        continue;
+                    }
+                }
+            }
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 /// Generate the git wrapper script content.
 ///
 /// The script intercepts destructive git subcommands when `.no_agent_commit`
@@ -110,7 +146,11 @@ set -eu
 # only skips shell functions and aliases, not PATH entries. This wrapper is a
 # real file in PATH, so it is always invoked for any `git` command.
 repo_root="$('{git_path_escaped}' rev-parse --show-toplevel 2>/dev/null || pwd)"
-if [ -f "$repo_root/.no_agent_commit" ]; then
+marker="$repo_root/.no_agent_commit"
+track_file="$repo_root/.agent/git-wrapper-dir.txt"
+# Treat either the marker or the wrapper track file as an active agent-phase signal.
+# This makes the wrapper resilient if an agent deletes the marker mid-run.
+if [ -f "$marker" ] || [ -f "$track_file" ]; then
   # Unset environment variables that could be used to bypass the wrapper
   # by pointing git at a different repository or exec path.
   unset GIT_DIR
@@ -139,7 +179,7 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
   done
   case "$subcmd" in
     commit|push|tag|merge|rebase|reset|cherry-pick|revert|am|apply|clean|restore|add|init)
-      echo "Blocked: git $subcmd disabled during agent phase (.no_agent_commit present)." >&2
+      echo "Blocked: git $subcmd disabled during agent phase (protections active)." >&2
       exit 1
       ;;
     stash)
@@ -157,7 +197,7 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
       done
       case "$stash_sub" in
         pop|drop|apply|push|store|create|clear)
-          echo "Blocked: git stash $stash_sub disabled during agent phase (.no_agent_commit present)." >&2
+          echo "Blocked: git stash $stash_sub disabled during agent phase (protections active)." >&2
           exit 1
           ;;
       esac
@@ -167,7 +207,7 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
       for a2 in "$@"; do
         case "$a2" in
           -d|-D|--delete)
-            echo "Blocked: git branch delete disabled during agent phase (.no_agent_commit present)." >&2
+            echo "Blocked: git branch delete disabled during agent phase (protections active)." >&2
             exit 1
             ;;
         esac
@@ -177,7 +217,7 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
       # Block 'checkout -- <path>' which discards uncommitted changes
       for a2 in "$@"; do
         if [ "$a2" = "--" ]; then
-          echo "Blocked: git checkout -- disabled during agent phase (.no_agent_commit present)." >&2
+          echo "Blocked: git checkout -- disabled during agent phase (protections active)." >&2
           exit 1
         fi
       done
@@ -391,14 +431,21 @@ pub fn end_agent_phase() {
 /// its run. It is designed to be called from `run_with_prompt` before every
 /// agent spawn.
 ///
-/// The function is a no-op when neither the marker file nor hooks exist, which
-/// indicates the agent phase has ended normally (e.g., during the commit phase).
+/// The `run_with_prompt` call site is authoritative that agent-phase protections
+/// should be active. Missing protections are treated as tampering (or corruption)
+/// and will be self-healed.
 ///
 /// # Limitations
 ///
-/// This check protects the *next* agent invocation. If an agent deletes both
-/// the marker and hooks within a single invocation, the PATH wrapper is the
-/// only remaining defense until this check runs again.
+/// This check protects the *next* agent invocation.
+///
+/// Within a single invocation, defense-in-depth depends on multiple layers:
+/// hooks and the PATH wrapper. The wrapper additionally treats the wrapper track
+/// file as an agent-phase signal to remain effective if the marker is deleted.
+///
+/// If an agent deletes the marker, hooks, and wrapper track file and then invokes
+/// a real `git` binary via an absolute path, protections can be bypassed until
+/// this check runs again.
 ///
 /// Errors are logged as warnings only — a missing git repo (e.g., in tests
 /// without a real repo) should not crash the pipeline.
@@ -412,6 +459,107 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
 
     let marker_path = repo_root.join(MARKER_FILE);
     let marker_exists = marker_path.exists();
+
+    // If we have a wrapper track file, ensure the wrapper script still exists.
+    // An agent can delete the wrapper script mid-run; restoring it preserves
+    // defense-in-depth even if hooks are bypassed with --no-verify.
+    let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    if let Ok(track_content) = fs::read_to_string(&track_file_path) {
+        let wrapper_dir = PathBuf::from(track_content.trim());
+        if !wrapper_dir.as_os_str().is_empty() {
+            let wrapper_path = wrapper_dir.join("git");
+
+            let wrapper_needs_restore = fs::read_to_string(&wrapper_path).map_or(true, |content| {
+                !content.contains("Blocked:") || !content.contains("unset GIT_EXEC_PATH")
+            });
+
+            if wrapper_needs_restore {
+                logger.warn("Git wrapper script missing or tampered — restoring");
+                result.tampering_detected = true;
+                result
+                    .details
+                    .push("Git wrapper script missing or tampered — restored".to_string());
+
+                if let Err(e) = fs::create_dir_all(&wrapper_dir) {
+                    logger.warn(&format!("Failed to recreate wrapper dir: {e}"));
+                } else {
+                    // Resolve the real git binary by searching PATH excluding the wrapper dir.
+                    let real_git =
+                        find_git_in_path_excluding_dir(&wrapper_dir).or_else(|| which("git").ok());
+
+                    match real_git {
+                        Some(real_git_path) => {
+                            if let Some(real_git_str) = real_git_path.to_str() {
+                                match escape_shell_single_quoted(real_git_str)
+                                    .map(|escaped| make_wrapper_content(&escaped))
+                                {
+                                    Ok(wrapper_content) => {
+                                        if let Err(e) = fs::write(&wrapper_path, wrapper_content) {
+                                            logger.warn(&format!(
+                                                "Failed to restore wrapper script: {e}"
+                                            ));
+                                        } else {
+                                            #[cfg(unix)]
+                                            {
+                                                use std::os::unix::fs::PermissionsExt;
+                                                if let Ok(meta) = fs::metadata(&wrapper_path) {
+                                                    let mut perms = meta.permissions();
+                                                    perms.set_mode(0o555);
+                                                    let _ =
+                                                        fs::set_permissions(&wrapper_path, perms);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        logger.warn(&format!(
+                                            "Failed to generate safe wrapper script: {e}"
+                                        ));
+                                    }
+                                }
+                            } else {
+                                logger.warn(
+                                    "Resolved git binary path is not valid UTF-8; cannot restore wrapper",
+                                );
+                            }
+
+                            // Defense-in-depth: validate we didn't resolve the wrapper itself.
+                            if real_git_path == wrapper_path {
+                                logger.warn(
+                                    "Resolved git binary points to wrapper; wrapper restore may be incomplete",
+                                );
+                            }
+                        }
+                        None => {
+                            logger
+                                .warn("Failed to resolve real git binary; cannot restore wrapper");
+                        }
+                    }
+                }
+            }
+
+            // Restore wrapper permissions (0o555) if loosened.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = fs::metadata(&wrapper_path) {
+                    let mode = meta.permissions().mode() & 0o777;
+                    if mode != 0o555 {
+                        logger.warn(&format!(
+                            "Git wrapper permissions loosened ({mode:#o}) — restoring to 0o555"
+                        ));
+                        let mut perms = meta.permissions();
+                        perms.set_mode(0o555);
+                        let _ = fs::set_permissions(&wrapper_path, perms);
+                        result.tampering_detected = true;
+                        result.details.push(format!(
+                            "Git wrapper permissions loosened ({mode:#o}) — restored to 0o555"
+                        ));
+                    }
+                }
+            }
+        }
+    }
 
     // Check if hooks exist (any Ralph hook present means we're in agent phase).
     let hooks_present = super::repo::get_hooks_dir_from(&repo_root)
@@ -427,12 +575,16 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
             })
         });
 
-    // If neither marker nor hooks exist, we're not in the agent phase — no-op.
+    // Missing protections before an agent spawn is treated as tampering.
     if !marker_exists && !hooks_present {
-        return result;
+        logger.warn("Agent-phase git protections missing — reinstalling");
+        result.tampering_detected = true;
+        result
+            .details
+            .push("Marker and hooks missing before agent spawn — reinstalling".to_string());
     }
 
-    // Recreate marker if missing (but hooks exist → agent phase is active).
+    // Recreate marker if missing.
     if !marker_exists {
         logger.warn(".no_agent_commit marker missing — recreating");
         if let Err(e) = File::create(&marker_path) {

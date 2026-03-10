@@ -341,7 +341,7 @@ pub fn uninstall_hooks_silent() {
 
 /// Reinstall hooks if they have been tampered with or removed.
 ///
-/// Checks each Ralph-managed hook (`pre-commit`, `pre-push`) for the presence
+/// Checks each Ralph-managed hook (see [`RALPH_HOOK_NAMES`]) for the presence
 /// of [`HOOK_MARKER`]. If any hook is missing or lacks the marker, all hooks
 /// are reinstalled.
 ///
@@ -377,7 +377,7 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<bool> {
 
 /// Verify and restore read-only executable permissions on Ralph-managed hooks.
 ///
-/// Checks each Ralph-managed hook (`pre-commit`, `pre-push`) for the expected
+/// Checks each Ralph-managed hook (see [`RALPH_HOOK_NAMES`]) for the expected
 /// permission mode (0o555). If any hook has loosened permissions (e.g., an agent
 /// ran `chmod 755`), this function restores the restrictive permissions.
 ///

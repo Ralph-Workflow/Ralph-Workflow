@@ -496,7 +496,7 @@ fn test_agent_phase_guard_drop_cleans_up_hooks() {
 
         // Hooks must be removed or not contain HOOK_MARKER.
         let hooks_dir = get_hooks_dir().unwrap();
-        for hook_name in &["pre-commit", "pre-push"] {
+        for &hook_name in RALPH_HOOK_NAMES {
             let hook_path = hooks_dir.join(hook_name);
             if hook_path.exists() {
                 let content = fs::read_to_string(&hook_path).unwrap();
@@ -618,7 +618,7 @@ fn test_installed_hooks_are_read_only_executable() {
         hooks::install_hooks().unwrap();
 
         let hooks_dir = get_hooks_dir().unwrap();
-        for hook_name in &["pre-commit", "pre-push"] {
+        for &hook_name in RALPH_HOOK_NAMES {
             let hook_path = hooks_dir.join(hook_name);
             assert!(hook_path.exists(), "{hook_name} must exist");
             let mode = fs::metadata(&hook_path).unwrap().permissions().mode() & 0o777;
@@ -804,9 +804,11 @@ fn test_ensure_agent_phase_protections_restores_marker_permissions() {
 // Wrapper script end-to-end tests
 // =========================================================================
 
-/// Helper: create a real git repo with a wrapper installed, return the wrapper path.
-/// The wrapper script is extracted from the installed PATH wrapper.
-fn setup_wrapper_test(dir: &std::path::Path) -> std::path::PathBuf {
+/// Helper: create a real git repo with a wrapper installed.
+///
+/// Returns a context that keeps `GitHelpers` alive for the duration of the test and
+/// cleans up on Drop, avoiding tempdir leaks.
+fn setup_wrapper_test(dir: &std::path::Path) -> WrapperTestContext {
     git2::Repository::init(dir).unwrap();
 
     let mut helpers = GitHelpers::default();
@@ -818,11 +820,28 @@ fn setup_wrapper_test(dir: &std::path::Path) -> std::path::PathBuf {
     let wrapper_path = wrapper_dir.join("git");
     assert!(wrapper_path.exists(), "wrapper script must exist");
 
-    // We need to keep helpers alive to avoid cleanup.
-    // Instead, just leak the wrapper_dir so it isn't deleted.
-    std::mem::forget(helpers);
+    // Keep helpers alive for the duration of the test by returning a guard.
+    // The guard performs cleanup on Drop, avoiding tempdir leaks across runs.
+    WrapperTestContext {
+        wrapper_path,
+        helpers,
+        logger: Logger::new(ralph_workflow::logger::Colors::with_enabled(false)),
+    }
+}
 
-    wrapper_path
+struct WrapperTestContext {
+    wrapper_path: std::path::PathBuf,
+    helpers: GitHelpers,
+    logger: Logger,
+}
+
+impl Drop for WrapperTestContext {
+    fn drop(&mut self) {
+        // Best-effort cleanup; avoid panics in Drop.
+        end_agent_phase();
+        disable_git_wrapper(&mut self.helpers);
+        let _ = uninstall_hooks(&self.logger);
+    }
 }
 
 /// Run the wrapper with given args, returning exit code and combined output.
@@ -846,8 +865,8 @@ fn test_git_wrapper_blocks_merge_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, output) = run_wrapper(&wrapper, &["merge", "main"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["merge", "main"]);
         assert_eq!(code, 1, "merge should be blocked; output: {output}");
         assert!(
             output.to_lowercase().contains("blocked"),
@@ -858,12 +877,35 @@ fn test_git_wrapper_blocks_merge_when_marker_exists() {
 
 #[test]
 #[serial]
+fn test_git_wrapper_blocks_merge_when_marker_missing_but_wrapper_active() {
+    // If an agent deletes .no_agent_commit mid-run, the wrapper should still block
+    // destructive subcommands as long as the wrapper is installed (track file present).
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let ctx = setup_wrapper_test(dir.path());
+
+        // Simulate agent deleting the marker.
+        let marker = dir.path().join(".no_agent_commit");
+        fs::remove_file(&marker).unwrap();
+        assert!(!marker.exists(), "precondition: marker must be deleted");
+
+        let (_code, output) = run_wrapper(&ctx.wrapper_path, &["merge", "main"]);
+        assert!(
+            output.contains("Blocked:"),
+            "wrapper should block even when marker is missing; got: {output}"
+        );
+    });
+}
+
+#[test]
+#[serial]
 fn test_git_wrapper_blocks_rebase_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, output) = run_wrapper(&wrapper, &["rebase", "main"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["rebase", "main"]);
         assert_eq!(code, 1, "rebase should be blocked; output: {output}");
         assert!(output.to_lowercase().contains("blocked"), "got: {output}");
     });
@@ -875,8 +917,8 @@ fn test_git_wrapper_blocks_reset_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, output) = run_wrapper(&wrapper, &["reset", "--hard"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["reset", "--hard"]);
         assert_eq!(code, 1, "reset should be blocked; output: {output}");
         assert!(output.to_lowercase().contains("blocked"), "got: {output}");
     });
@@ -888,8 +930,8 @@ fn test_git_wrapper_allows_status_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, _output) = run_wrapper(&wrapper, &["status"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, _output) = run_wrapper(&ctx.wrapper_path, &["status"]);
         assert_eq!(code, 0, "status should be allowed");
     });
 }
@@ -900,8 +942,8 @@ fn test_git_wrapper_allows_stash_list_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, _output) = run_wrapper(&wrapper, &["stash", "list"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, _output) = run_wrapper(&ctx.wrapper_path, &["stash", "list"]);
         assert_eq!(code, 0, "stash list should be allowed");
     });
 }
@@ -912,8 +954,8 @@ fn test_git_wrapper_blocks_stash_pop_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, output) = run_wrapper(&wrapper, &["stash", "pop"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["stash", "pop"]);
         assert_eq!(code, 1, "stash pop should be blocked; output: {output}");
         assert!(output.to_lowercase().contains("blocked"), "got: {output}");
     });
@@ -925,12 +967,12 @@ fn test_git_wrapper_blocks_add_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
+        let ctx = setup_wrapper_test(dir.path());
 
         // Create a test file to add.
         fs::write(dir.path().join("testfile.txt"), "content").unwrap();
 
-        let (code, output) = run_wrapper(&wrapper, &["add", "testfile.txt"]);
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["add", "testfile.txt"]);
         assert_eq!(code, 1, "git add should be blocked; output: {output}");
         assert!(
             output.to_lowercase().contains("blocked"),
@@ -945,8 +987,8 @@ fn test_git_wrapper_blocks_init_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
     with_temp_cwd(|dir| {
-        let wrapper = setup_wrapper_test(dir.path());
-        let (code, output) = run_wrapper(&wrapper, &["init"]);
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["init"]);
         assert_eq!(code, 1, "git init should be blocked; output: {output}");
         assert!(
             output.to_lowercase().contains("blocked"),
@@ -980,16 +1022,70 @@ fn test_reinstall_hooks_if_tampered_when_missing() {
 
         reinstall_hooks_if_tampered(&logger).unwrap();
 
-        // Both hooks must now exist with the marker.
-        let pre_commit = hooks_dir.join("pre-commit");
-        let pre_push = hooks_dir.join("pre-push");
-        assert!(pre_commit.exists(), "pre-commit must be reinstalled");
-        assert!(pre_push.exists(), "pre-push must be reinstalled");
-        let content = fs::read_to_string(&pre_commit).unwrap();
-        assert!(
-            content.contains(HOOK_MARKER),
-            "reinstalled pre-commit must contain HOOK_MARKER"
-        );
+        // All hooks must now exist with the marker.
+        for &hook_name in RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            assert!(hook_path.exists(), "{hook_name} must be reinstalled");
+            let content = fs::read_to_string(&hook_path).unwrap();
+            assert!(
+                content.contains(HOOK_MARKER),
+                "reinstalled {hook_name} must contain HOOK_MARKER"
+            );
+        }
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_when_marker_and_hooks_deleted() {
+    // If an agent deletes BOTH the marker and all Ralph hooks, ensure_agent_phase_protections
+    // must self-heal (run_with_prompt calls this before every agent spawn).
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        // Simulate tampering: delete marker and all hooks.
+        let marker = dir.path().join(".no_agent_commit");
+        fs::remove_file(&marker).unwrap();
+        for &hook_name in RALPH_HOOK_NAMES {
+            let hook_path = get_hooks_dir().unwrap().join(hook_name);
+            if hook_path.exists() {
+                let _ = fs::remove_file(&hook_path);
+            }
+        }
+
+        assert!(!marker.exists(), "precondition: marker must be deleted");
+        for &hook_name in RALPH_HOOK_NAMES {
+            assert!(
+                !get_hooks_dir().unwrap().join(hook_name).exists(),
+                "precondition: {hook_name} must be deleted"
+            );
+        }
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(result.tampering_detected, "must report tampering");
+
+        assert!(marker.exists(), "marker must be recreated");
+        for &hook_name in RALPH_HOOK_NAMES {
+            let hook_path = get_hooks_dir().unwrap().join(hook_name);
+            assert!(hook_path.exists(), "{hook_name} must be reinstalled");
+            let content = fs::read_to_string(&hook_path).unwrap();
+            assert!(
+                content.contains(HOOK_MARKER),
+                "reinstalled {hook_name} must contain HOOK_MARKER"
+            );
+        }
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
     });
 }
 
@@ -1340,6 +1436,54 @@ fn test_wrapper_unsets_git_env_vars() {
 #[cfg(unix)]
 #[test]
 #[serial]
+fn test_ensure_agent_phase_protections_restores_missing_wrapper_script() {
+    // If an agent deletes the wrapper script file mid-run, ensure_agent_phase_protections
+    // should restore it (wrapper + hooks is defense-in-depth).
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_content =
+            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+        let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
+        assert!(wrapper_path.exists(), "precondition: wrapper must exist");
+
+        // Simulate agent deleting the wrapper script.
+        fs::remove_file(&wrapper_path).unwrap();
+        assert!(
+            !wrapper_path.exists(),
+            "precondition: wrapper must be deleted"
+        );
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(result.tampering_detected, "must report tampering");
+
+        assert!(wrapper_path.exists(), "wrapper script must be restored");
+        let mode = fs::metadata(&wrapper_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o555, "wrapper script must be 0o555, got {mode:#o}");
+        let content = fs::read_to_string(&wrapper_path).unwrap();
+        assert!(
+            content.contains("Blocked:"),
+            "restored wrapper must contain blocking message; got:\n{content}"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
 fn test_disable_git_wrapper_handles_read_only_wrapper() {
     // Cleanup must work even though the wrapper script is now read-only (0o555).
     use test_helpers::with_temp_cwd;
@@ -1373,8 +1517,8 @@ fn test_disable_git_wrapper_handles_read_only_wrapper() {
 #[test]
 #[serial]
 fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
-    // When neither marker nor hooks exist (agent phase ended normally),
-    // ensure_agent_phase_protections must be a no-op and not recreate anything.
+    // When called (run_with_prompt calls this before every agent spawn),
+    // ensure_agent_phase_protections must enforce protections even if they are missing.
     use test_helpers::with_temp_cwd;
 
     let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
@@ -1385,17 +1529,19 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
         let marker = std::path::Path::new(".no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must not exist");
 
-        let _ = ensure_agent_phase_protections(&logger);
+        let result = ensure_agent_phase_protections(&logger);
 
-        // Nothing should be created.
+        assert!(marker.exists(), "marker must be created when missing");
         assert!(
-            !marker.exists(),
-            ".no_agent_commit must NOT be created when agent phase is not active"
+            result.tampering_detected,
+            "missing protections should be treated as tampering"
         );
         let hooks_dir = get_hooks_dir().unwrap();
-        assert!(
-            !hooks_dir.join("pre-commit").exists(),
-            "pre-commit must NOT be created when agent phase is not active"
-        );
+        for &hook_name in RALPH_HOOK_NAMES {
+            assert!(
+                hooks_dir.join(hook_name).exists(),
+                "{hook_name} must be created"
+            );
+        }
     });
 }

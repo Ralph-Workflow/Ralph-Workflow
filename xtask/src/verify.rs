@@ -583,7 +583,13 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "npm",
         args: &["--prefix", "ralph-gui/ui", "ci", "--no-audit", "--no-fund"],
         success_exit_codes: &[0],
-        extra_env: &[],
+        // Force devDependencies installation even if the outer environment sets
+        // NODE_ENV=production or npm_config_production=true.
+        extra_env: &[
+            ("NODE_ENV", "development"),
+            ("NPM_CONFIG_PRODUCTION", "false"),
+            ("npm_config_production", "false"),
+        ],
     },
     CommandSpec {
         name: "ralph-gui-frontend-lint",
@@ -1208,6 +1214,26 @@ mod tests {
             install_index < lint_index,
             "frontend install must run before frontend lint"
         );
+    }
+
+    #[test]
+    fn test_ralph_gui_frontend_install_forces_dev_dependencies() {
+        // In CI environments NODE_ENV can be set to "production", causing `npm ci`
+        // to omit devDependencies and breaking eslint/vitest checks.
+        // The install step must explicitly force dev deps to be installed.
+        let install = REQUIRED_CHECKS
+            .iter()
+            .find(|c| c.name == "ralph-gui-frontend-install")
+            .expect("REQUIRED_CHECKS must include ralph-gui-frontend-install");
+
+        let mut env = std::collections::HashMap::new();
+        for (k, v) in install.extra_env {
+            env.insert(*k, *v);
+        }
+
+        assert_eq!(env.get("NODE_ENV"), Some(&"development"));
+        assert_eq!(env.get("NPM_CONFIG_PRODUCTION"), Some(&"false"));
+        assert_eq!(env.get("npm_config_production"), Some(&"false"));
     }
 
     #[test]
