@@ -98,19 +98,15 @@ fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
     let marker_path = repo_root.join(MARKER_FILE);
 
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
-        if meta.file_type().is_symlink() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                ".no_agent_commit exists as a symlink; refusing to follow",
-            ));
+        let ft = meta.file_type();
+        let is_regular_file = ft.is_file() && !ft.is_symlink();
+        if is_regular_file {
+            return Ok(());
         }
-        if meta.is_dir() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                ".no_agent_commit exists as a directory; refusing to use as marker",
-            ));
-        }
-        return Ok(());
+
+        // Any non-regular marker path (symlink/dir/socket/FIFO/device/etc) can bypass
+        // hook/wrapper `-f` checks. Quarantine it and recreate a regular file marker.
+        quarantine_path_in_place(&marker_path, "marker")?;
     }
 
     let open_res = {
@@ -1154,7 +1150,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 }
             } else {
                 // A non-file marker path would bypass hook/wrapper `-f` checks.
-                // Quarantine and let the missing-marker repair path recreate a file.
+                // Quarantine and recreate a file marker.
                 logger.warn(".no_agent_commit marker is not a regular file — quarantining");
                 result.tampering_detected = true;
                 result.details.push(
@@ -1162,6 +1158,13 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 );
                 if let Err(e) = quarantine_path_in_place(&marker_path, "marker-perms") {
                     logger.warn(&format!("Failed to quarantine marker path: {e}"));
+                } else if let Err(e) = create_marker_in_repo_root(&repo_root) {
+                    logger.warn(&format!(
+                        "Failed to recreate .no_agent_commit after quarantine: {e}"
+                    ));
+                } else {
+                    #[cfg(unix)]
+                    set_readonly_mode_if_not_symlink(&marker_path, 0o444);
                 }
             }
         }
@@ -1520,6 +1523,21 @@ pub fn cleanup_orphaned_marker_with_workspace(
 mod tests {
     use super::*;
     use crate::workspace::MemoryWorkspace;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct RestoreEnv {
+        original_cwd: PathBuf,
+        original_path: String,
+    }
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original_cwd);
+            std::env::set_var("PATH", &self.original_path);
+        }
+    }
 
     #[test]
     fn test_wrapper_script_handles_c_flag_before_subcommand() {
@@ -1801,6 +1819,119 @@ mod tests {
         assert!(
             quarantined,
             "expected quarantined marker dir entry in repo root"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_create_marker_in_repo_root_quarantines_special_file() {
+        use std::os::unix::fs::FileTypeExt;
+        use std::os::unix::net::UnixListener;
+
+        // If the marker path exists as a special file (e.g., socket/FIFO),
+        // we must not treat it as a valid marker. Quarantine/replace it with
+        // a regular file so the `-f` checks used by hooks/wrapper cannot be bypassed.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        let marker_path = repo_root.join(MARKER_FILE);
+        let listener = UnixListener::bind(&marker_path).unwrap();
+        drop(listener);
+
+        let ft = fs::symlink_metadata(&marker_path).unwrap().file_type();
+        assert!(
+            ft.is_socket(),
+            "precondition: marker path should be a socket"
+        );
+
+        create_marker_in_repo_root(repo_root).unwrap();
+
+        let meta = fs::symlink_metadata(&marker_path).unwrap();
+        assert!(meta.is_file(), "marker path should be a regular file");
+
+        let quarantined = fs::read_dir(repo_root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".no_agent_commit.ralph.tampered.marker")
+            });
+        assert!(
+            quarantined,
+            "expected quarantined special marker entry in repo root"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_agent_phase_protections_recreates_marker_after_permissions_quarantine() {
+        use std::time::Duration;
+
+        let _lock = ENV_LOCK.lock().unwrap();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        let _repo = git2::Repository::init(repo_dir.path()).unwrap();
+
+        let original_cwd = std::env::current_dir().unwrap();
+        let original_path = std::env::var("PATH").unwrap_or_default();
+        let _restore = RestoreEnv {
+            original_cwd,
+            original_path: original_path.clone(),
+        };
+
+        std::env::set_current_dir(repo_dir.path()).unwrap();
+
+        // Seed a valid marker so marker_exists is computed true.
+        let marker_path = repo_dir.path().join(MARKER_FILE);
+        fs::write(&marker_path, b"").unwrap();
+        assert!(fs::symlink_metadata(&marker_path).unwrap().is_file());
+
+        // Provide a plausible wrapper dir on PATH so the protection check does enough work
+        // to let us deterministically tamper with the marker after marker_exists is computed.
+        let wrapper_dir = tempfile::Builder::new()
+            .prefix(WRAPPER_DIR_PREFIX)
+            .tempdir_in(std::env::temp_dir())
+            .unwrap();
+        // Intentionally bloat PATH to slow down the protection check between the
+        // marker_exists snapshot and the marker-permissions verification block.
+        let slow_paths = (0..1000)
+            .map(|i| {
+                format!(
+                    "{}/ralph-nonexistent-path-{i}",
+                    std::env::temp_dir().display()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(":");
+        let new_path = format!(
+            "{}:{slow_paths}:{original_path}",
+            wrapper_dir.path().display()
+        );
+        std::env::set_var("PATH", new_path);
+
+        // Run the protection check in another thread so this thread can reliably
+        // perform the mid-check tampering before the marker-permissions block runs.
+        let ensure_thread = std::thread::spawn(|| {
+            let logger = Logger::new(crate::logger::Colors { enabled: false });
+            ensure_agent_phase_protections(&logger)
+        });
+
+        // Ensure the protection check has taken its marker_exists snapshot.
+        std::thread::sleep(Duration::from_millis(10));
+
+        let _ = fs::remove_file(&marker_path);
+        let _ = fs::remove_dir_all(&marker_path);
+        fs::create_dir(&marker_path).unwrap();
+
+        let _result = ensure_thread.join().unwrap();
+
+        // Regression: even if the marker is swapped to a non-file mid-check, the final state
+        // must include a regular file marker.
+        let meta = fs::symlink_metadata(&marker_path).unwrap();
+        assert!(
+            meta.is_file(),
+            "marker should be recreated as a regular file"
         );
     }
 }
