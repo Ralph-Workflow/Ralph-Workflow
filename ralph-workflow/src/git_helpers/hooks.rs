@@ -140,21 +140,11 @@ exit 0
     )
 }
 
-/// Install a git hook.
-///
-/// The hook script embeds the repository root path directly, avoiding any
-/// dependency on the git CLI being installed. The repo root is resolved at
-/// installation time using libgit2.
-///
-/// # Errors
-///
-/// Returns error if the operation fails.
-pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
-    use super::repo::get_repo_root;
-
-    // Get the repo root using libgit2 and embed it in the hook script.
-    // This avoids any dependency on git CLI being installed.
-    let repo_root = get_repo_root()?;
+fn install_hook_with_repo_root(
+    hook_name: &str,
+    repo_root: &Path,
+    hook_path: &Path,
+) -> io::Result<()> {
     let repo_root_str = repo_root.display().to_string();
 
     // Render paths as bash-safe literals (single-quoted) to avoid path parsing issues.
@@ -225,17 +215,31 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Install pre-commit and pre-push hooks.
+/// Install a git hook.
+///
+/// The hook script embeds the repository root path directly, avoiding any
+/// dependency on the git CLI being installed. The repo root is resolved at
+/// installation time using libgit2.
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn install_hooks() -> io::Result<()> {
-    let hooks_dir = get_hooks_dir()?;
+#[cfg(any(test, feature = "test-utils"))]
+pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
+    let repo_root = super::repo::get_repo_root()?;
+    install_hook_with_repo_root(hook_name, &repo_root, hook_path)
+}
+
+/// Install Ralph-managed hooks for an explicit repository root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
+    let hooks_dir = super::repo::get_hooks_dir_from(repo_root)?;
     fs::create_dir_all(&hooks_dir)?;
 
     for hook_name in RALPH_HOOK_NAMES {
-        // Use a human-readable label for the blocking message.
         let label = match *hook_name {
             "pre-commit" => "Commit",
             "pre-push" => "Push",
@@ -243,10 +247,20 @@ pub fn install_hooks() -> io::Result<()> {
             "commit-msg" => "Commit message",
             _ => hook_name,
         };
-        install_hook(label, &hooks_dir.join(hook_name))?;
+        install_hook_with_repo_root(label, repo_root, &hooks_dir.join(hook_name))?;
     }
 
     Ok(())
+}
+
+/// Install pre-commit and pre-push hooks.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn install_hooks() -> io::Result<()> {
+    let repo_root = super::repo::get_repo_root()?;
+    install_hooks_in_repo(&repo_root)
 }
 
 /// Uninstall a single hook by restoring original or removing.

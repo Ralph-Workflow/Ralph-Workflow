@@ -172,11 +172,63 @@ fn finish_pipeline(
         // all artifact types removed. All operations are idempotent so double-cleanup
         // from the guard's Drop (if it fires) is harmless.
         let repo_root = ctx.workspace.root();
+        let mut cleanup_ok = true;
         crate::git_helpers::end_agent_phase_in_repo(repo_root);
         crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-        let _ = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger);
+        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger) {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                ctx.logger.warn(&format!(
+                    "Skipping hook uninstall during SIGINT cleanup (repo not present on filesystem): {err}"
+                ));
+            } else {
+                cleanup_ok = false;
+                ctx.logger.warn(&format!(
+                    "Failed to uninstall Ralph hooks during SIGINT cleanup: {err}"
+                ));
+            }
+        }
+
+        let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
+        if !wrapper_remaining.is_empty() {
+            cleanup_ok = false;
+            ctx.logger.warn(&format!(
+                "Wrapper artifacts still present after SIGINT cleanup: {}",
+                wrapper_remaining.join(", ")
+            ));
+        }
+
+        match crate::git_helpers::verify_hooks_removed(repo_root) {
+            Ok(remaining) => {
+                if !remaining.is_empty() {
+                    cleanup_ok = false;
+                    ctx.logger.warn(&format!(
+                        "Ralph hooks still present after SIGINT cleanup: {}",
+                        remaining.join(", ")
+                    ));
+                }
+            }
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::NotFound {
+                    ctx.logger.warn(&format!(
+                        "Skipping hook cleanup verification during SIGINT cleanup (repo not present on filesystem): {err}"
+                    ));
+                } else {
+                    cleanup_ok = false;
+                    ctx.logger.warn(&format!(
+                        "Failed to verify hook cleanup during SIGINT cleanup: {err}"
+                    ));
+                }
+            }
+        }
+
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
-        agent_phase_guard.disarm(); // Prevent redundant cleanup in Drop
+        if cleanup_ok {
+            agent_phase_guard.disarm();
+        } else {
+            ctx.logger.warn(
+                "SIGINT cleanup incomplete; leaving AgentPhaseGuard armed for Drop best-effort",
+            );
+        }
         crate::interrupt::request_exit_130_after_run();
     }
 

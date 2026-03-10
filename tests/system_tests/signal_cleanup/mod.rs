@@ -227,48 +227,6 @@ fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
     Some(child)
 }
 
-/// Spawn ralph pipeline with a command that exits quickly (graceful completion).
-///
-/// Unlike `spawn_ralph_pipeline`, the developer command exits immediately,
-/// allowing the pipeline to complete normally without SIGINT.
-fn spawn_ralph_pipeline_quick_exit(repo_dir: &Path) -> Option<Child> {
-    let ralph_bin = find_ralph_binary()?;
-    let xdg_config_home = create_isolated_config(repo_dir);
-
-    let child = Command::new(&ralph_bin)
-        .current_dir(repo_dir)
-        .args(["--developer-iters", "1", "--reviewer-reviews", "0"])
-        .env("NO_COLOR", "1")
-        .env("RALPH_LOG", "warn")
-        .env("RALPH_NO_RESUME_PROMPT", "1")
-        .env("XDG_CONFIG_HOME", xdg_config_home)
-        // Use a command that exits immediately so the pipeline completes gracefully.
-        .env("RALPH_DEVELOPER_CMD", "echo done")
-        .env("RALPH_REVIEWER_CMD", "echo done")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn ralph process");
-
-    let epoch = CHILD_CLEANUP_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-    register_timeout_cleanup(Box::new({
-        let child_id = child.id();
-        move || {
-            if CHILD_CLEANUP_EPOCH.load(std::sync::atomic::Ordering::SeqCst) != epoch {
-                return;
-            }
-            unsafe {
-                let check = libc::kill(child_id.cast_signed(), 0);
-                if check == 0 {
-                    let _ = libc::kill(child_id.cast_signed(), libc::SIGKILL);
-                }
-            }
-        }
-    }));
-
-    Some(child)
-}
-
 /// Wait for `.no_agent_commit` marker to appear.
 ///
 /// Polls the file system until the marker exists or timeout is reached.
@@ -284,6 +242,19 @@ fn wait_for_marker(repo_dir: &Path, timeout: Duration) -> bool {
         std::thread::sleep(POLL_INTERVAL);
     }
     false
+}
+
+fn wait_for_wrapper_dir_path(repo_dir: &Path, timeout: Duration) -> Option<std::path::PathBuf> {
+    let start = Instant::now();
+
+    while start.elapsed() < timeout {
+        if let Some(path) = read_wrapper_dir_path(repo_dir) {
+            return Some(path);
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+
+    None
 }
 
 fn wait_for_marker_size(repo_dir: &Path, timeout: Duration, expected_size: u64) -> bool {
@@ -961,32 +932,74 @@ fn test_startup_cleans_orphaned_wrapper_dir() {
 
 /// Test: Graceful pipeline exit removes the wrapper temp dir from /tmp.
 ///
-/// Verifies wrapper dir cleanup on normal pipeline completion (not Ctrl+C).
-/// The pipeline runs with a quick-exit command (`echo done`) and should clean
-/// up the wrapper temp dir during finalization.
+/// Verifies wrapper dir cleanup on normal finalization, including restoration of
+/// Ralph-managed hooks to their original contents.
 #[test]
 #[serial]
 fn test_graceful_exit_removes_wrapper_temp_dir() {
     with_timeout(
         || {
-            require_ralph_binary!();
-
             let temp_dir = TempDir::new().expect("create temp dir");
             let _repo = init_git_repo(&temp_dir);
 
-            let child =
-                spawn_ralph_pipeline_quick_exit(temp_dir.path()).expect("spawn ralph for test");
+            let hooks_dir = temp_dir.path().join(".git/hooks");
+            std::fs::create_dir_all(&hooks_dir).expect("create hooks dir");
+            let precommit_path = hooks_dir.join("pre-commit");
+            let original_hook = "#!/bin/bash\necho 'Original hook'\n";
+            std::fs::write(&precommit_path, original_hook).expect("write original hook");
 
-            // Wait for the process to exit gracefully (no SIGINT needed).
-            let (status, stdout, stderr) = collect_output(child);
+            let workspace =
+                ralph_workflow::workspace::WorkspaceFs::new(temp_dir.path().to_path_buf());
+            let logger = ralph_workflow::logger::Logger::new(
+                ralph_workflow::logger::Colors::with_enabled(false),
+            );
+            let mut helpers = ralph_workflow::git_helpers::GitHelpers::default();
 
-            // The pipeline should exit with code 0 on graceful completion,
-            // but it may also exit with other codes depending on agent phase
-            // results. What matters is that cleanup ran.
-            let _ = (status, &stdout, &stderr);
+            ralph_workflow::git_helpers::start_agent_phase_in_repo(temp_dir.path(), &mut helpers)
+                .expect("start agent phase in target repo");
+
+            let wrapper_dir = wait_for_wrapper_dir_path(temp_dir.path(), MARKER_WAIT_TIMEOUT)
+                .expect("wrapper track file should exist during agent phase");
+            assert!(
+                wrapper_dir.exists(),
+                "wrapper temp dir should exist during agent phase: {}",
+                wrapper_dir.display()
+            );
+
+            let mut guard =
+                ralph_workflow::pipeline::AgentPhaseGuard::new(&mut helpers, &logger, &workspace);
+            let config = ralph_workflow::config::Config::test_default();
+            let timer = ralph_workflow::pipeline::Timer::new();
+            let final_state = ralph_workflow::reducer::PipelineState::initial(1, 1);
+
+            ralph_workflow::app::finalization::finalize_pipeline(
+                &mut guard,
+                ralph_workflow::app::finalization::FinalizeContext {
+                    logger: &logger,
+                    colors: ralph_workflow::logger::Colors::with_enabled(false),
+                    config: &config,
+                    timer: &timer,
+                    workspace: &workspace,
+                },
+                &final_state,
+                None,
+            );
 
             // Track file should be removed after graceful exit.
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            assert_wrapper_temp_dir_removed(&wrapper_dir);
+
+            let hook_content = std::fs::read_to_string(&precommit_path)
+                .expect("pre-commit hook should exist after graceful cleanup");
+            assert_eq!(
+                hook_content, original_hook,
+                "pre-commit hook should be restored after graceful cleanup"
+            );
+            assert!(
+                !hook_content.contains("RALPH_RUST_MANAGED_HOOK"),
+                "restored hook must not contain Ralph marker"
+            );
 
             // All generated files should be removed.
             assert_generated_files_removed(temp_dir.path());

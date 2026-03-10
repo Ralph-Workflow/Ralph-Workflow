@@ -40,7 +40,7 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
         }
     }
 
-    if let Err(err) = crate::git_helpers::start_agent_phase(git_helpers) {
+    if let Err(err) = crate::git_helpers::start_agent_phase_in_repo(&ctx.repo_root, git_helpers) {
         ctx.logger
             .warn(&format!("Failed to start agent phase: {err}"));
     }

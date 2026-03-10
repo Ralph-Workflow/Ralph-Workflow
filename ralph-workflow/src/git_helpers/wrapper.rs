@@ -11,7 +11,7 @@
 //! The wrapper is automatically cleaned up when the agent phase ends, even on
 //! unexpected exits (Ctrl+C, panics) via [`cleanup_agent_phase_silent`].
 
-use super::hooks::{install_hooks, reinstall_hooks_if_tampered, uninstall_hooks_silent_at};
+use super::hooks::{reinstall_hooks_if_tampered, uninstall_hooks_silent_at};
 use super::repo::get_repo_root;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
@@ -527,12 +527,10 @@ fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &st
 }
 
 /// Enable git wrapper that blocks commits during agent phase.
-pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
+fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Result<()> {
     // Clean up orphaned wrapper dir from a prior crashed run before creating a new one.
     // This prevents /tmp leaks on every crash-restart cycle.
-    if let Ok(repo_root) = get_repo_root() {
-        cleanup_prior_wrapper_from_track_file(&repo_root);
-    }
+    cleanup_prior_wrapper_from_track_file(repo_root);
 
     helpers.init_real_git();
     let Some(real_git) = helpers.real_git.as_ref() else {
@@ -608,8 +606,7 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     // Use a helper function to properly handle edge cases and reject unsafe paths.
     let git_path_escaped = escape_shell_single_quoted(git_path_str)?;
 
-    let repo_root = get_repo_root()?;
-    helpers.wrapper_repo_root = Some(repo_root.clone());
+    helpers.wrapper_repo_root = Some(repo_root.to_path_buf());
 
     let repo_root_str = repo_root.to_str().ok_or_else(|| {
         io::Error::new(
@@ -646,7 +643,7 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     );
 
     // Persist wrapper dir location for best-effort cleanup and self-heal.
-    write_wrapper_track_file_atomic(&repo_root, &wrapper_dir_path)?;
+    write_wrapper_track_file_atomic(repo_root, &wrapper_dir_path)?;
 
     helpers.wrapper_dir = Some(wrapper_dir_path);
     Ok(())
@@ -663,32 +660,9 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
 /// controlled shutdown sequences, so this is acceptable in practice.
 pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
     let removed_wrapper_dir = helpers.wrapper_dir.take();
-    if let Some(wrapper_dir_path) = removed_wrapper_dir.clone() {
-        // Make wrapper writable before removal (wrapper is installed as read-only 0o555).
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let wrapper_path = wrapper_dir_path.join("git");
-            if let Ok(meta) = fs::metadata(&wrapper_path) {
-                let mut perms = meta.permissions();
-                perms.set_mode(perms.mode() | 0o200);
-                let _ = fs::set_permissions(&wrapper_path, perms);
-            }
-        }
-        let _ = fs::remove_dir_all(&wrapper_dir_path);
-        // Remove from PATH.
-        // Note: This read-modify-write sequence on PATH has a theoretical TOCTOU race,
-        // but in practice it's safe because Ralph only calls this from the main thread
-        // during controlled shutdown.
-        if let Ok(path) = env::var("PATH") {
-            let new_path: String = path
-                .split(':')
-                .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir_path.as_path())
-                .collect::<Vec<_>>()
-                .join(":");
-            env::set_var("PATH", new_path);
-        }
-    }
+    let removed_success = removed_wrapper_dir
+        .as_ref()
+        .is_none_or(|wrapper_dir_path| remove_wrapper_dir_and_path_entry(wrapper_dir_path));
 
     // IMPORTANT: remove the tracking file using an absolute repo root path.
     // The process CWD may not be the repo root (e.g., tests or effects that change CWD).
@@ -704,26 +678,59 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
 
     // If we didn't have in-memory wrapper state (or it was out of date), fall back
     // to the track file for best-effort cleanup.
-    if let Ok(content) = fs::read_to_string(&track_file) {
+    let track_cleanup_ok = fs::read_to_string(&track_file).map_or(removed_success, |content| {
         let wrapper_dir = PathBuf::from(content.trim());
         let same_as_removed = removed_wrapper_dir
             .as_ref()
             .is_some_and(|p| p == &wrapper_dir);
-        if wrapper_dir_is_safe_existing_dir(&wrapper_dir) && !same_as_removed {
-            // Remove from PATH (exact match) and delete directory.
-            if let Ok(path) = env::var("PATH") {
-                let new_path: String = path
-                    .split(':')
-                    .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir.as_path())
-                    .collect::<Vec<_>>()
-                    .join(":");
-                env::set_var("PATH", new_path);
-            }
-            let _ = fs::remove_dir_all(&wrapper_dir);
+        if same_as_removed {
+            removed_success || !wrapper_dir_is_safe_existing_dir(&wrapper_dir)
+        } else {
+            remove_wrapper_dir_and_path_entry(&wrapper_dir)
         }
+    });
+
+    if track_cleanup_ok {
+        let _ = fs::remove_file(track_file);
+    }
+}
+
+fn remove_path_entry(path_to_remove: &Path) {
+    // Note: This read-modify-write sequence on PATH has a theoretical TOCTOU race,
+    // but in practice it's safe because Ralph only calls this from the main thread
+    // during controlled shutdown.
+    if let Ok(path) = env::var("PATH") {
+        let new_path: String = path
+            .split(':')
+            .filter(|p| !p.is_empty() && Path::new(p) != path_to_remove)
+            .collect::<Vec<_>>()
+            .join(":");
+        env::set_var("PATH", new_path);
+    }
+}
+
+fn remove_wrapper_dir_and_path_entry(wrapper_dir: &Path) -> bool {
+    remove_path_entry(wrapper_dir);
+
+    if wrapper_dir_is_safe_existing_dir(wrapper_dir) {
+        make_wrapper_script_writable(wrapper_dir);
+        let _ = fs::remove_dir_all(wrapper_dir);
     }
 
-    let _ = fs::remove_file(track_file);
+    !wrapper_dir.exists()
+}
+
+fn make_wrapper_script_writable(wrapper_dir_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let wrapper_path = wrapper_dir_path.join("git");
+        if let Ok(meta) = fs::metadata(&wrapper_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o200);
+            let _ = fs::set_permissions(&wrapper_path, perms);
+        }
+    }
 }
 
 /// Start agent phase (creates marker file, installs hooks, enables wrapper).
@@ -733,23 +740,32 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
 /// Returns error if the operation fails.
 pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     let repo_root = get_repo_root()?;
-    helpers.wrapper_repo_root = Some(repo_root.clone());
+    start_agent_phase_in_repo(&repo_root, helpers)
+}
+
+/// Start agent phase for an explicit repository root.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn start_agent_phase_in_repo(repo_root: &Path, helpers: &mut GitHelpers) -> io::Result<()> {
+    helpers.wrapper_repo_root = Some(repo_root.to_path_buf());
 
     // Store repo root for signal handler fallback.
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
-        *guard = Some(repo_root.clone());
+        *guard = Some(repo_root.to_path_buf());
     }
 
     // Self-heal: treat non-regular marker path as tampering and recover.
-    repair_marker_path_if_tampered(&repo_root)?;
+    repair_marker_path_if_tampered(repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
     #[cfg(unix)]
     set_readonly_mode_if_not_symlink(&repo_root.join(MARKER_FILE), 0o444);
-    install_hooks()?;
-    enable_git_wrapper(helpers)?;
+    super::hooks::install_hooks_in_repo(repo_root)?;
+    enable_git_wrapper_at(repo_root, helpers)?;
 
     // Capture HEAD OID baseline for unauthorized commit detection.
-    capture_head_oid(&repo_root);
+    capture_head_oid(repo_root);
     Ok(())
 }
 
@@ -1279,13 +1295,14 @@ fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
         .ok()
         .map(|s| PathBuf::from(s.trim()));
 
-    if let Some(wrapper_dir) = wrapper_dir {
+    let cleanup_ok = wrapper_dir.as_ref().is_none_or(|wrapper_dir| {
         // Treat track file as untrusted; only remove plausible wrapper dirs under temp.
-        if wrapper_dir_is_safe_existing_dir(&wrapper_dir) {
-            let _ = fs::remove_dir_all(&wrapper_dir);
-        }
+        remove_wrapper_dir_and_path_entry(wrapper_dir)
+    });
+
+    if cleanup_ok {
+        let _ = fs::remove_file(track_file);
     }
-    let _ = fs::remove_file(track_file);
 }
 
 /// Clean up a prior wrapper dir tracked in the track file.
@@ -1299,19 +1316,9 @@ fn cleanup_prior_wrapper_from_track_file(repo_root: &Path) {
         return;
     };
     let wrapper_dir = PathBuf::from(content.trim());
-    if wrapper_dir_is_safe_existing_dir(&wrapper_dir) {
-        // Remove from PATH first.
-        if let Ok(path) = env::var("PATH") {
-            let new_path: String = path
-                .split(':')
-                .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir.as_path())
-                .collect::<Vec<_>>()
-                .join(":");
-            env::set_var("PATH", new_path);
-        }
-        let _ = fs::remove_dir_all(&wrapper_dir);
+    if remove_wrapper_dir_and_path_entry(&wrapper_dir) {
+        let _ = fs::remove_file(&track_file);
     }
-    let _ = fs::remove_file(&track_file);
 }
 
 /// Clean up orphaned wrapper temp dir from a prior crashed run.
@@ -2259,5 +2266,59 @@ mod tests {
 
         // Clean up the wrapper dir manually.
         let _ = fs::remove_dir_all(&wrapper_dir_path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_disable_git_wrapper_keeps_track_file_when_dir_removal_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = ENV_LOCK.lock().unwrap();
+        let repo_root_tmp = tempfile::tempdir().unwrap();
+        let repo_root = repo_root_tmp.path();
+        let agent_dir = repo_root.join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        let blocked_parent = tempfile::tempdir_in(env::temp_dir()).unwrap();
+        let wrapper_dir_path = blocked_parent.path().join("ralph-git-wrapper-blocked");
+        fs::create_dir(&wrapper_dir_path).unwrap();
+        fs::write(wrapper_dir_path.join("git"), "#!/bin/sh\n").unwrap();
+
+        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
+
+        let original_parent_mode = fs::metadata(blocked_parent.path())
+            .unwrap()
+            .permissions()
+            .mode();
+        let mut parent_permissions = fs::metadata(blocked_parent.path()).unwrap().permissions();
+        parent_permissions.set_mode(0o555);
+        fs::set_permissions(blocked_parent.path(), parent_permissions).unwrap();
+
+        let mut helpers = GitHelpers {
+            wrapper_dir: Some(wrapper_dir_path.clone()),
+            wrapper_repo_root: Some(repo_root.to_path_buf()),
+            ..GitHelpers::default()
+        };
+
+        disable_git_wrapper(&mut helpers);
+
+        assert!(
+            track_file.exists(),
+            "track file should remain when wrapper removal fails"
+        );
+        let remaining = verify_wrapper_cleaned(repo_root);
+        assert!(
+            remaining
+                .iter()
+                .any(|entry| entry.contains("wrapper temp dir still exists")),
+            "verification should report the leaked wrapper dir: {remaining:?}"
+        );
+
+        let mut restore_permissions = fs::metadata(blocked_parent.path()).unwrap().permissions();
+        restore_permissions.set_mode(original_parent_mode);
+        fs::set_permissions(blocked_parent.path(), restore_permissions).unwrap();
+        fs::remove_dir_all(&wrapper_dir_path).unwrap();
+        fs::remove_file(&track_file).unwrap();
     }
 }

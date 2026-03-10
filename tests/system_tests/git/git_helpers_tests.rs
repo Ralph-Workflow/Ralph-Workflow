@@ -9,7 +9,8 @@ use ralph_workflow::git_helpers::{
     self, capture_head_oid, cleanup_orphaned_marker, detect_unauthorized_commit,
     disable_git_wrapper, end_agent_phase, ensure_agent_phase_protections, git_snapshot,
     git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered,
-    start_agent_phase, uninstall_hooks, verify_hooks_removed, GitHelpers,
+    start_agent_phase, start_agent_phase_in_repo, uninstall_hooks, uninstall_hooks_in_repo,
+    verify_hooks_removed, GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -77,6 +78,61 @@ fn test_disable_git_wrapper_removes_track_file_even_when_cwd_changes() {
             !track_file.exists(),
             "expected wrapper track file to be removed even when cwd is not repo root"
         );
+    });
+}
+
+#[test]
+#[serial]
+fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|cwd_repo| {
+        git2::Repository::init(".").unwrap();
+
+        let target_repo = tempfile::tempdir().expect("create target repo tempdir");
+        git2::Repository::init(target_repo.path()).unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase_in_repo(target_repo.path(), &mut helpers).unwrap();
+
+        assert!(
+            target_repo.path().join(".no_agent_commit").exists(),
+            "target repo should receive the agent marker"
+        );
+        assert!(
+            target_repo
+                .path()
+                .join(".agent/git-wrapper-dir.txt")
+                .exists(),
+            "target repo should receive the wrapper track file"
+        );
+        for hook_name in RALPH_HOOK_NAMES {
+            let hook_path = target_repo.path().join(".git/hooks").join(hook_name);
+            assert!(
+                hook_path.exists(),
+                "target repo should receive hook {hook_name}"
+            );
+            let content = fs::read_to_string(&hook_path).unwrap();
+            assert!(
+                content.contains(HOOK_MARKER),
+                "target repo hook should contain Ralph marker"
+            );
+        }
+
+        assert!(
+            !cwd_repo.path().join(".no_agent_commit").exists(),
+            "cwd repo must not receive the marker for another repo"
+        );
+        assert!(
+            !cwd_repo.path().join(".agent/git-wrapper-dir.txt").exists(),
+            "cwd repo must not receive the wrapper track file for another repo"
+        );
+
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks_in_repo(target_repo.path(), &logger).unwrap();
     });
 }
 
