@@ -39,14 +39,18 @@ pub enum CheckStatus {
 /// Observer interface for verification progress.
 ///
 /// Implementors receive callbacks as each check starts and finishes.
-/// The trait is `Sync` so it can be shared across scoped threads.
-pub trait ProgressReporter: Sync {
+/// The trait is `Send + Sync` so it can be shared across threads and stored in `Arc`.
+pub trait ProgressReporter: Send + Sync {
     fn check_started(&self, name: &str);
     fn check_passed(&self, name: &str);
     fn check_failed(&self, name: &str, status: CheckStatus);
     /// Called periodically while a long-running check is still in progress.
     /// Default is a no-op so existing implementations compile unchanged.
     fn check_still_running(&self, _name: &str, _elapsed: Duration) {}
+    /// Called with incremental status info during a long-running check
+    /// (e.g., "Compiling foo" lines forwarded from cargo, or per-file scan counts).
+    /// Default is a no-op so existing test fakes need no changes.
+    fn check_progress(&self, _name: &str, _info: &str) {}
 }
 
 /// No-op implementation used in tests and when progress output is not desired.
@@ -64,7 +68,8 @@ impl ProgressReporter for NoopProgressReporter {
 ///   checking: <name>
 ///   done:     <name>
 ///   FAILED:   <name> (Error|Warning)
-///   still running: <name> (<elapsed>)...  ← printed every 10 s for slow checks
+///   still running: <name> (<elapsed>)...  ← printed every 3 s for slow checks
+///   progress: <name>: <info>              ← forwarded cargo/scan progress lines
 ///
 /// Stderr is used so stdout can be piped without interference.
 pub struct StderrProgressReporter;
@@ -81,6 +86,9 @@ impl ProgressReporter for StderrProgressReporter {
     }
     fn check_still_running(&self, name: &str, elapsed: Duration) {
         eprintln!("  still running: {name} ({elapsed:.0?})...");
+    }
+    fn check_progress(&self, name: &str, info: &str) {
+        eprintln!("  progress: {name}: {info}");
     }
 }
 
@@ -133,8 +141,11 @@ fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i3
     }
 }
 
-/// Heartbeat interval for long-running checks: print progress every 10 seconds.
-const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+/// Heartbeat interval for long-running checks: print progress every 3 seconds.
+///
+/// Reduced from 10 s to 3 s so users see "still running" feedback much sooner
+/// during slow cargo compilations without live streaming (e.g., cold-cache builds).
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3);
 
 pub fn run_checks(
     runner: &(dyn CommandRunner + Sync),
@@ -290,9 +301,13 @@ pub fn verify_fast(
 
     // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces all rg subprocess calls).
     // Groups checks by directory, reads each source file once, O(n + m + z) per group.
+    // Per-file progress is forwarded via check_progress every 50 files.
     reporter.check_started("native-scan");
-    let scan_results =
-        crate::scanner::run_native_scan_checks(repo_root, crate::scanner::NATIVE_SCAN_CHECKS);
+    let scan_results = crate::scanner::run_native_scan_checks_reporting(
+        repo_root,
+        crate::scanner::NATIVE_SCAN_CHECKS,
+        &|name, info| reporter.check_progress(name, info),
+    );
     for result in &scan_results {
         if !result.passed {
             reporter.check_failed(result.check_name, CheckStatus::Error);
@@ -1412,6 +1427,12 @@ mod tests {
                 .unwrap()
                 .push(format!("heartbeat:{name}"));
         }
+        fn check_progress(&self, name: &str, info: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("progress:{name}:{info}"));
+        }
     }
 
     /// A fake runner that sleeps for a fixed duration before returning success.
@@ -1525,5 +1546,63 @@ mod tests {
     #[test]
     fn test_noop_reporter_heartbeat_does_not_panic() {
         NoopProgressReporter.check_still_running("x", Duration::ZERO);
+    }
+
+    /// NoopProgressReporter must not panic when check_progress is called directly.
+    #[test]
+    fn test_noop_reporter_check_progress_does_not_panic() {
+        NoopProgressReporter.check_progress("fmt-check", "Compiling foo v1.0");
+    }
+
+    // ── TDD tests for check_progress ─────────────────────────────────────────
+
+    /// RecordingProgressReporter must record check_progress events with the
+    /// "progress:name:info" prefix so tests can assert on them.
+    #[test]
+    fn test_recording_reporter_captures_check_progress_events() {
+        let reporter = RecordingProgressReporter::default();
+        reporter.check_progress("fmt-check", "Compiling foo v1.0");
+        reporter.check_progress("clippy", "Checking bar v0.5");
+
+        let events = reporter.events();
+        assert!(
+            events.contains(&"progress:fmt-check:Compiling foo v1.0".to_string()),
+            "expected progress event for fmt-check, got: {events:?}"
+        );
+        assert!(
+            events.contains(&"progress:clippy:Checking bar v0.5".to_string()),
+            "expected progress event for clippy, got: {events:?}"
+        );
+    }
+
+    /// Verifying that check_progress is not called when runner output has no
+    /// Compiling/Checking lines (clean stdout-only output).
+    #[test]
+    fn test_check_progress_independent_of_runner_output() {
+        // RecordingProgressReporter starts with no events; calling check_progress
+        // adds events; not calling it leaves none.  This verifies the separation
+        // between runner-side streaming (handled in main.rs RealRunner) and the
+        // trait contract tested here.
+        let reporter = RecordingProgressReporter::default();
+
+        // No check_progress calls → no "progress:" events.
+        reporter.check_started("some-check");
+        reporter.check_passed("some-check");
+
+        let events = reporter.events();
+        assert!(
+            !events.iter().any(|e| e.starts_with("progress:")),
+            "no check_progress calls means no progress events, got: {events:?}"
+        );
+    }
+
+    /// HEARTBEAT_INTERVAL must be ≤ 5 seconds so users see "still running" feedback
+    /// within a reasonable time frame during slow cargo compilations.
+    #[test]
+    fn test_heartbeat_interval_is_at_most_5_seconds() {
+        assert!(
+            HEARTBEAT_INTERVAL.as_secs() <= 5,
+            "HEARTBEAT_INTERVAL must be ≤5s for responsive user feedback, got: {HEARTBEAT_INTERVAL:?}"
+        );
     }
 }

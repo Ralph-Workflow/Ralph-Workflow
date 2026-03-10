@@ -12,7 +12,10 @@
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, AhoCorasickKind};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    OnceLock,
+};
 
 /// Matching strategy for a native scan check.
 ///
@@ -424,19 +427,15 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-/// Run all native scan checks against the repository root.
+/// Run all native scan checks against the repository root, emitting per-file scan progress.
 ///
-/// Checks are grouped by their `(sorted-directories, include_glob)` key.
-/// Within each group, files are read once and a single Aho-Corasick automaton
-/// (built from every pattern in the group) scans each file in a single pass.
-/// Matches are demultiplexed back to their originating check; per-check
-/// post-filters (comment-line skipping, `\s*:\s*bool` suffix matching,
-/// file-exclusion globs) are applied before recording violations.
-///
-/// Returns one `NativeScanCheckResult` per input check, in the same order.
-pub fn run_native_scan_checks(
+/// `progress(check_name, info)` is called every 50 files processed, allowing
+/// callers to surface scan throughput to the user.  The callback is called from
+/// whichever thread first reaches the 50-file boundary, so it must be `Sync`.
+pub fn run_native_scan_checks_reporting(
     repo_root: &Path,
     checks: &[NativeScanCheck],
+    progress: &(dyn Fn(&str, &str) + Sync),
 ) -> Vec<NativeScanCheckResult> {
     let mut results: Vec<NativeScanCheckResult> = checks
         .iter()
@@ -460,6 +459,11 @@ pub fn run_native_scan_checks(
             .push(idx);
     }
 
+    // Shared atomic file counter.  Incremented once per file processed across all
+    // scan-group threads.  Uses Relaxed ordering: we only need approximate counts
+    // for progress reporting (no ordering guarantees needed between threads).
+    let files_done = AtomicUsize::new(0);
+
     // Collect violations per group in parallel using scoped threads.
     // Each group is independent (different directories or patterns), so no
     // synchronisation is needed during the scan phase.
@@ -468,10 +472,13 @@ pub fn run_native_scan_checks(
         Vec::with_capacity(groups_vec.len());
 
     std::thread::scope(|s| {
+        // Capture a reference to files_done (references are Copy) so that each
+        // spawned closure can share it without moving the AtomicUsize itself.
+        let fd = &files_done;
         let handles: Vec<_> = groups_vec
             .into_iter()
             .map(|check_indices| {
-                s.spawn(move || scan_group_collect(repo_root, checks, &check_indices))
+                s.spawn(move || scan_group_collect(repo_root, checks, &check_indices, fd, progress))
             })
             .collect();
         for handle in handles {
@@ -554,10 +561,15 @@ fn directory_group_key(check: &NativeScanCheck) -> String {
 ///
 /// Returns a flat list of `(check_index, NativeScanViolation)` pairs so the
 /// caller can merge results from multiple groups (including parallel groups).
+///
+/// `files_done` is a shared atomic counter incremented once per file.  When it
+/// crosses a multiple of 50, `progress("native-scan", "N files scanned")` is emitted.
 fn scan_group_collect(
     repo_root: &Path,
     all_checks: &[NativeScanCheck],
     check_indices: &[usize],
+    files_done: &AtomicUsize,
+    progress: &(dyn Fn(&str, &str) + Sync),
 ) -> Vec<(usize, NativeScanViolation)> {
     let mut violations: Vec<(usize, NativeScanViolation)> = Vec::new();
 
@@ -627,6 +639,14 @@ fn scan_group_collect(
     // Read all files in parallel, then process in deterministic (sorted) order.
     let contents = read_scan_files_parallel(&files);
     for (file_path, content_res) in files.iter().zip(contents.into_iter()) {
+        // Increment the shared file counter.  Emit progress every 50 files so the
+        // user sees scan throughput instead of a silent terminal.
+        // Uses Relaxed ordering: approximate count is sufficient for progress display.
+        let n = files_done.fetch_add(1, Ordering::Relaxed) + 1;
+        if n.is_multiple_of(50) {
+            progress("native-scan", &format!("{n} files scanned"));
+        }
+
         let content = match content_res {
             Ok(c) => c,
             Err(e) => {
@@ -815,7 +835,8 @@ fn matches_bool_suffix(content: &[u8], end: usize) -> bool {
     while i < rest.len() && rest[i].is_ascii_whitespace() {
         i += 1;
     }
-    if !rest[i..].starts_with(b"bool") {
+    // Use KMP (TAOCP Vol. 3, §6.4) for guaranteed O(n+m) suffix search.
+    if kmp_search(&rest[i..], b"bool") != Some(0) {
         return false;
     }
     let after = i + 4;
@@ -898,6 +919,66 @@ pub(crate) fn bmh_contains(text: &[u8], pattern: &[u8]) -> bool {
         i += shift[text[i] as usize];
     }
     false
+}
+
+// ── Knuth-Morris-Pratt single-pattern search ──────────────────────────────────
+
+/// Knuth-Morris-Pratt single-pattern search.
+///
+/// Guaranteed O(n + m) worst-case time, O(m) auxiliary space for the failure table.
+/// Prefer over BMH when worst-case performance guarantees are required (BMH is
+/// O(n × m) worst-case for degenerate inputs like repeated characters).
+///
+/// # Algorithm
+///
+/// Implements Algorithm D (failure function construction) and Algorithm E (search)
+/// from TAOCP Vol. 3, §6.4 (Knuth, Morris, Pratt, 1977).
+///
+/// The failure function `fail[i]` gives the length of the longest proper prefix of
+/// `needle[0..=i]` that is also a suffix.  During search, on mismatch at position `q`
+/// we fall back to `fail[q-1]` rather than restarting from the beginning, ensuring
+/// each character in `haystack` is examined at most once.
+///
+/// Returns `Some(byte_offset)` of the first occurrence, or `None` if not found.
+/// An empty needle always matches at position 0 (`Some(0)`).
+pub(crate) fn kmp_search(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    let m = needle.len();
+
+    // Build failure (partial-match) table — Algorithm D.
+    // fail[i] = length of the longest proper prefix of needle[0..=i] that is
+    // also a suffix.  Computed in O(m) time.
+    let mut fail = vec![0usize; m];
+    let mut k = 0usize;
+    for i in 1..m {
+        while k > 0 && needle[k] != needle[i] {
+            k = fail[k - 1];
+        }
+        if needle[k] == needle[i] {
+            k += 1;
+        }
+        fail[i] = k;
+    }
+
+    // Search — Algorithm E.
+    // q = number of characters matched so far.  Each character in haystack is
+    // examined at most twice (once forward, once on a failure fallback), giving
+    // O(n) search time.
+    let mut q = 0usize;
+    for (i, &c) in haystack.iter().enumerate() {
+        while q > 0 && needle[q] != c {
+            q = fail[q - 1];
+        }
+        if needle[q] == c {
+            q += 1;
+        }
+        if q == m {
+            return Some(i + 1 - m);
+        }
+    }
+    None
 }
 
 // ── Diagnostic-level classifier (Aho-Corasick single pass) ───────────────────
@@ -1199,7 +1280,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed, "should fail when pattern found");
         assert!(!results[0].violations.is_empty());
         assert_eq!(results[0].violations[0].line_number, 1);
@@ -1223,7 +1305,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(results[0].passed);
 
         let _ = fs::remove_dir_all(&dir);
@@ -1245,7 +1328,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(results[0].passed);
 
         let _ = fs::remove_dir_all(&dir);
@@ -1267,7 +1351,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(results[0].passed);
 
         let _ = fs::remove_dir_all(&dir);
@@ -1298,7 +1383,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
 
         // Restore permissions so cleanup works.
         let mut perms_restore = fs::metadata(&src_dir).unwrap().permissions();
@@ -1351,7 +1437,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
 
         // Restore permissions so cleanup works.
         let mut perms_restore = fs::metadata(&src_file).unwrap().permissions();
@@ -1397,7 +1484,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "comment-line match must not trigger failure"
@@ -1422,7 +1510,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "comment-line match must trigger failure"
@@ -1447,7 +1536,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "indented comment-line match must not trigger failure"
@@ -1472,7 +1562,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed, "test_mode: bool must trigger failure");
 
         let _ = fs::remove_dir_all(&dir);
@@ -1492,7 +1583,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "test_mode without ': bool' must not trigger failure"
@@ -1515,7 +1607,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "test_mode : bool (spaces) must trigger failure"
@@ -1540,7 +1633,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "test_mode\\n: bool must trigger failure (whitespace includes newlines)"
@@ -1565,7 +1659,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "is_testing_mode: bool must NOT trigger is_test stem check"
@@ -1593,7 +1688,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(results[0].passed, "_TEMPLATE.rs must be excluded from scan");
 
         let _ = fs::remove_dir_all(&dir);
@@ -1616,7 +1712,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "files under tests/ must be excluded from scan"
@@ -1637,7 +1734,7 @@ mod tests {
             simple_check("check-b", &["pattern_b"]),
         ];
 
-        let results = run_native_scan_checks(&dir, &checks);
+        let results = run_native_scan_checks_reporting(&dir, &checks, &|_, _| {});
         assert!(!results[0].passed, "check-a must fail (pattern_a present)");
         assert!(results[1].passed, "check-b must pass (pattern_b absent)");
 
@@ -1655,7 +1752,7 @@ mod tests {
             simple_check("third", &["gamma"]),
         ];
 
-        let results = run_native_scan_checks(&dir, &checks);
+        let results = run_native_scan_checks_reporting(&dir, &checks, &|_, _| {});
         assert_eq!(results[0].check_name, "first");
         assert_eq!(results[1].check_name, "second");
         assert_eq!(results[2].check_name, "third");
@@ -1680,7 +1777,7 @@ mod tests {
             simple_check("check-y", &["pattern_y"]),
         ];
 
-        let results = run_native_scan_checks(&dir, &checks);
+        let results = run_native_scan_checks_reporting(&dir, &checks, &|_, _| {});
         assert!(!results[0].passed);
         assert!(!results[1].passed);
 
@@ -1710,7 +1807,8 @@ mod tests {
         };
 
         // skip_auth = true (not `: bool`) → must NOT match
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(results[0].passed, "skip_auth without ': bool' must pass");
 
         let _ = fs::remove_dir_all(&dir);
@@ -1736,7 +1834,8 @@ mod tests {
             mode: MatchMode::StemWithBoolSuffix,
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed, "skip_auth: bool must fail");
 
         let _ = fs::remove_dir_all(&dir);
@@ -1764,7 +1863,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed);
         assert_eq!(results[0].violations[0].line_number, 3);
 
@@ -1787,7 +1887,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed);
         assert!(results[0].violations[0].line.contains("forbidden_pattern"));
 
@@ -1812,7 +1913,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "#[allow( at column 0 must trigger violation"
@@ -1838,7 +1940,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "#[allow( after leading spaces must trigger violation"
@@ -1864,7 +1967,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "#[allow( inline (after non-whitespace) must NOT trigger violation"
@@ -1889,7 +1993,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "comment-line #[allow( must be skipped when skip_comment_lines=true"
@@ -1918,7 +2023,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(!results[0].passed);
         assert_eq!(
             results[0].violations[0].line_number, 3,
@@ -1947,7 +2053,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "#[ignore] without URL must trigger violation"
@@ -1977,7 +2084,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "#[ignore] with URL on same line must NOT trigger violation"
@@ -2004,7 +2112,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "#[ignore_slow] must NOT trigger when word_boundary_at_end=true"
@@ -2031,7 +2140,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             !results[0].passed,
             "#[ignore_slow] MUST trigger when word_boundary_at_end=false"
@@ -2062,7 +2172,8 @@ mod tests {
             },
         };
 
-        let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
             results[0].passed,
             "https:// before #[ignore] on same line must NOT trigger violation"
@@ -2105,7 +2216,7 @@ mod tests {
             },
         ];
 
-        let results = run_native_scan_checks(&dir, &checks);
+        let results = run_native_scan_checks_reporting(&dir, &checks, &|_, _| {});
         assert!(!results[0].passed, "check-alpha must find pattern_alpha");
         assert!(!results[1].passed, "check-beta must find pattern_beta");
 
@@ -2293,6 +2404,197 @@ mod tests {
         }
     }
 
+    // ── KMP (Knuth-Morris-Pratt) tests ───────────────────────────────────────
+
+    mod kmp_tests {
+        use super::super::kmp_search;
+
+        #[test]
+        fn test_kmp_empty_needle_returns_some_zero() {
+            // Empty needle matches at position 0 in any haystack.
+            assert_eq!(kmp_search(b"abc", b""), Some(0));
+            assert_eq!(kmp_search(b"", b""), Some(0));
+        }
+
+        #[test]
+        fn test_kmp_needle_longer_than_haystack_returns_none() {
+            assert_eq!(kmp_search(b"ab", b"abc"), None);
+        }
+
+        #[test]
+        fn test_kmp_finds_at_start() {
+            assert_eq!(kmp_search(b"bool is_flag", b"bool"), Some(0));
+        }
+
+        #[test]
+        fn test_kmp_finds_at_end() {
+            assert_eq!(kmp_search(b"is: bool", b"bool"), Some(4));
+        }
+
+        #[test]
+        fn test_kmp_finds_in_middle() {
+            assert_eq!(kmp_search(b"foo bool bar", b"bool"), Some(4));
+        }
+
+        #[test]
+        fn test_kmp_not_found_returns_none() {
+            assert_eq!(kmp_search(b"is: boo", b"bool"), None);
+        }
+
+        #[test]
+        fn test_kmp_exact_match() {
+            assert_eq!(kmp_search(b"bool", b"bool"), Some(0));
+        }
+
+        #[test]
+        fn test_kmp_repeated_chars_worst_case() {
+            // needle = "aaab", haystack = "aaaaaaaaab"
+            // Naive search would scan O(n*m) positions; KMP uses O(n+m).
+            // This validates correctness on the worst-case input for naive search.
+            assert_eq!(kmp_search(b"aaaaaaaaab", b"aaab"), Some(6));
+        }
+
+        #[test]
+        fn test_kmp_repeated_chars_not_found() {
+            // "aaab" not present in "aaaaaaa" (no 'b').
+            assert_eq!(kmp_search(b"aaaaaaa", b"aaab"), None);
+        }
+
+        #[test]
+        fn test_kmp_single_char_found() {
+            assert_eq!(kmp_search(b"xyz", b"y"), Some(1));
+        }
+
+        #[test]
+        fn test_kmp_single_char_not_found() {
+            assert_eq!(kmp_search(b"xyz", b"w"), None);
+        }
+
+        #[test]
+        fn test_kmp_agrees_with_starts_with_for_bool_suffix() {
+            // Verify kmp_search at position 0 agrees with starts_with for
+            // all common bool-suffix patterns that StemWithBoolSuffix encounters.
+            let cases: &[(&[u8], bool)] = &[
+                (b"bool)", true),
+                (b"bool,", true),
+                (b"bool ", true),
+                (b"bool\n", true),
+                (b"boolean", false), // "boolean" starts with "bool" — kmp finds it at 0!
+                (b"boo", false),
+                (b"bo", false),
+                (b"b", false),
+                (b"", false),
+            ];
+            for (haystack, _) in cases {
+                // kmp_search finds needle at pos 0 iff starts_with matches.
+                let starts = haystack.starts_with(b"bool");
+                let kmp_at_zero = kmp_search(haystack, b"bool") == Some(0);
+                assert_eq!(
+                    starts, kmp_at_zero,
+                    "kmp vs starts_with disagreement for {haystack:?}"
+                );
+            }
+        }
+    }
+
+    // ── per-file scan progress tests ──────────────────────────────────────────
+
+    mod scan_progress_tests {
+        use super::super::{run_native_scan_checks_reporting, MatchMode, NativeScanCheck};
+        use std::fs;
+        use std::path::PathBuf;
+        use std::sync::Mutex;
+
+        fn make_temp_dir(name: &str) -> PathBuf {
+            let base = std::env::temp_dir().join(format!("xtask-progress-{name}"));
+            let _ = fs::remove_dir_all(&base);
+            fs::create_dir_all(&base).unwrap();
+            base
+        }
+
+        fn write_file(dir: &std::path::Path, rel_path: &str, content: &str) {
+            let full = dir.join(rel_path);
+            if let Some(parent) = full.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            fs::write(full, content).unwrap();
+        }
+
+        #[test]
+        fn test_scan_progress_emitted_every_50_files() {
+            // Create 150 files so the 50-file progress callback fires at least 3 times.
+            let dir = make_temp_dir("progress-150");
+            for i in 0..150 {
+                write_file(&dir, &format!("src/file_{i:04}.rs"), "let x = 1;\n");
+            }
+
+            let events: Mutex<Vec<String>> = Mutex::new(Vec::new());
+            let check = NativeScanCheck {
+                name: "test-progress",
+                literals: &["forbidden"],
+                directories: &["src"],
+                include_glob: "*.rs",
+                exclude_globs: &[],
+                mode: MatchMode::AnyLiteral {
+                    skip_comment_lines: false,
+                },
+            };
+
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|name, info| {
+                events.lock().unwrap().push(format!("{name}:{info}"));
+            });
+
+            let captured = events.into_inner().unwrap();
+            // With 150 files and a boundary every 50, expect at least 3 progress events.
+            assert!(
+                captured.len() >= 3,
+                "expected ≥3 progress events for 150 files, got: {captured:?}"
+            );
+            // Every event must be prefixed with "native-scan:".
+            for event in &captured {
+                assert!(
+                    event.starts_with("native-scan:"),
+                    "unexpected progress event: {event}"
+                );
+            }
+
+            let _ = fs::remove_dir_all(&dir);
+        }
+
+        #[test]
+        fn test_scan_progress_not_emitted_for_small_file_count() {
+            // Fewer than 50 files → no progress events.
+            let dir = make_temp_dir("progress-small");
+            for i in 0..10 {
+                write_file(&dir, &format!("src/file_{i}.rs"), "let x = 1;\n");
+            }
+
+            let events: Mutex<Vec<String>> = Mutex::new(Vec::new());
+            let check = NativeScanCheck {
+                name: "test-progress-small",
+                literals: &["forbidden"],
+                directories: &["src"],
+                include_glob: "*.rs",
+                exclude_globs: &[],
+                mode: MatchMode::AnyLiteral {
+                    skip_comment_lines: false,
+                },
+            };
+
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|name, info| {
+                events.lock().unwrap().push(format!("{name}:{info}"));
+            });
+
+            let captured = events.into_inner().unwrap();
+            assert!(
+                captured.is_empty(),
+                "expected no progress events for <50 files, got: {captured:?}"
+            );
+
+            let _ = fs::remove_dir_all(&dir);
+        }
+    }
+
     // ── DiagnosticLevel / scan_has_diagnostic_prefix tests ────────────────────
 
     mod classify_tests {
@@ -2439,7 +2741,7 @@ mod tests {
     // to the default AhoCorasick::new() construction for all MatchMode variants.
 
     mod dfa_builder_tests {
-        use super::super::{run_native_scan_checks, MatchMode, NativeScanCheck};
+        use super::super::{run_native_scan_checks_reporting, MatchMode, NativeScanCheck};
         use std::fs;
         use std::path::PathBuf;
 
@@ -2483,7 +2785,8 @@ mod tests {
                 },
             };
 
-            let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+            let results =
+                run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
             // Both patterns must be found: 2 violations.
             assert!(
                 !results[0].passed,
@@ -2529,7 +2832,8 @@ mod tests {
                 },
             };
 
-            let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+            let results =
+                run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
             assert!(
                 !results[0].passed,
                 "DFA scanner must find the negative-lookahead violation on line 2"
@@ -2566,7 +2870,8 @@ mod tests {
             };
 
             // Must not panic; an empty pattern list returns Pass immediately.
-            let results = run_native_scan_checks(&dir, std::slice::from_ref(&check));
+            let results =
+                run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
             assert!(
                 results[0].passed,
                 "empty pattern list must produce no violations"
