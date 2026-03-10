@@ -45,7 +45,7 @@ fn scan_dir_recursive(
             }
             if let Some(mtime) = entry.modified() {
                 let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                if age < timeout {
+                if age <= timeout {
                     return Ok(true);
                 }
             }
@@ -126,7 +126,7 @@ impl FileActivityTracker {
                     continue;
                 };
                 let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                if age < timeout {
+                if age <= timeout {
                     return Ok(true);
                 }
             }
@@ -148,7 +148,7 @@ impl FileActivityTracker {
                         continue;
                     };
                     let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                    if age < timeout {
+                    if age <= timeout {
                         return Ok(true);
                     }
                 }

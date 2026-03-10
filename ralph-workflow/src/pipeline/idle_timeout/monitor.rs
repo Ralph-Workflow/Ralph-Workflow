@@ -162,6 +162,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let kill_config = config.kill_config;
 
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
+    let mut last_file_activity: Option<std::time::Instant> = None;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -276,19 +277,45 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
         // Check file activity if config provided
         if let Some(config) = file_activity_config {
+            // Fast path: if we confirmed file activity recently (monotonic clock),
+            // skip an expensive filesystem re-scan. This prevents the multi-iteration
+            // false positive where the same file falls outside the window on the next
+            // check because check_interval has elapsed.
+            if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
+                eprintln!(
+                    "Continuing monitoring: file activity was confirmed within the last timeout window"
+                );
+                continue;
+            }
+
+            // Widen the scan window to cover check_interval jitter plus scan overhead:
+            //   - A file written just before output stopped will be ~(timeout + check_interval)
+            //     old when the monitor first fires.
+            //   - The file scan itself takes time, so `actual_idle` computed before the scan
+            //     is slightly smaller than the true elapsed time at comparison; adding
+            //     `scan_overhead_buffer` compensates for that.
+            //   - `cap` bounds the maximum window so that after `last_file_activity` expires
+            //     and we re-scan, old files written long before output stopped do not
+            //     indefinitely prevent a correct kill.
+            let scan_overhead_buffer = Duration::from_secs(1);
+            let cap = timeout + check_interval + scan_overhead_buffer;
+            let actual_idle = super::time_since_activity(activity_timestamp);
+            let file_window = (actual_idle + scan_overhead_buffer).min(cap);
+
             let locked_tracker = config
                 .tracker
                 .lock()
                 .expect("file activity tracker mutex poisoned - indicates panic in another thread");
 
-            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), timeout) {
+            match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), file_window) {
                 Ok(true) => {
+                    last_file_activity = Some(std::time::Instant::now());
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
                 }
                 Ok(false) => {
                     eprintln!(
-                        "No AI-generated file updates in the last {timeout:?}, proceeding with timeout"
+                        "No AI-generated file updates in the last {file_window:?}, proceeding with timeout"
                     );
                 }
                 Err(e) => {
@@ -297,6 +324,14 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                     );
                 }
             }
+        }
+
+        // Re-check output timestamp: the agent may have produced output during the
+        // file scan. This closes the race window between "scan said no activity" and
+        // "kill is sent".
+        if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+            eprintln!("Output activity detected after file scan; continuing monitoring");
+            continue;
         }
 
         let child_id = {

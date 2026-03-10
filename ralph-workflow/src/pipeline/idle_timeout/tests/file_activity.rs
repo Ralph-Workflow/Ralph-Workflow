@@ -457,3 +457,32 @@ fn test_target_dir_excluded_at_any_depth() {
         "target/ dir should be excluded even inside a workspace crate"
     );
 }
+
+#[test]
+fn test_file_slightly_beyond_timeout_detected_with_wider_window() {
+    // A file that is between timeout and timeout+check_interval old should NOT be
+    // detected with the base timeout window but SHOULD be detected when the monitor
+    // passes a wider window (actual_idle_time, which accounts for check_interval jitter).
+    let tracker = FileActivityTracker::new();
+    let timeout = Duration::from_secs(300);
+    // File is 320s old: beyond the base 300s window but within 330s widened window.
+    let file_time = SystemTime::now() - Duration::from_secs(320);
+    let ws = MemoryWorkspace::new_test().with_file_at_time("src/lib.rs", "fn main() {}", file_time);
+
+    // With base timeout window: not detected (320 > 300).
+    assert!(
+        !tracker.check_for_recent_activity(&ws, timeout).unwrap(),
+        "File 320s old should not be detected with 300s base window"
+    );
+
+    // With widened window (timeout + check_interval + overhead buffer): detected.
+    // This is what the monitor now passes when actual_idle_time > timeout.
+    let check_interval = Duration::from_secs(30);
+    let overhead_buffer = Duration::from_secs(1);
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, timeout + check_interval + overhead_buffer)
+            .unwrap(),
+        "File 320s old must be detected with widened window (timeout + check_interval + buffer)"
+    );
+}

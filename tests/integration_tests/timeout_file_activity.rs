@@ -757,3 +757,138 @@ fn deep_nested_source_file_prevents_timeout() {
         );
     });
 }
+
+#[test]
+fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
+    // Scenario: a fresh source file is present when the monitor starts.
+    // Without the fix (age < timeout, no last_file_activity), the monitor kills the
+    // process when the file ages past the timeout window (~timeout ms after test start).
+    // With the fix (age <= timeout + widened window, plus last_file_activity tracking),
+    // the monitor never kills during the observation window.
+    with_default_timeout(|| {
+        let timeout = Duration::from_millis(80);
+
+        // Fresh file: mtime = now, so age starts at ~0ms and grows during the test.
+        // Without the fix, once file age > timeout (80ms), the monitor kills.
+        // With the fix, the file is continuously detected (age <= widened window)
+        // and last_file_activity prevents redundant re-scans.
+        let workspace: Arc<dyn Workspace> =
+            Arc::new(MemoryWorkspace::new_test().with_file("src/lib.rs", "fn main() {}"));
+
+        let timestamp = new_activity_timestamp();
+        // Make output appear idle by waiting past timeout.
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        let file_activity_config = Some(FileActivityConfig {
+            tracker: new_file_activity_tracker(),
+            workspace: Arc::clone(&workspace),
+        });
+
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        let handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                file_activity_config.as_ref(),
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout,
+                    // check_interval = 0 so the monitor re-checks as fast as possible,
+                    // exercising many iterations within the sleep window.
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                },
+            )
+        });
+
+        // Run for 3× timeout: long enough for the file to age past the bare timeout
+        // window (which would cause a kill without the fix).
+        std::thread::sleep(timeout * 3);
+
+        // Signal the monitor to stop cleanly.
+        should_stop.store(true, Ordering::Release);
+
+        let result = handle.join().expect("monitor thread panicked");
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "monitor must not kill while source file was recently modified"
+        );
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "no kill signals should be sent when file activity is continuously detected"
+        );
+    });
+}
+
+#[test]
+fn output_activity_during_file_scan_prevents_kill() {
+    // Scenario: the output timestamp is reset (agent produced output) AFTER the
+    // file scan returns false but BEFORE the kill is issued. The monitor must
+    // re-check the output timestamp before killing.
+    with_default_timeout(|| {
+        let timeout = Duration::from_millis(80);
+
+        // Empty workspace — file scan always returns false.
+        let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
+
+        let timestamp = new_activity_timestamp();
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
+        // Simulate output activity arriving: reset the timestamp so timeout is no
+        // longer exceeded. The monitor must re-check before proceeding with kill.
+        touch_activity(&timestamp);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+        let timestamp_for_monitor = Arc::clone(&timestamp);
+
+        let file_activity_config = Some(FileActivityConfig {
+            tracker: new_file_activity_tracker(),
+            workspace,
+        });
+
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        let handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp_for_monitor,
+                file_activity_config.as_ref(),
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                },
+            )
+        });
+
+        // Give the monitor a moment, then stop cleanly.
+        std::thread::sleep(Duration::from_millis(20));
+        should_stop.store(true, Ordering::Release);
+
+        let result = handle.join().expect("monitor thread panicked");
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "freshly reset output timestamp must prevent kill even if file scan found nothing"
+        );
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "no kill signals when output timestamp was reset after file scan"
+        );
+    });
+}
