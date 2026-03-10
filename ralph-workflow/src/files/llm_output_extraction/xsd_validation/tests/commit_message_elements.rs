@@ -11,6 +11,7 @@ fn test_format_body_with_simple_body() {
         body_details: None,
         body_footer: None,
         skip_reason: None,
+        files: vec![],
     };
 
     assert_eq!(elements.format_body(), "Simple body text");
@@ -25,6 +26,7 @@ fn test_format_body_with_detailed_elements() {
         body_details: Some("Detailed explanation".to_string()),
         body_footer: Some("Footer text".to_string()),
         skip_reason: None,
+        files: vec![],
     };
 
     let formatted = elements.format_body();
@@ -42,9 +44,129 @@ fn test_format_body_empty_when_no_body() {
         body_details: None,
         body_footer: None,
         skip_reason: None,
+        files: vec![],
     };
 
     assert_eq!(elements.format_body(), "");
+}
+
+// ============================================================================
+// Tests for ralph-files element support
+// ============================================================================
+
+#[test]
+fn test_validate_xml_with_files_list() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat(auth): add OAuth2 login flow</ralph-subject>
+<ralph-body>Add Google and GitHub providers.</ralph-body>
+<ralph-files>
+<ralph-file>src/auth/oauth.rs</ralph-file>
+<ralph-file>tests/auth_test.rs</ralph-file>
+</ralph-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(result.is_ok(), "Expected OK, got: {result:?}");
+    let elements = result.unwrap();
+    assert_eq!(elements.files.len(), 2);
+    assert_eq!(elements.files[0], "src/auth/oauth.rs");
+    assert_eq!(elements.files[1], "tests/auth_test.rs");
+}
+
+#[test]
+fn test_validate_xml_no_files_gives_empty_vec() {
+    let xml = r"<ralph-commit>
+<ralph-subject>refactor: extract validation into module</ralph-subject>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(result.is_ok(), "Expected OK, got: {result:?}");
+    let elements = result.unwrap();
+    assert_eq!(elements.files, Vec::<String>::new());
+}
+
+#[test]
+fn test_validate_xml_files_with_skip_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-skip>No changes found</ralph-skip>
+<ralph-files>
+<ralph-file>src/foo.rs</ralph-file>
+</ralph-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files used with ralph-skip"
+    );
+}
+
+#[test]
+fn test_validate_xml_files_empty_list_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: add feature</ralph-subject>
+<ralph-files>
+</ralph-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files has no ralph-file children"
+    );
+}
+
+#[test]
+fn test_validate_xml_multiple_files_blocks_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: add feature</ralph-subject>
+<ralph-files>
+<ralph-file>src/foo.rs</ralph-file>
+</ralph-files>
+<ralph-files>
+<ralph-file>src/bar.rs</ralph-file>
+</ralph-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files appears more than once"
+    );
+}
+
+#[test]
+fn test_validate_xml_files_rejects_unexpected_child_element() {
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: add feature</ralph-subject>
+ <ralph-files>
+ <ralph-file>src/foo.rs</ralph-file>
+ <unexpected>src/bar.rs</unexpected>
+ </ralph-files>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files contains an unexpected child element"
+    );
+}
+
+#[test]
+fn test_validate_xml_files_rejects_non_whitespace_text() {
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: add feature</ralph-subject>
+ <ralph-files>
+ text that should not be here
+ <ralph-file>src/foo.rs</ralph-file>
+ </ralph-files>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files contains non-whitespace text"
+    );
 }
 
 // ============================================================================

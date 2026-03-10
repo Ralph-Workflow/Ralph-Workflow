@@ -13,6 +13,7 @@ fn mock_effect_handler_clear_captured_works() {
         .borrow_mut()
         .push(Effect::CreateCommit {
             message: "test".to_string(),
+            files: vec![],
         });
 
     assert_eq!(handler.effect_count(), 1);
@@ -34,6 +35,7 @@ fn mock_effect_handler_was_effect_executed_works() {
         .borrow_mut()
         .push(Effect::CreateCommit {
             message: "test commit".to_string(),
+            files: vec![],
         });
     handler
         .captured_effects

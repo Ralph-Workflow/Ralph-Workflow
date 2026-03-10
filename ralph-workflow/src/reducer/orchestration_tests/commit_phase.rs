@@ -199,7 +199,7 @@ fn test_commit_generated_creates_commit() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message } => {
+        Effect::CreateCommit { message, files: _ } => {
             assert_eq!(message, "test commit message");
         }
         _ => panic!("Expected CreateCommit effect, got {effect:?}"),
@@ -290,6 +290,229 @@ fn test_commit_diff_prepared_invalidates_materialized_commit_inputs() {
     assert!(
         matches!(effect, Effect::MaterializeCommitInputs { attempt: 1 }),
         "Expected MaterializeCommitInputs after diff prepared, got {effect:?}"
+    );
+}
+
+#[test]
+fn test_create_commit_uses_selected_files_from_state() {
+    // When commit_selected_files is populated in state, Effect::CreateCommit.files must
+    // reflect those files exactly so the handler stages only the listed files.
+    use crate::reducer::state::AgentChainState;
+
+    let selected_files = vec!["src/foo.rs".to_string(), "tests/bar.rs".to_string()];
+
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generated {
+            message: "feat: add foo".to_string(),
+        },
+        commit_xml_archived: true,
+        commit_selected_files: selected_files.clone(),
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit { message, files } => {
+            assert_eq!(message, "feat: add foo");
+            assert_eq!(
+                files, selected_files,
+                "Effect::CreateCommit.files must equal state.commit_selected_files"
+            );
+        }
+        _ => panic!("Expected CreateCommit effect, got {effect:?}"),
+    }
+}
+
+#[test]
+fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
+    // Verify that files specified in CommitXmlValidated propagate through state
+    // reductions and end up in Effect::CreateCommit.files, closing the end-to-end
+    // coverage gap for the file-selection feature.
+    use crate::reducer::state::AgentChainState;
+
+    let selected_files = vec![
+        "src/auth/token.rs".to_string(),
+        "tests/auth/token_test.rs".to_string(),
+    ];
+
+    // Set up state ready for validation: agent invoked, XML extracted.
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+
+    // Emit CommitXmlValidated with files — this stores them in commit_selected_files.
+    state = reduce(
+        state,
+        PipelineEvent::commit_xml_validated(
+            "fix(auth): prevent token expiry race".to_string(),
+            selected_files.clone(),
+            1,
+        ),
+    );
+    assert_eq!(
+        state.commit_selected_files, selected_files,
+        "CommitXmlValidated must populate commit_selected_files"
+    );
+
+    // Drive through MessageGenerated (from ApplyCommitMessageOutcome).
+    state = reduce(
+        state,
+        PipelineEvent::commit_message_generated(
+            "fix(auth): prevent token expiry race".to_string(),
+            1,
+        ),
+    );
+
+    // Drive through CommitXmlArchived (from ArchiveCommitXml).
+    state = reduce(state, PipelineEvent::commit_xml_archived(1));
+
+    // Now determine_next_effect must produce CreateCommit with the selected files.
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit { message, files } => {
+            assert_eq!(message, "fix(auth): prevent token expiry race");
+            assert_eq!(
+                files, selected_files,
+                "Effect::CreateCommit.files must equal the files from CommitXmlValidated"
+            );
+        }
+        _ => panic!("expected CreateCommit effect, got {effect:?}"),
+    }
+}
+
+#[test]
+fn test_commit_generation_started_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(state, PipelineEvent::commit_generation_started());
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit generation restarts"
+    );
+}
+
+#[test]
+fn test_commit_diff_invalidated_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_diff_invalidated("changed".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit diff is invalidated"
+    );
+}
+
+#[test]
+fn test_commit_generation_failed_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_generation_failed("boom".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit generation fails"
+    );
+}
+
+#[test]
+fn test_commit_created_forced_resume_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        termination_resume_phase: Some(PipelinePhase::Finalizing),
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_created("deadbeef".to_string(), "feat: add foo".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when leaving commit phase after forced commit"
+    );
+}
+
+#[test]
+fn test_commit_skipped_forced_resume_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        termination_resume_phase: Some(PipelinePhase::Finalizing),
+        commit_diff_empty: true,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(state, PipelineEvent::commit_skipped("nope".to_string()));
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when leaving commit phase after skip"
     );
 }
 

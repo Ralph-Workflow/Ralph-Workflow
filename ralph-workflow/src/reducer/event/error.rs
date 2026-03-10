@@ -189,6 +189,13 @@ pub enum ErrorEvent {
     /// decide whether to retry, fallback, or terminate.
     GitAddAllFailed { kind: WorkspaceIoErrorKind },
 
+    /// Failed to stage specific files before creating a commit.
+    ///
+    /// This corresponds to selective staging (equivalent to `git add <files>`).
+    /// When this fails, the error must flow through the reducer as a typed event so
+    /// the reducer can decide recovery strategy.
+    GitAddSpecificFailed { kind: WorkspaceIoErrorKind },
+
     /// Failed to get git status (for pre-termination check).
     ///
     /// When checking for uncommitted changes before termination, if `git status` fails,
@@ -283,6 +290,12 @@ impl std::fmt::Display for ErrorEvent {
             }
             Self::GitAddAllFailed { kind } => {
                 write!(f, "git add -A (stage all changes) failed ({kind:?})")
+            }
+            Self::GitAddSpecificFailed { kind } => {
+                write!(
+                    f,
+                    "git add <files> (stage specific paths) failed ({kind:?})"
+                )
             }
             Self::GitStatusFailed { kind } => {
                 write!(f, "git status (pre-termination check) failed ({kind:?})")

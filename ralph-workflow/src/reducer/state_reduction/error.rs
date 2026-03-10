@@ -164,6 +164,7 @@ pub(super) fn reduce_error(state: &PipelineState, error: &ErrorEvent) -> Pipelin
         | ErrorEvent::WorkspaceCreateDirAllFailed { .. }
         | ErrorEvent::WorkspaceRemoveFailed { .. }
         | ErrorEvent::GitAddAllFailed { .. }
+        | ErrorEvent::GitAddSpecificFailed { .. }
         | ErrorEvent::GitStatusFailed { .. } => route_to_awaiting_dev_fix(state, None),
 
         // Agent chain exhausted - transition to AwaitingDevFix for remediation attempt

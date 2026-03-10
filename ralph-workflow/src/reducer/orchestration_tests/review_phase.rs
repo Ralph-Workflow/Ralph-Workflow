@@ -190,7 +190,7 @@ fn test_review_triggers_fix_when_issues_found() {
     assert!(matches!(effect, Effect::ValidateCommitXml));
     state = reduce(
         state,
-        PipelineEvent::commit_xml_validated("fix: address review issues".to_string(), 1),
+        PipelineEvent::commit_xml_validated("fix: address review issues".to_string(), vec![], 1),
     );
 
     let effect = determine_next_effect(&state);

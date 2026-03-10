@@ -125,6 +125,7 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
             if state.commit_xml_archived {
                 Effect::CreateCommit {
                     message: message.clone(),
+                    files: state.commit_selected_files.clone(),
                 }
             } else {
                 Effect::ArchiveCommitXml

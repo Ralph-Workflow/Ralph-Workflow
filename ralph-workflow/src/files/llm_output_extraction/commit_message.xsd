@@ -14,6 +14,13 @@
     </xs:choice>
   </xs:complexType>
   
+  <!-- File list type: holds individual file paths the agent wants to commit -->
+  <xs:complexType name="FileListType">
+    <xs:sequence>
+      <xs:element name="ralph-file" type="TextWithCodeType" minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
   <xs:element name="ralph-commit">
     <xs:complexType>
       <xs:choice>
@@ -29,6 +36,8 @@
               <xs:element name="ralph-body-footer" type="TextWithCodeType" minOccurs="0"/>
             </xs:all>
           </xs:choice>
+          <!-- Optional file list: when present, only these files are committed -->
+          <xs:element name="ralph-files" type="FileListType" minOccurs="0"/>
         </xs:sequence>
         <!-- Skip commit (no changes found) -->
         <xs:element name="ralph-skip" type="TextWithCodeType"/>

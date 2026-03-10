@@ -255,6 +255,9 @@ pub enum Effect {
 
     CreateCommit {
         message: String,
+        /// Files to selectively stage. Empty means stage all changed files.
+        #[serde(default)]
+        files: Vec<String>,
     },
 
     SkipCommit {

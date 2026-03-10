@@ -1,7 +1,10 @@
 enum CommitExtractionOutcome {
     MissingFile(String),
     InvalidXml(String),
-    Valid(CommitExtractionResult),
+    Valid {
+        extracted: CommitExtractionResult,
+        files: Vec<String>,
+    },
     Skipped(String),
 }
 
@@ -17,15 +20,17 @@ fn extract_commit_message_from_file_with_workspace(
         );
     };
 
-    let (message, skip_reason, detail) = try_extract_xml_commit_with_trace(&xml);
+    let (message, skip_reason, files, detail) = try_extract_xml_commit_with_trace(&xml);
 
     // Check for skip first
     if let Some(reason) = skip_reason {
         return CommitExtractionOutcome::Skipped(reason);
     }
 
-    message.map_or(
-        CommitExtractionOutcome::InvalidXml(detail),
-        |msg| CommitExtractionOutcome::Valid(CommitExtractionResult::new(msg))
-    )
+    message.map_or(CommitExtractionOutcome::InvalidXml(detail), |msg| {
+        CommitExtractionOutcome::Valid {
+            extracted: CommitExtractionResult::new(msg),
+            files,
+        }
+    })
 }

@@ -41,6 +41,7 @@ pub(super) fn reduce_commit_validation_failed(
                 commit_required_files_cleaned: false,
                 commit_xml_extracted: false,
                 commit_validated_outcome: None,
+                commit_selected_files: vec![],
                 commit_xml_archived: false,
                 continuation: crate::reducer::state::ContinuationState {
                     xsd_retry_count: 0,
@@ -69,6 +70,7 @@ pub(super) fn reduce_commit_validation_failed(
                 commit_required_files_cleaned: false,
                 commit_xml_extracted: false,
                 commit_validated_outcome: None,
+                commit_selected_files: vec![],
                 commit_xml_archived: false,
                 continuation: crate::reducer::state::ContinuationState {
                     xsd_retry_count: 0,
@@ -100,6 +102,7 @@ pub(super) fn reduce_commit_validation_failed(
             commit_required_files_cleaned: false,
             commit_xml_extracted: false,
             commit_validated_outcome: None,
+            commit_selected_files: vec![],
             commit_xml_archived: false,
             continuation: crate::reducer::state::ContinuationState {
                 xsd_retry_count: new_xsd_count,

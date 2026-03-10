@@ -99,9 +99,13 @@ impl PipelineEvent {
     }
 
     /// Create a `CommitXmlValidated` event.
-    #[must_use] 
-    pub const fn commit_xml_validated(message: String, attempt: u32) -> Self {
-        Self::Commit(CommitEvent::CommitXmlValidated { message, attempt })
+    #[must_use]
+    pub const fn commit_xml_validated(message: String, files: Vec<String>, attempt: u32) -> Self {
+        Self::Commit(CommitEvent::CommitXmlValidated {
+            message,
+            attempt,
+            files,
+        })
     }
 
     /// Create a `CommitXmlValidationFailed` event.

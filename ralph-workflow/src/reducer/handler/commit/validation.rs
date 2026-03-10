@@ -70,7 +70,7 @@ impl MainEffectHandler {
             );
         };
 
-        let (message, skip_reason, detail) = try_extract_xml_commit_with_trace(&xml_content);
+        let (message, skip_reason, files, detail) = try_extract_xml_commit_with_trace(&xml_content);
 
         // Check for skip first
         if let Some(reason) = skip_reason {
@@ -101,7 +101,7 @@ impl MainEffectHandler {
         }
         let event = message.map_or_else(
             || PipelineEvent::commit_xml_validation_failed(detail, attempt),
-            |msg| PipelineEvent::commit_xml_validated(msg, attempt),
+            |msg| PipelineEvent::commit_xml_validated(msg, files, attempt),
         );
 
         EffectResult::with_ui(

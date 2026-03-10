@@ -194,3 +194,68 @@ For complex changes, use detailed body tags instead of <ralph-body>:
 
 Only <ralph-subject> is required. Body tags are optional.
 Use EITHER <ralph-body> OR the detailed tags, not both.
+
+## FILE SELECTION (OPTIONAL)
+
+By default, ALL staged/unstaged changes are committed. Use `<ralph-files>` ONLY when the diff
+contains logically unrelated changes and you want to commit a coherent subset.
+
+**Precedence policy:**
+- `<ralph-files>` absent → commit everything (default)
+- `<ralph-files>` present with files → commit ONLY those files (selective staging)
+
+**Important:** An empty `<ralph-files>` block is INVALID. If you want to commit everything,
+omit `<ralph-files>` entirely.
+
+**When to use file selection:**
+- The diff mixes unrelated work (e.g., bug fix + unrelated refactor)
+- You want to produce a clean, focused commit from a noisy working tree
+- The subject/body would be misleading if all changes were included
+
+**When NOT to use file selection:**
+- All changes belong to the same logical unit (the common case)
+- You are unsure — omit `<ralph-files>` to commit everything safely
+
+**Example — commit only specific files:**
+```xml
+<ralph-commit>
+<ralph-subject>fix(auth): prevent token expiry race condition</ralph-subject>
+<ralph-body>Only the auth module files contain this fix; other changes are unrelated.</ralph-body>
+<ralph-files>
+  <ralph-file>src/auth/token.rs</ralph-file>
+  <ralph-file>tests/auth/token_expiry_test.rs</ralph-file>
+</ralph-files>
+</ralph-commit>
+```
+
+Rules for `<ralph-files>`:
+- Each `<ralph-file>` is a repo-relative path (no leading slash)
+- List every file needed for the commit to make sense — missing a file = broken commit
+- `<ralph-files>` cannot be combined with `<ralph-skip>`
+- At least one `<ralph-file>` is required when `<ralph-files>` is present
+
+### FILE-SELECTION PRECEDENCE (when deciding what to include)
+
+This tool operates across many projects. Apply this precedence order:
+
+1. **Explicit user instruction** — If the user's task explicitly names files or directories,
+   always include exactly those files. Do not add or remove from the user's list.
+
+2. **Project-specific rules or conventions** — If the project has detectable conventions
+   (e.g., a monorepo with per-package changelogs, generated files that should not be
+   committed, gitignore rules for secrets), apply them when selecting files.
+
+3. **Task intent + current diff context** — Include files that are directly relevant and
+   necessary to fulfill the task. Ask: "Would this commit make sense without this file?"
+   If yes → leave it out. If no → include it.
+
+4. **Conservative fallback** — When uncertain, prefer a smaller, focused selection.
+   If you use a conservative selection, explain your rationale in `<ralph-body>`.
+
+**Sensitivity rule:** Exclude files that may contain secrets, credentials, or personal
+data (e.g., `.env`, `*.pem`, `credentials.*`, `secrets.*`) unless the user has
+explicitly requested they be included. When in doubt, omit the file.
+
+**Rationale requirement:** If you use `<ralph-files>` with a subset of the diff,
+include a sentence in `<ralph-body>` or `<ralph-body-summary>` explaining which files
+were omitted and why, so the commit history is self-explanatory.

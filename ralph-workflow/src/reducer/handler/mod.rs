@@ -372,7 +372,7 @@ impl MainEffectHandler {
 
             Effect::ArchiveCommitXml => Ok(self.archive_commit_xml(ctx)),
 
-            Effect::CreateCommit { message } => Self::create_commit(ctx, message),
+            Effect::CreateCommit { message, files } => Self::create_commit(ctx, message, &files),
 
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
 
