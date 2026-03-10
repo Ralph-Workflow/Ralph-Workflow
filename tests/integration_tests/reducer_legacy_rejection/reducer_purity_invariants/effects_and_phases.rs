@@ -120,6 +120,7 @@ fn test_effects_are_single_task() {
             Effect::CreateCommit {
                 message: "test".to_string(),
                 files: vec![],
+                excluded_files: vec![],
             },
             Effect::SkipCommit {
                 reason: "test".to_string(),
@@ -192,6 +193,7 @@ fn test_effects_are_single_task() {
                 reason: Some("test".to_string()),
             },
             Effect::CheckUncommittedChangesBeforeTermination,
+            Effect::CheckResidualFiles { pass: 1 },
         ];
 
         // Exhaustive match guard: forces compile error when new variants are added.
@@ -270,14 +272,15 @@ fn test_effects_are_single_task() {
                 Effect::EmitRecoverySuccess { .. } => "emit-success",
                 Effect::EmitCompletionMarkerAndTerminate { .. } => "emit-completion",
                 Effect::CheckUncommittedChangesBeforeTermination => "check-uncommitted",
+                Effect::CheckResidualFiles { .. } => "check-residual-files",
             };
         }
 
         // Variant count guard: catches additions/removals even if the match is updated.
         assert_eq!(
             effects.len(),
-            72,
-            "Expected 72 Effect instances; update this test if variants were added or removed"
+            73,
+            "Expected 73 Effect instances; update this test if variants were added or removed"
         );
     });
 }

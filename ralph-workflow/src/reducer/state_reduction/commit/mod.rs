@@ -116,6 +116,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             message,
             attempt,
             files,
+            excluded_files,
         } => PipelineState {
             commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
                 attempt,
@@ -123,6 +124,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 reason: None,
             }),
             commit_selected_files: files,
+            commit_excluded_files: excluded_files,
             ..state
         },
         CommitEvent::CommitXmlValidationFailed { reason, attempt } => PipelineState {
@@ -158,6 +160,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
                     commit_selected_files: vec![],
+                    commit_residual_files: vec![],
+                    commit_is_second_pass: false,
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -214,7 +218,11 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
-                commit_selected_files: vec![],
+                // NOTE: commit_selected_files and commit_is_second_pass are intentionally
+                // NOT cleared here. The orchestration uses them in Committed state to
+                // determine whether to emit CheckResidualFiles before SaveCheckpoint.
+                // They are cleared by ResidualFilesNone / ResidualFilesFound { pass: 2 }.
+                commit_residual_files: vec![],
                 prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                 agent_chain,
                 continuation,
@@ -400,6 +408,48 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 prompt_inputs: state.prompt_inputs.with_commit_cleared(),
                 // Ensure termination cannot proceed until commit finishes.
                 pre_termination_commit_checked: false,
+                ..state
+            }
+        }
+
+        CommitEvent::ResidualFilesFound { files, pass } => {
+            if pass == 1 {
+                // First pass found leftover files — trigger an automatic second commit pass.
+                // Reset commit state so orchestration starts a fresh cycle.
+                PipelineState {
+                    commit_is_second_pass: true,
+                    commit: CommitState::NotStarted,
+                    commit_prompt_prepared: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
+                    commit_agent_invoked: false,
+                    commit_required_files_cleaned: false,
+                    commit_xml_extracted: false,
+                    commit_validated_outcome: None,
+                    commit_xml_archived: false,
+                    commit_selected_files: vec![],
+                    prompt_inputs: state.prompt_inputs.with_commit_cleared(),
+                    // commit_residual_files stays empty at pass 1 (not carry-forward yet)
+                    ..state
+                }
+            } else {
+                // Second pass (pass == 2) still found leftover files — carry forward to next cycle.
+                PipelineState {
+                    commit_is_second_pass: false,
+                    commit_selected_files: vec![],
+                    commit_residual_files: files,
+                    ..state
+                }
+            }
+        }
+
+        CommitEvent::ResidualFilesNone => {
+            // Working tree is clean after the commit pass. Clear all residual/second-pass state.
+            PipelineState {
+                commit_is_second_pass: false,
+                commit_selected_files: vec![],
+                commit_residual_files: vec![],
                 ..state
             }
         }

@@ -492,3 +492,170 @@ fn test_skipped_pre_termination_clears_prompt_inputs_commit() {
         "prompt_inputs.commit must be cleared after CommitEvent::Skipped (pre-termination path)"
     );
 }
+
+// =========================================================================
+// Tests for residual files and second-pass commit logic
+// =========================================================================
+
+#[test]
+fn test_commit_xml_validated_stores_excluded_files() {
+    // CommitXmlValidated with excluded_files must store them in commit_excluded_files.
+    use crate::reducer::state::pipeline::{ExcludedFile, ExcludedFileReason};
+
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+
+    let excluded = vec![ExcludedFile {
+        path: "src/sensitive.rs".to_string(),
+        reason: ExcludedFileReason::Sensitive,
+    }];
+
+    let event = PipelineEvent::commit_xml_validated(
+        "feat: add feature".to_string(),
+        vec!["src/main.rs".to_string()],
+        excluded.clone(),
+        1,
+    );
+    let new_state = reduce(state, event);
+
+    assert_eq!(
+        new_state.commit_excluded_files, excluded,
+        "CommitXmlValidated must store excluded_files in commit_excluded_files"
+    );
+}
+
+#[test]
+fn test_commit_xml_validated_empty_excluded_files() {
+    // CommitXmlValidated with no excluded files stores empty vec.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+
+    let event =
+        PipelineEvent::commit_xml_validated("feat: add feature".to_string(), vec![], vec![], 1);
+    let new_state = reduce(state, event);
+
+    assert!(
+        new_state.commit_excluded_files.is_empty(),
+        "Empty excluded_files must produce empty commit_excluded_files"
+    );
+}
+
+#[test]
+fn test_residual_files_found_pass1_sets_second_pass_flag() {
+    // ResidualFilesFound pass=1: pipeline must enter a second commit pass.
+    // commit_is_second_pass must be set to true and commit state must be reset
+    // so orchestration can run a fresh second commit cycle.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit_is_second_pass = false;
+
+    let event = PipelineEvent::residual_files_found(vec!["src/leftover.rs".to_string()], 1);
+    let new_state = reduce(state, event);
+
+    assert!(
+        new_state.commit_is_second_pass,
+        "ResidualFilesFound pass=1 must set commit_is_second_pass=true"
+    );
+    // commit state must be reset for the second pass
+    assert!(
+        !new_state.commit_diff_prepared,
+        "commit_diff_prepared must be reset for second pass"
+    );
+    assert!(
+        !new_state.commit_agent_invoked,
+        "commit_agent_invoked must be reset for second pass"
+    );
+    assert!(
+        !new_state.commit_prompt_prepared,
+        "commit_prompt_prepared must be reset for second pass"
+    );
+    // residual files must NOT yet be moved to carry-forward
+    assert!(
+        new_state.commit_residual_files.is_empty(),
+        "commit_residual_files must stay empty after pass=1 (not yet carry-forward)"
+    );
+}
+
+#[test]
+fn test_residual_files_found_pass2_carries_forward() {
+    // ResidualFilesFound pass=2: files remaining after the second pass must be
+    // stored in commit_residual_files for carry-forward to the next cycle.
+    // commit_is_second_pass must be cleared and commit state must reset normally.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit_is_second_pass = true;
+
+    let residual = vec!["src/remaining.rs".to_string(), "tests/other.rs".to_string()];
+    let event = PipelineEvent::residual_files_found(residual.clone(), 2);
+    let new_state = reduce(state, event);
+
+    assert_eq!(
+        new_state.commit_residual_files, residual,
+        "ResidualFilesFound pass=2 must store files in commit_residual_files"
+    );
+    assert!(
+        !new_state.commit_is_second_pass,
+        "commit_is_second_pass must be cleared after pass=2"
+    );
+}
+
+#[test]
+fn test_residual_files_none_clears_second_pass_and_residual() {
+    // ResidualFilesNone: working tree is clean after a commit pass.
+    // commit_is_second_pass must be cleared and commit_residual_files must be cleared.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit_is_second_pass = true;
+    state.commit_residual_files = vec!["src/old.rs".to_string()];
+
+    let event = PipelineEvent::residual_files_none();
+    let new_state = reduce(state, event);
+
+    assert!(
+        !new_state.commit_is_second_pass,
+        "ResidualFilesNone must clear commit_is_second_pass"
+    );
+    assert!(
+        new_state.commit_residual_files.is_empty(),
+        "ResidualFilesNone must clear commit_residual_files"
+    );
+}
+
+#[test]
+fn test_commit_residual_files_survives_generation_started() {
+    // commit_residual_files is carry-forward state: it must NOT be cleared when
+    // GenerationStarted resets the commit phase for a new cycle.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit_residual_files = vec!["src/leftover.rs".to_string()];
+
+    let event = PipelineEvent::commit_generation_started();
+    let new_state = reduce(state, event);
+
+    assert_eq!(
+        new_state.commit_residual_files,
+        vec!["src/leftover.rs".to_string()],
+        "commit_residual_files must survive GenerationStarted (carry-forward across cycles)"
+    );
+}
+
+#[test]
+fn test_commit_residual_files_cleared_after_commit_created() {
+    // After a successful commit completes and transitions to the next phase,
+    // commit_residual_files must be cleared (the files were presumably committed).
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_residual_files = vec!["src/leftover.rs".to_string()];
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "feat: done".to_string()),
+    );
+
+    assert!(
+        new_state.commit_residual_files.is_empty(),
+        "commit_residual_files must be cleared after CommitEvent::Created"
+    );
+}

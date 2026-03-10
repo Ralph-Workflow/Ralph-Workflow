@@ -43,10 +43,13 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         message: String,
         files: &[String],
+        excluded_files: &[crate::reducer::state::pipeline::ExcludedFile],
     ) -> Result<EffectResult> {
         use crate::git_helpers::{
-            git_add_all_in_repo, git_add_specific_in_repo, git_commit_in_repo,
+            ensure_local_excludes, git_add_all_in_repo, git_add_specific_in_repo,
+            git_commit_in_repo,
         };
+        use crate::reducer::state::pipeline::ExcludedFileReason;
 
         if files.is_empty() {
             git_add_all_in_repo(ctx.repo_root).map_err(|err| ErrorEvent::GitAddAllFailed {
@@ -59,6 +62,21 @@ impl MainEffectHandler {
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 },
             )?;
+        }
+
+        // Add internal-ignore files to .git/info/exclude so agent artifacts do not
+        // reappear as dirty files in subsequent status checks.
+        let internal_ignore_paths: Vec<&str> = excluded_files
+            .iter()
+            .filter(|f| matches!(f.reason, ExcludedFileReason::InternalIgnore))
+            .map(|f| f.path.as_str())
+            .collect();
+        if !internal_ignore_paths.is_empty() {
+            if let Err(e) = ensure_local_excludes(ctx.repo_root, &internal_ignore_paths) {
+                ctx.logger.warn(&format!(
+                    "Failed to update .git/info/exclude for internal-ignore files: {e}"
+                ));
+            }
         }
 
         match git_commit_in_repo(ctx.repo_root, &message, None, None, Some(ctx.executor)) {
@@ -134,5 +152,62 @@ impl MainEffectHandler {
         Ok(EffectResult::event(
             PipelineEvent::pre_termination_safety_check_passed(),
         ))
+    }
+
+    /// Check for uncommitted files remaining after a selective commit pass.
+    ///
+    /// After a selective commit (one that committed only specific files), there may
+    /// be uncommitted changes remaining. This handler checks for them and emits:
+    ///
+    /// - `ResidualFilesFound { files, pass }` if dirty files remain
+    /// - `ResidualFilesNone` if the working tree is clean
+    ///
+    /// # Events Emitted
+    ///
+    /// - `residual_files_found` - Uncommitted files remain after selective commit
+    /// - `residual_files_none` - Working tree is clean
+    ///
+    /// # Errors
+    ///
+    /// - `GitStatusFailed` - Unable to determine working directory status
+    pub(in crate::reducer::handler) fn check_residual_files(
+        ctx: &PhaseContext<'_>,
+        pass: u8,
+    ) -> Result<EffectResult> {
+        use crate::git_helpers::git_snapshot_in_repo;
+
+        let status =
+            git_snapshot_in_repo(ctx.repo_root).map_err(|err| ErrorEvent::GitStatusFailed {
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            })?;
+
+        if status.trim().is_empty() {
+            ctx.logger.info(&format!(
+                "Residual files check (pass {pass}): Working tree is clean."
+            ));
+            return Ok(EffectResult::event(PipelineEvent::residual_files_none()));
+        }
+
+        let files: Vec<String> = status
+            .lines()
+            .filter_map(|line| {
+                // git status --porcelain lines: "XY path" (first 3 chars are status + space)
+                let path = line.get(3..).unwrap_or("").trim();
+                if path.is_empty() {
+                    None
+                } else {
+                    Some(path.to_string())
+                }
+            })
+            .collect();
+
+        ctx.logger.warn(&format!(
+            "Residual files check (pass {pass}): {} uncommitted file(s) remain after selective commit.",
+            files.len()
+        ));
+
+        Ok(EffectResult::event(PipelineEvent::residual_files_found(
+            files, pass,
+        )))
     }
 }

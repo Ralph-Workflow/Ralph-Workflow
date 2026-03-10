@@ -14,6 +14,7 @@ mod commit;
 mod diff;
 mod diff_review;
 mod discovery;
+mod exclude;
 mod snapshot;
 
 pub use commit::{
@@ -27,6 +28,7 @@ pub use diff::{
 pub use diff_review::{DiffReviewContent, DiffTruncationLevel};
 pub use discovery::get_hooks_dir_from;
 pub use discovery::{get_hooks_dir, get_repo_root, require_git_repo};
+pub use exclude::ensure_local_excludes;
 pub use snapshot::{git_snapshot, git_snapshot_in_repo};
 
 #[cfg(test)]

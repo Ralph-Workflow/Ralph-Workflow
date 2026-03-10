@@ -200,6 +200,17 @@ If you determine there are NO actual changes to commit, respond with:
                 }
             }
 
+            Effect::CheckResidualFiles { pass } => {
+                // Mock: always report clean (no residual files) by default.
+                // Tests that need residuals can override by injecting events manually.
+                self.captured_effects
+                    .borrow_mut()
+                    .push(Effect::CheckResidualFiles { pass });
+                let event = PipelineEvent::residual_files_none();
+                self.captured_events.borrow_mut().push(event.clone());
+                Ok(EffectResult::event(event))
+            }
+
             Effect::ReportAgentChainExhausted { role, phase, cycle } => {
                 use crate::reducer::event::ErrorEvent;
                 Err(ErrorEvent::AgentChainExhausted { role, phase, cycle }.into())

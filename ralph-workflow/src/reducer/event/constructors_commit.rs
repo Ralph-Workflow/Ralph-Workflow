@@ -100,11 +100,17 @@ impl PipelineEvent {
 
     /// Create a `CommitXmlValidated` event.
     #[must_use]
-    pub const fn commit_xml_validated(message: String, files: Vec<String>, attempt: u32) -> Self {
+    pub const fn commit_xml_validated(
+        message: String,
+        files: Vec<String>,
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
+        attempt: u32,
+    ) -> Self {
         Self::Commit(CommitEvent::CommitXmlValidated {
             message,
             attempt,
             files,
+            excluded_files,
         })
     }
 
@@ -162,9 +168,25 @@ impl PipelineEvent {
     }
 
     /// Create a `PreTerminationUncommittedChangesDetected` event.
-    #[must_use] 
+    #[must_use]
     pub const fn pre_termination_uncommitted_changes_detected(file_count: usize) -> Self {
         Self::Commit(CommitEvent::PreTerminationUncommittedChangesDetected { file_count })
+    }
+
+    /// Create a `ResidualFilesFound` event.
+    ///
+    /// Emitted after a selective commit pass when uncommitted files remain.
+    #[must_use]
+    pub const fn residual_files_found(files: Vec<String>, pass: u8) -> Self {
+        Self::Commit(CommitEvent::ResidualFilesFound { files, pass })
+    }
+
+    /// Create a `ResidualFilesNone` event.
+    ///
+    /// Emitted after a commit pass when the working tree is clean.
+    #[must_use]
+    pub const fn residual_files_none() -> Self {
+        Self::Commit(CommitEvent::ResidualFilesNone)
     }
 
     // Miscellaneous constructors

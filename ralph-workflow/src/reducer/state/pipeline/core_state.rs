@@ -170,6 +170,24 @@ pub struct PipelineState {
     /// Cleared whenever commit phase state is reset.
     #[serde(default)]
     pub commit_selected_files: Vec<String>,
+    /// Excluded file metadata from the current commit agent output.
+    ///
+    /// Populated from `CommitXmlValidated.excluded_files`.
+    /// Cleared whenever commit phase state is reset.
+    #[serde(default)]
+    pub commit_excluded_files: Vec<ExcludedFile>,
+    /// True when the pipeline is executing the automatic second commit pass
+    /// triggered by `ResidualFilesFound` after pass 1.
+    ///
+    /// Cleared when commit phase state is reset at cycle boundary.
+    #[serde(default)]
+    pub commit_is_second_pass: bool,
+    /// Files remaining uncommitted after both commit passes.
+    ///
+    /// Carries forward to the next development cycle so the agent can address
+    /// them in the next iteration. NOT cleared by commit phase reset.
+    #[serde(default)]
+    pub commit_residual_files: Vec<String>,
     /// Tracks whether commit XML has been archived for the current attempt.
     #[serde(default)]
     pub commit_xml_archived: bool,

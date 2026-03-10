@@ -199,7 +199,7 @@ fn test_commit_generated_creates_commit() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files: _ } => {
+        Effect::CreateCommit { message, .. } => {
             assert_eq!(message, "test commit message");
         }
         _ => panic!("Expected CreateCommit effect, got {effect:?}"),
@@ -320,7 +320,7 @@ fn test_create_commit_uses_selected_files_from_state() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files } => {
+        Effect::CreateCommit { message, files, .. } => {
             assert_eq!(message, "feat: add foo");
             assert_eq!(
                 files, selected_files,
@@ -365,6 +365,7 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
         PipelineEvent::commit_xml_validated(
             "fix(auth): prevent token expiry race".to_string(),
             selected_files.clone(),
+            vec![],
             1,
         ),
     );
@@ -388,7 +389,7 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
     // Now determine_next_effect must produce CreateCommit with the selected files.
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files } => {
+        Effect::CreateCommit { message, files, .. } => {
             assert_eq!(message, "fix(auth): prevent token expiry race");
             assert_eq!(
                 files, selected_files,

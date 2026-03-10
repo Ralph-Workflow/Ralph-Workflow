@@ -16,7 +16,7 @@ fn test_create_commit_returns_typed_error_event_when_git_add_all_fails() {
 
     let ctx = fixture.ctx();
 
-    let err = MainEffectHandler::create_commit(&ctx, "test message".to_string(), &[])
+    let err = MainEffectHandler::create_commit(&ctx, "test message".to_string(), &[], &[])
         .expect_err("create_commit should fail when repo discovery fails");
 
     assert!(
@@ -40,6 +40,7 @@ fn test_create_commit_with_files_returns_typed_error_when_git_add_specific_fails
         &ctx,
         "test message".to_string(),
         &["src/lib.rs".to_string()],
+        &[],
     )
     .expect_err("create_commit with files should fail when repo discovery fails");
 
@@ -101,6 +102,7 @@ fn test_create_commit_with_specific_files_creates_commit_with_only_selected_file
         &ctx,
         "feat: add foo".to_string(),
         &[selected.to_string()],
+        &[],
     )
     .expect("create_commit with specific files should succeed");
 
@@ -155,6 +157,7 @@ fn test_create_commit_with_specific_files_fails_on_invalid_path() {
         &ctx,
         "feat: add foo".to_string(),
         &["does/not/exist.txt".to_string()],
+        &[],
     )
     .expect_err("expected create_commit to fail when staging an invalid path");
 

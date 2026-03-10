@@ -314,8 +314,15 @@ impl MainEffectHandler {
             .clone()
             .unwrap_or_else(|| crate::reducer::prompt_inputs::sha256_hex_str(diff_for_prompt));
         let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
+        // Include residual_files in content ID so prompts for second-pass commits are cached
+        // separately from first-pass prompts (different context = different cache key).
+        let residual_files_key = if self.state.commit_residual_files.is_empty() {
+            String::new()
+        } else {
+            format!("|residual:{}", self.state.commit_residual_files.join(","))
+        };
         let prompt_content_id = crate::reducer::prompt_inputs::sha256_hex_str(&format!(
-            "commit_prompt|diff:{diff_content_id}|consumer:{consumer_sig}"
+            "commit_prompt|diff:{diff_content_id}|consumer:{consumer_sig}{residual_files_key}"
         ));
 
         let (prompt_key, prompt, was_replayed, prompt_content_id, should_validate) =
@@ -384,6 +391,7 @@ impl MainEffectHandler {
                         self.state.recovery_epoch,
                     );
                     let prompt_key = scope_key.to_string();
+                    let residual_files = self.state.commit_residual_files.clone();
                     let (prompt, was_replayed) = get_stored_or_generate_prompt(
                         &scope_key,
                         &self.state.prompt_history,
@@ -397,7 +405,23 @@ impl MainEffectHandler {
                                     ctx.workspace,
                                     "commit_message_xml",
                                 );
-                            rendered.content
+                            // Prepend residual-files context when the AI left files uncommitted
+                            // in a previous pass and they are now queued for this commit.
+                            if residual_files.is_empty() {
+                                rendered.content
+                            } else {
+                                let file_list = residual_files
+                                    .iter()
+                                    .map(|f| format!("  - {f}"))
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                format!(
+                                    "NOTE: The following files were carried forward from a \
+                                     previous commit pass and must be included in this commit:\n\
+                                     {file_list}\n\n{}",
+                                    rendered.content
+                                )
+                            }
                         },
                     );
                     (prompt_key, prompt, was_replayed, prompt_content_id, true)

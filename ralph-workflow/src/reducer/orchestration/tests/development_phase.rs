@@ -397,7 +397,7 @@ fn test_development_runs_exactly_n_iterations() {
             Effect::ValidateCommitXml => {
                 state = reduce(
                     state,
-                    PipelineEvent::commit_xml_validated("test".to_string(), vec![], 1),
+                    PipelineEvent::commit_xml_validated("test".to_string(), vec![], vec![], 1),
                 );
             }
             Effect::ApplyCommitMessageOutcome => {

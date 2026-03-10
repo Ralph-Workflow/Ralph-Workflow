@@ -4,6 +4,37 @@
 // after XML parsing and schema validation. They represent the contract
 // between agent output and reducer state.
 
+/// Reason why a file was excluded from a selective commit.
+///
+/// Used in `<ralph-excluded-files>` XML elements to record why the commit
+/// agent chose to omit a file. This metadata is audit/observability only
+/// and does not change commit execution semantics.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExcludedFileReason {
+    /// File is a Ralph-internal artifact (logs, tmp outputs). Will be added
+    /// to `.git/info/exclude` so future git status output is clean.
+    InternalIgnore,
+    /// File is unrelated to the current task and is intentionally deferred.
+    NotTaskRelated,
+    /// File contains sensitive content that must not be committed.
+    Sensitive,
+    /// File could not be committed in this pass; carried forward to the next cycle.
+    Deferred,
+}
+
+/// A single file that was excluded from a selective commit, with a reason.
+///
+/// Populated from `<ralph-excluded-file reason="...">path</ralph-excluded-file>`
+/// elements inside `<ralph-excluded-files>` in the commit XML output.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExcludedFile {
+    /// Repo-relative path of the excluded file.
+    pub path: String,
+    /// Why this file was excluded from the commit.
+    pub reason: ExcludedFileReason,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReviewValidatedOutcome {
     pub pass: u32,

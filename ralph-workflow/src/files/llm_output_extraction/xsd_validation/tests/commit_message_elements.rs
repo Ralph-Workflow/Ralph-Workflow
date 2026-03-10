@@ -12,6 +12,7 @@ fn test_format_body_with_simple_body() {
         body_footer: None,
         skip_reason: None,
         files: vec![],
+        excluded_files: vec![],
     };
 
     assert_eq!(elements.format_body(), "Simple body text");
@@ -27,6 +28,7 @@ fn test_format_body_with_detailed_elements() {
         body_footer: Some("Footer text".to_string()),
         skip_reason: None,
         files: vec![],
+        excluded_files: vec![],
     };
 
     let formatted = elements.format_body();
@@ -45,6 +47,7 @@ fn test_format_body_empty_when_no_body() {
         body_footer: None,
         skip_reason: None,
         files: vec![],
+        excluded_files: vec![],
     };
 
     assert_eq!(elements.format_body(), "");
@@ -166,6 +169,148 @@ fn test_validate_xml_files_rejects_non_whitespace_text() {
     assert!(
         result.is_err(),
         "Expected Err when ralph-files contains non-whitespace text"
+    );
+}
+
+// ============================================================================
+// Tests for ralph-excluded-files element support
+// ============================================================================
+
+#[test]
+fn test_validate_xml_with_excluded_files_internal_ignore() {
+    let xml = r#"<ralph-commit>
+<ralph-subject>feat(auth): add OAuth2 login flow</ralph-subject>
+<ralph-files>
+<ralph-file>src/auth/oauth.rs</ralph-file>
+</ralph-files>
+<ralph-excluded-files>
+<ralph-excluded-file reason="internal-ignore">.agent/tmp/trace.log</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(result.is_ok(), "Expected OK for valid excluded-files, got: {result:?}");
+    let elements = result.unwrap();
+    assert_eq!(elements.excluded_files.len(), 1);
+    assert_eq!(elements.excluded_files[0].path, ".agent/tmp/trace.log");
+    assert!(matches!(
+        elements.excluded_files[0].reason,
+        crate::reducer::state::pipeline::ExcludedFileReason::InternalIgnore
+    ));
+}
+
+#[test]
+fn test_validate_xml_with_excluded_files_all_reason_values() {
+    for reason_attr in ["internal-ignore", "not-task-related", "sensitive", "deferred"] {
+        let xml = format!(
+            r#"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-excluded-files>
+<ralph-excluded-file reason="{reason_attr}">some/file.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#
+        );
+        let result = validate_xml_against_xsd(&xml);
+        assert!(
+            result.is_ok(),
+            "Expected OK for reason={reason_attr}, got: {result:?}"
+        );
+    }
+}
+
+#[test]
+fn test_validate_xml_excluded_files_missing_reason_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-excluded-files>
+<ralph-excluded-file>.agent/tmp/trace.log</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when reason attribute is missing"
+    );
+}
+
+#[test]
+fn test_validate_xml_excluded_files_unknown_reason_is_rejected() {
+    let xml = r#"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-excluded-files>
+<ralph-excluded-file reason="unknown-reason">some/file.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when reason value is unknown"
+    );
+}
+
+#[test]
+fn test_validate_xml_excluded_files_empty_list_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-excluded-files>
+</ralph-excluded-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-excluded-files has no children"
+    );
+}
+
+#[test]
+fn test_validate_xml_without_excluded_files_is_valid() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(result.is_ok(), "Expected OK without ralph-excluded-files");
+    assert!(result.unwrap().excluded_files.is_empty());
+}
+
+#[test]
+fn test_validate_xml_excluded_files_coexist_with_files() {
+    let xml = r#"<ralph-commit>
+<ralph-subject>feat: test</ralph-subject>
+<ralph-files>
+<ralph-file>src/main.rs</ralph-file>
+</ralph-files>
+<ralph-excluded-files>
+<ralph-excluded-file reason="deferred">src/other.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_ok(),
+        "Expected OK when ralph-files and ralph-excluded-files coexist, got: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.files.len(), 1);
+    assert_eq!(elements.excluded_files.len(), 1);
+}
+
+#[test]
+fn test_validate_xml_excluded_files_with_skip_is_rejected() {
+    let xml = r#"<ralph-commit>
+<ralph-skip>No changes found</ralph-skip>
+<ralph-excluded-files>
+<ralph-excluded-file reason="internal-ignore">.agent/tmp/trace.log</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-excluded-files used with ralph-skip"
     );
 }
 

@@ -21,6 +21,29 @@
     </xs:sequence>
   </xs:complexType>
 
+  <!-- Allowed reason values for excluded files -->
+  <xs:simpleType name="ExcludedFileReasonType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="internal-ignore"/>
+      <xs:enumeration value="not-task-related"/>
+      <xs:enumeration value="sensitive"/>
+      <xs:enumeration value="deferred"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Single excluded file entry: repo-relative path + required reason -->
+  <xs:complexType name="ExcludedFileEntryType" mixed="true">
+    <xs:attribute name="reason" type="ExcludedFileReasonType" use="required"/>
+  </xs:complexType>
+
+  <!-- Excluded file list: at least one entry required when element is present -->
+  <xs:complexType name="ExcludedFileListType">
+    <xs:sequence>
+      <xs:element name="ralph-excluded-file" type="ExcludedFileEntryType"
+                  minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
   <xs:element name="ralph-commit">
     <xs:complexType>
       <xs:choice>
@@ -38,6 +61,8 @@
           </xs:choice>
           <!-- Optional file list: when present, only these files are committed -->
           <xs:element name="ralph-files" type="FileListType" minOccurs="0"/>
+          <!-- Optional: audit/observability metadata for files excluded from this commit -->
+          <xs:element name="ralph-excluded-files" type="ExcludedFileListType" minOccurs="0"/>
         </xs:sequence>
         <!-- Skip commit (no changes found) -->
         <xs:element name="ralph-skip" type="TextWithCodeType"/>

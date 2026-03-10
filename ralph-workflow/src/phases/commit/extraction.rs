@@ -20,7 +20,7 @@ fn extract_commit_message_from_file_with_workspace(
         );
     };
 
-    let (message, skip_reason, files, detail) = try_extract_xml_commit_with_trace(&xml);
+    let (message, skip_reason, files, _excluded_files, detail) = try_extract_xml_commit_with_trace(&xml);
 
     // Check for skip first
     if let Some(reason) = skip_reason {
