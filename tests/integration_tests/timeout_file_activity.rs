@@ -384,7 +384,11 @@ fn no_output_and_no_ai_files_times_out() {
 fn continuous_file_updates_prevent_timeout_over_extended_period() {
     with_default_timeout(|| {
         let timestamp = new_activity_timestamp();
-        let timeout = Duration::from_millis(50);
+        // Use a generous freshness window so the test is robust under system load.
+        // The 50ms window used by other tests is too tight when the test suite
+        // runs many tests in parallel: sleep() calls may be deferred beyond 50ms,
+        // letting files go stale before the update thread can refresh them.
+        let timeout = Duration::from_millis(500);
         wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
         let should_stop = Arc::new(AtomicBool::new(false));
@@ -406,15 +410,21 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
         let executor_impl = Arc::new(MockProcessExecutor::new());
         let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
-        // Simulate a handful of rapid updates while the monitor runs.
+        // Write PLAN.md at a bounded interval until should_stop is set.
+        // yield_now() is not sufficient: the OS can defer the thread for longer
+        // than the 50ms timeout window, letting the file go stale. A 5ms sleep
+        // guarantees writes happen frequently enough to stay within the window.
         let workspace_for_updates = Arc::clone(&workspace);
+        let should_stop_for_updates = Arc::clone(&should_stop);
         let update_handle = thread::spawn(move || {
-            for i in 0..5 {
+            let mut i = 0usize;
+            while !should_stop_for_updates.load(Ordering::Acquire) {
                 let _ = workspace_for_updates.write(
                     Path::new(".agent/PLAN.md"),
                     &format!("# Updated plan iteration {i}"),
                 );
-                std::thread::yield_now();
+                i += 1;
+                std::thread::sleep(Duration::from_millis(5));
             }
         });
 
@@ -433,9 +443,9 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
             )
         });
 
-        // Wait for updates to complete and for at least a few file-activity scans,
-        // then signal stop.
-        update_handle.join().expect("update thread panicked");
+        // Wait for at least a few file-activity scans, then stop the monitor and
+        // updates together. PLAN.md is being written continuously up to this point,
+        // so the monitor will always find it fresh on its last check.
         for _ in 0..100_000 {
             if workspace.read_dir_calls() >= 3 {
                 break;
@@ -449,6 +459,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
+        update_handle.join().expect("update thread panicked");
         assert_eq!(
             result,
             MonitorResult::ProcessCompleted,
@@ -540,6 +551,136 @@ fn mixed_output_and_file_activity_prevents_timeout() {
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
             "mixed activity should prevent kill signals"
+        );
+    });
+}
+
+#[test]
+fn workspace_source_file_update_prevents_timeout() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file("src/lib.rs", "fn main() {}"),
+        ));
+        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
+
+        let file_activity_config = Some(FileActivityConfig {
+            tracker: new_file_activity_tracker(),
+            workspace: workspace_dyn,
+        });
+
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        let handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                file_activity_config.as_ref(),
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                },
+            )
+        });
+
+        // Wait for monitor to perform at least one file activity scan.
+        for _ in 0..100_000 {
+            if workspace.read_dir_calls() > 0 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            workspace.read_dir_calls() > 0,
+            "monitor should scan workspace to evaluate file-activity gating"
+        );
+        should_stop.store(true, Ordering::Release);
+
+        let result = handle.join().expect("monitor thread panicked");
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "recently modified src/lib.rs should prevent timeout"
+        );
+
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "workspace source file activity should prevent kill signals"
+        );
+    });
+}
+
+#[test]
+fn only_excluded_workspace_files_still_produce_timeout() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test()
+                .with_file("pipeline.log", "log churn")
+                .with_file("target/debug/binary", "ELF binary"),
+        ));
+
+        let file_activity_config = Some(FileActivityConfig {
+            tracker: new_file_activity_tracker(),
+            workspace,
+        });
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                file_activity_config.as_ref(),
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "excluded workspace files only should still time out"
+        );
+
+        let kill_calls = executor_impl.execute_calls_for("kill");
+        assert!(
+            kill_calls
+                .iter()
+                .any(|(_, args, _, _)| args.iter().any(|a| a == "-TERM")),
+            "timeout enforcement should send SIGTERM via kill"
         );
     });
 }

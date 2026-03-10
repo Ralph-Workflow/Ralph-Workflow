@@ -314,3 +314,82 @@ fn test_default_trait_implementation() {
     let _tracker2 = FileActivityTracker::default();
     // If we reach here, both constructors work correctly
 }
+
+#[test]
+fn test_workspace_source_file_prevents_timeout() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file("src/lib.rs", "fn main() {}");
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recently modified src/lib.rs with no .agent/ dir should be detected as activity"
+    );
+}
+
+#[test]
+fn test_old_workspace_source_file_does_not_prevent_timeout() {
+    let tracker = FileActivityTracker::new();
+    let old_time = SystemTime::now() - Duration::from_secs(400);
+    let ws = MemoryWorkspace::new_test().with_file_at_time("src/lib.rs", "fn main() {}", old_time);
+
+    assert!(
+        !tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "src/lib.rs modified 400s ago should not be detected with 300s timeout"
+    );
+}
+
+#[test]
+fn test_git_dir_excluded_from_workspace_scan() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file(".git/COMMIT_EDITMSG", "Initial commit");
+
+    assert!(
+        !tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        ".git/ files should be excluded from workspace scan"
+    );
+}
+
+#[test]
+fn test_target_dir_excluded_from_workspace_scan() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file("target/debug/binary", "ELF binary");
+
+    assert!(
+        !tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "target/ files should be excluded from workspace scan"
+    );
+}
+
+#[test]
+fn test_workspace_log_file_excluded() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file("pipeline.log", "2026-03-09 log output");
+
+    assert!(
+        !tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "*.log files at workspace root should be excluded from scan"
+    );
+}
+
+#[test]
+fn test_workspace_file_in_subdir_prevents_timeout() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file("tests/integration.rs", "#[test] fn foo() {}");
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recently modified tests/integration.rs should be detected as activity"
+    );
+}
