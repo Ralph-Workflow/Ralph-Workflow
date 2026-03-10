@@ -1,4 +1,6 @@
 use anyhow::{Context as _, Result};
+use std::borrow::Cow;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -164,13 +166,47 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
     },
 ];
 
-fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i32]) -> CheckStatus {
+const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
+
+fn strip_allowed_warning_lines_for_check<'a>(check_name: &str, text: &'a str) -> Cow<'a, str> {
+    // Policy: allow exactly one known noisy React act(...) warning line, and only for the
+    // known frontend test command. Everywhere else, treat warnings as diagnostics.
+    if check_name != FRONTEND_TEST_CHECK_NAME {
+        return Cow::Borrowed(text);
+    }
+    if !text.contains("inside a test was not wrapped in act(...)") {
+        return Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let is_react_act_warning = trimmed.starts_with("Warning: An update to ")
+            && trimmed.contains("inside a test was not wrapped in act(...)");
+        if is_react_act_warning {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    Cow::Owned(out)
+}
+
+fn classify(
+    check_name: &str,
+    exit_code: i32,
+    stdout: &str,
+    stderr: &str,
+    success_exit_codes: &[i32],
+) -> CheckStatus {
     if !success_exit_codes.contains(&exit_code) {
         return CheckStatus::Error;
     }
     use crate::scanner::{scan_has_diagnostic_prefix, DiagnosticLevel};
     // Single Aho-Corasick pass over each output (O(n+m) each).
-    match scan_has_diagnostic_prefix(stderr).max_level(scan_has_diagnostic_prefix(stdout)) {
+    let stdout = strip_allowed_warning_lines_for_check(check_name, stdout);
+    let stderr = strip_allowed_warning_lines_for_check(check_name, stderr);
+    match scan_has_diagnostic_prefix(&stderr).max_level(scan_has_diagnostic_prefix(&stdout)) {
         DiagnosticLevel::Error => CheckStatus::Error,
         DiagnosticLevel::Warning => CheckStatus::Warning,
         DiagnosticLevel::Clean => CheckStatus::Pass,
@@ -258,10 +294,27 @@ fn run_checks_with_heartbeat(
             result
         });
 
-        let output = output_result?;
         let elapsed = start.elapsed();
 
+        let output = match output_result {
+            Ok(output) => output,
+            Err(e) => {
+                reporter.check_failed(spec.name, elapsed, CheckStatus::Error);
+                return Ok(VerifyReport {
+                    exit: VerifyExitCode::Failure,
+                    failure: Some(CheckFailure {
+                        name: spec.name,
+                        status: CheckStatus::Error,
+                        exit_code: -1,
+                        stdout: String::new(),
+                        stderr: format!("{e:#}"),
+                    }),
+                });
+            }
+        };
+
         let status = classify(
+            spec.name,
             output.exit_code,
             &output.stdout,
             &output.stderr,
@@ -603,6 +656,8 @@ pub fn run_cargo_prefetch(
     main_specs: &[CommandSpec],
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
+    let cancel_prefetch = std::sync::Arc::new(AtomicBool::new(false));
+
     // Spawn best-effort prefetch in a background thread.
     // Critical behavior: do NOT block surfacing main-spec failures on a slow prefetch.
     // On success we join so cache warm results can be flushed deterministically.
@@ -610,9 +665,21 @@ pub fn run_cargo_prefetch(
         None
     } else {
         let runner_bg = std::sync::Arc::clone(&runner);
+        let cancel_bg = std::sync::Arc::clone(&cancel_prefetch);
         let specs: Vec<CommandSpec> = prefetch_specs.to_vec();
         Some(std::thread::spawn(move || {
-            let _ = run_checks(runner_bg.as_ref(), &specs, &NoopProgressReporter);
+            // Cancellation is best-effort: if a prefetch check is already running, we let it
+            // complete, but we do not start additional prefetch work once cancelled.
+            for spec in specs {
+                if cancel_bg.load(Ordering::Relaxed) {
+                    break;
+                }
+                let _ = run_checks(
+                    runner_bg.as_ref(),
+                    std::slice::from_ref(&spec),
+                    &NoopProgressReporter,
+                );
+            }
         }))
     };
 
@@ -621,6 +688,8 @@ pub fn run_cargo_prefetch(
         if let Some(h) = prefetch_handle {
             let _ = h.join();
         }
+    } else {
+        cancel_prefetch.store(true, Ordering::Relaxed);
     }
     Ok(main_report)
 }
@@ -1652,6 +1721,36 @@ mod tests {
         );
     }
 
+    struct IoErrorRunner;
+
+    impl CommandRunner for IoErrorRunner {
+        fn run(&self, _spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            Err(std::io::Error::other("synthetic io error"))
+        }
+    }
+
+    #[test]
+    fn test_run_checks_reports_failure_when_runner_returns_io_error() {
+        let reporter = RecordingProgressReporter::default();
+        let runner = IoErrorRunner;
+        let checks = [check("io-fail")];
+
+        let report =
+            run_checks(&runner, &checks, &reporter).expect("run_checks must return a report");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("failure must be populated");
+        assert_eq!(failure.name, "io-fail");
+        assert_eq!(failure.status, CheckStatus::Error);
+        assert!(
+            failure.stderr.contains("synthetic io error"),
+            "error text must be propagated into failure stderr"
+        );
+
+        let events = reporter.events();
+        assert_eq!(events, vec!["start:io-fail", "fail:io-fail"]);
+    }
+
     #[test]
     fn test_noop_progress_reporter_does_not_panic() {
         let reporter = NoopProgressReporter;
@@ -1857,5 +1956,177 @@ mod tests {
             expected_total >= REQUIRED_CHECKS.len(),
             "total must include at least the cargo checks"
         );
+    }
+
+    #[test]
+    fn test_react_act_warning_fails_checks_by_default() {
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr:
+                "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
+                    .to_string(),
+        }]);
+        let report = run_checks(&runner, &[check("some-check")], &NoopProgressReporter).unwrap();
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        assert_eq!(
+            report.failure.expect("failure must be present").status,
+            CheckStatus::Warning
+        );
+    }
+
+    #[test]
+    fn test_react_act_warning_is_allowed_only_for_frontend_test_check() {
+        let runner = FakeRunner::new([CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr:
+                "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
+                    .to_string(),
+        }]);
+        let report = run_checks(
+            &runner,
+            &[check("ralph-gui-frontend-test")],
+            &NoopProgressReporter,
+        )
+        .unwrap();
+        assert_eq!(report.exit, VerifyExitCode::Success);
+    }
+
+    #[derive(Default)]
+    struct CoordinatedRunner {
+        ran: Mutex<Vec<&'static str>>,
+        prefetch_1_started: (Mutex<bool>, Condvar),
+        prefetch_1_released: (Mutex<bool>, Condvar),
+        prefetch_2_started: (Mutex<bool>, Condvar),
+    }
+
+    impl CoordinatedRunner {
+        fn ran(&self) -> Vec<&'static str> {
+            self.ran.lock().unwrap().clone()
+        }
+
+        fn wait_prefetch_1_started(&self, timeout: Duration) {
+            let (lock, cvar) = &self.prefetch_1_started;
+            let started = lock.lock().unwrap();
+            let _ = cvar.wait_timeout_while(started, timeout, |v| !*v).unwrap();
+        }
+
+        fn release_prefetch_1(&self) {
+            let (lock, cvar) = &self.prefetch_1_released;
+            let mut released = lock.lock().unwrap();
+            *released = true;
+            cvar.notify_all();
+        }
+
+        fn wait_prefetch_2_started(&self, timeout: Duration) -> bool {
+            let (lock, cvar) = &self.prefetch_2_started;
+            let started = lock.lock().unwrap();
+            let (started, _) = cvar.wait_timeout_while(started, timeout, |v| !*v).unwrap();
+            *started
+        }
+    }
+
+    impl CommandRunner for CoordinatedRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.ran.lock().unwrap().push(spec.name);
+
+            match spec.name {
+                "prefetch-1" => {
+                    let (lock, cvar) = &self.prefetch_1_started;
+                    let mut started = lock.lock().unwrap();
+                    *started = true;
+                    cvar.notify_all();
+
+                    let (lock, cvar) = &self.prefetch_1_released;
+                    let released = lock.lock().unwrap();
+                    let _ = cvar
+                        .wait_timeout_while(released, Duration::from_secs(2), |v| !*v)
+                        .unwrap();
+
+                    Ok(CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    })
+                }
+                "prefetch-2" => {
+                    let (lock, cvar) = &self.prefetch_2_started;
+                    let mut started = lock.lock().unwrap();
+                    *started = true;
+                    cvar.notify_all();
+                    Ok(CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    })
+                }
+                "main-fails" => {
+                    // Ensure the background thread has started the first prefetch before we fail.
+                    self.wait_prefetch_1_started(Duration::from_secs(2));
+                    Ok(CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    })
+                }
+                _ => Ok(CommandOutput {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                }),
+            }
+        }
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_cancels_remaining_prefetch_specs_after_main_failure() {
+        let runner = std::sync::Arc::new(CoordinatedRunner::default());
+        let prefetch_specs: &[CommandSpec] = &[
+            CommandSpec {
+                name: "prefetch-1",
+                program: "fake",
+                args: &[],
+                success_exit_codes: &[0],
+                extra_env: &[],
+            },
+            CommandSpec {
+                name: "prefetch-2",
+                program: "fake",
+                args: &[],
+                success_exit_codes: &[0],
+                extra_env: &[],
+            },
+        ];
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "main-fails",
+            program: "fake",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let report = run_cargo_prefetch(
+            runner.clone(),
+            prefetch_specs,
+            main_specs,
+            &NoopProgressReporter,
+        )
+        .expect("run_cargo_prefetch should not error");
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+
+        // Let the background thread finish the first prefetch. If prefetch cancellation is
+        // effective, it must not start the second prefetch after main fails.
+        runner.release_prefetch_1();
+        let prefetch_2_started = runner.wait_prefetch_2_started(Duration::from_millis(200));
+        assert!(
+            !prefetch_2_started,
+            "prefetch-2 must not start after failure"
+        );
+
+        // Sanity: we should at least have run prefetch-1 and main-fails.
+        let ran = runner.ran();
+        assert!(ran.contains(&"prefetch-1"));
+        assert!(ran.contains(&"main-fails"));
     }
 }

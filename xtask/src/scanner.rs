@@ -1418,11 +1418,11 @@ static DIAG_PATTERNS: &[&str] = &[
 static DIAG_AC: OnceLock<AhoCorasick> = OnceLock::new();
 
 fn diag_ac() -> &'static AhoCorasick {
-    // Explicit DFA mode: 4 short ASCII patterns → tiny state count, O(1) per-character
+    // Explicit DFA mode: 6 short ASCII patterns → tiny state count, O(1) per-character
     // transitions (vs. NFA's amortised O(k) cost). The DFA fits comfortably in L1 cache.
     // Reference: Hopcroft (1971) DFA minimisation; TAOCP Vol. 3 §6.3.
     // Fallback to Auto (NFA/hybrid) if the crate rejects the DFA build (never expected
-    // for 4 small ASCII patterns, but correctness must not be sacrificed for speed).
+    // for 6 small ASCII patterns, but correctness must not be sacrificed for speed).
     DIAG_AC.get_or_init(|| {
         AhoCorasickBuilder::new()
             .kind(Some(AhoCorasickKind::DFA))
@@ -1468,14 +1468,6 @@ pub fn scan_has_diagnostic_prefix(text: &str) -> DiagnosticLevel {
                 return DiagnosticLevel::Error
             }
             DIAG_PAT_WARNING_LC | DIAG_PAT_WARNING_TC | DIAG_PAT_WARNING_BRACKET => {
-                let line = std::str::from_utf8(line_idx.extract_line(bytes, byte_start))
-                    .unwrap_or_default()
-                    .trim_start();
-                if line.starts_with("Warning: An update to ")
-                    && line.contains("inside a test was not wrapped in act(...)")
-                {
-                    continue;
-                }
                 level = DiagnosticLevel::Warning;
             }
             _ => {}
@@ -2879,18 +2871,10 @@ mod tests {
         fn test_kmp_agrees_with_starts_with_for_bool_suffix() {
             // Verify kmp_search at position 0 agrees with starts_with for
             // all common bool-suffix patterns that StemWithBoolSuffix encounters.
-            let cases: &[(&[u8], bool)] = &[
-                (b"bool)", true),
-                (b"bool,", true),
-                (b"bool ", true),
-                (b"bool\n", true),
-                (b"boolean", false), // "boolean" starts with "bool" — kmp finds it at 0!
-                (b"boo", false),
-                (b"bo", false),
-                (b"b", false),
-                (b"", false),
+            let cases: &[&[u8]] = &[
+                b"bool)", b"bool,", b"bool ", b"bool\n", b"boolean", b"boo", b"bo", b"b", b"",
             ];
-            for (haystack, _) in cases {
+            for &haystack in cases {
                 // kmp_search finds needle at pos 0 iff starts_with matches.
                 let starts = haystack.starts_with(b"bool");
                 let kmp_at_zero = kmp_search(haystack, b"bool") == Some(0);
@@ -3257,15 +3241,11 @@ mod tests {
         }
 
         #[test]
-        fn test_diagnostic_prefix_ignores_react_act_warning() {
+        fn test_diagnostic_prefix_react_act_warning_is_warning() {
             let text =
                 "Warning: An update to Configuration inside a test was not wrapped in act(...)\n";
             let level = scan_has_diagnostic_prefix(text);
-            assert_eq!(
-                level,
-                DiagnosticLevel::Clean,
-                "React act(...) test warnings are noisy and should not fail verification"
-            );
+            assert_eq!(level, DiagnosticLevel::Warning);
         }
 
         #[test]
