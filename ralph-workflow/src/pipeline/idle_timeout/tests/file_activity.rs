@@ -1,5 +1,7 @@
 use super::super::file_activity::FileActivityTracker;
-use crate::workspace::MemoryWorkspace;
+use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};
+use std::io;
+use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 #[test]
@@ -178,6 +180,117 @@ fn test_handles_missing_agent_directory_gracefully() {
             .check_for_recent_activity(&ws, Duration::from_secs(300))
             .unwrap(),
         "Missing .agent/ directory should return false, not error"
+    );
+}
+
+#[derive(Debug)]
+struct RootReadDirFailsWorkspace {
+    inner: MemoryWorkspace,
+}
+
+impl RootReadDirFailsWorkspace {
+    fn new(inner: MemoryWorkspace) -> Self {
+        Self { inner }
+    }
+}
+
+impl Workspace for RootReadDirFailsWorkspace {
+    fn root(&self) -> &Path {
+        self.inner.root()
+    }
+
+    fn read(&self, relative: &Path) -> io::Result<String> {
+        self.inner.read(relative)
+    }
+
+    fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>> {
+        self.inner.read_bytes(relative)
+    }
+
+    fn write(&self, relative: &Path, content: &str) -> io::Result<()> {
+        self.inner.write(relative, content)
+    }
+
+    fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+        self.inner.write_bytes(relative, content)
+    }
+
+    fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()> {
+        self.inner.append_bytes(relative, content)
+    }
+
+    fn exists(&self, relative: &Path) -> bool {
+        self.inner.exists(relative)
+    }
+
+    fn is_file(&self, relative: &Path) -> bool {
+        self.inner.is_file(relative)
+    }
+
+    fn is_dir(&self, relative: &Path) -> bool {
+        self.inner.is_dir(relative)
+    }
+
+    fn remove(&self, relative: &Path) -> io::Result<()> {
+        self.inner.remove(relative)
+    }
+
+    fn remove_if_exists(&self, relative: &Path) -> io::Result<()> {
+        self.inner.remove_if_exists(relative)
+    }
+
+    fn remove_dir_all(&self, relative: &Path) -> io::Result<()> {
+        self.inner.remove_dir_all(relative)
+    }
+
+    fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()> {
+        self.inner.remove_dir_all_if_exists(relative)
+    }
+
+    fn create_dir_all(&self, relative: &Path) -> io::Result<()> {
+        self.inner.create_dir_all(relative)
+    }
+
+    fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
+        if relative.as_os_str().is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "root read_dir denied",
+            ));
+        }
+        self.inner.read_dir(relative)
+    }
+
+    fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+        self.inner.rename(from, to)
+    }
+
+    fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()> {
+        self.inner.write_atomic(relative, content)
+    }
+
+    fn set_readonly(&self, relative: &Path) -> io::Result<()> {
+        self.inner.set_readonly(relative)
+    }
+
+    fn set_writable(&self, relative: &Path) -> io::Result<()> {
+        self.inner.set_writable(relative)
+    }
+}
+
+#[test]
+fn test_workspace_scan_read_dir_error_is_not_silently_ignored() {
+    // If the workspace root cannot be scanned, the tracker must return an error so
+    // the monitor can emit a warning that distinguishes "no activity" from
+    // "could not scan".
+    let tracker = FileActivityTracker::new();
+    let ws = RootReadDirFailsWorkspace::new(MemoryWorkspace::new_test());
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .is_err(),
+        "workspace scan errors should be surfaced as Err, not treated as no activity"
     );
 }
 

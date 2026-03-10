@@ -172,17 +172,48 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// still running even though the agent produces no stdout/stderr output.
     ///
     /// Default implementation: invokes `pgrep -P <pid>` on Unix platforms and
-    /// falls back to `ps -o pid= --ppid <pid>` if `pgrep` is unavailable. Returns
-    /// `false` (conservative no-op) on non-Unix.
+    /// falls back to parsing `ps` output (PID/PPID pairs) if `pgrep` is unavailable.
+    /// Returns `false` (conservative no-op) on non-Unix.
     ///
     /// Any execution error is treated as "no children" to avoid blocking the
-    /// timeout system. When detection degrades (missing command or command error),
-    /// a one-time warning is emitted to stderr so operators can spot the reduced
-    /// protection against false-positive idle kills.
+    /// timeout system. If both `pgrep` and the `ps` fallback are unavailable or
+    /// fail unexpectedly, a one-time warning is emitted to stderr so operators can
+    /// diagnose reduced protection against false-positive idle kills.
     fn has_active_child_processes(&self, parent_pid: u32) -> bool {
         #[cfg(unix)]
         {
             use std::sync::OnceLock;
+
+            fn parse_ps_pid_ppid_pairs(stdout: &str, parent_pid: u32) -> Option<bool> {
+                let mut saw_parseable_line = false;
+                for line in stdout.lines() {
+                    let mut parts = line.split_whitespace();
+                    let Some(child_pid_text) = parts.next() else {
+                        continue;
+                    };
+                    let Some(parent_pid_text) = parts.next() else {
+                        continue;
+                    };
+
+                    let Ok(_pid) = child_pid_text.parse::<u32>() else {
+                        continue;
+                    };
+                    let Ok(ppid) = parent_pid_text.parse::<u32>() else {
+                        continue;
+                    };
+
+                    saw_parseable_line = true;
+                    if ppid == parent_pid {
+                        return Some(true);
+                    }
+                }
+
+                if saw_parseable_line {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
 
             fn warn_child_process_detection_degraded() {
                 static WARNED: OnceLock<()> = OnceLock::new();
@@ -196,34 +227,41 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             let pid_str = parent_pid.to_string();
 
             // Primary: `pgrep -P <pid>`
-            match self.execute("pgrep", &["-P", &pid_str], &[], None) {
-                Ok(out) => {
-                    let has_children = !out.stdout.trim().is_empty();
-                    if !has_children {
-                        if let Some(code) = out.status.code() {
-                            // pgrep exit code 1 means "no matches" (normal).
-                            if code != 0 && code != 1 {
-                                warn_child_process_detection_degraded();
-                            }
-                        }
-                    }
-                    return has_children;
+            if let Ok(out) = self.execute("pgrep", &["-P", &pid_str], &[], None) {
+                let stdout = out.stdout.trim();
+
+                // pgrep exit codes: 0 = match, 1 = no match, 2 = error.
+                if !stdout.is_empty() {
+                    return true;
                 }
-                Err(_) => {
-                    warn_child_process_detection_degraded();
+
+                if out.status.code() == Some(1) {
+                    return false;
                 }
             }
 
-            // Fallback: `ps -o pid= --ppid <pid>`
-            if let Ok(out) = self.execute("ps", &["-o", "pid=", "--ppid", &pid_str], &[], None) {
-                if !out.status.success() {
-                    warn_child_process_detection_degraded();
+            // Fallback: parse `ps` output. Avoid GNU-only flags like `--ppid`.
+            //
+            // - BSD/macOS: `ps -ax -o pid= -o ppid=`
+            // - GNU procps: `ps -e -o pid= -o ppid=`
+            let ps_attempts: [&[&str]; 2] = [
+                &["-ax", "-o", "pid=", "-o", "ppid="],
+                &["-e", "-o", "pid=", "-o", "ppid="],
+            ];
+
+            for args in ps_attempts {
+                if let Ok(out) = self.execute("ps", args, &[], None) {
+                    if out.status.success() {
+                        if let Some(has_children) = parse_ps_pid_ppid_pairs(&out.stdout, parent_pid)
+                        {
+                            return has_children;
+                        }
+                    }
                 }
-                !out.stdout.trim().is_empty()
-            } else {
-                warn_child_process_detection_degraded();
-                false
             }
+
+            warn_child_process_detection_degraded();
+            false
         }
         #[cfg(not(unix))]
         {
@@ -327,7 +365,7 @@ mod tests {
 
         let mut results: HashMap<(String, Vec<String>), TestResult> = HashMap::new();
         results.insert(
-            ("pgrep".to_string(), vec!["-P".to_string(), pid_str.clone()]),
+            ("pgrep".to_string(), vec!["-P".to_string(), pid_str]),
             TestResult::Err {
                 kind: io::ErrorKind::NotFound,
                 message: "pgrep missing".to_string(),
@@ -337,13 +375,14 @@ mod tests {
             (
                 "ps".to_string(),
                 vec![
+                    "-ax".to_string(),
                     "-o".to_string(),
                     "pid=".to_string(),
-                    "--ppid".to_string(),
-                    pid_str,
+                    "-o".to_string(),
+                    "ppid=".to_string(),
                 ],
             ),
-            TestResult::Ok(ok_output("12345\n")),
+            TestResult::Ok(ok_output("12345 4242\n")),
         );
 
         let exec = TestExecutor::new(results);

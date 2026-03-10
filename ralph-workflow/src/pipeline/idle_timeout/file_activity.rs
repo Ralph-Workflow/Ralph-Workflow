@@ -6,6 +6,7 @@
 
 use crate::workspace::Workspace;
 use std::path::Path;
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime};
 
 fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
@@ -20,6 +21,8 @@ fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
 /// Depth 1 = workspace root subdirectory files (previous behaviour).
 /// Depth 8 = covers standard Rust workspace layouts (crate/src/module/submod/…).
 const MAX_SCAN_DEPTH: usize = 8;
+
+static WORKSPACE_SCAN_UNREADABLE_DIR_WARNED: OnceLock<()> = OnceLock::new();
 
 /// Recursively scan a directory for recently modified, non-noise files.
 ///
@@ -36,9 +39,27 @@ fn scan_dir_recursive(
     now: SystemTime,
     timeout: Duration,
     remaining_depth: usize,
+    is_root: bool,
 ) -> std::io::Result<bool> {
-    let Ok(entries) = workspace.read_dir(dir) else {
-        return Ok(false); // soft-fail: unreadable dirs are skipped
+    let entries = match workspace.read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            if is_root {
+                return Err(e);
+            }
+
+            // Subdirectories may be unreadable due to permissions or transient
+            // filesystem issues. Skipping them is fine, but we must not silently
+            // treat that as "no activity".
+            if WORKSPACE_SCAN_UNREADABLE_DIR_WARNED.set(()).is_ok() {
+                eprintln!(
+                    "Warning: workspace scan skipped unreadable directory '{}' ({e}); file-activity detection may be incomplete",
+                    dir.display()
+                );
+            }
+
+            return Ok(false);
+        }
     };
     for entry in entries {
         let path = entry.path();
@@ -57,7 +78,14 @@ fn scan_dir_recursive(
                 continue;
             }
             if remaining_depth > 0
-                && scan_dir_recursive(workspace, entry.path(), now, timeout, remaining_depth - 1)?
+                && scan_dir_recursive(
+                    workspace,
+                    entry.path(),
+                    now,
+                    timeout,
+                    remaining_depth - 1,
+                    false,
+                )?
             {
                 return Ok(true);
             }
@@ -165,7 +193,7 @@ impl FileActivityTracker {
         // and noise extensions (*.log, *.swp, *.tmp, *.bak, *~).
         // Short-circuits on first match for performance.
         // The .agent/ directory is excluded here; it is handled above.
-        if scan_dir_recursive(workspace, Path::new(""), now, timeout, MAX_SCAN_DEPTH)? {
+        if scan_dir_recursive(workspace, Path::new(""), now, timeout, MAX_SCAN_DEPTH, true)? {
             return Ok(true);
         }
 
