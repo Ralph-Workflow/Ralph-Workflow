@@ -126,7 +126,7 @@ set -euo pipefail
 repo_root={repo_root_bash}
 
 if [[ -f "$repo_root/.no_agent_commit" ]] || [[ -f "$repo_root/.agent/git-wrapper-dir.txt" ]]; then
-  echo "✋ {hook_name} blocked: agent phase protections active."
+  echo "{hook_name} blocked: agent phase protections active."
   exit 1
 fi
 
@@ -637,11 +637,37 @@ mod tests {
 
     /// Generate hook content for testing without needing a real git repo.
     /// This mirrors the logic in `install_hook` but with a provided repo root.
-    fn generate_hook_content_for_test(hook_name: &str, repo_root: &str) -> String {
+    fn generate_hook_content_for_test(
+        hook_label: &str,
+        hook_filename: &str,
+        repo_root: &str,
+    ) -> String {
         let repo_root_bash = bash_single_quote_literal(repo_root);
-        let orig_path_bash =
-            bash_single_quote_literal(&format!("{repo_root}/.git/hooks/{hook_name}.ralph.orig"));
-        make_hook_content(hook_name, &repo_root_bash, repo_root, &orig_path_bash)
+        let orig_path_bash = bash_single_quote_literal(&format!(
+            "{repo_root}/.git/hooks/{hook_filename}.ralph.orig"
+        ));
+        make_hook_content(hook_label, &repo_root_bash, repo_root, &orig_path_bash)
+    }
+
+    #[test]
+    fn test_generate_hook_content_for_test_uses_hook_filename_for_orig_path() {
+        // Production install_hook backs up the hook by hook filename (e.g. pre-commit),
+        // not by the human-readable label. The test helper must mirror that.
+        let hook_content = generate_hook_content_for_test("Commit", "pre-commit", "/tmp/test-repo");
+        assert!(
+            hook_content.contains("/tmp/test-repo/.git/hooks/pre-commit.ralph.orig"),
+            "orig hook path should use hook filename (pre-commit); got:\n{hook_content}"
+        );
+    }
+
+    #[test]
+    fn test_hook_blocking_message_is_ascii_only() {
+        // Hook scripts are used in minimal environments; keep output ASCII-only.
+        let hook_content = generate_hook_content_for_test("Commit", "pre-commit", "/tmp/test-repo");
+        assert!(
+            hook_content.is_ascii(),
+            "hook content must be ASCII-only; got:\n{hook_content}"
+        );
     }
 
     // =========================================================================
@@ -654,7 +680,7 @@ mod tests {
         // .agent/git-wrapper-dir.txt track file for defense-in-depth.
         // This ensures hooks block commits even if an agent deletes the marker
         // but the track file still exists (indicating active agent phase).
-        let hook_content = generate_hook_content_for_test("Commit", "/tmp/test-repo");
+        let hook_content = generate_hook_content_for_test("Commit", "pre-commit", "/tmp/test-repo");
         assert!(
             hook_content.contains("git-wrapper-dir.txt"),
             "hook must check track file (.agent/git-wrapper-dir.txt); got:\n{hook_content}"
@@ -665,7 +691,7 @@ mod tests {
     fn test_hook_blocks_when_only_track_file_exists() {
         // If an agent deletes the marker but the track file still exists,
         // the hook must still block the commit.
-        let hook_content = generate_hook_content_for_test("Commit", "/tmp/test-repo");
+        let hook_content = generate_hook_content_for_test("Commit", "pre-commit", "/tmp/test-repo");
         // The hook should use OR logic: marker OR track file
         assert!(
             hook_content.contains("||"),
@@ -677,7 +703,7 @@ mod tests {
     fn test_hook_blocking_message_is_generic() {
         // The blocking message should not mention only .no_agent_commit since
         // the hook now blocks on either marker or track file.
-        let hook_content = generate_hook_content_for_test("Commit", "/tmp/test-repo");
+        let hook_content = generate_hook_content_for_test("Commit", "pre-commit", "/tmp/test-repo");
         assert!(
             hook_content.contains("agent phase"),
             "hook blocking message should mention 'agent phase'; got:\n{hook_content}"
@@ -688,7 +714,8 @@ mod tests {
     fn test_commit_msg_hook_content_generated() {
         // commit-msg hook provides a second blocking layer that fires even if
         // pre-commit is somehow bypassed.
-        let hook_content = generate_hook_content_for_test("Commit message", "/tmp/test-repo");
+        let hook_content =
+            generate_hook_content_for_test("Commit message", "commit-msg", "/tmp/test-repo");
         assert!(
             hook_content.contains(HOOK_MARKER),
             "commit-msg hook must contain the Ralph marker; got:\n{hook_content}"

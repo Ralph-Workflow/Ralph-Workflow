@@ -42,10 +42,56 @@ pub struct ProtectionCheckResult {
 /// Marker file path for blocking commits during agent phase.
 const MARKER_FILE: &str = ".no_agent_commit";
 
-fn remove_if_symlink(path: &Path) {
-    if matches!(fs::symlink_metadata(path), Ok(meta) if meta.file_type().is_symlink()) {
-        let _ = fs::remove_file(path);
+fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
+    })?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+
+    let suffix = format!(
+        "ralph.tampered.{label}.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let tampered_name = format!("{}.{}", file_name.to_string_lossy(), suffix);
+    let tampered_path = parent.join(tampered_name);
+
+    match fs::rename(path, &tampered_path) {
+        Ok(()) => Ok(tampered_path),
+        Err(e) => {
+            // Best-effort fallback: if the tampered path is an empty directory, we can remove it
+            // safely without deleting user data.
+            let is_empty_dir = fs::symlink_metadata(path).ok().is_some_and(|m| m.is_dir())
+                && fs::read_dir(path)
+                    .ok()
+                    .is_some_and(|mut it| it.next().is_none());
+            if is_empty_dir {
+                fs::remove_dir(path)?;
+                Ok(path.to_path_buf())
+            } else {
+                Err(e)
+            }
+        }
     }
+}
+
+fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
+    let marker_path = repo_root.join(MARKER_FILE);
+
+    if let Ok(meta) = fs::symlink_metadata(&marker_path) {
+        let ft = meta.file_type();
+        let is_regular_file = ft.is_file() && !ft.is_symlink();
+        if !is_regular_file {
+            quarantine_path_in_place(&marker_path, "marker")?;
+        }
+    }
+
+    create_marker_in_repo_root(repo_root)
 }
 
 fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
@@ -301,6 +347,17 @@ fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::
     fs::create_dir_all(&agent_dir)?;
 
     let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+
+    // If the track file path is a directory/symlink/special file, treat it as tampering.
+    // Quarantine it so we can atomically replace it with a regular file.
+    if let Ok(meta) = fs::symlink_metadata(&track_file_path) {
+        let ft = meta.file_type();
+        let is_regular_file = ft.is_file() && !ft.is_symlink();
+        if !is_regular_file {
+            quarantine_path_in_place(&track_file_path, "track")?;
+        }
+    }
+
     let tmp_track = agent_dir.join(format!(
         ".git-wrapper-dir.tmp.{}.{}",
         std::process::id(),
@@ -668,9 +725,8 @@ pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     let repo_root = get_repo_root()?;
     helpers.wrapper_repo_root = Some(repo_root.clone());
 
-    // Self-heal: remove a malicious symlink entry and recreate safely.
-    remove_if_symlink(&repo_root.join(MARKER_FILE));
-    create_marker_in_repo_root(&repo_root)?;
+    // Self-heal: treat non-regular marker path as tampering and recover.
+    repair_marker_path_if_tampered(&repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
     #[cfg(unix)]
     set_readonly_mode_if_not_symlink(&repo_root.join(MARKER_FILE), 0o444);
@@ -738,11 +794,33 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     };
 
     let marker_path = repo_root.join(MARKER_FILE);
+    if let Ok(meta) = fs::symlink_metadata(&marker_path) {
+        let ft = meta.file_type();
+        let is_regular_file = ft.is_file() && !ft.is_symlink();
+        if !is_regular_file {
+            logger.warn(
+                ".no_agent_commit marker is not a regular file — quarantining and recreating",
+            );
+            result.tampering_detected = true;
+            result
+                .details
+                .push(".no_agent_commit marker was not a regular file — quarantined".to_string());
+            if let Err(e) = quarantine_path_in_place(&marker_path, "marker") {
+                logger.warn(&format!("Failed to quarantine marker path: {e}"));
+                result
+                    .details
+                    .push("Marker path quarantine failed".to_string());
+            }
+        }
+    }
+
     let marker_meta = fs::symlink_metadata(&marker_path).ok();
     let marker_is_symlink = marker_meta
         .as_ref()
         .is_some_and(|m| m.file_type().is_symlink());
-    let marker_exists = marker_meta.is_some() && !marker_is_symlink;
+    let marker_exists = marker_meta
+        .as_ref()
+        .is_some_and(|m| m.file_type().is_file() && !m.file_type().is_symlink());
 
     // Ensure the PATH wrapper is present and intact.
     //
@@ -750,6 +828,24 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     // We only use it if it points to a plausible temp directory AND that directory is
     // already present on PATH (meaning it was installed by Ralph).
     let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    if let Ok(meta) = fs::symlink_metadata(&track_file_path) {
+        let ft = meta.file_type();
+        let is_regular_file = ft.is_file() && !ft.is_symlink();
+        if !is_regular_file {
+            logger.warn("Git wrapper tracking path is not a regular file — quarantining");
+            result.tampering_detected = true;
+            result
+                .details
+                .push("Git wrapper tracking path was not a regular file — quarantined".to_string());
+            if let Err(e) = quarantine_path_in_place(&track_file_path, "track") {
+                logger.warn(&format!("Failed to quarantine wrapper tracking path: {e}"));
+                result
+                    .details
+                    .push("Wrapper tracking path quarantine failed".to_string());
+            }
+        }
+    }
+
     let tracked_wrapper_dir = fs::read_to_string(&track_file_path).ok().and_then(|s| {
         let p = PathBuf::from(s.trim());
         if wrapper_dir_is_safe_existing_dir(&p) && wrapper_dir_is_on_path(&p) {
@@ -1042,18 +1138,31 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
         if marker_is_symlink {
             // Never chmod through a symlink.
         } else if let Ok(meta) = fs::metadata(&marker_path) {
-            let mode = meta.permissions().mode() & 0o777;
-            if mode != 0o444 {
-                logger.warn(&format!(
-                    ".no_agent_commit permissions loosened ({mode:#o}) — restoring to 0o444"
-                ));
-                let mut perms = meta.permissions();
-                perms.set_mode(0o444);
-                let _ = fs::set_permissions(&marker_path, perms);
+            if meta.is_file() {
+                let mode = meta.permissions().mode() & 0o777;
+                if mode != 0o444 {
+                    logger.warn(&format!(
+                        ".no_agent_commit permissions loosened ({mode:#o}) — restoring to 0o444"
+                    ));
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o444);
+                    let _ = fs::set_permissions(&marker_path, perms);
+                    result.tampering_detected = true;
+                    result.details.push(format!(
+                        ".no_agent_commit permissions loosened ({mode:#o}) — restored to 0o444"
+                    ));
+                }
+            } else {
+                // A non-file marker path would bypass hook/wrapper `-f` checks.
+                // Quarantine and let the missing-marker repair path recreate a file.
+                logger.warn(".no_agent_commit marker is not a regular file — quarantining");
                 result.tampering_detected = true;
-                result.details.push(format!(
-                    ".no_agent_commit permissions loosened ({mode:#o}) — restored to 0o444"
-                ));
+                result.details.push(
+                    ".no_agent_commit marker was not a regular file — quarantined".to_string(),
+                );
+                if let Err(e) = quarantine_path_in_place(&marker_path, "marker-perms") {
+                    logger.warn(&format!("Failed to quarantine marker path: {e}"));
+                }
             }
         }
     }
@@ -1093,18 +1202,30 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 let _ = write_wrapper_track_file_atomic(&repo_root, &dir);
             }
         } else if let Ok(meta) = fs::metadata(&track_file_path) {
-            let mode = meta.permissions().mode() & 0o777;
-            if mode != 0o444 {
-                logger.warn(&format!(
-                    "Track file permissions loosened ({mode:#o}) — restoring to 0o444"
-                ));
-                let mut perms = meta.permissions();
-                perms.set_mode(0o444);
-                let _ = fs::set_permissions(&track_file_path, perms);
+            if meta.is_dir() {
+                logger.warn("Track file path is a directory — quarantining");
                 result.tampering_detected = true;
-                result.details.push(format!(
-                    "Track file permissions loosened ({mode:#o}) — restored to 0o444"
-                ));
+                result
+                    .details
+                    .push("Track file was a directory — quarantined".to_string());
+                if let Err(e) = quarantine_path_in_place(&track_file_path, "track-perms") {
+                    logger.warn(&format!("Failed to quarantine track file path: {e}"));
+                }
+            }
+            if meta.is_file() {
+                let mode = meta.permissions().mode() & 0o777;
+                if mode != 0o444 {
+                    logger.warn(&format!(
+                        "Track file permissions loosened ({mode:#o}) — restoring to 0o444"
+                    ));
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o444);
+                    let _ = fs::set_permissions(&track_file_path, perms);
+                    result.tampering_detected = true;
+                    result.details.push(format!(
+                        "Track file permissions loosened ({mode:#o}) — restored to 0o444"
+                    ));
+                }
             }
         }
     }
@@ -1609,5 +1730,77 @@ mod tests {
     #[test]
     fn test_head_oid_file_constant() {
         assert_eq!(HEAD_OID_FILE, ".agent/head-oid.txt");
+    }
+
+    #[test]
+    fn test_write_wrapper_track_file_atomic_repairs_directory_tamper() {
+        // If the wrapper track file path exists as a directory, treat it as tampering.
+        // The wrapper must recover (quarantine/remove the directory) and write a real file.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        // Create a directory at the track file path.
+        let track_dir_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        fs::create_dir_all(&track_dir_path).unwrap();
+        fs::write(track_dir_path.join("payload.txt"), "do not delete").unwrap();
+
+        let wrapper_dir = repo_root.join("some-wrapper-dir");
+        fs::create_dir_all(&wrapper_dir).unwrap();
+
+        write_wrapper_track_file_atomic(repo_root, &wrapper_dir).unwrap();
+
+        let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let meta = fs::metadata(&track_file_path).unwrap();
+        assert!(meta.is_file(), "track file path should be a file");
+        let content = fs::read_to_string(&track_file_path).unwrap();
+        assert!(
+            content.contains(&wrapper_dir.display().to_string()),
+            "track file should contain wrapper dir path; got: {content}"
+        );
+
+        // Quarantine should preserve prior directory contents by renaming in-place.
+        let agent_dir = repo_root.join(".agent");
+        let quarantined = fs::read_dir(&agent_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("git-wrapper-dir.txt.ralph.tampered.track")
+            });
+        assert!(
+            quarantined,
+            "expected quarantined track dir entry in .agent/"
+        );
+    }
+
+    #[test]
+    fn test_repair_marker_path_converts_directory_to_regular_file() {
+        // If the marker path exists as a directory, treat it as tampering and
+        // recover by quarantining it and creating a regular file marker.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+
+        let marker_path = repo_root.join(MARKER_FILE);
+        fs::create_dir_all(&marker_path).unwrap();
+
+        // Function under test: must quarantine the directory and create a file marker.
+        repair_marker_path_if_tampered(repo_root).unwrap();
+
+        let meta = fs::metadata(&marker_path).unwrap();
+        assert!(meta.is_file(), "marker path should be a regular file");
+
+        let quarantined = fs::read_dir(repo_root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".no_agent_commit.ralph.tampered.marker")
+            });
+        assert!(
+            quarantined,
+            "expected quarantined marker dir entry in repo root"
+        );
     }
 }
