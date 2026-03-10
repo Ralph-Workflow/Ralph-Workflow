@@ -29,6 +29,15 @@ pub struct MonitorConfig {
     pub check_interval: Duration,
     /// Kill configuration for process termination.
     pub kill_config: KillConfig,
+    /// Number of consecutive idle observations required before killing the process.
+    ///
+    /// Requiring more than one confirmation prevents false kills when the agent is
+    /// transiently quiet (e.g., waiting for an LLM API response, running a slow
+    /// compilation, or transitioning between work phases). Each additional
+    /// confirmation adds one `check_interval` of grace time before enforcement.
+    ///
+    /// Default: 2 (one extra `check_interval` of confirmation before kill).
+    pub required_idle_confirmations: u32,
 }
 
 impl Default for MonitorConfig {
@@ -37,6 +46,7 @@ impl Default for MonitorConfig {
             timeout: Duration::from_secs(super::IDLE_TIMEOUT_SECS),
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
+            required_idle_confirmations: 2,
         }
     }
 }
@@ -109,6 +119,7 @@ pub fn monitor_idle_timeout(
             timeout,
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
+            ..Default::default()
         },
     )
 }
@@ -132,6 +143,7 @@ pub fn monitor_idle_timeout_with_interval(
             timeout,
             check_interval,
             kill_config: DEFAULT_KILL_CONFIG,
+            ..Default::default()
         },
     )
 }
@@ -160,9 +172,11 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let timeout = config.timeout;
     let check_interval = config.check_interval;
     let kill_config = config.kill_config;
+    let required_idle_confirmations = config.required_idle_confirmations;
 
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
     let mut last_file_activity: Option<std::time::Instant> = None;
+    let mut consecutive_idle_count: u32 = 0;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -265,6 +279,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         }
 
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+            consecutive_idle_count = 0;
             continue;
         }
 
@@ -282,6 +297,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             // false positive where the same file falls outside the window on the next
             // check because check_interval has elapsed.
             if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
+                consecutive_idle_count = 0;
                 eprintln!(
                     "Continuing monitoring: file activity was confirmed within the last timeout window"
                 );
@@ -309,6 +325,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
             match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), file_window) {
                 Ok(true) => {
+                    consecutive_idle_count = 0;
                     last_file_activity = Some(std::time::Instant::now());
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
@@ -330,7 +347,19 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         // file scan. This closes the race window between "scan said no activity" and
         // "kill is sent".
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
+            consecutive_idle_count = 0;
             eprintln!("Output activity detected after file scan; continuing monitoring");
+            continue;
+        }
+
+        // Require multiple consecutive idle observations before killing to avoid
+        // false positives during transient quiet periods (LLM API waits, slow
+        // compilations, transitions between work phases, etc.).
+        consecutive_idle_count += 1;
+        if consecutive_idle_count < required_idle_confirmations {
+            eprintln!(
+                "Idle confirmed {consecutive_idle_count}/{required_idle_confirmations} times; waiting for next check interval before kill"
+            );
             continue;
         }
 

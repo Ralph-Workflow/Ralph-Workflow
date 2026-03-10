@@ -91,6 +91,7 @@ fn monitor_releases_child_lock_between_sigterm_checks_so_caller_can_access_child
                         Duration::from_secs(5),
                         Duration::from_secs(1),
                     ),
+                    required_idle_confirmations: 2,
                 },
             )
         }
@@ -169,6 +170,7 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
                         Duration::from_secs(2),
                         Duration::from_millis(20),
                     ),
+                    required_idle_confirmations: 2,
                 },
             )
         }
@@ -249,6 +251,7 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
                 Duration::from_millis(50),
                 Duration::from_millis(20),
             ),
+            required_idle_confirmations: 2,
         },
     );
 
@@ -294,6 +297,7 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
                         Duration::from_secs(2),
                         Duration::from_millis(20),
                     ),
+                    required_idle_confirmations: 2,
                 },
             )
         }
@@ -359,6 +363,7 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
                         Duration::from_secs(2),
                         Duration::from_millis(20),
                     ),
+                    required_idle_confirmations: 2,
                 },
             )
         }
@@ -419,6 +424,7 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
                         Duration::from_millis(50),
                         Duration::from_millis(10),
                     ),
+                    required_idle_confirmations: 2,
                 },
             );
             let _ = tx.send(result);

@@ -234,6 +234,7 @@ fn active_ai_file_updates_prevent_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -303,6 +304,7 @@ fn log_only_activity_does_not_prevent_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -359,6 +361,7 @@ fn no_output_and_no_ai_files_times_out() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -439,6 +442,7 @@ fn continuous_file_updates_prevent_timeout_over_extended_period() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -513,6 +517,7 @@ fn mixed_output_and_file_activity_prevents_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -592,6 +597,7 @@ fn workspace_source_file_update_prevents_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -664,6 +670,7 @@ fn only_excluded_workspace_files_still_produce_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -726,6 +733,7 @@ fn deep_nested_source_file_prevents_timeout() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -805,6 +813,7 @@ fn confirmed_file_activity_prevents_kill_on_subsequent_check() {
                     // exercising many iterations within the sleep window.
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
@@ -872,6 +881,7 @@ fn output_activity_during_file_scan_prevents_kill() {
                     timeout,
                     check_interval: Duration::ZERO,
                     kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
                 },
             )
         });
