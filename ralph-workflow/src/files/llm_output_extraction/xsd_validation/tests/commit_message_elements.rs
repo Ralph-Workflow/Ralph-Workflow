@@ -116,6 +116,25 @@ fn test_validate_xml_files_empty_list_is_rejected() {
     );
 }
 
+#[test]
+fn test_validate_xml_multiple_files_blocks_is_rejected() {
+    let xml = r"<ralph-commit>
+<ralph-subject>feat: add feature</ralph-subject>
+<ralph-files>
+<ralph-file>src/foo.rs</ralph-file>
+</ralph-files>
+<ralph-files>
+<ralph-file>src/bar.rs</ralph-file>
+</ralph-files>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files appears more than once"
+    );
+}
+
 // ============================================================================
 // Tests for XsdErrorType::description()
 // ============================================================================

@@ -44,15 +44,64 @@ pub fn git_add_specific_in_repo(repo_root: &Path, files: &[&str]) -> io::Result<
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
+    // Strict selective staging: start from a clean index that matches HEAD, so we don't
+    // accidentally commit pre-existing staged changes when a file list is provided.
+    match repo.head() {
+        Ok(head) => {
+            let head_tree = head.peel_to_tree().map_err(|e| git2_to_io_error(&e))?;
+            index
+                .read_tree(&head_tree)
+                .map_err(|e| git2_to_io_error(&e))?;
+        }
+        Err(ref e) if e.code() == git2::ErrorCode::UnbornBranch => {
+            index.clear().map_err(|e| git2_to_io_error(&e))?;
+        }
+        Err(e) => return Err(git2_to_io_error(&e)),
+    }
+
     for path_str in files {
         let path = std::path::Path::new(path_str);
         if is_internal_agent_artifact(path) {
             continue;
         }
-        // Try to add the path (works for new/modified files).
-        // If that fails (e.g. the file was deleted), remove it from the index instead.
-        if index.add_path(path).is_err() {
-            let _ = index.remove_path(path);
+
+        match index.add_path(path) {
+            Ok(()) => {}
+            Err(ref e) if e.code() == git2::ErrorCode::NotFound => {
+                // NotFound can mean either:
+                // - the path was deleted (tracked in HEAD, absent in working tree)
+                // - the path is invalid / doesn't exist and is not tracked
+                let tracked_in_head = index.get_path(path, 0).is_some();
+                if !tracked_in_head {
+                    let io_err = git2_to_io_error(e);
+                    return Err(io::Error::new(
+                        io_err.kind(),
+                        format!(
+                            "path '{}' not found for selective staging: {io_err}",
+                            path.display()
+                        ),
+                    ));
+                }
+
+                // Treat as deletion: attempt to stage deletion by removing the path from index.
+                index.remove_path(path).map_err(|remove_err| {
+                    let io_err = git2_to_io_error(&remove_err);
+                    io::Error::new(
+                        io_err.kind(),
+                        format!(
+                            "failed to stage deletion for '{}': {io_err}",
+                            path.display()
+                        ),
+                    )
+                })?;
+            }
+            Err(e) => {
+                let io_err = git2_to_io_error(&e);
+                return Err(io::Error::new(
+                    io_err.kind(),
+                    format!("failed to stage path '{}': {io_err}", path.display()),
+                ));
+            }
         }
     }
 

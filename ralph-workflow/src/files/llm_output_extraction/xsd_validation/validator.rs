@@ -110,6 +110,7 @@ pub fn validate_xml_against_xsd(
     let mut body_footer: Option<String> = None;
     let mut skip_reason: Option<String> = None;
     let mut files: Vec<String> = Vec::new();
+    let mut files_seen = false;
 
     loop {
         buf.clear();
@@ -306,6 +307,10 @@ pub fn validate_xml_against_xsd(
                         skip_reason = Some(read_text_until_end(&mut reader, b"ralph-skip")?);
                     }
                     b"ralph-files" => {
+                        if files_seen {
+                            return Err(duplicate_element_error("ralph-files", "ralph-commit"));
+                        }
+                        files_seen = true;
                         if skip_reason.is_some() {
                             return Err(XsdValidationError {
                                 error_type: XsdErrorType::UnexpectedElement,
@@ -321,35 +326,26 @@ pub fn validate_xml_against_xsd(
                         loop {
                             buf.clear();
                             match reader.read_event_into(&mut buf) {
-                                Ok(Event::Start(ref e))
-                                    if e.name().as_ref() == b"ralph-file" =>
-                                {
-                                    let text =
-                                        read_text_until_end(&mut reader, b"ralph-file")?;
+                                Ok(Event::Start(ref e)) if e.name().as_ref() == b"ralph-file" => {
+                                    let text = read_text_until_end(&mut reader, b"ralph-file")?;
                                     let trimmed = text.trim().to_string();
                                     if !trimmed.is_empty() {
                                         file_list.push(trimmed);
                                     }
                                 }
-                                Ok(Event::End(ref e))
-                                    if e.name().as_ref() == b"ralph-files" =>
-                                {
+                                Ok(Event::End(ref e)) if e.name().as_ref() == b"ralph-files" => {
                                     break;
                                 }
                                 Ok(Event::Text(ref t))
-                                    if t.unescape()
-                                        .unwrap_or_default()
-                                        .trim()
-                                        .is_empty() => {}
+                                    if t.unescape().unwrap_or_default().trim().is_empty() => {}
                                 Ok(Event::Eof) => {
                                     return Err(XsdValidationError {
                                         error_type: XsdErrorType::MalformedXml,
                                         element_path: "ralph-commit/ralph-files".to_string(),
                                         expected: "closing </ralph-files> tag".to_string(),
                                         found: "end of content without closing tag".to_string(),
-                                        suggestion:
-                                            "Add </ralph-files> to close the file list."
-                                                .to_string(),
+                                        suggestion: "Add </ralph-files> to close the file list."
+                                            .to_string(),
                                         example: Some(EXAMPLE_COMMIT_XML.into()),
                                     });
                                 }

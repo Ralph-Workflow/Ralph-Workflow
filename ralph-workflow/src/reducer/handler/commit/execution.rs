@@ -38,6 +38,7 @@ impl MainEffectHandler {
     /// # Errors
     ///
     /// - `GitAddAllFailed` - Failed to stage changes
+    /// - `GitAddSpecificFailed` - Failed to stage specific paths
     pub(in crate::reducer::handler) fn create_commit(
         ctx: &PhaseContext<'_>,
         message: String,
@@ -54,7 +55,7 @@ impl MainEffectHandler {
         } else {
             let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
             git_add_specific_in_repo(ctx.repo_root, &file_refs).map_err(
-                |err: std::io::Error| ErrorEvent::GitAddAllFailed {
+                |err: std::io::Error| ErrorEvent::GitAddSpecificFailed {
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 },
             )?;
