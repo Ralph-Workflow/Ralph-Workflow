@@ -120,6 +120,22 @@ fn test_validate_xml_files_empty_list_is_rejected() {
 }
 
 #[test]
+fn test_validate_xml_files_self_closing_is_rejected() {
+    // Regression: quick_xml emits Event::Empty for <ralph-files/>, which must be treated as
+    // a present-but-empty container and therefore invalid.
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: add feature</ralph-subject>
+ <ralph-files/>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files is self-closing (empty)"
+    );
+}
+
+#[test]
 fn test_validate_xml_multiple_files_blocks_is_rejected() {
     let xml = r"<ralph-commit>
 <ralph-subject>feat: add feature</ralph-subject>
@@ -267,6 +283,38 @@ fn test_validate_xml_excluded_files_empty_list_is_rejected() {
     assert!(
         result.is_err(),
         "Expected Err when ralph-excluded-files has no children"
+    );
+}
+
+#[test]
+fn test_validate_xml_excluded_files_self_closing_is_rejected() {
+    // Regression: quick_xml emits Event::Empty for <ralph-excluded-files/>, which must not be
+    // silently ignored (it would incorrectly behave as if the element was absent).
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: test</ralph-subject>
+ <ralph-excluded-files/>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-excluded-files is self-closing (empty)"
+    );
+}
+
+#[test]
+fn test_validate_xml_excluded_file_self_closing_is_rejected() {
+    let xml = r#"<ralph-commit>
+ <ralph-subject>feat: test</ralph-subject>
+ <ralph-excluded-files>
+ <ralph-excluded-file reason=\"deferred\"/>
+ </ralph-excluded-files>
+ </ralph-commit>"#;
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when excluded-file is self-closing"
     );
 }
 

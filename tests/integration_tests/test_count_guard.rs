@@ -495,6 +495,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("workflows/commit_tests.rs"),
     },
     SourceFile {
+        path: "workflows/commit_residuals.rs",
+        contents: include_str!("workflows/commit_residuals.rs"),
+    },
+    SourceFile {
         path: "workflows/config/mod.rs",
         contents: include_str!("workflows/config/mod.rs"),
     },

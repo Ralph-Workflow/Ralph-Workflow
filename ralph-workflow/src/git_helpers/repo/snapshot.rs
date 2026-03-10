@@ -44,31 +44,32 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
             return None;
         }
 
-        let mut out = String::with_capacity(s.len().saturating_sub(2));
+        // Git porcelain uses C-style quoting. Octal escapes represent BYTES, not Unicode codepoints.
+        let mut out: Vec<u8> = Vec::with_capacity(bytes.len().saturating_sub(2));
         let mut i = 1usize;
         while i + 1 < bytes.len() {
             let b = bytes[i];
             if b != b'\\' {
-                out.push(b as char);
+                out.push(b);
                 i += 1;
                 continue;
             }
 
-            // Escape sequence
             i += 1;
             if i + 1 > bytes.len() {
                 break;
             }
+
             let esc = bytes[i];
             match esc {
-                b'\\' => out.push('\\'),
-                b'"' => out.push('"'),
-                b'n' => out.push('\n'),
-                b't' => out.push('\t'),
-                b'r' => out.push('\r'),
-                b'b' => out.push('\x08'),
-                b'f' => out.push('\x0C'),
-                b'v' => out.push('\x0B'),
+                b'\\' => out.push(b'\\'),
+                b'"' => out.push(b'"'),
+                b'n' => out.push(b'\n'),
+                b't' => out.push(b'\t'),
+                b'r' => out.push(b'\r'),
+                b'b' => out.push(0x08),
+                b'f' => out.push(0x0C),
+                b'v' => out.push(0x0B),
                 b'0'..=b'7' => {
                     let mut val: u32 = u32::from(esc - b'0');
                     let mut consumed = 1usize;
@@ -84,18 +85,17 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
                         val = (val * 8) + u32::from(nb - b'0');
                         consumed += 1;
                     }
-                    // Advance i by the extra digits consumed.
                     i += consumed - 1;
-                    if let Some(ch) = char::from_u32(val) {
-                        out.push(ch);
+                    if let Ok(b) = u8::try_from(val) {
+                        out.push(b);
                     }
                 }
-                other => out.push(other as char),
+                other => out.push(other),
             }
             i += 1;
         }
 
-        Some(out)
+        String::from_utf8(out).ok()
     }
 
     fn parse_path_component(raw: &str) -> String {
@@ -156,7 +156,13 @@ fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
     let mut result = String::new();
     for entry in statuses.iter() {
         let status = entry.status();
-        let path = entry.path().unwrap_or("").to_string();
+        let Some(path) = entry.path() else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "non-UTF8 path encountered in git status; cannot safely track residual files",
+            ));
+        };
+        let path = path.to_string();
 
         // Convert git2 status to porcelain format.
         // Untracked files are represented as "??" in porcelain v1.
@@ -239,5 +245,36 @@ mod parse_tests {
                 "new name.rs".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn test_unquote_c_style_decodes_utf8_octal_bytes() {
+        // Git porcelain uses C-style quoting with octal escapes for non-ASCII bytes.
+        // "caf\303\251.txt" represents the UTF-8 bytes for "café.txt".
+        let snapshot = "?? \"caf\\303\\251.txt\"\n";
+        let paths = parse_git_status_paths(snapshot);
+        assert_eq!(paths, vec!["café.txt".to_string()]);
+    }
+}
+
+#[cfg(all(test, not(target_os = "macos")))]
+mod snapshot_tests {
+    use super::git_snapshot_in_repo;
+
+    #[test]
+    fn test_git_snapshot_in_repo_errors_on_non_utf8_paths() {
+        use std::io;
+        use std::os::unix::ffi::OsStrExt;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let _repo = git2::Repository::init(root).expect("init repo");
+
+        // Create a filename with bytes that are not valid UTF-8.
+        let name = std::ffi::OsStr::from_bytes(&[0xFF, 0xFE, b'.', b't', b'x', b't']);
+        std::fs::write(root.join(name), "x\n").expect("write non-utf8 file");
+
+        let err = git_snapshot_in_repo(root).err().expect("expected error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 }

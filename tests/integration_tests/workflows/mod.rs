@@ -32,6 +32,7 @@ pub mod analysis;
 pub mod backup;
 pub mod baseline;
 pub mod cleanup;
+pub mod commit_residuals;
 pub mod commit_tests;
 pub mod config;
 pub mod config_test;

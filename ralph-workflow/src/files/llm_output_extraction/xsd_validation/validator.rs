@@ -70,6 +70,17 @@ pub fn validate_xml_against_xsd(
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-commit" => break,
+            Ok(Event::Empty(e)) if e.name().as_ref() == b"ralph-commit" => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "either <ralph-subject> or <ralph-skip>".to_string(),
+                    found: "<ralph-commit/> (empty root element)".to_string(),
+                    suggestion:
+                        "Use <ralph-commit>...</ralph-commit> and include either <ralph-subject> or <ralph-skip>.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
             Ok(Event::Start(e)) => {
                 let name_bytes = e.name();
                 let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
@@ -78,6 +89,18 @@ pub fn validate_xml_against_xsd(
                     element_path: "ralph-commit".to_string(),
                     expected: "<ralph-commit> as root element".to_string(),
                     found: format!("<{tag_name}> (wrong root element)"),
+                    suggestion: "Use <ralph-commit> as the root element.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Empty(e)) => {
+                let name_bytes = e.name();
+                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "<ralph-commit> as root element".to_string(),
+                    found: format!("<{tag_name}/> (wrong root element)"),
                     suggestion: "Use <ralph-commit> as the root element.".to_string(),
                     example: Some(EXAMPLE_COMMIT_XML.into()),
                 });
@@ -357,6 +380,57 @@ pub fn validate_xml_against_xsd(
                     }
                 }
             }
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"ralph-subject" => {
+                    return Err(XsdValidationError {
+                            error_type: XsdErrorType::InvalidContent,
+                            element_path: "ralph-subject".to_string(),
+                            expected: "non-empty subject line".to_string(),
+                            found: "<ralph-subject/> (empty subject)".to_string(),
+                            suggestion:
+                                "Provide a conventional commit subject inside <ralph-subject> like 'feat: add feature'.".to_string(),
+                            example: Some(EXAMPLE_COMMIT_XML.into()),
+                        });
+                }
+                b"ralph-skip" => {
+                    return Err(XsdValidationError {
+                            error_type: XsdErrorType::InvalidContent,
+                            element_path: "ralph-skip".to_string(),
+                            expected: "non-empty skip reason".to_string(),
+                            found: "<ralph-skip/> (empty skip reason)".to_string(),
+                            suggestion:
+                                "Provide a reason inside <ralph-skip> explaining why no commit is needed.".to_string(),
+                            example: Some(
+                                "<ralph-commit><ralph-skip>No changes found</ralph-skip></ralph-commit>".into(),
+                            ),
+                        });
+                }
+                b"ralph-files" => {
+                    return Err(XsdValidationError {
+                            error_type: XsdErrorType::InvalidContent,
+                            element_path: "ralph-commit/ralph-files".to_string(),
+                            expected: "at least one ralph-file child element".to_string(),
+                            found: "<ralph-files/>".to_string(),
+                            suggestion:
+                                "Either add one or more <ralph-file>path</ralph-file> entries or omit <ralph-files> entirely.".to_string(),
+                            example: Some(EXAMPLE_COMMIT_XML.into()),
+                        });
+                }
+                b"ralph-excluded-files" => {
+                    return Err(XsdValidationError {
+                            error_type: XsdErrorType::InvalidContent,
+                            element_path: "ralph-commit/ralph-excluded-files".to_string(),
+                            expected: "at least one ralph-excluded-file child element".to_string(),
+                            found: "<ralph-excluded-files/>".to_string(),
+                            suggestion:
+                                "Either add one or more <ralph-excluded-file reason=\"...\">path</ralph-excluded-file> entries or omit <ralph-excluded-files> entirely.".to_string(),
+                            example: Some(EXAMPLE_COMMIT_XML.into()),
+                        });
+                }
+                other => {
+                    return Err(unexpected_element_error(other, &VALID_TAGS, "ralph-commit"));
+                }
+            },
             Ok(Event::Text(e)) => {
                 let text = unescape_text(&e, "ralph-commit")?;
                 let trimmed = text.trim();
@@ -499,6 +573,18 @@ fn parse_files_section(
                     file_list.push(trimmed);
                 }
             }
+            Ok(Event::Empty(ref e)) if e.name().as_ref() == b"ralph-file" => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::InvalidContent,
+                    element_path: "ralph-commit/ralph-files/ralph-file".to_string(),
+                    expected: "non-empty file path".to_string(),
+                    found: "<ralph-file/> (empty file path)".to_string(),
+                    suggestion:
+                        "Provide a repo-relative path inside <ralph-file>path</ralph-file>."
+                            .to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
             Ok(Event::Start(ref e)) => {
                 let other = e.name().as_ref().to_vec();
                 let other_name = String::from_utf8_lossy(&other);
@@ -508,6 +594,19 @@ fn parse_files_section(
                     element_path: format!("ralph-commit/ralph-files/{other_name}"),
                     expected: "only <ralph-file> child elements".to_string(),
                     found: format!("<{other_name}>"),
+                    suggestion: "Inside <ralph-files>, include only one or more <ralph-file>path</ralph-file> elements. Remove any other child elements."
+                        .to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Empty(ref e)) => {
+                let other = e.name().as_ref().to_vec();
+                let other_name = String::from_utf8_lossy(&other);
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::UnexpectedElement,
+                    element_path: format!("ralph-commit/ralph-files/{other_name}"),
+                    expected: "only <ralph-file> child elements".to_string(),
+                    found: format!("<{other_name}/>"),
                     suggestion: "Inside <ralph-files>, include only one or more <ralph-file>path</ralph-file> elements. Remove any other child elements."
                         .to_string(),
                     example: Some(EXAMPLE_COMMIT_XML.into()),
@@ -639,6 +738,17 @@ fn parse_excluded_files_section(
                     entry_list.push(ExcludedFile { path, reason });
                 }
             }
+            Ok(Event::Empty(ref e)) if e.name().as_ref() == b"ralph-excluded-file" => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::InvalidContent,
+                    element_path:
+                        "ralph-commit/ralph-excluded-files/ralph-excluded-file".to_string(),
+                    expected: "non-empty repo-relative path text".to_string(),
+                    found: "<ralph-excluded-file .../> (empty path)".to_string(),
+                    suggestion: "Provide a path: <ralph-excluded-file reason=\"deferred\">path</ralph-excluded-file>.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
             Ok(Event::Start(ref e)) => {
                 let other = e.name().as_ref().to_vec();
                 let other_name = String::from_utf8_lossy(&other);
@@ -648,6 +758,19 @@ fn parse_excluded_files_section(
                     element_path: format!("ralph-commit/ralph-excluded-files/{other_name}"),
                     expected: "only <ralph-excluded-file> child elements".to_string(),
                     found: format!("<{other_name}>"),
+                    suggestion: "Inside <ralph-excluded-files>, include only <ralph-excluded-file reason=\"...\">path</ralph-excluded-file> elements."
+                        .to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Empty(ref e)) => {
+                let other = e.name().as_ref().to_vec();
+                let other_name = String::from_utf8_lossy(&other);
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::UnexpectedElement,
+                    element_path: format!("ralph-commit/ralph-excluded-files/{other_name}"),
+                    expected: "only <ralph-excluded-file> child elements".to_string(),
+                    found: format!("<{other_name}/>"),
                     suggestion: "Inside <ralph-excluded-files>, include only <ralph-excluded-file reason=\"...\">path</ralph-excluded-file> elements."
                         .to_string(),
                     example: Some(EXAMPLE_COMMIT_XML.into()),

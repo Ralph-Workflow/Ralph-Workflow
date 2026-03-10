@@ -78,6 +78,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_validated_outcome: None,
             commit_xml_archived: false,
             commit_selected_files: vec![],
+            commit_excluded_files: vec![],
             ..state
         },
         CommitEvent::DiffPrepared {
@@ -108,6 +109,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_validated_outcome: None,
             commit_xml_archived: false,
             commit_selected_files: vec![],
+            commit_excluded_files: vec![],
             prompt_inputs: state.prompt_inputs.with_commit_cleared(),
             ..state
         },
@@ -226,6 +228,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                         commit_diff_content_id_sha256: None,
                         // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
                         commit_residual_files: vec![],
+                        commit_excluded_files: vec![],
                         prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                         metrics: state.metrics.increment_commits_created_total(),
                         pending_push_commit: pending_push,
@@ -252,6 +255,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_selected_files: vec![],
                     commit_residual_files: vec![],
                     commit_is_second_pass: false,
+                    commit_excluded_files: vec![],
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -284,6 +288,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_diff_content_id_sha256: None,
                     // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
                     commit_residual_files: vec![],
+                    commit_excluded_files: vec![],
                     prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                     metrics: state.metrics.increment_commits_created_total(),
                     pending_push_commit: pending_push,
@@ -312,6 +317,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 // determine whether to emit CheckResidualFiles before SaveCheckpoint.
                 // They are cleared by ResidualFilesNone / ResidualFilesFound { pass: 2 }.
                 commit_residual_files: vec![],
+                commit_excluded_files: vec![],
                 prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                 agent_chain,
                 continuation,
@@ -374,6 +380,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_validated_outcome: None,
             commit_xml_archived: false,
             commit_selected_files: vec![],
+            commit_excluded_files: vec![],
+            commit_is_second_pass: false,
             ..state
         },
         CommitEvent::Skipped { .. } => {
@@ -405,6 +413,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
                     commit_selected_files: vec![],
+                    commit_excluded_files: vec![],
+                    commit_is_second_pass: false,
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -454,6 +464,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_validated_outcome: None,
                 commit_xml_archived: false,
                 commit_selected_files: vec![],
+                commit_excluded_files: vec![],
+                commit_is_second_pass: false,
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
@@ -493,6 +505,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_validated_outcome: None,
                 commit_xml_archived: false,
                 commit_selected_files: vec![],
+                commit_excluded_files: vec![],
+                commit_is_second_pass: false,
                 prompt_inputs: state.prompt_inputs.with_commit_cleared(),
                 // Ensure termination cannot proceed until commit finishes.
                 pre_termination_commit_checked: false,
@@ -518,6 +532,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
                     commit_selected_files: vec![],
+                    commit_excluded_files: vec![],
                     prompt_inputs: state.prompt_inputs.with_commit_cleared(),
                     // commit_residual_files stays empty at pass 1 (not carry-forward yet)
                     ..state
@@ -527,6 +542,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 let base = PipelineState {
                     commit_is_second_pass: false,
                     commit_selected_files: vec![],
+                    commit_excluded_files: vec![],
                     commit_residual_files: files,
                     ..state
                 };
@@ -581,6 +597,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             let base = PipelineState {
                 commit_is_second_pass: false,
                 commit_selected_files: vec![],
+                commit_excluded_files: vec![],
                 commit_residual_files: vec![],
                 ..state
             };
@@ -626,5 +643,97 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reduce_commit_event;
+    use crate::reducer::event::CommitEvent;
+    use crate::reducer::state::pipeline::{ExcludedFile, ExcludedFileReason};
+    use crate::reducer::state::PipelineState;
+
+    fn excluded(path: &str) -> ExcludedFile {
+        ExcludedFile {
+            path: path.to_string(),
+            reason: ExcludedFileReason::Deferred,
+        }
+    }
+
+    #[test]
+    fn test_generation_started_clears_commit_excluded_files() {
+        let state = PipelineState {
+            commit_excluded_files: vec![excluded("src/leftover.txt")],
+            ..PipelineState::initial(1, 0)
+        };
+
+        let next = reduce_commit_event(state, CommitEvent::GenerationStarted);
+        assert!(
+            next.commit_excluded_files.is_empty(),
+            "commit_excluded_files must be cleared on commit phase reset"
+        );
+    }
+
+    #[test]
+    fn test_diff_invalidated_clears_commit_excluded_files() {
+        let state = PipelineState {
+            commit_excluded_files: vec![excluded("src/leftover.txt")],
+            ..PipelineState::initial(1, 0)
+        };
+
+        let next = reduce_commit_event(
+            state,
+            CommitEvent::DiffInvalidated {
+                reason: "missing diff".to_string(),
+            },
+        );
+        assert!(next.commit_excluded_files.is_empty());
+    }
+
+    #[test]
+    fn test_generation_failed_clears_second_pass_and_excluded_files() {
+        let state = PipelineState {
+            commit_is_second_pass: true,
+            commit_excluded_files: vec![excluded("src/leftover.txt")],
+            ..PipelineState::initial(1, 0)
+        };
+
+        let next = reduce_commit_event(
+            state,
+            CommitEvent::GenerationFailed {
+                reason: "nope".to_string(),
+            },
+        );
+        assert!(!next.commit_is_second_pass);
+        assert!(next.commit_excluded_files.is_empty());
+    }
+
+    #[test]
+    fn test_skipped_clears_second_pass_and_excluded_files() {
+        let state = PipelineState {
+            commit_is_second_pass: true,
+            commit_excluded_files: vec![excluded("src/leftover.txt")],
+            ..PipelineState::initial(1, 0)
+        };
+
+        let next = reduce_commit_event(
+            state,
+            CommitEvent::Skipped {
+                reason: "skip".to_string(),
+            },
+        );
+        assert!(!next.commit_is_second_pass);
+        assert!(next.commit_excluded_files.is_empty());
+    }
+
+    #[test]
+    fn test_residual_files_none_clears_excluded_files() {
+        let state = PipelineState {
+            commit_excluded_files: vec![excluded("src/leftover.txt")],
+            ..PipelineState::initial(1, 0)
+        };
+
+        let next = reduce_commit_event(state, CommitEvent::ResidualFilesNone);
+        assert!(next.commit_excluded_files.is_empty());
     }
 }

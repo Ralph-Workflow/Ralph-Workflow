@@ -401,6 +401,62 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
 }
 
 #[test]
+fn test_commit_xml_validated_excluded_files_propagate_to_create_commit_effect() {
+    // Verify excluded-files metadata survives reduction and is attached to Effect::CreateCommit
+    // for audit/observability.
+    use crate::reducer::state::pipeline::{ExcludedFile, ExcludedFileReason};
+    use crate::reducer::state::AgentChainState;
+
+    let excluded_files = vec![ExcludedFile {
+        path: ".agent/tmp/trace.log".to_string(),
+        reason: ExcludedFileReason::InternalIgnore,
+    }];
+
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_xml_validated(
+            "feat: x".to_string(),
+            vec![],
+            excluded_files.clone(),
+            1,
+        ),
+    );
+    assert_eq!(state.commit_excluded_files, excluded_files);
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_message_generated("feat: x".to_string(), 1),
+    );
+    state = reduce(state, PipelineEvent::commit_xml_archived(1));
+
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit {
+            excluded_files: got,
+            ..
+        } => {
+            assert_eq!(got, excluded_files);
+        }
+        _ => panic!("expected CreateCommit effect, got {effect:?}"),
+    }
+}
+
+#[test]
 fn test_commit_generation_started_clears_selected_files() {
     let mut state = PipelineState {
         phase: PipelinePhase::CommitMessage,

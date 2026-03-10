@@ -11,6 +11,8 @@
 use std::io;
 use std::path::Path;
 
+use crate::git_helpers::git2_to_io_error;
+
 /// Approved path prefixes that may be added to `.git/info/exclude`.
 ///
 /// Only agent-internal artifact directories are permitted. User-owned files are
@@ -69,7 +71,8 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
         return Ok(());
     }
 
-    let git_dir = repo_root.join(".git");
+    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    let git_dir = repo.path();
     let info_dir = git_dir.join("info");
     let exclude_path = info_dir.join("exclude");
 
@@ -115,17 +118,46 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup_fake_git_repo() -> TempDir {
+    fn setup_git_repo() -> TempDir {
         let dir = tempfile::tempdir().expect("tempdir");
-        fs::create_dir_all(dir.path().join(".git/info")).expect("create .git/info");
+        let _repo = git2::Repository::init(dir.path()).expect("init repo");
         dir
+    }
+
+    #[test]
+    fn test_resolves_gitdir_when_dot_git_is_file() {
+        // Worktrees and some git setups use a `.git` *file* that points at the real gitdir.
+        // ensure_local_excludes must resolve the actual gitdir, not assume `.git/` is a directory.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        // Initialize a real repo so libgit2 can discover it.
+        let _repo = git2::Repository::init(root).expect("init repo");
+
+        // Move `.git/` aside and replace it with a `.git` file pointing to the real dir.
+        let real_gitdir = root.join(".git-real");
+        fs::rename(root.join(".git"), &real_gitdir).expect("move gitdir");
+        fs::write(root.join(".git"), "gitdir: .git-real\n").expect("write .git file");
+
+        ensure_local_excludes(root, &[".agent/tmp/test.xml"]).unwrap();
+
+        let resolved_exclude = real_gitdir.join("info").join("exclude");
+        assert!(
+            resolved_exclude.exists(),
+            "exclude must be written in real gitdir"
+        );
+        let content = fs::read_to_string(&resolved_exclude).unwrap();
+        assert!(content.contains(".agent/tmp/test.xml"));
+
+        // The synthetic `.git` file must not be treated as a directory.
+        assert!(!root.join(".git").join("info").join("exclude").exists());
     }
 
     #[test]
     fn test_does_not_add_broad_agent_prefix_pattern() {
         // Safety regression test: catch-all `.agent/` patterns are too broad and can
         // mask important agent state from `git status`.
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -142,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_adds_approved_pattern_to_new_file() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -157,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_does_not_add_unapproved_pattern() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -175,7 +207,7 @@ mod tests {
 
     #[test]
     fn test_does_not_duplicate_existing_pattern() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -194,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_appends_to_existing_file() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -217,10 +249,13 @@ mod tests {
 
     #[test]
     fn test_creates_info_dir_if_missing() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = setup_git_repo();
         let root = dir.path();
-        // Create .git but NOT .git/info
-        fs::create_dir_all(root.join(".git")).expect("create .git");
+        // Remove `.git/info` to simulate missing directory.
+        let info_dir = root.join(".git").join("info");
+        if info_dir.exists() {
+            fs::remove_dir_all(&info_dir).expect("remove .git/info");
+        }
 
         ensure_local_excludes(root, &[".agent/tmp/test.xml"]).unwrap();
 
@@ -232,22 +267,29 @@ mod tests {
 
     #[test]
     fn test_empty_patterns_is_noop() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
+        let before = if exclude.exists() {
+            fs::read_to_string(&exclude).unwrap()
+        } else {
+            String::new()
+        };
+
         ensure_local_excludes(root, &[]).unwrap();
 
-        // File should not be created.
-        assert!(
-            !exclude.exists(),
-            "No file should be created for empty input"
-        );
+        let after = if exclude.exists() {
+            fs::read_to_string(&exclude).unwrap()
+        } else {
+            String::new()
+        };
+        assert_eq!(after, before, "empty input must not mutate exclude file");
     }
 
     #[test]
     fn test_mixed_approved_and_unapproved_only_adds_approved() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 
@@ -275,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_rejects_patterns_with_newlines_to_prevent_injection() {
-        let repo = setup_fake_git_repo();
+        let repo = setup_git_repo();
         let root = repo.path();
         let exclude = root.join(".git/info/exclude");
 

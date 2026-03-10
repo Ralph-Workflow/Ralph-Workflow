@@ -207,12 +207,21 @@ If you determine there are NO actual changes to commit, respond with:
             }
 
             Effect::CheckResidualFiles { pass } => {
-                // Mock: always report clean (no residual files) by default.
-                // Tests that need residuals can override by injecting events manually.
                 self.captured_effects
                     .borrow_mut()
                     .push(Effect::CheckResidualFiles { pass });
-                let event = PipelineEvent::residual_files_none();
+                let configured = match pass {
+                    1 => self.residual_files_pass_1.clone(),
+                    2 => self.residual_files_pass_2.clone(),
+                    _ => None,
+                };
+
+                let event = match configured {
+                    Some(files) if !files.is_empty() => {
+                        PipelineEvent::residual_files_found(files, pass)
+                    }
+                    _ => PipelineEvent::residual_files_none(),
+                };
                 self.captured_events.borrow_mut().push(event.clone());
                 Ok(EffectResult::event(event))
             }

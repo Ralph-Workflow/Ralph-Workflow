@@ -128,7 +128,7 @@ impl MockEffectHandler {
                         .to_string()
                 });
 
-                let (message, skip_reason, files, _excluded_files, detail) =
+                let (message, skip_reason, files, excluded_files, detail) =
                     try_extract_xml_commit_with_trace(&xml);
 
                 let event = skip_reason.map_or_else(
@@ -136,7 +136,12 @@ impl MockEffectHandler {
                         message.map_or_else(
                             || PipelineEvent::commit_xml_validation_failed(detail, attempt),
                             |message| {
-                                PipelineEvent::commit_xml_validated(message, files, vec![], attempt)
+                                PipelineEvent::commit_xml_validated(
+                                    message,
+                                    files,
+                                    excluded_files,
+                                    attempt,
+                                )
                             },
                         )
                     },
@@ -216,6 +221,7 @@ impl MockEffectHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reducer::event::CommitEvent;
 
     #[test]
     fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
@@ -228,5 +234,30 @@ mod tests {
             mapped.is_none(),
             "CheckCommitDiff should be handled by the workspace-backed execute path"
         );
+    }
+
+    #[test]
+    fn test_validate_commit_xml_propagates_excluded_files_metadata() {
+        let state = crate::reducer::state::PipelineState::initial(1, 0);
+        let handler = MockEffectHandler::new(state).with_commit_message_xml(
+            r#"<ralph-commit>
+<ralph-subject>feat: mock</ralph-subject>
+<ralph-excluded-files>
+  <ralph-excluded-file reason="deferred">src/leftover.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#,
+        );
+
+        let (event, _ui) = handler
+            .handle_commit_effect(Effect::ValidateCommitXml)
+            .expect("ValidateCommitXml should be handled");
+
+        match event {
+            PipelineEvent::Commit(CommitEvent::CommitXmlValidated { excluded_files, .. }) => {
+                assert_eq!(excluded_files.len(), 1);
+                assert_eq!(excluded_files[0].path, "src/leftover.rs");
+            }
+            other => panic!("expected CommitXmlValidated event, got {other:?}"),
+        }
     }
 }

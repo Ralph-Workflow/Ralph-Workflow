@@ -66,6 +66,13 @@ pub struct MockEffectHandler {
     /// Mock outcome for `CheckUncommittedChangesBeforeTermination`.
     pub(super) pre_termination_snapshot: PreTerminationSnapshotMock,
 
+    /// Optional mock residual file outputs by pass.
+    ///
+    /// When set, `Effect::CheckResidualFiles { pass }` returns `ResidualFilesFound`
+    /// with the configured paths (when non-empty) instead of always reporting clean.
+    pub(super) residual_files_pass_1: Option<Vec<String>>,
+    pub(super) residual_files_pass_2: Option<Vec<String>>,
+
     /// When true, the next call to `execute()` will panic.
     ///
     /// This supports integration tests that verify panic paths do not hang.
@@ -114,6 +121,8 @@ impl MockEffectHandler {
             staged_diff_contents: VecDeque::new(),
             simulate_commit_message_xml: None,
             pre_termination_snapshot: PreTerminationSnapshotMock::Clean,
+            residual_files_pass_1: None,
+            residual_files_pass_2: None,
             panic_on_next_execute: false,
             replay_prompt_keys: None,
         }
@@ -204,6 +213,25 @@ impl MockEffectHandler {
     #[must_use]
     pub const fn with_dirty_pre_termination_snapshot(mut self, file_count: usize) -> Self {
         self.pre_termination_snapshot = PreTerminationSnapshotMock::Dirty { file_count };
+        self
+    }
+
+    /// Configure residual file results for a specific commit pass.
+    ///
+    /// `pass` is 1 for the first selective-commit residual check, 2 for the automatic
+    /// second-pass residual check.
+    #[must_use]
+    pub fn with_residual_files_for_pass<I, S>(mut self, pass: u8, files: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let files: Vec<String> = files.into_iter().map(Into::into).collect();
+        match pass {
+            1 => self.residual_files_pass_1 = Some(files),
+            2 => self.residual_files_pass_2 = Some(files),
+            _ => {}
+        }
         self
     }
 

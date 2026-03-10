@@ -260,8 +260,7 @@ pub enum Effect {
         files: Vec<String>,
         /// Files excluded from this commit with their reasons.
         ///
-        /// `InternalIgnore` entries are added to `.git/info/exclude` so agent
-        /// artifacts do not reappear as dirty files in subsequent passes.
+        /// Audit/observability only — must not change commit execution semantics.
         /// Defaults to empty for backward compatibility with old checkpoints.
         #[serde(default)]
         excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
