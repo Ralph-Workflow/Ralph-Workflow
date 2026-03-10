@@ -129,7 +129,8 @@ pub use start_commit::{
     save_start_commit, save_start_commit_with_workspace, StartPoint,
 };
 pub use wrapper::{
-    cleanup_agent_phase_silent, cleanup_orphaned_marker, disable_git_wrapper, end_agent_phase,
+    capture_head_oid, cleanup_agent_phase_silent, cleanup_orphaned_marker,
+    detect_unauthorized_commit, disable_git_wrapper, end_agent_phase,
     ensure_agent_phase_protections, start_agent_phase, GitHelpers, ProtectionCheckResult,
 };
 

@@ -6,10 +6,10 @@
 use ralph_workflow::git_helpers::get_hooks_dir;
 use ralph_workflow::git_helpers::hooks::HOOK_MARKER;
 use ralph_workflow::git_helpers::{
-    self, cleanup_orphaned_marker, disable_git_wrapper, end_agent_phase,
-    ensure_agent_phase_protections, git_snapshot, git_snapshot_in_repo, hooks,
-    hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered, start_agent_phase, uninstall_hooks,
-    GitHelpers,
+    self, capture_head_oid, cleanup_orphaned_marker, detect_unauthorized_commit,
+    disable_git_wrapper, end_agent_phase, ensure_agent_phase_protections, git_snapshot,
+    git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered,
+    start_agent_phase, uninstall_hooks, GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -1682,6 +1682,364 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
             assert!(
                 hooks_dir.join(hook_name).exists(),
                 "{hook_name} must be created"
+            );
+        }
+    });
+}
+
+// =========================================================================
+// Hook dual-check tests (marker + track file)
+// =========================================================================
+
+#[test]
+#[serial]
+fn test_hook_blocks_when_only_track_file_exists() {
+    // Defense-in-depth: if an agent deletes the marker but the track file remains,
+    // the hook must still block commits.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        // Create the track file (simulates active agent phase).
+        let agent_dir = dir.path().join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::write(agent_dir.join("git-wrapper-dir.txt"), "/tmp/fake-wrapper\n").unwrap();
+
+        // Ensure NO marker exists.
+        let marker = dir.path().join(".no_agent_commit");
+        assert!(!marker.exists(), "precondition: marker must not exist");
+
+        // The hook should still block because the track file exists.
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("pre-commit");
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}{stderr}");
+
+        assert_ne!(
+            output.status.code(),
+            Some(0),
+            "hook should block when only track file exists; output: {combined}"
+        );
+        assert!(
+            combined.to_lowercase().contains("blocked"),
+            "output should mention 'blocked'; got: {combined}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_hook_passes_when_neither_marker_nor_track_file() {
+    // When neither marker nor track file exists, the hook should pass.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        // Ensure NO marker and NO track file exist.
+        let marker = dir.path().join(".no_agent_commit");
+        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        assert!(!marker.exists(), "precondition: marker must not exist");
+        assert!(
+            !track_file.exists(),
+            "precondition: track file must not exist"
+        );
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("pre-commit");
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available");
+
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "hook should pass when neither marker nor track file exists"
+        );
+    });
+}
+
+// =========================================================================
+// HEAD OID comparison system tests
+// =========================================================================
+
+#[test]
+#[serial]
+fn test_start_agent_phase_captures_head_oid() {
+    // After start_agent_phase, .agent/head-oid.txt should exist with the current HEAD OID.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Create an initial commit so HEAD exists.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write("init.txt", "init").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("init.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let head_oid_path = dir.path().join(".agent/head-oid.txt");
+        assert!(
+            head_oid_path.exists(),
+            "head-oid.txt must be created by start_agent_phase"
+        );
+
+        let stored_oid = fs::read_to_string(&head_oid_path).unwrap();
+        assert!(
+            !stored_oid.trim().is_empty(),
+            "head-oid.txt must contain a non-empty OID"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_detect_unauthorized_commit_detects_head_change() {
+    // When HEAD changes after the OID was captured, detect_unauthorized_commit must return true.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Create an initial commit.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write("file1.txt", "content1").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file1.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit1", &tree, &[])
+            .unwrap();
+
+        // Capture current HEAD OID.
+        capture_head_oid(dir.path());
+
+        // No change yet — should not detect unauthorized commit.
+        assert!(
+            !detect_unauthorized_commit(dir.path()),
+            "should not detect unauthorized commit when HEAD hasn't changed"
+        );
+
+        // Create a second commit (simulating unauthorized commit by agent).
+        fs::write("file2.txt", "content2").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("file2.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "unauthorized", &tree, &[&parent])
+            .unwrap();
+
+        // Now detect_unauthorized_commit should return true.
+        assert!(
+            detect_unauthorized_commit(dir.path()),
+            "must detect unauthorized commit when HEAD changes"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_end_agent_phase_removes_head_oid_file() {
+    // end_agent_phase should clean up .agent/head-oid.txt.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Create initial commit.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write("init.txt", "init").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("init.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let head_oid_path = dir.path().join(".agent/head-oid.txt");
+        assert!(
+            head_oid_path.exists(),
+            "precondition: head-oid.txt must exist"
+        );
+
+        end_agent_phase();
+
+        assert!(
+            !head_oid_path.exists(),
+            "head-oid.txt must be removed by end_agent_phase"
+        );
+
+        // Cleanup remaining
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+// =========================================================================
+// Track file permission enforcement tests
+// =========================================================================
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_track_file_permissions() {
+    // If an agent loosens track file permissions from 0o444 to 0o644,
+    // ensure_agent_phase_protections must restore them to 0o444.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        assert!(track_file.exists(), "precondition: track file must exist");
+
+        // Verify initial permissions are 0o444.
+        let mode = fs::metadata(&track_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o444, "precondition: track file should be 0o444");
+
+        // Simulate agent loosening permissions.
+        let mut perms = fs::metadata(&track_file).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&track_file, perms).unwrap();
+
+        let mode = fs::metadata(&track_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o644,
+            "precondition: track file must have loosened perms"
+        );
+
+        let result = ensure_agent_phase_protections(&logger);
+
+        let mode = fs::metadata(&track_file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "track file permissions must be restored to 0o444"
+        );
+        assert!(
+            result.tampering_detected,
+            "should report tampering when track file permissions loosened"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+// =========================================================================
+// Cleanup completeness tests
+// =========================================================================
+
+#[test]
+#[serial]
+fn test_finalize_cleanup_leaves_no_artifacts() {
+    // After end_agent_phase + disable_git_wrapper + uninstall_hooks,
+    // ALL protection artifacts must be gone.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        let repo = git2::Repository::init(".").unwrap();
+
+        // Create initial commit so HEAD exists for head-oid capture.
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write("init.txt", "init").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("init.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        // Verify artifacts exist.
+        assert!(dir.path().join(".no_agent_commit").exists());
+        assert!(dir.path().join(".agent/git-wrapper-dir.txt").exists());
+        assert!(dir.path().join(".agent/head-oid.txt").exists());
+
+        // Perform finalize-style cleanup.
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+
+        // Assert all artifacts are gone.
+        assert!(
+            !dir.path().join(".no_agent_commit").exists(),
+            "marker must be removed"
+        );
+        assert!(
+            !dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            "track file must be removed"
+        );
+        assert!(
+            !dir.path().join(".agent/head-oid.txt").exists(),
+            "head-oid.txt must be removed"
+        );
+
+        // Hooks must not contain HOOK_MARKER.
+        let hooks_dir = get_hooks_dir().unwrap();
+        for &hook_name in RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            if hook_path.exists() {
+                let content = fs::read_to_string(&hook_path).unwrap();
+                assert!(
+                    !content.contains(HOOK_MARKER),
+                    "{hook_name} must not contain HOOK_MARKER after cleanup"
+                );
+            }
+        }
+
+        // No .ralph.orig files should exist.
+        for &hook_name in RALPH_HOOK_NAMES {
+            let orig_path = hooks_dir.join(format!("{hook_name}.ralph.orig"));
+            assert!(
+                !orig_path.exists(),
+                "{hook_name}.ralph.orig should not exist after cleanup"
             );
         }
     });

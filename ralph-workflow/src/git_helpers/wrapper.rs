@@ -24,6 +24,7 @@ use which::which;
 const WRAPPER_DIR_TRACK_FILE: &str = ".agent/git-wrapper-dir.txt";
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
 const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
+const HEAD_OID_FILE: &str = ".agent/head-oid.txt";
 
 /// Result of checking and self-healing agent-phase protections.
 ///
@@ -592,6 +593,11 @@ pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     }
     install_hooks()?;
     enable_git_wrapper(helpers)?;
+
+    // Capture HEAD OID baseline for unauthorized commit detection.
+    if let Ok(repo_root) = get_repo_root() {
+        capture_head_oid(&repo_root);
+    }
     Ok(())
 }
 
@@ -612,6 +618,9 @@ pub fn end_agent_phase() {
         }
     }
     let _ = fs::remove_file(marker_path);
+
+    // Clean up HEAD OID tracking file.
+    remove_head_oid_file(&repo_root);
 }
 
 /// Verify and restore agent-phase commit protections before each agent invocation.
@@ -969,6 +978,39 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     #[cfg(unix)]
     super::hooks::enforce_hook_permissions(logger);
 
+    // Verify/restore track file permissions (read-only 0o444).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&track_file_path) {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o444 {
+                logger.warn(&format!(
+                    "Track file permissions loosened ({mode:#o}) — restoring to 0o444"
+                ));
+                let mut perms = meta.permissions();
+                perms.set_mode(0o444);
+                let _ = fs::set_permissions(&track_file_path, perms);
+                result.tampering_detected = true;
+                result.details.push(format!(
+                    "Track file permissions loosened ({mode:#o}) — restored to 0o444"
+                ));
+            }
+        }
+    }
+
+    // Detect unauthorized commits by comparing HEAD OID against baseline.
+    if detect_unauthorized_commit(&repo_root) {
+        logger.warn("CRITICAL: HEAD OID changed — unauthorized commit detected!");
+        result.tampering_detected = true;
+        result
+            .details
+            .push("HEAD OID changed since last check — unauthorized commit detected".to_string());
+        // Update stored OID to current HEAD so Ralph's own subsequent commits
+        // don't trigger false positives.
+        capture_head_oid(&repo_root);
+    }
+
     result
 }
 
@@ -992,6 +1034,11 @@ fn cleanup_git_wrapper_dir_silent() {
 
 /// Best-effort cleanup for unexpected exits (Ctrl+C, early-return, panics).
 pub fn cleanup_agent_phase_silent() {
+    // Remove HEAD OID file before end_agent_phase (which also removes it,
+    // but we do it here explicitly for the silent cleanup path).
+    if let Ok(repo_root) = crate::git_helpers::get_repo_root() {
+        remove_head_oid_file(&repo_root);
+    }
     end_agent_phase();
     cleanup_git_wrapper_dir_silent();
     uninstall_hooks_silent();
@@ -1040,6 +1087,88 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Capture the current HEAD OID and write it to `.agent/head-oid.txt`.
+///
+/// This is called at agent-phase start and after each Ralph-orchestrated commit
+/// to establish the baseline for unauthorized commit detection.
+pub fn capture_head_oid(repo_root: &Path) {
+    let Ok(head_oid) = crate::git_helpers::get_current_head_oid() else {
+        return; // No HEAD yet (empty repo) — nothing to capture
+    };
+    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+
+    // Ensure .agent dir exists
+    let agent_dir = repo_root.join(".agent");
+    let _ = fs::create_dir_all(&agent_dir);
+
+    // Make writable if it already exists (file is 0o444)
+    #[cfg(unix)]
+    if head_oid_path.exists() {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&head_oid_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o200);
+            let _ = fs::set_permissions(&head_oid_path, perms);
+        }
+    }
+
+    if let Ok(mut f) = File::create(&head_oid_path) {
+        let _ = f.write_all(head_oid.as_bytes());
+        let _ = f.write_all(b"\n");
+    }
+
+    // Make read-only (0o444) like the marker
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&head_oid_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(0o444);
+            let _ = fs::set_permissions(&head_oid_path, perms);
+        }
+    }
+}
+
+/// Detect unauthorized commits by comparing current HEAD against stored OID.
+///
+/// Returns `true` if HEAD has changed (indicating an unauthorized commit),
+/// `false` if HEAD matches or comparison is not possible.
+#[must_use]
+pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
+    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    let Ok(stored_oid) = fs::read_to_string(&head_oid_path) else {
+        return false; // No stored OID — cannot compare
+    };
+    let stored_oid = stored_oid.trim();
+    if stored_oid.is_empty() {
+        return false;
+    }
+
+    let Ok(current_oid) = crate::git_helpers::get_current_head_oid() else {
+        return false; // Cannot determine current HEAD
+    };
+
+    current_oid.trim() != stored_oid
+}
+
+/// Remove the head-oid tracking file, making it writable first if needed.
+fn remove_head_oid_file(repo_root: &Path) {
+    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    if !head_oid_path.exists() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&head_oid_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o200);
+            let _ = fs::set_permissions(&head_oid_path, perms);
+        }
+    }
+    let _ = fs::remove_file(&head_oid_path);
 }
 
 // ============================================================================
@@ -1306,5 +1435,30 @@ mod tests {
             content.contains("command") && content.contains("PATH"),
             "wrapper must document that `command` builtin still routes through PATH wrapper; got:\n{content}"
         );
+    }
+
+    // =========================================================================
+    // HEAD OID comparison tests
+    // =========================================================================
+
+    #[test]
+    fn test_detect_unauthorized_commit_no_stored_oid() {
+        // When no head-oid.txt exists, detection should return false (no panic).
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!detect_unauthorized_commit(tmp.path()));
+    }
+
+    #[test]
+    fn test_detect_unauthorized_commit_empty_stored_oid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let agent_dir = tmp.path().join(".agent");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::write(agent_dir.join("head-oid.txt"), "").unwrap();
+        assert!(!detect_unauthorized_commit(tmp.path()));
+    }
+
+    #[test]
+    fn test_head_oid_file_constant() {
+        assert_eq!(HEAD_OID_FILE, ".agent/head-oid.txt");
     }
 }

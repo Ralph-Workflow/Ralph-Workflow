@@ -69,6 +69,24 @@ Git hooks (pre-commit, pre-push, pre-merge-commit) and a PATH wrapper are instal
 
 **Do not attempt to bypass these hooks.** If you need a commit, write your changes to files and let Ralph's commit effect handle it.
 
+### FORBIDDEN MCP/TOOL USAGE (CRITICAL)
+
+**MCP git tools are equivalent to CLI commands and are EQUALLY PROHIBITED.** MCP servers bypass the PATH wrapper, but hooks and HEAD OID comparison will still detect and block unauthorized commits.
+
+You MUST NEVER use these MCP tools:
+
+- `mcp__git__git_commit` — commits are orchestrated ONLY by Ralph
+- `mcp__git__git_add` — staging is orchestrated ONLY by Ralph
+- `mcp__git__git_push` — pushes are orchestrated ONLY by Ralph
+- `mcp__git__git_reset` — destroys history or uncommitted work
+- `mcp__git__git_checkout` (with `--` flag) — destroys uncommitted changes
+- `mcp__git__git_stash` (except list) — can overwrite or destroy work
+- `mcp__git__git_merge` — Ralph controls branching strategy
+- `mcp__git__git_init` — creating git repositories is forbidden
+- `mcp__git__git_create_branch` — Ralph controls branching strategy
+
+**The prohibition applies to ALL mechanisms of invoking git operations:** CLI commands, MCP tools, direct library calls, subprocess spawning with absolute paths.
+
 ### ADDITIONAL PROHIBITED ACTIONS — HOOKS AND MARKERS (CRITICAL)
 
 **Deleting or modifying git hooks or the `.no_agent_commit` marker IS equivalent to an unauthorized commit. It WILL be detected and Ralph will treat it as a security violation.**
@@ -110,7 +128,7 @@ You MUST NEVER:
 4. The PATH wrapper unsets `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_EXEC_PATH` when the marker exists.
 5. The PATH wrapper script is read-only (0o555). Overwriting it requires `chmod` first, which is logged.
 6. ALL tampering is detected, logged as a security violation, and reported. The agent run will be flagged as compromised.
-7. Even if a commit somehow succeeds, Ralph detects the unauthorized commit and the pipeline FAILS. There is no successful bypass outcome.
+7. Even if a commit somehow succeeds via MCP tools or absolute paths, Ralph detects the unauthorized commit by comparing HEAD OID before and after each agent run. The pipeline FAILS and the agent run is flagged as compromised.
 8. Every bypass attempt wastes tokens from your execution budget with ZERO chance of success.
 
 ---

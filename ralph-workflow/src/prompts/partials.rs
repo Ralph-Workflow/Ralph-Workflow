@@ -343,4 +343,42 @@ mod tests {
             "partial should mention pre-merge-commit hook"
         );
     }
+
+    #[test]
+    fn test_no_git_commit_partial_prohibits_mcp_git_tools() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("mcp__git__git_commit"),
+            "partial should explicitly prohibit mcp__git__git_commit"
+        );
+        assert!(
+            no_git.contains("mcp__git__git_add"),
+            "partial should explicitly prohibit mcp__git__git_add"
+        );
+        assert!(
+            no_git.contains("mcp__git__git_push"),
+            "partial should explicitly prohibit mcp__git__git_push"
+        );
+        assert!(
+            no_git.contains("MCP") || no_git.contains("mcp"),
+            "partial should mention MCP tools"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_mentions_head_oid_detection() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("HEAD OID"),
+            "partial should mention HEAD OID comparison for unauthorized commit detection"
+        );
+    }
 }

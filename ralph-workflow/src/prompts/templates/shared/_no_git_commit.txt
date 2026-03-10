@@ -34,6 +34,18 @@ ONLY these git commands are allowed (read-only, non-destructive):
 - `git ls-files` — list tracked files
 - `git describe` — describe a commit
 
+FORBIDDEN MCP/TOOL USAGE — THESE ARE EQUIVALENT TO CLI COMMANDS:
+- mcp__git__git_commit — commits are orchestrated ONLY by Ralph
+- mcp__git__git_add — staging is orchestrated ONLY by Ralph
+- mcp__git__git_push — pushes are orchestrated ONLY by Ralph
+- mcp__git__git_reset — destroys history or uncommitted work
+- mcp__git__git_checkout (with -- flag) — destroys uncommitted changes
+- mcp__git__git_stash (except list) — can overwrite or destroy work
+- mcp__git__git_merge — Ralph controls branching strategy
+- mcp__git__git_init — creating git repositories is forbidden
+- mcp__git__git_create_branch — Ralph controls branching strategy
+The prohibition applies to ALL mechanisms: CLI commands, MCP tools, direct library calls, subprocess spawning.
+
 FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
 - Delete or modify files in `.git/hooks/` — hooks are reinstalled and recreated before EVERY agent run
 - Delete `.no_agent_commit` — this marker is read-only and recreated before EVERY agent run
@@ -54,7 +66,7 @@ WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET:
 4. The PATH wrapper unsets GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH when the marker exists. Setting env vars is pointless.
 5. The PATH wrapper script is read-only (0o555). Overwriting it requires chmod first, which wastes time and is logged.
 6. ALL tampering is detected, logged as a security violation, and reported. The agent run will be flagged as compromised.
-7. Even if a commit somehow succeeds, Ralph detects the unauthorized commit and the pipeline FAILS. There is no successful bypass outcome.
+7. Even if a commit somehow succeeds via MCP tools or absolute paths, Ralph detects the unauthorized commit by comparing HEAD OID before and after each agent run. The pipeline FAILS and the agent run is flagged as compromised.
 8. Every bypass attempt wastes tokens from your execution budget with ZERO chance of success. The correct action is always: write your file changes and let Ralph commit them.
 
 Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. ALL bypass attempts are logged and reported to the user as security violations. The agent's task will be considered FAILED. Hooks are reinstalled before EVERY agent run, so deletion is pointless and wastes your execution budget. Write your file changes and let Ralph commit them.
