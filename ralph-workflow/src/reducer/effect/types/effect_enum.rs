@@ -258,10 +258,26 @@ pub enum Effect {
         /// Files to selectively stage. Empty means stage all changed files.
         #[serde(default)]
         files: Vec<String>,
+        /// Files excluded from this commit with their reasons.
+        ///
+        /// Audit/observability only — must not change commit execution semantics.
+        /// Defaults to empty for backward compatibility with old checkpoints.
+        #[serde(default)]
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
     },
 
     SkipCommit {
         reason: String,
+    },
+
+    /// After a selective commit pass, check whether any staged/unstaged files remain.
+    ///
+    /// Emits `ResidualFilesFound { files, pass }` if the working tree is still dirty,
+    /// or `ResidualFilesNone` when it is clean. `pass` identifies which commit pass just
+    /// completed (1 = first selective commit, 2 = second/final pass).
+    CheckResidualFiles {
+        /// Which commit pass just completed (1-indexed).
+        pass: u8,
     },
 
     /// Run `git status --porcelain` before termination; route to commit phase if changes exist (single-task).

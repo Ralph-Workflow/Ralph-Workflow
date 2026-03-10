@@ -95,6 +95,7 @@ pub fn generate_commit_message(
         CommitExtractionOutcome::Valid {
             extracted: result,
             files: _,
+            ..
         } => result,
         CommitExtractionOutcome::InvalidXml(detail)
         | CommitExtractionOutcome::MissingFile(detail) => anyhow::bail!(detail),
@@ -228,6 +229,7 @@ pub fn generate_commit_message_with_chain(
             CommitExtractionOutcome::Valid {
                 extracted,
                 files: _,
+                ..
             } => {
                 archive_xml_file_with_workspace(
                     workspace,

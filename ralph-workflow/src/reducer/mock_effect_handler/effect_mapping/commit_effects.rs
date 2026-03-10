@@ -72,7 +72,9 @@ impl MockEffectHandler {
                 // Compute the prompt key the same way the real handler does,
                 // using Normal retry mode for Normal/SameAgentRetry modes.
                 let retry_mode = match prompt_mode {
-                    PromptMode::XsdRetry => RetryMode::Xsd { count: 1 },
+                    PromptMode::XsdRetry => RetryMode::Xsd {
+                        count: self.state.continuation.xsd_retry_count,
+                    },
                     _ => RetryMode::Normal,
                 };
                 let scope_key = PromptScopeKey::for_commit(
@@ -128,13 +130,21 @@ impl MockEffectHandler {
                         .to_string()
                 });
 
-                let (message, skip_reason, files, detail) = try_extract_xml_commit_with_trace(&xml);
+                let (message, skip_reason, files, excluded_files, detail) =
+                    try_extract_xml_commit_with_trace(&xml);
 
                 let event = skip_reason.map_or_else(
                     || {
                         message.map_or_else(
                             || PipelineEvent::commit_xml_validation_failed(detail, attempt),
-                            |message| PipelineEvent::commit_xml_validated(message, files, attempt),
+                            |message| {
+                                PipelineEvent::commit_xml_validated(
+                                    message,
+                                    files,
+                                    excluded_files,
+                                    attempt,
+                                )
+                            },
                         )
                     },
                     PipelineEvent::commit_skipped,
@@ -194,7 +204,11 @@ impl MockEffectHandler {
                 Some((PipelineEvent::commit_xml_archived(attempt), vec![]))
             }
 
-            Effect::CreateCommit { message, files: _ } => Some((
+            Effect::CreateCommit {
+                message,
+                files: _,
+                excluded_files: _,
+            } => Some((
                 PipelineEvent::commit_created("mock_commit_hash_abc123".to_string(), message),
                 vec![],
             )),
@@ -209,6 +223,7 @@ impl MockEffectHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reducer::event::CommitEvent;
 
     #[test]
     fn test_effect_mapping_does_not_handle_check_commit_diff_to_avoid_inconsistent_content_id() {
@@ -221,5 +236,61 @@ mod tests {
             mapped.is_none(),
             "CheckCommitDiff should be handled by the workspace-backed execute path"
         );
+    }
+
+    #[test]
+    fn test_validate_commit_xml_propagates_excluded_files_metadata() {
+        let state = crate::reducer::state::PipelineState::initial(1, 0);
+        let handler = MockEffectHandler::new(state).with_commit_message_xml(
+            r#"<ralph-commit>
+<ralph-subject>feat: mock</ralph-subject>
+<ralph-excluded-files>
+  <ralph-excluded-file reason="deferred">src/leftover.rs</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#,
+        );
+
+        let (event, _ui) = handler
+            .handle_commit_effect(Effect::ValidateCommitXml)
+            .expect("ValidateCommitXml should be handled");
+
+        match event {
+            PipelineEvent::Commit(CommitEvent::CommitXmlValidated { excluded_files, .. }) => {
+                assert_eq!(excluded_files.len(), 1);
+                assert_eq!(excluded_files[0].path, "src/leftover.rs");
+            }
+            other => panic!("expected CommitXmlValidated event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
+        let mut state = crate::reducer::state::PipelineState::initial(1, 0);
+        state.continuation.xsd_retry_count = 3;
+
+        let handler = MockEffectHandler::new(state);
+        let (_event, ui) = handler
+            .handle_commit_effect(Effect::PrepareCommitPrompt {
+                prompt_mode: PromptMode::XsdRetry,
+            })
+            .expect("PrepareCommitPrompt should be handled");
+
+        let prompt_key = ui
+            .iter()
+            .find_map(|e| match e {
+                UIEvent::PromptReplayHit { key, .. } => Some(key.clone()),
+                _ => None,
+            })
+            .expect("Expected PromptReplayHit UI event");
+
+        let expected_key = PromptScopeKey::for_commit(
+            handler.state.iteration,
+            1,
+            RetryMode::Xsd { count: 3 },
+            handler.state.recovery_epoch,
+        )
+        .to_string();
+
+        assert_eq!(prompt_key, expected_key);
     }
 }

@@ -581,7 +581,14 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-install",
         program: "npm",
-        args: &["--prefix", "ralph-gui/ui", "ci", "--no-audit", "--no-fund"],
+        args: &[
+            "--prefix",
+            "ralph-gui/ui",
+            "ci",
+            "--no-audit",
+            "--no-fund",
+            "--include=dev",
+        ],
         success_exit_codes: &[0],
         // Force devDependencies installation even if the outer environment sets
         // NODE_ENV=production or npm_config_production=true.
@@ -1217,20 +1224,24 @@ mod tests {
     }
 
     #[test]
-    fn test_ralph_gui_frontend_install_forces_dev_dependencies() {
+    fn test_ralph_gui_frontend_install_forces_and_includes_dev_dependencies() {
         // In CI environments NODE_ENV can be set to "production", causing `npm ci`
         // to omit devDependencies and breaking eslint/vitest checks.
-        // The install step must explicitly force dev deps to be installed.
-        let install = REQUIRED_CHECKS
+        // The install step must both include dev deps and force production mode off.
+        let spec = REQUIRED_CHECKS
             .iter()
             .find(|c| c.name == "ralph-gui-frontend-install")
             .expect("REQUIRED_CHECKS must include ralph-gui-frontend-install");
 
         let mut env = std::collections::HashMap::new();
-        for (k, v) in install.extra_env {
+        for (k, v) in spec.extra_env {
             env.insert(*k, *v);
         }
 
+        assert!(
+            spec.args.contains(&"--include=dev"),
+            "frontend install must include dev dependencies to run eslint/vitest"
+        );
         assert_eq!(env.get("NODE_ENV"), Some(&"development"));
         assert_eq!(env.get("NPM_CONFIG_PRODUCTION"), Some(&"false"));
         assert_eq!(env.get("npm_config_production"), Some(&"false"));
@@ -1425,31 +1436,47 @@ mod tests {
 
     // ── TDD tests for cargo prefetch ────────────────────────────────────────
 
-    #[derive(Debug, Default)]
-    struct DelayByNameRunner {
+    #[derive(Debug)]
+    struct BlockingByNameRunner {
         outputs: Mutex<HashMap<&'static str, CommandOutput>>,
-        delays: HashMap<&'static str, Duration>,
         ran: Mutex<Vec<&'static str>>,
+        prefetch_started: std::sync::mpsc::Sender<()>,
+        prefetch_release: Mutex<std::sync::mpsc::Receiver<()>>,
     }
 
-    impl DelayByNameRunner {
+    impl BlockingByNameRunner {
+        fn new(
+            prefetch_started: std::sync::mpsc::Sender<()>,
+            prefetch_release: std::sync::mpsc::Receiver<()>,
+        ) -> Self {
+            Self {
+                outputs: Mutex::new(HashMap::new()),
+                ran: Mutex::new(Vec::new()),
+                prefetch_started,
+                prefetch_release: Mutex::new(prefetch_release),
+            }
+        }
+
         fn with_output(self, name: &'static str, output: CommandOutput) -> Self {
             self.outputs.lock().unwrap().insert(name, output);
             self
         }
 
-        fn with_delay(mut self, name: &'static str, delay: Duration) -> Self {
-            self.delays.insert(name, delay);
-            self
+        fn ran(&self) -> Vec<&'static str> {
+            self.ran.lock().unwrap().clone()
         }
     }
 
-    impl CommandRunner for DelayByNameRunner {
+    impl CommandRunner for BlockingByNameRunner {
         fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
             self.ran.lock().unwrap().push(spec.name);
-            if let Some(d) = self.delays.get(spec.name) {
-                std::thread::sleep(*d);
+
+            if spec.name == "prefetch-slow" {
+                let _ = self.prefetch_started.send(());
+                let rx = self.prefetch_release.lock().unwrap();
+                let _ = rx.recv();
             }
+
             self.outputs
                 .lock()
                 .unwrap()
@@ -1620,9 +1647,12 @@ mod tests {
         // forced the prefetch thread to finish before returning. This delayed
         // surfacing fast failures (e.g., fmt-check) by the full prefetch duration.
 
+        use std::sync::mpsc;
+
+        let (prefetch_started_tx, prefetch_started_rx) = mpsc::channel();
+        let (prefetch_release_tx, prefetch_release_rx) = mpsc::channel();
         let runner = std::sync::Arc::new(
-            DelayByNameRunner::default()
-                .with_delay("prefetch-slow", Duration::from_millis(400))
+            BlockingByNameRunner::new(prefetch_started_tx, prefetch_release_rx)
                 .with_output(
                     "prefetch-slow",
                     CommandOutput {
@@ -1657,21 +1687,33 @@ mod tests {
             extra_env: &[],
         }];
 
-        let start = std::time::Instant::now();
-        let report = run_cargo_prefetch(
-            runner.clone(),
-            prefetch_specs,
-            main_specs,
-            &NoopProgressReporter,
-        )
-        .expect("run_cargo_prefetch should not error");
+        let (done_tx, done_rx) = mpsc::channel();
+        let runner_bg = runner.clone();
+        std::thread::spawn(move || {
+            let report =
+                run_cargo_prefetch(runner_bg, prefetch_specs, main_specs, &NoopProgressReporter)
+                    .expect("run_cargo_prefetch should not error");
+            done_tx.send(report).unwrap();
+        });
 
+        // Ensure the prefetch thread actually started before we assert that the main
+        // failure surfaces without waiting for it.
+        prefetch_started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("prefetch should start");
+
+        let report = done_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("main failure should surface without waiting for prefetch");
         assert_eq!(report.exit, VerifyExitCode::Failure);
-        assert!(
-            start.elapsed() < Duration::from_millis(200),
-            "main failure should surface without waiting for prefetch; elapsed={:?}",
-            start.elapsed()
-        );
+
+        // Unblock the prefetch thread so it can complete and not leak a blocked thread.
+        let _ = prefetch_release_tx.send(());
+
+        // Sanity: both specs should have been invoked.
+        let ran = runner.ran();
+        assert!(ran.contains(&"prefetch-slow"));
+        assert!(ran.contains(&"main-fails"));
     }
 
     // ── TDD tests for ProgressReporter ──────────────────────────────────────

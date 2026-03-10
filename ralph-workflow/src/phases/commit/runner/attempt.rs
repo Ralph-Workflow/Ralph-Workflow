@@ -23,6 +23,7 @@ pub struct CommitAttemptResult {
     pub message: Option<String>,
     pub skip_reason: Option<String>,
     pub files: Vec<String>,
+    pub excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
     pub validation_detail: String,
     pub auth_failure: bool,
 }
@@ -176,17 +177,19 @@ pub fn run_commit_attempt(
             message: None,
             skip_reason: None,
             files: vec![],
+            excluded_files: vec![],
             validation_detail: "Authentication error detected".to_string(),
             auth_failure: true,
         });
     }
 
     let extraction = extract_commit_message_from_file_with_workspace(ctx.workspace);
-    let (outcome, detail, extraction_result, extraction_succeeded, skip_reason, files) =
+    let (outcome, detail, extraction_result, extraction_succeeded, skip_reason, files, excluded) =
         match extraction {
             CommitExtractionOutcome::Valid {
                 extracted: result,
                 files,
+                excluded_files,
             } => (
                 AttemptOutcome::Success(result.clone().into_message()),
                 "Valid commit message extracted".to_string(),
@@ -194,6 +197,7 @@ pub fn run_commit_attempt(
                 true,
                 None,
                 files,
+                excluded_files,
             ),
             CommitExtractionOutcome::InvalidXml(detail) => (
                 AttemptOutcome::XsdValidationFailed(detail.clone()),
@@ -201,6 +205,7 @@ pub fn run_commit_attempt(
                 None,
                 false,
                 None,
+                vec![],
                 vec![],
             ),
             CommitExtractionOutcome::MissingFile(detail) => (
@@ -210,6 +215,7 @@ pub fn run_commit_attempt(
                 false,
                 None,
                 vec![],
+                vec![],
             ),
             CommitExtractionOutcome::Skipped(reason) => (
                 AttemptOutcome::Success(format!("SKIPPED: {reason}")),
@@ -217,6 +223,7 @@ pub fn run_commit_attempt(
                 None,
                 true,
                 Some(reason),
+                vec![],
                 vec![],
             ),
         };
@@ -241,6 +248,7 @@ pub fn run_commit_attempt(
             message: Some(message),
             skip_reason: None,
             files,
+            excluded_files: excluded,
             validation_detail: detail,
             auth_failure: false,
         });
@@ -252,6 +260,7 @@ pub fn run_commit_attempt(
         message: None,
         skip_reason,
         files,
+        excluded_files: excluded,
         validation_detail: detail,
         auth_failure: false,
     })

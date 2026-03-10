@@ -105,11 +105,20 @@ mod tests {
         );
 
         let extraction = extract_commit_message_from_file_with_workspace(&workspace);
-        let CommitExtractionOutcome::Valid { extracted, files } = extraction else {
+        let CommitExtractionOutcome::Valid {
+            extracted,
+            files,
+            excluded_files,
+        } = extraction
+        else {
             panic!("expected extraction");
         };
         assert_eq!(extracted.into_message(), "feat: add");
         assert!(files.is_empty(), "expected no selected files by default");
+        assert!(
+            excluded_files.is_empty(),
+            "expected no excluded file metadata"
+        );
     }
 
     #[test]
@@ -127,7 +136,12 @@ mod tests {
         );
 
         let extraction = extract_commit_message_from_file_with_workspace(&workspace);
-        let CommitExtractionOutcome::Valid { extracted, files } = extraction else {
+        let CommitExtractionOutcome::Valid {
+            extracted,
+            files,
+            excluded_files,
+        } = extraction
+        else {
             panic!("expected extraction");
         };
 
@@ -135,6 +149,47 @@ mod tests {
         assert_eq!(
             files,
             vec!["src/foo.rs".to_string(), "tests/bar.rs".to_string()]
+        );
+        assert!(
+            excluded_files.is_empty(),
+            "expected no excluded file metadata"
+        );
+    }
+
+    #[test]
+    fn test_extract_commit_message_from_file_returns_excluded_files_metadata() {
+        let _cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/tmp/commit_message.xml",
+            r#"<ralph-commit>
+<ralph-subject>feat: add</ralph-subject>
+<ralph-excluded-files>
+  <ralph-excluded-file reason="internal-ignore">.agent/tmp/trace.log</ralph-excluded-file>
+</ralph-excluded-files>
+</ralph-commit>"#,
+        );
+
+        let extraction = extract_commit_message_from_file_with_workspace(&workspace);
+        let CommitExtractionOutcome::Valid {
+            extracted,
+            files,
+            excluded_files,
+        } = extraction
+        else {
+            panic!("expected extraction");
+        };
+
+        assert_eq!(extracted.into_message(), "feat: add");
+        assert!(files.is_empty(), "expected no selected files by default");
+        assert_eq!(
+            excluded_files.len(),
+            1,
+            "expected one excluded file metadata entry"
+        );
+        assert_eq!(excluded_files[0].path, ".agent/tmp/trace.log");
+        assert_eq!(
+            excluded_files[0].reason,
+            crate::reducer::state::pipeline::ExcludedFileReason::InternalIgnore
         );
     }
 

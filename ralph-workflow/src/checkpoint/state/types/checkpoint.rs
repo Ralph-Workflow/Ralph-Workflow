@@ -191,6 +191,30 @@ pub struct PipelineCheckpoint {
     #[serde(default)]
     pub interrupted_by_user: bool,
 
+    /// Commit pass tracking state.
+    ///
+    /// These fields are reducer-owned state and must be preserved across checkpoint/resume
+    /// so unattended runs can deterministically resume a second-pass commit and/or carry
+    /// residual files forward to the next cycle.
+    #[serde(default)]
+    pub commit_is_second_pass: bool,
+
+    /// Files selected for the most recent commit pass.
+    ///
+    /// When non-empty, this indicates the last commit pass was selective and residual
+    /// handling must run (pass-2 follow-up / carry-forward) even after checkpoint/resume.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_selected_files: Vec<String>,
+
+    /// Files excluded from the most recent commit pass, with reasons.
+    ///
+    /// This is audit/observability metadata that may be used for deterministic resume.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_residual_files: Vec<String>,
+
     /// Cloud-mode state needed for checkpoint/resume semantics.
     ///
     /// This is a checkpoint-safe, redacted view of cloud state: it must not contain
@@ -250,6 +274,10 @@ impl PipelineCheckpoint {
             recovery_escalation_level: 0,
             failed_phase_for_recovery: None,
             interrupted_by_user: false,
+            commit_is_second_pass: false,
+            commit_selected_files: Vec::new(),
+            commit_excluded_files: Vec::new(),
+            commit_residual_files: Vec::new(),
             cloud_state: None,
         }
     }
@@ -258,7 +286,7 @@ impl PipelineCheckpoint {
     ///
     /// Returns a string describing the current phase and progress,
     /// suitable for display to the user when resuming.
-    #[must_use] 
+    #[must_use]
     pub fn description(&self) -> String {
         match self.phase {
             PipelinePhase::Rebase => "Rebase in progress".to_string(),
@@ -353,7 +381,7 @@ pub struct CloudCheckpointState {
 }
 
 impl CloudCheckpointState {
-    #[must_use] 
+    #[must_use]
     pub fn from_pipeline_state(state: &crate::reducer::state::PipelineState) -> Self {
         Self {
             cloud: state.cloud.clone(),
@@ -372,7 +400,7 @@ impl CloudCheckpointState {
 }
 
 /// Get current timestamp in "YYYY-MM-DD HH:MM:SS" format.
-#[must_use] 
+#[must_use]
 pub fn timestamp() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }

@@ -199,7 +199,7 @@ fn test_commit_generated_creates_commit() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files: _ } => {
+        Effect::CreateCommit { message, .. } => {
             assert_eq!(message, "test commit message");
         }
         _ => panic!("Expected CreateCommit effect, got {effect:?}"),
@@ -320,7 +320,7 @@ fn test_create_commit_uses_selected_files_from_state() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files } => {
+        Effect::CreateCommit { message, files, .. } => {
             assert_eq!(message, "feat: add foo");
             assert_eq!(
                 files, selected_files,
@@ -365,6 +365,7 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
         PipelineEvent::commit_xml_validated(
             "fix(auth): prevent token expiry race".to_string(),
             selected_files.clone(),
+            vec![],
             1,
         ),
     );
@@ -388,12 +389,68 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
     // Now determine_next_effect must produce CreateCommit with the selected files.
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message, files } => {
+        Effect::CreateCommit { message, files, .. } => {
             assert_eq!(message, "fix(auth): prevent token expiry race");
             assert_eq!(
                 files, selected_files,
                 "Effect::CreateCommit.files must equal the files from CommitXmlValidated"
             );
+        }
+        _ => panic!("expected CreateCommit effect, got {effect:?}"),
+    }
+}
+
+#[test]
+fn test_commit_xml_validated_excluded_files_propagate_to_create_commit_effect() {
+    // Verify excluded-files metadata survives reduction and is attached to Effect::CreateCommit
+    // for audit/observability.
+    use crate::reducer::state::pipeline::{ExcludedFile, ExcludedFileReason};
+    use crate::reducer::state::AgentChainState;
+
+    let excluded_files = vec![ExcludedFile {
+        path: ".agent/tmp/trace.log".to_string(),
+        reason: ExcludedFileReason::InternalIgnore,
+    }];
+
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generating {
+            attempt: 1,
+            max_attempts: 3,
+        },
+        commit_xml_extracted: true,
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_xml_validated(
+            "feat: x".to_string(),
+            vec![],
+            excluded_files.clone(),
+            1,
+        ),
+    );
+    assert_eq!(state.commit_excluded_files, excluded_files);
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_message_generated("feat: x".to_string(), 1),
+    );
+    state = reduce(state, PipelineEvent::commit_xml_archived(1));
+
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit {
+            excluded_files: got,
+            ..
+        } => {
+            assert_eq!(got, excluded_files);
         }
         _ => panic!("expected CreateCommit effect, got {effect:?}"),
     }
@@ -475,7 +532,7 @@ fn test_commit_generation_failed_clears_selected_files() {
 }
 
 #[test]
-fn test_commit_created_forced_resume_clears_selected_files() {
+fn test_commit_created_forced_resume_preserves_selected_files_until_residuals_complete() {
     let mut state = PipelineState {
         phase: PipelinePhase::CommitMessage,
         termination_resume_phase: Some(PipelinePhase::Finalizing),
@@ -490,9 +547,19 @@ fn test_commit_created_forced_resume_clears_selected_files() {
         PipelineEvent::commit_created("deadbeef".to_string(), "feat: add foo".to_string()),
     );
 
+    assert_eq!(
+        state.phase,
+        PipelinePhase::CommitMessage,
+        "Selective forced commit must stay in CommitMessage so residual checking can run"
+    );
+    assert_eq!(
+        state.termination_resume_phase,
+        Some(PipelinePhase::Finalizing),
+        "Resume phase must be preserved until residual handling completes"
+    );
     assert!(
-        state.commit_selected_files.is_empty(),
-        "commit_selected_files must be cleared when leaving commit phase after forced commit"
+        !state.commit_selected_files.is_empty(),
+        "commit_selected_files must be preserved until residual handling completes"
     );
 }
 

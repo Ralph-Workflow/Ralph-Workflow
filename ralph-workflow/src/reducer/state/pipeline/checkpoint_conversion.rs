@@ -57,26 +57,30 @@ impl PipelineState {
             unpushed_commits,
             last_pushed_commit,
         ) = cloud_state.as_ref().map_or_else(
-            || (
-                crate::config::CloudStateConfig::disabled(),
-                None,
-                false,
-                false,
-                None,
-                None,
-                0,
-                0,
-                None,
-                Vec::new(),
-                None,
-            ),
+            || {
+                (
+                    crate::config::CloudStateConfig::disabled(),
+                    None,
+                    false,
+                    false,
+                    None,
+                    None,
+                    0,
+                    0,
+                    None,
+                    Vec::new(),
+                    None,
+                )
+            },
             |cs| {
                 // Preserve checkpoint-safe cloud state for correct resume semantics.
                 // Note: git auth configuration can be re-run safely; however, restoring
                 // `git_auth_configured=true` for SSH key paths would skip the env-var
                 // setup in a new process. Reset it in that case.
                 let git_auth_configured = match &cs.cloud.git_remote.auth_method {
-                    crate::config::GitAuthStateMethod::SshKey { key_path } if key_path.is_some() => {
+                    crate::config::GitAuthStateMethod::SshKey { key_path }
+                        if key_path.is_some() =>
+                    {
                         false
                     }
                     _ => cs.git_auth_configured,
@@ -95,7 +99,7 @@ impl PipelineState {
                     cs.unpushed_commits.clone(),
                     cs.last_pushed_commit.clone(),
                 )
-            }
+            },
         );
 
         let mut state = Self {
@@ -154,7 +158,10 @@ impl PipelineState {
             commit_xml_extracted: false,
             commit_validated_outcome: None,
             commit_xml_archived: false,
-            commit_selected_files: Vec::new(),
+            commit_selected_files: checkpoint.commit_selected_files.clone(),
+            commit_excluded_files: checkpoint.commit_excluded_files.clone(),
+            commit_is_second_pass: checkpoint.commit_is_second_pass,
+            commit_residual_files: checkpoint.commit_residual_files.clone(),
             context_cleaned: false,
             agent_chain,
             rebase: rebase_state,
@@ -245,7 +252,9 @@ const fn map_checkpoint_phase(phase: CheckpointPhase) -> PipelinePhase {
         }
         CheckpointPhase::Development => PipelinePhase::Development,
         CheckpointPhase::Review => PipelinePhase::Review,
-        CheckpointPhase::CommitMessage | CheckpointPhase::PostRebase | CheckpointPhase::PostRebaseConflict => PipelinePhase::CommitMessage,
+        CheckpointPhase::CommitMessage
+        | CheckpointPhase::PostRebase
+        | CheckpointPhase::PostRebaseConflict => PipelinePhase::CommitMessage,
         CheckpointPhase::FinalValidation => PipelinePhase::FinalValidation,
         CheckpointPhase::Complete => PipelinePhase::Complete,
         CheckpointPhase::PreRebaseConflict => PipelinePhase::Planning,

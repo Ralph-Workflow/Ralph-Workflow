@@ -95,6 +95,16 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
         checkpoint.recovery_escalation_level = state.recovery_escalation_level;
         checkpoint.failed_phase_for_recovery = state.failed_phase_for_recovery;
         checkpoint.interrupted_by_user = state.interrupted_by_user;
+        checkpoint.commit_is_second_pass = state.commit_is_second_pass;
+        checkpoint
+            .commit_selected_files
+            .clone_from(&state.commit_selected_files);
+        checkpoint
+            .commit_excluded_files
+            .clone_from(&state.commit_excluded_files);
+        checkpoint
+            .commit_residual_files
+            .clone_from(&state.commit_residual_files);
 
         if state.cloud.enabled {
             checkpoint.cloud_state =
@@ -309,5 +319,64 @@ mod tests {
         // Cleanup
         let _ = take_user_interrupt_request();
         reset_user_interrupted_occurred();
+    }
+
+    #[test]
+    fn checkpoint_from_reducer_state_persists_commit_residual_state_for_resume() {
+        // Arrange
+        let workspace = MemoryWorkspace::new_test().with_dir(".agent/tmp");
+        let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn crate::workspace::Workspace>;
+        let run_log_context = RunLogContext::new(&workspace).expect("run log context");
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let config = Config::default();
+        let registry = AgentRegistry::new().expect("registry");
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new());
+        let mut timer = Timer::new();
+
+        let ctx = PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent: "codex",
+            reviewer_agent: "codex",
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context: RunContext::new(),
+            execution_history: ExecutionHistory::new(),
+            executor: executor.as_ref(),
+            executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+            repo_root: Path::new("/test/repo"),
+            workspace: &workspace,
+            workspace_arc: Arc::clone(&workspace_arc),
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &config.cloud,
+        };
+
+        let mut state = PipelineState::initial(1, 0);
+        state.commit_is_second_pass = true;
+        state.commit_residual_files = vec!["src/leftover.rs".to_string()];
+
+        // Act
+        save_checkpoint_from_state(&state, &ctx);
+
+        // Assert
+        let checkpoint = load_checkpoint_with_workspace(&workspace)
+            .expect("checkpoint load should succeed")
+            .expect("checkpoint should exist");
+
+        assert!(
+            checkpoint.commit_is_second_pass,
+            "commit_is_second_pass must be persisted for deterministic pass-2 resume"
+        );
+        assert_eq!(
+            checkpoint.commit_residual_files,
+            vec!["src/leftover.rs".to_string()],
+            "commit_residual_files must be persisted for unattended carry-forward"
+        );
     }
 }

@@ -372,9 +372,15 @@ impl MainEffectHandler {
 
             Effect::ArchiveCommitXml => Ok(self.archive_commit_xml(ctx)),
 
-            Effect::CreateCommit { message, files } => Self::create_commit(ctx, message, &files),
+            Effect::CreateCommit {
+                message,
+                files,
+                excluded_files,
+            } => Self::create_commit(ctx, message, &files, &excluded_files),
 
             Effect::SkipCommit { reason } => Ok(Self::skip_commit(ctx, reason)),
+
+            Effect::CheckResidualFiles { pass } => Self::check_residual_files(ctx, pass),
 
             Effect::CheckUncommittedChangesBeforeTermination => {
                 Self::check_uncommitted_changes_before_termination(ctx)

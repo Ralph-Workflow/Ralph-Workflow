@@ -482,3 +482,57 @@ fn commit_message_xsd_disallows_mixed_simple_and_detailed_body_forms() {
         "commit_message.xsd must not allow ralph-body and detailed tags in the same sequence"
     );
 }
+
+#[test]
+fn commit_message_xsd_is_valid_xsd10_structure() {
+    // Standard XSD 1.0 validators reject `xs:all` in many nested positions.
+    // Keep this schema within the widely supported subset so external tooling can compile it.
+    assert!(
+        !super::COMMIT_MESSAGE_XSD_SCHEMA.contains("<xs:all"),
+        "commit_message.xsd must not use xs:all (not reliably supported in nested structures)"
+    );
+}
+
+#[test]
+fn commit_message_xsd_excluded_file_uses_simple_content_extension() {
+    // Some XSD processors are stricter about "mixed=true + attribute only" complex types.
+    // Model excluded-file text via xs:simpleContent so text-with-attributes is unambiguous.
+    let pattern = Regex::new(
+        r#"(?s)<xs:complexType\s+name=\"ExcludedFileEntryType\">\s*<xs:simpleContent>\s*<xs:extension\s+base=\"xs:string\">\s*<xs:attribute\s+name=\"reason\""#,
+    )
+    .expect("regex");
+    assert!(
+        pattern.is_match(super::COMMIT_MESSAGE_XSD_SCHEMA),
+        "ExcludedFileEntryType should use xs:simpleContent extension"
+    );
+}
+
+#[test]
+fn commit_message_xsd_allows_detailed_body_elements_in_any_order() {
+    // LLMs often reorder optional sibling tags; keep the published schema aligned with the Rust
+    // validator which accepts detailed body tags in any order.
+    let pattern = Regex::new(
+        r#"(?s)<xs:choice\s+minOccurs=\"0\"\s+maxOccurs=\"3\">\s*<xs:element\s+name=\"ralph-body-summary\".*?<xs:element\s+name=\"ralph-body-details\".*?<xs:element\s+name=\"ralph-body-footer\""#,
+    )
+    .expect("regex");
+
+    assert!(
+        pattern.is_match(super::COMMIT_MESSAGE_XSD_SCHEMA),
+        "Detailed body tags should be modelled as a repeating choice (order-insensitive)"
+    );
+}
+
+#[test]
+fn commit_message_xsd_allows_files_before_body_block() {
+    // The Rust validator accepts ralph-files / ralph-excluded-files regardless of sibling order.
+    // The published schema should allow files/excluded metadata to appear before body tags.
+    let pattern = Regex::new(
+        r#"(?s)<xs:sequence>.*name=\"ralph-subject\".*name=\"ralph-files\".*name=\"ralph-body\""#,
+    )
+    .expect("regex");
+
+    assert!(
+        pattern.is_match(super::COMMIT_MESSAGE_XSD_SCHEMA),
+        "Schema should allow ralph-files to appear before ralph-body/detailed tags"
+    );
+}

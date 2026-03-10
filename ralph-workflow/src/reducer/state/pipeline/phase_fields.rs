@@ -4,6 +4,40 @@
 // after XML parsing and schema validation. They represent the contract
 // between agent output and reducer state.
 
+/// Reason why a file was excluded from a selective commit.
+///
+/// Used in `<ralph-excluded-files>` XML elements to record why the commit
+/// agent chose to omit a file. This metadata is audit/observability only
+/// and does not change commit execution semantics.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExcludedFileReason {
+    /// File is a Ralph-internal artifact (logs, tmp outputs).
+    ///
+    /// This is audit/observability metadata only; commit execution ignores it.
+    /// A separate, deterministic artifact-ignore mechanism may use this reason
+    /// to manage a Ralph-local ignore layer (e.g., `.git/info/exclude`).
+    InternalIgnore,
+    /// File is unrelated to the current task and is intentionally deferred.
+    NotTaskRelated,
+    /// File contains sensitive content that must not be committed.
+    Sensitive,
+    /// File could not be committed in this pass; carried forward to the next cycle.
+    Deferred,
+}
+
+/// A single file that was excluded from a selective commit, with a reason.
+///
+/// Populated from `<ralph-excluded-file reason="...">path</ralph-excluded-file>`
+/// elements inside `<ralph-excluded-files>` in the commit XML output.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExcludedFile {
+    /// Repo-relative path of the excluded file.
+    pub path: String,
+    /// Why this file was excluded from the commit.
+    pub reason: ExcludedFileReason,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReviewValidatedOutcome {
     pub pass: u32,
@@ -72,35 +106,35 @@ pub struct PromptInputsState {
 impl PromptInputsState {
     /// Clear commit inputs without cloning other fields.
     /// Uses consuming builder pattern for zero-cost state updates.
-    #[must_use] 
+    #[must_use]
     pub fn with_commit_cleared(mut self) -> Self {
         self.commit = None;
         self
     }
 
     /// Clear planning inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_planning_cleared(mut self) -> Self {
         self.planning = None;
         self
     }
 
     /// Clear development inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_development_cleared(mut self) -> Self {
         self.development = None;
         self
     }
 
     /// Clear review inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_review_cleared(mut self) -> Self {
         self.review = None;
         self
     }
 
     /// Clear XSD retry last output without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_xsd_retry_cleared(mut self) -> Self {
         self.xsd_retry_last_output = None;
         self

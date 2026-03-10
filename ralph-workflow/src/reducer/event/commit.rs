@@ -86,6 +86,12 @@ pub enum CommitEvent {
         /// Defaults to empty for backward compatibility with old checkpoints.
         #[serde(default)]
         files: Vec<String>,
+        /// Files excluded from this commit with documented reasons.
+        ///
+        /// Audit/observability metadata only — does not affect commit execution.
+        /// Defaults to empty for backward compatibility with old checkpoints.
+        #[serde(default)]
+        excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
     },
     /// Commit message XML validation failed.
     CommitXmlValidationFailed {
@@ -174,4 +180,20 @@ pub enum CommitEvent {
         /// Number of lines in `git status --porcelain` output.
         file_count: usize,
     },
+
+    /// Residual uncommitted files detected after a selective commit pass.
+    ///
+    /// When `pass == 1`, triggers an automatic second commit pass.
+    /// When `pass == 2`, the files are carried forward to the next cycle.
+    ResidualFilesFound {
+        /// Repo-relative paths of remaining dirty files.
+        files: Vec<String>,
+        /// Which pass just completed (1 = first pass, 2 = second pass).
+        pass: u8,
+    },
+
+    /// No residual uncommitted files detected after a commit pass.
+    ///
+    /// Pipeline may proceed normally; working tree is clean.
+    ResidualFilesNone,
 }

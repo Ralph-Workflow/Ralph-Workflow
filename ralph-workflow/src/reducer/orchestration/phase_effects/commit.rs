@@ -114,9 +114,20 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
                         attempt: current_attempt,
                     };
                 }
-                return Effect::PrepareCommitPrompt {
-                    prompt_mode: PromptMode::Normal,
+                // Derive prompt mode from reducer-owned retry state so commit retry prompts remain
+                // reachable even when retry routing is bypassed.
+                let prompt_mode = if state.continuation.same_agent_retry_pending
+                    && !state.continuation.same_agent_retries_exhausted()
+                {
+                    PromptMode::SameAgentRetry
+                } else if state.continuation.xsd_retry_pending
+                    && !state.continuation.xsd_retries_exhausted()
+                {
+                    PromptMode::XsdRetry
+                } else {
+                    PromptMode::Normal
                 };
+                return Effect::PrepareCommitPrompt { prompt_mode };
             }
             // Prompt-prepared flow is handled above.
             Effect::ValidateCommitXml
@@ -126,13 +137,29 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
                 Effect::CreateCommit {
                     message: message.clone(),
                     files: state.commit_selected_files.clone(),
+                    excluded_files: state.commit_excluded_files.clone(),
                 }
             } else {
                 Effect::ArchiveCommitXml
             }
         }
-        CommitState::Skipped | CommitState::Committed { .. } => Effect::SaveCheckpoint {
+        CommitState::Skipped => Effect::SaveCheckpoint {
             trigger: CheckpointTrigger::PhaseTransition,
         },
+        CommitState::Committed { .. } => {
+            // After a selective commit (non-empty commit_selected_files) or a second-pass commit
+            // (commit_is_second_pass), check whether any files remain uncommitted before
+            // proceeding. The pass number is 1 for the first selective pass, 2 for the second.
+            let is_selective = !state.commit_selected_files.is_empty();
+            let is_second_pass = state.commit_is_second_pass;
+            if is_selective || is_second_pass {
+                let pass = if is_second_pass { 2 } else { 1 };
+                Effect::CheckResidualFiles { pass }
+            } else {
+                Effect::SaveCheckpoint {
+                    trigger: CheckpointTrigger::PhaseTransition,
+                }
+            }
+        }
     }
 }

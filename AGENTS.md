@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## UNATTENDED SYSTEM (TOP PRIORITY)
+
+Ralph runs in unattended mode. Agent workflows must never depend on interactive human/operator decisions during pipeline execution.
+
+For commit handling and leftover files:
+- Never block waiting for human approval.
+- Never silently discard changes.
+- Prefer deterministic automatic handling with safe non-destructive defaults.
+- If work cannot be finalized in the current commit pass, carry it forward automatically to the next cycle with explicit machine-readable state.
+
 ALWAYS USE test-driven-development!
 
 ## Non-Negotiables

@@ -34,6 +34,7 @@ fn mock_effect_handler_implements_effect_handler_trait() {
     let effect = Effect::CreateCommit {
         message: "test commit".to_string(),
         files: vec![],
+        excluded_files: vec![],
     };
 
     // Create a minimal mock PhaseContext - this requires test-utils
@@ -119,6 +120,7 @@ fn mock_effect_handler_trait_execute_with_phase_context() {
     let effect = Effect::CreateCommit {
         message: "test via trait".to_string(),
         files: vec![],
+        excluded_files: vec![],
     };
 
     // Call the trait method (not execute_mock)
