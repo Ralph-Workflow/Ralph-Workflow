@@ -29,7 +29,7 @@ pub fn run_with_prompt(
     let protection_result = crate::git_helpers::ensure_agent_phase_protections(runtime.logger);
     if protection_result.tampering_detected {
         runtime.logger.warn(&format!(
-            "⚠ Agent tampered with git protections (self-healed): {}",
+            "WARNING: Agent tampered with git protections (self-healed): {}",
             protection_result.details.join("; ")
         ));
     }

@@ -963,6 +963,51 @@ fn test_git_wrapper_blocks_stash_pop_when_marker_exists() {
 
 #[test]
 #[serial]
+fn test_git_wrapper_blocks_bare_stash_when_marker_exists() {
+    // Regression: `git stash` with no subcommand is equivalent to `git stash push`
+    // and mutates the working tree. During agent phase we allow only `git stash list`.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["stash"]);
+        assert_eq!(code, 1, "bare stash should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_branch_create_when_marker_exists() {
+    // Regression: `git branch <name>` creates a new branch and mutates repo state.
+    // During agent phase we allow only list-only forms of `git branch`.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["branch", "new-branch"]);
+        assert_eq!(code, 1, "branch create should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_checkout_switch_when_marker_exists() {
+    // Regression: `git checkout <ref>` changes HEAD and can mutate working tree.
+    // During agent phase we allow only read-only git commands.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let ctx = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&ctx.wrapper_path, &["checkout", "HEAD"]);
+        assert_eq!(code, 1, "checkout should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+#[test]
+#[serial]
 fn test_git_wrapper_blocks_add_when_marker_exists() {
     use test_helpers::with_temp_cwd;
 
@@ -1472,6 +1517,102 @@ fn test_ensure_agent_phase_protections_restores_missing_wrapper_script() {
         assert!(
             content.contains("Blocked:"),
             "restored wrapper must contain blocking message; got:\n{content}"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_missing_wrapper_track_file() {
+    // If an agent deletes the wrapper track file mid-run, ensure_agent_phase_protections
+    // must recreate it so the wrapper remains an active agent-phase signal.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        assert!(track_file.exists(), "precondition: track file must exist");
+
+        // Simulate agent deletion.
+        fs::remove_file(&track_file).unwrap();
+        assert!(
+            !track_file.exists(),
+            "precondition: track file must be deleted"
+        );
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(result.tampering_detected, "must report tampering");
+        assert!(track_file.exists(), "track file must be recreated");
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_ignores_tampered_wrapper_track_file_path() {
+    // Security regression: ensure_agent_phase_protections must treat the track file as
+    // untrusted input and must not write the wrapper script to an attacker-chosen path.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let track_content = fs::read_to_string(&track_file).unwrap();
+        let real_wrapper_dir = std::path::PathBuf::from(track_content.trim());
+        let real_wrapper_path = real_wrapper_dir.join("git");
+        assert!(
+            real_wrapper_path.exists(),
+            "precondition: wrapper must exist"
+        );
+
+        // Tamper the track file to point at an attacker-controlled path.
+        let evil_dir = dir.path().join("evil_wrapper_target");
+        fs::create_dir_all(&evil_dir).unwrap();
+        let mut perms = fs::metadata(&track_file).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&track_file, perms).unwrap();
+        fs::write(&track_file, evil_dir.display().to_string()).unwrap();
+
+        // Force wrapper restoration.
+        fs::remove_file(&real_wrapper_path).unwrap();
+        assert!(
+            !real_wrapper_path.exists(),
+            "precondition: wrapper must be deleted"
+        );
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(result.tampering_detected, "must report tampering");
+
+        assert!(
+            real_wrapper_path.exists(),
+            "wrapper must be restored in the real wrapper dir"
+        );
+        assert!(
+            !evil_dir.join("git").exists(),
+            "must not write wrapper script to attacker-chosen track file path"
         );
 
         // Cleanup

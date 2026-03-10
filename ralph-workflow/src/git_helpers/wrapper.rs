@@ -16,13 +16,14 @@ use super::repo::get_repo_root;
 use crate::logger::Logger;
 use crate::workspace::Workspace;
 use std::env;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use tempfile::TempDir;
 use which::which;
 
 const WRAPPER_DIR_TRACK_FILE: &str = ".agent/git-wrapper-dir.txt";
+const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
+const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
 
 /// Result of checking and self-healing agent-phase protections.
 ///
@@ -43,7 +44,7 @@ const MARKER_FILE: &str = ".no_agent_commit";
 /// Git helper state.
 pub struct GitHelpers {
     real_git: Option<PathBuf>,
-    wrapper_dir: Option<TempDir>,
+    wrapper_dir: Option<PathBuf>,
     wrapper_repo_root: Option<PathBuf>,
 }
 
@@ -123,40 +124,175 @@ fn find_git_in_path_excluding_dir(exclude_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+fn path_has_parent_dir_component(path: &Path) -> bool {
+    path.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+fn wrapper_dir_is_reasonable_temp_path(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    if path_has_parent_dir_component(path) {
+        return false;
+    }
+    let temp_dir = env::temp_dir();
+    if !path.starts_with(&temp_dir) {
+        // On macOS, `env::temp_dir()` can be under a symlinked prefix.
+        // Accept the canonicalized temp dir prefix as well.
+        let Ok(temp_dir_canon) = fs::canonicalize(&temp_dir) else {
+            return false;
+        };
+        if !path.starts_with(&temp_dir_canon) {
+            return false;
+        }
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    name.starts_with(WRAPPER_DIR_PREFIX)
+}
+
+fn wrapper_dir_is_safe_existing_dir(path: &Path) -> bool {
+    if !wrapper_dir_is_reasonable_temp_path(path) {
+        return false;
+    }
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if meta.file_type().is_symlink() {
+        return false;
+    }
+    meta.is_dir()
+}
+
+fn wrapper_dir_is_on_path(path: &Path) -> bool {
+    let Ok(path_var) = env::var("PATH") else {
+        return false;
+    };
+    path_var
+        .split(':')
+        .any(|entry| !entry.is_empty() && Path::new(entry) == path)
+}
+
+fn find_wrapper_dir_on_path() -> Option<PathBuf> {
+    let path_var = env::var("PATH").ok()?;
+    for entry in path_var.split(':') {
+        if entry.is_empty() {
+            continue;
+        }
+        let p = PathBuf::from(entry);
+        if wrapper_dir_is_reasonable_temp_path(&p) {
+            return Some(p);
+        }
+    }
+    None
+}
+
+fn ensure_wrapper_dir_prepended_to_path(wrapper_dir: &Path) {
+    let current_path = env::var("PATH").unwrap_or_default();
+    if current_path
+        .split(':')
+        .next()
+        .is_some_and(|first| !first.is_empty() && Path::new(first) == wrapper_dir)
+    {
+        return;
+    }
+    env::set_var(
+        "PATH",
+        format!("{}:{}", wrapper_dir.display(), current_path),
+    );
+}
+
+fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::Result<()> {
+    let agent_dir = repo_root.join(".agent");
+    if let Ok(meta) = fs::symlink_metadata(&agent_dir) {
+        if meta.file_type().is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                ".agent path is a symlink; refusing to write wrapper tracking file",
+            ));
+        }
+    }
+    fs::create_dir_all(&agent_dir)?;
+
+    let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let tmp_track = agent_dir.join(format!(
+        ".git-wrapper-dir.tmp.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+
+    {
+        let mut tf = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_track)?;
+        tf.write_all(wrapper_dir.display().to_string().as_bytes())?;
+        tf.write_all(b"\n")?;
+        tf.flush()?;
+        let _ = tf.sync_all();
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&tmp_track)?.permissions();
+        perms.set_mode(0o444);
+        fs::set_permissions(&tmp_track, perms)?;
+    }
+    #[cfg(windows)]
+    {
+        let mut perms = fs::metadata(&tmp_track)?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&tmp_track, perms)?;
+    }
+
+    // Rename is symlink-safe: it replaces the directory entry.
+    #[cfg(windows)]
+    {
+        if track_file_path.exists() {
+            let _ = fs::remove_file(&track_file_path);
+        }
+    }
+    fs::rename(&tmp_track, &track_file_path)
+}
+
 /// Generate the git wrapper script content.
 ///
-/// The script intercepts destructive git subcommands when `.no_agent_commit`
-/// is present. It iterates through arguments to skip git global flags
-/// (e.g. `-C /path`, `--git-dir=.git`) before identifying the subcommand,
-/// so patterns like `git -C /path commit` are blocked correctly.
+/// When protections are active, the wrapper enforces a strict allowlist of
+/// read-only subcommands and blocks everything else.
 ///
-/// Blocked commands fall into three categories:
-/// - **Unconditionally blocked**: commit, push, tag, merge, rebase, reset,
-///   cherry-pick, revert, am, apply, clean, restore, add, init
-/// - **Conditionally blocked**: stash (pop/drop/apply/push/store/create/clear
-///   blocked, list allowed), branch (-d/-D/--delete blocked, list allowed),
-///   checkout (-- blocked to prevent discarding changes)
+/// Protections are considered active when either:
+/// - `.no_agent_commit` exists in the protected repo root, OR
+/// - the wrapper track file exists in the protected repo root (defense-in-depth
+///   against an agent deleting the marker mid-run).
 ///
-/// `git_path_escaped` must already be shell-single-quote-escaped.
-fn make_wrapper_content(git_path_escaped: &str) -> String {
+/// `git_path_escaped` and `protected_repo_root_escaped` must already be
+/// shell-single-quote-escaped.
+fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &str) -> String {
     format!(
         r#"#!/usr/bin/env sh
-set -eu
-# NOTE: `command git` still routes through this PATH wrapper because `command`
-# only skips shell functions and aliases, not PATH entries. This wrapper is a
-# real file in PATH, so it is always invoked for any `git` command.
-repo_root="$('{git_path_escaped}' rev-parse --show-toplevel 2>/dev/null || pwd)"
-marker="$repo_root/.no_agent_commit"
-track_file="$repo_root/.agent/git-wrapper-dir.txt"
-# Treat either the marker or the wrapper track file as an active agent-phase signal.
-# This makes the wrapper resilient if an agent deletes the marker mid-run.
-if [ -f "$marker" ] || [ -f "$track_file" ]; then
-  # Unset environment variables that could be used to bypass the wrapper
-  # by pointing git at a different repository or exec path.
-  unset GIT_DIR
-  unset GIT_WORK_TREE
-  unset GIT_EXEC_PATH
-  subcmd=""
+ set -eu
+ # {WRAPPER_MARKER} - generated by ralph
+ # NOTE: `command git` still routes through this PATH wrapper because `command`
+ # only skips shell functions and aliases, not PATH entries. This wrapper is a
+ # real file in PATH, so it is always invoked for any `git` command.
+ protected_repo_root='{protected_repo_root_escaped}'
+ marker="$protected_repo_root/.no_agent_commit"
+ track_file="$protected_repo_root/.agent/git-wrapper-dir.txt"
+ # Treat either the marker or the wrapper track file as an active agent-phase signal.
+ # This makes the wrapper resilient if an agent deletes the marker mid-run.
+ if [ -f "$marker" ] || [ -f "$track_file" ]; then
+   # Unset environment variables that could be used to bypass the wrapper
+   # by pointing git at a different repository or exec path.
+   unset GIT_DIR
+   unset GIT_WORK_TREE
+   unset GIT_EXEC_PATH
+   subcmd=""
   skip_next=0
   for arg in "$@"; do
     if [ "$skip_next" = "1" ]; then
@@ -177,55 +313,71 @@ if [ -f "$marker" ] || [ -f "$track_file" ]; then
         ;;
     esac
   done
-  case "$subcmd" in
-    commit|push|tag|merge|rebase|reset|cherry-pick|revert|am|apply|clean|restore|add|init)
-      echo "Blocked: git $subcmd disabled during agent phase (protections active)." >&2
-      exit 1
-      ;;
-    stash)
-      # Allow 'stash list' and bare 'stash', block destructive stash subcommands
-      stash_sub=""
-      found_stash=0
-      for a2 in "$@"; do
-        if [ "$found_stash" = "1" ]; then
-          case "$a2" in
-            -*) ;;
-            *) stash_sub="$a2"; break ;;
-          esac
-        fi
-        if [ "$a2" = "stash" ]; then found_stash=1; fi
-      done
-      case "$stash_sub" in
-        pop|drop|apply|push|store|create|clear)
-          echo "Blocked: git stash $stash_sub disabled during agent phase (protections active)." >&2
-          exit 1
-          ;;
-      esac
-      ;;
-    branch)
-      # Allow 'branch' (list), block 'branch -d/-D/--delete'
-      for a2 in "$@"; do
-        case "$a2" in
-          -d|-D|--delete)
-            echo "Blocked: git branch delete disabled during agent phase (protections active)." >&2
-            exit 1
-            ;;
-        esac
-      done
-      ;;
-    checkout)
-      # Block 'checkout -- <path>' which discards uncommitted changes
-      for a2 in "$@"; do
-        if [ "$a2" = "--" ]; then
-          echo "Blocked: git checkout -- disabled during agent phase (protections active)." >&2
-          exit 1
-        fi
-      done
-      ;;
-  esac
-fi
-exec '{git_path_escaped}' "$@"
-"#
+   case "$subcmd" in
+     "")
+       # `git` with no subcommand is effectively help/version output.
+       ;;
+     status|log|diff|show|rev-parse|ls-files|describe)
+       # Explicitly allowed read-only lookup commands.
+       ;;
+     stash)
+       # Allow only `git stash list`.
+       stash_sub=""
+       found_stash=0
+       for a2 in "$@"; do
+         if [ "$found_stash" = "1" ]; then
+           case "$a2" in
+             -*) ;;
+             *) stash_sub="$a2"; break ;;
+           esac
+         fi
+         if [ "$a2" = "stash" ]; then found_stash=1; fi
+       done
+       if [ "$stash_sub" != "list" ]; then
+         echo "Blocked: git stash disabled during agent phase (only 'stash list' allowed)." >&2
+         exit 1
+       fi
+       ;;
+     branch)
+       # Allow only list-only forms of `git branch` (no positional args).
+       found_branch=0
+       for a2 in "$@"; do
+         if [ "$found_branch" = "1" ]; then
+           case "$a2" in
+             -*) ;;
+             *)
+               echo "Blocked: git branch <name> disabled during agent phase (list-only allowed)." >&2
+               exit 1
+               ;;
+           esac
+         fi
+         if [ "$a2" = "branch" ]; then found_branch=1; fi
+       done
+       ;;
+     remote)
+       # Allow only list-only forms of `git remote` (no positional args).
+       found_remote=0
+       for a2 in "$@"; do
+         if [ "$found_remote" = "1" ]; then
+           case "$a2" in
+             -*) ;;
+             *)
+               echo "Blocked: git remote <subcommand> disabled during agent phase (list-only allowed)." >&2
+               exit 1
+               ;;
+           esac
+         fi
+         if [ "$a2" = "remote" ]; then found_remote=1; fi
+       done
+       ;;
+     *)
+       echo "Blocked: git $subcmd disabled during agent phase (read-only allowlist)." >&2
+       exit 1
+       ;;
+   esac
+ fi
+ exec '{git_path_escaped}' "$@"
+ "#
     )
 }
 
@@ -295,16 +447,34 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
         }
     }
 
-    let wrapper_dir = tempfile::tempdir()?;
-    let wrapper_path = wrapper_dir.path().join("git");
+    let wrapper_dir = tempfile::Builder::new()
+        .prefix(WRAPPER_DIR_PREFIX)
+        .tempdir()?;
+    let wrapper_dir_path = wrapper_dir.keep();
+    let wrapper_path = wrapper_dir_path.join("git");
 
     // Escape the git path for shell script to prevent command injection.
     // Use a helper function to properly handle edge cases and reject unsafe paths.
     let git_path_escaped = escape_shell_single_quoted(git_path_str)?;
 
-    let wrapper_content = make_wrapper_content(&git_path_escaped);
+    let repo_root = get_repo_root()?;
+    helpers.wrapper_repo_root = Some(repo_root.clone());
 
-    let mut file = File::create(&wrapper_path)?;
+    let repo_root_str = repo_root.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "repo root path contains invalid UTF-8 characters; cannot create wrapper script",
+        )
+    })?;
+    let repo_root_escaped = escape_shell_single_quoted(repo_root_str)?;
+
+    let wrapper_content = make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+
+    // Create wrapper file; wrapper dir is freshly created under temp.
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&wrapper_path)?;
     file.write_all(wrapper_content.as_bytes())?;
 
     // Make read-only executable (0o555) to deter agent overwriting, matching
@@ -321,19 +491,13 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     let current_path = env::var("PATH").unwrap_or_default();
     env::set_var(
         "PATH",
-        format!("{}:{}", wrapper_dir.path().display(), current_path),
+        format!("{}:{}", wrapper_dir_path.display(), current_path),
     );
 
-    let repo_root = get_repo_root()?;
-    helpers.wrapper_repo_root = Some(repo_root.clone());
+    // Persist wrapper dir location for best-effort cleanup and self-heal.
+    write_wrapper_track_file_atomic(&repo_root, &wrapper_dir_path)?;
 
-    fs::create_dir_all(repo_root.join(".agent"))?;
-    fs::write(
-        repo_root.join(WRAPPER_DIR_TRACK_FILE),
-        wrapper_dir.path().display().to_string(),
-    )?;
-
-    helpers.wrapper_dir = Some(wrapper_dir);
+    helpers.wrapper_dir = Some(wrapper_dir_path);
     Ok(())
 }
 
@@ -347,8 +511,8 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
 /// in Ralph's usage, this function is only called from the main thread during
 /// controlled shutdown sequences, so this is acceptable in practice.
 pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
-    if let Some(wrapper_dir) = helpers.wrapper_dir.take() {
-        let wrapper_dir_path = wrapper_dir.path().to_path_buf();
+    let removed_wrapper_dir = helpers.wrapper_dir.take();
+    if let Some(wrapper_dir_path) = removed_wrapper_dir.clone() {
         // Make wrapper writable before removal (wrapper is installed as read-only 0o555).
         #[cfg(unix)]
         {
@@ -366,10 +530,9 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
         // but in practice it's safe because Ralph only calls this from the main thread
         // during controlled shutdown.
         if let Ok(path) = env::var("PATH") {
-            let wrapper_str = wrapper_dir_path.to_string_lossy();
             let new_path: String = path
                 .split(':')
-                .filter(|p| !p.contains(wrapper_str.as_ref()))
+                .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir_path.as_path())
                 .collect::<Vec<_>>()
                 .join(":");
             env::set_var("PATH", new_path);
@@ -378,11 +541,38 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
 
     // IMPORTANT: remove the tracking file using an absolute repo root path.
     // The process CWD may not be the repo root (e.g., tests or effects that change CWD).
-    if let Some(repo_root) = helpers.wrapper_repo_root.take() {
-        let _ = fs::remove_file(repo_root.join(WRAPPER_DIR_TRACK_FILE));
-    } else {
-        let _ = fs::remove_file(WRAPPER_DIR_TRACK_FILE);
+    let repo_root = helpers
+        .wrapper_repo_root
+        .take()
+        .or_else(|| crate::git_helpers::get_repo_root().ok());
+
+    let track_file = repo_root.as_ref().map_or_else(
+        || PathBuf::from(WRAPPER_DIR_TRACK_FILE),
+        |r| r.join(WRAPPER_DIR_TRACK_FILE),
+    );
+
+    // If we didn't have in-memory wrapper state (or it was out of date), fall back
+    // to the track file for best-effort cleanup.
+    if let Ok(content) = fs::read_to_string(&track_file) {
+        let wrapper_dir = PathBuf::from(content.trim());
+        let same_as_removed = removed_wrapper_dir
+            .as_ref()
+            .is_some_and(|p| p == &wrapper_dir);
+        if wrapper_dir_is_safe_existing_dir(&wrapper_dir) && !same_as_removed {
+            // Remove from PATH (exact match) and delete directory.
+            if let Ok(path) = env::var("PATH") {
+                let new_path: String = path
+                    .split(':')
+                    .filter(|p| !p.is_empty() && Path::new(p) != wrapper_dir.as_path())
+                    .collect::<Vec<_>>()
+                    .join(":");
+                env::set_var("PATH", new_path);
+            }
+            let _ = fs::remove_dir_all(&wrapper_dir);
+        }
     }
+
+    let _ = fs::remove_file(track_file);
 }
 
 /// Start agent phase (creates marker file, installs hooks, enables wrapper).
@@ -460,104 +650,248 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     let marker_path = repo_root.join(MARKER_FILE);
     let marker_exists = marker_path.exists();
 
-    // If we have a wrapper track file, ensure the wrapper script still exists.
-    // An agent can delete the wrapper script mid-run; restoring it preserves
-    // defense-in-depth even if hooks are bypassed with --no-verify.
+    // Ensure the PATH wrapper is present and intact.
+    //
+    // CRITICAL: Treat the track file as untrusted input.
+    // We only use it if it points to a plausible temp directory AND that directory is
+    // already present on PATH (meaning it was installed by Ralph).
     let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
-    if let Ok(track_content) = fs::read_to_string(&track_file_path) {
-        let wrapper_dir = PathBuf::from(track_content.trim());
-        if !wrapper_dir.as_os_str().is_empty() {
-            let wrapper_path = wrapper_dir.join("git");
+    let tracked_wrapper_dir = fs::read_to_string(&track_file_path).ok().and_then(|s| {
+        let p = PathBuf::from(s.trim());
+        if wrapper_dir_is_safe_existing_dir(&p) && wrapper_dir_is_on_path(&p) {
+            Some(p)
+        } else {
+            None
+        }
+    });
 
-            let wrapper_needs_restore = fs::read_to_string(&wrapper_path).map_or(true, |content| {
-                !content.contains("Blocked:") || !content.contains("unset GIT_EXEC_PATH")
-            });
+    let path_wrapper_dir =
+        find_wrapper_dir_on_path().filter(|p| wrapper_dir_is_safe_existing_dir(p));
 
-            if wrapper_needs_restore {
-                logger.warn("Git wrapper script missing or tampered — restoring");
-                result.tampering_detected = true;
-                result
-                    .details
-                    .push("Git wrapper script missing or tampered — restored".to_string());
+    let wrapper_dir = tracked_wrapper_dir.clone().or(path_wrapper_dir);
 
-                if let Err(e) = fs::create_dir_all(&wrapper_dir) {
-                    logger.warn(&format!("Failed to recreate wrapper dir: {e}"));
-                } else {
-                    // Resolve the real git binary by searching PATH excluding the wrapper dir.
-                    let real_git =
-                        find_git_in_path_excluding_dir(&wrapper_dir).or_else(|| which("git").ok());
+    // Ensure the wrapper dir is first on PATH to defend against PATH reordering.
+    if let Some(ref dir) = wrapper_dir {
+        ensure_wrapper_dir_prepended_to_path(dir);
+    }
 
-                    match real_git {
-                        Some(real_git_path) => {
-                            if let Some(real_git_str) = real_git_path.to_str() {
-                                match escape_shell_single_quoted(real_git_str)
-                                    .map(|escaped| make_wrapper_content(&escaped))
-                                {
-                                    Ok(wrapper_content) => {
-                                        if let Err(e) = fs::write(&wrapper_path, wrapper_content) {
-                                            logger.warn(&format!(
-                                                "Failed to restore wrapper script: {e}"
-                                            ));
-                                        } else {
-                                            #[cfg(unix)]
-                                            {
-                                                use std::os::unix::fs::PermissionsExt;
-                                                if let Ok(meta) = fs::metadata(&wrapper_path) {
-                                                    let mut perms = meta.permissions();
-                                                    perms.set_mode(0o555);
-                                                    let _ =
-                                                        fs::set_permissions(&wrapper_path, perms);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        logger.warn(&format!(
-                                            "Failed to generate safe wrapper script: {e}"
-                                        ));
-                                    }
+    // If the track file is missing or points elsewhere, rewrite it to the PATH wrapper dir.
+    if tracked_wrapper_dir.is_none() {
+        if let Some(ref dir) = wrapper_dir {
+            logger.warn("Git wrapper tracking file missing or invalid — restoring");
+            result.tampering_detected = true;
+            result
+                .details
+                .push("Git wrapper tracking file missing or invalid — restored".to_string());
+
+            // Best-effort rewrite: failures here should not crash the pipeline.
+            if let Err(e) = write_wrapper_track_file_atomic(&repo_root, dir) {
+                logger.warn(&format!("Failed to restore wrapper tracking file: {e}"));
+            }
+        }
+    }
+
+    // Restore wrapper script content/permissions if missing or tampered.
+    if let Some(wrapper_dir) = wrapper_dir {
+        let wrapper_path = wrapper_dir.join("git");
+        let wrapper_needs_restore = fs::read_to_string(&wrapper_path).map_or(true, |content| {
+            !content.contains(WRAPPER_MARKER) || !content.contains("unset GIT_EXEC_PATH")
+        });
+
+        if wrapper_needs_restore {
+            logger.warn("Git wrapper script missing or tampered — restoring");
+            result.tampering_detected = true;
+            result
+                .details
+                .push("Git wrapper script missing or tampered — restored".to_string());
+
+            // Resolve the real git binary by searching PATH excluding the wrapper dir.
+            let real_git =
+                find_git_in_path_excluding_dir(&wrapper_dir).or_else(|| which("git").ok());
+
+            match real_git {
+                Some(real_git_path) => {
+                    let Some(real_git_str) = real_git_path.to_str() else {
+                        logger.warn(
+                            "Resolved git binary path is not valid UTF-8; cannot restore wrapper",
+                        );
+                        return result;
+                    };
+                    let Ok(git_path_escaped) = escape_shell_single_quoted(real_git_str) else {
+                        logger.warn("Failed to generate safe wrapper script (git path)");
+                        return result;
+                    };
+                    let Some(repo_root_str) = repo_root.to_str() else {
+                        logger.warn("Repo root path is not valid UTF-8; cannot restore wrapper");
+                        return result;
+                    };
+                    let Ok(repo_root_escaped) = escape_shell_single_quoted(repo_root_str) else {
+                        logger.warn("Failed to generate safe wrapper script (repo root path)");
+                        return result;
+                    };
+
+                    let wrapper_content =
+                        make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+
+                    let tmp_path = wrapper_dir.join(format!(
+                        ".git-wrapper.tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+
+                    let open_tmp = {
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::OpenOptionsExt;
+                            OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .custom_flags(libc::O_NOFOLLOW)
+                                .open(&tmp_path)
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(&tmp_path)
+                        }
+                    };
+
+                    match open_tmp.and_then(|mut f| {
+                        f.write_all(wrapper_content.as_bytes())?;
+                        f.flush()?;
+                        let _ = f.sync_all();
+                        Ok(())
+                    }) {
+                        Ok(()) => {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                if let Ok(meta) = fs::metadata(&tmp_path) {
+                                    let mut perms = meta.permissions();
+                                    perms.set_mode(0o555);
+                                    let _ = fs::set_permissions(&tmp_path, perms);
                                 }
-                            } else {
-                                logger.warn(
-                                    "Resolved git binary path is not valid UTF-8; cannot restore wrapper",
-                                );
                             }
-
-                            // Defense-in-depth: validate we didn't resolve the wrapper itself.
-                            if real_git_path == wrapper_path {
-                                logger.warn(
-                                    "Resolved git binary points to wrapper; wrapper restore may be incomplete",
-                                );
+                            #[cfg(windows)]
+                            {
+                                if let Ok(meta) = fs::metadata(&tmp_path) {
+                                    let mut perms = meta.permissions();
+                                    perms.set_readonly(true);
+                                    let _ = fs::set_permissions(&tmp_path, perms);
+                                }
+                                if wrapper_path.exists() {
+                                    let _ = fs::remove_file(&wrapper_path);
+                                }
+                            }
+                            if let Err(e) = fs::rename(&tmp_path, &wrapper_path) {
+                                let _ = fs::remove_file(&tmp_path);
+                                logger.warn(&format!("Failed to restore wrapper script: {e}"));
                             }
                         }
-                        None => {
-                            logger
-                                .warn("Failed to resolve real git binary; cannot restore wrapper");
+                        Err(e) => {
+                            logger.warn(&format!("Failed to write wrapper temp file: {e}"));
+                        }
+                    }
+
+                    // Defense-in-depth: validate we didn't resolve the wrapper itself.
+                    if real_git_path == wrapper_path {
+                        logger.warn(
+                            "Resolved git binary points to wrapper; wrapper restore may be incomplete",
+                        );
+                    }
+                }
+                None => {
+                    logger.warn("Failed to resolve real git binary; cannot restore wrapper");
+                }
+            }
+        }
+
+        // Restore wrapper permissions (0o555) if loosened.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&wrapper_path) {
+                let mode = meta.permissions().mode() & 0o777;
+                if mode != 0o555 {
+                    logger.warn(&format!(
+                        "Git wrapper permissions loosened ({mode:#o}) — restoring to 0o555"
+                    ));
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o555);
+                    let _ = fs::set_permissions(&wrapper_path, perms);
+                    result.tampering_detected = true;
+                    result.details.push(format!(
+                        "Git wrapper permissions loosened ({mode:#o}) — restored to 0o555"
+                    ));
+                }
+            }
+        }
+    } else {
+        // Wrapper missing from PATH and no valid track file — re-enable.
+        logger.warn("Git wrapper missing — reinstalling");
+        result.tampering_detected = true;
+        result
+            .details
+            .push("Git wrapper missing before agent spawn — reinstalling".to_string());
+
+        let wrapper_dir = match tempfile::Builder::new()
+            .prefix(WRAPPER_DIR_PREFIX)
+            .tempdir()
+        {
+            Ok(d) => d.keep(),
+            Err(e) => {
+                logger.warn(&format!("Failed to create wrapper dir: {e}"));
+                // Continue with hooks/marker self-heal; wrapper is defense-in-depth.
+                return result;
+            }
+        };
+        ensure_wrapper_dir_prepended_to_path(&wrapper_dir);
+
+        let real_git = find_git_in_path_excluding_dir(&wrapper_dir).or_else(|| which("git").ok());
+        if let Some(real_git_path) = real_git {
+            if let Some(real_git_str) = real_git_path.to_str() {
+                if let (Ok(git_path_escaped), Some(repo_root_str)) =
+                    (escape_shell_single_quoted(real_git_str), repo_root.to_str())
+                {
+                    if let Ok(repo_root_escaped) = escape_shell_single_quoted(repo_root_str) {
+                        let wrapper_content =
+                            make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+                        let wrapper_path = wrapper_dir.join("git");
+                        if OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&wrapper_path)
+                            .and_then(|mut f| {
+                                f.write_all(wrapper_content.as_bytes())?;
+                                f.flush()?;
+                                let _ = f.sync_all();
+                                Ok(())
+                            })
+                            .is_ok()
+                        {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                if let Ok(meta) = fs::metadata(&wrapper_path) {
+                                    let mut perms = meta.permissions();
+                                    perms.set_mode(0o555);
+                                    let _ = fs::set_permissions(&wrapper_path, perms);
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
 
-            // Restore wrapper permissions (0o555) if loosened.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(meta) = fs::metadata(&wrapper_path) {
-                    let mode = meta.permissions().mode() & 0o777;
-                    if mode != 0o555 {
-                        logger.warn(&format!(
-                            "Git wrapper permissions loosened ({mode:#o}) — restoring to 0o555"
-                        ));
-                        let mut perms = meta.permissions();
-                        perms.set_mode(0o555);
-                        let _ = fs::set_permissions(&wrapper_path, perms);
-                        result.tampering_detected = true;
-                        result.details.push(format!(
-                            "Git wrapper permissions loosened ({mode:#o}) — restored to 0o555"
-                        ));
-                    }
-                }
-            }
+        // Best-effort track file write.
+        if let Err(e) = write_wrapper_track_file_atomic(&repo_root, &wrapper_dir) {
+            logger.warn(&format!("Failed to write wrapper tracking file: {e}"));
         }
     }
 
@@ -643,13 +977,15 @@ fn cleanup_git_wrapper_dir_silent() {
         return;
     };
     let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
-    let wrapper_dir = match fs::read_to_string(&track_file) {
-        Ok(path) => PathBuf::from(path.trim()),
-        Err(_) => return,
-    };
+    let wrapper_dir = fs::read_to_string(&track_file)
+        .ok()
+        .map(|s| PathBuf::from(s.trim()));
 
-    if !wrapper_dir.as_os_str().is_empty() {
-        let _ = fs::remove_dir_all(&wrapper_dir);
+    if let Some(wrapper_dir) = wrapper_dir {
+        // Treat track file as untrusted; only remove plausible wrapper dirs under temp.
+        if wrapper_dir_is_safe_existing_dir(&wrapper_dir) {
+            let _ = fs::remove_dir_all(&wrapper_dir);
+        }
     }
     let _ = fs::remove_file(track_file);
 }
@@ -809,7 +1145,7 @@ mod tests {
         // Verify the wrapper script iterates through arguments to skip global flags
         // like `-C /path`, `--git-dir=.git`, etc. before identifying the subcommand.
         // This ensures `git -C /path commit` is correctly blocked, not just `git commit`.
-        let content = make_wrapper_content("git");
+        let content = make_wrapper_content("git", "/tmp/repo");
 
         assert!(
             content.contains("skip_next"),
@@ -897,95 +1233,47 @@ mod tests {
     }
 
     #[test]
-    fn test_wrapper_script_blocks_merge_rebase_reset() {
-        let content = make_wrapper_content("git");
-        for cmd in &["merge", "rebase", "reset"] {
-            assert!(
-                content.contains(cmd),
-                "wrapper must block '{cmd}' subcommand; got:\n{content}"
-            );
-        }
-    }
+    fn test_wrapper_script_enforces_read_only_allowlist() {
+        let content = make_wrapper_content("git", "/tmp/repo");
 
-    #[test]
-    fn test_wrapper_script_blocks_cherry_pick_revert_am_apply() {
-        let content = make_wrapper_content("git");
-        for cmd in &["cherry-pick", "revert", "am", "apply"] {
-            assert!(
-                content.contains(cmd),
-                "wrapper must block '{cmd}' subcommand; got:\n{content}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_wrapper_script_blocks_clean_restore() {
-        let content = make_wrapper_content("git");
-        for cmd in &["clean", "restore"] {
-            assert!(
-                content.contains(cmd),
-                "wrapper must block '{cmd}' subcommand; got:\n{content}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_wrapper_script_blocks_stash_mutations() {
-        let content = make_wrapper_content("git");
-        // Wrapper must handle stash subcommands: block pop/drop/apply, allow list
         assert!(
-            content.contains("stash"),
-            "wrapper must handle 'stash' subcommand; got:\n{content}"
-        );
-        for sub in &["pop", "drop"] {
-            assert!(
-                content.contains(sub),
-                "wrapper must block 'stash {sub}'; got:\n{content}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_wrapper_script_blocks_branch_delete() {
-        let content = make_wrapper_content("git");
-        // Wrapper must block branch -d/-D while allowing branch (list)
-        assert!(
-            content.contains("-D"),
-            "wrapper must block 'branch -D'; got:\n{content}"
+            content.contains("read-only allowlist"),
+            "wrapper should describe allowlist behavior; got:\n{content}"
         );
         assert!(
-            content.contains("--delete"),
-            "wrapper must block 'branch --delete'; got:\n{content}"
+            content.contains("status|log|diff|show|rev-parse|ls-files|describe"),
+            "wrapper should explicitly allow read-only lookup commands; got:\n{content}"
         );
     }
 
     #[test]
-    fn test_wrapper_script_blocks_add() {
-        let content = make_wrapper_content("git");
-        // The unconditionally blocked case statement must include "add"
+    fn test_wrapper_script_blocks_stash_except_list() {
+        let content = make_wrapper_content("git", "/tmp/repo");
         assert!(
-            content.contains("|add|"),
-            "wrapper must block 'add' subcommand in unconditional block list; got:\n{content}"
+            content.contains("only 'stash list' allowed"),
+            "wrapper should only allow stash list; got:\n{content}"
         );
     }
 
     #[test]
-    fn test_wrapper_script_blocks_init() {
-        let content = make_wrapper_content("git");
-        // The unconditionally blocked case statement must include "init"
+    fn test_wrapper_script_blocks_branch_positional_args() {
+        let content = make_wrapper_content("git", "/tmp/repo");
         assert!(
-            content.contains("init)"),
-            "wrapper must block 'init' subcommand in unconditional block list; got:\n{content}"
+            content.contains("branch <name>"),
+            "wrapper should block git branch <name>; got:\n{content}"
         );
     }
 
     #[test]
-    fn test_wrapper_script_blocks_checkout_double_dash() {
-        let content = make_wrapper_content("git");
-        // Wrapper must block 'checkout -- <path>' (discard changes)
+    fn test_wrapper_script_uses_protected_repo_root() {
+        let content = make_wrapper_content("git", "/tmp/repo");
         assert!(
-            content.contains("checkout"),
-            "wrapper must handle checkout subcommand; got:\n{content}"
+            content.contains("protected_repo_root"),
+            "wrapper should embed protected repo root; got:\n{content}"
+        );
+        assert!(
+            content.contains("marker=\"$protected_repo_root/.no_agent_commit\""),
+            "wrapper should check marker under protected repo root; got:\n{content}"
         );
     }
 
@@ -998,7 +1286,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_unsets_git_env_vars() {
-        let content = make_wrapper_content("git");
+        let content = make_wrapper_content("git", "/tmp/repo");
         // Wrapper must unset GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH
         // when .no_agent_commit exists to prevent env var bypass.
         for var in &["GIT_DIR", "GIT_WORK_TREE", "GIT_EXEC_PATH"] {
@@ -1011,7 +1299,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_documents_command_builtin_behavior() {
-        let content = make_wrapper_content("git");
+        let content = make_wrapper_content("git", "/tmp/repo");
         // Wrapper should document that `command git` still routes through
         // the PATH wrapper (command only skips shell functions/aliases, not PATH entries).
         assert!(

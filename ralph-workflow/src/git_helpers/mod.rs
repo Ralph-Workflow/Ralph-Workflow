@@ -3,7 +3,8 @@
 //! Provides git hooks management, a git wrapper for blocking commits during the
 //! agent phase, and basic repository utilities.
 //!
-//! All git operations use libgit2 directly - no git CLI required.
+//! Core git operations use libgit2 directly. Agent-phase defense-in-depth may also
+//! install a temporary PATH wrapper that intercepts the git CLI when available.
 //!
 //! # Module Structure
 //!

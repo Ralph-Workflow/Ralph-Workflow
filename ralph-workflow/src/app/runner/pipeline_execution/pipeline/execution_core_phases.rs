@@ -12,8 +12,9 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
     }
 
     if let Some(warning) = crate::files::make_prompt_writable_with_workspace(&*ctx.workspace) {
-        ctx.logger
-            .warn(&format!("PROMPT.md permission restore on startup: {warning}"));
+        ctx.logger.warn(&format!(
+            "PROMPT.md permission restore on startup: {warning}"
+        ));
     }
 
     if let Err(err) = crate::git_helpers::create_marker_with_workspace(&*ctx.workspace) {
@@ -23,15 +24,16 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
 
     let hooks_dir = crate::git_helpers::get_hooks_dir_in_repo(&ctx.repo_root);
     let ralph_hook_detected = hooks_dir.ok().is_some_and(|dir| {
-        ["pre-commit", "pre-push"].into_iter().any(|name| {
-            crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
-                .unwrap_or(false)
-        })
+        ["pre-commit", "pre-push", "pre-merge-commit"]
+            .into_iter()
+            .any(|name| {
+                crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
+                    .unwrap_or(false)
+            })
     });
 
     if ralph_hook_detected {
-        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(&ctx.repo_root, &ctx.logger)
-        {
+        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(&ctx.repo_root, &ctx.logger) {
             ctx.logger
                 .warn(&format!("Startup hook cleanup warning: {err}"));
         }
@@ -79,11 +81,13 @@ fn compute_initial_state(
     let mut initial_state = resume_checkpoint.map_or_else(
         || crate::app::event_loop::create_initial_state_with_config(phase_ctx),
         |checkpoint| {
-            let mut base_state = crate::app::event_loop::create_initial_state_with_config(phase_ctx);
-            let migrated = crate::reducer::PipelineState::from_checkpoint_with_execution_history_limit(
-                checkpoint.clone(),
-                phase_ctx.config.execution_history_limit,
-            );
+            let mut base_state =
+                crate::app::event_loop::create_initial_state_with_config(phase_ctx);
+            let migrated =
+                crate::reducer::PipelineState::from_checkpoint_with_execution_history_limit(
+                    checkpoint.clone(),
+                    phase_ctx.config.execution_history_limit,
+                );
             crate::app::event_loop::overlay_checkpoint_progress_onto_base_state(
                 &mut base_state,
                 migrated,
@@ -119,7 +123,7 @@ fn run_event_loop_with_default_handler(
     phase_ctx: &mut PhaseContext<'_>,
     initial_state: crate::reducer::PipelineState,
 ) -> anyhow::Result<crate::app::event_loop::EventLoopResult> {
-    use crate::app::event_loop::{EventLoopConfig, run_event_loop_with_handler};
+    use crate::app::event_loop::{run_event_loop_with_handler, EventLoopConfig};
     use crate::reducer::MainEffectHandler;
 
     let event_loop_config = EventLoopConfig {
@@ -127,5 +131,10 @@ fn run_event_loop_with_default_handler(
     };
 
     let mut handler = MainEffectHandler::new(initial_state.clone());
-    run_event_loop_with_handler(phase_ctx, Some(initial_state), event_loop_config, &mut handler)
+    run_event_loop_with_handler(
+        phase_ctx,
+        Some(initial_state),
+        event_loop_config,
+        &mut handler,
+    )
 }
