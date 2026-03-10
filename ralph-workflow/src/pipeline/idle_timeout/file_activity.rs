@@ -8,6 +8,12 @@ use crate::workspace::Workspace;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
+    // If the filesystem reports a future mtime (clock skew, network FS), treat it
+    // as fresh activity rather than extremely old.
+    now.duration_since(mtime).unwrap_or(Duration::ZERO)
+}
+
 /// Maximum depth for recursive workspace scan.
 ///
 /// Depth 0 = workspace root files only (no recursion).
@@ -31,9 +37,6 @@ fn scan_dir_recursive(
     timeout: Duration,
     remaining_depth: usize,
 ) -> std::io::Result<bool> {
-    if remaining_depth == 0 {
-        return Ok(false);
-    }
     let Ok(entries) = workspace.read_dir(dir) else {
         return Ok(false); // soft-fail: unreadable dirs are skipped
     };
@@ -44,7 +47,7 @@ fn scan_dir_recursive(
                 continue;
             }
             if let Some(mtime) = entry.modified() {
-                let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
+                let age = file_age(now, mtime);
                 if age <= timeout {
                     return Ok(true);
                 }
@@ -53,7 +56,9 @@ fn scan_dir_recursive(
             if FileActivityTracker::is_excluded_workspace_dir(path) {
                 continue;
             }
-            if scan_dir_recursive(workspace, entry.path(), now, timeout, remaining_depth - 1)? {
+            if remaining_depth > 0
+                && scan_dir_recursive(workspace, entry.path(), now, timeout, remaining_depth - 1)?
+            {
                 return Ok(true);
             }
         }
@@ -125,7 +130,7 @@ impl FileActivityTracker {
                 let Some(mtime) = entry.modified() else {
                     continue;
                 };
-                let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
+                let age = file_age(now, mtime);
                 if age <= timeout {
                     return Ok(true);
                 }
@@ -147,7 +152,7 @@ impl FileActivityTracker {
                     let Some(mtime) = entry.modified() else {
                         continue;
                     };
-                    let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
+                    let age = file_age(now, mtime);
                     if age <= timeout {
                         return Ok(true);
                     }

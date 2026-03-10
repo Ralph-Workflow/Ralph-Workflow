@@ -486,3 +486,43 @@ fn test_file_slightly_beyond_timeout_detected_with_wider_window() {
         "File 320s old must be detected with widened window (timeout + check_interval + buffer)"
     );
 }
+
+#[test]
+fn test_detects_file_at_max_scan_depth_boundary() {
+    // Regression test for an off-by-one bug in the recursive workspace scan.
+    //
+    // The scan depth is intended to be inclusive: when the remaining depth hits 0
+    // we still scan the current directory but do not recurse further. The previous
+    // implementation returned early and skipped scanning the directory at the
+    // depth limit, missing real activity.
+    let tracker = FileActivityTracker::new();
+
+    // Depth 8 directory: d1/d2/d3/d4/d5/d6/d7/d8
+    // If the scan incorrectly skips scanning at remaining_depth == 0, this file
+    // will be missed.
+    let ws = MemoryWorkspace::new_test()
+        .with_file("d1/d2/d3/d4/d5/d6/d7/d8/file.rs", "pub fn touched() {}");
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recent activity at the max scan depth must be detected"
+    );
+}
+
+#[test]
+fn test_future_mtime_counts_as_recent_activity() {
+    // If the filesystem reports a future mtime (clock skew, network FS), treat the
+    // file as fresh activity rather than extremely old.
+    let tracker = FileActivityTracker::new();
+    let future_time = SystemTime::now() + Duration::from_secs(60);
+    let ws = MemoryWorkspace::new_test().with_file_at_time("src/lib.rs", "fn x() {}", future_time);
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(1))
+            .unwrap(),
+        "future mtimes should be treated as activity to avoid false idle kills"
+    );
+}

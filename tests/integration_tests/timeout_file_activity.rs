@@ -985,7 +985,7 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
         // No children configured; the mock executor reports no active children.
         let executor_impl = Arc::new(MockProcessExecutor::new());
         let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
-            executor_impl.clone(),
+            executor_impl,
             Some(Arc::clone(&controller)),
         ));
 
