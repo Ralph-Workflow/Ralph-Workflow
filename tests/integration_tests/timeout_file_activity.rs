@@ -684,3 +684,76 @@ fn only_excluded_workspace_files_still_produce_timeout() {
         );
     });
 }
+
+#[test]
+fn deep_nested_source_file_prevents_timeout() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        let timeout = Duration::from_millis(50);
+        wait_until_idle_timeout_exceeded(&timestamp, timeout);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        // File at depth 4: workspace_root/crate/src/pipeline/idle_timeout/file.rs
+        let workspace = Arc::new(ReadDirCountingWorkspace::new(
+            MemoryWorkspace::new_test().with_file(
+                "ralph-workflow/src/pipeline/idle_timeout/file_activity.rs",
+                "// recent edit",
+            ),
+        ));
+        let workspace_dyn: Arc<dyn Workspace> = workspace.clone();
+
+        let file_activity_config = Some(FileActivityConfig {
+            tracker: new_file_activity_tracker(),
+            workspace: workspace_dyn,
+        });
+
+        let (mock_child, _controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
+
+        let handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                file_activity_config.as_ref(),
+                &child,
+                &should_stop_for_monitor,
+                &executor,
+                MonitorConfig {
+                    timeout,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                },
+            )
+        });
+
+        // Wait for at least one workspace scan.
+        for _ in 0..100_000 {
+            if workspace.read_dir_calls() > 0 {
+                break;
+            }
+            std::thread::yield_now();
+        }
+
+        assert!(
+            workspace.read_dir_calls() > 0,
+            "monitor should perform workspace scan"
+        );
+        should_stop.store(true, Ordering::Release);
+
+        let result = handle.join().expect("monitor thread panicked");
+        assert_eq!(
+            result,
+            MonitorResult::ProcessCompleted,
+            "recently modified deep source file should prevent timeout"
+        );
+
+        assert!(
+            executor_impl.execute_calls_for("kill").is_empty(),
+            "deep file activity should prevent kill signals"
+        );
+    });
+}

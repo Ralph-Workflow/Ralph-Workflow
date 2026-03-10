@@ -8,6 +8,59 @@ use crate::workspace::Workspace;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+/// Maximum depth for recursive workspace scan.
+///
+/// Depth 0 = workspace root files only (no recursion).
+/// Depth 1 = workspace root subdirectory files (previous behaviour).
+/// Depth 8 = covers standard Rust workspace layouts (crate/src/module/submod/…).
+const MAX_SCAN_DEPTH: usize = 8;
+
+/// Recursively scan a directory for recently modified, non-noise files.
+///
+/// Returns `Ok(true)` as soon as a file younger than `timeout` is found.
+/// Excluded directories and extensions are skipped at every level.
+/// `remaining_depth` bounds worst-case traversal to prevent hangs on deep trees.
+///
+/// `#[inline(never)]` prevents this function from being merged into its caller's
+/// stack frame, keeping each frame independently bounded.
+#[inline(never)]
+fn scan_dir_recursive(
+    workspace: &dyn Workspace,
+    dir: &Path,
+    now: SystemTime,
+    timeout: Duration,
+    remaining_depth: usize,
+) -> std::io::Result<bool> {
+    if remaining_depth == 0 {
+        return Ok(false);
+    }
+    let Ok(entries) = workspace.read_dir(dir) else {
+        return Ok(false); // soft-fail: unreadable dirs are skipped
+    };
+    for entry in entries {
+        let path = entry.path();
+        if entry.is_file() {
+            if FileActivityTracker::is_excluded_workspace_file(path) {
+                continue;
+            }
+            if let Some(mtime) = entry.modified() {
+                let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
+                if age < timeout {
+                    return Ok(true);
+                }
+            }
+        } else if entry.is_dir() {
+            if FileActivityTracker::is_excluded_workspace_dir(path) {
+                continue;
+            }
+            if scan_dir_recursive(workspace, entry.path(), now, timeout, remaining_depth - 1)? {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// Tracks file modification activity for timeout detection.
 ///
 /// This tracker monitors AI-generated files in the `.agent/` directory to detect
@@ -31,11 +84,12 @@ impl FileActivityTracker {
     /// 1. **`.agent/` whitelist** – files representing meaningful AI progress
     ///    (PLAN.md, ISSUES.md, NOTES.md, STATUS.md, commit-message.txt,
     ///    `.agent/tmp/*.xml`).
-    /// 2. **Workspace root scan (1 level deep)** – any file outside excluded
+    /// 2. **Workspace recursive scan (max depth 8)** – any file outside excluded
     ///    noise directories (`.git/`, `target/`, `tmp/`, `node_modules/`,
     ///    `.agent/`) and excluded extensions (`*.log`, `*.swp`, `*.tmp`,
     ///    `*.bak`, `*~`). This detects coding work (source edits, test writes,
-    ///    `Cargo.toml` changes) that produces no stdout/stderr output.
+    ///    `Cargo.toml` changes) that produces no stdout/stderr output, including
+    ///    files nested deeply inside workspace crates (e.g. `crate/src/mod/file.rs`).
     ///
     /// Returns `Ok(true)` if recent activity is detected, `Ok(false)` if no
     /// recent activity, or `Err` if a required directory read fails.
@@ -101,49 +155,13 @@ impl FileActivityTracker {
             }
         }
 
-        // Scan workspace root (1 level deep) for recently modified source files.
-        // This catches genuine coding work (src/ edits, test writes, Cargo.toml
-        // changes) that produces no stdout/stderr output. Errors are soft-failed:
-        // if a directory cannot be read, simply skip it.
-        if let Ok(root_entries) = workspace.read_dir(Path::new("")) {
-            for entry in root_entries {
-                if entry.is_file() {
-                    let path = entry.path();
-                    if Self::is_excluded_workspace_file(path) {
-                        continue;
-                    }
-                    let Some(mtime) = entry.modified() else {
-                        continue;
-                    };
-                    let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                    if age < timeout {
-                        return Ok(true);
-                    }
-                } else if entry.is_dir() {
-                    let path = entry.path();
-                    if Self::is_excluded_workspace_dir(path) {
-                        continue;
-                    }
-                    if let Ok(sub_entries) = workspace.read_dir(path) {
-                        for sub_entry in sub_entries {
-                            if !sub_entry.is_file() {
-                                continue;
-                            }
-                            let sub_path = sub_entry.path();
-                            if Self::is_excluded_workspace_file(sub_path) {
-                                continue;
-                            }
-                            let Some(mtime) = sub_entry.modified() else {
-                                continue;
-                            };
-                            let age = now.duration_since(mtime).unwrap_or(Duration::MAX);
-                            if age < timeout {
-                                return Ok(true);
-                            }
-                        }
-                    }
-                }
-            }
+        // Recursively scan workspace for recently modified source files.
+        // Excludes noise directories (.git, target, tmp, node_modules, .agent)
+        // and noise extensions (*.log, *.swp, *.tmp, *.bak, *~).
+        // Short-circuits on first match for performance.
+        // The .agent/ directory is excluded here; it is handled above.
+        if scan_dir_recursive(workspace, Path::new(""), now, timeout, MAX_SCAN_DEPTH)? {
+            return Ok(true);
         }
 
         Ok(false)

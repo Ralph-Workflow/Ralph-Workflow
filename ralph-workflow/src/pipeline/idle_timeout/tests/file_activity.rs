@@ -393,3 +393,67 @@ fn test_workspace_file_in_subdir_prevents_timeout() {
         "recently modified tests/integration.rs should be detected as activity"
     );
 }
+
+// Tests for deep directory detection (depth 2+).
+// The current 1-level-deep workspace scan cannot find files nested inside
+// subdirectories of direct root subdirectories (e.g., ralph-workflow/src/lib.rs).
+// These tests MUST FAIL before the recursive scan is implemented.
+
+#[test]
+fn test_detects_file_at_depth_2() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file("ralph-workflow/src/lib.rs", "pub fn foo() {}");
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recently modified ralph-workflow/src/lib.rs (depth 2) should be detected"
+    );
+}
+
+#[test]
+fn test_detects_file_at_depth_3() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file(
+        "ralph-workflow/src/pipeline/mod.rs",
+        "pub mod idle_timeout;",
+    );
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recently modified ralph-workflow/src/pipeline/mod.rs (depth 3) should be detected"
+    );
+}
+
+#[test]
+fn test_detects_file_at_depth_4() {
+    let tracker = FileActivityTracker::new();
+    let ws = MemoryWorkspace::new_test().with_file(
+        "ralph-workflow/src/pipeline/idle_timeout/file_activity.rs",
+        "// source",
+    );
+
+    assert!(
+        tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "recently modified depth-4 file should be detected"
+    );
+}
+
+#[test]
+fn test_target_dir_excluded_at_any_depth() {
+    let tracker = FileActivityTracker::new();
+    let ws =
+        MemoryWorkspace::new_test().with_file("ralph-workflow/target/debug/lib.rlib", "binary");
+
+    assert!(
+        !tracker
+            .check_for_recent_activity(&ws, Duration::from_secs(300))
+            .unwrap(),
+        "target/ dir should be excluded even inside a workspace crate"
+    );
+}
