@@ -118,11 +118,16 @@ fn main() -> ExitCode {
 
     match args.next().as_deref() {
         Some("verify") => {
-            let reporter: Arc<dyn ProgressReporter> = Arc::new(verify::StderrProgressReporter);
+            // Total check count = native checks + 1 (native-scan) + cargo checks.
+            let total_checks =
+                verify::NATIVE_REQUIRED_CHECKS.len() + 1 + verify::REQUIRED_CHECKS.len();
+            let reporter: Arc<dyn ProgressReporter> =
+                Arc::new(verify::StderrProgressReporter::new(total_checks));
             let real_runner = RealRunner::new(Arc::clone(&reporter));
             let repo_root = real_runner.repo_root.clone();
             let runner = cache::CachingCommandRunner::new(real_runner, repo_root.clone());
             eprintln!("=== cargo xtask verify ===");
+            let verify_start = std::time::Instant::now();
             let report = match verify::verify_fast(
                 &runner,
                 &repo_root,
@@ -137,6 +142,7 @@ fn main() -> ExitCode {
                     return ExitCode::from(1);
                 }
             };
+            let total_elapsed = verify_start.elapsed();
 
             runner.flush();
 
@@ -145,7 +151,10 @@ fn main() -> ExitCode {
             }
 
             match report.exit {
-                VerifyExitCode::Success => ExitCode::SUCCESS,
+                VerifyExitCode::Success => {
+                    eprintln!("=== all {total_checks} checks passed in {total_elapsed:.1?} ===");
+                    ExitCode::SUCCESS
+                }
                 VerifyExitCode::Failure => ExitCode::from(1),
             }
         }

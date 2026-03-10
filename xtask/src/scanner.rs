@@ -425,6 +425,17 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
     },
 ];
 
+// ── Internal type aliases ─────────────────────────────────────────────────────
+
+/// Result type for a single directory group's file collection.
+///
+/// `Ok(sorted_files)` on success; `Err((failing_dir, error_message))` when a
+/// `read_dir` call fails (directory traversal error surfaced as an explicit violation).
+type GroupFilesResult = Result<Vec<PathBuf>, (PathBuf, String)>;
+
+/// Map from directory-group key to `(group_label, file_collection_result)`.
+type ScanGroupMap = HashMap<String, (String, GroupFilesResult)>;
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Run all native scan checks against the repository root, emitting per-file scan progress.
@@ -450,9 +461,24 @@ pub fn run_native_scan_checks_reporting(
         return results;
     }
 
-    // Pre-scan file count: lightweight directory walk with no file I/O.
-    // Emitting the total upfront eliminates the "blank terminal" period during scanning.
-    let (total_files, group_summaries) = count_scan_files(repo_root, checks);
+    // Single-pass directory traversal: collect all files for each group at once.
+    // Eliminates the previous double-traversal (count_scan_files + per-group collect
+    // in scan_group_collect), halving directory I/O.
+    // Reference: TAOCP emphasis on reducing I/O passes to O(1) when possible.
+    let group_map = collect_scan_groups(repo_root, checks);
+
+    // Compute total file count and per-group summaries from the collected data.
+    let total_files: usize = group_map
+        .values()
+        .filter_map(|(_, r)| r.as_ref().ok())
+        .map(|v| v.len())
+        .sum();
+    let mut group_summaries: Vec<(String, usize)> = group_map
+        .values()
+        .map(|(label, r)| (label.clone(), r.as_ref().map(|v| v.len()).unwrap_or(0)))
+        .collect();
+    group_summaries.sort_by(|(a, _), (b, _)| a.cmp(b));
+
     if total_files > 0 {
         progress(
             "native-scan",
@@ -472,6 +498,8 @@ pub fn run_native_scan_checks_reporting(
     let progress_threshold = (total_files / 20).max(5);
 
     // Group check indices by (sorted directories + include_glob) key.
+    // Sort for deterministic group ordering across runs (HashMap has non-deterministic
+    // iteration order; sorting guards against flaky test failures).
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
     for (idx, check) in checks.iter().enumerate() {
         groups
@@ -479,6 +507,19 @@ pub fn run_native_scan_checks_reporting(
             .or_default()
             .push(idx);
     }
+    let mut groups_vec: Vec<(String, Vec<usize>)> = groups.into_iter().collect();
+    groups_vec.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+    // Build work items: pair each group's check indices with its pre-collected files.
+    // Moving check_indices (Vec<usize>) into each work item allows the scoped thread
+    // to own the data without a lifetime dependency on groups_vec.
+    let work_items: Vec<(Vec<usize>, &GroupFilesResult)> = groups_vec
+        .into_iter()
+        .map(|(key, indices)| {
+            let (_, files_result) = group_map.get(&key).expect("group key must exist in map");
+            (indices, files_result)
+        })
+        .collect();
 
     // Shared atomic file counter.  Incremented once per file processed across all
     // scan-group threads.  Uses Relaxed ordering: we only need approximate counts
@@ -488,27 +529,46 @@ pub fn run_native_scan_checks_reporting(
     // Collect violations per group in parallel using scoped threads.
     // Each group is independent (different directories or patterns), so no
     // synchronisation is needed during the scan phase.
-    let groups_vec: Vec<Vec<usize>> = groups.into_values().collect();
     let mut all_violations: Vec<Vec<(usize, NativeScanViolation)>> =
-        Vec::with_capacity(groups_vec.len());
+        Vec::with_capacity(work_items.len());
 
     std::thread::scope(|s| {
         // Capture a reference to files_done (references are Copy) so that each
         // spawned closure can share it without moving the AtomicUsize itself.
         let fd = &files_done;
-        let handles: Vec<_> = groups_vec
+        let handles: Vec<_> = work_items
             .into_iter()
-            .map(|check_indices| {
+            .map(|(check_indices, files_result)| {
                 // progress_threshold is usize (Copy), so the move closure captures it by value.
-                s.spawn(move || {
-                    scan_group_collect(
-                        repo_root,
+                // files_result is &Result<...> (a Copy reference into group_map, which outlives
+                // the scope).  check_indices: Vec<usize> is moved into the closure.
+                s.spawn(move || match files_result {
+                    Ok(files) => scan_group_collect(
                         checks,
                         &check_indices,
+                        files,
                         fd,
                         progress_threshold,
                         progress,
-                    )
+                    ),
+                    Err((err_dir, err_msg)) => {
+                        // Directory traversal error: surface as explicit violations for every
+                        // check in the group (same contract as the old per-group traversal).
+                        check_indices
+                            .iter()
+                            .copied()
+                            .map(|ci| {
+                                (
+                                    ci,
+                                    NativeScanViolation {
+                                        file: err_dir.clone(),
+                                        line_number: 1,
+                                        line: err_msg.clone(),
+                                    },
+                                )
+                            })
+                            .collect()
+                    }
                 })
             })
             .collect();
@@ -530,37 +590,52 @@ pub fn run_native_scan_checks_reporting(
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/// Count total files per directory group for upfront progress reporting.
+/// Single-pass directory traversal: collect files for all directory groups at once.
 ///
-/// Lightweight pre-pass: traverses directories, reads no file content, builds no
-/// automata.  Returns `(total_files, summaries)` where each summary is
-/// `(group_label, file_count)`.  Groups are deduplicated by `directory_group_key`
-/// so files in groups shared by multiple checks are counted exactly once.
-fn count_scan_files(repo_root: &Path, checks: &[NativeScanCheck]) -> (usize, Vec<(String, usize)>) {
-    // Map from group key → (label, count).  First check per group wins the label.
-    let mut group_map: HashMap<String, (String, usize)> = HashMap::new();
+/// Replaces the previous two-pass approach (`count_scan_files` for counting +
+/// per-group traversal inside `scan_group_collect`), halving directory I/O.
+///
+/// Returns `HashMap<group_key, (label, Ok(sorted_files) | Err((dir, msg)))>`.
+/// An `Err` entry means directory traversal failed; callers convert it to
+/// explicit violations for every check in that group (same contract as before).
+///
+/// Groups are deduplicated by `directory_group_key` so each directory set is
+/// traversed exactly once even when multiple checks share the same directory.
+fn collect_scan_groups(repo_root: &Path, checks: &[NativeScanCheck]) -> ScanGroupMap {
+    let mut group_map: ScanGroupMap = HashMap::new();
 
     for check in checks {
         let key = directory_group_key(check);
         if group_map.contains_key(&key) {
-            continue; // already counted this group
+            continue; // already collected this group
         }
         let label = check.directories.join(" + ");
-        let mut count = 0usize;
+        let mut files: Vec<PathBuf> = Vec::new();
+        let mut traversal_err: Option<(PathBuf, String)> = None;
         for dir in check.directories {
             let full_dir = repo_root.join(dir);
             if full_dir.exists() {
-                let mut buf = Vec::new();
-                let _ = collect_files_with_glob(&full_dir, check.include_glob, &mut buf);
-                count += buf.len();
+                match collect_files_with_glob(&full_dir, check.include_glob, &mut files) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        let msg = format!("read_dir error for {}: {e}", full_dir.display());
+                        traversal_err = Some((full_dir, msg));
+                        break;
+                    }
+                }
             }
         }
-        group_map.insert(key, (label, count));
+        let result = match traversal_err {
+            Some(err) => Err(err),
+            None => {
+                files.sort();
+                Ok(files)
+            }
+        };
+        group_map.insert(key, (label, result));
     }
 
-    let total: usize = group_map.values().map(|(_, c)| *c).sum();
-    let summaries: Vec<(String, usize)> = group_map.into_values().collect();
-    (total, summaries)
+    group_map
 }
 
 /// Read a slice of files in parallel using scoped threads.
@@ -620,8 +695,10 @@ fn directory_group_key(check: &NativeScanCheck) -> String {
     format!("{}:{}", dirs.join(","), check.include_glob)
 }
 
-/// Scan one directory group: collect files once, build a single Aho-Corasick
-/// automaton from all patterns in the group, search each file, demultiplex.
+/// Scan one directory group: search all pre-collected files, demultiplex matches.
+///
+/// Accepts `files` pre-collected by `collect_scan_groups` (single traversal),
+/// eliminating the previous per-group directory walk.
 ///
 /// Returns a flat list of `(check_index, NativeScanViolation)` pairs so the
 /// caller can merge results from multiple groups (including parallel groups).
@@ -631,44 +708,14 @@ fn directory_group_key(check: &NativeScanCheck) -> String {
 /// `progress("native-scan", "N files scanned")` fires whenever `files_done`
 /// is a positive multiple of `progress_threshold`.
 fn scan_group_collect(
-    repo_root: &Path,
     all_checks: &[NativeScanCheck],
     check_indices: &[usize],
+    files: &[PathBuf],
     files_done: &AtomicUsize,
     progress_threshold: usize,
     progress: &(dyn Fn(&str, &str) + Sync),
 ) -> Vec<(usize, NativeScanViolation)> {
     let mut violations: Vec<(usize, NativeScanViolation)> = Vec::new();
-
-    let first = &all_checks[check_indices[0]];
-
-    // Collect all matching files for the group's directories.
-    let mut files: Vec<PathBuf> = Vec::new();
-    for dir in first.directories {
-        let full_dir = repo_root.join(dir);
-        if full_dir.exists() {
-            if let Err(e) = collect_files_with_glob(&full_dir, first.include_glob, &mut files) {
-                // Directory traversal errors must not be silently treated as "no files".
-                // Surface the error as an explicit failure for every check in this group.
-                let msg = format!("read_dir error for {}: {e}", full_dir.display());
-                return check_indices
-                    .iter()
-                    .copied()
-                    .map(|ci| {
-                        (
-                            ci,
-                            NativeScanViolation {
-                                file: full_dir.clone(),
-                                line_number: 1,
-                                line: msg.clone(),
-                            },
-                        )
-                    })
-                    .collect();
-            }
-        }
-    }
-    files.sort();
 
     // Build a flat pattern list with a mapping from pattern ID → check index.
     let mut all_patterns: Vec<&str> = Vec::new();
@@ -683,6 +730,26 @@ fn scan_group_collect(
 
     if all_patterns.is_empty() {
         return violations;
+    }
+
+    // Pre-compute Two-Way critical factorizations for all NegativeLookahead checks.
+    //
+    // tw_contains recomputes critical_factorization (O(m)) on every call.  For
+    // NegativeLookahead checks the pattern is a static &str, so precomputing (l, p)
+    // once per check amortizes the O(m) preprocessing across all match occurrences.
+    // For a file with K trigger matches this reduces preprocessing from O(K×m) to O(m).
+    //
+    // Reference: TAOCP Vol. 3, §6.3 — preprocessing amortization principle.
+    let mut tw_precomputed: HashMap<usize, (usize, usize)> = HashMap::new();
+    for &ci in check_indices {
+        if let MatchMode::NegativeLookahead {
+            negative_context, ..
+        } = all_checks[ci].mode
+        {
+            if !negative_context.is_empty() {
+                tw_precomputed.insert(ci, critical_factorization(negative_context.as_bytes()));
+            }
+        }
     }
 
     // Build the Aho-Corasick automaton with explicit DFA mode for O(1) per-character
@@ -704,7 +771,7 @@ fn scan_group_collect(
     };
 
     // Read all files in parallel, then process in deterministic (sorted) order.
-    let contents = read_scan_files_parallel(&files);
+    let contents = read_scan_files_parallel(files);
     for (file_path, content_res) in files.iter().zip(contents.into_iter()) {
         // Increment the shared file counter.  Emit progress every `progress_threshold`
         // files so the user sees scan throughput at ~5% intervals regardless of corpus
@@ -788,10 +855,15 @@ fn scan_group_collect(
                         if negative_context.is_empty() {
                             false // empty negative_context always suppresses (degenerate)
                         } else {
-                            // Two-Way O(n) worst-case search (Crochemore-Lecroq 1991, TAOCP Vol. 3
-                            // §6.3). Strictly superior to BMH which degenerates to O(n×m) on
-                            // adversarial inputs (e.g. "aaaa...aaab" pattern "aaab").
-                            !tw_contains(line_bytes, negative_context.as_bytes())
+                            // Use the precomputed critical factorization to avoid O(m)
+                            // preprocessing on every match occurrence.
+                            // Reference: TAOCP Vol. 3, §6.3 — preprocessing amortization.
+                            let precomputed = tw_precomputed[&check_idx];
+                            !tw_contains_precomputed(
+                                line_bytes,
+                                negative_context.as_bytes(),
+                                precomputed,
+                            )
                         }
                     }
                 }
@@ -1080,6 +1152,7 @@ pub(crate) fn kmp_search(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 /// Preferred over BMH for NegativeLookahead because BMH degenerates to O(n×m)
 /// on adversarial inputs (e.g. 1000×'a' + 'b' with pattern "aaab"), while
 /// Two-Way guarantees O(n) in all cases.
+#[cfg(test)]
 pub(crate) fn tw_contains(text: &[u8], pattern: &[u8]) -> bool {
     let m = pattern.len();
     if m == 0 {
@@ -1157,6 +1230,81 @@ pub(crate) fn tw_contains(text: &[u8], pattern: &[u8]) -> bool {
             } else {
                 // Right half matched; now scan left part (positions 0..l) backward.
                 // Using (0..=l).rev() avoids signed arithmetic.
+                let full_match = (0..=l).rev().all(|k| pattern[k] == text[j + k]);
+                if full_match {
+                    return true;
+                }
+                j += slide;
+            }
+        }
+    }
+    false
+}
+
+/// Two-Way search with pre-computed critical factorization.
+///
+/// Identical to `tw_contains` but accepts `(l, p)` from `critical_factorization`,
+/// skipping the O(m) preprocessing step.  Use when the same pattern is searched
+/// many times (e.g., NegativeLookahead with a static pattern): precompute once per
+/// check and call `tw_contains_precomputed` for each match occurrence.
+///
+/// Reference: TAOCP Vol. 3, §6.3 — preprocessing amortization principle.
+/// Crochemore, M. and Lecroq, P. (1991). Two-Way string-matching algorithm.
+pub(crate) fn tw_contains_precomputed(
+    text: &[u8],
+    pattern: &[u8],
+    precomputed: (usize, usize),
+) -> bool {
+    let m = pattern.len();
+    if m == 0 {
+        return true;
+    }
+    let n = text.len();
+    if m > n {
+        return false;
+    }
+    let (l, p) = precomputed;
+    let is_periodic = m > p && pattern[..m - p] == pattern[p..];
+
+    if is_periodic {
+        // ── Case 1: global period p — use the memory optimisation ──────────────
+        let mut j = 0usize;
+        let mut memory = usize::MAX;
+        while j + m <= n {
+            let mut i = l
+                .max(if memory == usize::MAX { 0 } else { memory })
+                .saturating_add(1);
+            while i < m && pattern[i] == text[j + i] {
+                i += 1;
+            }
+            if i < m {
+                j += i.saturating_sub(l).max(1);
+                memory = usize::MAX;
+            } else {
+                let start_k = if memory == usize::MAX { 0 } else { memory + 1 };
+                let mut k = start_k;
+                while k <= l && pattern[k] == text[j + k] {
+                    k += 1;
+                }
+                if k > l {
+                    return true;
+                }
+                j += p;
+                memory = m - p - 1;
+            }
+        }
+    } else {
+        // ── Case 2: not globally p-periodic — no memory, larger slide ──────────
+        let slide = l.max(m.saturating_sub(l + 1)) + 1;
+        let mut j = 0usize;
+        while j + m <= n {
+            let mut i = l;
+            while i < m && pattern[i] == text[j + i] {
+                i += 1;
+            }
+            if i < m {
+                j += (i - l) + 1;
+            } else {
                 let full_match = (0..=l).rev().all(|k| pattern[k] == text[j + k]);
                 if full_match {
                     return true;
@@ -3291,5 +3439,241 @@ mod tests {
 
             let _ = fs::remove_dir_all(&dir);
         }
+    }
+
+    // ── collect_scan_groups tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_collect_scan_groups_returns_sorted_files() {
+        // Verify that collect_scan_groups returns files in sorted order for a
+        // single group.  Files are created in reverse alphabetical order to
+        // confirm the sort is applied by the function, not by the OS.
+        let dir = make_temp_dir("collect-groups-sorted");
+        write_file(&dir, "src/c.rs", "// c");
+        write_file(&dir, "src/a.rs", "// a");
+        write_file(&dir, "src/b.rs", "// b");
+
+        let check = NativeScanCheck {
+            name: "test",
+            literals: &["x"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let groups = collect_scan_groups(&dir, &[check]);
+        assert_eq!(groups.len(), 1, "one group expected");
+        let (_, (_, result)) = groups.into_iter().next().unwrap();
+        let files = result.expect("traversal must succeed");
+        assert_eq!(files.len(), 3, "three files expected");
+        // Verify ascending sort order.
+        for i in 1..files.len() {
+            assert!(
+                files[i - 1] <= files[i],
+                "files must be in sorted order, got: {files:?}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_collect_scan_groups_deduplicates_groups() {
+        // Two checks sharing the same directory → collect_scan_groups must produce
+        // exactly one group entry (single traversal, not two).
+        let dir = make_temp_dir("collect-groups-dedup");
+        write_file(&dir, "src/a.rs", "// a");
+
+        let check1 = NativeScanCheck {
+            name: "check1",
+            literals: &["x"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+        let check2 = NativeScanCheck {
+            name: "check2",
+            literals: &["y"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let groups = collect_scan_groups(&dir, &[check1, check2]);
+        assert_eq!(
+            groups.len(),
+            1,
+            "two checks sharing the same directory must produce exactly one group"
+        );
+        let (_, (_, result)) = groups.into_iter().next().unwrap();
+        let files = result.expect("traversal must succeed");
+        assert_eq!(files.len(), 1, "one file expected");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_collect_scan_groups_separate_directories_produce_separate_groups() {
+        // Two checks with different directories → two group entries.
+        let dir = make_temp_dir("collect-groups-two");
+        write_file(&dir, "src/a.rs", "// a");
+        write_file(&dir, "tests/b.rs", "// b");
+
+        let check1 = NativeScanCheck {
+            name: "check1",
+            literals: &["x"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+        let check2 = NativeScanCheck {
+            name: "check2",
+            literals: &["y"],
+            directories: &["tests"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let groups = collect_scan_groups(&dir, &[check1, check2]);
+        assert_eq!(
+            groups.len(),
+            2,
+            "two checks with different directories must produce two groups"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── tw_contains_precomputed tests ─────────────────────────────────────────
+
+    /// Cross-validate `tw_contains_precomputed` against the `tw_contains` baseline.
+    ///
+    /// Tests a broad set of inputs including adversarial periodic patterns that trigger
+    /// the Case 1 (memory-based) branch of the Two-Way algorithm, ensuring the
+    /// precomputed variant is bit-for-bit identical to the full preprocessing version.
+    ///
+    /// Reference: TAOCP Vol. 3, §6.3 — preprocessing amortization principle.
+    #[test]
+    fn test_tw_contains_precomputed_matches_tw_contains() {
+        let fixed_cases: &[(&[u8], &[u8])] = &[
+            // Basic matching
+            (b"hello", b"hello"),
+            (b"hello world", b"world"),
+            (b"hello world", b"hello"),
+            (b"hello world", b"xyz"),
+            // Exact same as text
+            (b"abc", b"abc"),
+            // Pattern at start / end
+            (b"abc", b"ab"),
+            (b"abc", b"bc"),
+            // Single-char patterns
+            (b"a", b"a"),
+            (b"a", b"b"),
+            (b"b", b"b"),
+            // Pattern longer than text
+            (b"ab", b"abcdef"),
+            // Realistic NegativeLookahead inputs
+            (b"#[ignore] // https://example.com", b"https://"),
+            (b"#[ignore]", b"https://"),
+            (b"#[ignore(reason = \"https://foo.com\")]", b"https://"),
+            // Non-ASCII safe (treat as raw bytes)
+            (b"caf\xc3\xa9", b"caf\xc3"),
+        ];
+
+        // Adversarial periodic patterns: trigger Case 1 in Two-Way.
+        // BMH degenerates to O(n×m) on these; Two-Way guarantees O(n).
+        let long_a: Vec<u8> = vec![b'a'; 100];
+        let mut aaab_99 = vec![b'a'; 99];
+        aaab_99.push(b'b');
+        let mut aaab_4 = vec![b'a'; 3];
+        aaab_4.push(b'b');
+
+        let adversarial: Vec<(Vec<u8>, Vec<u8>)> = vec![
+            // text = "aaa...ab" (100 a's + b), pattern = "aaab" → matches at the end
+            (long_a.iter().chain(b"b").copied().collect(), aaab_4.clone()),
+            // text = "aaa...ab" (99 a's + b), pattern = "aaa...ab" (99 a's + b) → exact match
+            (aaab_99.clone(), aaab_99.clone()),
+            // text = "aaa...ab" (99 a's + b), pattern = "aaa...ac" (99 a's + c) → no match
+            (aaab_99.clone(), {
+                let mut p = vec![b'a'; 99];
+                p.push(b'c');
+                p
+            }),
+            // Periodic pattern "abab" in "ababababab"
+            (b"ababababab".to_vec(), b"abab".to_vec()),
+            (b"ababababab".to_vec(), b"abcd".to_vec()),
+            // Single repeated char
+            (vec![b'a'; 50], vec![b'a'; 10]),
+            (vec![b'a'; 50], vec![b'a'; 51]),
+        ];
+
+        // Run fixed cases.
+        for &(text, pattern) in fixed_cases {
+            let expected = tw_contains(text, pattern);
+            let precomputed = critical_factorization(pattern);
+            let got = tw_contains_precomputed(text, pattern, precomputed);
+            assert_eq!(
+                got, expected,
+                "tw_contains_precomputed mismatch: text={:?} pattern={:?}",
+                text, pattern
+            );
+        }
+
+        // Run adversarial cases.
+        for (text, pattern) in &adversarial {
+            let expected = tw_contains(text, pattern);
+            let precomputed = critical_factorization(pattern);
+            let got = tw_contains_precomputed(text, pattern, precomputed);
+            assert_eq!(
+                got,
+                expected,
+                "tw_contains_precomputed mismatch (adversarial): text_len={} pattern_len={}",
+                text.len(),
+                pattern.len()
+            );
+        }
+    }
+
+    /// Empty pattern must return true (same contract as tw_contains).
+    #[test]
+    fn test_tw_contains_precomputed_empty_pattern_returns_true() {
+        // tw_contains_precomputed skips the precomputed path for empty patterns.
+        // Use critical_factorization on a non-empty dummy pattern for the call.
+        let precomputed = critical_factorization(b"x");
+        assert!(
+            tw_contains_precomputed(b"anything", &[], precomputed),
+            "empty pattern must always match"
+        );
+        assert!(
+            tw_contains_precomputed(&[], &[], precomputed),
+            "empty pattern in empty text must match"
+        );
+    }
+
+    /// Pattern longer than text must return false.
+    #[test]
+    fn test_tw_contains_precomputed_pattern_longer_than_text_returns_false() {
+        let pattern = b"longer";
+        let text = b"short";
+        let precomputed = critical_factorization(pattern);
+        assert!(
+            !tw_contains_precomputed(text, pattern, precomputed),
+            "pattern longer than text must not match"
+        );
     }
 }

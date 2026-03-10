@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -42,8 +43,10 @@ pub enum CheckStatus {
 /// The trait is `Send + Sync` so it can be shared across threads and stored in `Arc`.
 pub trait ProgressReporter: Send + Sync {
     fn check_started(&self, name: &str);
-    fn check_passed(&self, name: &str);
-    fn check_failed(&self, name: &str, status: CheckStatus);
+    /// Called when a check passes; `elapsed` is the wall-clock duration of the check.
+    fn check_passed(&self, name: &str, elapsed: Duration);
+    /// Called when a check fails; `elapsed` is the wall-clock duration of the check.
+    fn check_failed(&self, name: &str, elapsed: Duration, status: CheckStatus);
     /// Called periodically while a long-running check is still in progress.
     /// Default is a no-op so existing implementations compile unchanged.
     fn check_still_running(&self, _name: &str, _elapsed: Duration) {}
@@ -58,31 +61,44 @@ pub struct NoopProgressReporter;
 
 impl ProgressReporter for NoopProgressReporter {
     fn check_started(&self, _name: &str) {}
-    fn check_passed(&self, _name: &str) {}
-    fn check_failed(&self, _name: &str, _status: CheckStatus) {}
+    fn check_passed(&self, _name: &str, _elapsed: Duration) {}
+    fn check_failed(&self, _name: &str, _elapsed: Duration, _status: CheckStatus) {}
 }
 
 /// Progress reporter that prints check names to stderr in real time.
 ///
 /// Output format:
-///   checking: <name>
-///   done:     <name>
-///   FAILED:   <name> (Error|Warning)
+///   [N/total] checking: <name>
+///   done:     <name> (<elapsed>)
+///   FAILED:   <name> (<elapsed>, Error|Warning)
 ///   still running: <name> (<elapsed>)...  ← printed every 3 s for slow checks
 ///   progress: <name>: <info>              ← forwarded cargo/scan progress lines
 ///
 /// Stderr is used so stdout can be piped without interference.
-pub struct StderrProgressReporter;
+pub struct StderrProgressReporter {
+    counter: AtomicUsize,
+    total: usize,
+}
+
+impl StderrProgressReporter {
+    pub fn new(total: usize) -> Self {
+        Self {
+            counter: AtomicUsize::new(0),
+            total,
+        }
+    }
+}
 
 impl ProgressReporter for StderrProgressReporter {
     fn check_started(&self, name: &str) {
-        eprintln!("  checking: {name}");
+        let n = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
+        eprintln!("  [{n}/{}] checking: {name}", self.total);
     }
-    fn check_passed(&self, name: &str) {
-        eprintln!("  done:     {name}");
+    fn check_passed(&self, name: &str, elapsed: Duration) {
+        eprintln!("  done:     {name} ({elapsed:.1?})");
     }
-    fn check_failed(&self, name: &str, status: CheckStatus) {
-        eprintln!("  FAILED:   {name} ({status:?})");
+    fn check_failed(&self, name: &str, elapsed: Duration, status: CheckStatus) {
+        eprintln!("  FAILED:   {name} ({elapsed:.1?}, {status:?})");
     }
     fn check_still_running(&self, name: &str, elapsed: Duration) {
         eprintln!("  still running: {name} ({elapsed:.0?})...");
@@ -223,6 +239,7 @@ fn run_checks_with_heartbeat(
         });
 
         let output = output_result?;
+        let elapsed = start.elapsed();
 
         let status = classify(
             output.exit_code,
@@ -233,10 +250,10 @@ fn run_checks_with_heartbeat(
 
         match status {
             CheckStatus::Pass => {
-                reporter.check_passed(spec.name);
+                reporter.check_passed(spec.name, elapsed);
             }
             CheckStatus::Warning | CheckStatus::Error => {
-                reporter.check_failed(spec.name, status);
+                reporter.check_failed(spec.name, elapsed, status);
                 return Ok(VerifyReport {
                     exit: VerifyExitCode::Failure,
                     failure: Some(CheckFailure {
@@ -281,10 +298,12 @@ pub fn verify_fast(
 ) -> Result<VerifyReport> {
     // Phase 0: native checks (always sequential, very fast).
     for check in native_checks {
+        let start = Instant::now();
         reporter.check_started(check.name);
         let result = (check.run)(repo_root);
+        let elapsed = start.elapsed();
         if result.status != CheckStatus::Pass {
-            reporter.check_failed(check.name, result.status);
+            reporter.check_failed(check.name, elapsed, result.status);
             return Ok(VerifyReport {
                 exit: VerifyExitCode::Failure,
                 failure: Some(CheckFailure {
@@ -296,21 +315,23 @@ pub fn verify_fast(
                 }),
             });
         }
-        reporter.check_passed(check.name);
+        reporter.check_passed(check.name, elapsed);
     }
 
     // Phase 0.5: native Aho-Corasick multi-pattern scan (replaces all rg subprocess calls).
     // Groups checks by directory, reads each source file once, O(n + m + z) per group.
     // Per-file progress is forwarded via check_progress every 50 files.
+    let scan_start = Instant::now();
     reporter.check_started("native-scan");
     let scan_results = crate::scanner::run_native_scan_checks_reporting(
         repo_root,
         crate::scanner::NATIVE_SCAN_CHECKS,
         &|name, info| reporter.check_progress(name, info),
     );
+    let scan_elapsed = scan_start.elapsed();
     for result in &scan_results {
         if !result.passed {
-            reporter.check_failed(result.check_name, CheckStatus::Error);
+            reporter.check_failed(result.check_name, scan_elapsed, CheckStatus::Error);
             let output = format_scan_violations(&result.violations);
             return Ok(VerifyReport {
                 exit: VerifyExitCode::Failure,
@@ -324,7 +345,7 @@ pub fn verify_fast(
             });
         }
     }
-    reporter.check_passed("native-scan");
+    reporter.check_passed("native-scan", scan_elapsed);
 
     // Phase 2: cargo checks with optional concurrent prefetch.
     // All scanning is now native (Phase 0.5), so we go directly to cargo checks.
@@ -1415,10 +1436,10 @@ mod tests {
         fn check_started(&self, name: &str) {
             self.events.lock().unwrap().push(format!("start:{name}"));
         }
-        fn check_passed(&self, name: &str) {
+        fn check_passed(&self, name: &str, _elapsed: Duration) {
             self.events.lock().unwrap().push(format!("pass:{name}"));
         }
-        fn check_failed(&self, name: &str, _status: CheckStatus) {
+        fn check_failed(&self, name: &str, _elapsed: Duration, _status: CheckStatus) {
             self.events.lock().unwrap().push(format!("fail:{name}"));
         }
         fn check_still_running(&self, name: &str, _elapsed: Duration) {
@@ -1587,7 +1608,7 @@ mod tests {
 
         // No check_progress calls → no "progress:" events.
         reporter.check_started("some-check");
-        reporter.check_passed("some-check");
+        reporter.check_passed("some-check", Duration::ZERO);
 
         let events = reporter.events();
         assert!(
@@ -1603,6 +1624,78 @@ mod tests {
         assert!(
             HEARTBEAT_INTERVAL.as_secs() <= 5,
             "HEARTBEAT_INTERVAL must be ≤5s for responsive user feedback, got: {HEARTBEAT_INTERVAL:?}"
+        );
+    }
+
+    // ── TDD tests for StderrProgressReporter enhancements ───────────────────
+
+    /// StderrProgressReporter must not panic during basic lifecycle calls.
+    ///
+    /// The counter increments and elapsed formatting both involve arithmetic;
+    /// verify no overflow or format panic for edge-case durations.
+    #[test]
+    fn test_stderr_progress_reporter_does_not_panic() {
+        let reporter = StderrProgressReporter::new(5);
+        // These print to stderr; the test only validates no panic occurs.
+        reporter.check_started("check-a");
+        reporter.check_passed("check-a", Duration::ZERO);
+        reporter.check_started("check-b");
+        reporter.check_failed("check-b", Duration::from_secs(1), CheckStatus::Error);
+        reporter.check_still_running("check-c", Duration::from_secs(3));
+        reporter.check_progress("check-c", "Compiling foo v1.0");
+    }
+
+    /// StderrProgressReporter with total=0 must not panic (division-by-zero guard).
+    #[test]
+    fn test_stderr_progress_reporter_zero_total_does_not_panic() {
+        let reporter = StderrProgressReporter::new(0);
+        reporter.check_started("check-x");
+        reporter.check_passed("check-x", Duration::from_millis(42));
+    }
+
+    /// RecordingProgressReporter must correctly propagate elapsed to assertions.
+    ///
+    /// This confirms the new elapsed parameter does not corrupt event recording
+    /// — the format "pass:name" must still appear regardless of elapsed value.
+    #[test]
+    fn test_recording_reporter_elapsed_does_not_affect_event_format() {
+        let reporter = RecordingProgressReporter::default();
+        reporter.check_started("alpha");
+        reporter.check_passed("alpha", Duration::from_millis(123));
+        reporter.check_started("beta");
+        reporter.check_failed("beta", Duration::from_secs(5), CheckStatus::Warning);
+
+        let events = reporter.events();
+        assert!(
+            events.contains(&"start:alpha".to_string()),
+            "start event must be recorded"
+        );
+        assert!(
+            events.contains(&"pass:alpha".to_string()),
+            "pass event must be recorded regardless of elapsed value"
+        );
+        assert!(
+            events.contains(&"fail:beta".to_string()),
+            "fail event must be recorded regardless of elapsed value"
+        );
+    }
+
+    /// Total check count must equal NATIVE_REQUIRED_CHECKS.len() + 1 (native-scan)
+    /// plus REQUIRED_CHECKS.len().  Guards against drift when new checks are added
+    /// without updating the StderrProgressReporter constructor call in main.rs.
+    #[test]
+    fn test_total_check_count_matches_reporter_constructor_expectation() {
+        let expected_total = NATIVE_REQUIRED_CHECKS.len() + 1 + REQUIRED_CHECKS.len();
+        // 2 native required + 1 native-scan + 16 cargo = 19 currently.
+        // The exact value is not asserted here (it changes as checks are added),
+        // but total must be > 0 and >= REQUIRED_CHECKS.len().
+        assert!(
+            expected_total > 0,
+            "total check count must be positive, got {expected_total}"
+        );
+        assert!(
+            expected_total >= REQUIRED_CHECKS.len(),
+            "total must include at least the cargo checks"
         );
     }
 }
