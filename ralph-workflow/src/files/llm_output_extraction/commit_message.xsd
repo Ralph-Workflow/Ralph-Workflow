@@ -32,8 +32,12 @@
   </xs:simpleType>
 
   <!-- Single excluded file entry: repo-relative path + required reason -->
-  <xs:complexType name="ExcludedFileEntryType" mixed="true">
-    <xs:attribute name="reason" type="ExcludedFileReasonType" use="required"/>
+  <xs:complexType name="ExcludedFileEntryType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="reason" type="ExcludedFileReasonType" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
   </xs:complexType>
 
   <!-- Excluded file list: at least one entry required when element is present -->
@@ -50,19 +54,50 @@
         <!-- Normal commit message -->
         <xs:sequence>
            <xs:element name="ralph-subject" type="TextWithCodeType"/>
-           <!-- Body is mutually exclusive: either simple <ralph-body> OR detailed tags. -->
+           <!--
+             Allow file/excluded metadata and body tags in either sibling order.
+             The Rust validator accepts these tags regardless of order; the published XSD
+             should be similarly permissive to reduce unnecessary XSD-retry churn.
+           -->
            <xs:choice minOccurs="0">
-             <xs:element name="ralph-body" type="TextWithCodeType"/>
+             <!-- Body block before file metadata -->
              <xs:sequence>
-               <xs:element name="ralph-body-summary" type="TextWithCodeType" minOccurs="0"/>
-               <xs:element name="ralph-body-details" type="TextWithCodeType" minOccurs="0"/>
-               <xs:element name="ralph-body-footer" type="TextWithCodeType" minOccurs="0"/>
+               <!-- Body is mutually exclusive: either simple <ralph-body> OR detailed tags. -->
+               <xs:choice minOccurs="0">
+                 <xs:element name="ralph-body" type="TextWithCodeType"/>
+                 <xs:sequence>
+                   <!-- Detailed body tags: order-insensitive (duplicates rejected by Rust validator). -->
+                   <xs:choice minOccurs="0" maxOccurs="3">
+                     <xs:element name="ralph-body-summary" type="TextWithCodeType"/>
+                     <xs:element name="ralph-body-details" type="TextWithCodeType"/>
+                     <xs:element name="ralph-body-footer" type="TextWithCodeType"/>
+                   </xs:choice>
+                 </xs:sequence>
+               </xs:choice>
+               <!-- Optional file list / excluded metadata in either order -->
+               <xs:choice minOccurs="0" maxOccurs="2">
+                 <xs:element name="ralph-files" type="FileListType"/>
+                 <xs:element name="ralph-excluded-files" type="ExcludedFileListType"/>
+               </xs:choice>
+             </xs:sequence>
+             <!-- File metadata before body block -->
+             <xs:sequence>
+               <xs:choice minOccurs="0" maxOccurs="2">
+                 <xs:element name="ralph-files" type="FileListType"/>
+                 <xs:element name="ralph-excluded-files" type="ExcludedFileListType"/>
+               </xs:choice>
+               <xs:choice minOccurs="0">
+                 <xs:element name="ralph-body" type="TextWithCodeType"/>
+                 <xs:sequence>
+                   <xs:choice minOccurs="0" maxOccurs="3">
+                     <xs:element name="ralph-body-summary" type="TextWithCodeType"/>
+                     <xs:element name="ralph-body-details" type="TextWithCodeType"/>
+                     <xs:element name="ralph-body-footer" type="TextWithCodeType"/>
+                   </xs:choice>
+                 </xs:sequence>
+               </xs:choice>
              </xs:sequence>
            </xs:choice>
-          <!-- Optional file list: when present, only these files are committed -->
-          <xs:element name="ralph-files" type="FileListType" minOccurs="0"/>
-          <!-- Optional: audit/observability metadata for files excluded from this commit -->
-          <xs:element name="ralph-excluded-files" type="ExcludedFileListType" minOccurs="0"/>
         </xs:sequence>
         <!-- Skip commit (no changes found) -->
         <xs:element name="ralph-skip" type="TextWithCodeType"/>

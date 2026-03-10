@@ -72,7 +72,9 @@ impl MockEffectHandler {
                 // Compute the prompt key the same way the real handler does,
                 // using Normal retry mode for Normal/SameAgentRetry modes.
                 let retry_mode = match prompt_mode {
-                    PromptMode::XsdRetry => RetryMode::Xsd { count: 1 },
+                    PromptMode::XsdRetry => RetryMode::Xsd {
+                        count: self.state.continuation.xsd_retry_count,
+                    },
                     _ => RetryMode::Normal,
                 };
                 let scope_key = PromptScopeKey::for_commit(
@@ -259,5 +261,36 @@ mod tests {
             }
             other => panic!("expected CommitXmlValidated event, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
+        let mut state = crate::reducer::state::PipelineState::initial(1, 0);
+        state.continuation.xsd_retry_count = 3;
+
+        let handler = MockEffectHandler::new(state);
+        let (_event, ui) = handler
+            .handle_commit_effect(Effect::PrepareCommitPrompt {
+                prompt_mode: PromptMode::XsdRetry,
+            })
+            .expect("PrepareCommitPrompt should be handled");
+
+        let prompt_key = ui
+            .iter()
+            .find_map(|e| match e {
+                UIEvent::PromptReplayHit { key, .. } => Some(key.clone()),
+                _ => None,
+            })
+            .expect("Expected PromptReplayHit UI event");
+
+        let expected_key = PromptScopeKey::for_commit(
+            handler.state.iteration,
+            1,
+            RetryMode::Xsd { count: 3 },
+            handler.state.recovery_epoch,
+        )
+        .to_string();
+
+        assert_eq!(prompt_key, expected_key);
     }
 }
