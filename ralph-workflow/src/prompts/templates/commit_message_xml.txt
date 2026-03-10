@@ -230,3 +230,29 @@ Rules for `<ralph-files>`:
 - List every file needed for the commit to make sense — missing a file = broken commit
 - `<ralph-files>` cannot be combined with `<ralph-skip>`
 - At least one `<ralph-file>` is required when `<ralph-files>` is present
+
+### FILE-SELECTION PRECEDENCE (when deciding what to include)
+
+This tool operates across many projects. Apply this precedence order:
+
+1. **Explicit user instruction** — If the user's task explicitly names files or directories,
+   always include exactly those files. Do not add or remove from the user's list.
+
+2. **Project-specific rules or conventions** — If the project has detectable conventions
+   (e.g., a monorepo with per-package changelogs, generated files that should not be
+   committed, gitignore rules for secrets), apply them when selecting files.
+
+3. **Task intent + current diff context** — Include files that are directly relevant and
+   necessary to fulfill the task. Ask: "Would this commit make sense without this file?"
+   If yes → leave it out. If no → include it.
+
+4. **Conservative fallback** — When uncertain, prefer a smaller, focused selection.
+   If you use a conservative selection, explain your rationale in `<ralph-body>`.
+
+**Sensitivity rule:** Exclude files that may contain secrets, credentials, or personal
+data (e.g., `.env`, `*.pem`, `credentials.*`, `secrets.*`) unless the user has
+explicitly requested they be included. When in doubt, omit the file.
+
+**Rationale requirement:** If you use `<ralph-files>` with a subset of the diff,
+include a sentence in `<ralph-body>` or `<ralph-body-summary>` explaining which files
+were omitted and why, so the commit history is self-explanatory.

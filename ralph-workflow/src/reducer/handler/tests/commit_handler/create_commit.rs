@@ -66,7 +66,9 @@ fn test_create_commit_with_specific_files_calls_add_specific() {
     let abs_path = repo_dir.path().join(file_path);
     std::fs::write(&abs_path, "initial content\n").expect("write initial file");
     let mut index = repo.index().expect("open index");
-    index.add_path(Path::new(file_path)).expect("stage initial file");
+    index
+        .add_path(Path::new(file_path))
+        .expect("stage initial file");
     index.write().expect("write index");
     let tree = repo
         .find_tree(index.write_tree().expect("write tree"))
@@ -99,8 +101,10 @@ fn test_create_commit_with_specific_files_calls_add_specific() {
     assert!(
         matches!(
             result.event,
-            PipelineEvent::Commit(crate::reducer::event::CommitEvent::Created { .. })
-                | PipelineEvent::Commit(crate::reducer::event::CommitEvent::Skipped { .. })
+            PipelineEvent::Commit(
+                crate::reducer::event::CommitEvent::Created { .. }
+                    | crate::reducer::event::CommitEvent::Skipped { .. },
+            )
         ),
         "expected CommitCreated or CommitSkipped event, got: {:?}",
         result.event

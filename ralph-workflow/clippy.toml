@@ -6,6 +6,6 @@ max-struct-bools = 32
 # ~600KB stack frame detected in test code (clippy emits no source location
 # for large_stack_frames/large_stack_arrays when the function is generated
 # by macro expansion - known clippy limitation).
-# Threshold raised to 611000 after adding commit_selected_files field to PipelineState.
-stack-size-threshold = 611000
+# Threshold raised to 612000 after adding commit_message UI tests (more TestDescAndFn entries).
+stack-size-threshold = 612000
 array-size-threshold = 65536
