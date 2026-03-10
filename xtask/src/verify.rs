@@ -581,7 +581,14 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-install",
         program: "npm",
-        args: &["--prefix", "ralph-gui/ui", "ci", "--no-audit", "--no-fund"],
+        args: &[
+            "--prefix",
+            "ralph-gui/ui",
+            "ci",
+            "--no-audit",
+            "--no-fund",
+            "--include=dev",
+        ],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -1207,6 +1214,19 @@ mod tests {
         assert!(
             install_index < lint_index,
             "frontend install must run before frontend lint"
+        );
+    }
+
+    #[test]
+    fn test_ralph_gui_frontend_install_includes_dev_dependencies() {
+        let spec = REQUIRED_CHECKS
+            .iter()
+            .find(|c| c.name == "ralph-gui-frontend-install")
+            .expect("REQUIRED_CHECKS must include ralph-gui-frontend-install");
+
+        assert!(
+            spec.args.contains(&"--include=dev"),
+            "frontend install must include dev dependencies to run eslint/vitest"
         );
     }
 

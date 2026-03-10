@@ -16,6 +16,52 @@ use crate::reducer::state::{CommitState, ContinuationState, PipelineState};
 use transition::compute_post_commit_transition;
 use validation::reduce_commit_validation_failed;
 
+fn compute_post_commit_phase_data(
+    state: &PipelineState,
+) -> (
+    crate::reducer::event::PipelinePhase,
+    u32,
+    u32,
+    crate::reducer::state::AgentChainState,
+    ContinuationState,
+) {
+    let (next_phase, next_iter, next_reviewer_pass) = compute_post_commit_transition(state);
+
+    // When transitioning to Review phase, reset the agent chain for Reviewer role
+    // to ensure the reviewer fallback chain is used, not any other chain (Developer, Commit).
+    // This handles both:
+    // - Development → CommitMessage → Review (first review pass)
+    // - Review → CommitMessage → Review (between review passes after fix)
+    let agent_chain = if next_phase == crate::reducer::event::PipelinePhase::Review {
+        crate::reducer::state::AgentChainState::initial()
+            .with_max_cycles(state.agent_chain.max_cycles)
+            .with_backoff_policy(
+                state.agent_chain.retry_delay_ms,
+                state.agent_chain.backoff_multiplier,
+                state.agent_chain.max_backoff_ms,
+            )
+            .reset_for_role(crate::agents::AgentRole::Reviewer)
+    } else {
+        state.agent_chain.clone()
+    };
+
+    let continuation = if next_phase == crate::reducer::event::PipelinePhase::Planning {
+        let mut c = state.continuation.clone();
+        c.invalid_output_attempts = 0;
+        c
+    } else {
+        state.continuation.clone()
+    };
+
+    (
+        next_phase,
+        next_iter,
+        next_reviewer_pass,
+        agent_chain,
+        continuation,
+    )
+}
+
 pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> PipelineState {
     const MAX_CONSECUTIVE_PUSH_FAILURES: u32 = 3;
 
@@ -144,15 +190,59 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             ..state
         },
         CommitEvent::Created { hash, .. } => {
+            let needs_residual_handling =
+                !state.commit_selected_files.is_empty() || state.commit_is_second_pass;
+
+            // Cloud mode: mark commit as pending push
+            let pending_push = if state.cloud.enabled {
+                Some(hash.clone())
+            } else {
+                None
+            };
+
             if let Some(resume_phase) = state.termination_resume_phase {
                 // Special case: commit was forced by the pre-termination safety check.
-                // Resume the original termination phase without advancing iterations/passes.
+                // If residual checking is required (selective/second-pass), we must stay in
+                // CommitMessage so orchestration can run CheckResidualFiles (and pass 2).
+                // Otherwise, resume the original termination phase and re-run the safety check
+                // to confirm the repo is clean.
+                if needs_residual_handling {
+                    return PipelineState {
+                        commit: CommitState::Committed { hash },
+                        phase: crate::reducer::event::PipelinePhase::CommitMessage,
+                        // Keep resume target until residual handling completes.
+                        termination_resume_phase: Some(resume_phase),
+                        // Do NOT unblock termination yet; the safety check must confirm cleanliness.
+                        pre_termination_commit_checked: false,
+                        context_cleaned: false,
+                        commit_prompt_prepared: false,
+                        commit_agent_invoked: false,
+                        commit_required_files_cleaned: false,
+                        commit_xml_extracted: false,
+                        commit_validated_outcome: None,
+                        commit_xml_archived: false,
+                        commit_diff_prepared: false,
+                        commit_diff_empty: false,
+                        commit_diff_content_id_sha256: None,
+                        // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
+                        commit_residual_files: vec![],
+                        prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
+                        metrics: state.metrics.increment_commits_created_total(),
+                        pending_push_commit: pending_push,
+                        push_retry_count: 0,
+                        last_push_error: None,
+                        ..state
+                    };
+                }
+
                 return PipelineState {
                     commit: CommitState::Committed { hash },
                     phase: resume_phase,
                     termination_resume_phase: None,
-                    pre_termination_commit_checked: true,
+                    // IMPORTANT: do not assume the repo is clean; re-run safety check.
+                    pre_termination_commit_checked: false,
                     previous_phase: None,
+                    context_cleaned: false,
                     commit_prompt_prepared: false,
                     commit_agent_invoked: false,
                     commit_required_files_cleaned: false,
@@ -167,45 +257,44 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_diff_content_id_sha256: None,
                     prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                     metrics: state.metrics.increment_commits_created_total(),
+                    pending_push_commit: pending_push,
+                    push_retry_count: 0,
+                    last_push_error: None,
                     ..state
                 };
             }
 
-            let (next_phase, next_iter, next_reviewer_pass) =
-                compute_post_commit_transition(&state);
-            // When transitioning to Review phase, reset the agent chain for Reviewer role
-            // to ensure the reviewer fallback chain is used, not any other chain (Developer, Commit).
-            // This handles both:
-            // - Development → CommitMessage → Review (first review pass)
-            // - Review → CommitMessage → Review (between review passes after fix)
-            let agent_chain = if next_phase == crate::reducer::event::PipelinePhase::Review {
-                crate::reducer::state::AgentChainState::initial()
-                    .with_max_cycles(state.agent_chain.max_cycles)
-                    .with_backoff_policy(
-                        state.agent_chain.retry_delay_ms,
-                        state.agent_chain.backoff_multiplier,
-                        state.agent_chain.max_backoff_ms,
-                    )
-                    .reset_for_role(crate::agents::AgentRole::Reviewer)
-            } else {
-                state.agent_chain.clone()
-            };
+            // Selective commit + second-pass handling is orchestrated from CommitState::Committed.
+            // To keep residual checking reachable, do not advance the phase until residual
+            // handling completes.
+            if needs_residual_handling {
+                return PipelineState {
+                    commit: CommitState::Committed { hash },
+                    phase: crate::reducer::event::PipelinePhase::CommitMessage,
+                    // Preserve previous_phase/iteration/reviewer_pass until post-commit transition.
+                    context_cleaned: false,
+                    commit_prompt_prepared: false,
+                    commit_agent_invoked: false,
+                    commit_required_files_cleaned: false,
+                    commit_xml_extracted: false,
+                    commit_validated_outcome: None,
+                    commit_xml_archived: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
+                    // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
+                    commit_residual_files: vec![],
+                    prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
+                    metrics: state.metrics.increment_commits_created_total(),
+                    pending_push_commit: pending_push,
+                    push_retry_count: 0,
+                    last_push_error: None,
+                    ..state
+                };
+            }
 
-            let continuation = if next_phase == crate::reducer::event::PipelinePhase::Planning {
-                ContinuationState {
-                    invalid_output_attempts: 0,
-                    ..state.continuation
-                }
-            } else {
-                state.continuation.clone()
-            };
-
-            // Cloud mode: mark commit as pending push
-            let pending_push = if state.cloud.enabled {
-                Some(hash.clone())
-            } else {
-                None
-            };
+            let (next_phase, next_iter, next_reviewer_pass, agent_chain, continuation) =
+                compute_post_commit_phase_data(&state);
 
             PipelineState {
                 commit: CommitState::Committed { hash },
@@ -227,7 +316,6 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 agent_chain,
                 continuation,
                 metrics: state.metrics.increment_commits_created_total(),
-                // Cloud mode: Set pending push
                 pending_push_commit: pending_push,
                 push_retry_count: 0,
                 last_push_error: None,
@@ -417,6 +505,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 // First pass found leftover files — trigger an automatic second commit pass.
                 // Reset commit state so orchestration starts a fresh cycle.
                 PipelineState {
+                    phase: crate::reducer::event::PipelinePhase::CommitMessage,
                     commit_is_second_pass: true,
                     commit: CommitState::NotStarted,
                     commit_prompt_prepared: false,
@@ -435,22 +524,106 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 }
             } else {
                 // Second pass (pass == 2) still found leftover files — carry forward to next cycle.
-                PipelineState {
+                let base = PipelineState {
                     commit_is_second_pass: false,
                     commit_selected_files: vec![],
                     commit_residual_files: files,
                     ..state
+                };
+
+                if let Some(resume_phase) = base.termination_resume_phase {
+                    // Pre-termination safety path: resume the termination phase, leaving
+                    // pre_termination_commit_checked=false so the safety check re-runs and
+                    // routes back to commit if needed.
+                    PipelineState {
+                        phase: resume_phase,
+                        termination_resume_phase: None,
+                        pre_termination_commit_checked: false,
+                        previous_phase: None,
+                        commit_prompt_prepared: false,
+                        commit_agent_invoked: false,
+                        commit_required_files_cleaned: false,
+                        commit_xml_extracted: false,
+                        commit_validated_outcome: None,
+                        commit_xml_archived: false,
+                        commit_diff_prepared: false,
+                        commit_diff_empty: false,
+                        commit_diff_content_id_sha256: None,
+                        prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+                        context_cleaned: false,
+                        ..base
+                    }
+                } else {
+                    let (next_phase, next_iter, next_reviewer_pass, agent_chain, continuation) =
+                        compute_post_commit_phase_data(&base);
+
+                    PipelineState {
+                        phase: next_phase,
+                        previous_phase: None,
+                        iteration: next_iter,
+                        reviewer_pass: next_reviewer_pass,
+                        context_cleaned: false,
+                        commit_required_files_cleaned: false,
+                        commit_diff_prepared: false,
+                        commit_diff_empty: false,
+                        commit_diff_content_id_sha256: None,
+                        prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+                        agent_chain,
+                        continuation,
+                        ..base
+                    }
                 }
             }
         }
 
         CommitEvent::ResidualFilesNone => {
             // Working tree is clean after the commit pass. Clear all residual/second-pass state.
-            PipelineState {
+            let base = PipelineState {
                 commit_is_second_pass: false,
                 commit_selected_files: vec![],
                 commit_residual_files: vec![],
                 ..state
+            };
+
+            if let Some(resume_phase) = base.termination_resume_phase {
+                PipelineState {
+                    phase: resume_phase,
+                    termination_resume_phase: None,
+                    // ResidualFilesNone implies a clean working tree; unblock termination.
+                    pre_termination_commit_checked: true,
+                    previous_phase: None,
+                    commit_prompt_prepared: false,
+                    commit_agent_invoked: false,
+                    commit_required_files_cleaned: false,
+                    commit_xml_extracted: false,
+                    commit_validated_outcome: None,
+                    commit_xml_archived: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
+                    prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+                    context_cleaned: false,
+                    ..base
+                }
+            } else {
+                let (next_phase, next_iter, next_reviewer_pass, agent_chain, continuation) =
+                    compute_post_commit_phase_data(&base);
+
+                PipelineState {
+                    phase: next_phase,
+                    previous_phase: None,
+                    iteration: next_iter,
+                    reviewer_pass: next_reviewer_pass,
+                    context_cleaned: false,
+                    commit_required_files_cleaned: false,
+                    commit_diff_prepared: false,
+                    commit_diff_empty: false,
+                    commit_diff_content_id_sha256: None,
+                    prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+                    agent_chain,
+                    continuation,
+                    ..base
+                }
             }
         }
     }

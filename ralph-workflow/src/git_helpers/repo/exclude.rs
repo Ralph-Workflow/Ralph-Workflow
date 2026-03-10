@@ -15,7 +15,7 @@ use std::path::Path;
 ///
 /// Only agent-internal artifact directories are permitted. User-owned files are
 /// never written to the local exclude to avoid masking uncommitted work.
-const APPROVED_PREFIXES: &[&str] = &[".agent/tmp/", ".agent/logs-", ".agent/"];
+const APPROVED_PREFIXES: &[&str] = &[".agent/tmp/", ".agent/logs-"];
 
 /// Add `patterns` to `.git/info/exclude` that are not already present.
 ///
@@ -88,6 +88,25 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         fs::create_dir_all(dir.path().join(".git/info")).expect("create .git/info");
         dir
+    }
+
+    #[test]
+    fn test_does_not_add_broad_agent_prefix_pattern() {
+        // Safety regression test: catch-all `.agent/` patterns are too broad and can
+        // mask important agent state from `git status`.
+        let repo = setup_fake_git_repo();
+        let root = repo.path();
+        let exclude = root.join(".git/info/exclude");
+
+        ensure_local_excludes(root, &[".agent/"]).unwrap();
+
+        if exclude.exists() {
+            let content = fs::read_to_string(&exclude).unwrap();
+            assert!(
+                !content.lines().any(|l| l.trim() == ".agent/"),
+                "Broad `.agent/` pattern must not be added: {content}"
+            );
+        }
     }
 
     #[test]

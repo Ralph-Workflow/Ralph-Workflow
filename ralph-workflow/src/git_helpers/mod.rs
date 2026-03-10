@@ -110,8 +110,8 @@ pub use repo::{
     ensure_local_excludes, get_git_diff_for_review_with_workspace, get_git_diff_from_start,
     get_git_diff_from_start_with_workspace, get_repo_root, git_add_all, git_add_all_in_repo,
     git_add_specific_in_repo, git_commit, git_commit_in_repo, git_diff, git_diff_from,
-    git_diff_in_repo, git_snapshot, git_snapshot_in_repo, require_git_repo, CommitResultFallback,
-    DiffReviewContent, DiffTruncationLevel,
+    git_diff_in_repo, git_snapshot, git_snapshot_in_repo, parse_git_status_paths, require_git_repo,
+    CommitResultFallback, DiffReviewContent, DiffTruncationLevel,
 };
 
 #[cfg(any(test, feature = "test-utils"))]

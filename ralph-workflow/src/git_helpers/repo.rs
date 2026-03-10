@@ -29,7 +29,7 @@ pub use diff_review::{DiffReviewContent, DiffTruncationLevel};
 pub use discovery::get_hooks_dir_from;
 pub use discovery::{get_hooks_dir, get_repo_root, require_git_repo};
 pub use exclude::ensure_local_excludes;
-pub use snapshot::{git_snapshot, git_snapshot_in_repo};
+pub use snapshot::{git_snapshot, git_snapshot_in_repo, parse_git_status_paths};
 
 #[cfg(test)]
 mod tests;

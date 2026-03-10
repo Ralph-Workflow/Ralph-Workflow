@@ -121,8 +121,9 @@ fn test_post_commit_resumes_termination_phase_when_safety_commit_pending() {
     assert_eq!(new_state.phase, PipelinePhase::Complete);
     assert_eq!(new_state.termination_resume_phase, None);
     assert!(
-        new_state.pre_termination_commit_checked,
-        "Termination should be unblocked after safety commit completes"
+        !new_state.pre_termination_commit_checked,
+        "Safety commit completion must NOT auto-unblock termination; the pre-termination \
+         safety check must re-run to confirm the repo is clean"
     );
 }
 
@@ -658,4 +659,90 @@ fn test_commit_residual_files_cleared_after_commit_created() {
         new_state.commit_residual_files.is_empty(),
         "commit_residual_files must be cleared after CommitEvent::Created"
     );
+}
+
+#[test]
+fn test_selective_commit_created_stays_in_commit_message_until_residual_check_completes() {
+    // Regression: when the commit is selective (commit_selected_files is non-empty), the
+    // pipeline must remain in CommitMessage after the commit is created so orchestration
+    // can run CheckResidualFiles and (if needed) a second commit pass.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit_selected_files = vec!["src/one.rs".to_string()];
+
+    let new_state = reduce(
+        state,
+        PipelineEvent::commit_created("abc123".to_string(), "msg".to_string()),
+    );
+
+    assert_eq!(
+        new_state.phase,
+        PipelinePhase::CommitMessage,
+        "Selective commit must keep phase in CommitMessage until residual checking completes"
+    );
+    assert_eq!(
+        new_state.previous_phase,
+        Some(PipelinePhase::Development),
+        "Selective commit must preserve previous_phase until post-commit transition occurs"
+    );
+}
+
+#[test]
+fn test_residual_files_none_transitions_after_selective_commit() {
+    // ResidualFilesNone marks the end of residual handling; the pipeline must now perform
+    // the normal post-commit transition (e.g., Development -> Planning for next iteration).
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit = CommitState::Committed {
+        hash: "abc123".to_string(),
+    };
+    state.commit_selected_files = vec!["src/one.rs".to_string()];
+
+    let new_state = reduce(state, PipelineEvent::residual_files_none());
+
+    assert_eq!(
+        new_state.phase,
+        PipelinePhase::Planning,
+        "After residuals are clean, pipeline should transition out of CommitMessage"
+    );
+    assert_eq!(
+        new_state.iteration, 1,
+        "Post-commit transition from Development should increment iteration"
+    );
+    assert!(
+        new_state.previous_phase.is_none(),
+        "Post-commit transition must clear previous_phase"
+    );
+}
+
+#[test]
+fn test_residual_files_found_pass2_transitions_and_carries_forward_after_second_pass() {
+    // If pass 2 still has leftovers, carry them forward and transition out of CommitMessage.
+    let mut state = PipelineState::initial(2, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.previous_phase = Some(PipelinePhase::Development);
+    state.iteration = 0;
+    state.commit = CommitState::Committed {
+        hash: "abc123".to_string(),
+    };
+    state.commit_is_second_pass = true;
+    state.commit_selected_files = vec!["src/one.rs".to_string()];
+
+    let residual = vec!["src/remaining.rs".to_string()];
+    let new_state = reduce(
+        state,
+        PipelineEvent::residual_files_found(residual.clone(), 2),
+    );
+
+    assert_eq!(new_state.commit_residual_files, residual);
+    assert_eq!(
+        new_state.phase,
+        PipelinePhase::Planning,
+        "After pass 2 residuals are recorded, pipeline should transition out of CommitMessage"
+    );
+    assert_eq!(new_state.iteration, 1);
 }

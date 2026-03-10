@@ -476,7 +476,7 @@ fn test_commit_generation_failed_clears_selected_files() {
 }
 
 #[test]
-fn test_commit_created_forced_resume_clears_selected_files() {
+fn test_commit_created_forced_resume_preserves_selected_files_until_residuals_complete() {
     let mut state = PipelineState {
         phase: PipelinePhase::CommitMessage,
         termination_resume_phase: Some(PipelinePhase::Finalizing),
@@ -491,9 +491,19 @@ fn test_commit_created_forced_resume_clears_selected_files() {
         PipelineEvent::commit_created("deadbeef".to_string(), "feat: add foo".to_string()),
     );
 
+    assert_eq!(
+        state.phase,
+        PipelinePhase::CommitMessage,
+        "Selective forced commit must stay in CommitMessage so residual checking can run"
+    );
+    assert_eq!(
+        state.termination_resume_phase,
+        Some(PipelinePhase::Finalizing),
+        "Resume phase must be preserved until residual handling completes"
+    );
     assert!(
-        state.commit_selected_files.is_empty(),
-        "commit_selected_files must be cleared when leaving commit phase after forced commit"
+        !state.commit_selected_files.is_empty(),
+        "commit_selected_files must be preserved until residual handling completes"
     );
 }
 

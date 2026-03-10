@@ -188,18 +188,7 @@ impl MainEffectHandler {
             return Ok(EffectResult::event(PipelineEvent::residual_files_none()));
         }
 
-        let files: Vec<String> = status
-            .lines()
-            .filter_map(|line| {
-                // git status --porcelain lines: "XY path" (first 3 chars are status + space)
-                let path = line.get(3..).unwrap_or("").trim();
-                if path.is_empty() {
-                    None
-                } else {
-                    Some(path.to_string())
-                }
-            })
-            .collect();
+        let files = crate::git_helpers::parse_git_status_paths(&status);
 
         ctx.logger.warn(&format!(
             "Residual files check (pass {pass}): {} uncommitted file(s) remain after selective commit.",

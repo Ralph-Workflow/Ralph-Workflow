@@ -189,6 +189,12 @@ If you determine there are NO actual changes to commit, respond with:
                         Ok(EffectResult::event(event))
                     }
                     super::core::PreTerminationSnapshotMock::Dirty { file_count } => {
+                        // One-shot behavior: once the safety check has observed a dirty tree and
+                        // routed back through the commit phase, subsequent termination checks in
+                        // the same test run should observe a clean working tree. This prevents
+                        // mock-driven infinite loops in unattended termination flows.
+                        self.pre_termination_snapshot =
+                            super::core::PreTerminationSnapshotMock::Clean;
                         let event =
                             PipelineEvent::pre_termination_uncommitted_changes_detected(file_count);
                         self.captured_events.borrow_mut().push(event.clone());
