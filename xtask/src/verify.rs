@@ -26,7 +26,7 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
-pub trait CommandRunner: Sync {
+pub trait CommandRunner: Send + Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
 }
 
@@ -87,24 +87,44 @@ impl StderrProgressReporter {
             total,
         }
     }
+
+    fn fmt_check_started(n: usize, total: usize, name: &str) -> String {
+        format!("  [{n}/{total}] checking: {name}")
+    }
+
+    fn fmt_check_passed(name: &str, elapsed: Duration) -> String {
+        format!("  done:     {name} ({elapsed:.1?})")
+    }
+
+    fn fmt_check_failed(name: &str, elapsed: Duration, status: CheckStatus) -> String {
+        format!("  FAILED:   {name} ({elapsed:.1?}, {status:?})")
+    }
+
+    fn fmt_still_running(name: &str, elapsed: Duration) -> String {
+        format!("  still running: {name} ({elapsed:.0?})...")
+    }
+
+    fn fmt_progress(name: &str, info: &str) -> String {
+        format!("  progress: {name}: {info}")
+    }
 }
 
 impl ProgressReporter for StderrProgressReporter {
     fn check_started(&self, name: &str) {
         let n = self.counter.fetch_add(1, Ordering::Relaxed) + 1;
-        eprintln!("  [{n}/{}] checking: {name}", self.total);
+        eprintln!("{}", Self::fmt_check_started(n, self.total, name));
     }
     fn check_passed(&self, name: &str, elapsed: Duration) {
-        eprintln!("  done:     {name} ({elapsed:.1?})");
+        eprintln!("{}", Self::fmt_check_passed(name, elapsed));
     }
     fn check_failed(&self, name: &str, elapsed: Duration, status: CheckStatus) {
-        eprintln!("  FAILED:   {name} ({elapsed:.1?}, {status:?})");
+        eprintln!("{}", Self::fmt_check_failed(name, elapsed, status));
     }
     fn check_still_running(&self, name: &str, elapsed: Duration) {
-        eprintln!("  still running: {name} ({elapsed:.0?})...");
+        eprintln!("{}", Self::fmt_still_running(name, elapsed));
     }
     fn check_progress(&self, name: &str, info: &str) {
-        eprintln!("  progress: {name}: {info}");
+        eprintln!("{}", Self::fmt_progress(name, info));
     }
 }
 
@@ -289,7 +309,7 @@ fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) ->
 /// pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no prefetch is
 /// desired (e.g., in tests with fake runners).
 pub fn verify_fast(
-    runner: &(dyn CommandRunner + Sync),
+    runner: std::sync::Arc<dyn CommandRunner>,
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
@@ -578,32 +598,36 @@ pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
 /// Prefetch is a best-effort optimisation: failures in `prefetch_specs` must
 /// never fail verification, and are intentionally ignored.
 pub fn run_cargo_prefetch(
-    runner: &(dyn CommandRunner + Sync),
+    runner: std::sync::Arc<dyn CommandRunner>,
     prefetch_specs: &[CommandSpec],
     main_specs: &[CommandSpec],
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
-    std::thread::scope(|s| {
-        // Spawn background prefetch thread.
-        // Prefetch is best-effort; use NoopProgressReporter to avoid interleaving output.
-        if !prefetch_specs.is_empty() {
-            s.spawn(|| {
-                // Best-effort: ignore errors and failures.
-                let _ = run_checks(runner, prefetch_specs, &NoopProgressReporter);
-            });
+    // Spawn best-effort prefetch in a background thread.
+    // Critical behavior: do NOT block surfacing main-spec failures on a slow prefetch.
+    // On success we join so cache warm results can be flushed deterministically.
+    let prefetch_handle = if prefetch_specs.is_empty() {
+        None
+    } else {
+        let runner_bg = std::sync::Arc::clone(&runner);
+        let specs: Vec<CommandSpec> = prefetch_specs.to_vec();
+        Some(std::thread::spawn(move || {
+            let _ = run_checks(runner_bg.as_ref(), &specs, &NoopProgressReporter);
+        }))
+    };
+
+    let main_report = run_checks(runner.as_ref(), main_specs, reporter)?;
+    if main_report.exit == VerifyExitCode::Success {
+        if let Some(h) = prefetch_handle {
+            let _ = h.join();
         }
-
-        // Main thread runs main specs sequentially.
-        let main_report = run_checks(runner, main_specs, reporter)?;
-
-        // Wait for prefetch to finish (scope join).
-        Ok::<_, anyhow::Error>(main_report)
-    })
+    }
+    Ok(main_report)
 }
 
 #[cfg(test)]
 fn verify(
-    runner: &(dyn CommandRunner + Sync),
+    runner: std::sync::Arc<dyn CommandRunner>,
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
     checks: &[CommandSpec],
@@ -625,7 +649,7 @@ fn verify(
         }
     }
 
-    run_checks(runner, checks, &NoopProgressReporter)
+    run_checks(runner.as_ref(), checks, &NoopProgressReporter)
 }
 
 #[cfg(test)]
@@ -925,7 +949,7 @@ mod tests {
     fn test_verify_fails_immediately_when_native_check_returns_warning() {
         // TDD anchor: verifies that when a native check returns Warning, verify() returns Failure
         // and does NOT invoke any CommandRunner checks (early-exit guarantee).
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
 
         let warning_native_check = NativeCheck {
             name: "fake-native-warning",
@@ -933,7 +957,7 @@ mod tests {
         };
 
         let report = verify(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             &[warning_native_check],
             &[],
@@ -954,7 +978,7 @@ mod tests {
     #[test]
     fn test_verify_fails_immediately_when_native_check_returns_error() {
         // TDD anchor: companion to the Warning test above.
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
 
         let error_native_check = NativeCheck {
             name: "fake-native-error",
@@ -962,7 +986,7 @@ mod tests {
         };
 
         let report = verify(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             &[error_native_check],
             &[],
@@ -978,9 +1002,9 @@ mod tests {
     #[test]
     fn test_verify_succeeds_with_empty_native_and_command_checks() {
         // TDD anchor: verify() with no checks at all returns Success.
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
 
-        let report = verify(&runner, std::path::Path::new("/fake"), &[], &[])
+        let report = verify(runner.clone(), std::path::Path::new("/fake"), &[], &[])
             .expect("verify should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Success);
@@ -990,12 +1014,12 @@ mod tests {
     #[test]
     fn test_verify_runs_required_checks_in_stable_order() {
         // Arrange
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
 
         // Act
         // Pass a nonexistent path so native checks (compliance-timeout-wrapper) return Pass
         let report = verify(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
@@ -1201,9 +1225,9 @@ mod tests {
     #[test]
     fn test_verify_fast_runs_all_required_checks() {
         // TDD anchor: verify_fast() must exercise all REQUIRED_CHECKS.
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
         let report = verify_fast(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
@@ -1233,14 +1257,14 @@ mod tests {
         // TDD anchor: all scanning is now native (no rg phase); verify_fast proceeds
         // directly to cargo checks.  When the first cargo check (fmt-check) fails,
         // later checks must NOT run.
-        let runner = FakeRunner::new([CommandOutput {
+        let runner = std::sync::Arc::new(FakeRunner::new([CommandOutput {
             exit_code: 1, // exit 1 = failure for cargo
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
-        }]);
+        }]));
 
         let report = verify_fast(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
@@ -1258,14 +1282,14 @@ mod tests {
     fn test_verify_fast_stops_on_cargo_check_failure() {
         // TDD anchor: when first cargo check (fmt-check) fails, later cargo checks must not run.
         // All scanning is now native (no rg phase), so the first runner call is fmt-check.
-        let runner = FakeRunner::new([CommandOutput {
+        let runner = std::sync::Arc::new(FakeRunner::new([CommandOutput {
             exit_code: 1, // exit 1 = failure for cargo (success_exit_codes: &[0])
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
-        }]);
+        }]));
 
         let report = verify_fast(
-            &runner,
+            runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
             REQUIRED_CHECKS,
@@ -1280,6 +1304,45 @@ mod tests {
     }
 
     // ── TDD tests for cargo prefetch ────────────────────────────────────────
+
+    #[derive(Debug, Default)]
+    struct DelayByNameRunner {
+        outputs: Mutex<HashMap<&'static str, CommandOutput>>,
+        delays: HashMap<&'static str, Duration>,
+        ran: Mutex<Vec<&'static str>>,
+    }
+
+    impl DelayByNameRunner {
+        fn with_output(self, name: &'static str, output: CommandOutput) -> Self {
+            self.outputs.lock().unwrap().insert(name, output);
+            self
+        }
+
+        fn with_delay(mut self, name: &'static str, delay: Duration) -> Self {
+            self.delays.insert(name, delay);
+            self
+        }
+    }
+
+    impl CommandRunner for DelayByNameRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.ran.lock().unwrap().push(spec.name);
+            if let Some(d) = self.delays.get(spec.name) {
+                std::thread::sleep(*d);
+            }
+            self.outputs
+                .lock()
+                .unwrap()
+                .get(spec.name)
+                .cloned()
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("no output configured for {}", spec.name),
+                    )
+                })
+        }
+    }
 
     #[test]
     fn test_cargo_prefetch_specs_use_same_names_as_required_checks() {
@@ -1314,7 +1377,7 @@ mod tests {
         // returning Success when all pass.
         let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
 
-        let runner = RecordingRunner::default();
+        let runner = std::sync::Arc::new(RecordingRunner::default());
 
         let main_specs: &[CommandSpec] = &[CommandSpec {
             name: "fmt-check",
@@ -1326,8 +1389,13 @@ mod tests {
 
         let prefetch_specs = CARGO_PREFETCH_SPECS;
 
-        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs, &NoopProgressReporter)
-            .expect("run_cargo_prefetch should not error");
+        let report = run_cargo_prefetch(
+            runner.clone(),
+            prefetch_specs,
+            main_specs,
+            &NoopProgressReporter,
+        )
+        .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Success);
 
@@ -1352,7 +1420,7 @@ mod tests {
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
         }];
-        let runner = FakeRunner::new(outputs);
+        let runner = std::sync::Arc::new(FakeRunner::new(outputs));
 
         let main_specs: &[CommandSpec] = &[CommandSpec {
             name: "fmt-check-fail",
@@ -1362,7 +1430,7 @@ mod tests {
             extra_env: &[],
         }];
 
-        let report = run_cargo_prefetch(&runner, &[], main_specs, &NoopProgressReporter)
+        let report = run_cargo_prefetch(runner.clone(), &[], main_specs, &NoopProgressReporter)
             .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Failure);
@@ -1374,23 +1442,25 @@ mod tests {
     fn test_run_cargo_prefetch_does_not_fail_when_only_prefetch_fails() {
         // Prefetch is a best-effort optimisation; verification correctness is determined
         // by the sequential main specs.
-        let runner = ByNameRunner::default()
-            .with_output(
-                "prefetch-fails",
-                CommandOutput {
-                    exit_code: 1,
-                    stdout: String::new(),
-                    stderr: "error: prefetch failed".to_string(),
-                },
-            )
-            .with_output(
-                "main-passes",
-                CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                },
-            );
+        let runner = std::sync::Arc::new(
+            ByNameRunner::default()
+                .with_output(
+                    "prefetch-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: prefetch failed".to_string(),
+                    },
+                )
+                .with_output(
+                    "main-passes",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                ),
+        );
 
         let prefetch_specs: &[CommandSpec] = &[CommandSpec {
             name: "prefetch-fails",
@@ -1408,8 +1478,13 @@ mod tests {
             extra_env: &[],
         }];
 
-        let report = run_cargo_prefetch(&runner, prefetch_specs, main_specs, &NoopProgressReporter)
-            .expect("run_cargo_prefetch should not error");
+        let report = run_cargo_prefetch(
+            runner.clone(),
+            prefetch_specs,
+            main_specs,
+            &NoopProgressReporter,
+        )
+        .expect("run_cargo_prefetch should not error");
 
         assert_eq!(report.exit, VerifyExitCode::Success);
 
@@ -1417,6 +1492,66 @@ mod tests {
         let ran = runner.ran();
         assert!(ran.contains(&"prefetch-fails"));
         assert!(ran.contains(&"main-passes"));
+    }
+
+    #[test]
+    fn test_run_cargo_prefetch_does_not_block_on_prefetch_when_main_fails() {
+        // Regression: run_cargo_prefetch previously used std::thread::scope, which
+        // forced the prefetch thread to finish before returning. This delayed
+        // surfacing fast failures (e.g., fmt-check) by the full prefetch duration.
+
+        let runner = std::sync::Arc::new(
+            DelayByNameRunner::default()
+                .with_delay("prefetch-slow", Duration::from_millis(400))
+                .with_output(
+                    "prefetch-slow",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                )
+                .with_output(
+                    "main-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                ),
+        );
+
+        let prefetch_specs: &[CommandSpec] = &[CommandSpec {
+            name: "prefetch-slow",
+            program: "fake",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let main_specs: &[CommandSpec] = &[CommandSpec {
+            name: "main-fails",
+            program: "fake",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }];
+
+        let start = std::time::Instant::now();
+        let report = run_cargo_prefetch(
+            runner.clone(),
+            prefetch_specs,
+            main_specs,
+            &NoopProgressReporter,
+        )
+        .expect("run_cargo_prefetch should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        assert!(
+            start.elapsed() < Duration::from_millis(200),
+            "main failure should surface without waiting for prefetch; elapsed={:?}",
+            start.elapsed()
+        );
     }
 
     // ── TDD tests for ProgressReporter ──────────────────────────────────────
@@ -1651,6 +1786,31 @@ mod tests {
         let reporter = StderrProgressReporter::new(0);
         reporter.check_started("check-x");
         reporter.check_passed("check-x", Duration::from_millis(42));
+    }
+
+    #[test]
+    fn test_stderr_progress_reporter_formats_check_started_with_counter() {
+        let s = StderrProgressReporter::fmt_check_started(3, 10, "fmt-check");
+        assert_eq!(s, "  [3/10] checking: fmt-check");
+    }
+
+    #[test]
+    fn test_stderr_progress_reporter_formats_done_with_elapsed() {
+        let s = StderrProgressReporter::fmt_check_passed("fmt-check", Duration::from_millis(1500));
+        assert!(s.starts_with("  done:     fmt-check ("));
+        assert!(s.ends_with(')'));
+    }
+
+    #[test]
+    fn test_stderr_progress_reporter_formats_failed_with_status_and_elapsed() {
+        let s = StderrProgressReporter::fmt_check_failed(
+            "fmt-check",
+            Duration::from_millis(250),
+            CheckStatus::Error,
+        );
+        assert!(s.starts_with("  FAILED:   fmt-check ("));
+        assert!(s.contains("Error"));
+        assert!(s.ends_with(')'));
     }
 
     /// RecordingProgressReporter must correctly propagate elapsed to assertions.

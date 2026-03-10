@@ -259,7 +259,7 @@ pub struct CachingCommandRunner {
 }
 
 impl CachingCommandRunner {
-    pub fn new(inner: impl CommandRunner + Send + 'static, repo_root: PathBuf) -> Self {
+    pub fn new(inner: impl CommandRunner + 'static, repo_root: PathBuf) -> Self {
         let cache_path = repo_root.join("target/xtask-verify-cache.json");
         let memory = if let Ok(data) = std::fs::read_to_string(&cache_path) {
             serde_json::from_str::<CacheFile>(&data)

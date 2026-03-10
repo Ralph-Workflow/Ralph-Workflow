@@ -1400,10 +1400,14 @@ impl DiagnosticLevel {
 // Pattern IDs for the diagnostic Aho-Corasick automaton.
 const DIAG_PAT_ERROR_LC: usize = 0; // "error:"
 const DIAG_PAT_ERROR_TC: usize = 1; // "Error:"
-const DIAG_PAT_WARNING: usize = 2; // "warning:"
-const DIAG_PAT_WARNING_TC: usize = 3; // "Warning:" (defensive; kept for completeness)
+const DIAG_PAT_ERROR_BRACKET: usize = 2; // "error[" (rustc / clippy: error[E0XXX])
+const DIAG_PAT_WARNING_LC: usize = 3; // "warning:"
+const DIAG_PAT_WARNING_TC: usize = 4; // "Warning:" (defensive; kept for completeness)
+const DIAG_PAT_WARNING_BRACKET: usize = 5; // "warning[" (rustc warnings can use this form)
 
-static DIAG_PATTERNS: &[&str] = &["error:", "Error:", "warning:", "Warning:"];
+static DIAG_PATTERNS: &[&str] = &[
+    "error:", "Error:", "error[", "warning:", "Warning:", "warning[",
+];
 
 /// Process-global cached Aho-Corasick automaton for diagnostic-prefix detection.
 ///
@@ -1460,8 +1464,10 @@ pub fn scan_has_diagnostic_prefix(text: &str) -> DiagnosticLevel {
             continue; // match is not at line start after trim
         }
         match mat.pattern().as_usize() {
-            DIAG_PAT_ERROR_LC | DIAG_PAT_ERROR_TC => return DiagnosticLevel::Error,
-            DIAG_PAT_WARNING | DIAG_PAT_WARNING_TC => {
+            DIAG_PAT_ERROR_LC | DIAG_PAT_ERROR_TC | DIAG_PAT_ERROR_BRACKET => {
+                return DiagnosticLevel::Error
+            }
+            DIAG_PAT_WARNING_LC | DIAG_PAT_WARNING_TC | DIAG_PAT_WARNING_BRACKET => {
                 let line = std::str::from_utf8(line_idx.extract_line(bytes, byte_start))
                     .unwrap_or_default()
                     .trim_start();
@@ -3173,6 +3179,13 @@ mod tests {
         }
 
         #[test]
+        fn test_diagnostic_prefix_detects_rustc_error_bracket_form() {
+            // rustc/clippy commonly emit: `error[E0XXX]: ...`
+            let level = scan_has_diagnostic_prefix("error[E0425]: cannot find value\n");
+            assert_eq!(level, DiagnosticLevel::Error);
+        }
+
+        #[test]
         fn test_diagnostic_prefix_detects_warning() {
             let level = scan_has_diagnostic_prefix("warning: unused variable\n");
             assert_eq!(level, DiagnosticLevel::Warning);
@@ -3182,6 +3195,13 @@ mod tests {
         fn test_diagnostic_prefix_detects_warning_tc() {
             // "Warning:" (title-case) is included for completeness.
             let level = scan_has_diagnostic_prefix("Warning: deprecated usage\n");
+            assert_eq!(level, DiagnosticLevel::Warning);
+        }
+
+        #[test]
+        fn test_diagnostic_prefix_detects_warning_bracket_form() {
+            // Some toolchains can emit warnings in the bracketed form.
+            let level = scan_has_diagnostic_prefix("warning[dead_code]: function is never used\n");
             assert_eq!(level, DiagnosticLevel::Warning);
         }
 

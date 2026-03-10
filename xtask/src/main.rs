@@ -3,12 +3,35 @@ mod compliance;
 mod scanner;
 mod verify;
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::Arc;
 
 use verify::{CommandOutput, CommandRunner, CommandSpec, ProgressReporter, VerifyExitCode};
+
+fn drain_reader_lines_lossy<R: Read>(
+    reader: R,
+    mut on_line: impl FnMut(&str),
+) -> std::io::Result<String> {
+    let mut r = BufReader::new(reader);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut out = String::new();
+    loop {
+        buf.clear();
+        let n = r.read_until(b'\n', &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        let cow = String::from_utf8_lossy(&buf);
+        out.push_str(cow.as_ref());
+        let trimmed = cow.trim();
+        if !trimmed.is_empty() {
+            on_line(trimmed);
+        }
+    }
+    Ok(out)
+}
 
 fn print_verify_failure(report: &verify::VerifyReport) {
     let Some(failure) = &report.failure else {
@@ -76,10 +99,7 @@ impl CommandRunner for RealRunner {
         // Spawn a thread to read stderr and forward cargo compilation lines in real time.
         // Cargo writes "Compiling"/"Checking"/"Finished" progress to stderr.
         let stderr_thread = std::thread::spawn(move || {
-            let reader = BufReader::new(stderr_pipe);
-            let mut buf = String::new();
-            for line in reader.lines().map_while(Result::ok) {
-                let trimmed = line.trim();
+            drain_reader_lines_lossy(stderr_pipe, |trimmed| {
                 // Forward cargo progress lines immediately so the user sees what is
                 // being compiled instead of a silent terminal during long builds.
                 if trimmed.starts_with("Compiling ")
@@ -89,18 +109,12 @@ impl CommandRunner for RealRunner {
                 {
                     reporter.check_progress(&check_name, trimmed);
                 }
-                buf.push_str(&line);
-                buf.push('\n');
-            }
-            buf
+            })
+            .unwrap_or_default()
         });
 
         // Read stdout on the main thread while the stderr thread drains in parallel.
-        let mut stdout_buf = String::new();
-        for line in BufReader::new(stdout_pipe).lines().map_while(Result::ok) {
-            stdout_buf.push_str(&line);
-            stdout_buf.push('\n');
-        }
+        let stdout_buf = drain_reader_lines_lossy(stdout_pipe, |_| {}).unwrap_or_default();
 
         let stderr_buf = stderr_thread.join().unwrap_or_default();
         let status = child.wait()?;
@@ -125,11 +139,15 @@ fn main() -> ExitCode {
                 Arc::new(verify::StderrProgressReporter::new(total_checks));
             let real_runner = RealRunner::new(Arc::clone(&reporter));
             let repo_root = real_runner.repo_root.clone();
-            let runner = cache::CachingCommandRunner::new(real_runner, repo_root.clone());
+            let runner = Arc::new(cache::CachingCommandRunner::new(
+                real_runner,
+                repo_root.clone(),
+            ));
             eprintln!("=== cargo xtask verify ===");
             let verify_start = std::time::Instant::now();
+            let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
             let report = match verify::verify_fast(
-                &runner,
+                runner_for_verify,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
                 verify::REQUIRED_CHECKS,
@@ -162,5 +180,34 @@ fn main() -> ExitCode {
             eprintln!("Usage: cargo xtask verify");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_drain_reader_lines_lossy_does_not_stop_on_invalid_utf8() {
+        let bytes = b"Compiling foo v0.1.0\n\xff\xfeinvalid\nFinished\n".to_vec();
+        let mut seen: Vec<String> = Vec::new();
+        let out = drain_reader_lines_lossy(Cursor::new(bytes), |line| {
+            seen.push(line.to_string());
+        })
+        .expect("drain should succeed");
+
+        assert!(out.contains("Compiling foo"));
+        assert!(out.contains("Finished"));
+        assert!(
+            seen.iter().any(|l| l.starts_with("Compiling ")),
+            "expected Compiling line forwarded, got: {seen:?}"
+        );
+        assert!(
+            seen.iter().any(|l| l.starts_with("Finished")),
+            "expected Finished line forwarded, got: {seen:?}"
+        );
+        // Invalid bytes must not truncate output; lossy conversion inserts replacement chars.
+        assert!(out.contains("invalid"));
     }
 }
