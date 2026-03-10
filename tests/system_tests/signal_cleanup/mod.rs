@@ -232,7 +232,7 @@ fn spawn_ralph_pipeline(repo_dir: &Path) -> Option<Child> {
 /// Polls the file system until the marker exists or timeout is reached.
 /// Returns `true` if marker appeared, `false` on timeout.
 fn wait_for_marker(repo_dir: &Path, timeout: Duration) -> bool {
-    let marker_path = repo_dir.join(".no_agent_commit");
+    let marker_path = repo_dir.join(".git/ralph/no_agent_commit");
     let start = Instant::now();
 
     while start.elapsed() < timeout {
@@ -258,7 +258,7 @@ fn wait_for_wrapper_dir_path(repo_dir: &Path, timeout: Duration) -> Option<std::
 }
 
 fn wait_for_marker_size(repo_dir: &Path, timeout: Duration, expected_size: u64) -> bool {
-    let marker_path = repo_dir.join(".no_agent_commit");
+    let marker_path = repo_dir.join(".git/ralph/no_agent_commit");
     let start = Instant::now();
 
     while start.elapsed() < timeout {
@@ -292,7 +292,7 @@ fn assert_prompt_writable(prompt_path: &Path) {
 
 /// Assert git wrapper tracking file has been removed.
 fn assert_git_wrapper_track_file_removed(repo_dir: &Path) {
-    let track_file = repo_dir.join(".agent/git-wrapper-dir.txt");
+    let track_file = repo_dir.join(".git/ralph/git-wrapper-dir.txt");
     assert!(
         !track_file.exists(),
         "git wrapper track file should be removed after cleanup: {}",
@@ -370,7 +370,7 @@ fn test_ctrl_c_restores_prompt_md_writable() {
 
             // Marker should be cleaned up
             assert!(
-                !temp_dir.path().join(".no_agent_commit").exists(),
+                !temp_dir.path().join(".git/ralph/no_agent_commit").exists(),
                 ".no_agent_commit should be removed after Ctrl+C cleanup"
             );
 
@@ -502,7 +502,7 @@ fn test_ctrl_c_removes_no_agent_commit() {
             let child = spawn_ralph_pipeline(temp_dir.path()).expect("spawn ralph for test");
 
             // Wait for marker to appear
-            let marker_path = temp_dir.path().join(".no_agent_commit");
+            let marker_path = temp_dir.path().join(".git/ralph/no_agent_commit");
             let appeared = wait_for_marker(temp_dir.path(), MARKER_WAIT_TIMEOUT);
             assert!(appeared, "Marker should appear when agent phase starts");
 
@@ -675,7 +675,9 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
             set_readonly(&prompt_path);
             // Write a non-empty marker payload so we can detect the new process
             // rewriting it (workspace marker creation writes an empty file).
-            std::fs::write(temp_dir.path().join(".no_agent_commit"), "stale")
+            std::fs::create_dir_all(temp_dir.path().join(".git/ralph"))
+                .expect("create ralph dir");
+            std::fs::write(temp_dir.path().join(".git/ralph/no_agent_commit"), "stale")
                 .expect("write marker");
 
             // Spawn Ralph pipeline - startup cleanup should restore PROMPT.md
@@ -705,7 +707,7 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
 
             // Marker should be cleaned up (stale one removed; any newly created marker removed too).
             assert!(
-                !temp_dir.path().join(".no_agent_commit").exists(),
+                !temp_dir.path().join(".git/ralph/no_agent_commit").exists(),
                 ".no_agent_commit should not exist after cleanup"
             );
 
@@ -718,7 +720,7 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
 
 /// Assert head-oid tracking file has been removed.
 fn assert_head_oid_removed(repo_dir: &Path) {
-    let head_oid = repo_dir.join(".agent/head-oid.txt");
+    let head_oid = repo_dir.join(".git/ralph/head-oid.txt");
     assert!(
         !head_oid.exists(),
         "head-oid.txt should be removed after cleanup: {}",
@@ -729,12 +731,12 @@ fn assert_head_oid_removed(repo_dir: &Path) {
 /// Assert generated files have been removed.
 fn assert_generated_files_removed(repo_dir: &Path) {
     let generated = [
-        ".no_agent_commit",
+        ".git/ralph/no_agent_commit",
         ".agent/PLAN.md",
         ".agent/commit-message.txt",
         ".agent/checkpoint.json.tmp",
-        ".agent/head-oid.txt",
-        ".agent/git-wrapper-dir.txt",
+        ".git/ralph/head-oid.txt",
+        ".git/ralph/git-wrapper-dir.txt",
     ];
     for file in &generated {
         let path = repo_dir.join(file);
@@ -770,7 +772,7 @@ fn test_ctrl_c_removes_head_oid_file() {
 
             // Head-oid should exist during agent phase
             // (it's created by start_agent_phase -> capture_head_oid)
-            let head_oid = temp_dir.path().join(".agent/head-oid.txt");
+            let head_oid = temp_dir.path().join(".git/ralph/head-oid.txt");
             // Give a brief moment for the file to be written
             std::thread::sleep(Duration::from_millis(200));
             assert!(
@@ -821,7 +823,7 @@ fn test_ctrl_c_removes_generated_files() {
 
 /// Read the wrapper dir path from the track file.
 fn read_wrapper_dir_path(repo_dir: &Path) -> Option<std::path::PathBuf> {
-    let track_file = repo_dir.join(".agent/git-wrapper-dir.txt");
+    let track_file = repo_dir.join(".git/ralph/git-wrapper-dir.txt");
     std::fs::read_to_string(&track_file)
         .ok()
         .map(|s| std::path::PathBuf::from(s.trim()))
@@ -896,10 +898,10 @@ fn test_startup_cleans_orphaned_wrapper_dir() {
             let orphan_path = orphan_dir.keep();
 
             // Write track file pointing to the orphaned dir.
-            let agent_dir = temp_dir.path().join(".agent");
-            std::fs::create_dir_all(&agent_dir).expect("create .agent dir");
+            let ralph_dir = temp_dir.path().join(".git/ralph");
+            std::fs::create_dir_all(&ralph_dir).expect("create ralph dir");
             std::fs::write(
-                temp_dir.path().join(".agent/git-wrapper-dir.txt"),
+                temp_dir.path().join(".git/ralph/git-wrapper-dir.txt"),
                 format!("{}\n", orphan_path.display()),
             )
             .expect("write orphan track file");

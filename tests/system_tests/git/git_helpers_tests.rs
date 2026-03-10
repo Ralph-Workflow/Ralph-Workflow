@@ -38,7 +38,7 @@ fn test_agent_phase_cleanup_removes_git_wrapper_track_file() {
 
         // Precondition: wrapper track file exists.
         assert!(
-            dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            dir.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "expected wrapper track file to exist after start_agent_phase"
         );
 
@@ -47,7 +47,7 @@ fn test_agent_phase_cleanup_removes_git_wrapper_track_file() {
         uninstall_hooks(&logger).unwrap();
 
         assert!(
-            !dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            !dir.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "expected wrapper track file to be removed by disable_git_wrapper"
         );
     });
@@ -64,7 +64,7 @@ fn test_disable_git_wrapper_removes_track_file_even_when_cwd_changes() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let track_file = dir.path().join(".git/ralph/git-wrapper-dir.txt");
         assert!(track_file.exists(), "precondition: track file must exist");
 
         let other_dir = tempfile::tempdir().expect("create other tempdir");
@@ -98,13 +98,13 @@ fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
         start_agent_phase_in_repo(target_repo.path(), &mut helpers).unwrap();
 
         assert!(
-            target_repo.path().join(".no_agent_commit").exists(),
+            target_repo.path().join(".git/ralph/no_agent_commit").exists(),
             "target repo should receive the agent marker"
         );
         assert!(
             target_repo
                 .path()
-                .join(".agent/git-wrapper-dir.txt")
+                .join(".git/ralph/git-wrapper-dir.txt")
                 .exists(),
             "target repo should receive the wrapper track file"
         );
@@ -122,11 +122,11 @@ fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
         }
 
         assert!(
-            !cwd_repo.path().join(".no_agent_commit").exists(),
+            !cwd_repo.path().join(".git/ralph/no_agent_commit").exists(),
             "cwd repo must not receive the marker for another repo"
         );
         assert!(
-            !cwd_repo.path().join(".agent/git-wrapper-dir.txt").exists(),
+            !cwd_repo.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "cwd repo must not receive the wrapper track file for another repo"
         );
 
@@ -302,7 +302,8 @@ fn test_cleanup_orphaned_marker() {
         git2::Repository::init(dir_path).unwrap();
 
         // Create marker.
-        let marker_path = dir_path.join(".no_agent_commit");
+        let marker_path = dir_path.join(".git/ralph/no_agent_commit");
+        fs::create_dir_all(dir_path.join(".git/ralph")).unwrap();
         File::create(&marker_path).unwrap();
         assert!(marker_path.exists());
 
@@ -442,7 +443,7 @@ fn test_pre_commit_hook_blocks_when_marker_exists() {
         hooks::install_hooks().unwrap();
 
         // Create the marker file that should trigger blocking.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         File::create(&marker).unwrap();
         assert!(marker.exists(), "precondition: marker must exist");
 
@@ -496,7 +497,7 @@ fn test_pre_commit_hook_passes_when_no_marker() {
         hooks::install_hooks().unwrap();
 
         // Confirm marker is absent.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must be absent");
 
         let hooks_dir = get_hooks_dir().unwrap();
@@ -538,11 +539,11 @@ fn test_agent_phase_guard_drop_cleans_up_hooks() {
 
         // Preconditions: marker and wrapper track file must exist.
         assert!(
-            dir.path().join(".no_agent_commit").exists(),
+            dir.path().join(".git/ralph/no_agent_commit").exists(),
             "expected .no_agent_commit after start_agent_phase"
         );
         assert!(
-            dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            dir.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "expected wrapper track file after start_agent_phase"
         );
 
@@ -554,13 +555,13 @@ fn test_agent_phase_guard_drop_cleans_up_hooks() {
 
         // Marker must be gone.
         assert!(
-            !dir.path().join(".no_agent_commit").exists(),
+            !dir.path().join(".git/ralph/no_agent_commit").exists(),
             "expected .no_agent_commit to be removed by AgentPhaseGuard::drop"
         );
 
         // Wrapper track file must be gone.
         assert!(
-            !dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            !dir.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "expected wrapper track file to be removed by AgentPhaseGuard::drop"
         );
 
@@ -714,7 +715,7 @@ fn test_marker_file_is_read_only() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         assert!(marker.exists(), "marker must exist");
         let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
         assert_eq!(
@@ -770,7 +771,7 @@ fn test_end_agent_phase_handles_read_only_marker() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         assert!(marker.exists(), "precondition: marker must exist");
 
         end_agent_phase();
@@ -845,7 +846,7 @@ fn test_ensure_agent_phase_protections_restores_marker_permissions() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
 
         // Simulate agent loosening permissions.
         let mut perms = fs::metadata(&marker).unwrap().permissions();
@@ -885,7 +886,7 @@ fn setup_wrapper_test(dir: &std::path::Path) -> WrapperTestContext {
     start_agent_phase(&mut helpers).unwrap();
 
     // Read the wrapper script path from the track file.
-    let track_content = fs::read_to_string(dir.join(".agent/git-wrapper-dir.txt")).unwrap();
+    let track_content = fs::read_to_string(dir.join(".git/ralph/git-wrapper-dir.txt")).unwrap();
     let wrapper_dir = std::path::PathBuf::from(track_content.trim());
     let wrapper_path = wrapper_dir.join("git");
     assert!(wrapper_path.exists(), "wrapper script must exist");
@@ -948,11 +949,11 @@ fn test_start_agent_phase_creates_marker_in_repo_root_not_cwd() {
         start_agent_phase(&mut helpers).unwrap();
 
         assert!(
-            dir.path().join(".no_agent_commit").exists(),
+            dir.path().join(".git/ralph/no_agent_commit").exists(),
             "marker must be created in repo root"
         );
         assert!(
-            !subdir.join(".no_agent_commit").exists(),
+            !subdir.join(".git/ralph/no_agent_commit").exists(),
             "marker must not be created in CWD subdir"
         );
 
@@ -983,7 +984,8 @@ fn test_start_agent_phase_repairs_marker_symlink_without_clobbering_target() {
         fs::write(&target, "do-not-touch").unwrap();
         fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
+        fs::create_dir_all(dir.path().join(".git/ralph")).unwrap();
         symlink(&target, &marker).unwrap();
 
         let mut helpers = GitHelpers::default();
@@ -1027,7 +1029,8 @@ fn test_end_agent_phase_does_not_chmod_marker_symlink_target() {
         fs::write(&target, "x").unwrap();
         fs::set_permissions(&target, fs::Permissions::from_mode(0o444)).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
+        fs::create_dir_all(dir.path().join(".git/ralph")).unwrap();
         symlink(&target, &marker).unwrap();
 
         end_agent_phase();
@@ -1169,7 +1172,7 @@ fn test_git_wrapper_blocks_merge_when_marker_missing_but_wrapper_active() {
         let ctx = setup_wrapper_test(dir.path());
 
         // Simulate agent deleting the marker.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         fs::remove_file(&marker).unwrap();
         assert!(!marker.exists(), "precondition: marker must be deleted");
 
@@ -1406,7 +1409,7 @@ fn test_ensure_agent_phase_protections_restores_when_marker_and_hooks_deleted() 
         start_agent_phase(&mut helpers).unwrap();
 
         // Simulate tampering: delete marker and all hooks.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         fs::remove_file(&marker).unwrap();
         for &hook_name in RALPH_HOOK_NAMES {
             let hook_path = get_hooks_dir().unwrap().join(hook_name);
@@ -1504,7 +1507,7 @@ fn test_ensure_agent_phase_protections_restores_marker() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         assert!(marker.exists(), "precondition: marker must exist");
 
         // Simulate agent deleting the marker.
@@ -1597,7 +1600,7 @@ fn test_git_wrapper_script_is_read_only() {
 
         // Read wrapper path from track file.
         let track_content =
-            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+            fs::read_to_string(dir.path().join(".git/ralph/git-wrapper-dir.txt")).unwrap();
         let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
         assert!(wrapper_path.exists(), "wrapper script must exist");
 
@@ -1656,7 +1659,7 @@ fn test_pre_merge_commit_hook_blocks_when_marker_exists() {
         hooks::install_hooks().unwrap();
 
         // Create the marker file.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         File::create(&marker).unwrap();
 
         let hooks_dir = get_hooks_dir().unwrap();
@@ -1702,7 +1705,7 @@ fn test_ensure_agent_phase_protections_returns_tampering_when_marker_deleted() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         // Delete the marker to simulate tampering.
         fs::remove_file(&marker).unwrap();
 
@@ -1774,7 +1777,7 @@ fn test_wrapper_unsets_git_env_vars() {
         start_agent_phase(&mut helpers).unwrap();
 
         let track_content =
-            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+            fs::read_to_string(dir.path().join(".git/ralph/git-wrapper-dir.txt")).unwrap();
         let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
         let content = fs::read_to_string(&wrapper_path).unwrap();
 
@@ -1811,7 +1814,7 @@ fn test_ensure_agent_phase_protections_restores_missing_wrapper_script() {
         start_agent_phase(&mut helpers).unwrap();
 
         let track_content =
-            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+            fs::read_to_string(dir.path().join(".git/ralph/git-wrapper-dir.txt")).unwrap();
         let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
         assert!(wrapper_path.exists(), "precondition: wrapper must exist");
 
@@ -1856,7 +1859,7 @@ fn test_ensure_agent_phase_protections_restores_missing_wrapper_track_file() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let track_file = dir.path().join(".git/ralph/git-wrapper-dir.txt");
         assert!(track_file.exists(), "precondition: track file must exist");
 
         // Simulate agent deletion.
@@ -1894,7 +1897,7 @@ fn test_ensure_agent_phase_protections_ignores_tampered_wrapper_track_file_path(
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let track_file = dir.path().join(".git/ralph/git-wrapper-dir.txt");
         let track_content = fs::read_to_string(&track_file).unwrap();
         let real_wrapper_dir = std::path::PathBuf::from(track_content.trim());
         let real_wrapper_path = real_wrapper_dir.join("git");
@@ -1951,7 +1954,7 @@ fn test_disable_git_wrapper_handles_read_only_wrapper() {
         start_agent_phase(&mut helpers).unwrap();
 
         let track_content =
-            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+            fs::read_to_string(dir.path().join(".git/ralph/git-wrapper-dir.txt")).unwrap();
         let wrapper_dir = std::path::PathBuf::from(track_content.trim());
         assert!(wrapper_dir.exists(), "wrapper dir must exist");
 
@@ -1982,7 +1985,7 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
     with_temp_cwd(|_dir| {
         git2::Repository::init(".").unwrap();
 
-        let marker = std::path::Path::new(".no_agent_commit");
+        let marker = std::path::Path::new(".git/ralph/no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must not exist");
 
         let result = ensure_agent_phase_protections(&logger);
@@ -2024,12 +2027,11 @@ fn test_hook_blocks_when_only_track_file_exists() {
         hooks::install_hooks().unwrap();
 
         // Create the track file (simulates active agent phase).
-        let agent_dir = dir.path().join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
-        fs::write(agent_dir.join("git-wrapper-dir.txt"), "/tmp/fake-wrapper\n").unwrap();
+        let ralph_dir = dir.path().join(".git/ralph");
+        fs::write(ralph_dir.join("git-wrapper-dir.txt"), "/tmp/fake-wrapper\n").unwrap();
 
         // Ensure NO marker exists.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must not exist");
 
         // The hook should still block because the track file exists.
@@ -2073,8 +2075,8 @@ fn test_hook_passes_when_neither_marker_nor_track_file() {
         hooks::install_hooks().unwrap();
 
         // Ensure NO marker and NO track file exist.
-        let marker = dir.path().join(".no_agent_commit");
-        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
+        let track_file = dir.path().join(".git/ralph/git-wrapper-dir.txt");
         assert!(!marker.exists(), "precondition: marker must not exist");
         assert!(
             !track_file.exists(),
@@ -2123,7 +2125,7 @@ fn test_start_agent_phase_captures_head_oid() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let head_oid_path = dir.path().join(".agent/head-oid.txt");
+        let head_oid_path = dir.path().join(".git/ralph/head-oid.txt");
         assert!(
             head_oid_path.exists(),
             "head-oid.txt must be created by start_agent_phase"
@@ -2214,7 +2216,7 @@ fn test_end_agent_phase_removes_head_oid_file() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let head_oid_path = dir.path().join(".agent/head-oid.txt");
+        let head_oid_path = dir.path().join(".git/ralph/head-oid.txt");
         assert!(
             head_oid_path.exists(),
             "precondition: head-oid.txt must exist"
@@ -2255,7 +2257,7 @@ fn test_ensure_agent_phase_protections_restores_track_file_permissions() {
         let mut helpers = GitHelpers::default();
         start_agent_phase(&mut helpers).unwrap();
 
-        let track_file = dir.path().join(".agent/git-wrapper-dir.txt");
+        let track_file = dir.path().join(".git/ralph/git-wrapper-dir.txt");
         assert!(track_file.exists(), "precondition: track file must exist");
 
         // Verify initial permissions are 0o444.
@@ -2323,9 +2325,9 @@ fn test_finalize_cleanup_leaves_no_artifacts() {
         start_agent_phase(&mut helpers).unwrap();
 
         // Verify artifacts exist.
-        assert!(dir.path().join(".no_agent_commit").exists());
-        assert!(dir.path().join(".agent/git-wrapper-dir.txt").exists());
-        assert!(dir.path().join(".agent/head-oid.txt").exists());
+        assert!(dir.path().join(".git/ralph/no_agent_commit").exists());
+        assert!(dir.path().join(".git/ralph/git-wrapper-dir.txt").exists());
+        assert!(dir.path().join(".git/ralph/head-oid.txt").exists());
 
         // Perform finalize-style cleanup.
         end_agent_phase();
@@ -2334,15 +2336,15 @@ fn test_finalize_cleanup_leaves_no_artifacts() {
 
         // Assert all artifacts are gone.
         assert!(
-            !dir.path().join(".no_agent_commit").exists(),
+            !dir.path().join(".git/ralph/no_agent_commit").exists(),
             "marker must be removed"
         );
         assert!(
-            !dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            !dir.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
             "track file must be removed"
         );
         assert!(
-            !dir.path().join(".agent/head-oid.txt").exists(),
+            !dir.path().join(".git/ralph/head-oid.txt").exists(),
             "head-oid.txt must be removed"
         );
 
@@ -2402,7 +2404,7 @@ fn test_commit_msg_hook_installed_and_blocks() {
         );
 
         // Create the marker file to activate blocking.
-        let marker = dir.path().join(".no_agent_commit");
+        let marker = dir.path().join(".git/ralph/no_agent_commit");
         File::create(&marker).unwrap();
 
         let output = Command::new("bash")

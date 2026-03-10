@@ -60,7 +60,7 @@ pub fn init_git_repo(dir: &TempDir) -> Repository {
 
     fs::write(
         dir.path().join(".gitignore"),
-        ".agent/\n.no_agent_commit\nPROMPT.md\n",
+        ".agent/\nPROMPT.md\n",
     )
     .expect("write .gitignore");
     fs::write(
