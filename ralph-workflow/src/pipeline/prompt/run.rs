@@ -26,7 +26,13 @@ pub fn run_with_prompt(
 
     // Verify commit protections are intact before each agent run.
     // This self-heals against a prior agent that deleted .no_agent_commit or git hooks.
-    crate::git_helpers::ensure_agent_phase_protections(runtime.logger);
+    let protection_result = crate::git_helpers::ensure_agent_phase_protections(runtime.logger);
+    if protection_result.tampering_detected {
+        runtime.logger.warn(&format!(
+            "⚠ Agent tampered with git protections (self-healed): {}",
+            protection_result.details.join("; ")
+        ));
+    }
 
     runtime.timer.start_phase();
     runtime.logger.step(&format!(

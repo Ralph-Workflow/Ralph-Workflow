@@ -43,7 +43,18 @@ FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
 - Use `chmod` on any `.git/hooks/` file or `.no_agent_commit`
 - Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files or `.no_agent_commit`
 - Invoke `git init` to reinitialize the repository or create a new git structure
-- Write directly to `.git/hooks/pre-commit` or `.git/hooks/pre-push` to replace hook content
-- Use `exec`, `env`, or other shell builtins to invoke git bypassing the PATH wrapper
+- Write directly to `.git/hooks/pre-commit`, `.git/hooks/pre-push`, or `.git/hooks/pre-merge-commit` to replace hook content
+- Use `exec`, `env`, `command`, or other shell builtins to invoke git bypassing the PATH wrapper
+- Set GIT_DIR, GIT_WORK_TREE, or GIT_EXEC_PATH environment variables — the wrapper unsets these automatically
+
+WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET:
+1. The `.no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
+2. All git hooks (pre-commit, pre-push, pre-merge-commit) are reinstalled before EVERY agent invocation. Deleting or modifying them is pointless.
+3. Hook and marker permissions are verified and restored before EVERY agent invocation. Using chmod is pointless.
+4. The PATH wrapper unsets GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH when the marker exists. Setting env vars is pointless.
+5. The PATH wrapper script is read-only (0o555). Overwriting it requires chmod first, which wastes time and is logged.
+6. ALL tampering is detected, logged as a security violation, and reported. The agent run will be flagged as compromised.
+7. Even if a commit somehow succeeds, Ralph detects the unauthorized commit and the pipeline FAILS. There is no successful bypass outcome.
+8. Every bypass attempt wastes tokens from your execution budget with ZERO chance of success. The correct action is always: write your file changes and let Ralph commit them.
 
 Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. ALL bypass attempts are logged and reported to the user as security violations. The agent's task will be considered FAILED. Hooks are reinstalled before EVERY agent run, so deletion is pointless and wastes your execution budget. Write your file changes and let Ralph commit them.

@@ -8,7 +8,8 @@ use ralph_workflow::git_helpers::hooks::HOOK_MARKER;
 use ralph_workflow::git_helpers::{
     self, cleanup_orphaned_marker, disable_git_wrapper, end_agent_phase,
     ensure_agent_phase_protections, git_snapshot, git_snapshot_in_repo, hooks,
-    reinstall_hooks_if_tampered, start_agent_phase, uninstall_hooks, GitHelpers,
+    hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered, start_agent_phase, uninstall_hooks,
+    GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -742,7 +743,7 @@ fn test_ensure_agent_phase_protections_restores_hook_permissions() {
         let mode = fs::metadata(&pre_commit).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755, "precondition: hook must have loosened perms");
 
-        ensure_agent_phase_protections(&logger);
+        let _ = ensure_agent_phase_protections(&logger);
 
         let mode = fs::metadata(&pre_commit).unwrap().permissions().mode() & 0o777;
         assert_eq!(
@@ -784,7 +785,7 @@ fn test_ensure_agent_phase_protections_restores_marker_permissions() {
         let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o644, "precondition: marker must have loosened perms");
 
-        ensure_agent_phase_protections(&logger);
+        let _ = ensure_agent_phase_protections(&logger);
 
         let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
         assert_eq!(
@@ -1059,7 +1060,7 @@ fn test_ensure_agent_phase_protections_restores_marker() {
         fs::remove_file(&marker).unwrap();
         assert!(!marker.exists(), "precondition: marker must be deleted");
 
-        ensure_agent_phase_protections(&logger);
+        let _ = ensure_agent_phase_protections(&logger);
 
         assert!(
             marker.exists(),
@@ -1100,7 +1101,7 @@ fn test_ensure_agent_phase_protections_restores_hooks() {
         fs::remove_file(hooks_dir.join("pre-commit")).unwrap();
         fs::remove_file(hooks_dir.join("pre-push")).unwrap();
 
-        ensure_agent_phase_protections(&logger);
+        let _ = ensure_agent_phase_protections(&logger);
 
         // Hooks must be reinstalled.
         assert!(
@@ -1124,6 +1125,251 @@ fn test_ensure_agent_phase_protections_restores_hooks() {
     });
 }
 
+// =========================================================================
+// New hardening tests: wrapper permissions, pre-merge-commit, tamper auditing
+// =========================================================================
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_git_wrapper_script_is_read_only() {
+    // After start_agent_phase(), the wrapper script should have mode 0o555
+    // (read-only executable) to deter agent overwriting.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        // Read wrapper path from track file.
+        let track_content =
+            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+        let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
+        assert!(wrapper_path.exists(), "wrapper script must exist");
+
+        let mode = fs::metadata(&wrapper_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o555,
+            "wrapper script should have mode 0o555 (read-only executable), got {mode:#o}"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_pre_merge_commit_hook_installed() {
+    // install_hooks() should create a pre-merge-commit hook alongside pre-commit and pre-push.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        for hook_name in RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            assert!(hook_path.exists(), "{hook_name} must be installed");
+            let content = fs::read_to_string(&hook_path).unwrap();
+            assert!(
+                content.contains(HOOK_MARKER),
+                "{hook_name} must contain HOOK_MARKER"
+            );
+        }
+    });
+}
+
+#[test]
+#[serial]
+fn test_pre_merge_commit_hook_blocks_when_marker_exists() {
+    // The pre-merge-commit hook should block when .no_agent_commit is present.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        // Create the marker file.
+        let marker = dir.path().join(".no_agent_commit");
+        File::create(&marker).unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("pre-merge-commit");
+        assert!(
+            hook_path.exists(),
+            "pre-merge-commit hook must be installed"
+        );
+
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available to run hook script");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}{stderr}");
+
+        assert_ne!(
+            output.status.code(),
+            Some(0),
+            "hook should exit non-zero when .no_agent_commit is present; output: {combined}"
+        );
+        assert!(
+            combined.to_lowercase().contains("blocked"),
+            "hook output should mention 'blocked'; got: {combined}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_returns_tampering_when_marker_deleted() {
+    // When the marker is deleted, ensure_agent_phase_protections should return
+    // a result indicating tampering was detected.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        // Delete the marker to simulate tampering.
+        fs::remove_file(&marker).unwrap();
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(
+            result.tampering_detected,
+            "should report tampering when marker is deleted"
+        );
+        assert!(
+            !result.details.is_empty(),
+            "should have details about what was self-healed"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_returns_tampering_when_hooks_deleted() {
+    // When hooks are deleted, ensure_agent_phase_protections should return
+    // a result indicating tampering was detected.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        // Delete all hooks to simulate tampering.
+        for hook_name in RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            if hook_path.exists() {
+                let _ = fs::remove_file(&hook_path);
+            }
+        }
+
+        let result = ensure_agent_phase_protections(&logger);
+        assert!(
+            result.tampering_detected,
+            "should report tampering when hooks are deleted"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[test]
+#[serial]
+fn test_wrapper_unsets_git_env_vars() {
+    // The wrapper script content should include env var unsetting for
+    // GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_content =
+            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+        let wrapper_path = std::path::PathBuf::from(track_content.trim()).join("git");
+        let content = fs::read_to_string(&wrapper_path).unwrap();
+
+        for var in &["GIT_DIR", "GIT_WORK_TREE", "GIT_EXEC_PATH"] {
+            assert!(
+                content.contains(&format!("unset {var}")),
+                "wrapper must unset {var}; got:\n{content}"
+            );
+        }
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_disable_git_wrapper_handles_read_only_wrapper() {
+    // Cleanup must work even though the wrapper script is now read-only (0o555).
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let track_content =
+            fs::read_to_string(dir.path().join(".agent/git-wrapper-dir.txt")).unwrap();
+        let wrapper_dir = std::path::PathBuf::from(track_content.trim());
+        assert!(wrapper_dir.exists(), "wrapper dir must exist");
+
+        // disable_git_wrapper should handle the read-only wrapper gracefully.
+        disable_git_wrapper(&mut helpers);
+
+        assert!(
+            !wrapper_dir.exists(),
+            "wrapper dir must be cleaned up even when wrapper is read-only"
+        );
+
+        // Cleanup remaining
+        end_agent_phase();
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
 #[test]
 #[serial]
 fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
@@ -1139,7 +1385,7 @@ fn test_ensure_agent_phase_protections_noop_when_phase_ended() {
         let marker = std::path::Path::new(".no_agent_commit");
         assert!(!marker.exists(), "precondition: marker must not exist");
 
-        ensure_agent_phase_protections(&logger);
+        let _ = ensure_agent_phase_protections(&logger);
 
         // Nothing should be created.
         assert!(

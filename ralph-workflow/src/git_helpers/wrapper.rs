@@ -24,6 +24,19 @@ use which::which;
 
 const WRAPPER_DIR_TRACK_FILE: &str = ".agent/git-wrapper-dir.txt";
 
+/// Result of checking and self-healing agent-phase protections.
+///
+/// When `ensure_agent_phase_protections` detects and repairs tampering,
+/// this struct records what was found so the caller can take action
+/// (e.g., log a stronger warning or flag the agent run as compromised).
+#[derive(Debug, Clone, Default)]
+pub struct ProtectionCheckResult {
+    /// Whether any tampering was detected and self-healed.
+    pub tampering_detected: bool,
+    /// Human-readable descriptions of each self-healing action taken.
+    pub details: Vec<String>,
+}
+
 /// Marker file path for blocking commits during agent phase.
 const MARKER_FILE: &str = ".no_agent_commit";
 
@@ -93,8 +106,16 @@ fn make_wrapper_content(git_path_escaped: &str) -> String {
     format!(
         r#"#!/usr/bin/env sh
 set -eu
+# NOTE: `command git` still routes through this PATH wrapper because `command`
+# only skips shell functions and aliases, not PATH entries. This wrapper is a
+# real file in PATH, so it is always invoked for any `git` command.
 repo_root="$('{git_path_escaped}' rev-parse --show-toplevel 2>/dev/null || pwd)"
 if [ -f "$repo_root/.no_agent_commit" ]; then
+  # Unset environment variables that could be used to bypass the wrapper
+  # by pointing git at a different repository or exec path.
+  unset GIT_DIR
+  unset GIT_WORK_TREE
+  unset GIT_EXEC_PATH
   subcmd=""
   skip_next=0
   for arg in "$@"; do
@@ -246,11 +267,13 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     let mut file = File::create(&wrapper_path)?;
     file.write_all(wrapper_content.as_bytes())?;
 
+    // Make read-only executable (0o555) to deter agent overwriting, matching
+    // the pattern used for hooks.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(&wrapper_path)?.permissions();
-        perms.set_mode(0o755);
+        perms.set_mode(0o555);
         fs::set_permissions(&wrapper_path, perms)?;
     }
 
@@ -286,6 +309,17 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
 pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
     if let Some(wrapper_dir) = helpers.wrapper_dir.take() {
         let wrapper_dir_path = wrapper_dir.path().to_path_buf();
+        // Make wrapper writable before removal (wrapper is installed as read-only 0o555).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let wrapper_path = wrapper_dir_path.join("git");
+            if let Ok(meta) = fs::metadata(&wrapper_path) {
+                let mut perms = meta.permissions();
+                perms.set_mode(perms.mode() | 0o200);
+                let _ = fs::set_permissions(&wrapper_path, perms);
+            }
+        }
         let _ = fs::remove_dir_all(&wrapper_dir_path);
         // Remove from PATH.
         // Note: This read-modify-write sequence on PATH has a theoretical TOCTOU race,
@@ -368,9 +402,12 @@ pub fn end_agent_phase() {
 ///
 /// Errors are logged as warnings only — a missing git repo (e.g., in tests
 /// without a real repo) should not crash the pipeline.
-pub fn ensure_agent_phase_protections(logger: &Logger) {
+#[must_use]
+pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult {
+    let mut result = ProtectionCheckResult::default();
+
     let Ok(repo_root) = get_repo_root() else {
-        return;
+        return result;
     };
 
     let marker_path = repo_root.join(MARKER_FILE);
@@ -380,7 +417,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) {
     let hooks_present = super::repo::get_hooks_dir_from(&repo_root)
         .ok()
         .is_some_and(|hooks_dir| {
-            ["pre-commit", "pre-push"].iter().any(|name| {
+            super::hooks::RALPH_HOOK_NAMES.iter().any(|name| {
                 let path = hooks_dir.join(name);
                 path.exists()
                     && matches!(
@@ -392,7 +429,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) {
 
     // If neither marker nor hooks exist, we're not in the agent phase — no-op.
     if !marker_exists && !hooks_present {
-        return;
+        return result;
     }
 
     // Recreate marker if missing (but hooks exist → agent phase is active).
@@ -401,6 +438,10 @@ pub fn ensure_agent_phase_protections(logger: &Logger) {
         if let Err(e) = File::create(&marker_path) {
             logger.warn(&format!("Failed to recreate .no_agent_commit: {e}"));
         }
+        result.tampering_detected = true;
+        result
+            .details
+            .push(".no_agent_commit marker was deleted — recreated".to_string());
     }
 
     // Verify/restore marker permissions (read-only 0o444).
@@ -416,18 +457,33 @@ pub fn ensure_agent_phase_protections(logger: &Logger) {
                 let mut perms = meta.permissions();
                 perms.set_mode(0o444);
                 let _ = fs::set_permissions(&marker_path, perms);
+                result.tampering_detected = true;
+                result.details.push(format!(
+                    ".no_agent_commit permissions loosened ({mode:#o}) — restored to 0o444"
+                ));
             }
         }
     }
 
     // Reinstall hooks if tampered (best-effort).
-    if let Err(e) = reinstall_hooks_if_tampered(logger) {
-        logger.warn(&format!("Failed to verify/reinstall hooks: {e}"));
+    match reinstall_hooks_if_tampered(logger) {
+        Ok(true) => {
+            result.tampering_detected = true;
+            result
+                .details
+                .push("Git hooks tampered with or missing — reinstalled".to_string());
+        }
+        Err(e) => {
+            logger.warn(&format!("Failed to verify/reinstall hooks: {e}"));
+        }
+        Ok(false) => {}
     }
 
     // Verify/restore hook permissions (read-only executable 0o555).
     #[cfg(unix)]
     super::hooks::enforce_hook_permissions(logger);
+
+    result
 }
 
 fn cleanup_git_wrapper_dir_silent() {
@@ -778,6 +834,37 @@ mod tests {
         assert!(
             content.contains("checkout"),
             "wrapper must handle checkout subcommand; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_protection_check_result_default_is_no_tampering() {
+        let result = ProtectionCheckResult::default();
+        assert!(!result.tampering_detected);
+        assert!(result.details.is_empty());
+    }
+
+    #[test]
+    fn test_wrapper_script_unsets_git_env_vars() {
+        let content = make_wrapper_content("git");
+        // Wrapper must unset GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH
+        // when .no_agent_commit exists to prevent env var bypass.
+        for var in &["GIT_DIR", "GIT_WORK_TREE", "GIT_EXEC_PATH"] {
+            assert!(
+                content.contains(&format!("unset {var}")),
+                "wrapper must unset {var} when marker exists; got:\n{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrapper_script_documents_command_builtin_behavior() {
+        let content = make_wrapper_content("git");
+        // Wrapper should document that `command git` still routes through
+        // the PATH wrapper (command only skips shell functions/aliases, not PATH entries).
+        assert!(
+            content.contains("command") && content.contains("PATH"),
+            "wrapper must document that `command` builtin still routes through PATH wrapper; got:\n{content}"
         );
     }
 }

@@ -51,7 +51,7 @@ pub fn uninstall_hooks_in_repo(repo_root: &Path, logger: &Logger) -> io::Result<
     }
 
     let mut restored = 0;
-    for hook_name in &["pre-commit", "pre-push"] {
+    for hook_name in RALPH_HOOK_NAMES {
         let hook_path = hooks_dir.join(hook_name);
         if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
             restored += 1;
@@ -86,6 +86,13 @@ fn bash_single_quote_literal(s: &str) -> String {
 
 /// Marker string for Ralph-managed hooks.
 pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
+
+/// All hook names managed by Ralph.
+///
+/// This constant is the single source of truth for which hooks Ralph installs,
+/// uninstalls, monitors, and enforces permissions on. Adding a new hook here
+/// automatically propagates to all lifecycle operations.
+pub const RALPH_HOOK_NAMES: &[&str] = &["pre-commit", "pre-push", "pre-merge-commit"];
 
 /// Make a file writable before removal (hooks are installed as 0o555).
 #[cfg(unix)]
@@ -211,8 +218,16 @@ pub fn install_hooks() -> io::Result<()> {
     let hooks_dir = get_hooks_dir()?;
     fs::create_dir_all(&hooks_dir)?;
 
-    install_hook("Commit", &hooks_dir.join("pre-commit"))?;
-    install_hook("Push", &hooks_dir.join("pre-push"))?;
+    for hook_name in RALPH_HOOK_NAMES {
+        // Use a human-readable label for the blocking message.
+        let label = match *hook_name {
+            "pre-commit" => "Commit",
+            "pre-push" => "Push",
+            "pre-merge-commit" => "Merge commit",
+            _ => hook_name,
+        };
+        install_hook(label, &hooks_dir.join(hook_name))?;
+    }
 
     Ok(())
 }
@@ -275,7 +290,7 @@ pub fn uninstall_hooks(logger: &Logger) -> io::Result<()> {
     }
 
     let mut restored = 0;
-    for hook_name in &["pre-commit", "pre-push"] {
+    for hook_name in RALPH_HOOK_NAMES {
         let hook_path = hooks_dir.join(hook_name);
         if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
             restored += 1;
@@ -305,7 +320,7 @@ pub fn uninstall_hooks_silent() {
         return;
     }
 
-    for hook_name in &["pre-commit", "pre-push"] {
+    for hook_name in RALPH_HOOK_NAMES {
         let hook_path = hooks_dir.join(hook_name);
         if hook_path.exists() && matches!(file_contains_marker(&hook_path, HOOK_MARKER), Ok(true)) {
             // Make writable before removal (hooks are installed as read-only 0o555).
@@ -336,12 +351,14 @@ pub fn uninstall_hooks_silent() {
 /// # Errors
 ///
 /// Returns error if hook reinstallation fails.
-pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<()> {
+/// Returns `Ok(true)` if hooks were reinstalled (tampering detected),
+/// `Ok(false)` if hooks were intact.
+pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<bool> {
     let Ok(hooks_dir) = get_hooks_dir() else {
-        return Ok(()); // No git repo — nothing to protect
+        return Ok(false); // No git repo — nothing to protect
     };
 
-    let needs_reinstall = ["pre-commit", "pre-push"].iter().any(|name| {
+    let needs_reinstall = RALPH_HOOK_NAMES.iter().any(|name| {
         let path = hooks_dir.join(name);
         if !path.exists() {
             return true;
@@ -352,9 +369,10 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<()> {
     if needs_reinstall {
         logger.warn("Git hooks tampered with or missing — reinstalling");
         install_hooks()?;
+        Ok(true)
+    } else {
+        Ok(false)
     }
-
-    Ok(())
 }
 
 /// Verify and restore read-only executable permissions on Ralph-managed hooks.
@@ -373,7 +391,7 @@ pub fn enforce_hook_permissions(logger: &Logger) {
         return;
     };
 
-    for hook_name in &["pre-commit", "pre-push"] {
+    for hook_name in RALPH_HOOK_NAMES {
         let path = hooks_dir.join(hook_name);
         if !path.exists() {
             continue;
@@ -469,6 +487,14 @@ mod tests {
     // =========================================================================
     // Tests using MemoryWorkspace (workspace-aware)
     // =========================================================================
+
+    #[test]
+    fn test_ralph_hook_names_contains_all_hooks() {
+        assert_eq!(RALPH_HOOK_NAMES.len(), 3);
+        assert!(RALPH_HOOK_NAMES.contains(&"pre-commit"));
+        assert!(RALPH_HOOK_NAMES.contains(&"pre-push"));
+        assert!(RALPH_HOOK_NAMES.contains(&"pre-merge-commit"));
+    }
 
     #[test]
     fn test_file_contains_marker_with_workspace_found() {

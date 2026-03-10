@@ -55,7 +55,7 @@ Ralph is the ONLY entity allowed to commit. Accidental commits break the determi
 
 ### Enforcement
 
-Git hooks (pre-commit, pre-push) and a PATH wrapper are installed automatically by Ralph during the agent phase. If you attempt a forbidden command, it WILL be blocked with exit code 1 and a message like: "blocked (agent phase): .no_agent_commit exists."
+Git hooks (pre-commit, pre-push, pre-merge-commit) and a PATH wrapper are installed automatically by Ralph during the agent phase. If you attempt a forbidden command, it WILL be blocked with exit code 1 and a message like: "blocked (agent phase): .no_agent_commit exists."
 
 **Do not attempt to bypass these hooks.** If you need a commit, write your changes to files and let Ralph's commit effect handle it.
 
@@ -67,15 +67,17 @@ You MUST NEVER:
 
 - Delete or modify `.git/hooks/pre-commit` — this hook blocks unauthorized commits
 - Delete or modify `.git/hooks/pre-push` — this hook blocks unauthorized pushes
+- Delete or modify `.git/hooks/pre-merge-commit` — this hook blocks unauthorized merge commits
 - Delete `.no_agent_commit` — this marker activates commit blocking in all hooks and the PATH wrapper
 - Use an absolute path (e.g., `/usr/bin/git`, `/opt/homebrew/bin/git`) to invoke git directly and bypass the PATH wrapper
 - Delete or modify any file in `.git/hooks/` that contains `RALPH_RUST_MANAGED_HOOK`
 - Modify the `PATH` environment variable to remove or reorder Ralph's git wrapper directory
 - Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files
-- Write to or overwrite `.git/hooks/pre-commit` or `.git/hooks/pre-push` files
+- Write to or overwrite `.git/hooks/pre-commit`, `.git/hooks/pre-push`, or `.git/hooks/pre-merge-commit` files
 - Run `chmod` on `.git/hooks/` files or `.no_agent_commit` to change permissions
 - Run `git init` to reinitialize the repository or create a new one
-- Use `exec`, `env`, or other shell builtins to invoke git bypassing the PATH wrapper
+- Use `exec`, `env`, `command`, or other shell builtins to invoke git bypassing the PATH wrapper
+- Set `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_EXEC_PATH` environment variables — the wrapper unsets these automatically
 
 **CONSEQUENCES:** Any bypass attempt is logged as a security violation. Ralph will detect the tampering before the next agent run, reinstall all protections, and report the violation. The agent run will be considered a failure.
 
@@ -89,6 +91,17 @@ You MUST NEVER:
 - Write changes to files as normal — Ralph's commit effect will commit them at the right time
 - If you believe a commit is needed, write the required file changes and let Ralph orchestrate the commit
 - NEVER attempt to commit, even if you think the hooks are "in the way"
+
+### WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET
+
+1. The `.no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
+2. All git hooks (pre-commit, pre-push, pre-merge-commit) are reinstalled before EVERY agent invocation.
+3. Hook and marker permissions are verified and restored before EVERY agent invocation. Using `chmod` is pointless.
+4. The PATH wrapper unsets `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_EXEC_PATH` when the marker exists.
+5. The PATH wrapper script is read-only (0o555). Overwriting it requires `chmod` first, which is logged.
+6. ALL tampering is detected, logged as a security violation, and reported. The agent run will be flagged as compromised.
+7. Even if a commit somehow succeeds, Ralph detects the unauthorized commit and the pipeline FAILS. There is no successful bypass outcome.
+8. Every bypass attempt wastes tokens from your execution budget with ZERO chance of success.
 
 ---
 

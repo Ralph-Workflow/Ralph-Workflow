@@ -287,4 +287,60 @@ mod tests {
             "partial should warn that hooks are reinstalled before every agent run"
         );
     }
+
+    #[test]
+    fn test_no_git_commit_partial_contains_futility_messaging() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("FUTILE") || no_git.contains("futile"),
+            "partial should contain futility messaging to deter bypass attempts"
+        );
+        assert!(
+            no_git.contains("execution budget"),
+            "partial should warn about wasting execution budget on bypass attempts"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_forbids_command_builtin_bypass() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("command"),
+            "partial should forbid `command` shell builtin bypass"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_forbids_env_var_bypass() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("GIT_DIR") && no_git.contains("GIT_EXEC_PATH"),
+            "partial should forbid GIT_DIR and GIT_EXEC_PATH env var bypass"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_mentions_pre_merge_commit_hook() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("pre-merge-commit"),
+            "partial should mention pre-merge-commit hook"
+        );
+    }
 }
