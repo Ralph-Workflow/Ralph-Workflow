@@ -12,8 +12,11 @@
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExcludedFileReason {
-    /// File is a Ralph-internal artifact (logs, tmp outputs). Will be added
-    /// to `.git/info/exclude` so future git status output is clean.
+    /// File is a Ralph-internal artifact (logs, tmp outputs).
+    ///
+    /// This is audit/observability metadata only; commit execution ignores it.
+    /// A separate, deterministic artifact-ignore mechanism may use this reason
+    /// to manage a Ralph-local ignore layer (e.g., `.git/info/exclude`).
     InternalIgnore,
     /// File is unrelated to the current task and is intentionally deferred.
     NotTaskRelated,
@@ -103,35 +106,35 @@ pub struct PromptInputsState {
 impl PromptInputsState {
     /// Clear commit inputs without cloning other fields.
     /// Uses consuming builder pattern for zero-cost state updates.
-    #[must_use] 
+    #[must_use]
     pub fn with_commit_cleared(mut self) -> Self {
         self.commit = None;
         self
     }
 
     /// Clear planning inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_planning_cleared(mut self) -> Self {
         self.planning = None;
         self
     }
 
     /// Clear development inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_development_cleared(mut self) -> Self {
         self.development = None;
         self
     }
 
     /// Clear review inputs without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_review_cleared(mut self) -> Self {
         self.review = None;
         self
     }
 
     /// Clear XSD retry last output without cloning other fields.
-    #[must_use] 
+    #[must_use]
     pub fn with_xsd_retry_cleared(mut self) -> Self {
         self.xsd_retry_last_output = None;
         self

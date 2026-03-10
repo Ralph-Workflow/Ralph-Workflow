@@ -305,16 +305,23 @@ fn test_validate_xml_excluded_files_self_closing_is_rejected() {
 #[test]
 fn test_validate_xml_excluded_file_self_closing_is_rejected() {
     let xml = r#"<ralph-commit>
- <ralph-subject>feat: test</ralph-subject>
- <ralph-excluded-files>
- <ralph-excluded-file reason=\"deferred\"/>
- </ralph-excluded-files>
- </ralph-commit>"#;
+  <ralph-subject>feat: test</ralph-subject>
+  <ralph-excluded-files>
+  <ralph-excluded-file reason="deferred"/>
+  </ralph-excluded-files>
+  </ralph-commit>"#;
 
     let result = validate_xml_against_xsd(xml);
+    let err = result.expect_err("Expected Err when excluded-file is self-closing");
+    assert_eq!(err.error_type, XsdErrorType::InvalidContent);
+    assert_eq!(
+        err.element_path,
+        "ralph-commit/ralph-excluded-files/ralph-excluded-file"
+    );
     assert!(
-        result.is_err(),
-        "Expected Err when excluded-file is self-closing"
+        err.found.contains("<ralph-excluded-file"),
+        "Unexpected found value: {}",
+        err.found
     );
 }
 

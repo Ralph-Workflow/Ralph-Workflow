@@ -9,6 +9,7 @@
 //! This prevents accidental suppression of user-owned files.
 
 use std::io;
+use std::io::Write;
 use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
@@ -71,7 +72,9 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
         return Ok(());
     }
 
-    let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
+    // Callers of this helper pass a repository root; do not walk upward and risk mutating a
+    // parent repository's `.git/info/exclude`.
+    let repo = git2::Repository::open(repo_root).map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
     let info_dir = git_dir.join("info");
     let exclude_path = info_dir.join("exclude");
@@ -101,14 +104,16 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
         return Ok(());
     }
 
-    // Append new patterns, ensuring the file ends with a newline before them.
-    let mut content = existing;
-    if !content.is_empty() && !content.ends_with('\n') {
-        content.push('\n');
+    // Append-only update to avoid non-atomic read-modify-write rewrites.
+    // This prevents truncation on crash and minimizes concurrent edit clobbering.
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&exclude_path)?;
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        file.write_all(b"\n")?;
     }
-    content.push_str(&additions);
-
-    std::fs::write(&exclude_path, content)?;
+    file.write_all(additions.as_bytes())?;
     Ok(())
 }
 
@@ -329,5 +334,37 @@ mod tests {
             !content.lines().any(|l| l.trim() == "src/"),
             "Newline injection must not create extra ignore rules: {content}"
         );
+    }
+
+    #[test]
+    fn test_does_not_discover_parent_repo_when_repo_root_is_not_repo_root() {
+        // Safety regression: ensure_local_excludes must not walk upward and mutate a parent
+        // repository when callers pass an incorrect repo_root.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let parent_root = dir.path();
+        let _repo = git2::Repository::init(parent_root).expect("init parent repo");
+
+        let child = parent_root.join("child");
+        fs::create_dir_all(&child).expect("create child dir");
+
+        let exclude = parent_root.join(".git/info/exclude");
+        let before = if exclude.exists() {
+            fs::read_to_string(&exclude).unwrap()
+        } else {
+            String::new()
+        };
+
+        let err = ensure_local_excludes(&child, &[".agent/tmp/test.xml"]).err();
+        assert!(
+            err.is_some(),
+            "expected error when repo_root is not repo root"
+        );
+
+        let after = if exclude.exists() {
+            fs::read_to_string(&exclude).unwrap()
+        } else {
+            String::new()
+        };
+        assert_eq!(after, before, "parent repo exclude must not be modified");
     }
 }

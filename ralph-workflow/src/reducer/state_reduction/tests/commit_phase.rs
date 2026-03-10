@@ -623,6 +623,33 @@ fn test_residual_files_none_clears_second_pass_and_residual() {
 }
 
 #[test]
+fn test_residual_files_found_invalid_pass_routes_to_awaiting_dev_fix() {
+    // ResidualFilesFound must only accept pass=1 or pass=2.
+    // Any other value indicates an invariant violation; the reducer must route
+    // through AwaitingDevFix so unattended remediation can proceed deterministically.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+
+    let event = PipelineEvent::residual_files_found(vec!["src/leftover.rs".to_string()], 0);
+    let new_state = reduce(state, event);
+
+    assert_eq!(new_state.phase, PipelinePhase::AwaitingDevFix);
+    assert_eq!(
+        new_state.failed_phase_for_recovery,
+        Some(PipelinePhase::CommitMessage)
+    );
+    assert_eq!(new_state.previous_phase, Some(PipelinePhase::CommitMessage));
+    assert!(
+        !new_state.commit_is_second_pass,
+        "invalid pass must not trigger second-pass behavior"
+    );
+    assert!(
+        new_state.commit_residual_files.is_empty(),
+        "invalid pass must not silently carry-forward residuals"
+    );
+}
+
+#[test]
 fn test_commit_residual_files_survives_generation_started() {
     // commit_residual_files is carry-forward state: it must NOT be cleared when
     // GenerationStarted resets the commit phase for a new cycle.

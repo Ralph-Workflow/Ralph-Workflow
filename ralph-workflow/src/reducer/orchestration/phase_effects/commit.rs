@@ -114,9 +114,20 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
                         attempt: current_attempt,
                     };
                 }
-                return Effect::PrepareCommitPrompt {
-                    prompt_mode: PromptMode::Normal,
+                // Derive prompt mode from reducer-owned retry state so commit retry prompts remain
+                // reachable even when retry routing is bypassed.
+                let prompt_mode = if state.continuation.same_agent_retry_pending
+                    && !state.continuation.same_agent_retries_exhausted()
+                {
+                    PromptMode::SameAgentRetry
+                } else if state.continuation.xsd_retry_pending
+                    && !state.continuation.xsd_retries_exhausted()
+                {
+                    PromptMode::XsdRetry
+                } else {
+                    PromptMode::Normal
                 };
+                return Effect::PrepareCommitPrompt { prompt_mode };
             }
             // Prompt-prepared flow is handled above.
             Effect::ValidateCommitXml

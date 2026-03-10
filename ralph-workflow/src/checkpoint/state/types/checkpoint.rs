@@ -199,6 +199,19 @@ pub struct PipelineCheckpoint {
     #[serde(default)]
     pub commit_is_second_pass: bool,
 
+    /// Files selected for the most recent commit pass.
+    ///
+    /// When non-empty, this indicates the last commit pass was selective and residual
+    /// handling must run (pass-2 follow-up / carry-forward) even after checkpoint/resume.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_selected_files: Vec<String>,
+
+    /// Files excluded from the most recent commit pass, with reasons.
+    ///
+    /// This is audit/observability metadata that may be used for deterministic resume.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_excluded_files: Vec<crate::reducer::state::pipeline::ExcludedFile>,
+
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_residual_files: Vec<String>,
 
@@ -262,6 +275,8 @@ impl PipelineCheckpoint {
             failed_phase_for_recovery: None,
             interrupted_by_user: false,
             commit_is_second_pass: false,
+            commit_selected_files: Vec::new(),
+            commit_excluded_files: Vec::new(),
             commit_residual_files: Vec::new(),
             cloud_state: None,
         }

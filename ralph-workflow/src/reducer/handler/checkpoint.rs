@@ -97,6 +97,12 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
         checkpoint.interrupted_by_user = state.interrupted_by_user;
         checkpoint.commit_is_second_pass = state.commit_is_second_pass;
         checkpoint
+            .commit_selected_files
+            .clone_from(&state.commit_selected_files);
+        checkpoint
+            .commit_excluded_files
+            .clone_from(&state.commit_excluded_files);
+        checkpoint
             .commit_residual_files
             .clone_from(&state.commit_residual_files);
 

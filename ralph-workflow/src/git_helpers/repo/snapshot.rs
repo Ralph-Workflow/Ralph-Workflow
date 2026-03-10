@@ -64,13 +64,14 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
             match esc {
                 b'\\' => out.push(b'\\'),
                 b'"' => out.push(b'"'),
-                b'n' => out.push(b'\n'),
-                b't' => out.push(b'\t'),
-                b'r' => out.push(b'\r'),
-                b'b' => out.push(0x08),
-                b'f' => out.push(0x0C),
-                b'v' => out.push(0x0B),
+                // Do NOT decode control-character escapes into real control bytes.
+                // Preserve the escaped form to avoid control-character injection.
+                b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
+                    out.push(b'\\');
+                    out.push(esc);
+                }
                 b'0'..=b'7' => {
+                    let digit_start = i;
                     let mut val: u32 = u32::from(esc - b'0');
                     let mut consumed = 1usize;
                     while consumed < 3 {
@@ -87,10 +88,23 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
                     }
                     i += consumed - 1;
                     if let Ok(b) = u8::try_from(val) {
-                        out.push(b);
+                        if b < 0x20 || b == 0x7F {
+                            // Preserve escape sequence for control bytes.
+                            out.push(b'\\');
+                            out.extend_from_slice(&bytes[digit_start..digit_start + consumed]);
+                        } else {
+                            out.push(b);
+                        }
+                    } else {
+                        // Preserve unknown/overflow escape sequence.
+                        out.push(b'\\');
+                        out.extend_from_slice(&bytes[digit_start..digit_start + consumed]);
                     }
                 }
-                other => out.push(other),
+                other => {
+                    out.push(b'\\');
+                    out.push(other);
+                }
             }
             i += 1;
         }
@@ -140,6 +154,7 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
         }
     }
 
+    out.sort();
     out
 }
 
@@ -163,6 +178,12 @@ fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
             ));
         };
         let path = path.to_string();
+        if path.bytes().any(|b| b < 0x20 || b == 0x7F) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "control characters in path encountered in git status; cannot safely snapshot",
+            ));
+        }
 
         // Convert git2 status to porcelain format.
         // Untracked files are represented as "??" in porcelain v1.
@@ -223,7 +244,7 @@ mod parse_tests {
         let paths = parse_git_status_paths(snapshot);
         assert_eq!(
             paths,
-            vec!["src/lib.rs".to_string(), "new file.txt".to_string()]
+            vec!["new file.txt".to_string(), "src/lib.rs".to_string()]
         );
     }
 
@@ -255,6 +276,23 @@ mod parse_tests {
         let paths = parse_git_status_paths(snapshot);
         assert_eq!(paths, vec!["café.txt".to_string()]);
     }
+
+    #[test]
+    fn test_unquote_c_style_preserves_control_escapes() {
+        // Control-character escapes must not be decoded into real control characters.
+        // This prevents control-character injection into prompts/state/logs.
+        let snapshot = "?? \"x\\nsrc/file.rs\"\n";
+        let paths = parse_git_status_paths(snapshot);
+        assert_eq!(paths, vec!["x\\nsrc/file.rs".to_string()]);
+        assert!(!paths[0].contains('\n'));
+    }
+
+    #[test]
+    fn test_parse_git_status_paths_returns_sorted_paths() {
+        let snapshot = "?? b.txt\n?? a.txt\n";
+        let paths = parse_git_status_paths(snapshot);
+        assert_eq!(paths, vec!["a.txt".to_string(), "b.txt".to_string()]);
+    }
 }
 
 #[cfg(all(test, not(target_os = "macos")))]
@@ -274,7 +312,28 @@ mod snapshot_tests {
         let name = std::ffi::OsStr::from_bytes(&[0xFF, 0xFE, b'.', b't', b'x', b't']);
         std::fs::write(root.join(name), "x\n").expect("write non-utf8 file");
 
-        let err = git_snapshot_in_repo(root).err().expect("expected error");
+        let err = git_snapshot_in_repo(root).expect_err("expected error");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+}
+
+#[cfg(test)]
+mod snapshot_control_char_tests {
+    use super::git_snapshot_in_repo;
+
+    #[test]
+    fn test_git_snapshot_in_repo_errors_on_control_characters_in_paths() {
+        use std::io;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let _repo = git2::Repository::init(root).expect("init repo");
+
+        // Newlines are legal on Unix but cannot be safely represented in a newline-delimited
+        // snapshot format. Reject to avoid snapshot injection.
+        std::fs::write(root.join("x\nfile.rs"), "x\n").expect("write file with newline");
+
+        let err = git_snapshot_in_repo(root).expect_err("expected error");
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 }
