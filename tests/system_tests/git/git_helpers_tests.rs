@@ -10,8 +10,11 @@ use ralph_workflow::git_helpers::{
     git_snapshot_in_repo, hooks, start_agent_phase, uninstall_hooks, GitHelpers,
 };
 use ralph_workflow::logger::Logger;
+use ralph_workflow::pipeline::AgentPhaseGuard;
+use ralph_workflow::workspace::WorkspaceFs;
 use serial_test::serial;
 use std::fs::{self, File};
+use std::process::Command;
 
 #[test]
 #[serial]
@@ -356,6 +359,152 @@ fn test_git_snapshot_excludes_gitignored_files() {
         snapshot.trim().is_empty(),
         "git_snapshot should not include gitignored files, got: {snapshot}"
     );
+}
+
+#[test]
+#[serial]
+fn test_pre_commit_hook_blocks_when_marker_exists() {
+    // Verify the installed pre-commit hook exits non-zero and prints a blocking
+    // message when .no_agent_commit is present.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        // Install Ralph-managed hooks.
+        hooks::install_hooks().unwrap();
+
+        // Create the marker file that should trigger blocking.
+        let marker = dir.path().join(".no_agent_commit");
+        File::create(&marker).unwrap();
+        assert!(marker.exists(), "precondition: marker must exist");
+
+        // Locate and verify the hook.
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("pre-commit");
+        assert!(hook_path.exists(), "pre-commit hook must be installed");
+        let content = fs::read_to_string(&hook_path).unwrap();
+        assert!(
+            content.contains(HOOK_MARKER),
+            "hook must contain HOOK_MARKER"
+        );
+
+        // Run the hook script directly via bash.
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available to run hook script");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}{stderr}");
+
+        assert_ne!(
+            output.status.code(),
+            Some(0),
+            "hook should exit non-zero when .no_agent_commit is present; output: {combined}"
+        );
+        assert!(
+            combined.to_lowercase().contains("blocked"),
+            "hook output should mention 'blocked'; got: {combined}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_pre_commit_hook_passes_when_no_marker() {
+    // Verify the installed pre-commit hook exits 0 when .no_agent_commit is absent.
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        // Install Ralph-managed hooks.
+        hooks::install_hooks().unwrap();
+
+        // Confirm marker is absent.
+        let marker = dir.path().join(".no_agent_commit");
+        assert!(!marker.exists(), "precondition: marker must be absent");
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let hook_path = hooks_dir.join("pre-commit");
+        assert!(hook_path.exists(), "pre-commit hook must be installed");
+
+        // Run the hook script directly via bash.
+        let output = Command::new("bash")
+            .arg(&hook_path)
+            .output()
+            .expect("bash must be available to run hook script");
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "hook should exit 0 when .no_agent_commit is absent; stdout={stdout} stderr={stderr}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_agent_phase_guard_drop_cleans_up_hooks() {
+    // Verify AgentPhaseGuard::drop (without disarm) removes the marker file,
+    // the git-wrapper track file, and Ralph-managed hooks.
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let workspace = WorkspaceFs::new(dir.path().to_path_buf());
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        // Preconditions: marker and wrapper track file must exist.
+        assert!(
+            dir.path().join(".no_agent_commit").exists(),
+            "expected .no_agent_commit after start_agent_phase"
+        );
+        assert!(
+            dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            "expected wrapper track file after start_agent_phase"
+        );
+
+        // Create guard without calling disarm() — drop must perform cleanup.
+        {
+            let _guard = AgentPhaseGuard::new(&mut helpers, &logger, &workspace);
+            // Drop here without disarm.
+        }
+
+        // Marker must be gone.
+        assert!(
+            !dir.path().join(".no_agent_commit").exists(),
+            "expected .no_agent_commit to be removed by AgentPhaseGuard::drop"
+        );
+
+        // Wrapper track file must be gone.
+        assert!(
+            !dir.path().join(".agent/git-wrapper-dir.txt").exists(),
+            "expected wrapper track file to be removed by AgentPhaseGuard::drop"
+        );
+
+        // Hooks must be removed or not contain HOOK_MARKER.
+        let hooks_dir = get_hooks_dir().unwrap();
+        for hook_name in &["pre-commit", "pre-push"] {
+            let hook_path = hooks_dir.join(hook_name);
+            if hook_path.exists() {
+                let content = fs::read_to_string(&hook_path).unwrap();
+                assert!(
+                    !content.contains(HOOK_MARKER),
+                    "hook {hook_name} must not contain HOOK_MARKER after AgentPhaseGuard::drop"
+                );
+            }
+        }
+    });
 }
 
 #[test]

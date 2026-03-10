@@ -74,6 +74,53 @@ fn escape_shell_single_quoted(path: &str) -> io::Result<String> {
     Ok(path.replace('\'', "'\\''"))
 }
 
+/// Generate the git wrapper script content.
+///
+/// The script intercepts `git commit`, `git push`, and `git tag` when
+/// `.no_agent_commit` is present. It iterates through arguments to skip git
+/// global flags (e.g. `-C /path`, `--git-dir=.git`) before identifying the
+/// subcommand, so patterns like `git -C /path commit` are blocked correctly.
+///
+/// `git_path_escaped` must already be shell-single-quote-escaped.
+fn make_wrapper_content(git_path_escaped: &str) -> String {
+    format!(
+        r#"#!/usr/bin/env sh
+set -eu
+repo_root="$('{git_path_escaped}' rev-parse --show-toplevel 2>/dev/null || pwd)"
+if [ -f "$repo_root/.no_agent_commit" ]; then
+  subcmd=""
+  skip_next=0
+  for arg in "$@"; do
+    if [ "$skip_next" = "1" ]; then
+      skip_next=0
+      continue
+    fi
+    case "$arg" in
+      -C|--git-dir|--work-tree|--namespace|-c|--exec-path)
+        skip_next=1
+        ;;
+      --git-dir=*|--work-tree=*|--namespace=*|--exec-path=*|-c=*)
+        ;;
+      -*)
+        ;;
+      *)
+        subcmd="$arg"
+        break
+        ;;
+    esac
+  done
+  case "$subcmd" in
+    commit|push|tag)
+      echo "Blocked: git $subcmd disabled during agent phase (.no_agent_commit present)." >&2
+      exit 1
+      ;;
+  esac
+fi
+exec '{git_path_escaped}' "$@"
+"#
+    )
+}
+
 /// Enable git wrapper that blocks commits during agent phase.
 pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     helpers.init_real_git();
@@ -117,24 +164,17 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
         ));
     }
 
-    // On Unix systems, verify it's a regular file (not a directory or special file).
+    // On Unix systems, verify it's not a directory (a directory is not executable as a binary).
+    // Note: fs::metadata() follows symlinks, so this correctly validates the resolved target.
+    // Many package managers (Homebrew, apt) install git as a symlink; that is fine.
     #[cfg(unix)]
     {
         match fs::metadata(real_git) {
             Ok(metadata) => {
-                let file_type = metadata.file_type();
-                if file_type.is_dir() {
+                if metadata.file_type().is_dir() {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
                         format!("git binary path is a directory, not a file: '{git_path_str}'"),
-                    ));
-                }
-                if file_type.is_symlink() {
-                    // Don't follow symlinks - require the actual path to be the binary.
-                    // This prevents symlink-based attacks.
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!("git binary path is a symlink; use the actual binary path: '{git_path_str}'"),
                     ));
                 }
             }
@@ -154,22 +194,7 @@ pub fn enable_git_wrapper(helpers: &mut GitHelpers) -> io::Result<()> {
     // Use a helper function to properly handle edge cases and reject unsafe paths.
     let git_path_escaped = escape_shell_single_quoted(git_path_str)?;
 
-    let wrapper_content = format!(
-        r#"#!/usr/bin/env sh
-set -eu
-repo_root="$('{git_path_escaped}' rev-parse --show-toplevel 2>/dev/null || pwd)"
-if [ -f "$repo_root/.no_agent_commit" ]; then
-  subcmd="${{1-}}"
-  case "$subcmd" in
-    commit|push|tag)
-      echo "Blocked: git $subcmd disabled during agent phase (.no_agent_commit present)." >&2
-      exit 1
-      ;;
-  esac
-fi
-exec '{git_path_escaped}' "$@"
-"#
-    );
+    let wrapper_content = make_wrapper_content(&git_path_escaped);
 
     let mut file = File::create(&wrapper_path)?;
     file.write_all(wrapper_content.as_bytes())?;
@@ -415,6 +440,27 @@ pub fn cleanup_orphaned_marker_with_workspace(
 mod tests {
     use super::*;
     use crate::workspace::MemoryWorkspace;
+
+    #[test]
+    fn test_wrapper_script_handles_c_flag_before_subcommand() {
+        // Verify the wrapper script iterates through arguments to skip global flags
+        // like `-C /path`, `--git-dir=.git`, etc. before identifying the subcommand.
+        // This ensures `git -C /path commit` is correctly blocked, not just `git commit`.
+        let content = make_wrapper_content("git");
+
+        assert!(
+            content.contains("skip_next"),
+            "wrapper must implement skip_next logic for global flags; got:\n{content}"
+        );
+        assert!(
+            content.contains("-C|--git-dir|--work-tree"),
+            "wrapper must recognize -C and --git-dir global flags; got:\n{content}"
+        );
+        assert!(
+            content.contains("for arg in"),
+            "wrapper must iterate arguments to find subcommand; got:\n{content}"
+        );
+    }
 
     #[test]
     fn test_create_marker_with_workspace() {
