@@ -1,4 +1,6 @@
 use anyhow::{Context as _, Result};
+use std::sync::{Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerifyExitCode {
@@ -42,6 +44,9 @@ pub trait ProgressReporter: Sync {
     fn check_started(&self, name: &str);
     fn check_passed(&self, name: &str);
     fn check_failed(&self, name: &str, status: CheckStatus);
+    /// Called periodically while a long-running check is still in progress.
+    /// Default is a no-op so existing implementations compile unchanged.
+    fn check_still_running(&self, _name: &str, _elapsed: Duration) {}
 }
 
 /// No-op implementation used in tests and when progress output is not desired.
@@ -59,6 +64,7 @@ impl ProgressReporter for NoopProgressReporter {
 ///   checking: <name>
 ///   done:     <name>
 ///   FAILED:   <name> (Error|Warning)
+///   still running: <name> (<elapsed>)...  ← printed every 10 s for slow checks
 ///
 /// Stderr is used so stdout can be piped without interference.
 pub struct StderrProgressReporter;
@@ -72,6 +78,9 @@ impl ProgressReporter for StderrProgressReporter {
     }
     fn check_failed(&self, name: &str, status: CheckStatus) {
         eprintln!("  FAILED:   {name} ({status:?})");
+    }
+    fn check_still_running(&self, name: &str, elapsed: Duration) {
+        eprintln!("  still running: {name} ({elapsed:.0?})...");
     }
 }
 
@@ -124,16 +133,85 @@ fn classify(exit_code: i32, stdout: &str, stderr: &str, success_exit_codes: &[i3
     }
 }
 
+/// Heartbeat interval for long-running checks: print progress every 10 seconds.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+
 pub fn run_checks(
     runner: &(dyn CommandRunner + Sync),
     checks: &[CommandSpec],
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
+    run_checks_with_heartbeat(runner, checks, reporter, HEARTBEAT_INTERVAL)
+}
+
+/// Inner implementation of `run_checks` with a configurable heartbeat interval.
+///
+/// For each check a background thread wakes every `heartbeat_interval` and calls
+/// `reporter.check_still_running()` so the user sees progress during long compilations
+/// instead of a silent terminal.  `std::thread::scope` bounds the thread lifetime to the
+/// per-check body, so no `Send` bound is required on the reporter.
+///
+/// A `Condvar` is used for interruptible sleep so that when a fast check finishes the
+/// heartbeat thread wakes immediately (no busy-wait, no fixed sleep overhead).
+fn run_checks_with_heartbeat(
+    runner: &(dyn CommandRunner + Sync),
+    checks: &[CommandSpec],
+    reporter: &dyn ProgressReporter,
+    heartbeat_interval: Duration,
+) -> Result<VerifyReport> {
     for spec in checks {
         reporter.check_started(spec.name);
-        let output = runner
-            .run(spec)
-            .with_context(|| format!("run {}", spec.name))?;
+
+        let start = Instant::now();
+        // Condvar pair: (done flag, condvar).
+        // The condvar allows the heartbeat thread to be woken immediately when the
+        // check completes instead of waiting for the full sleep interval to expire.
+        let done = Mutex::new(false);
+        let cvar = Condvar::new();
+
+        // Run the check inside a scoped thread block.  The scoped heartbeat thread borrows
+        // `done`, `cvar`, `reporter`, and `start` — all live long enough because
+        // thread::scope guarantees the thread finishes before the scope exits.
+        let output_result: anyhow::Result<CommandOutput> = std::thread::scope(|s| {
+            s.spawn(|| {
+                let mut guard = done.lock().unwrap();
+                loop {
+                    // Check done before waiting so we exit immediately if the
+                    // check already finished before the thread started.
+                    if *guard {
+                        break;
+                    }
+                    // wait_timeout atomically releases the lock and waits for either
+                    // a notify_one() signal or a timeout.  This eliminates the fixed
+                    // sleep penalty for fast checks.
+                    let (g, timeout_result) = cvar.wait_timeout(guard, heartbeat_interval).unwrap();
+                    guard = g;
+                    if *guard {
+                        break; // woken because check finished
+                    }
+                    if timeout_result.timed_out() {
+                        // Genuine timeout: emit heartbeat then re-lock and wait again.
+                        drop(guard);
+                        reporter.check_still_running(spec.name, start.elapsed());
+                        guard = done.lock().unwrap();
+                    }
+                    // Spurious wakeup (!timed_out && !*guard): loop and wait again.
+                }
+            });
+
+            let result = runner
+                .run(spec)
+                .with_context(|| format!("run {}", spec.name));
+            // Signal the heartbeat thread to stop and wake it up immediately.
+            {
+                let mut guard = done.lock().unwrap();
+                *guard = true;
+                cvar.notify_one();
+            }
+            result
+        });
+
+        let output = output_result?;
 
         let status = classify(
             output.exit_code,
@@ -1328,6 +1406,29 @@ mod tests {
         fn check_failed(&self, name: &str, _status: CheckStatus) {
             self.events.lock().unwrap().push(format!("fail:{name}"));
         }
+        fn check_still_running(&self, name: &str, _elapsed: Duration) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("heartbeat:{name}"));
+        }
+    }
+
+    /// A fake runner that sleeps for a fixed duration before returning success.
+    /// Used to test heartbeat behavior without relying on real subprocesses.
+    struct SlowRunner {
+        sleep_ms: u64,
+    }
+
+    impl CommandRunner for SlowRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            std::thread::sleep(Duration::from_millis(self.sleep_ms));
+            Ok(CommandOutput {
+                exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
     }
 
     #[test]
@@ -1385,5 +1486,44 @@ mod tests {
         let checks = [check("ok")];
         let report = run_checks(&runner, &checks, &reporter).unwrap();
         assert_eq!(report.exit, VerifyExitCode::Success);
+    }
+
+    // ── TDD tests for heartbeat progress reporting ───────────────────────────
+
+    /// Heartbeat must fire at least once when a check takes longer than the interval.
+    #[test]
+    fn test_heartbeat_fires_for_slow_check() {
+        let reporter = RecordingProgressReporter::default();
+        let runner = SlowRunner { sleep_ms: 300 };
+        let checks = [check("slow-check")];
+        // Use 50 ms interval so several heartbeats fire during the 300 ms run.
+        run_checks_with_heartbeat(&runner, &checks, &reporter, Duration::from_millis(50)).unwrap();
+        let events = reporter.events();
+        assert!(
+            events.iter().any(|e| e.starts_with("heartbeat:")),
+            "Expected at least one heartbeat event for a slow check, got: {events:?}"
+        );
+    }
+
+    /// Heartbeat must NOT fire when a check completes before the first interval expires.
+    #[test]
+    fn test_heartbeat_does_not_fire_for_fast_check() {
+        let reporter = RecordingProgressReporter::default();
+        let runner = SlowRunner { sleep_ms: 0 };
+        let checks = [check("fast-check")];
+        // Use a 200 ms interval; the runner returns immediately so done is set before
+        // the heartbeat thread wakes up.
+        run_checks_with_heartbeat(&runner, &checks, &reporter, Duration::from_millis(200)).unwrap();
+        let events = reporter.events();
+        assert!(
+            !events.iter().any(|e| e.starts_with("heartbeat:")),
+            "Expected no heartbeat events for a fast check, got: {events:?}"
+        );
+    }
+
+    /// NoopProgressReporter must not panic when check_still_running is called directly.
+    #[test]
+    fn test_noop_reporter_heartbeat_does_not_panic() {
+        NoopProgressReporter.check_still_running("x", Duration::ZERO);
     }
 }
