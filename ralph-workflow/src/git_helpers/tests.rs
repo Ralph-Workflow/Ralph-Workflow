@@ -10,8 +10,9 @@ use std::path::Path;
 #[test]
 fn test_marker_file_operations() {
     // Test marker file operations using MemoryWorkspace
+    // The marker now lives at .git/ralph/no_agent_commit (inside git metadata dir)
     let workspace = MemoryWorkspace::new_test();
-    let marker_path = Path::new(".no_agent_commit");
+    let marker_path = Path::new(".git/ralph/no_agent_commit");
 
     // Create marker using workspace.
     workspace.write(marker_path, "").unwrap();

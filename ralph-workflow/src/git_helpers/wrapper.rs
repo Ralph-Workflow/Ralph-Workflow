@@ -3,10 +3,13 @@
 //! This module provides safety mechanisms to prevent accidental commits while
 //! an AI agent is actively modifying files. It works through two mechanisms:
 //!
-//! - **Marker file**: Creates `.no_agent_commit` in the repo root during agent
+//! - **Marker file**: Creates `<git-dir>/ralph/no_agent_commit` during agent
 //!   execution. Both the git wrapper and hooks check for this file.
 //! - **PATH wrapper**: Installs a temporary `git` wrapper script that intercepts
 //!   `commit`, `push`, and `tag` commands when the marker file exists.
+//!
+//! All enforcement state files live inside the git metadata directory (`<git-dir>/ralph/`)
+//! so they are invisible to working-tree scans and cannot be confused with product code.
 //!
 //! The wrapper is automatically cleaned up when the agent phase ends, even on
 //! unexpected exits (Ctrl+C, panics) via [`cleanup_agent_phase_silent`].
@@ -22,10 +25,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use which::which;
 
-const WRAPPER_DIR_TRACK_FILE: &str = ".agent/git-wrapper-dir.txt";
+/// Filename (leaf only) for the enforcement marker inside the ralph git dir.
+const MARKER_FILE_NAME: &str = "no_agent_commit";
+/// Filename (leaf only) for the wrapper tracking file inside the ralph git dir.
+const WRAPPER_TRACK_FILE_NAME: &str = "git-wrapper-dir.txt";
+/// Filename (leaf only) for the HEAD OID baseline file inside the ralph git dir.
+const HEAD_OID_FILE_NAME: &str = "head-oid.txt";
 const WRAPPER_DIR_PREFIX: &str = "ralph-git-wrapper-";
 const WRAPPER_MARKER: &str = "RALPH_AGENT_PHASE_GIT_WRAPPER";
-const HEAD_OID_FILE: &str = ".agent/head-oid.txt";
 
 /// Process-global repo root set during `start_agent_phase` for signal handler fallback.
 ///
@@ -33,6 +40,12 @@ const HEAD_OID_FILE: &str = ".agent/head-oid.txt";
 /// This is set in `start_agent_phase` and cleared in `end_agent_phase_in_repo`.
 /// The signal handler uses `try_lock` to avoid deadlock risk.
 static AGENT_PHASE_REPO_ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Process-global ralph git dir set during `start_agent_phase_in_repo`.
+///
+/// Signal handlers cannot call libgit2, so we pre-compute the ralph dir path
+/// on the main thread and store it here. Signal handlers read via `try_lock`.
+static AGENT_PHASE_RALPH_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Result of checking and self-healing agent-phase protections.
 ///
@@ -46,9 +59,6 @@ pub struct ProtectionCheckResult {
     /// Human-readable descriptions of each self-healing action taken.
     pub details: Vec<String>,
 }
-
-/// Marker file path for blocking commits during agent phase.
-const MARKER_FILE: &str = ".no_agent_commit";
 
 fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
     let parent = path.parent().ok_or_else(|| {
@@ -89,7 +99,8 @@ fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
 }
 
 fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
-    let marker_path = repo_root.join(MARKER_FILE);
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
 
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
         let ft = meta.file_type();
@@ -103,7 +114,9 @@ fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
 }
 
 fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
-    let marker_path = repo_root.join(MARKER_FILE);
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    fs::create_dir_all(&ralph_dir)?;
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
 
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
         let ft = meta.file_type();
@@ -339,18 +352,18 @@ fn ensure_wrapper_dir_prepended_to_path(wrapper_dir: &Path) {
 }
 
 fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::Result<()> {
-    let agent_dir = repo_root.join(".agent");
-    if let Ok(meta) = fs::symlink_metadata(&agent_dir) {
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    if let Ok(meta) = fs::symlink_metadata(&ralph_dir) {
         if meta.file_type().is_symlink() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                ".agent path is a symlink; refusing to write wrapper tracking file",
+                "ralph git dir path is a symlink; refusing to write wrapper tracking file",
             ));
         }
     }
-    fs::create_dir_all(&agent_dir)?;
+    fs::create_dir_all(&ralph_dir)?;
 
-    let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
 
     // If the track file path is a directory/symlink/special file, treat it as tampering.
     // Quarantine it so we can atomically replace it with a regular file.
@@ -362,7 +375,7 @@ fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::
         }
     }
 
-    let tmp_track = agent_dir.join(format!(
+    let tmp_track = ralph_dir.join(format!(
         ".git-wrapper-dir.tmp.{}.{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -412,13 +425,16 @@ fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::
 /// read-only subcommands and blocks everything else.
 ///
 /// Protections are considered active when either:
-/// - `.no_agent_commit` exists in the protected repo root, OR
-/// - the wrapper track file exists in the protected repo root (defense-in-depth
-///   against an agent deleting the marker mid-run).
+/// - `<git-dir>/ralph/no_agent_commit` exists (absolute path embedded at install time), OR
+/// - `<git-dir>/ralph/git-wrapper-dir.txt` exists (defense-in-depth against marker deletion).
 ///
-/// `git_path_escaped` and `protected_repo_root_escaped` must already be
-/// shell-single-quote-escaped.
-fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &str) -> String {
+/// `git_path_escaped`, `marker_path_escaped`, and `track_file_path_escaped` must already be
+/// shell-single-quote-escaped absolute paths.
+fn make_wrapper_content(
+    git_path_escaped: &str,
+    marker_path_escaped: &str,
+    track_file_path_escaped: &str,
+) -> String {
     format!(
         r#"#!/usr/bin/env sh
  set -eu
@@ -426,9 +442,8 @@ fn make_wrapper_content(git_path_escaped: &str, protected_repo_root_escaped: &st
  # NOTE: `command git` still routes through this PATH wrapper because `command`
  # only skips shell functions and aliases, not PATH entries. This wrapper is a
  # real file in PATH, so it is always invoked for any `git` command.
- protected_repo_root='{protected_repo_root_escaped}'
- marker="$protected_repo_root/.no_agent_commit"
- track_file="$protected_repo_root/.agent/git-wrapper-dir.txt"
+ marker='{marker_path_escaped}'
+ track_file='{track_file_path_escaped}'
  # Treat either the marker or the wrapper track file as an active agent-phase signal.
  # This makes the wrapper resilient if an agent deletes the marker mid-run.
  if [ -f "$marker" ] || [ -f "$track_file" ]; then
@@ -608,15 +623,30 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
 
     helpers.wrapper_repo_root = Some(repo_root.to_path_buf());
 
-    let repo_root_str = repo_root.to_str().ok_or_else(|| {
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
+    let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+
+    let marker_path_str = marker_path.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            "repo root path contains invalid UTF-8 characters; cannot create wrapper script",
+            "marker path contains invalid UTF-8 characters; cannot create wrapper script",
         )
     })?;
-    let repo_root_escaped = escape_shell_single_quoted(repo_root_str)?;
+    let track_file_path_str = track_file_path.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "track file path contains invalid UTF-8 characters; cannot create wrapper script",
+        )
+    })?;
+    let marker_path_escaped = escape_shell_single_quoted(marker_path_str)?;
+    let track_file_path_escaped = escape_shell_single_quoted(track_file_path_str)?;
 
-    let wrapper_content = make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+    let wrapper_content = make_wrapper_content(
+        &git_path_escaped,
+        &marker_path_escaped,
+        &track_file_path_escaped,
+    );
 
     // Create wrapper file; wrapper dir is freshly created under temp.
     let mut file = OpenOptions::new()
@@ -672,8 +702,11 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
     let track_file = repo_root.as_ref().map_or_else(
-        || PathBuf::from(WRAPPER_DIR_TRACK_FILE),
-        |r| r.join(WRAPPER_DIR_TRACK_FILE),
+        || {
+            // Last-resort fallback when repo root is unknown: use CWD-relative guess.
+            PathBuf::from(".git/ralph").join(WRAPPER_TRACK_FILE_NAME)
+        },
+        |r| super::repo::ralph_git_dir(r).join(WRAPPER_TRACK_FILE_NAME),
     );
 
     // If we didn't have in-memory wrapper state (or it was out of date), fall back
@@ -751,16 +784,22 @@ pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
 pub fn start_agent_phase_in_repo(repo_root: &Path, helpers: &mut GitHelpers) -> io::Result<()> {
     helpers.wrapper_repo_root = Some(repo_root.to_path_buf());
 
-    // Store repo root for signal handler fallback.
+    // Compute ralph dir once on the main thread (libgit2 is safe here).
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+
+    // Store repo root and ralph dir for signal handler fallback.
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
         *guard = Some(repo_root.to_path_buf());
+    }
+    if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
+        *guard = Some(ralph_dir.clone());
     }
 
     // Self-heal: treat non-regular marker path as tampering and recover.
     repair_marker_path_if_tampered(repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
     #[cfg(unix)]
-    set_readonly_mode_if_not_symlink(&repo_root.join(MARKER_FILE), 0o444);
+    set_readonly_mode_if_not_symlink(&ralph_dir.join(MARKER_FILE_NAME), 0o444);
     super::hooks::install_hooks_in_repo(repo_root)?;
     enable_git_wrapper_at(repo_root, helpers)?;
 
@@ -781,7 +820,8 @@ pub fn end_agent_phase() {
 ///
 /// This avoids relying on the process current working directory to locate the repo.
 pub fn end_agent_phase_in_repo(repo_root: &Path) {
-    let marker_path = repo_root.join(MARKER_FILE);
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
     // Make writable before removal (marker is created as read-only 0o444).
     #[cfg(unix)]
     add_owner_write_if_not_symlink(&marker_path);
@@ -790,8 +830,14 @@ pub fn end_agent_phase_in_repo(repo_root: &Path) {
     // Clean up HEAD OID tracking file.
     remove_head_oid_file(repo_root);
 
-    // Clear stored repo root since agent phase is ending.
+    // Best-effort: remove the empty ralph dir if it's now empty.
+    let _ = fs::remove_dir(&ralph_dir);
+
+    // Clear stored repo root and ralph dir since agent phase is ending.
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
         *guard = None;
     }
 }
@@ -799,7 +845,7 @@ pub fn end_agent_phase_in_repo(repo_root: &Path) {
 /// Verify and restore agent-phase commit protections before each agent invocation.
 ///
 /// This is the composite integrity check that self-heals against a prior agent
-/// that deleted the `.no_agent_commit` marker or tampered with git hooks during
+/// that deleted the enforcement marker or tampered with git hooks during
 /// its run. It is designed to be called from `run_with_prompt` before every
 /// agent spawn.
 ///
@@ -829,18 +875,17 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
         return result;
     };
 
-    let marker_path = repo_root.join(MARKER_FILE);
+    let ralph_dir = super::repo::ralph_git_dir(&repo_root);
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
         let ft = meta.file_type();
         let is_regular_file = ft.is_file() && !ft.is_symlink();
         if !is_regular_file {
-            logger.warn(
-                ".no_agent_commit marker is not a regular file — quarantining and recreating",
-            );
+            logger.warn("Enforcement marker is not a regular file — quarantining and recreating");
             result.tampering_detected = true;
             result
                 .details
-                .push(".no_agent_commit marker was not a regular file — quarantined".to_string());
+                .push("Enforcement marker was not a regular file — quarantined".to_string());
             if let Err(e) = quarantine_path_in_place(&marker_path, "marker") {
                 logger.warn(&format!("Failed to quarantine marker path: {e}"));
                 result
@@ -863,7 +908,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     // CRITICAL: Treat the track file as untrusted input.
     // We only use it if it points to a plausible temp directory AND that directory is
     // already present on PATH (meaning it was installed by Ralph).
-    let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
     if let Ok(meta) = fs::symlink_metadata(&track_file_path) {
         let ft = meta.file_type();
         let is_regular_file = ft.is_file() && !ft.is_symlink();
@@ -947,17 +992,27 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                         logger.warn("Failed to generate safe wrapper script (git path)");
                         return result;
                     };
-                    let Some(repo_root_str) = repo_root.to_str() else {
-                        logger.warn("Repo root path is not valid UTF-8; cannot restore wrapper");
+                    let marker_p = ralph_dir.join(MARKER_FILE_NAME);
+                    let track_p = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+                    let Some(marker_str) = marker_p.to_str() else {
+                        logger.warn("Marker path is not valid UTF-8; cannot restore wrapper");
                         return result;
                     };
-                    let Ok(repo_root_escaped) = escape_shell_single_quoted(repo_root_str) else {
-                        logger.warn("Failed to generate safe wrapper script (repo root path)");
+                    let Some(track_str) = track_p.to_str() else {
+                        logger.warn("Track file path is not valid UTF-8; cannot restore wrapper");
+                        return result;
+                    };
+                    let Ok(marker_escaped) = escape_shell_single_quoted(marker_str) else {
+                        logger.warn("Failed to generate safe wrapper script (marker path)");
+                        return result;
+                    };
+                    let Ok(track_escaped) = escape_shell_single_quoted(track_str) else {
+                        logger.warn("Failed to generate safe wrapper script (track file path)");
                         return result;
                     };
 
                     let wrapper_content =
-                        make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+                        make_wrapper_content(&git_path_escaped, &marker_escaped, &track_escaped);
 
                     let tmp_path = wrapper_dir.join(format!(
                         ".git-wrapper.tmp.{}.{}",
@@ -1081,12 +1136,22 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
         let real_git = find_git_in_path_excluding_dir(&wrapper_dir).or_else(|| which("git").ok());
         if let Some(real_git_path) = real_git {
             if let Some(real_git_str) = real_git_path.to_str() {
-                if let (Ok(git_path_escaped), Some(repo_root_str)) =
-                    (escape_shell_single_quoted(real_git_str), repo_root.to_str())
-                {
-                    if let Ok(repo_root_escaped) = escape_shell_single_quoted(repo_root_str) {
-                        let wrapper_content =
-                            make_wrapper_content(&git_path_escaped, &repo_root_escaped);
+                let marker_p = ralph_dir.join(MARKER_FILE_NAME);
+                let track_p = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+                if let (Ok(git_path_escaped), Some(marker_str), Some(track_str)) = (
+                    escape_shell_single_quoted(real_git_str),
+                    marker_p.to_str(),
+                    track_p.to_str(),
+                ) {
+                    if let (Ok(marker_escaped), Ok(track_escaped)) = (
+                        escape_shell_single_quoted(marker_str),
+                        escape_shell_single_quoted(track_str),
+                    ) {
+                        let wrapper_content = make_wrapper_content(
+                            &git_path_escaped,
+                            &marker_escaped,
+                            &track_escaped,
+                        );
                         let wrapper_path = wrapper_dir.join("git");
                         if OpenOptions::new()
                             .write(true)
@@ -1146,17 +1211,17 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
 
     // Repair marker if missing or replaced with a symlink.
     if marker_is_symlink {
-        logger.warn(".no_agent_commit marker is a symlink — removing and recreating");
+        logger.warn("Enforcement marker is a symlink — removing and recreating");
         let _ = fs::remove_file(&marker_path);
         result.tampering_detected = true;
         result
             .details
-            .push(".no_agent_commit marker was a symlink — removed".to_string());
+            .push("Enforcement marker was a symlink — removed".to_string());
     }
     if !marker_exists {
-        logger.warn(".no_agent_commit marker missing — recreating");
+        logger.warn("Enforcement marker missing — recreating");
         if let Err(e) = create_marker_in_repo_root(&repo_root) {
-            logger.warn(&format!("Failed to recreate .no_agent_commit: {e}"));
+            logger.warn(&format!("Failed to recreate enforcement marker: {e}"));
         } else {
             #[cfg(unix)]
             set_readonly_mode_if_not_symlink(&marker_path, 0o444);
@@ -1164,7 +1229,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
         result.tampering_detected = true;
         result
             .details
-            .push(".no_agent_commit marker was missing — recreated".to_string());
+            .push("Enforcement marker was missing — recreated".to_string());
     }
 
     // Verify/restore marker permissions (read-only 0o444).
@@ -1178,29 +1243,29 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 let mode = meta.permissions().mode() & 0o777;
                 if mode != 0o444 {
                     logger.warn(&format!(
-                        ".no_agent_commit permissions loosened ({mode:#o}) — restoring to 0o444"
+                        "Enforcement marker permissions loosened ({mode:#o}) — restoring to 0o444"
                     ));
                     let mut perms = meta.permissions();
                     perms.set_mode(0o444);
                     let _ = fs::set_permissions(&marker_path, perms);
                     result.tampering_detected = true;
                     result.details.push(format!(
-                        ".no_agent_commit permissions loosened ({mode:#o}) — restored to 0o444"
+                        "Enforcement marker permissions loosened ({mode:#o}) — restored to 0o444"
                     ));
                 }
             } else {
                 // A non-file marker path would bypass hook/wrapper `-f` checks.
                 // Quarantine and recreate a file marker.
-                logger.warn(".no_agent_commit marker is not a regular file — quarantining");
+                logger.warn("Enforcement marker is not a regular file — quarantining");
                 result.tampering_detected = true;
-                result.details.push(
-                    ".no_agent_commit marker was not a regular file — quarantined".to_string(),
-                );
+                result
+                    .details
+                    .push("Enforcement marker was not a regular file — quarantined".to_string());
                 if let Err(e) = quarantine_path_in_place(&marker_path, "marker-perms") {
                     logger.warn(&format!("Failed to quarantine marker path: {e}"));
                 } else if let Err(e) = create_marker_in_repo_root(&repo_root) {
                     logger.warn(&format!(
-                        "Failed to recreate .no_agent_commit after quarantine: {e}"
+                        "Failed to recreate enforcement marker after quarantine: {e}"
                     ));
                 } else {
                     #[cfg(unix)]
@@ -1290,7 +1355,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
 
 /// Remove the git wrapper temp directory using an explicit repo root.
 fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
-    let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let track_file = super::repo::ralph_git_dir(repo_root).join(WRAPPER_TRACK_FILE_NAME);
     let wrapper_dir = fs::read_to_string(&track_file)
         .ok()
         .map(|s| PathBuf::from(s.trim()));
@@ -1311,7 +1376,7 @@ fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
 /// track file still points to an orphaned wrapper dir. It also removes
 /// stale PATH entries for the old wrapper dir.
 fn cleanup_prior_wrapper_from_track_file(repo_root: &Path) {
-    let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let track_file = super::repo::ralph_git_dir(repo_root).join(WRAPPER_TRACK_FILE_NAME);
     let Ok(content) = fs::read_to_string(&track_file) else {
         return;
     };
@@ -1336,7 +1401,7 @@ pub fn cleanup_orphaned_wrapper_at(repo_root: &Path) {
 #[must_use]
 pub fn verify_wrapper_cleaned(repo_root: &Path) -> Vec<String> {
     let mut remaining = Vec::new();
-    let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+    let track_file = super::repo::ralph_git_dir(repo_root).join(WRAPPER_TRACK_FILE_NAME);
     if track_file.exists() {
         remaining.push(format!("track file still exists: {}", track_file.display()));
         // Also check if the tracked dir still exists.
@@ -1391,14 +1456,15 @@ fn cleanup_generated_files_silent_at(repo_root: &Path) {
     }
 }
 
-/// Clean up orphaned .`no_agent_commit` marker.
+/// Clean up orphaned enforcement marker.
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
 pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     let repo_root = get_repo_root()?;
-    let marker_path = repo_root.join(".no_agent_commit");
+    let ralph_dir = super::repo::ralph_git_dir(&repo_root);
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
 
     if fs::symlink_metadata(&marker_path).is_ok() {
         // Make writable before removal (marker is created as read-only 0o444).
@@ -1407,7 +1473,7 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
             add_owner_write_if_not_symlink(&marker_path);
         }
         fs::remove_file(&marker_path)?;
-        logger.success("Removed orphaned .no_agent_commit marker");
+        logger.success("Removed orphaned enforcement marker");
     } else {
         logger.info("No orphaned marker found");
     }
@@ -1415,7 +1481,7 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     Ok(())
 }
 
-/// Capture the current HEAD OID and write it to `.agent/head-oid.txt`.
+/// Capture the current HEAD OID and write it to `<git-dir>/ralph/head-oid.txt`.
 ///
 /// This is called at agent-phase start and after each Ralph-orchestrated commit
 /// to establish the baseline for unauthorized commit detection.
@@ -1427,18 +1493,18 @@ pub fn capture_head_oid(repo_root: &Path) {
 }
 
 fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
-    let agent_dir = repo_root.join(".agent");
-    if let Ok(meta) = fs::symlink_metadata(&agent_dir) {
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    if let Ok(meta) = fs::symlink_metadata(&ralph_dir) {
         if meta.file_type().is_symlink() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                ".agent path is a symlink; refusing to write head-oid baseline",
+                "ralph git dir path is a symlink; refusing to write head-oid baseline",
             ));
         }
     }
-    fs::create_dir_all(&agent_dir)?;
+    fs::create_dir_all(&ralph_dir)?;
 
-    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    let head_oid_path = ralph_dir.join(HEAD_OID_FILE_NAME);
     if matches!(fs::symlink_metadata(&head_oid_path), Ok(m) if m.file_type().is_symlink()) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1446,7 +1512,7 @@ fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
         ));
     }
 
-    let tmp_path = agent_dir.join(format!(
+    let tmp_path = ralph_dir.join(format!(
         ".head-oid.tmp.{}.{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -1491,7 +1557,7 @@ fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
 /// `false` if HEAD matches or comparison is not possible.
 #[must_use]
 pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
-    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    let head_oid_path = super::repo::ralph_git_dir(repo_root).join(HEAD_OID_FILE_NAME);
     if matches!(fs::symlink_metadata(&head_oid_path), Ok(m) if m.file_type().is_symlink()) {
         return false;
     }
@@ -1512,7 +1578,7 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
 
 /// Remove the head-oid tracking file, making it writable first if needed.
 fn remove_head_oid_file(repo_root: &Path) {
-    let head_oid_path = repo_root.join(HEAD_OID_FILE);
+    let head_oid_path = super::repo::ralph_git_dir(repo_root).join(HEAD_OID_FILE_NAME);
     if fs::symlink_metadata(&head_oid_path).is_err() {
         return;
     }
@@ -1526,6 +1592,13 @@ fn remove_head_oid_file(repo_root: &Path) {
 // ============================================================================
 // Workspace-aware variants
 // ============================================================================
+
+/// Relative path used by workspace-aware marker functions.
+///
+/// The marker lives at `<git-dir>/ralph/no_agent_commit` on the real filesystem.
+/// The workspace abstraction represents this as a relative path so `MemoryWorkspace`
+/// can test the create/remove/exists operations without a real git repository.
+const MARKER_WORKSPACE_PATH: &str = ".git/ralph/no_agent_commit";
 
 /// Create the agent phase marker file using workspace abstraction.
 ///
@@ -1544,7 +1617,7 @@ fn remove_head_oid_file(repo_root: &Path) {
 ///
 /// Returns error if the operation fails.
 pub fn create_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
-    workspace.write(Path::new(MARKER_FILE), "")
+    workspace.write(Path::new(MARKER_WORKSPACE_PATH), "")
 }
 
 /// Remove the agent phase marker file using workspace abstraction.
@@ -1564,7 +1637,7 @@ pub fn create_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()>
 ///
 /// Returns error if the operation fails.
 pub fn remove_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()> {
-    workspace.remove_if_exists(Path::new(MARKER_FILE))
+    workspace.remove_if_exists(Path::new(MARKER_WORKSPACE_PATH))
 }
 
 /// Check if the agent phase marker file exists using workspace abstraction.
@@ -1580,7 +1653,7 @@ pub fn remove_marker_with_workspace(workspace: &dyn Workspace) -> io::Result<()>
 ///
 /// Returns `true` if the marker file exists, `false` otherwise.
 pub fn marker_exists_with_workspace(workspace: &dyn Workspace) -> bool {
-    workspace.exists(Path::new(MARKER_FILE))
+    workspace.exists(Path::new(MARKER_WORKSPACE_PATH))
 }
 
 /// Clean up orphaned marker file using workspace abstraction.
@@ -1604,11 +1677,11 @@ pub fn cleanup_orphaned_marker_with_workspace(
     workspace: &dyn Workspace,
     logger: &Logger,
 ) -> io::Result<()> {
-    let marker_path = Path::new(MARKER_FILE);
+    let marker_path = Path::new(MARKER_WORKSPACE_PATH);
 
     if workspace.exists(marker_path) {
         workspace.remove(marker_path)?;
-        logger.success("Removed orphaned .no_agent_commit marker");
+        logger.success("Removed orphaned enforcement marker");
     } else {
         logger.info("No orphaned marker found");
     }
@@ -1636,12 +1709,20 @@ mod tests {
         }
     }
 
+    fn test_wrapper_content() -> String {
+        make_wrapper_content(
+            "git",
+            "/tmp/.git/ralph/no_agent_commit",
+            "/tmp/.git/ralph/git-wrapper-dir.txt",
+        )
+    }
+
     #[test]
     fn test_wrapper_script_handles_c_flag_before_subcommand() {
         // Verify the wrapper script iterates through arguments to skip global flags
         // like `-C /path`, `--git-dir=.git`, etc. before identifying the subcommand.
         // This ensures `git -C /path commit` is correctly blocked, not just `git commit`.
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
 
         assert!(
             content.contains("skip_next"),
@@ -1723,9 +1804,20 @@ mod tests {
     }
 
     #[test]
-    fn test_marker_file_constant() {
-        // Verify the constant matches expected value
-        assert_eq!(MARKER_FILE, ".no_agent_commit");
+    fn test_marker_file_name_constant() {
+        // Verify the marker filename constant matches expected value.
+        // The marker now lives at <git-dir>/ralph/no_agent_commit.
+        assert_eq!(MARKER_FILE_NAME, "no_agent_commit");
+    }
+
+    #[test]
+    fn test_wrapper_track_file_name_constant() {
+        assert_eq!(WRAPPER_TRACK_FILE_NAME, "git-wrapper-dir.txt");
+    }
+
+    #[test]
+    fn test_head_oid_file_name_constant() {
+        assert_eq!(HEAD_OID_FILE_NAME, "head-oid.txt");
     }
 
     #[test]
@@ -1734,7 +1826,7 @@ mod tests {
         // as a flag that takes a value argument, so that
         // `git --config core.hooksPath=/dev/null commit` correctly identifies
         // "commit" as the subcommand (by skipping the --config value argument).
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
 
         assert!(
             content.contains("--config|"),
@@ -1748,7 +1840,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_enforces_read_only_allowlist() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
 
         assert!(
             content.contains("read-only allowlist"),
@@ -1762,7 +1854,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_blocks_stash_except_list() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
         assert!(
             content.contains("only 'stash list' allowed"),
             "wrapper should only allow stash list; got:\n{content}"
@@ -1771,7 +1863,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_blocks_branch_positional_args() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
         assert!(
             content.contains("branch <name>"),
             "wrapper should block git branch <name>; got:\n{content}"
@@ -1779,15 +1871,20 @@ mod tests {
     }
 
     #[test]
-    fn test_wrapper_script_uses_protected_repo_root() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+    fn test_wrapper_script_uses_absolute_marker_paths() {
+        let content = test_wrapper_content();
+        // Wrapper now embeds absolute paths to marker and track file, not a repo root variable.
         assert!(
-            content.contains("protected_repo_root"),
-            "wrapper should embed protected repo root; got:\n{content}"
+            !content.contains("protected_repo_root"),
+            "wrapper should not use protected_repo_root variable; got:\n{content}"
         );
         assert!(
-            content.contains("marker=\"$protected_repo_root/.no_agent_commit\""),
-            "wrapper should check marker under protected repo root; got:\n{content}"
+            content.contains("marker='/tmp/.git/ralph/no_agent_commit'"),
+            "wrapper should embed absolute marker path; got:\n{content}"
+        );
+        assert!(
+            content.contains("track_file='/tmp/.git/ralph/git-wrapper-dir.txt'"),
+            "wrapper should embed absolute track file path; got:\n{content}"
         );
     }
 
@@ -1800,9 +1897,9 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_unsets_git_env_vars() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
         // Wrapper must unset GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH
-        // when .no_agent_commit exists to prevent env var bypass.
+        // when agent-phase protections are active to prevent env var bypass.
         for var in &["GIT_DIR", "GIT_WORK_TREE", "GIT_EXEC_PATH"] {
             assert!(
                 content.contains(&format!("unset {var}")),
@@ -1813,7 +1910,7 @@ mod tests {
 
     #[test]
     fn test_wrapper_script_documents_command_builtin_behavior() {
-        let content = make_wrapper_content("git", "/tmp/repo");
+        let content = test_wrapper_content();
         // Wrapper should document that `command git` still routes through
         // the PATH wrapper (command only skips shell functions/aliases, not PATH entries).
         assert!(
@@ -1836,15 +1933,11 @@ mod tests {
     #[test]
     fn test_detect_unauthorized_commit_empty_stored_oid() {
         let tmp = tempfile::tempdir().unwrap();
-        let agent_dir = tmp.path().join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
-        fs::write(agent_dir.join("head-oid.txt"), "").unwrap();
+        // Head OID now lives in <git-dir>/ralph/ (fallback: .git/ralph/ for plain temp dirs)
+        let ralph_dir = tmp.path().join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join("head-oid.txt"), "").unwrap();
         assert!(!detect_unauthorized_commit(tmp.path()));
-    }
-
-    #[test]
-    fn test_head_oid_file_constant() {
-        assert_eq!(HEAD_OID_FILE, ".agent/head-oid.txt");
     }
 
     #[test]
@@ -1854,8 +1947,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
         // Create a directory at the track file path.
-        let track_dir_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_dir_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::create_dir_all(&track_dir_path).unwrap();
         fs::write(track_dir_path.join("payload.txt"), "do not delete").unwrap();
 
@@ -1864,7 +1961,7 @@ mod tests {
 
         write_wrapper_track_file_atomic(repo_root, &wrapper_dir).unwrap();
 
-        let track_file_path = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         let meta = fs::metadata(&track_file_path).unwrap();
         assert!(meta.is_file(), "track file path should be a file");
         let content = fs::read_to_string(&track_file_path).unwrap();
@@ -1874,8 +1971,7 @@ mod tests {
         );
 
         // Quarantine should preserve prior directory contents by renaming in-place.
-        let agent_dir = repo_root.join(".agent");
-        let quarantined = fs::read_dir(&agent_dir)
+        let quarantined = fs::read_dir(&ralph_dir)
             .unwrap()
             .filter_map(Result::ok)
             .any(|e| {
@@ -1885,7 +1981,7 @@ mod tests {
             });
         assert!(
             quarantined,
-            "expected quarantined track dir entry in .agent/"
+            "expected quarantined track dir entry in .git/ralph/"
         );
     }
 
@@ -1896,7 +1992,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
-        let marker_path = repo_root.join(MARKER_FILE);
+        // Marker now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let marker_path = ralph_dir.join(MARKER_FILE_NAME);
         fs::create_dir_all(&marker_path).unwrap();
 
         // Function under test: must quarantine the directory and create a file marker.
@@ -1905,17 +2004,17 @@ mod tests {
         let meta = fs::metadata(&marker_path).unwrap();
         assert!(meta.is_file(), "marker path should be a regular file");
 
-        let quarantined = fs::read_dir(repo_root)
+        let quarantined = fs::read_dir(&ralph_dir)
             .unwrap()
             .filter_map(Result::ok)
             .any(|e| {
                 e.file_name()
                     .to_string_lossy()
-                    .starts_with(".no_agent_commit.ralph.tampered.marker")
+                    .starts_with("no_agent_commit.ralph.tampered.marker")
             });
         assert!(
             quarantined,
-            "expected quarantined marker dir entry in repo root"
+            "expected quarantined marker dir entry in .git/ralph/"
         );
     }
 
@@ -1931,7 +2030,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
 
-        let marker_path = repo_root.join(MARKER_FILE);
+        // Marker now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let marker_path = ralph_dir.join(MARKER_FILE_NAME);
         let listener = UnixListener::bind(&marker_path).unwrap();
         drop(listener);
 
@@ -1946,17 +2048,17 @@ mod tests {
         let meta = fs::symlink_metadata(&marker_path).unwrap();
         assert!(meta.is_file(), "marker path should be a regular file");
 
-        let quarantined = fs::read_dir(repo_root)
+        let quarantined = fs::read_dir(&ralph_dir)
             .unwrap()
             .filter_map(Result::ok)
             .any(|e| {
                 e.file_name()
                     .to_string_lossy()
-                    .starts_with(".no_agent_commit.ralph.tampered.marker")
+                    .starts_with("no_agent_commit.ralph.tampered.marker")
             });
         assert!(
             quarantined,
-            "expected quarantined special marker entry in repo root"
+            "expected quarantined special marker entry in .git/ralph/"
         );
     }
 
@@ -1980,7 +2082,10 @@ mod tests {
         std::env::set_current_dir(repo_dir.path()).unwrap();
 
         // Seed a valid marker so marker_exists is computed true.
-        let marker_path = repo_dir.path().join(MARKER_FILE);
+        // Marker lives in <git-dir>/ralph/ — for a real repo that is .git/ralph/.
+        let ralph_dir = repo_dir.path().join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let marker_path = ralph_dir.join(MARKER_FILE_NAME);
         fs::write(&marker_path, b"").unwrap();
         assert!(fs::symlink_metadata(&marker_path).unwrap().is_file());
 
@@ -2040,7 +2145,10 @@ mod tests {
     fn test_cleanup_agent_phase_silent_at_removes_marker() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let marker = repo_root.join(MARKER_FILE);
+        // Marker lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let marker = ralph_dir.join(MARKER_FILE_NAME);
         fs::write(&marker, "").unwrap();
 
         cleanup_agent_phase_silent_at(repo_root);
@@ -2055,9 +2163,10 @@ mod tests {
     fn test_cleanup_agent_phase_silent_at_removes_head_oid() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
-        let head_oid = repo_root.join(HEAD_OID_FILE);
+        // Head OID lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let head_oid = ralph_dir.join(HEAD_OID_FILE_NAME);
         fs::write(&head_oid, "abc123\n").unwrap();
 
         cleanup_agent_phase_silent_at(repo_root);
@@ -2074,15 +2183,25 @@ mod tests {
         let repo_root = tmp.path();
         let agent_dir = repo_root.join(".agent");
         fs::create_dir_all(&agent_dir).unwrap();
+        // Enforcement state is now in .git/ralph/ — NOT in working tree.
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
 
-        // Create all generated files
-        fs::write(repo_root.join(".no_agent_commit"), "").unwrap();
+        // Working-tree generated files.
         fs::write(agent_dir.join("PLAN.md"), "plan").unwrap();
         fs::write(agent_dir.join("commit-message.txt"), "msg").unwrap();
         fs::write(agent_dir.join("checkpoint.json.tmp"), "{}").unwrap();
 
         cleanup_agent_phase_silent_at(repo_root);
 
+        // Enforcement-state files removed via end_agent_phase_in_repo.
+        assert!(
+            !ralph_dir.join(MARKER_FILE_NAME).exists(),
+            "marker should be removed by cleanup_agent_phase_silent_at"
+        );
+
+        // Working-tree GENERATED_FILES also removed.
         for file in crate::files::io::agent_files::GENERATED_FILES {
             let path = repo_root.join(file);
             assert!(
@@ -2096,11 +2215,12 @@ mod tests {
     fn test_cleanup_agent_phase_silent_at_removes_wrapper_track_file() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
         // Create a track file pointing to a non-existent wrapper dir (safe to clean)
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, "/nonexistent/wrapper/dir\n").unwrap();
 
         cleanup_agent_phase_silent_at(repo_root);
@@ -2143,8 +2263,9 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
         // Create a fake wrapper dir in temp with the correct prefix.
         let wrapper_dir = tempfile::Builder::new()
@@ -2154,7 +2275,7 @@ mod tests {
         let wrapper_dir_path = wrapper_dir.keep();
 
         // Write track file pointing to the wrapper dir.
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
 
         assert!(
@@ -2189,11 +2310,12 @@ mod tests {
     fn test_cleanup_prior_wrapper_stale_track_file() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
         // Track file points to a non-existent dir.
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, "/nonexistent/ralph-git-wrapper-stale\n").unwrap();
 
         cleanup_orphaned_wrapper_at(repo_root);
@@ -2224,10 +2346,11 @@ mod tests {
     fn test_verify_wrapper_cleaned_reports_remaining_track_file() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, "/nonexistent/dir\n").unwrap();
 
         let remaining = verify_wrapper_cleaned(repo_root);
@@ -2245,8 +2368,9 @@ mod tests {
     fn test_verify_wrapper_cleaned_reports_remaining_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
         // Create a real wrapper dir that still exists.
         let wrapper_dir = tempfile::Builder::new()
@@ -2255,7 +2379,7 @@ mod tests {
             .unwrap();
         let wrapper_dir_path = wrapper_dir.keep();
 
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
 
         let remaining = verify_wrapper_cleaned(repo_root);
@@ -2276,15 +2400,16 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let repo_root_tmp = tempfile::tempdir().unwrap();
         let repo_root = repo_root_tmp.path();
-        let agent_dir = repo_root.join(".agent");
-        fs::create_dir_all(&agent_dir).unwrap();
+        // Track file now lives in .git/ralph/ (fallback for plain temp dirs).
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
 
         let blocked_parent = tempfile::tempdir_in(env::temp_dir()).unwrap();
         let wrapper_dir_path = blocked_parent.path().join("ralph-git-wrapper-blocked");
         fs::create_dir(&wrapper_dir_path).unwrap();
         fs::write(wrapper_dir_path.join("git"), "#!/bin/sh\n").unwrap();
 
-        let track_file = repo_root.join(WRAPPER_DIR_TRACK_FILE);
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
         fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
 
         let original_parent_mode = fs::metadata(blocked_parent.path())

@@ -25,12 +25,9 @@ const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/c
 
 /// Files that Ralph generates during a run and should clean up.
 pub const GENERATED_FILES: &[&str] = &[
-    ".no_agent_commit",
     ".agent/PLAN.md",
     ".agent/commit-message.txt",
     ".agent/checkpoint.json.tmp",
-    ".agent/head-oid.txt",
-    ".agent/git-wrapper-dir.txt",
 ];
 
 /// Check if a file contains a specific marker string.
@@ -391,13 +388,11 @@ mod tests {
         #[test]
         fn test_cleanup_generated_files_with_workspace() {
             let workspace = MemoryWorkspace::new_test()
-                .with_file(".no_agent_commit", "")
                 .with_file(".agent/PLAN.md", "plan")
                 .with_file(".agent/commit-message.txt", "msg");
 
             cleanup_generated_files_with_workspace(&workspace);
 
-            assert!(!workspace.exists(Path::new(".no_agent_commit")));
             assert!(!workspace.exists(Path::new(".agent/PLAN.md")));
             assert!(!workspace.exists(Path::new(".agent/commit-message.txt")));
         }

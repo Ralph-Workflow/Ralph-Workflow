@@ -3,6 +3,24 @@ use std::path::{Path, PathBuf};
 
 use crate::git_helpers::git2_to_io_error;
 
+/// Returns the path to the `ralph` subdirectory inside the git metadata directory.
+///
+/// This directory holds Ralph's runtime enforcement state (marker, track file, head-oid).
+/// It is inside `.git/` (or the actual git dir for worktrees) and is therefore invisible
+/// to working-tree scans.
+///
+/// Falls back to `repo_root/.git/ralph` if libgit2 discovery fails (e.g., plain temp
+/// directories used in unit tests).
+pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
+    if let Ok(hooks_dir) = get_hooks_dir_from(repo_root) {
+        if let Some(git_dir) = hooks_dir.parent() {
+            return git_dir.join("ralph");
+        }
+    }
+    // Fallback: assume standard .git directory layout.
+    repo_root.join(".git").join("ralph")
+}
+
 /// Check if we're in a git repository.
 ///
 /// # Errors

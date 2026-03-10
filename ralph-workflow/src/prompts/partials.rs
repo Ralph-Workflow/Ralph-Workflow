@@ -204,8 +204,8 @@ mod tests {
             "partial should forbid hook deletion"
         );
         assert!(
-            no_git.contains(".no_agent_commit"),
-            "partial should forbid .no_agent_commit marker deletion"
+            no_git.contains(".git/ralph/no_agent_commit"),
+            "partial should forbid .git/ralph/no_agent_commit marker deletion"
         );
     }
 

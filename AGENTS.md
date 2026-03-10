@@ -65,7 +65,7 @@ Ralph is the ONLY entity allowed to commit. Accidental commits break the determi
 
 ### Enforcement
 
-Git hooks (pre-commit, pre-push, pre-merge-commit) and a PATH wrapper are installed automatically by Ralph during the agent phase. If you attempt a forbidden command, it WILL be blocked with exit code 1 and a message like: "blocked (agent phase): .no_agent_commit exists."
+Git hooks (pre-commit, pre-push, pre-merge-commit) and a PATH wrapper are installed automatically by Ralph during the agent phase. If you attempt a forbidden command, it WILL be blocked with exit code 1 and a message like: "blocked (agent phase): agent protections active."
 
 **Do not attempt to bypass these hooks.** If you need a commit, write your changes to files and let Ralph's commit effect handle it.
 
@@ -89,20 +89,20 @@ You MUST NEVER use these MCP tools:
 
 ### ADDITIONAL PROHIBITED ACTIONS — HOOKS AND MARKERS (CRITICAL)
 
-**Deleting or modifying git hooks or the `.no_agent_commit` marker IS equivalent to an unauthorized commit. It WILL be detected and Ralph will treat it as a security violation.**
+**Deleting or modifying git hooks or files in `.git/ralph/` IS equivalent to an unauthorized commit. It WILL be detected and Ralph will treat it as a security violation.**
 
 You MUST NEVER:
 
 - Delete or modify `.git/hooks/pre-commit` — this hook blocks unauthorized commits
 - Delete or modify `.git/hooks/pre-push` — this hook blocks unauthorized pushes
 - Delete or modify `.git/hooks/pre-merge-commit` — this hook blocks unauthorized merge commits
-- Delete `.no_agent_commit` — this marker activates commit blocking in all hooks and the PATH wrapper
+- Delete or modify files in `.git/ralph/` — this directory holds enforcement state (marker, wrapper track file, head OID)
 - Use an absolute path (e.g., `/usr/bin/git`, `/opt/homebrew/bin/git`) to invoke git directly and bypass the PATH wrapper
 - Delete or modify any file in `.git/hooks/` that contains `RALPH_RUST_MANAGED_HOOK`
 - Modify the `PATH` environment variable to remove or reorder Ralph's git wrapper directory
-- Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files
+- Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files or `.git/ralph/` files
 - Write to or overwrite `.git/hooks/pre-commit`, `.git/hooks/pre-push`, or `.git/hooks/pre-merge-commit` files
-- Run `chmod` on `.git/hooks/` files or `.no_agent_commit` to change permissions
+- Run `chmod` on `.git/hooks/` files or `.git/ralph/` files to change permissions
 - Run `git init` to reinitialize the repository or create a new one
 - Use `exec`, `env`, `command`, or other shell builtins to invoke git bypassing the PATH wrapper
 - Set `GIT_DIR`, `GIT_WORK_TREE`, or `GIT_EXEC_PATH` environment variables — the wrapper unsets these automatically
@@ -111,7 +111,7 @@ You MUST NEVER:
 
 **Why this matters:**
 - Ralph reinstalls hooks before every agent invocation — tampering will be detected immediately
-- The `.no_agent_commit` marker is also recreated before every agent invocation
+- The `.git/ralph/` enforcement state is recreated before every agent invocation
 - Ralph's deterministic pipeline depends on ALL commits going through its commit effect
 - A commit made outside Ralph cannot be undone automatically and breaks the review pipeline
 
@@ -122,7 +122,7 @@ You MUST NEVER:
 
 ### WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET
 
-1. The `.no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
+1. The `.git/ralph/no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
 2. All git hooks (pre-commit, pre-push, pre-merge-commit) are reinstalled before EVERY agent invocation.
 3. Hook and marker permissions are verified and restored before EVERY agent invocation. Using `chmod` is pointless.
 4. The PATH wrapper unsets `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_EXEC_PATH` when the marker exists.
