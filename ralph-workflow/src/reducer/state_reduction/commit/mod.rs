@@ -31,6 +31,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_xml_extracted: false,
             commit_validated_outcome: None,
             commit_xml_archived: false,
+            commit_selected_files: vec![],
             ..state
         },
         CommitEvent::DiffPrepared {
@@ -60,6 +61,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_xml_extracted: false,
             commit_validated_outcome: None,
             commit_xml_archived: false,
+            commit_selected_files: vec![],
             prompt_inputs: state.prompt_inputs.with_commit_cleared(),
             ..state
         },
@@ -155,6 +157,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_extracted: false,
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
+                    commit_selected_files: vec![],
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -211,6 +214,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
+                commit_selected_files: vec![],
                 prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
                 agent_chain,
                 continuation,
@@ -273,6 +277,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_xml_extracted: false,
             commit_validated_outcome: None,
             commit_xml_archived: false,
+            commit_selected_files: vec![],
             ..state
         },
         CommitEvent::Skipped { .. } => {
@@ -303,6 +308,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_extracted: false,
                     commit_validated_outcome: None,
                     commit_xml_archived: false,
+                    commit_selected_files: vec![],
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -351,6 +357,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_xml_extracted: false,
                 commit_validated_outcome: None,
                 commit_xml_archived: false,
+                commit_selected_files: vec![],
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
@@ -389,6 +396,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_xml_extracted: false,
                 commit_validated_outcome: None,
                 commit_xml_archived: false,
+                commit_selected_files: vec![],
                 prompt_inputs: state.prompt_inputs.with_commit_cleared(),
                 // Ensure termination cannot proceed until commit finishes.
                 pre_termination_commit_checked: false,

@@ -105,10 +105,37 @@ mod tests {
         );
 
         let extraction = extract_commit_message_from_file_with_workspace(&workspace);
-        let CommitExtractionOutcome::Valid(extracted) = extraction else {
+        let CommitExtractionOutcome::Valid { extracted, files } = extraction else {
             panic!("expected extraction");
         };
         assert_eq!(extracted.into_message(), "feat: add");
+        assert!(files.is_empty(), "expected no selected files by default");
+    }
+
+    #[test]
+    fn test_extract_commit_message_from_file_returns_selected_files() {
+        let _cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/tmp/commit_message.xml",
+            r"<ralph-commit>
+<ralph-subject>feat: add</ralph-subject>
+<ralph-files>
+<ralph-file>src/foo.rs</ralph-file>
+<ralph-file>tests/bar.rs</ralph-file>
+</ralph-files>
+</ralph-commit>",
+        );
+
+        let extraction = extract_commit_message_from_file_with_workspace(&workspace);
+        let CommitExtractionOutcome::Valid { extracted, files } = extraction else {
+            panic!("expected extraction");
+        };
+
+        assert_eq!(extracted.into_message(), "feat: add");
+        assert_eq!(
+            files,
+            vec!["src/foo.rs".to_string(), "tests/bar.rs".to_string()]
+        );
     }
 
     #[test]
@@ -183,6 +210,62 @@ mod tests {
             "commit generation log should use per-run format with phase_index naming: {}",
             calls[0].logfile
         );
+    }
+
+    #[test]
+    fn test_run_commit_attempt_propagates_selected_files() {
+        let cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            xml_paths::COMMIT_MESSAGE_XML,
+            r"<ralph-commit>
+<ralph-subject>feat: x</ralph-subject>
+<ralph-files>
+<ralph-file>src/foo.rs</ralph-file>
+</ralph-files>
+</ralph-commit>",
+        );
+        let colors = Colors { enabled: false };
+        let logger = Logger::new(colors);
+        let mut timer = Timer::new();
+
+        let config = Config::default();
+        let registry = AgentRegistry::new().unwrap();
+        let template_context = TemplateContext::default();
+
+        let executor = Arc::new(
+            MockProcessExecutor::new()
+                .with_agent_result("claude", Ok(crate::executor::AgentCommandResult::success())),
+        );
+        let executor_arc: Arc<dyn ProcessExecutor> = executor;
+
+        let repo_root = PathBuf::from("/mock/repo");
+        let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+        let mut ctx = PhaseContext {
+            config: &config,
+            registry: &registry,
+            logger: &logger,
+            colors: &colors,
+            timer: &mut timer,
+            developer_agent: "claude",
+            reviewer_agent: "claude",
+            review_guidelines: None,
+            template_context: &template_context,
+            run_context: RunContext::new(),
+            execution_history: ExecutionHistory::new(),
+            executor: executor_arc.as_ref(),
+            executor_arc: executor_arc.clone(),
+            repo_root: repo_root.as_path(),
+            workspace: &workspace,
+            workspace_arc: std::sync::Arc::new(workspace.clone()),
+            run_log_context: &run_log_context,
+            cloud_reporter: None,
+            cloud: &cloud,
+        };
+
+        let result = run_commit_attempt(&mut ctx, 1, "diff --git a/a b/a\n+change\n", "claude")
+            .expect("run_commit_attempt should succeed");
+
+        assert_eq!(result.files, vec!["src/foo.rs".to_string()]);
     }
 
     #[test]

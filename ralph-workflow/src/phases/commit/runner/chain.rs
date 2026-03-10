@@ -46,7 +46,8 @@ pub fn generate_commit_message(
         ));
     }
 
-    let (prompt, substitution_log) = build_commit_prompt(template_context, &model_safe_diff, workspace);
+    let (prompt, substitution_log) =
+        build_commit_prompt(template_context, &model_safe_diff, workspace);
     if !substitution_log.is_complete() {
         return Err(anyhow::anyhow!(
             "Commit prompt has unresolved placeholders: {:?}",
@@ -91,7 +92,10 @@ pub fn generate_commit_message(
 
     let extraction = extract_commit_message_from_file_with_workspace(workspace);
     let result = match extraction {
-        CommitExtractionOutcome::Valid(result) => result,
+        CommitExtractionOutcome::Valid {
+            extracted: result,
+            files: _,
+        } => result,
         CommitExtractionOutcome::InvalidXml(detail)
         | CommitExtractionOutcome::MissingFile(detail) => anyhow::bail!(detail),
         CommitExtractionOutcome::Skipped(reason) => {
@@ -156,7 +160,8 @@ pub fn generate_commit_message_with_chain(
     let mut last_error: Option<anyhow::Error> = None;
 
     for (agent_index, commit_agent) in agents.iter().enumerate() {
-        let (prompt, substitution_log) = build_commit_prompt(template_context, &model_safe_diff, workspace);
+        let (prompt, substitution_log) =
+            build_commit_prompt(template_context, &model_safe_diff, workspace);
         if !substitution_log.is_complete() {
             return Err(anyhow::anyhow!(
                 "Commit prompt has unresolved placeholders: {:?}",
@@ -220,7 +225,10 @@ pub fn generate_commit_message_with_chain(
 
         let extraction = extract_commit_message_from_file_with_workspace(workspace);
         match extraction {
-            CommitExtractionOutcome::Valid(extracted) => {
+            CommitExtractionOutcome::Valid {
+                extracted,
+                files: _,
+            } => {
                 archive_xml_file_with_workspace(
                     workspace,
                     Path::new(xml_paths::COMMIT_MESSAGE_XML),

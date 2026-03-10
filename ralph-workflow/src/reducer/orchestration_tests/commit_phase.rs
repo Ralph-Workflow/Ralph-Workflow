@@ -400,6 +400,123 @@ fn test_commit_xml_validated_with_files_propagates_to_create_commit() {
 }
 
 #[test]
+fn test_commit_generation_started_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(state, PipelineEvent::commit_generation_started());
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit generation restarts"
+    );
+}
+
+#[test]
+fn test_commit_diff_invalidated_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_diff_invalidated("changed".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit diff is invalidated"
+    );
+}
+
+#[test]
+fn test_commit_generation_failed_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
+            attempt: 1,
+            message: Some("feat: add foo".to_string()),
+            reason: None,
+        }),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_generation_failed("boom".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when commit generation fails"
+    );
+}
+
+#[test]
+fn test_commit_created_forced_resume_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        termination_resume_phase: Some(PipelinePhase::Finalizing),
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(
+        state,
+        PipelineEvent::commit_created("deadbeef".to_string(), "feat: add foo".to_string()),
+    );
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when leaving commit phase after forced commit"
+    );
+}
+
+#[test]
+fn test_commit_skipped_forced_resume_clears_selected_files() {
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        termination_resume_phase: Some(PipelinePhase::Finalizing),
+        commit_diff_empty: true,
+        commit_selected_files: vec!["src/foo.rs".to_string()],
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    state = reduce(state, PipelineEvent::commit_skipped("nope".to_string()));
+
+    assert!(
+        state.commit_selected_files.is_empty(),
+        "commit_selected_files must be cleared when leaving commit phase after skip"
+    );
+}
+
+#[test]
 fn test_commit_inputs_materialization_invalidated_when_diff_content_id_changes() {
     // Regression test: if the prepared diff content id changes (e.g. diff rewritten/updated),
     // we must not reuse previously materialized commit inputs for the same attempt even when

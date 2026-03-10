@@ -333,11 +333,56 @@ pub fn validate_xml_against_xsd(
                                         file_list.push(trimmed);
                                     }
                                 }
+                                Ok(Event::Start(ref e)) => {
+                                    let other = e.name().as_ref().to_vec();
+                                    let other_name = String::from_utf8_lossy(&other);
+                                    let _ = skip_to_end(&mut reader, &other);
+                                    return Err(XsdValidationError {
+                                        error_type: XsdErrorType::UnexpectedElement,
+                                        element_path: format!(
+                                            "ralph-commit/ralph-files/{other_name}"
+                                        ),
+                                        expected: "only <ralph-file> child elements".to_string(),
+                                        found: format!("<{other_name}>") ,
+                                        suggestion: "Inside <ralph-files>, include only one or more <ralph-file>path</ralph-file> elements. Remove any other child elements."
+                                            .to_string(),
+                                        example: Some(EXAMPLE_COMMIT_XML.into()),
+                                    });
+                                }
                                 Ok(Event::End(ref e)) if e.name().as_ref() == b"ralph-files" => {
                                     break;
                                 }
-                                Ok(Event::Text(ref t))
-                                    if t.unescape().unwrap_or_default().trim().is_empty() => {}
+                                Ok(Event::Text(ref t)) => {
+                                    let text = t.unescape().unwrap_or_default();
+                                    if !text.trim().is_empty() {
+                                        return Err(XsdValidationError {
+                                            error_type: XsdErrorType::InvalidContent,
+                                            element_path: "ralph-commit/ralph-files".to_string(),
+                                            expected: "whitespace-only text between <ralph-file> elements".to_string(),
+                                            found: format!("text content: {}", format_content_preview(text.trim())),
+                                            suggestion: "Remove any non-whitespace text inside <ralph-files>; only <ralph-file> elements are allowed."
+                                                .to_string(),
+                                            example: Some(EXAMPLE_COMMIT_XML.into()),
+                                        });
+                                    }
+                                }
+                                Ok(Event::CData(ref c)) => {
+                                    let text = String::from_utf8_lossy(c.as_ref());
+                                    if !text.trim().is_empty() {
+                                        return Err(XsdValidationError {
+                                            error_type: XsdErrorType::InvalidContent,
+                                            element_path: "ralph-commit/ralph-files".to_string(),
+                                            expected: "whitespace-only CDATA between <ralph-file> elements".to_string(),
+                                            found: format!(
+                                                "CDATA content: {}",
+                                                format_content_preview(text.trim())
+                                            ),
+                                            suggestion: "Remove any non-whitespace CDATA inside <ralph-files>; only <ralph-file> elements are allowed."
+                                                .to_string(),
+                                            example: Some(EXAMPLE_COMMIT_XML.into()),
+                                        });
+                                    }
+                                }
                                 Ok(Event::Eof) => {
                                     return Err(XsdValidationError {
                                         error_type: XsdErrorType::MalformedXml,
@@ -349,7 +394,23 @@ pub fn validate_xml_against_xsd(
                                         example: Some(EXAMPLE_COMMIT_XML.into()),
                                     });
                                 }
-                                _ => {}
+                                Ok(Event::End(ref e)) => {
+                                    let other_end = e.name().as_ref().to_vec();
+                                    let other_end_name = String::from_utf8_lossy(&other_end);
+                                    return Err(XsdValidationError {
+                                        error_type: XsdErrorType::MalformedXml,
+                                        element_path: "ralph-commit/ralph-files".to_string(),
+                                        expected: "</ralph-files> closing tag".to_string(),
+                                        found: format!(
+                                            "unexpected closing tag </{other_end_name}>"
+                                        ),
+                                        suggestion: "Ensure <ralph-files> contains only <ralph-file> elements and is properly closed with </ralph-files>."
+                                            .to_string(),
+                                        example: Some(EXAMPLE_COMMIT_XML.into()),
+                                    });
+                                }
+                                Ok(_) => {}
+                                Err(e) => return Err(malformed_xml_error(&e)),
                             }
                         }
                         if file_list.is_empty() {

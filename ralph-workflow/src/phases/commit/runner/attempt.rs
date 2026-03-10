@@ -22,6 +22,7 @@ pub struct CommitAttemptResult {
     pub output_valid: bool,
     pub message: Option<String>,
     pub skip_reason: Option<String>,
+    pub files: Vec<String>,
     pub validation_detail: String,
     pub auth_failure: bool,
 }
@@ -174,42 +175,51 @@ pub fn run_commit_attempt(
             output_valid: false,
             message: None,
             skip_reason: None,
+            files: vec![],
             validation_detail: "Authentication error detected".to_string(),
             auth_failure: true,
         });
     }
 
     let extraction = extract_commit_message_from_file_with_workspace(ctx.workspace);
-    let (outcome, detail, extraction_result, extraction_succeeded, skip_reason) = match extraction {
-        CommitExtractionOutcome::Valid(result) => (
-            AttemptOutcome::Success(result.clone().into_message()),
-            "Valid commit message extracted".to_string(),
-            Some(result),
-            true,
-            None,
-        ),
-        CommitExtractionOutcome::InvalidXml(detail) => (
-            AttemptOutcome::XsdValidationFailed(detail.clone()),
-            detail,
-            None,
-            false,
-            None,
-        ),
-        CommitExtractionOutcome::MissingFile(detail) => (
-            AttemptOutcome::ExtractionFailed(detail.clone()),
-            detail,
-            None,
-            false,
-            None,
-        ),
-        CommitExtractionOutcome::Skipped(reason) => (
-            AttemptOutcome::Success(format!("SKIPPED: {reason}")),
-            format!("Commit skipped: {reason}"),
-            None,
-            true,
-            Some(reason),
-        ),
-    };
+    let (outcome, detail, extraction_result, extraction_succeeded, skip_reason, files) =
+        match extraction {
+            CommitExtractionOutcome::Valid {
+                extracted: result,
+                files,
+            } => (
+                AttemptOutcome::Success(result.clone().into_message()),
+                "Valid commit message extracted".to_string(),
+                Some(result),
+                true,
+                None,
+                files,
+            ),
+            CommitExtractionOutcome::InvalidXml(detail) => (
+                AttemptOutcome::XsdValidationFailed(detail.clone()),
+                detail,
+                None,
+                false,
+                None,
+                vec![],
+            ),
+            CommitExtractionOutcome::MissingFile(detail) => (
+                AttemptOutcome::ExtractionFailed(detail.clone()),
+                detail,
+                None,
+                false,
+                None,
+                vec![],
+            ),
+            CommitExtractionOutcome::Skipped(reason) => (
+                AttemptOutcome::Success(format!("SKIPPED: {reason}")),
+                format!("Commit skipped: {reason}"),
+                None,
+                true,
+                Some(reason),
+                vec![],
+            ),
+        };
     attempt_log.add_extraction_attempt(if extraction_succeeded {
         ExtractionAttempt::success("XML", detail.clone())
     } else {
@@ -230,6 +240,7 @@ pub fn run_commit_attempt(
             output_valid: true,
             message: Some(message),
             skip_reason: None,
+            files,
             validation_detail: detail,
             auth_failure: false,
         });
@@ -240,6 +251,7 @@ pub fn run_commit_attempt(
         output_valid: extraction_succeeded,
         message: None,
         skip_reason,
+        files,
         validation_detail: detail,
         auth_failure: false,
     })

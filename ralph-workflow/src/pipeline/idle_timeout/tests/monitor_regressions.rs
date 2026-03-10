@@ -444,12 +444,18 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
-    thread::sleep(Duration::from_millis(10));
-    let kill_calls_after = executor
-        .execute_calls_for("kill")
-        .iter()
-        .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
-        .count();
+
+    // Avoid relying on exact thread scheduling: the reaper resends SIGKILL on a timer.
+    let deadline = std::time::Instant::now() + Duration::from_millis(200);
+    let mut kill_calls_after = kill_calls_before;
+    while std::time::Instant::now() < deadline && kill_calls_after == kill_calls_before {
+        thread::sleep(Duration::from_millis(2));
+        kill_calls_after = executor
+            .execute_calls_for("kill")
+            .iter()
+            .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
+            .count();
+    }
     assert!(
         kill_calls_after > kill_calls_before,
         "expected background reaper to continue sending SIGKILL"

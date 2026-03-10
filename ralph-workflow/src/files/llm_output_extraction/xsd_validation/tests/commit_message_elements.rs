@@ -135,6 +135,40 @@ fn test_validate_xml_multiple_files_blocks_is_rejected() {
     );
 }
 
+#[test]
+fn test_validate_xml_files_rejects_unexpected_child_element() {
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: add feature</ralph-subject>
+ <ralph-files>
+ <ralph-file>src/foo.rs</ralph-file>
+ <unexpected>src/bar.rs</unexpected>
+ </ralph-files>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files contains an unexpected child element"
+    );
+}
+
+#[test]
+fn test_validate_xml_files_rejects_non_whitespace_text() {
+    let xml = r"<ralph-commit>
+ <ralph-subject>feat: add feature</ralph-subject>
+ <ralph-files>
+ text that should not be here
+ <ralph-file>src/foo.rs</ralph-file>
+ </ralph-files>
+ </ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_err(),
+        "Expected Err when ralph-files contains non-whitespace text"
+    );
+}
+
 // ============================================================================
 // Tests for XsdErrorType::description()
 // ============================================================================
