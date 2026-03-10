@@ -191,4 +191,69 @@ mod tests {
             "partial should explicitly allow git status and git diff for read-only inspection"
         );
     }
+
+    #[test]
+    fn test_no_git_commit_partial_forbids_hook_deletion() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("hooks") && no_git.to_lowercase().contains("never"),
+            "partial should forbid hook deletion"
+        );
+        assert!(
+            no_git.contains(".no_agent_commit"),
+            "partial should forbid .no_agent_commit marker deletion"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_forbids_bypass_attempts() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("/usr/bin/git") || no_git.contains("absolute path"),
+            "partial should forbid bypassing with absolute git path"
+        );
+        assert!(
+            no_git.contains("--no-verify"),
+            "partial should forbid --no-verify flag"
+        );
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_lists_allowed_commands() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        for cmd in &[
+            "`git status`",
+            "`git log`",
+            "`git diff`",
+            "`git show`",
+            "`git branch`",
+        ] {
+            assert!(no_git.contains(cmd), "partial should list {cmd} as allowed");
+        }
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_warns_about_hook_reinstallation() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("reinstall") || no_git.contains("recreated"),
+            "partial should warn that hooks are reinstalled before every agent run"
+        );
+    }
 }

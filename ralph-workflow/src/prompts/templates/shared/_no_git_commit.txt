@@ -1,1 +1,44 @@
 CRITICAL: Do NOT run ANY git command except read-only lookup commands (for example: `git status`, `git diff`, `git log`, `git show`).
+
+CRITICAL: Do NOT run ANY git command that writes, modifies history, or changes repository state.
+
+Ralph is the ONLY entity allowed to commit. Accidental commits break the deterministic pipeline and cannot be automatically undone.
+
+NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
+- commit — Ralph orchestrates ALL commits
+- push — Ralph orchestrates ALL pushes
+- tag — Ralph orchestrates ALL tagging
+- merge — Ralph controls branching strategy
+- rebase — Ralph controls history (use rebase effects only)
+- reset --hard — Destroys uncommitted work irreversibly
+- reset --soft / --mixed — Modifies history
+- checkout -- . / restore . — Destroys uncommitted changes
+- stash drop / stash pop / stash apply — Can overwrite or destroy work
+- branch -D / branch -d — Destroys branches
+- clean -f / -fd / -fx — Destroys untracked files
+- cherry-pick — Modifies history
+- revert — Modifies history
+- am / apply — Modifies repository in uncontrolled way
+- add — Ralph orchestrates ALL staging
+
+ONLY these git commands are allowed (read-only, non-destructive):
+- `git status` — check repository state
+- `git log` — view commit history
+- `git diff` — view changes (unstaged/staged)
+- `git show` — inspect a commit or object
+- `git branch` (list only, no `-D`/`-d`) — list branches
+- `git remote -v` — view remote URLs
+- `git stash list` — list stashes (do NOT pop/apply/drop)
+- `git rev-parse` — resolve refs and paths
+- `git ls-files` — list tracked files
+- `git describe` — describe a commit
+
+FORBIDDEN BYPASS ATTEMPTS — DO NOT:
+- Delete or modify files in `.git/hooks/` — hooks are reinstalled and recreated before EVERY agent run
+- Delete `.no_agent_commit` — this marker is read-only and recreated before EVERY agent run
+- Use absolute paths like `/usr/bin/git` to bypass the PATH wrapper
+- Use `--no-verify` flag — the PATH wrapper blocks commands before hooks run
+- Modify the PATH environment variable to remove or reorder Ralph's git wrapper directory
+- Use `chmod` on any `.git/hooks/` file or `.no_agent_commit`
+
+Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. Attempting to bypass will FAIL and waste your execution budget. Write your file changes and let Ralph commit them.

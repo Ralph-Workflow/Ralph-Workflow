@@ -76,10 +76,17 @@ fn escape_shell_single_quoted(path: &str) -> io::Result<String> {
 
 /// Generate the git wrapper script content.
 ///
-/// The script intercepts `git commit`, `git push`, and `git tag` when
-/// `.no_agent_commit` is present. It iterates through arguments to skip git
-/// global flags (e.g. `-C /path`, `--git-dir=.git`) before identifying the
-/// subcommand, so patterns like `git -C /path commit` are blocked correctly.
+/// The script intercepts destructive git subcommands when `.no_agent_commit`
+/// is present. It iterates through arguments to skip git global flags
+/// (e.g. `-C /path`, `--git-dir=.git`) before identifying the subcommand,
+/// so patterns like `git -C /path commit` are blocked correctly.
+///
+/// Blocked commands fall into three categories:
+/// - **Unconditionally blocked**: commit, push, tag, merge, rebase, reset,
+///   cherry-pick, revert, am, apply, clean, restore
+/// - **Conditionally blocked**: stash (pop/drop/apply/push/store/create/clear
+///   blocked, list allowed), branch (-d/-D/--delete blocked, list allowed),
+///   checkout (-- blocked to prevent discarding changes)
 ///
 /// `git_path_escaped` must already be shell-single-quote-escaped.
 fn make_wrapper_content(git_path_escaped: &str) -> String {
@@ -110,9 +117,49 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
     esac
   done
   case "$subcmd" in
-    commit|push|tag)
+    commit|push|tag|merge|rebase|reset|cherry-pick|revert|am|apply|clean|restore)
       echo "Blocked: git $subcmd disabled during agent phase (.no_agent_commit present)." >&2
       exit 1
+      ;;
+    stash)
+      # Allow 'stash list' and bare 'stash', block destructive stash subcommands
+      stash_sub=""
+      found_stash=0
+      for a2 in "$@"; do
+        if [ "$found_stash" = "1" ]; then
+          case "$a2" in
+            -*) ;;
+            *) stash_sub="$a2"; break ;;
+          esac
+        fi
+        if [ "$a2" = "stash" ]; then found_stash=1; fi
+      done
+      case "$stash_sub" in
+        pop|drop|apply|push|store|create|clear)
+          echo "Blocked: git stash $stash_sub disabled during agent phase (.no_agent_commit present)." >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    branch)
+      # Allow 'branch' (list), block 'branch -d/-D/--delete'
+      for a2 in "$@"; do
+        case "$a2" in
+          -d|-D|--delete)
+            echo "Blocked: git branch delete disabled during agent phase (.no_agent_commit present)." >&2
+            exit 1
+            ;;
+        esac
+      done
+      ;;
+    checkout)
+      # Block 'checkout -- <path>' which discards uncommitted changes
+      for a2 in "$@"; do
+        if [ "$a2" = "--" ]; then
+          echo "Blocked: git checkout -- disabled during agent phase (.no_agent_commit present)." >&2
+          exit 1
+        fi
+      done
       ;;
   esac
 fi
@@ -271,6 +318,14 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
 /// Returns error if the operation fails.
 pub fn start_agent_phase(helpers: &mut GitHelpers) -> io::Result<()> {
     File::create(".no_agent_commit")?;
+    // Make marker read-only (0o444) to deter agent deletion.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(".no_agent_commit")?.permissions();
+        perms.set_mode(0o444);
+        fs::set_permissions(".no_agent_commit", perms)?;
+    }
     install_hooks()?;
     enable_git_wrapper(helpers)?;
     Ok(())
@@ -282,6 +337,16 @@ pub fn end_agent_phase() {
         return;
     };
     let marker_path = repo_root.join(".no_agent_commit");
+    // Make writable before removal (marker is created as read-only 0o444).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&marker_path) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o200);
+            let _ = fs::set_permissions(&marker_path, perms);
+        }
+    }
     let _ = fs::remove_file(marker_path);
 }
 
@@ -338,10 +403,31 @@ pub fn ensure_agent_phase_protections(logger: &Logger) {
         }
     }
 
+    // Verify/restore marker permissions (read-only 0o444).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&marker_path) {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o444 {
+                logger.warn(&format!(
+                    ".no_agent_commit permissions loosened ({mode:#o}) — restoring to 0o444"
+                ));
+                let mut perms = meta.permissions();
+                perms.set_mode(0o444);
+                let _ = fs::set_permissions(&marker_path, perms);
+            }
+        }
+    }
+
     // Reinstall hooks if tampered (best-effort).
     if let Err(e) = reinstall_hooks_if_tampered(logger) {
         logger.warn(&format!("Failed to verify/reinstall hooks: {e}"));
     }
+
+    // Verify/restore hook permissions (read-only executable 0o555).
+    #[cfg(unix)]
+    super::hooks::enforce_hook_permissions(logger);
 }
 
 fn cleanup_git_wrapper_dir_silent() {
@@ -393,6 +479,16 @@ pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     let marker_path = repo_root.join(".no_agent_commit");
 
     if marker_path.exists() {
+        // Make writable before removal (marker is created as read-only 0o444).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&marker_path) {
+                let mut perms = meta.permissions();
+                perms.set_mode(perms.mode() | 0o200);
+                let _ = fs::set_permissions(&marker_path, perms);
+            }
+        }
         fs::remove_file(&marker_path)?;
         logger.success("Removed orphaned .no_agent_commit marker");
     } else {
@@ -590,5 +686,78 @@ mod tests {
     fn test_marker_file_constant() {
         // Verify the constant matches expected value
         assert_eq!(MARKER_FILE, ".no_agent_commit");
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_merge_rebase_reset() {
+        let content = make_wrapper_content("git");
+        for cmd in &["merge", "rebase", "reset"] {
+            assert!(
+                content.contains(cmd),
+                "wrapper must block '{cmd}' subcommand; got:\n{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_cherry_pick_revert_am_apply() {
+        let content = make_wrapper_content("git");
+        for cmd in &["cherry-pick", "revert", "am", "apply"] {
+            assert!(
+                content.contains(cmd),
+                "wrapper must block '{cmd}' subcommand; got:\n{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_clean_restore() {
+        let content = make_wrapper_content("git");
+        for cmd in &["clean", "restore"] {
+            assert!(
+                content.contains(cmd),
+                "wrapper must block '{cmd}' subcommand; got:\n{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_stash_mutations() {
+        let content = make_wrapper_content("git");
+        // Wrapper must handle stash subcommands: block pop/drop/apply, allow list
+        assert!(
+            content.contains("stash"),
+            "wrapper must handle 'stash' subcommand; got:\n{content}"
+        );
+        for sub in &["pop", "drop"] {
+            assert!(
+                content.contains(sub),
+                "wrapper must block 'stash {sub}'; got:\n{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_branch_delete() {
+        let content = make_wrapper_content("git");
+        // Wrapper must block branch -d/-D while allowing branch (list)
+        assert!(
+            content.contains("-D"),
+            "wrapper must block 'branch -D'; got:\n{content}"
+        );
+        assert!(
+            content.contains("--delete"),
+            "wrapper must block 'branch --delete'; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_checkout_double_dash() {
+        let content = make_wrapper_content("git");
+        // Wrapper must block 'checkout -- <path>' (discard changes)
+        assert!(
+            content.contains("checkout"),
+            "wrapper must handle checkout subcommand; got:\n{content}"
+        );
     }
 }

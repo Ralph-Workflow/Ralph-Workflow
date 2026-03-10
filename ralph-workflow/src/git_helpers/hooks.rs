@@ -87,6 +87,17 @@ fn bash_single_quote_literal(s: &str) -> String {
 /// Marker string for Ralph-managed hooks.
 pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
 
+/// Make a file writable before removal (hooks are installed as 0o555).
+#[cfg(unix)]
+fn make_writable_for_removal(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200); // add owner write
+        let _ = fs::set_permissions(path, perms);
+    }
+}
+
 /// Install a git hook.
 ///
 /// The hook script embeds the repository root path directly, avoiding any
@@ -145,6 +156,12 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
         }
     }
 
+    // Make writable before overwriting (hooks may be installed as read-only 0o555).
+    #[cfg(unix)]
+    if hook_path.exists() {
+        make_writable_for_removal(hook_path);
+    }
+
     // Write new hook with repo root embedded directly (no git CLI dependency).
     let hook_content = format!(
         r#"#!/usr/bin/env bash
@@ -171,12 +188,14 @@ exit 0
     let mut file = File::create(hook_path)?;
     file.write_all(hook_content.as_bytes())?;
 
-    // Make executable.
+    // Make read-only executable (0o555) to deter agent overwriting.
+    // Agents would need to explicitly chmod before overwriting, which is an
+    // additional barrier reinforced by prompt instructions.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(hook_path)?.permissions();
-        perms.set_mode(0o755);
+        perms.set_mode(0o555);
         fs::set_permissions(hook_path, perms)?;
     }
 
@@ -223,6 +242,10 @@ pub fn uninstall_hook(hook_path: &Path, logger: &Logger) -> io::Result<bool> {
 
     // Check if this is a Ralph-managed hook.
     if hook_path.exists() && file_contains_marker(hook_path, HOOK_MARKER)? {
+        // Make writable before removal (hooks are installed as read-only 0o555).
+        #[cfg(unix)]
+        make_writable_for_removal(hook_path);
+
         if orig_path.exists() {
             // Restore original hook.
             fs::rename(&orig_path, hook_path)?;
@@ -285,6 +308,10 @@ pub fn uninstall_hooks_silent() {
     for hook_name in &["pre-commit", "pre-push"] {
         let hook_path = hooks_dir.join(hook_name);
         if hook_path.exists() && matches!(file_contains_marker(&hook_path, HOOK_MARKER), Ok(true)) {
+            // Make writable before removal (hooks are installed as read-only 0o555).
+            #[cfg(unix)]
+            make_writable_for_removal(&hook_path);
+
             let hook_path_abs = fs::canonicalize(&hook_path).unwrap_or_else(|_| hook_path.clone());
             let orig_path = PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display()));
 
@@ -328,6 +355,44 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+/// Verify and restore read-only executable permissions on Ralph-managed hooks.
+///
+/// Checks each Ralph-managed hook (`pre-commit`, `pre-push`) for the expected
+/// permission mode (0o555). If any hook has loosened permissions (e.g., an agent
+/// ran `chmod 755`), this function restores the restrictive permissions.
+///
+/// This is called from `ensure_agent_phase_protections()` after
+/// `reinstall_hooks_if_tampered()`.
+#[cfg(unix)]
+pub fn enforce_hook_permissions(logger: &Logger) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(hooks_dir) = get_hooks_dir() else {
+        return;
+    };
+
+    for hook_name in &["pre-commit", "pre-push"] {
+        let path = hooks_dir.join(hook_name);
+        if !path.exists() {
+            continue;
+        }
+        if !matches!(file_contains_marker(&path, HOOK_MARKER), Ok(true)) {
+            continue;
+        }
+        if let Ok(meta) = fs::metadata(&path) {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode != 0o555 {
+                logger.warn(&format!(
+                    "{hook_name} permissions loosened ({mode:#o}) — restoring to 0o555"
+                ));
+                let mut perms = meta.permissions();
+                perms.set_mode(0o555);
+                let _ = fs::set_permissions(&path, perms);
+            }
+        }
+    }
 }
 
 /// Check if a file contains a specific marker string using the Workspace trait.

@@ -599,6 +599,326 @@ fn test_git_diff_in_repo_is_head_based_after_multiple_commits() {
 }
 
 // =========================================================================
+// File permission tests (hooks and marker)
+// =========================================================================
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_installed_hooks_are_read_only_executable() {
+    // After install_hooks(), hooks should have mode 0o555 (r-xr-xr-x)
+    // to deter agent overwriting.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        for hook_name in &["pre-commit", "pre-push"] {
+            let hook_path = hooks_dir.join(hook_name);
+            assert!(hook_path.exists(), "{hook_name} must exist");
+            let mode = fs::metadata(&hook_path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o555,
+                "{hook_name} should have mode 0o555 (read-only executable), got {mode:#o}"
+            );
+        }
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_marker_file_is_read_only() {
+    // After start_agent_phase(), .no_agent_commit should have mode 0o444 (r--r--r--)
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        assert!(marker.exists(), "marker must exist");
+        let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "marker should have mode 0o444 (read-only), got {mode:#o}"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_uninstall_hooks_handles_read_only() {
+    // Hooks set to 0o555 must still be removable by uninstall_hooks().
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        hooks::install_hooks().unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let pre_commit = hooks_dir.join("pre-commit");
+        assert!(pre_commit.exists(), "precondition: hook must exist");
+
+        uninstall_hooks(&logger).unwrap();
+
+        assert!(
+            !pre_commit.exists(),
+            "hook must be removed even when read-only"
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_end_agent_phase_handles_read_only_marker() {
+    // Marker set to 0o444 must still be removable by end_agent_phase().
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+        assert!(marker.exists(), "precondition: marker must exist");
+
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        uninstall_hooks(&logger).unwrap();
+
+        assert!(
+            !marker.exists(),
+            "marker must be removed even when read-only"
+        );
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_hook_permissions() {
+    // If an agent loosens hook permissions from 0o555 to 0o755,
+    // ensure_agent_phase_protections must restore them to 0o555.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|_dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let hooks_dir = get_hooks_dir().unwrap();
+        let pre_commit = hooks_dir.join("pre-commit");
+
+        // Simulate agent loosening permissions.
+        let mut perms = fs::metadata(&pre_commit).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&pre_commit, perms).unwrap();
+
+        let mode = fs::metadata(&pre_commit).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "precondition: hook must have loosened perms");
+
+        ensure_agent_phase_protections(&logger);
+
+        let mode = fs::metadata(&pre_commit).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o555,
+            "hook permissions must be restored to 0o555 by ensure_agent_phase_protections"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_ensure_agent_phase_protections_restores_marker_permissions() {
+    // If an agent loosens marker permissions from 0o444 to 0o644,
+    // ensure_agent_phase_protections must restore them to 0o444.
+    use std::os::unix::fs::PermissionsExt;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let marker = dir.path().join(".no_agent_commit");
+
+        // Simulate agent loosening permissions.
+        let mut perms = fs::metadata(&marker).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&marker, perms).unwrap();
+
+        let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o644, "precondition: marker must have loosened perms");
+
+        ensure_agent_phase_protections(&logger);
+
+        let mode = fs::metadata(&marker).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "marker permissions must be restored to 0o444 by ensure_agent_phase_protections"
+        );
+
+        // Cleanup
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+// =========================================================================
+// Wrapper script end-to-end tests
+// =========================================================================
+
+/// Helper: create a real git repo with a wrapper installed, return the wrapper path.
+/// The wrapper script is extracted from the installed PATH wrapper.
+fn setup_wrapper_test(dir: &std::path::Path) -> std::path::PathBuf {
+    git2::Repository::init(dir).unwrap();
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase(&mut helpers).unwrap();
+
+    // Read the wrapper script path from the track file.
+    let track_content = fs::read_to_string(dir.join(".agent/git-wrapper-dir.txt")).unwrap();
+    let wrapper_dir = std::path::PathBuf::from(track_content.trim());
+    let wrapper_path = wrapper_dir.join("git");
+    assert!(wrapper_path.exists(), "wrapper script must exist");
+
+    // We need to keep helpers alive to avoid cleanup.
+    // Instead, just leak the wrapper_dir so it isn't deleted.
+    std::mem::forget(helpers);
+
+    wrapper_path
+}
+
+/// Run the wrapper with given args, returning exit code and combined output.
+fn run_wrapper(wrapper_path: &std::path::Path, args: &[&str]) -> (i32, String) {
+    let output = Command::new("sh")
+        .arg(wrapper_path)
+        .args(args)
+        .output()
+        .expect("sh must be available to run wrapper script");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    let code = output.status.code().unwrap_or(-1);
+    (code, combined)
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_merge_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&wrapper, &["merge", "main"]);
+        assert_eq!(code, 1, "merge should be blocked; output: {output}");
+        assert!(
+            output.to_lowercase().contains("blocked"),
+            "output should mention 'blocked'; got: {output}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_rebase_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&wrapper, &["rebase", "main"]);
+        assert_eq!(code, 1, "rebase should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_reset_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&wrapper, &["reset", "--hard"]);
+        assert_eq!(code, 1, "reset should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_allows_status_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, _output) = run_wrapper(&wrapper, &["status"]);
+        assert_eq!(code, 0, "status should be allowed");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_allows_stash_list_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, _output) = run_wrapper(&wrapper, &["stash", "list"]);
+        assert_eq!(code, 0, "stash list should be allowed");
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_stash_pop_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&wrapper, &["stash", "pop"]);
+        assert_eq!(code, 1, "stash pop should be blocked; output: {output}");
+        assert!(output.to_lowercase().contains("blocked"), "got: {output}");
+    });
+}
+
+// =========================================================================
 // Hook integrity enforcement tests
 // =========================================================================
 
@@ -654,7 +974,14 @@ fn test_reinstall_hooks_if_tampered_when_marker_stripped() {
         let hooks_dir = get_hooks_dir().unwrap();
         let pre_commit = hooks_dir.join("pre-commit");
 
-        // Tamper: overwrite with content that lacks the marker.
+        // Tamper: make writable first (hooks are now 0o555), then overwrite.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&pre_commit).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&pre_commit, perms).unwrap();
+        }
         fs::write(&pre_commit, "#!/bin/bash\necho tampered\nexit 0\n").unwrap();
 
         let content = fs::read_to_string(&pre_commit).unwrap();
