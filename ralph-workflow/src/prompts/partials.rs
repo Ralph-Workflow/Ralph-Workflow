@@ -245,6 +245,37 @@ mod tests {
     }
 
     #[test]
+    fn test_no_git_commit_partial_forbids_add_and_init() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("add") && no_git.contains("staging"),
+            "partial should forbid git add"
+        );
+        assert!(no_git.contains("init"), "partial should forbid git init");
+    }
+
+    #[test]
+    fn test_no_git_commit_partial_forbids_file_operations_on_hooks() {
+        let partials = get_shared_partials();
+        let no_git = partials
+            .get("shared/_no_git_commit")
+            .expect("no git commit partial should exist");
+
+        assert!(
+            no_git.contains("rm") || no_git.contains("unlink"),
+            "partial should forbid rm/unlink on hook files"
+        );
+        assert!(
+            no_git.contains("exec") || no_git.contains("env"),
+            "partial should forbid exec/env bypass of PATH wrapper"
+        );
+    }
+
+    #[test]
     fn test_no_git_commit_partial_warns_about_hook_reinstallation() {
         let partials = get_shared_partials();
         let no_git = partials

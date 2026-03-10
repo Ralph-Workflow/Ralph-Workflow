@@ -918,6 +918,42 @@ fn test_git_wrapper_blocks_stash_pop_when_marker_exists() {
     });
 }
 
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_add_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+
+        // Create a test file to add.
+        fs::write(dir.path().join("testfile.txt"), "content").unwrap();
+
+        let (code, output) = run_wrapper(&wrapper, &["add", "testfile.txt"]);
+        assert_eq!(code, 1, "git add should be blocked; output: {output}");
+        assert!(
+            output.to_lowercase().contains("blocked"),
+            "output should mention 'blocked'; got: {output}"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_wrapper_blocks_init_when_marker_exists() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let wrapper = setup_wrapper_test(dir.path());
+        let (code, output) = run_wrapper(&wrapper, &["init"]);
+        assert_eq!(code, 1, "git init should be blocked; output: {output}");
+        assert!(
+            output.to_lowercase().contains("blocked"),
+            "output should mention 'blocked'; got: {output}"
+        );
+    });
+}
+
 // =========================================================================
 // Hook integrity enforcement tests
 // =========================================================================

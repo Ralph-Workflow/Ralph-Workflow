@@ -20,6 +20,7 @@ NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
 - revert — Modifies history
 - am / apply — Modifies repository in uncontrolled way
 - add — Ralph orchestrates ALL staging
+- init — Creating git repositories during agent phase is forbidden
 
 ONLY these git commands are allowed (read-only, non-destructive):
 - `git status` — check repository state
@@ -33,12 +34,16 @@ ONLY these git commands are allowed (read-only, non-destructive):
 - `git ls-files` — list tracked files
 - `git describe` — describe a commit
 
-FORBIDDEN BYPASS ATTEMPTS — DO NOT:
+FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
 - Delete or modify files in `.git/hooks/` — hooks are reinstalled and recreated before EVERY agent run
 - Delete `.no_agent_commit` — this marker is read-only and recreated before EVERY agent run
 - Use absolute paths like `/usr/bin/git` to bypass the PATH wrapper
 - Use `--no-verify` flag — the PATH wrapper blocks commands before hooks run
 - Modify the PATH environment variable to remove or reorder Ralph's git wrapper directory
 - Use `chmod` on any `.git/hooks/` file or `.no_agent_commit`
+- Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files or `.no_agent_commit`
+- Invoke `git init` to reinitialize the repository or create a new git structure
+- Write directly to `.git/hooks/pre-commit` or `.git/hooks/pre-push` to replace hook content
+- Use `exec`, `env`, or other shell builtins to invoke git bypassing the PATH wrapper
 
-Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. Attempting to bypass will FAIL and waste your execution budget. Write your file changes and let Ralph commit them.
+Git hooks and a PATH wrapper ACTIVELY BLOCK forbidden commands. ALL bypass attempts are logged and reported to the user as security violations. The agent's task will be considered FAILED. Hooks are reinstalled before EVERY agent run, so deletion is pointless and wastes your execution budget. Write your file changes and let Ralph commit them.

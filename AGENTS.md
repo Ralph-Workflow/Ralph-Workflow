@@ -37,6 +37,8 @@ Ralph is the ONLY entity allowed to commit. Accidental commits break the determi
 - `git cherry-pick` — Modifies history
 - `git revert` — Modifies history
 - `git am` / `git apply` — Modifies working tree in uncontrolled way
+- `git add` — Ralph orchestrates ALL staging
+- `git init` — Creating git repositories during agent phase is forbidden
 
 ### ONLY these git commands are allowed (read-only, non-destructive):
 
@@ -69,6 +71,13 @@ You MUST NEVER:
 - Use an absolute path (e.g., `/usr/bin/git`, `/opt/homebrew/bin/git`) to invoke git directly and bypass the PATH wrapper
 - Delete or modify any file in `.git/hooks/` that contains `RALPH_RUST_MANAGED_HOOK`
 - Modify the `PATH` environment variable to remove or reorder Ralph's git wrapper directory
+- Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files
+- Write to or overwrite `.git/hooks/pre-commit` or `.git/hooks/pre-push` files
+- Run `chmod` on `.git/hooks/` files or `.no_agent_commit` to change permissions
+- Run `git init` to reinitialize the repository or create a new one
+- Use `exec`, `env`, or other shell builtins to invoke git bypassing the PATH wrapper
+
+**CONSEQUENCES:** Any bypass attempt is logged as a security violation. Ralph will detect the tampering before the next agent run, reinstall all protections, and report the violation. The agent run will be considered a failure.
 
 **Why this matters:**
 - Ralph reinstalls hooks before every agent invocation — tampering will be detected immediately

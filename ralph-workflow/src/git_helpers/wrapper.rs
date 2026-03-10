@@ -83,7 +83,7 @@ fn escape_shell_single_quoted(path: &str) -> io::Result<String> {
 ///
 /// Blocked commands fall into three categories:
 /// - **Unconditionally blocked**: commit, push, tag, merge, rebase, reset,
-///   cherry-pick, revert, am, apply, clean, restore
+///   cherry-pick, revert, am, apply, clean, restore, add, init
 /// - **Conditionally blocked**: stash (pop/drop/apply/push/store/create/clear
 ///   blocked, list allowed), branch (-d/-D/--delete blocked, list allowed),
 ///   checkout (-- blocked to prevent discarding changes)
@@ -117,7 +117,7 @@ if [ -f "$repo_root/.no_agent_commit" ]; then
     esac
   done
   case "$subcmd" in
-    commit|push|tag|merge|rebase|reset|cherry-pick|revert|am|apply|clean|restore)
+    commit|push|tag|merge|rebase|reset|cherry-pick|revert|am|apply|clean|restore|add|init)
       echo "Blocked: git $subcmd disabled during agent phase (.no_agent_commit present)." >&2
       exit 1
       ;;
@@ -748,6 +748,26 @@ mod tests {
         assert!(
             content.contains("--delete"),
             "wrapper must block 'branch --delete'; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_add() {
+        let content = make_wrapper_content("git");
+        // The unconditionally blocked case statement must include "add"
+        assert!(
+            content.contains("|add|"),
+            "wrapper must block 'add' subcommand in unconditional block list; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_init() {
+        let content = make_wrapper_content("git");
+        // The unconditionally blocked case statement must include "init"
+        assert!(
+            content.contains("init)"),
+            "wrapper must block 'init' subcommand in unconditional block list; got:\n{content}"
         );
     }
 
