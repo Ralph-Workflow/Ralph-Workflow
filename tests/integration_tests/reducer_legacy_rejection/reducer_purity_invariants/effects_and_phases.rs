@@ -119,6 +119,7 @@ fn test_effects_are_single_task() {
             Effect::ArchiveCommitXml,
             Effect::CreateCommit {
                 message: "test".to_string(),
+                files: vec![],
             },
             Effect::SkipCommit {
                 reason: "test".to_string(),

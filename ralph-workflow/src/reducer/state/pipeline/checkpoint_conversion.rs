@@ -154,6 +154,7 @@ impl PipelineState {
             commit_xml_extracted: false,
             commit_validated_outcome: None,
             commit_xml_archived: false,
+            commit_selected_files: Vec::new(),
             context_cleaned: false,
             agent_chain,
             rebase: rebase_state,

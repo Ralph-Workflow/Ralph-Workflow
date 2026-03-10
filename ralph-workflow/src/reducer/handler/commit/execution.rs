@@ -41,12 +41,24 @@ impl MainEffectHandler {
     pub(in crate::reducer::handler) fn create_commit(
         ctx: &PhaseContext<'_>,
         message: String,
+        files: &[String],
     ) -> Result<EffectResult> {
-        use crate::git_helpers::{git_add_all_in_repo, git_commit_in_repo};
+        use crate::git_helpers::{
+            git_add_all_in_repo, git_add_specific_in_repo, git_commit_in_repo,
+        };
 
-        git_add_all_in_repo(ctx.repo_root).map_err(|err| ErrorEvent::GitAddAllFailed {
-            kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-        })?;
+        if files.is_empty() {
+            git_add_all_in_repo(ctx.repo_root).map_err(|err| ErrorEvent::GitAddAllFailed {
+                kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+            })?;
+        } else {
+            let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
+            git_add_specific_in_repo(ctx.repo_root, &file_refs).map_err(
+                |err: std::io::Error| ErrorEvent::GitAddAllFailed {
+                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                },
+            )?;
+        }
 
         match git_commit_in_repo(ctx.repo_root, &message, None, None, Some(ctx.executor)) {
             Ok(Some(hash)) => Ok(EffectResult::event(PipelineEvent::commit_created(

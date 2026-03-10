@@ -194,3 +194,39 @@ For complex changes, use detailed body tags instead of <ralph-body>:
 
 Only <ralph-subject> is required. Body tags are optional.
 Use EITHER <ralph-body> OR the detailed tags, not both.
+
+## FILE SELECTION (OPTIONAL)
+
+By default, ALL staged/unstaged changes are committed. Use `<ralph-files>` ONLY when the diff
+contains logically unrelated changes and you want to commit a coherent subset.
+
+**Precedence policy:**
+- `<ralph-files>` absent or empty → commit everything (default)
+- `<ralph-files>` present with files → commit ONLY those files (selective staging)
+
+**When to use file selection:**
+- The diff mixes unrelated work (e.g., bug fix + unrelated refactor)
+- You want to produce a clean, focused commit from a noisy working tree
+- The subject/body would be misleading if all changes were included
+
+**When NOT to use file selection:**
+- All changes belong to the same logical unit (the common case)
+- You are unsure — omit `<ralph-files>` to commit everything safely
+
+**Example — commit only specific files:**
+```xml
+<ralph-commit>
+<ralph-subject>fix(auth): prevent token expiry race condition</ralph-subject>
+<ralph-body>Only the auth module files contain this fix; other changes are unrelated.</ralph-body>
+<ralph-files>
+  <ralph-file>src/auth/token.rs</ralph-file>
+  <ralph-file>tests/auth/token_expiry_test.rs</ralph-file>
+</ralph-files>
+</ralph-commit>
+```
+
+Rules for `<ralph-files>`:
+- Each `<ralph-file>` is a repo-relative path (no leading slash)
+- List every file needed for the commit to make sense — missing a file = broken commit
+- `<ralph-files>` cannot be combined with `<ralph-skip>`
+- At least one `<ralph-file>` is required when `<ralph-files>` is present

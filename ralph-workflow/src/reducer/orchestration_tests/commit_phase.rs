@@ -199,7 +199,7 @@ fn test_commit_generated_creates_commit() {
 
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message } => {
+        Effect::CreateCommit { message, files: _ } => {
             assert_eq!(message, "test commit message");
         }
         _ => panic!("Expected CreateCommit effect, got {effect:?}"),
@@ -291,6 +291,44 @@ fn test_commit_diff_prepared_invalidates_materialized_commit_inputs() {
         matches!(effect, Effect::MaterializeCommitInputs { attempt: 1 }),
         "Expected MaterializeCommitInputs after diff prepared, got {effect:?}"
     );
+}
+
+#[test]
+fn test_create_commit_uses_selected_files_from_state() {
+    // When commit_selected_files is populated in state, Effect::CreateCommit.files must
+    // reflect those files exactly so the handler stages only the listed files.
+    use crate::reducer::state::AgentChainState;
+
+    let selected_files = vec!["src/foo.rs".to_string(), "tests/bar.rs".to_string()];
+
+    let mut state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        commit: crate::reducer::state::CommitState::Generated {
+            message: "feat: add foo".to_string(),
+        },
+        commit_xml_archived: true,
+        commit_selected_files: selected_files.clone(),
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        ),
+        ..create_test_state()
+    };
+    state.prompt_permissions.locked = true;
+    state.prompt_permissions.restore_needed = true;
+
+    let effect = determine_next_effect(&state);
+    match effect {
+        Effect::CreateCommit { message, files } => {
+            assert_eq!(message, "feat: add foo");
+            assert_eq!(
+                files, selected_files,
+                "Effect::CreateCommit.files must equal state.commit_selected_files"
+            );
+        }
+        _ => panic!("Expected CreateCommit effect, got {effect:?}"),
+    }
 }
 
 #[test]

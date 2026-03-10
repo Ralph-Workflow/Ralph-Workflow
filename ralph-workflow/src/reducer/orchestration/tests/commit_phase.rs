@@ -178,7 +178,7 @@ fn test_determine_effect_commit_message_generated() {
     };
     let effect = determine_next_effect(&state);
     match effect {
-        Effect::CreateCommit { message } => {
+        Effect::CreateCommit { message, files: _ } => {
             assert_eq!(message, "test commit message");
         }
         _ => panic!("Expected CreateCommit effect, got {effect:?}"),
@@ -578,7 +578,7 @@ fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
             Effect::ValidateCommitXml => {
                 state = reduce(
                     state,
-                    PipelineEvent::commit_xml_validated("test commit".to_string(), 1),
+                    PipelineEvent::commit_xml_validated("test commit".to_string(), vec![], 1),
                 );
             }
             Effect::ApplyCommitMessageOutcome => {

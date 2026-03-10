@@ -47,13 +47,14 @@ pub fn validate_xml_against_xsd(
 ) -> Result<CommitMessageElements, XsdValidationError> {
     use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
 
-    const VALID_TAGS: [&str; 6] = [
+    const VALID_TAGS: [&str; 7] = [
         "ralph-subject",
         "ralph-body",
         "ralph-body-summary",
         "ralph-body-details",
         "ralph-body-footer",
         "ralph-skip",
+        "ralph-files",
     ];
 
     let content = xml_content.trim();
@@ -108,6 +109,7 @@ pub fn validate_xml_against_xsd(
     let mut body_details: Option<String> = None;
     let mut body_footer: Option<String> = None;
     let mut skip_reason: Option<String> = None;
+    let mut files: Vec<String> = Vec::new();
 
     loop {
         buf.clear();
@@ -303,6 +305,71 @@ pub fn validate_xml_against_xsd(
                         }
                         skip_reason = Some(read_text_until_end(&mut reader, b"ralph-skip")?);
                     }
+                    b"ralph-files" => {
+                        if skip_reason.is_some() {
+                            return Err(XsdValidationError {
+                                error_type: XsdErrorType::UnexpectedElement,
+                                element_path: "ralph-commit/ralph-files".to_string(),
+                                expected: "either commit message elements OR ralph-skip, not both"
+                                    .to_string(),
+                                found: "ralph-files cannot be used with ralph-skip".to_string(),
+                                suggestion: "Remove ralph-files when using ralph-skip.".to_string(),
+                                example: Some(EXAMPLE_COMMIT_XML.into()),
+                            });
+                        }
+                        let mut file_list: Vec<String> = Vec::new();
+                        loop {
+                            buf.clear();
+                            match reader.read_event_into(&mut buf) {
+                                Ok(Event::Start(ref e))
+                                    if e.name().as_ref() == b"ralph-file" =>
+                                {
+                                    let text =
+                                        read_text_until_end(&mut reader, b"ralph-file")?;
+                                    let trimmed = text.trim().to_string();
+                                    if !trimmed.is_empty() {
+                                        file_list.push(trimmed);
+                                    }
+                                }
+                                Ok(Event::End(ref e))
+                                    if e.name().as_ref() == b"ralph-files" =>
+                                {
+                                    break;
+                                }
+                                Ok(Event::Text(ref t))
+                                    if t.unescape()
+                                        .unwrap_or_default()
+                                        .trim()
+                                        .is_empty() => {}
+                                Ok(Event::Eof) => {
+                                    return Err(XsdValidationError {
+                                        error_type: XsdErrorType::MalformedXml,
+                                        element_path: "ralph-commit/ralph-files".to_string(),
+                                        expected: "closing </ralph-files> tag".to_string(),
+                                        found: "end of content without closing tag".to_string(),
+                                        suggestion:
+                                            "Add </ralph-files> to close the file list."
+                                                .to_string(),
+                                        example: Some(EXAMPLE_COMMIT_XML.into()),
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+                        if file_list.is_empty() {
+                            return Err(XsdValidationError {
+                                error_type: XsdErrorType::InvalidContent,
+                                element_path: "ralph-commit/ralph-files".to_string(),
+                                expected: "at least one ralph-file child element".to_string(),
+                                found: "ralph-files with no ralph-file children".to_string(),
+                                suggestion:
+                                    "Either add ralph-file elements or omit ralph-files entirely."
+                                        .to_string(),
+                                example: Some(EXAMPLE_COMMIT_XML.into()),
+                            });
+                        }
+                        files = file_list;
+                    }
                     other => {
                         // Skip unknown element but report error
                         let _ = skip_to_end(&mut reader, other);
@@ -370,6 +437,7 @@ pub fn validate_xml_against_xsd(
             body_details: None,
             body_footer: None,
             skip_reason: Some(skip.to_string()),
+            files: vec![],
         });
     }
 
@@ -411,6 +479,7 @@ pub fn validate_xml_against_xsd(
         body_details: body_details.filter(|s| !s.is_empty()),
         body_footer: body_footer.filter(|s| !s.is_empty()),
         skip_reason: None,
+        files,
     })
 }
 
@@ -434,6 +503,11 @@ pub struct CommitMessageElements {
     /// Optional skip reason (mutually exclusive with commit message)
     /// When present, indicates AI determined no commit is needed
     pub skip_reason: Option<String>,
+    /// Optional list of files to selectively stage for this commit.
+    ///
+    /// When empty (the default), all changed files are committed.
+    /// When non-empty, only the listed paths are staged.
+    pub files: Vec<String>,
 }
 
 impl CommitMessageElements {

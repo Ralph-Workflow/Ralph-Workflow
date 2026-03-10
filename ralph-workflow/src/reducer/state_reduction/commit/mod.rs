@@ -110,12 +110,17 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             }),
             ..state
         },
-        CommitEvent::CommitXmlValidated { message, attempt } => PipelineState {
+        CommitEvent::CommitXmlValidated {
+            message,
+            attempt,
+            files,
+        } => PipelineState {
             commit_validated_outcome: Some(crate::reducer::state::CommitValidatedOutcome {
                 attempt,
                 message: Some(message),
                 reason: None,
             }),
+            commit_selected_files: files,
             ..state
         },
         CommitEvent::CommitXmlValidationFailed { reason, attempt } => PipelineState {

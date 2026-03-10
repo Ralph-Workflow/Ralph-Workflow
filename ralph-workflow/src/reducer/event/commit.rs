@@ -80,6 +80,12 @@ pub enum CommitEvent {
         message: String,
         /// The attempt number.
         attempt: u32,
+        /// Optional list of files to selectively commit.
+        ///
+        /// Empty means commit all changed files.
+        /// Defaults to empty for backward compatibility with old checkpoints.
+        #[serde(default)]
+        files: Vec<String>,
     },
     /// Commit message XML validation failed.
     CommitXmlValidationFailed {

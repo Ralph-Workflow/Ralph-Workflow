@@ -311,7 +311,7 @@ fn test_complete_pipeline_flow() {
             Effect::ValidateCommitXml => {
                 state = reduce(
                     state,
-                    PipelineEvent::commit_xml_validated("test commit".to_string(), 1),
+                    PipelineEvent::commit_xml_validated("test commit".to_string(), vec![], 1),
                 );
             }
             Effect::ApplyCommitMessageOutcome => {
@@ -466,7 +466,7 @@ fn test_pipeline_skips_planning_dev_when_zero_iterations() {
             Effect::ValidateCommitXml => {
                 state = reduce(
                     state,
-                    PipelineEvent::commit_xml_validated("test".to_string(), 1),
+                    PipelineEvent::commit_xml_validated("test".to_string(), vec![], 1),
                 );
             }
             Effect::ApplyCommitMessageOutcome => {

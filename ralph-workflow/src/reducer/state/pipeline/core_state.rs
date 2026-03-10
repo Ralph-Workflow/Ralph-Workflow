@@ -162,6 +162,14 @@ pub struct PipelineState {
     /// Stores the validated commit outcome for the current attempt.
     #[serde(default)]
     pub commit_validated_outcome: Option<CommitValidatedOutcome>,
+    /// Files to selectively stage for the next commit.
+    ///
+    /// Populated from `CommitXmlValidated.files` when the commit agent specifies
+    /// a file list. Empty means commit all changed files (default behavior).
+    ///
+    /// Cleared whenever commit phase state is reset.
+    #[serde(default)]
+    pub commit_selected_files: Vec<String>,
     /// Tracks whether commit XML has been archived for the current attempt.
     #[serde(default)]
     pub commit_xml_archived: bool,
