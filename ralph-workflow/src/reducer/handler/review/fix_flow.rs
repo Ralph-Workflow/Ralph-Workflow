@@ -380,7 +380,7 @@ impl MainEffectHandler {
         use std::path::Path;
 
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Reviewer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Fix);
 
         let prompt = match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
             Ok(s) => s,

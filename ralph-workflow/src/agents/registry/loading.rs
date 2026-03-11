@@ -37,6 +37,10 @@ impl AgentRegistry {
             self.fallback = chain.clone();
         }
 
+        self.resolved_drains = unified
+            .resolve_agent_drains()
+            .unwrap_or_else(|| self.fallback.resolve_drains());
+
         loaded
     }
 

@@ -119,7 +119,8 @@ impl MockEffectHandler {
                 ))
             }
 
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
+                let role = drain.role();
                 // Emit phase transition when initializing agent chain for a new phase
                 let ui = match role {
                     crate::agents::AgentRole::Developer
@@ -142,7 +143,7 @@ impl MockEffectHandler {
                 };
                 Some((
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["mock_agent".to_string()],
                         3,
                         1000,

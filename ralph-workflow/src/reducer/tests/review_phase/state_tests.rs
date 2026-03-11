@@ -76,7 +76,8 @@ fn test_commit_created_clears_agent_chain_when_transitioning_to_review() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                role: crate::agents::AgentRole::Reviewer,
+                ..
             }
         ),
         "Orchestration should emit InitializeAgentChain for Reviewer, got {effect:?}"
@@ -161,7 +162,8 @@ fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                role: crate::agents::AgentRole::Reviewer,
+                ..
             }
         ),
         "Expected InitializeAgentChain for Reviewer before fix attempt, got {effect:?}"
@@ -332,7 +334,8 @@ fn test_full_pipeline_flow_uses_correct_reviewer_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                role: crate::agents::AgentRole::Reviewer,
+                ..
             }
         ),
         "Should request reviewer chain initialization, got {effect:?}"
@@ -410,7 +413,8 @@ fn test_event_loop_state_consistency_for_review_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                role: crate::agents::AgentRole::Reviewer,
+                ..
             }
         ),
         "Expected InitializeAgentChain, got {effect:?}"
@@ -647,7 +651,8 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                role: crate::agents::AgentRole::Reviewer,
+                ..
             }
         ),
         "Orchestration should request reviewer chain initialization, got {effect:?}"

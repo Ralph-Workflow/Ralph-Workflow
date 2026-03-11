@@ -27,11 +27,11 @@ fn test_review_runs_exactly_n_passes() {
             Effect::RestorePromptPermissions => {
                 state = reduce(state, PipelineEvent::prompt_permissions_restored());
             }
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,
@@ -104,7 +104,27 @@ fn test_review_triggers_fix_when_issues_found() {
 
     assert!(state.review_issues_found);
 
-    // With a populated Reviewer chain, orchestration should begin the fix chain.
+    // Review and fix are distinct drains, so a completed review with issues must
+    // reinitialize into the fix drain before prompting.
+    let effect = determine_next_effect(&state);
+    assert!(matches!(
+        effect,
+        Effect::InitializeAgentChain {
+            drain: crate::agents::AgentDrain::Fix,
+            ..
+        }
+    ));
+    state = reduce(
+        state,
+        PipelineEvent::agent_chain_initialized(
+            crate::agents::AgentDrain::Fix,
+            vec!["claude".to_string()],
+            3,
+            1000,
+            2.0,
+            60000,
+        ),
+    );
     let effect = determine_next_effect(&state);
     assert!(matches!(effect, Effect::PrepareFixPrompt { pass: 0, .. }));
 
@@ -126,13 +146,14 @@ fn test_review_triggers_fix_when_issues_found() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit
+            drain: crate::agents::AgentDrain::Commit,
+            ..
         }
     ));
     state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Commit,
+            crate::agents::AgentDrain::Commit,
             vec!["claude".to_string()],
             3,
             1000,
@@ -259,6 +280,34 @@ fn test_review_skips_fix_when_no_issues() {
         matches!(effect, Effect::PrepareReviewContext { pass: 1 }),
         "Expected PrepareReviewContext pass 1, got {effect:?}"
     );
+}
+
+#[test]
+fn test_review_with_issues_initializes_fix_drain_when_chain_targets_review() {
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: 0,
+        total_reviewer_passes: 1,
+        review_issues_found: true,
+        agent_chain: PipelineState::initial(1, 1)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
+        ..create_test_state()
+    };
+
+    let effect = determine_next_effect(&state);
+    assert!(matches!(
+        effect,
+        Effect::InitializeAgentChain {
+            drain: crate::agents::AgentDrain::Fix,
+            ..
+        }
+    ));
 }
 
 #[test]

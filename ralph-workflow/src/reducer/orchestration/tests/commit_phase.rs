@@ -18,7 +18,8 @@ fn test_determine_effect_commit_message_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit
+            role: AgentRole::Commit,
+            ..
         }
     ));
 }
@@ -43,7 +44,8 @@ fn test_determine_effect_commit_message_role_mismatch_reinitializes_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit
+            role: AgentRole::Commit,
+            ..
         }
     ));
 }
@@ -453,11 +455,11 @@ fn test_check_commit_diff_emitted_on_each_commit_phase_entry() {
                     PipelineEvent::development_continuation_context_cleaned(),
                 );
             }
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["commit-agent".to_string()],
                         3,
                         1000,

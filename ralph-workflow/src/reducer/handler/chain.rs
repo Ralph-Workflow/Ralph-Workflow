@@ -1,5 +1,5 @@
 use super::MainEffectHandler;
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::phases::{get_primary_commit_agent, PhaseContext};
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
@@ -8,12 +8,16 @@ impl MainEffectHandler {
     pub(super) fn initialize_agent_chain(
         &self,
         ctx: &PhaseContext<'_>,
-        role: AgentRole,
+        drain: AgentDrain,
     ) -> EffectResult {
+        let role = drain.role();
         let fallback_config = ctx.registry.fallback_config();
 
         // Get the full fallback chain for this role from the FallbackConfig
-        let mut agents = fallback_config.get_fallbacks(role).to_vec();
+        let mut agents = ctx.registry.resolved_drain(drain).map_or_else(
+            || fallback_config.get_fallbacks(role).to_vec(),
+            |binding| binding.agents.clone(),
+        );
 
         // If no fallbacks configured, fall back to context agent
         if agents.is_empty() {
@@ -24,7 +28,7 @@ impl MainEffectHandler {
                         commit_agent
                     } else {
                         return EffectResult::event(PipelineEvent::agent_chain_initialized(
-                            role,
+                            drain,
                             vec![],
                             fallback_config.max_cycles,
                             fallback_config.retry_delay_ms,
@@ -45,7 +49,7 @@ impl MainEffectHandler {
         ));
 
         let event = PipelineEvent::agent_chain_initialized(
-            role,
+            drain,
             agents,
             fallback_config.max_cycles,
             fallback_config.retry_delay_ms,

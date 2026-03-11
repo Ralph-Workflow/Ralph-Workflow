@@ -26,7 +26,7 @@
 //!   - iteration > `total_iterations` (abnormal: exceeds configured iterations)
 //!   - `total_iterations` == 0 (no iterations configured)
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::{ContinuationContextData, Effect};
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{DevelopmentStatus, PipelineState, PromptMode};
@@ -63,17 +63,19 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
 
     if state.agent_chain.agents.is_empty() {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: AgentDrain::Development,
+            role: AgentDrain::Development.role(),
         };
     }
 
     // Development phase runs two distinct roles (Developer then Analysis). Ensure
     // we are on the developer chain before preparing/invoking the developer agent.
     if state.development_agent_invoked_iteration != Some(state.iteration)
-        && state.agent_chain.current_role != AgentRole::Developer
+        && state.agent_chain.current_drain != AgentDrain::Development
     {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: AgentDrain::Development,
+            role: AgentDrain::Development.role(),
         };
     }
 
@@ -138,9 +140,10 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
         if state.development_agent_invoked_iteration == Some(state.iteration)
             && state.analysis_agent_invoked_iteration != Some(state.iteration)
         {
-            if state.agent_chain.current_role != AgentRole::Analysis {
+            if state.agent_chain.current_drain != AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis,
+                    drain: AgentDrain::Analysis,
+                    role: AgentDrain::Analysis.role(),
                 };
             }
             return Effect::InvokeAnalysisAgent {

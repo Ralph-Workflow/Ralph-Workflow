@@ -19,7 +19,8 @@ fn test_determine_effect_review_phase_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            role: AgentRole::Reviewer,
+            ..
         }
     ));
 }
@@ -32,6 +33,7 @@ fn test_determine_effect_review_phase_exhausted_chain() {
             vec![vec![]],
             AgentRole::Reviewer,
         )
+        .with_drain(crate::agents::AgentDrain::Review)
         .with_max_cycles(3);
     chain = chain.start_retry_cycle();
     chain = chain.start_retry_cycle();
@@ -56,6 +58,7 @@ fn test_determine_effect_review_exhausted_chain_after_checkpoint_aborts() {
             vec![vec![]],
             AgentRole::Reviewer,
         )
+        .with_drain(crate::agents::AgentDrain::Review)
         .with_max_cycles(3);
     chain = chain.start_retry_cycle();
     chain = chain.start_retry_cycle();
@@ -79,11 +82,14 @@ fn test_determine_effect_review_phase_with_chain() {
         phase: PipelinePhase::Review,
         reviewer_pass: 1,
         total_reviewer_passes: 2,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         ..create_test_state()
     };
     let effect = determine_next_effect(&state);
@@ -104,11 +110,14 @@ fn test_resume_scenario_at_final_review_pass_runs_work() {
         phase: PipelinePhase::Review,
         reviewer_pass: 2,
         total_reviewer_passes: 2,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         // Explicitly set all progress flags to None to simulate resume state
         review_context_prepared_pass: None,
         review_prompt_prepared_pass: None,
@@ -140,11 +149,14 @@ fn test_review_triggers_fix_when_issues_found() {
         reviewer_pass: 0,
         total_reviewer_passes: 2,
         review_issues_found: false,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         ..create_test_state()
     };
 
@@ -164,11 +176,17 @@ fn test_review_triggers_fix_when_issues_found() {
         "review_issues_found should be true"
     );
 
-    // With a populated Reviewer chain, orchestration should begin the fix chain.
+    // With explicit drains, review completion with issues should initialize the fix drain first.
     let effect = determine_next_effect(&state);
     assert!(
-        matches!(effect, Effect::PrepareFixPrompt { pass: 0, .. }),
-        "Expected PrepareFixPrompt after issues found, got {effect:?}"
+        matches!(
+            effect,
+            Effect::InitializeAgentChain {
+                drain: crate::agents::AgentDrain::Fix,
+                ..
+            }
+        ),
+        "Expected fix drain initialization after issues found, got {effect:?}"
     );
 
     // After fix completes, goes to CommitMessage phase
@@ -211,11 +229,14 @@ fn test_review_triggers_fix_when_issues_found() {
 fn test_review_runs_exactly_n_passes() {
     // Similar to development iteration test, verify review passes count
     let mut state = PipelineState::initial(0, 3); // 0 dev, 3 review passes
-    state.agent_chain = state.agent_chain.with_agents(
-        vec!["claude".to_string()],
-        vec![vec![]],
-        AgentRole::Reviewer,
-    );
+    state.agent_chain = state
+        .agent_chain
+        .with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        )
+        .with_drain(crate::agents::AgentDrain::Review);
 
     let mut passes_run = Vec::new();
     let max_steps = 30;
@@ -230,11 +251,11 @@ fn test_review_runs_exactly_n_passes() {
             Effect::RestorePromptPermissions => {
                 state = reduce(state, PipelineEvent::prompt_permissions_restored());
             }
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,
@@ -294,11 +315,14 @@ fn test_review_skips_fix_when_no_issues() {
         reviewer_pass: 0,
         total_reviewer_passes: 2,
         review_issues_found: false,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         ..create_test_state()
     };
 
@@ -350,7 +374,8 @@ fn test_determine_effect_review_phase_with_wrong_role_chain() {
         matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer
+                role: AgentRole::Reviewer,
+                ..
             }
         ),
         "Expected InitializeAgentChain with Reviewer role, got {effect:?}"
@@ -371,11 +396,14 @@ fn test_resume_at_final_review_pass_should_run_review_not_skip() {
         reviewer_pass: 2,
         total_reviewer_passes: 2,
         review_issues_found: false,
-        agent_chain: PipelineState::initial(3, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(3, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         // All progress flags None - simulating resume state
         review_context_prepared_pass: None,
         review_prompt_prepared_pass: None,
@@ -411,11 +439,13 @@ fn test_resume_at_final_review_pass_with_no_progress_should_run_review() {
         reviewer_pass: 2,
         total_reviewer_passes: 2,
         review_issues_found: false,
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         // All progress flags are None (simulating resume state)
         review_context_prepared_pass: None,
         review_prompt_prepared_pass: None,
@@ -442,11 +472,13 @@ fn test_resume_at_review_pass_zero_with_total_one_runs_work() {
         reviewer_pass: 0,
         total_reviewer_passes: 1,
         review_issues_found: false,
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         review_agent_invoked_pass: None,
         ..create_test_state()
     };
@@ -477,11 +509,14 @@ fn test_review_pass_completed_applies_outcome_not_reruns() {
         reviewer_pass: 2,
         total_reviewer_passes: 2,
         review_issues_found: false,
-        agent_chain: PipelineState::initial(3, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: PipelineState::initial(3, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
         // Work is complete - archived flag is set
         review_issues_xml_archived_pass: Some(2),
         // Other progress flags set to indicate completion

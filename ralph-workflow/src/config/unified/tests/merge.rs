@@ -291,6 +291,52 @@ fn test_merge_with_ccs_empty_string_preserves_global() {
 }
 
 #[test]
+fn test_resolve_agent_drains_checked_rejects_mixed_legacy_and_named_schema() {
+    let config = UnifiedConfig {
+        agent_chain: Some(crate::agents::fallback::FallbackConfig {
+            developer: vec!["codex".to_string()],
+            ..Default::default()
+        }),
+        agent_chains: std::collections::HashMap::from([(
+            "shared_dev".to_string(),
+            vec!["claude".to_string()],
+        )]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("mixed schemas should fail");
+
+    assert!(error.contains("agent_chain"));
+    assert!(error.contains("agent_chains/agent_drains"));
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([(
+            "shared_review".to_string(),
+            vec!["claude".to_string()],
+        )]),
+        agent_drains: std::collections::HashMap::from([
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("missing built-in drains should fail");
+
+    assert!(error.contains("planning"));
+    assert!(error.contains("development"));
+    assert!(error.contains("commit"));
+    assert!(error.contains("analysis"));
+}
+
+#[test]
 fn test_merge_with_ccs_all_empty_preserves_all_global() {
     let global = UnifiedConfig {
         ccs: CcsConfig {

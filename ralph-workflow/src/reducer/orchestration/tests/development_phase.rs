@@ -18,7 +18,8 @@ fn test_determine_effect_development_phase_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         }
     ));
 }
@@ -149,7 +150,8 @@ fn test_development_initializes_analysis_chain_before_invoking_analysis() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Analysis
+            role: AgentRole::Analysis,
+            ..
         }
     ));
 }
@@ -422,11 +424,11 @@ fn test_development_runs_exactly_n_iterations() {
                 // Phase complete
                 break;
             }
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,

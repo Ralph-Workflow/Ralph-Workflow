@@ -1,6 +1,6 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::executor::ChildProcessInfo;
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +86,8 @@ pub enum AgentEvent {
     },
     /// Agent chain initialized with available agents.
     ChainInitialized {
+        /// The explicit runtime drain this chain is for.
+        drain: AgentDrain,
         /// The role this chain is for.
         role: AgentRole,
         /// The agents available in this chain.

@@ -34,11 +34,13 @@ fn test_gitignore_ensured_before_cleanup() {
             phase: PipelinePhase::Planning,
             gitignore_entries_ensured: false,
             context_cleaned: false,
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["test-agent".to_string()],
-                vec![vec!["test-model".to_string()]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["test-agent".to_string()],
+                    vec![vec!["test-model".to_string()]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             ..with_locked_prompt_permissions(PipelineState::initial(1, 1))
         };
 
@@ -63,11 +65,13 @@ fn test_gitignore_ensured_proceeds_to_cleanup() {
             phase: PipelinePhase::Planning,
             gitignore_entries_ensured: true,
             context_cleaned: false,
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["test-agent".to_string()],
-                vec![vec!["test-model".to_string()]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["test-agent".to_string()],
+                    vec![vec!["test-model".to_string()]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             ..with_locked_prompt_permissions(PipelineState::initial(1, 1))
         };
 
@@ -93,11 +97,13 @@ fn test_gitignore_not_rerun_on_resume() {
             phase: PipelinePhase::Planning,
             gitignore_entries_ensured: true,
             context_cleaned: false,
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["test-agent".to_string()],
-                vec![vec!["test-model".to_string()]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["test-agent".to_string()],
+                    vec![vec!["test-model".to_string()]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             ..with_locked_prompt_permissions(PipelineState::initial(1, 1))
         };
 
@@ -132,7 +138,8 @@ fn test_gitignore_after_agent_chain_init() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 }
             ),
             "Expected InitializeAgentChain before gitignore, got {effect:?}"

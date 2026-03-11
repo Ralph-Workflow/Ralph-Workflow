@@ -32,7 +32,8 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            role: AgentRole::Reviewer,
+            ..
         }
     ));
 

@@ -37,7 +37,8 @@ fn test_development_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 }
             ),
             "Development with empty chain must emit InitializeAgentChain, got {effect:?}"
@@ -63,7 +64,8 @@ fn test_planning_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 }
             ),
             "Planning with empty chain must emit InitializeAgentChain, got {effect:?}"
@@ -89,7 +91,8 @@ fn test_review_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer
+                    role: AgentRole::Reviewer,
+                    ..
                 }
             ),
             "Review with empty chain must emit InitializeAgentChain for Reviewer, got {effect:?}"
@@ -174,7 +177,8 @@ fn test_agent_chain_clears_on_dev_to_review_transition() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer
+                    role: AgentRole::Reviewer,
+                    ..
                 }
             ),
             "After dev->review transition, orchestration must require chain re-initialization, got: {effect:?}"

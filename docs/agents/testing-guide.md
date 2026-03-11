@@ -357,6 +357,8 @@ Tests are first-class architecture components. When a test is hard to write, sim
 | Effect handlers (`app/`, `effects/`) | I/O, process spawning, filesystem writes | Integration-test with `MemoryWorkspace` + `MockProcessExecutor` |
 | OS / libgit2 | Real git operations | System-test only (serial binary) |
 
+When testing agent orchestration, seed the correct runtime `drain` in state fixtures. A populated agent chain alone is no longer enough to represent "already initialized" work, because planning, development, review, fix, commit, and analysis are distinct runtime consumers even when they share the same underlying chain definition.
+
 ### Principles
 
 - **Separate decision from I/O.** Keep reducers pure; keep side effects in handlers.

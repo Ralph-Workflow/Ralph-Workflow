@@ -216,6 +216,16 @@ impl UnifiedConfig {
             ccs_aliases.insert(key.clone(), value.clone());
         }
 
+        let mut agent_chains = self.agent_chains.clone();
+        for (key, value) in &local.agent_chains {
+            agent_chains.insert(key.clone(), value.clone());
+        }
+
+        let mut agent_drains = self.agent_drains.clone();
+        for (key, value) in &local.agent_drains {
+            agent_drains.insert(key.clone(), value.clone());
+        }
+
         // Agent chain: merge per-key (local non-empty chains override global)
         let agent_chain = merge_fallback_configs(
             self.agent_chain.as_ref(),
@@ -229,6 +239,8 @@ impl UnifiedConfig {
             ccs,
             agents,
             ccs_aliases,
+            agent_chains,
+            agent_drains,
             agent_chain,
         }
     }
@@ -455,21 +467,41 @@ impl UnifiedConfig {
             ccs_aliases.insert(key.clone(), value.clone());
         }
 
-        // Agent chain: merge per-key (local chain entries override global/defaults)
+        let mut agent_chains = self.agent_chains.clone();
+        for (key, value) in &local_parsed.agent_chains {
+            agent_chains.insert(key.clone(), value.clone());
+        }
+
+        let mut agent_drains = self.agent_drains.clone();
+        for (key, value) in &local_parsed.agent_drains {
+            agent_drains.insert(key.clone(), value.clone());
+        }
+
         let chain_table = local_toml.get("agent_chain");
-        let built_in_chain = built_in_fallback_defaults();
-        let agent_chain = merge_fallback_configs(
-            Some(self.agent_chain.as_ref().unwrap_or(&built_in_chain)),
-            local_parsed.agent_chain.as_ref(),
-            |field| chain_table.and_then(|c| c.get(field)).is_some(),
-            true,
-        );
+        // Agent chain: merge per-key (local chain entries override global/defaults).
+        // Named chains/drains must not implicitly materialize the legacy schema.
+        let agent_chain = if chain_table.is_some()
+            || self.agent_chain.is_some()
+            || local_parsed.agent_chain.is_some()
+        {
+            let built_in_chain = built_in_fallback_defaults();
+            merge_fallback_configs(
+                Some(self.agent_chain.as_ref().unwrap_or(&built_in_chain)),
+                local_parsed.agent_chain.as_ref(),
+                |field| chain_table.and_then(|c| c.get(field)).is_some(),
+                true,
+            )
+        } else {
+            None
+        };
 
         Self {
             general,
             ccs,
             agents,
             ccs_aliases,
+            agent_chains,
+            agent_drains,
             agent_chain,
         }
     }

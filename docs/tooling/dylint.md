@@ -17,7 +17,7 @@ cargo dylint --all
 # Run a specific lint (recommended: library target only)
 make dylint
 # or:
-cargo dylint -p ralph-workflow --lib file_too_long -- --lib
+cargo dylint --path lints/file_too_long -p ralph-workflow -- --quiet
 ```
 
 ## Developing Lints
@@ -52,6 +52,11 @@ export RUSTUP_HOME=/writable/path/rustup
 export DYLINT_DRIVER_PATH=/writable/path/drivers
 make dylint
 ```
+
+When `CARGO_HOME` points to a writable temp directory in a sandboxed environment, `make dylint`
+will reuse the existing `~/.cargo/registry/cache` and `~/.cargo/registry/index` data when
+available and automatically switch Cargo to offline mode. This avoids unnecessary network access
+while still allowing the local lint crate under `lints/file_too_long` to build.
 
 ## Known Issues
 

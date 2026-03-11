@@ -52,7 +52,8 @@ fn test_resume_at_final_iteration_runs_development_work() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(
@@ -81,7 +82,8 @@ fn test_resume_at_final_review_pass_runs_review_work() {
     let is_review_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            role: AgentRole::Reviewer,
+            ..
         } | Effect::PrepareReviewContext { .. }
     );
     assert!(
@@ -102,7 +104,8 @@ fn test_resume_with_zero_indexed_iteration() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(
@@ -123,7 +126,8 @@ fn test_resume_mid_pipeline_continues_normally() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(

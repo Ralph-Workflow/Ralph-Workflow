@@ -109,7 +109,8 @@ fn test_effects_determined_from_state_only() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 }
             ),
             "Effect should be determined purely from state: {effect:?}"
@@ -117,11 +118,14 @@ fn test_effects_determined_from_state_only() {
 
         // State with agents but no gitignore ensured -> ensure gitignore
         let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
         state.gitignore_entries_ensured = false;
         state.context_cleaned = false;
         let effect = determine_next_effect(&state);
@@ -132,11 +136,14 @@ fn test_effects_determined_from_state_only() {
 
         // State with gitignore ensured but no context cleaned -> clean context
         let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
         state.gitignore_entries_ensured = true;
         state.context_cleaned = false;
         let effect = determine_next_effect(&state);
@@ -147,11 +154,14 @@ fn test_effects_determined_from_state_only() {
 
         // State ready for planning
         let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
         state.gitignore_entries_ensured = true;
         state.context_cleaned = true;
         let effect = determine_next_effect(&state);
@@ -164,11 +174,14 @@ fn test_effects_determined_from_state_only() {
         let mut state = with_locked_prompt_permissions(PipelineState::initial(3, 1));
         state.phase = PipelinePhase::Development;
         state.iteration = 1;
-        state.agent_chain = state.agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Development);
         let effect = determine_next_effect(&state);
         assert!(
             matches!(effect, Effect::PrepareDevelopmentContext { .. }),
@@ -321,7 +334,8 @@ fn test_agent_chain_cleared_on_dev_to_review_transition() {
             matches!(
                 effect,
                 ralph_workflow::reducer::effect::Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer
+                    role: AgentRole::Reviewer,
+                    ..
                 }
             ),
             "After dev->review transition, next effect must be InitializeAgentChain(Reviewer), got {effect:?}"

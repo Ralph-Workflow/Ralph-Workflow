@@ -12,6 +12,7 @@
 pub struct AgentRegistry {
     agents: HashMap<String, AgentConfig>,
     fallback: FallbackConfig,
+    resolved_drains: crate::agents::fallback::ResolvedDrainConfig,
     /// CCS alias resolver for `ccs/alias` syntax.
     ccs_resolver: CcsAliasResolver,
     /// `OpenCode` resolver for `opencode/provider/model` syntax.
@@ -32,7 +33,8 @@ impl AgentRegistry {
 
         let mut registry = Self {
             agents: HashMap::new(),
-            fallback,
+            fallback: fallback.clone(),
+            resolved_drains: crate::agents::fallback::ResolvedDrainConfig::from_legacy(&fallback),
             ccs_resolver: CcsAliasResolver::empty(),
             opencode_resolver: None,
             retry_timer: production_timer(),
@@ -343,6 +345,14 @@ impl AgentRegistry {
     #[must_use] 
     pub const fn fallback_config(&self) -> &FallbackConfig {
         &self.fallback
+    }
+
+    #[must_use]
+    pub fn resolved_drain(
+        &self,
+        drain: crate::agents::AgentDrain,
+    ) -> Option<&crate::agents::fallback::ResolvedDrainBinding> {
+        self.resolved_drains.binding(drain)
     }
 
     /// Get the retry timer provider.

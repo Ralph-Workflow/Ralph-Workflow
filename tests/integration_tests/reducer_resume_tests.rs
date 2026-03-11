@@ -171,7 +171,8 @@ fn test_agent_chain_initialized_across_resume() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 }
             ),
             "Resumed state should require agent chain initialization, got {effect:?}"
@@ -323,7 +324,8 @@ fn test_resume_at_final_iteration_completes_full_pipeline() {
         let is_development_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                role: AgentRole::Developer,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(
@@ -359,7 +361,8 @@ fn test_resume_mid_pipeline_continues_normally() {
         let is_development_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                role: AgentRole::Developer,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(
@@ -406,7 +409,8 @@ fn test_resume_at_final_iteration_boundary_runs_development() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    role: AgentRole::Developer,
+                    ..
                 } | Effect::PrepareDevelopmentContext { .. }
             ),
             "Expected development effect at iteration=1, total=1. Got: {effect:?}"
@@ -447,7 +451,8 @@ fn test_resume_at_final_review_pass_boundary_runs_review() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer
+                    role: AgentRole::Reviewer,
+                    ..
                 } | Effect::PrepareReviewContext { .. }
             ),
             "Expected review effect at reviewer_pass=2, total=2. Got: {effect:?}"
@@ -479,7 +484,8 @@ fn test_resume_zero_indexed_iteration_boundary() {
         let is_dev_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                role: AgentRole::Developer,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(

@@ -52,11 +52,14 @@ fn create_planning_state_ready_for_cleanup(iteration: u32) -> PipelineState {
         planning_prompt_prepared_iteration: Some(iteration),
         rebase: RebaseState::Skipped,
         checkpoint_saved_count: 1, // Skip initial checkpoint
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning),
         ..create_test_state()
     }
 }
@@ -71,11 +74,14 @@ fn create_development_state_ready_for_cleanup(iteration: u32) -> PipelineState {
         context_cleaned: true,
         development_context_prepared_iteration: Some(iteration),
         development_prompt_prepared_iteration: Some(iteration),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Development),
         ..create_test_state()
     }
 }
@@ -88,11 +94,10 @@ fn create_review_state_ready_for_cleanup(pass: u32) -> PipelineState {
         total_reviewer_passes: 2,
         review_context_prepared_pass: Some(pass),
         review_prompt_prepared_pass: Some(pass),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["codex".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(ralph_workflow::agents::AgentDrain::Review),
         ..create_test_state()
     }
 }
@@ -105,11 +110,10 @@ fn create_fix_state_ready_for_cleanup(pass: u32) -> PipelineState {
         total_reviewer_passes: 2,
         review_issues_found: true,
         fix_prompt_prepared_pass: Some(pass),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["codex".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(ralph_workflow::agents::AgentDrain::Fix),
         ..create_test_state()
     }
 }

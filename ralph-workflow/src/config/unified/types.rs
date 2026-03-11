@@ -21,10 +21,14 @@
 //! ├── CcsAliases (HashMap<String, CcsAliasToml>)
 //! │   └── CcsAliasToml (Command string or CcsAliasConfig)
 //! ├── agents (HashMap<String, AgentConfigToml>)
+//! ├── agent_chains (HashMap<String, Vec<String>>)
+//! ├── agent_drains (HashMap<String, String>)
 //! └── agent_chain (FallbackConfig)
 //! ```
 
-use crate::agents::fallback::FallbackConfig;
+use crate::agents::fallback::{
+    AgentDrain, FallbackConfig, ResolvedDrainBinding, ResolvedDrainConfig,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -408,9 +412,125 @@ pub struct UnifiedConfig {
     /// CCS alias mappings.
     #[serde(default)]
     pub ccs_aliases: CcsAliases,
+    /// Named reusable chain definitions.
+    #[serde(default)]
+    pub agent_chains: HashMap<String, Vec<String>>,
+    /// Drain-to-chain bindings for the built-in drains.
+    #[serde(default)]
+    pub agent_drains: HashMap<String, String>,
     /// Agent chain configuration.
     ///
     /// When omitted, Ralph uses built-in defaults.
     #[serde(default, rename = "agent_chain")]
     pub agent_chain: Option<FallbackConfig>,
+}
+
+impl UnifiedConfig {
+    /// Resolve configuration into explicit built-in drain bindings.
+    #[must_use]
+    pub fn resolve_agent_drains(&self) -> Option<ResolvedDrainConfig> {
+        self.resolve_agent_drains_checked().ok().flatten()
+    }
+
+    /// Resolve configuration into explicit built-in drain bindings with diagnostics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the named-chain schema is internally inconsistent,
+    /// such as invalid drain references, mixed legacy/new schema, or missing
+    /// coverage for built-in drains after default resolution.
+    pub fn resolve_agent_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, String> {
+        if !self.agent_chains.is_empty() || !self.agent_drains.is_empty() {
+            if self.agent_chain.is_some() {
+                return Err(
+                    "agent_chain cannot be combined with agent_chains/agent_drains; use either the legacy role-keyed schema or the named chain + drain schema"
+                        .to_string(),
+                );
+            }
+
+            let mut bindings = HashMap::new();
+
+            for (drain_name, chain_name) in &self.agent_drains {
+                let drain = AgentDrain::from_name(drain_name)
+                    .ok_or_else(|| format!("agent_drains.{drain_name} is not a built-in drain"))?;
+                let agents = self.agent_chains.get(chain_name).ok_or_else(|| {
+                    format!("agent_drains.{drain_name} references unknown chain '{chain_name}'")
+                })?;
+                bindings.insert(
+                    drain,
+                    ResolvedDrainBinding {
+                        chain_name: chain_name.clone(),
+                        agents: agents.clone(),
+                    },
+                );
+            }
+
+            for drain in AgentDrain::all() {
+                if bindings.contains_key(&drain) {
+                    continue;
+                }
+
+                let Some((chain_name, agents)) = default_chain_binding_for_drain(self, drain)
+                else {
+                    let missing = AgentDrain::all()
+                        .into_iter()
+                        .filter(|candidate| {
+                            !bindings.contains_key(candidate)
+                                && default_chain_binding_for_drain(self, *candidate).is_none()
+                        })
+                        .map(AgentDrain::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(format!(
+                        "agent_drains does not resolve all built-in drains; missing bindings for: {missing}"
+                    ));
+                };
+                bindings.insert(drain, ResolvedDrainBinding { chain_name, agents });
+            }
+
+            let legacy = self.agent_chain.clone().unwrap_or_default();
+            return Ok(Some(ResolvedDrainConfig {
+                bindings,
+                provider_fallback: legacy.provider_fallback,
+                max_retries: legacy.max_retries,
+                retry_delay_ms: legacy.retry_delay_ms,
+                backoff_multiplier: legacy.backoff_multiplier,
+                max_backoff_ms: legacy.max_backoff_ms,
+                max_cycles: legacy.max_cycles,
+            }));
+        }
+
+        Ok(self
+            .agent_chain
+            .as_ref()
+            .map(crate::agents::fallback::FallbackConfig::resolve_drains))
+    }
+}
+
+fn default_chain_binding_for_drain(
+    config: &UnifiedConfig,
+    drain: AgentDrain,
+) -> Option<(String, Vec<String>)> {
+    let preferred_chain = match drain {
+        AgentDrain::Planning | AgentDrain::Development => "developer",
+        AgentDrain::Review | AgentDrain::Fix => "reviewer",
+        AgentDrain::Commit => "commit",
+        AgentDrain::Analysis => "analysis",
+    };
+
+    if let Some(agents) = config.agent_chains.get(preferred_chain) {
+        return Some((preferred_chain.to_string(), agents.clone()));
+    }
+
+    match drain {
+        AgentDrain::Analysis => config
+            .agent_chains
+            .get("developer")
+            .map(|agents| ("developer".to_string(), agents.clone())),
+        AgentDrain::Commit => config
+            .agent_chains
+            .get("reviewer")
+            .map(|agents| ("reviewer".to_string(), agents.clone())),
+        _ => None,
+    }
 }

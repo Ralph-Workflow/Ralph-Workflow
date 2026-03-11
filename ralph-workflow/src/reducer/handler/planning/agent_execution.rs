@@ -19,7 +19,7 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> Result<EffectResult> {
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Developer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Planning);
 
         let prompt = match ctx.workspace.read(Path::new(PLANNING_PROMPT_PATH)) {
             Ok(s) => s,

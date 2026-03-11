@@ -193,3 +193,29 @@ fn test_switch_to_next_agent_with_prompt_advances_retry_cycle_on_wraparound() {
     );
     assert_eq!(next.retry_cycle, 1);
 }
+
+#[test]
+fn test_agent_chain_tracks_explicit_drain_and_mode() {
+    let chain = AgentChainState::initial()
+        .with_agents(vec!["agent1".to_string()], vec![vec![]], AgentRole::Developer)
+        .with_drain(crate::agents::AgentDrain::Development)
+        .with_mode(crate::agents::DrainMode::Continuation);
+
+    assert_eq!(chain.current_drain, crate::agents::AgentDrain::Development);
+    assert_eq!(chain.current_mode, crate::agents::DrainMode::Continuation);
+}
+
+#[test]
+fn test_agent_chain_serialization_round_trip_preserves_drain_and_mode() {
+    let chain = AgentChainState::initial()
+        .with_agents(vec!["agent1".to_string()], vec![vec![]], AgentRole::Developer)
+        .with_drain(crate::agents::AgentDrain::Analysis)
+        .with_mode(crate::agents::DrainMode::XsdRetry);
+
+    let json = serde_json::to_string(&chain).expect("agent chain should serialize");
+    let restored: AgentChainState =
+        serde_json::from_str(&json).expect("agent chain should deserialize");
+
+    assert_eq!(restored.current_drain, crate::agents::AgentDrain::Analysis);
+    assert_eq!(restored.current_mode, crate::agents::DrainMode::XsdRetry);
+}

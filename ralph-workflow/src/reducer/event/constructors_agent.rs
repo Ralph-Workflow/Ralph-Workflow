@@ -72,16 +72,18 @@ impl PipelineEvent {
 
     /// Create an `AgentChainInitialized` event.
     #[must_use] 
-    pub const fn agent_chain_initialized(
-        role: AgentRole,
+    pub fn agent_chain_initialized(
+        drain: impl Into<AgentDrain>,
         agents: Vec<String>,
         max_cycles: u32,
         retry_delay_ms: u64,
         backoff_multiplier: f64,
         max_backoff_ms: u64,
     ) -> Self {
+        let drain = drain.into();
         Self::Agent(AgentEvent::ChainInitialized {
-            role,
+            drain,
+            role: drain.role(),
             agents,
             max_cycles,
             retry_delay_ms,

@@ -1,5 +1,5 @@
 use super::MainEffectHandler;
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -286,8 +286,14 @@ impl MainEffectHandler {
     pub(super) fn normalize_agent_chain_for_invocation(
         &mut self,
         _ctx: &PhaseContext<'_>,
-        expected_role: AgentRole,
+        expected_drain: AgentDrain,
     ) {
+        let expected_role = expected_drain.role();
+
+        if self.state.agent_chain.current_drain != expected_drain {
+            self.state.agent_chain.current_drain = expected_drain;
+        }
+
         // Ensure agent chain role matches expected role
         // The agent chain should already be initialized with the correct role from
         // the reducer, but we defensively ensure consistency here.

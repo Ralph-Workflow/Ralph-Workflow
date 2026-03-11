@@ -97,6 +97,16 @@ pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
     "max_cycles",
 ];
 
+/// Valid keys for the [`agent_drains`] section.
+pub const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
+    "planning",
+    "development",
+    "review",
+    "fix",
+    "commit",
+    "analysis",
+];
+
 /// Get all valid configuration keys for typo detection.
 ///
 /// Returns a flat list of all valid key names across all sections.
@@ -108,6 +118,8 @@ pub fn get_valid_config_keys() -> Vec<&'static str> {
         "agents",
         "ccs_aliases",
         "agent_chain",
+        "agent_chains",
+        "agent_drains",
         // General config keys
         "verbosity",
         "interactive",
@@ -149,5 +161,12 @@ pub fn get_valid_config_keys() -> Vec<&'static str> {
         "display_name",
         // CCS alias config keys
         "ccs_aliases",
+        // Drain config keys
+        "planning",
+        "development",
+        "review",
+        "fix",
+        "commit",
+        "analysis",
     ]
 }

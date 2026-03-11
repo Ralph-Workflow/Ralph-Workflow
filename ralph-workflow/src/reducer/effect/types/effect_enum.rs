@@ -6,7 +6,7 @@
 //!
 //! See `docs/architecture/effect-system.md` for the design overview.
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use serde::{Deserialize, Serialize};
 
 use super::effect_support_types::{ContinuationContextData, RecoveryResetType};
@@ -27,6 +27,7 @@ pub enum Effect {
     },
 
     InitializeAgentChain {
+        drain: AgentDrain,
         role: AgentRole,
     },
 

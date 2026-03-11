@@ -196,7 +196,8 @@ fn test_orchestration_emits_init_chain_for_reviewer_after_dev_review_transition(
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer
+                role: AgentRole::Reviewer,
+                ..
             }
         ),
         "Orchestration should emit InitializeAgentChain for Reviewer when chain is empty, got {effect:?}"

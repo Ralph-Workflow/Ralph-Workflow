@@ -12,7 +12,8 @@ fn test_determine_effect_planning_phase() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         }
     ));
 }
@@ -23,11 +24,14 @@ fn test_determine_effect_planning_with_agents() {
         phase: PipelinePhase::Planning,
         gitignore_entries_ensured: true, // Gitignore must be ensured before planning
         context_cleaned: true,           // Context must be cleaned before planning
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..create_test_state()
     };
     let effect = determine_next_effect(&state);
@@ -53,7 +57,8 @@ fn test_determine_effect_planning_role_mismatch_reinitializes_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            role: AgentRole::Developer,
+            ..
         }
     ));
 }
@@ -65,11 +70,14 @@ fn test_determine_effect_planning_rematerializes_when_consumer_signature_changes
         gitignore_entries_ensured: true,
         context_cleaned: true,
         iteration: 2,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string(), "fallback".to_string()],
-            vec![vec!["m1".to_string()], vec!["m2".to_string()]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string(), "fallback".to_string()],
+                vec![vec!["m1".to_string()], vec!["m2".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         prompt_inputs: crate::reducer::state::PromptInputsState {
             planning: Some(crate::reducer::state::MaterializedPlanningInputs {
                 iteration: 2,
@@ -123,11 +131,14 @@ fn test_planning_phase_emits_single_task_effect() {
         context_cleaned: true,
         iteration: 0,
         total_iterations: 3,
-        agent_chain: PipelineState::initial(3, 0).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(3, 0)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..create_test_state()
     };
 
@@ -148,6 +159,7 @@ fn test_planning_phase_uses_xsd_retry_prompt_when_pending() {
             vec![vec![]],
             AgentRole::Developer,
         )
+        .with_drain(crate::agents::AgentDrain::Planning)
         .consumer_signature_sha256();
 
     let state = PipelineState {
@@ -155,11 +167,14 @@ fn test_planning_phase_uses_xsd_retry_prompt_when_pending() {
         gitignore_entries_ensured: true,
         context_cleaned: true,
         iteration: 1,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         prompt_inputs: crate::reducer::state::PromptInputsState {
             planning: Some(crate::reducer::state::MaterializedPlanningInputs {
                 iteration: 1,
@@ -204,11 +219,14 @@ fn test_planning_phase_transitions_to_development_after_completion() {
         phase: PipelinePhase::Planning,
         iteration: 1,
         total_iterations: 5,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..create_test_state()
     };
 
@@ -222,11 +240,17 @@ fn test_planning_phase_transitions_to_development_after_completion() {
         "Phase should transition to Development after PlanGenerationCompleted"
     );
 
-    // Orchestration should now return PrepareDevelopmentContext
+    // Orchestration should now initialize the development drain before preparing context.
     let effect = determine_next_effect(&state);
     assert!(
-        matches!(effect, Effect::PrepareDevelopmentContext { .. }),
-        "Expected PrepareDevelopmentContext, got {effect:?}"
+        matches!(
+            effect,
+            Effect::InitializeAgentChain {
+                drain: crate::agents::AgentDrain::Development,
+                ..
+            }
+        ),
+        "Expected development drain initialization, got {effect:?}"
     );
 }
 

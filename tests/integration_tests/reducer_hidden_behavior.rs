@@ -224,7 +224,8 @@ fn test_marker_file_check_is_documented_intentional() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Commit
+                    role: AgentRole::Commit,
+                    ..
                 }
             ),
             "Commit phase should require explicit chain initialization; got {effect:?}"

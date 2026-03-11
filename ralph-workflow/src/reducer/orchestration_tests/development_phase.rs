@@ -255,11 +255,11 @@ fn test_development_runs_exactly_n_iterations() {
                 );
             }
             Effect::SaveCheckpoint { .. } => break,
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,
@@ -451,7 +451,8 @@ fn test_development_initializes_analysis_chain_before_invoking_analysis() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Analysis
+            role: AgentRole::Analysis,
+            ..
         }
     ));
 }

@@ -238,6 +238,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             ..state
         },
         AgentEvent::ChainInitialized {
+            drain,
             role,
             agents,
             max_cycles,
@@ -250,9 +251,10 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 agent_chain: state
                     .agent_chain
                     .with_agents(agents, models_per_agent, role)
+                    .with_drain(drain)
                     .with_max_cycles(max_cycles)
                     .with_backoff_policy(retry_delay_ms, backoff_multiplier, max_backoff_ms)
-                    .reset_for_role(role),
+                    .reset_for_drain(drain),
                 ..state
             }
         }

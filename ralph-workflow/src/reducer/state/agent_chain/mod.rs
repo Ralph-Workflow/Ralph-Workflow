@@ -16,7 +16,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub use crate::agents::AgentRole;
+pub use crate::agents::{AgentDrain, AgentRole, DrainMode};
 
 mod backoff;
 mod transitions;
@@ -59,6 +59,10 @@ pub struct AgentChainState {
     #[serde(default)]
     pub backoff_pending_ms: Option<u64>,
     pub current_role: AgentRole,
+    #[serde(default = "default_current_drain")]
+    pub current_drain: AgentDrain,
+    #[serde(default)]
+    pub current_mode: DrainMode,
     /// Prompt context preserved from a rate-limited agent for continuation.
     ///
     /// When an agent hits 429, we save the prompt here so the next agent can
@@ -113,6 +117,10 @@ impl<'de> Deserialize<'de> for AgentChainState {
             #[serde(default)]
             backoff_pending_ms: Option<u64>,
             current_role: AgentRole,
+            #[serde(default = "default_current_drain")]
+            current_drain: AgentDrain,
+            #[serde(default)]
+            current_mode: DrainMode,
             #[serde(default)]
             rate_limit_continuation_prompt: Option<RateLimitContinuationPromptRepr>,
             #[serde(default)]
@@ -149,6 +157,8 @@ impl<'de> Deserialize<'de> for AgentChainState {
             max_backoff_ms: raw.max_backoff_ms,
             backoff_pending_ms: raw.backoff_pending_ms,
             current_role: raw.current_role,
+            current_drain: raw.current_drain,
+            current_mode: raw.current_mode,
             rate_limit_continuation_prompt,
             last_session_id: raw.last_session_id,
         })
@@ -165,6 +175,10 @@ const fn default_backoff_multiplier() -> f64 {
 
 const fn default_max_backoff_ms() -> u64 {
     60000
+}
+
+const fn default_current_drain() -> AgentDrain {
+    AgentDrain::Planning
 }
 
 const fn agent_role_signature_tag(role: AgentRole) -> &'static [u8] {
@@ -191,6 +205,8 @@ impl AgentChainState {
             max_backoff_ms: default_max_backoff_ms(),
             backoff_pending_ms: None,
             current_role: AgentRole::Developer,
+            current_drain: default_current_drain(),
+            current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
         }
@@ -206,6 +222,26 @@ impl AgentChainState {
         self.agents = Arc::from(agents);
         self.models_per_agent = Arc::from(models_per_agent);
         self.current_role = role;
+        self.current_drain = match role {
+            AgentRole::Developer => AgentDrain::Development,
+            AgentRole::Reviewer => AgentDrain::Review,
+            AgentRole::Commit => AgentDrain::Commit,
+            AgentRole::Analysis => AgentDrain::Analysis,
+        };
+        self.current_mode = DrainMode::Normal;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_drain(mut self, drain: AgentDrain) -> Self {
+        self.current_drain = drain;
+        self.current_role = drain.role();
+        self
+    }
+
+    #[must_use]
+    pub const fn with_mode(mut self, mode: DrainMode) -> Self {
+        self.current_mode = mode;
         self
     }
 

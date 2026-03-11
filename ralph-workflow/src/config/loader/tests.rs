@@ -1,5 +1,7 @@
 use super::*;
+use crate::config::loader::ConfigLoadWithValidationError;
 use crate::config::path_resolver::MemoryConfigEnvironment;
+use crate::config::validation::ConfigValidationError;
 use crate::config::Verbosity;
 use std::path::Path;
 
@@ -243,6 +245,33 @@ fn test_load_config_returns_defaults_without_file() {
     // Assert: defaults are applied regardless of process environment state
     assert_eq!(config.developer_iters, 5);
     assert_eq!(config.verbosity, Verbosity::Verbose);
+}
+
+#[test]
+fn test_load_config_from_path_with_env_rejects_invalid_named_drain_reference() {
+    let toml_str = r#"
+[agent_chains]
+shared_dev = ["codex"]
+
+[agent_drains]
+planning = "missing_chain"
+"#;
+
+    let env = MemoryConfigEnvironment::new().with_file(".agent/ralph-workflow.toml", toml_str);
+
+    let result = load_config_from_path_with_env(None, &env);
+    let Err(ConfigLoadWithValidationError::ValidationErrors(errors)) = result else {
+        panic!("expected semantic validation failure from config loader");
+    };
+
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            ConfigValidationError::InvalidValue { key, message, .. }
+                if key == "agent_drains.planning" && message.contains("missing_chain")
+        )),
+        "expected invalid named drain binding error, got: {errors:?}"
+    );
 }
 
 #[test]

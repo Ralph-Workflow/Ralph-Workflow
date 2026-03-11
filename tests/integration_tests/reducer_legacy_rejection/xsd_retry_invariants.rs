@@ -56,6 +56,7 @@ fn test_xsd_retry_count_in_reducer_state() {
         assert_eq!(
             effect,
             Effect::InitializeAgentChain {
+                drain: ralph_workflow::agents::AgentDrain::Analysis,
                 role: AgentRole::Analysis,
             },
             "After first XSD failure, orchestration should switch to analysis role"
@@ -70,6 +71,7 @@ fn test_xsd_retry_count_in_reducer_state() {
         assert_eq!(
             effect,
             Effect::InitializeAgentChain {
+                drain: ralph_workflow::agents::AgentDrain::Analysis,
                 role: AgentRole::Analysis,
             },
             "Under XSD retry budget, orchestration should continue deriving analysis retry effect"
@@ -118,6 +120,7 @@ fn test_max_xsd_retries_advances_agent_chain_via_reducer() {
             assert_eq!(
                 effect,
                 Effect::InitializeAgentChain {
+                    drain: ralph_workflow::agents::AgentDrain::Analysis,
                     role: AgentRole::Analysis,
                 },
                 "Before exhaustion, XSD failures should derive analysis retry effect"

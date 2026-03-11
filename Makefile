@@ -135,6 +135,18 @@ dylint:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
+		mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
+			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
+			fi; \
+			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
+			fi; \
+			if [ -z "$${CARGO_NET_OFFLINE:-}" ] && [ -e "$$CARGO_HOME/registry/cache" ] && [ -e "$$CARGO_HOME/registry/index" ]; then \
+				export CARGO_NET_OFFLINE=true; \
+			fi; \
+		fi; \
 		\
 		for dir in "$$CARGO_HOME" "$$RUSTUP_HOME" "$$DYLINT_DRIVER_PATH"; do \
 			if ! mkdir -p "$$dir" 2>/dev/null; then \
@@ -238,12 +250,13 @@ dylint:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q -p ralph-workflow --lib file_too_long -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --quiet >/dev/null 2>&1; \
 '
 
 # Run custom dylint lints with verbose debugging output
 dylint-verbose:
 	@bash -euo pipefail -c '\
+		DYLINT_QUIET="$${DYLINT_QUIET:-0}"; \
 		HOME_DIR="$${HOME:-}"; \
 		CARGO_HOME_DIR="$${CARGO_HOME:-}"; \
 		RUSTUP_HOME_DIR="$${RUSTUP_HOME:-}"; \
@@ -281,6 +294,18 @@ dylint-verbose:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
+		mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
+			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
+			fi; \
+			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
+			fi; \
+			if [ -z "$${CARGO_NET_OFFLINE:-}" ] && [ -e "$$CARGO_HOME/registry/cache" ] && [ -e "$$CARGO_HOME/registry/index" ]; then \
+				export CARGO_NET_OFFLINE=true; \
+			fi; \
+		fi; \
 		\
 		for dir in "$$CARGO_HOME" "$$RUSTUP_HOME" "$$DYLINT_DRIVER_PATH"; do \
 			if ! mkdir -p "$$dir" 2>/dev/null; then \
@@ -395,7 +420,7 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q -p ralph-workflow --lib file_too_long -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --quiet >/dev/null 2>&1; \
 '
 
 # Run all checks (format, lint, test)

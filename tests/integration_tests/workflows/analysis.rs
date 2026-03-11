@@ -102,7 +102,8 @@ fn test_analysis_runs_after_first_iteration_when_multiple_iterations() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis
+                    role: AgentRole::Analysis,
+                    ..
                 }
             ),
             "Expected InitializeAgentChain(Analysis) before invoking analysis agent, got {effect:?}"
@@ -153,7 +154,8 @@ fn test_analysis_runs_after_every_iteration() {
                 matches!(
                     effect,
                     Effect::InitializeAgentChain {
-                        role: AgentRole::Analysis
+                        role: AgentRole::Analysis,
+                        ..
                     }
                 ),
                 "Expected InitializeAgentChain(Analysis) after iteration {iter}, got {effect:?}"
@@ -374,7 +376,8 @@ fn test_development_xsd_retry_reinvokes_analysis_agent() {
                 || matches!(
                     effect,
                     Effect::InitializeAgentChain {
-                        role: AgentRole::Analysis
+                        role: AgentRole::Analysis,
+                        ..
                     }
                 ),
             "expected XSD retry to initialize analysis chain or invoke analysis agent, got {effect:?}"
@@ -609,7 +612,8 @@ fn test_complete_pipeline_with_analysis_verification() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis
+                    role: AgentRole::Analysis,
+                    ..
                 }
             ),
             "After dev agent, should initialize analysis chain, got {effect:?}"

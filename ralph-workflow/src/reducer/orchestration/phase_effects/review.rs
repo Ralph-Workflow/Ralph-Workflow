@@ -36,7 +36,7 @@
 //!   - `reviewer_pass` > `total_reviewer_passes` (should not happen in normal flow)
 //!   - `total_reviewer_passes` == 0 (no review passes configured)
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{PipelineState, PromptMode};
@@ -56,11 +56,11 @@ pub const REQUIRED_FILES_FIX: &[&str] = &[".agent/tmp/fix_result.xml"];
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     // If review found issues, run fix attempt
     if state.review_issues_found {
-        if state.agent_chain.agents.is_empty()
-            || state.agent_chain.current_role != AgentRole::Reviewer
+        if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Fix
         {
             return Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer,
+                drain: AgentDrain::Fix,
+                role: AgentDrain::Fix.role(),
             };
         }
 
@@ -123,10 +123,11 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
         // Legacy super-effect placeholder. Removed once the fix chain is complete.
     }
 
-    if state.agent_chain.agents.is_empty() || state.agent_chain.current_role != AgentRole::Reviewer
+    if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Review
     {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer,
+            drain: AgentDrain::Review,
+            role: AgentDrain::Review.role(),
         };
     }
 

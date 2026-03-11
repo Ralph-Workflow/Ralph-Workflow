@@ -320,6 +320,25 @@ Reducers must be deterministic and side-effect free.
 - No mutation of shared global state
 - No hidden coupling to config: decisions should be driven by values already present in `PipelineState` or carried in events
 
+### Agent-chain architecture must keep chain definitions, drains, and modes separate
+
+For agent execution architecture, Ralph should treat these as distinct concepts:
+
+- **chain definition**: reusable configured ordered list of concrete agents
+- **drain**: runtime consumer attached to a chain definition (for example planning, development, review, fix, commit, analysis)
+- **drain mode**: retry/continuation sub-state inside a drain (for example continuation, same-agent retry, XSD retry)
+
+This separation is required for reducer clarity and consistency.
+
+Rules:
+
+- Runtime state should not collapse reusable chain definition and active consumer into the same concept.
+- Retry modes that continue the same logical work and session, such as XSD retry, should remain drain-local mode rather than becoming separate drains.
+- Reducer state and pipeline events must stay concrete; they must not carry unresolved config aliases or config-only indirection.
+- Effect handlers should consume already-resolved concrete drain-to-chain mappings, not re-derive chain semantics from scattered defaults.
+
+When changing agent architecture, apply this model consistently across config, runtime state, effects, handlers, and documentation. Do not introduce a new abstraction in one layer while leaving the other layers role-shaped and ambiguous.
+
 ### Prefer typed error-events over `Err` when recoverable
 
 When a failure should be handled by the state machine, represent it as a typed reducer event (often via `ErrorEvent` or a category event like `PlanningEvent::OutputValidationFailed`).

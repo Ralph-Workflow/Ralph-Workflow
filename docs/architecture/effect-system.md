@@ -462,6 +462,23 @@ fn run_development_iteration(ctx: &mut PhaseContext) {
 
 The pipeline layer uses a **reducer pattern** to manage complex state transitions. This pattern separates concerns into distinct components.
 
+### Agent-chain architecture consistency requirement
+
+When the pipeline executes agents, the effect system should operate on a consistent domain model:
+
+- config layer defines reusable chain definitions
+- binding/normalization layer attaches drains to chains
+- runtime executes concrete chains for the active drain
+- retry and continuation remain drain-local modes unless they truly need separate chain attachment
+
+Effect handlers must not become a second policy engine for agent architecture. In particular:
+
+- do not push unresolved chain aliases into handler-time logic
+- do not rely on role-only defaults to stand in for distinct drains long-term
+- do not let invocation-time normalization become the place where chain-vs-drain semantics are decided
+
+The handler boundary should receive a resolved, concrete drain-to-chain mapping and execute it. Changes in this area should update config semantics, runtime semantics, and architecture documentation together so the same concept exists consistently at every layer.
+
 ### Core Concepts
 
 **State**: Immutable snapshot of pipeline progress (current phase, iteration counts, flags).

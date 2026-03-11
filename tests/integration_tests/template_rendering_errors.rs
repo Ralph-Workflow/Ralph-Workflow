@@ -26,11 +26,13 @@ use crate::test_timeout::with_default_timeout;
 fn test_pipeline_advances_after_prompt_preparation() {
     with_default_timeout(|| {
         let mut state = PipelineState {
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["test-agent".to_string()],
-                vec![vec![]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["test-agent".to_string()],
+                    vec![vec![]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             context_cleaned: true,
             gitignore_entries_ensured: true,
             planning_required_files_cleaned_iteration: Some(0),

@@ -46,7 +46,7 @@ impl MainEffectHandler {
         ctx: &mut PhaseContext<'_>,
     ) -> Result<EffectResult> {
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Commit);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Commit);
 
         let attempt = current_commit_attempt(&self.state.commit);
         let prompt = match ctx

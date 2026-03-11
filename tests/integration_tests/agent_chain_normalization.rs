@@ -8,7 +8,7 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
-use ralph_workflow::agents::AgentRole;
+use ralph_workflow::agents::{AgentDrain, AgentRole};
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::PipelinePhase;
@@ -137,6 +137,25 @@ fn test_agent_chain_normalization_across_phases() {
                     | Effect::InitializeAgentChain { .. }
             ),
             "Review phase should produce review effects"
+        );
+    });
+}
+
+/// Test that same-agent retry in Development uses drain identity, not stale role metadata.
+#[test]
+fn test_same_agent_retry_uses_analysis_drain_even_when_role_is_stale() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.continuation.same_agent_retry_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Analysis;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
+            "analysis drain retry should stay on analysis consumer, got: {effect:?}"
         );
     });
 }

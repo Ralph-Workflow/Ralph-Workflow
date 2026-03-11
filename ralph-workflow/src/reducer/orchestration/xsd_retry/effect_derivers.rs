@@ -16,9 +16,15 @@
 #[must_use]
 pub fn compute_effect_fingerprint(state: &PipelineState) -> String {
     format!(
-        "{}:{}:iter={}:pass={}:xsd_retry={}",
+        "{}:{}:{}:iter={}:pass={}:xsd_retry={}",
         state.phase,
-        state.agent_chain.current_role,
+        state.agent_chain.current_drain,
+        match state.agent_chain.current_mode {
+            crate::agents::DrainMode::Normal => "normal",
+            crate::agents::DrainMode::Continuation => "continuation",
+            crate::agents::DrainMode::SameAgentRetry => "same-agent-retry",
+            crate::agents::DrainMode::XsdRetry => "xsd-retry",
+        },
         state.iteration,
         state.reviewer_pass,
         state.continuation.xsd_retry_pending
@@ -64,9 +70,10 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
             // development_result.xml is produced by the analysis agent.
             // When XSD validation fails, retry analysis output generation directly.
             // Ensure the analysis agent chain role is initialized (resume safety).
-            if state.agent_chain.current_role != AgentRole::Analysis {
+            if state.agent_chain.current_drain != crate::agents::AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis,
+                    drain: crate::agents::AgentDrain::Analysis,
+                    role: crate::agents::AgentDrain::Analysis.role(),
                 };
             }
             Effect::InvokeAnalysisAgent {
@@ -138,9 +145,9 @@ fn derive_same_agent_retry_effect(state: &PipelineState) -> Effect {
         },
         PipelinePhase::Development => {
             // Development phase runs BOTH developer and analysis agents.
-            // Same-agent retries must be role-aware so analysis failures retry analysis,
-            // not the developer prompt chain.
-            if state.agent_chain.current_role == AgentRole::Analysis {
+            // Same-agent retries must be drain-aware so analysis failures retry analysis,
+            // not the developer prompt chain, even if role metadata is stale.
+            if state.agent_chain.current_drain == crate::agents::AgentDrain::Analysis {
                 Effect::InvokeAnalysisAgent {
                     iteration: state.iteration,
                 }

@@ -75,6 +75,8 @@ All pipeline control-flow decisions (iteration advancement, retry/continuation/f
 
 **Metrics are a view, not a driver:** The `RunMetrics` struct in `PipelineState.metrics` provides observability into pipeline execution, but metrics do not drive control-flow. Control-flow is driven by the reducer's state machine (phase, iteration, continuation state, agent chain state, etc.), and metrics simply track the transitions.
 
+**Agent execution state is two-dimensional:** When agent work is active, reducer state should track both the active runtime consumer (`drain`, such as planning or fix) and the drain-local mode (`normal`, continuation, same-agent retry, XSD retry). Capability labels like `AgentRole` can still exist, but they must not replace explicit runtime drain identity.
+
 **Invariants:**
 
 - **Single source of truth:** Any advance/retry/continue decision is derived from reducer state plus the latest event

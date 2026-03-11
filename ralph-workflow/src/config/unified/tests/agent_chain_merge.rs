@@ -5,6 +5,111 @@
 use super::*;
 
 #[test]
+fn test_merge_with_content_resolves_named_chains_and_drain_bindings() {
+    let global = UnifiedConfig::default();
+
+    let local_toml = r#"
+[agent_chains]
+shared_dev = ["codex", "claude"]
+shared_review = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+analysis = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+commit = "shared_review"
+"#;
+
+    let local = UnifiedConfig::load_from_content(local_toml).unwrap();
+    let merged = global.merge_with_content(local_toml, &local);
+    let resolved = merged
+        .resolve_agent_drains()
+        .expect("named chains and drain bindings should resolve");
+
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning drain")
+            .chain_name,
+        "shared_dev"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Development)
+            .expect("development drain")
+            .chain_name,
+        "shared_dev"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Fix)
+            .expect("fix drain")
+            .chain_name,
+        "shared_review"
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning drain")
+            .agents,
+        vec!["codex".to_string(), "claude".to_string()]
+    );
+}
+
+#[test]
+fn test_merge_with_content_legacy_agent_chain_translates_to_resolved_drains() {
+    let local_toml = r#"
+[agent_chain]
+developer = ["codex"]
+reviewer = ["claude"]
+commit = ["opencode"]
+"#;
+
+    let local = UnifiedConfig::load_from_content(local_toml).unwrap();
+    let resolved = local
+        .resolve_agent_drains()
+        .expect("legacy role-keyed config should translate to resolved drains");
+
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning drain")
+            .agents,
+        vec!["codex".to_string()]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Development)
+            .expect("development drain")
+            .agents,
+        vec!["codex".to_string()]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Review)
+            .expect("review drain")
+            .agents,
+        vec!["claude".to_string()]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Fix)
+            .expect("fix drain")
+            .agents,
+        vec!["claude".to_string()]
+    );
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Commit)
+            .expect("commit drain")
+            .agents,
+        vec!["opencode".to_string()]
+    );
+}
+
+#[test]
 fn test_merge_with_content_agent_chain_merges_by_key() {
     use crate::agents::fallback::FallbackConfig;
 

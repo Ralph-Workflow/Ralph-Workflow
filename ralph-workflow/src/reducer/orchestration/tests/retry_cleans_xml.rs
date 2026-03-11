@@ -9,11 +9,14 @@ use crate::reducer::event::TimeoutOutputKind;
 #[test]
 fn test_planning_timeout_retry_recleans_plan_xml_before_reinvoke() {
     let pass = 0;
-    let mut agent_chain = PipelineState::initial(5, 2).agent_chain.with_agents(
-        vec!["claude".to_string()],
-        vec![vec![]],
-        AgentRole::Developer,
-    );
+    let mut agent_chain = PipelineState::initial(5, 2)
+        .agent_chain
+        .with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Developer,
+        )
+        .with_drain(crate::agents::AgentDrain::Planning);
     // Set a session ID so session reuse is used instead of WriteTimeoutContext
     agent_chain.last_session_id = Some("session-123".to_string());
 
@@ -60,11 +63,14 @@ fn test_planning_timeout_retry_recleans_plan_xml_before_reinvoke() {
 #[test]
 fn test_development_timeout_retry_recleans_dev_xml_before_reinvoke() {
     let iteration = 0;
-    let mut agent_chain = PipelineState::initial(5, 2).agent_chain.with_agents(
-        vec!["claude".to_string()],
-        vec![vec![]],
-        AgentRole::Developer,
-    );
+    let mut agent_chain = PipelineState::initial(5, 2)
+        .agent_chain
+        .with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Developer,
+        )
+        .with_drain(crate::agents::AgentDrain::Development);
     // Set a session ID so session reuse is used instead of WriteTimeoutContext
     agent_chain.last_session_id = Some("session-123".to_string());
 
@@ -111,11 +117,10 @@ fn test_development_timeout_retry_recleans_dev_xml_before_reinvoke() {
 #[test]
 fn test_review_timeout_retry_recleans_issues_xml_before_reinvoke() {
     let pass = 0;
-    let mut agent_chain = PipelineState::initial(5, 2).agent_chain.with_agents(
-        vec!["codex".to_string()],
-        vec![vec![]],
-        AgentRole::Reviewer,
-    );
+    let mut agent_chain = PipelineState::initial(5, 2)
+        .agent_chain
+        .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+        .with_drain(crate::agents::AgentDrain::Review);
     // Set a session ID so session reuse is used instead of WriteTimeoutContext
     agent_chain.last_session_id = Some("session-123".to_string());
 
@@ -162,11 +167,10 @@ fn test_review_timeout_retry_recleans_issues_xml_before_reinvoke() {
 #[test]
 fn test_fix_timeout_retry_recleans_fix_xml_before_reinvoke() {
     let pass = 0;
-    let mut agent_chain = PipelineState::initial(5, 2).agent_chain.with_agents(
-        vec!["codex".to_string()],
-        vec![vec![]],
-        AgentRole::Reviewer,
-    );
+    let mut agent_chain = PipelineState::initial(5, 2)
+        .agent_chain
+        .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+        .with_drain(crate::agents::AgentDrain::Fix);
     // Set a session ID so session reuse is used instead of WriteTimeoutContext
     agent_chain.last_session_id = Some("session-123".to_string());
 
@@ -212,11 +216,14 @@ fn test_fix_timeout_retry_recleans_fix_xml_before_reinvoke() {
 
 #[test]
 fn test_commit_timeout_retry_recleans_commit_xml_before_reinvoke() {
-    let mut agent_chain = PipelineState::initial(5, 2).agent_chain.with_agents(
-        vec!["commit-agent".to_string()],
-        vec![vec![]],
-        AgentRole::Commit,
-    );
+    let mut agent_chain = PipelineState::initial(5, 2)
+        .agent_chain
+        .with_agents(
+            vec!["commit-agent".to_string()],
+            vec![vec![]],
+            AgentRole::Commit,
+        )
+        .with_drain(crate::agents::AgentDrain::Commit);
     // Set a session ID so session reuse is used instead of WriteTimeoutContext
     agent_chain.last_session_id = Some("session-123".to_string());
 

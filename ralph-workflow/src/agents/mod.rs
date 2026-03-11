@@ -89,7 +89,7 @@ pub use config::{
     AgentConfig, AgentConfigBuilder, AgentsConfigFile, ConfigInitResult, ConfigSource,
 };
 pub use error::{contains_glm_model, is_glm_like_agent, AgentErrorKind};
-pub use fallback::AgentRole;
+pub use fallback::{AgentDrain, AgentRole, DrainMode};
 pub use parser::JsonParserType;
 pub use providers::{
     auth_failure_advice, strip_model_flag_prefix, validate_model_flag, OpenCodeProviderType,

@@ -111,7 +111,7 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         }
 
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Analysis);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
 
         // Get current agent from chain
         let agent = self

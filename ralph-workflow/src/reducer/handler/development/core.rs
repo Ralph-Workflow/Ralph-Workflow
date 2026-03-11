@@ -69,7 +69,7 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> Result<EffectResult> {
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Developer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Development);
 
         let prompt = ctx
             .workspace
