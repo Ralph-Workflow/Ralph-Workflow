@@ -60,7 +60,6 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
         {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,
-                role: AgentDrain::Fix.role(),
             };
         }
 
@@ -127,7 +126,6 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Review,
-            role: AgentDrain::Review.role(),
         };
     }
 

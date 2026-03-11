@@ -77,6 +77,8 @@ All pipeline control-flow decisions (iteration advancement, retry/continuation/f
 
 **Agent execution state is two-dimensional:** When agent work is active, reducer state should track both the active runtime consumer (`drain`, such as planning or fix) and the drain-local mode (`normal`, continuation, same-agent retry, XSD retry). Capability labels like `AgentRole` can still exist, but they must not replace explicit runtime drain identity.
 
+**Chain config is separate from runtime drain identity:** Config may define reusable named chains and bind built-in drains to those chains, but runtime effects/events/state should operate on resolved concrete drain bindings rather than re-deriving role-shaped defaults during execution.
+
 **Invariants:**
 
 - **Single source of truth:** Any advance/retry/continue decision is derived from reducer state plus the latest event

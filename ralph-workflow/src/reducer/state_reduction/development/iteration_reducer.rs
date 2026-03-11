@@ -5,6 +5,7 @@
 //! - Iteration lifecycle (`IterationStarted`, `IterationCompleted`)
 //! - Step completions (`ContextPrepared`, `PromptPrepared`, etc.)
 
+use crate::agents::DrainMode;
 use crate::reducer::event::DevelopmentEvent;
 use crate::reducer::state::{ContinuationState, DevelopmentStatus, PipelineState};
 
@@ -17,6 +18,7 @@ pub(super) fn reduce_iteration_event(
     match event {
         DevelopmentEvent::PhaseStarted => PipelineState {
             phase: crate::reducer::event::PipelinePhase::Development,
+            agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
             continuation: crate::reducer::state::ContinuationState {
                 context_write_pending: false,
                 context_cleanup_pending: false,
@@ -221,6 +223,7 @@ pub(super) fn reduce_iteration_event(
                         context_cleanup_pending: true,
                         ..state.continuation.reset()
                     },
+                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                     development_context_prepared_iteration: None,
                     development_prompt_prepared_iteration: None,
                     development_required_files_cleaned_iteration: None,
@@ -253,7 +256,7 @@ pub(super) fn reduce_iteration_event(
                             same_agent_retry_reason: None,
                             ..state.continuation
                         },
-                        agent_chain: new_agent_chain,
+                        agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
                         development_context_prepared_iteration: None,
                         development_prompt_prepared_iteration: None,
                         development_required_files_cleaned_iteration: None,

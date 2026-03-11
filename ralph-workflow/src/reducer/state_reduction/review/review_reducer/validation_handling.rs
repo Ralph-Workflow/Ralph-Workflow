@@ -3,6 +3,7 @@
 //! This module handles XSD validation failures and retry logic for the review phase.
 //! All functions are pure state transformations implementing retry policies.
 
+use crate::agents::DrainMode;
 use crate::reducer::event::PipelinePhase;
 use crate::reducer::state::{ContinuationState, PipelineState};
 
@@ -31,7 +32,7 @@ pub(in crate::reducer::state_reduction::review) fn reduce_output_validation_fail
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
-            agent_chain: new_agent_chain,
+            agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
                 xsd_retry_count: 0,
@@ -65,6 +66,7 @@ pub(in crate::reducer::state_reduction::review) fn reduce_output_validation_fail
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
+            agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
             continuation: ContinuationState {
                 invalid_output_attempts: attempt + 1,
                 xsd_retry_count: new_xsd_count,

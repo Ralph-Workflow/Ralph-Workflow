@@ -1,6 +1,6 @@
 // NOTE: split from reducer/state_reduction/review.rs (fix attempt events).
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentRole, DrainMode};
 use crate::reducer::event::{PipelinePhase, ReviewEvent};
 use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, FixStatus, FixValidatedOutcome, PipelineState,
@@ -193,6 +193,7 @@ pub(super) fn reduce_fix_attempt_completed(
     PipelineState {
         phase: PipelinePhase::CommitMessage,
         previous_phase: Some(PipelinePhase::Review),
+        agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
         reviewer_pass: pass,
         review_issues_found: false,
         fix_prompt_prepared_pass: None,
@@ -233,6 +234,7 @@ pub(super) fn reduce_fix_continuation_triggered(
 ) -> PipelineState {
     // Fix output is valid but indicates work is incomplete (issues_remain)
     PipelineState {
+        agent_chain: state.agent_chain.with_mode(DrainMode::Continuation),
         reviewer_pass: pass,
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
@@ -277,6 +279,7 @@ pub(super) fn reduce_fix_continuation_succeeded(
         commit_validated_outcome: None,
         commit_xml_archived: false,
         continuation: state.continuation.reset(),
+        agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
         fix_required_files_cleaned_pass: None,
         metrics: state.metrics.increment_review_passes_completed(),
         ..state
@@ -311,6 +314,7 @@ pub(super) fn reduce_fix_continuation_budget_exhausted(
         commit_validated_outcome: None,
         commit_xml_archived: false,
         continuation: state.continuation.reset(),
+        agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
         fix_required_files_cleaned_pass: None,
         ..state
     }
@@ -340,7 +344,7 @@ pub(super) fn reduce_fix_output_validation_failed(
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
-            agent_chain: new_agent_chain,
+            agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
                 xsd_retry_count: 0,
@@ -371,6 +375,7 @@ pub(super) fn reduce_fix_output_validation_failed(
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
+            agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
             continuation: ContinuationState {
                 invalid_output_attempts: attempt + 1,
                 xsd_retry_count: new_xsd_count,

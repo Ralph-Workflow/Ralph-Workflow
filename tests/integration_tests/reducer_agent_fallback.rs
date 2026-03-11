@@ -37,7 +37,7 @@ fn test_development_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer,
+                    drain: ralph_workflow::agents::AgentDrain::Development,
                     ..
                 }
             ),
@@ -64,7 +64,7 @@ fn test_planning_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer,
+                    drain: ralph_workflow::agents::AgentDrain::Planning,
                     ..
                 }
             ),
@@ -91,7 +91,7 @@ fn test_review_phase_with_empty_chain_emits_initialize_effect() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer,
+                    drain: ralph_workflow::agents::AgentDrain::Review,
                     ..
                 }
             ),
@@ -177,7 +177,7 @@ fn test_agent_chain_clears_on_dev_to_review_transition() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer,
+                    drain: ralph_workflow::agents::AgentDrain::Review,
                     ..
                 }
             ),
@@ -285,7 +285,7 @@ fn test_chain_initialized_event_populates_state() {
         let new_state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 EXPECTED_AGENTS
                     .iter()
                     .map(std::string::ToString::to_string)

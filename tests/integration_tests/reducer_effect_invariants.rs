@@ -403,7 +403,7 @@ fn test_commit_phase_requires_agent_chain() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Commit,
+                    drain: ralph_workflow::agents::AgentDrain::Commit,
                     ..
                 }
             ),

@@ -18,7 +18,7 @@ fn test_determine_effect_commit_message_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit,
+            drain: crate::agents::AgentDrain::Commit,
             ..
         }
     ));
@@ -44,7 +44,7 @@ fn test_determine_effect_commit_message_role_mismatch_reinitializes_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit,
+            drain: crate::agents::AgentDrain::Commit,
             ..
         }
     ));

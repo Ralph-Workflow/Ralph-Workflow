@@ -52,7 +52,7 @@ fn test_resume_at_final_iteration_runs_development_work() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Development,
             ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
@@ -82,7 +82,7 @@ fn test_resume_at_final_review_pass_runs_review_work() {
     let is_review_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer,
+            drain: crate::agents::AgentDrain::Review,
             ..
         } | Effect::PrepareReviewContext { .. }
     );
@@ -104,7 +104,7 @@ fn test_resume_with_zero_indexed_iteration() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Development,
             ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
@@ -126,7 +126,7 @@ fn test_resume_mid_pipeline_continues_normally() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Development,
             ..
         } | Effect::PrepareDevelopmentContext { .. }
     );

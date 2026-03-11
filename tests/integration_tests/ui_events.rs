@@ -191,14 +191,12 @@ fn test_all_phase_emojis_are_defined() {
 #[test]
 fn test_agent_activity_ui_event() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
-
         let state = PipelineState::initial(1, 0);
         let mut handler = MockEffectHandler::new(state);
 
         // Simulate agent invocation
         let _result = handler.execute_mock(&Effect::AgentInvocation {
-            role: AgentRole::Developer,
+            role: ralph_workflow::agents::AgentRole::Developer,
             agent: "claude".to_string(),
             model: Some("claude-3".to_string()),
             prompt: "Test prompt".to_string(),
@@ -267,8 +265,6 @@ fn test_captured_ui_events_cleared_on_clear() {
 #[test]
 fn test_pipeline_start_emits_planning_phase_transition() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
-
         let state = PipelineState::initial(1, 0);
         let mut handler = MockEffectHandler::new(state);
 
@@ -285,7 +281,6 @@ fn test_pipeline_start_emits_planning_phase_transition() {
         handler.clear_captured();
         let _result = handler.execute_mock(&Effect::InitializeAgentChain {
             drain: ralph_workflow::agents::AgentDrain::Planning,
-            role: AgentRole::Developer,
         });
 
         // InitializeAgentChain in Planning phase should emit Planning transition
@@ -305,8 +300,6 @@ fn test_pipeline_start_emits_planning_phase_transition() {
 #[test]
 fn test_review_phase_start_emits_phase_transition() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
-
         // Create state already in Review phase (simulates after Development completes)
         // Using (0, 1) sets phase to Review since developer_iters is 0
         let state = PipelineState::initial(0, 1);
@@ -317,7 +310,6 @@ fn test_review_phase_start_emits_phase_transition() {
         // InitializeAgentChain for Reviewer should emit Review phase transition
         let _result = handler.execute_mock(&Effect::InitializeAgentChain {
             drain: ralph_workflow::agents::AgentDrain::Review,
-            role: AgentRole::Reviewer,
         });
 
         assert!(
@@ -336,8 +328,6 @@ fn test_review_phase_start_emits_phase_transition() {
 #[test]
 fn test_complete_phase_transition_sequence() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
-
         let state = PipelineState::initial(1, 1);
         let mut handler = MockEffectHandler::new(state);
         let mut all_ui_events = Vec::new();
@@ -345,7 +335,6 @@ fn test_complete_phase_transition_sequence() {
         // 1. Planning phase (via InitializeAgentChain)
         let result = handler.execute_mock(&Effect::InitializeAgentChain {
             drain: ralph_workflow::agents::AgentDrain::Planning,
-            role: AgentRole::Developer,
         });
         all_ui_events.extend(result.ui_events);
 
@@ -362,7 +351,6 @@ fn test_complete_phase_transition_sequence() {
         // 3. Review phase (via InitializeAgentChain for Reviewer)
         let result = handler.execute_mock(&Effect::InitializeAgentChain {
             drain: ralph_workflow::agents::AgentDrain::Review,
-            role: AgentRole::Reviewer,
         });
         all_ui_events.extend(result.ui_events);
 

@@ -109,7 +109,7 @@ fn test_effects_determined_from_state_only() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer,
+                    drain: ralph_workflow::agents::AgentDrain::Planning,
                     ..
                 }
             ),
@@ -334,11 +334,11 @@ fn test_agent_chain_cleared_on_dev_to_review_transition() {
             matches!(
                 effect,
                 ralph_workflow::reducer::effect::Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer,
+                    drain: ralph_workflow::agents::AgentDrain::Review,
                     ..
                 }
             ),
-            "After dev->review transition, next effect must be InitializeAgentChain(Reviewer), got {effect:?}"
+            "After dev->review transition, next effect must initialize the review drain, got {effect:?}"
         );
     });
 }

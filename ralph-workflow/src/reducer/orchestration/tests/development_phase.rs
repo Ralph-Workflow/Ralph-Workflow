@@ -18,7 +18,7 @@ fn test_determine_effect_development_phase_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Development,
             ..
         }
     ));
@@ -150,7 +150,7 @@ fn test_development_initializes_analysis_chain_before_invoking_analysis() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Analysis,
+            drain: crate::agents::AgentDrain::Analysis,
             ..
         }
     ));

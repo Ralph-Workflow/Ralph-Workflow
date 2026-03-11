@@ -46,7 +46,6 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
     {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Commit,
-            role: AgentDrain::Commit.role(),
         };
     }
     match state.commit {

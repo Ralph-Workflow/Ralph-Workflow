@@ -78,7 +78,7 @@ fn test_xsd_retry_loops_are_removed() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 vec!["dev-primary".to_string(), "dev-fallback".to_string()],
                 3,
                 1_000,
@@ -94,7 +94,7 @@ fn test_xsd_retry_loops_are_removed() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Analysis,
+                AgentRole::Analysis.into(),
                 vec!["dev-primary".to_string(), "dev-fallback".to_string()],
                 3,
                 1_000,
@@ -156,7 +156,7 @@ fn test_planning_output_validation_retries_are_reducer_driven() {
         let state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 vec!["dev-primary".to_string(), "dev-fallback".to_string()],
                 3,
                 1_000,
@@ -224,7 +224,7 @@ fn test_marker_file_check_is_documented_intentional() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Commit,
+                    drain: ralph_workflow::agents::AgentDrain::Commit,
                     ..
                 }
             ),

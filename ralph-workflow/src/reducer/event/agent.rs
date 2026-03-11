@@ -88,8 +88,6 @@ pub enum AgentEvent {
     ChainInitialized {
         /// The explicit runtime drain this chain is for.
         drain: AgentDrain,
-        /// The role this chain is for.
-        role: AgentRole,
         /// The agents available in this chain.
         agents: Vec<String>,
         /// Maximum number of retry cycles allowed for this chain.

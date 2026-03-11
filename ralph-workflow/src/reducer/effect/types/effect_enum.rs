@@ -28,7 +28,6 @@ pub enum Effect {
 
     InitializeAgentChain {
         drain: AgentDrain,
-        role: AgentRole,
     },
 
     /// Prepare the planning prompt for an iteration (single-task).

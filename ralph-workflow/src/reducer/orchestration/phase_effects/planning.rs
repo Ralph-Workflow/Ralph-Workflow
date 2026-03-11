@@ -46,7 +46,6 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
     {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Planning,
-            role: AgentDrain::Planning.role(),
         };
     }
 

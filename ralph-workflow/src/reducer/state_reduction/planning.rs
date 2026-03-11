@@ -1,5 +1,6 @@
 // NOTE: split from reducer/state_reduction.rs.
 
+use crate::agents::DrainMode;
 use crate::reducer::event::PlanningEvent;
 use crate::reducer::state::{
     ContinuationState, PipelineState, PlanningValidatedOutcome, PromptInputsState,
@@ -9,6 +10,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
     match event {
         PlanningEvent::PhaseStarted => PipelineState {
             phase: crate::reducer::event::PipelinePhase::Planning,
+            agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
             planning_prompt_prepared_iteration: None,
             planning_required_files_cleaned_iteration: None,
             planning_agent_invoked_iteration: None,
@@ -24,6 +26,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
         },
         PlanningEvent::PhaseCompleted => PipelineState {
             phase: crate::reducer::event::PipelinePhase::Development,
+            agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
             planning_prompt_prepared_iteration: None,
             planning_required_files_cleaned_iteration: None,
             planning_agent_invoked_iteration: None,
@@ -98,6 +101,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
             if valid {
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
+                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                     planning_prompt_prepared_iteration: None,
                     planning_required_files_cleaned_iteration: None,
                     planning_agent_invoked_iteration: None,
@@ -118,6 +122,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                 // Do not proceed to Development without a valid plan.
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Planning,
+                    agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                     planning_prompt_prepared_iteration: None,
                     planning_required_files_cleaned_iteration: None,
                     planning_agent_invoked_iteration: None,
@@ -143,7 +148,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Planning,
                     iteration,
-                    agent_chain: new_agent_chain,
+                    agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
                     planning_prompt_prepared_iteration: None,
                     planning_required_files_cleaned_iteration: None,
                     planning_agent_invoked_iteration: None,
@@ -173,6 +178,7 @@ pub(super) fn reduce_planning_event(state: PipelineState, event: PlanningEvent) 
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Planning,
                     iteration,
+                    agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
                     planning_prompt_prepared_iteration: None,
                     planning_required_files_cleaned_iteration: None,
                     planning_agent_invoked_iteration: None,

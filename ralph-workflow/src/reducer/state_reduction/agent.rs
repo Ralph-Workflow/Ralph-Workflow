@@ -1,5 +1,6 @@
 // NOTE: split from reducer/state_reduction.rs.
 
+use crate::agents::DrainMode;
 use crate::reducer::event::{AgentErrorKind, AgentEvent, PipelinePhase, TimeoutOutputKind};
 use crate::reducer::state::{ContinuationState, PipelineState, SameAgentRetryReason};
 
@@ -19,7 +20,10 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         },
         // Clear continuation prompt on success
         AgentEvent::InvocationSucceeded { .. } => PipelineState {
-            agent_chain: state.agent_chain.clear_continuation_prompt(),
+            agent_chain: state
+                .agent_chain
+                .clear_continuation_prompt()
+                .with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 same_agent_retry_count: 0,
                 same_agent_retry_pending: false,
@@ -40,7 +44,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                 agent_chain: state
                     .agent_chain
                     .switch_to_next_agent_with_prompt_for_role(role, prompt_context)
-                    .clear_session_id(),
+                    .clear_session_id()
+                    .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -61,7 +66,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .agent_chain
                     .switch_to_next_agent()
                     .clear_session_id()
-                    .clear_continuation_prompt(),
+                    .clear_continuation_prompt()
+                    .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -83,7 +89,11 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         } => {
             let state = reset_phase_xml_cleanup_for_retry(state);
             PipelineState {
-                agent_chain: state.agent_chain.switch_to_next_agent().clear_session_id(),
+                agent_chain: state
+                    .agent_chain
+                    .switch_to_next_agent()
+                    .clear_session_id()
+                    .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -118,7 +128,10 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         } => {
             let state = reset_phase_xml_cleanup_for_retry(state);
             PipelineState {
-                agent_chain: state.agent_chain.advance_to_next_model(),
+                agent_chain: state
+                    .agent_chain
+                    .advance_to_next_model()
+                    .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -146,7 +159,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                         .agent_chain
                         .switch_to_next_agent()
                         .clear_session_id()
-                        .clear_continuation_prompt(),
+                        .clear_continuation_prompt()
+                        .with_mode(DrainMode::Normal),
                     continuation: ContinuationState {
                         xsd_retry_count: 0,
                         xsd_retry_pending: false,
@@ -165,7 +179,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     agent_chain: state
                         .agent_chain
                         .switch_to_next_agent_with_prompt_for_role(role, None)
-                        .clear_session_id(),
+                        .clear_session_id()
+                        .with_mode(DrainMode::Normal),
                     continuation: ContinuationState {
                         xsd_retry_count: 0,
                         xsd_retry_pending: false,
@@ -209,7 +224,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .agent_chain
                     .switch_to_agent_named(&to_agent)
                     .clear_session_id()
-                    .clear_continuation_prompt(),
+                    .clear_continuation_prompt()
+                    .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -239,7 +255,6 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         },
         AgentEvent::ChainInitialized {
             drain,
-            role,
             agents,
             max_cycles,
             retry_delay_ms,
@@ -250,7 +265,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             PipelineState {
                 agent_chain: state
                     .agent_chain
-                    .with_agents(agents, models_per_agent, role)
+                    .with_agents(agents, models_per_agent, drain.role())
                     .with_drain(drain)
                     .with_max_cycles(max_cycles)
                     .with_backoff_policy(retry_delay_ms, backoff_multiplier, max_backoff_ms)
@@ -266,6 +281,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         // XSD validation failed: trigger XSD retry via continuation state
         AgentEvent::XsdValidationFailed { .. } => {
             PipelineState {
+                agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
                 continuation: state.continuation.trigger_xsd_retry(),
                 // Increment per-phase counter based on current phase.
                 metrics: match state.phase {
@@ -333,7 +349,11 @@ fn reduce_same_agent_retryable_failure(
 
     if new_retry_count >= state.continuation.max_same_agent_retry_count {
         PipelineState {
-            agent_chain: state.agent_chain.switch_to_next_agent().clear_session_id(),
+            agent_chain: state
+                .agent_chain
+                .switch_to_next_agent()
+                .clear_session_id()
+                .with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 xsd_retry_count: 0,
                 xsd_retry_pending: false,
@@ -386,7 +406,7 @@ fn reduce_same_agent_retryable_failure(
             };
 
         PipelineState {
-            agent_chain,
+            agent_chain: agent_chain.with_mode(DrainMode::SameAgentRetry),
             continuation: ContinuationState {
                 same_agent_retry_count: new_retry_count,
                 same_agent_retry_pending: true,

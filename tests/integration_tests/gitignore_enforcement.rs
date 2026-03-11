@@ -138,7 +138,7 @@ fn test_gitignore_after_agent_chain_init() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer,
+                    drain: ralph_workflow::agents::AgentDrain::Planning,
                     ..
                 }
             ),

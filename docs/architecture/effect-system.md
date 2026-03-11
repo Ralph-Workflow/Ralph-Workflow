@@ -476,6 +476,7 @@ Effect handlers must not become a second policy engine for agent architecture. I
 - do not push unresolved chain aliases into handler-time logic
 - do not rely on role-only defaults to stand in for distinct drains long-term
 - do not let invocation-time normalization become the place where chain-vs-drain semantics are decided
+- do initialize chains and emit chain-initialized events using the resolved drain identity, with any broad role metadata derived from that drain instead of passed separately
 
 The handler boundary should receive a resolved, concrete drain-to-chain mapping and execute it. Changes in this area should update config semantics, runtime semantics, and architecture documentation together so the same concept exists consistently at every layer.
 

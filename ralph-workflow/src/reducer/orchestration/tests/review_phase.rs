@@ -19,7 +19,7 @@ fn test_determine_effect_review_phase_empty_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer,
+            drain: crate::agents::AgentDrain::Review,
             ..
         }
     ));
@@ -374,11 +374,11 @@ fn test_determine_effect_review_phase_with_wrong_role_chain() {
         matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer,
+                drain: crate::agents::AgentDrain::Review,
                 ..
             }
         ),
-        "Expected InitializeAgentChain with Reviewer role, got {effect:?}"
+        "Expected InitializeAgentChain for the review drain, got {effect:?}"
     );
 }
 

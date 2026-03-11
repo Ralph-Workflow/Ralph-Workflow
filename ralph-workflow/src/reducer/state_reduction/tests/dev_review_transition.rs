@@ -100,7 +100,7 @@ fn test_chain_initialized_populates_reviewer_chain() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec![
                 "codex".to_string(),
                 "opencode".to_string(),
@@ -196,7 +196,7 @@ fn test_orchestration_emits_init_chain_for_reviewer_after_dev_review_transition(
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer,
+                drain: crate::agents::AgentDrain::Review,
                 ..
             }
         ),

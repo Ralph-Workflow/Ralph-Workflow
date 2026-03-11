@@ -540,7 +540,7 @@ fn test_commit_agent_chain_initialized_preserves_role() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Commit,
+            crate::agents::AgentDrain::Commit,
             agents.clone(),
             3,
             1000,

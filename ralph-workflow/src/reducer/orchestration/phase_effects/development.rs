@@ -64,7 +64,6 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
     if state.agent_chain.agents.is_empty() {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Development,
-            role: AgentDrain::Development.role(),
         };
     }
 
@@ -75,7 +74,6 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
     {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Development,
-            role: AgentDrain::Development.role(),
         };
     }
 
@@ -143,7 +141,6 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
             if state.agent_chain.current_drain != AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
                     drain: AgentDrain::Analysis,
-                    role: AgentDrain::Analysis.role(),
                 };
             }
             return Effect::InvokeAnalysisAgent {

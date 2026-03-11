@@ -15,6 +15,10 @@ fn test_output_validation_failed_retries_within_limit() {
     assert_eq!(new_state.phase, PipelinePhase::Development);
     assert_eq!(new_state.continuation.invalid_output_attempts, 1);
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::XsdRetry
+    );
 }
 
 #[test]
@@ -144,6 +148,10 @@ fn test_review_output_validation_failed_increments_state_counter() {
     assert_eq!(new_state.phase, PipelinePhase::Review);
     assert_eq!(new_state.reviewer_pass, 0);
     assert_eq!(new_state.continuation.invalid_output_attempts, 1);
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::XsdRetry
+    );
 }
 
 #[test]

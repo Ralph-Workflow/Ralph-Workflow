@@ -13,11 +13,11 @@ impl MainEffectHandler {
         let role = drain.role();
         let fallback_config = ctx.registry.fallback_config();
 
-        // Get the full fallback chain for this role from the FallbackConfig
-        let mut agents = ctx.registry.resolved_drain(drain).map_or_else(
-            || fallback_config.get_fallbacks(role).to_vec(),
-            |binding| binding.agents.clone(),
-        );
+        // Resolve the concrete chain for this drain.
+        let mut agents = ctx
+            .registry
+            .resolved_drain(drain)
+            .map_or_else(Vec::new, |binding| binding.agents.clone());
 
         // If no fallbacks configured, fall back to context agent
         if agents.is_empty() {
@@ -43,8 +43,7 @@ impl MainEffectHandler {
         }
 
         ctx.logger.info(&format!(
-            "Agent fallback chain for {:?}: {}",
-            role,
+            "Agent fallback chain for drain {drain}: {}",
             agents.join(", ")
         ));
 

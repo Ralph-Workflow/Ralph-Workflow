@@ -12,7 +12,7 @@ fn test_determine_effect_planning_phase() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Planning,
             ..
         }
     ));
@@ -57,7 +57,7 @@ fn test_determine_effect_planning_role_mismatch_reinitializes_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: crate::agents::AgentDrain::Planning,
             ..
         }
     ));

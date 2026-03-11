@@ -73,7 +73,6 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
             if state.agent_chain.current_drain != crate::agents::AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
                     drain: crate::agents::AgentDrain::Analysis,
-                    role: crate::agents::AgentDrain::Analysis.role(),
                 };
             }
             Effect::InvokeAnalysisAgent {

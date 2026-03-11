@@ -3,19 +3,23 @@
 impl PipelineEvent {
     // Agent constructors
     /// Create an `AgentInvocationStarted` event.
-    #[must_use] 
-    pub const fn agent_invocation_started(role: AgentRole, agent: String, model: Option<String>) -> Self {
+    #[must_use]
+    pub const fn agent_invocation_started(
+        role: AgentRole,
+        agent: String,
+        model: Option<String>,
+    ) -> Self {
         Self::Agent(AgentEvent::InvocationStarted { role, agent, model })
     }
 
     /// Create an `AgentInvocationSucceeded` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_invocation_succeeded(role: AgentRole, agent: String) -> Self {
         Self::Agent(AgentEvent::InvocationSucceeded { role, agent })
     }
 
     /// Create an `AgentInvocationFailed` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_invocation_failed(
         role: AgentRole,
         agent: String,
@@ -33,8 +37,12 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentFallbackTriggered` event.
-    #[must_use] 
-    pub const fn agent_fallback_triggered(role: AgentRole, from_agent: String, to_agent: String) -> Self {
+    #[must_use]
+    pub const fn agent_fallback_triggered(
+        role: AgentRole,
+        from_agent: String,
+        to_agent: String,
+    ) -> Self {
         Self::Agent(AgentEvent::FallbackTriggered {
             role,
             from_agent,
@@ -43,7 +51,7 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentModelFallbackTriggered` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_model_fallback_triggered(
         role: AgentRole,
         agent: String,
@@ -59,31 +67,29 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentRetryCycleStarted` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_retry_cycle_started(role: AgentRole, cycle: u32) -> Self {
         Self::Agent(AgentEvent::RetryCycleStarted { role, cycle })
     }
 
     /// Create an `AgentChainExhausted` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_chain_exhausted(role: AgentRole) -> Self {
         Self::Agent(AgentEvent::ChainExhausted { role })
     }
 
     /// Create an `AgentChainInitialized` event.
-    #[must_use] 
-    pub fn agent_chain_initialized(
-        drain: impl Into<AgentDrain>,
+    #[must_use]
+    pub const fn agent_chain_initialized(
+        drain: AgentDrain,
         agents: Vec<String>,
         max_cycles: u32,
         retry_delay_ms: u64,
         backoff_multiplier: f64,
         max_backoff_ms: u64,
     ) -> Self {
-        let drain = drain.into();
         Self::Agent(AgentEvent::ChainInitialized {
             drain,
-            role: drain.role(),
             agents,
             max_cycles,
             retry_delay_ms,
@@ -93,7 +99,7 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentRateLimited` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_rate_limited(
         role: AgentRole,
         agent: String,
@@ -107,7 +113,7 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentAuthFailed` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_auth_failed(role: AgentRole, agent: String) -> Self {
         Self::Agent(AgentEvent::AuthFailed { role, agent })
     }
@@ -121,12 +127,22 @@ impl PipelineEvent {
         logfile_path: Option<String>,
         child_status_at_timeout: Option<ChildProcessInfo>,
     ) -> Self {
-        Self::Agent(AgentEvent::TimedOut { role, agent, output_kind, logfile_path, child_status_at_timeout })
+        Self::Agent(AgentEvent::TimedOut {
+            role,
+            agent,
+            output_kind,
+            logfile_path,
+            child_status_at_timeout,
+        })
     }
 
     /// Create an `AgentSessionEstablished` event.
-    #[must_use] 
-    pub const fn agent_session_established(role: AgentRole, agent: String, session_id: String) -> Self {
+    #[must_use]
+    pub const fn agent_session_established(
+        role: AgentRole,
+        agent: String,
+        session_id: String,
+    ) -> Self {
         Self::Agent(AgentEvent::SessionEstablished {
             role,
             agent,
@@ -135,7 +151,7 @@ impl PipelineEvent {
     }
 
     /// Create an `AgentXsdValidationFailed` event.
-    #[must_use] 
+    #[must_use]
     pub const fn agent_xsd_validation_failed(
         role: AgentRole,
         artifact: crate::reducer::state::ArtifactType,

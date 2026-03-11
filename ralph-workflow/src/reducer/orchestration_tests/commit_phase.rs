@@ -22,7 +22,7 @@ fn test_commit_empty_chain_initializes_agent_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit,
+            drain: crate::agents::AgentDrain::Commit,
             ..
         }
     ));
@@ -49,7 +49,7 @@ fn test_commit_role_mismatch_initializes_commit_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Commit,
+            drain: crate::agents::AgentDrain::Commit,
             ..
         }
     ));
