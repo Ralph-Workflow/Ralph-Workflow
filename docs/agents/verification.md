@@ -25,6 +25,7 @@ Verification passes when required checks complete successfully with **no ERROR/W
 Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
 
 On an unchanged tree, `cargo xtask verify` may reuse cached clean results for eligible lanes, including the native scan lane. This does not weaken the contract: the cache key includes the relevant source inputs plus `xtask` scan implementation inputs, so any relevant source or verifier change invalidates the warm-run shortcut and the check runs again.
+Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits.
 
 The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --release` against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles.
 

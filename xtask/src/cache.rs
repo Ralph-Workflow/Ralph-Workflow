@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -67,17 +68,74 @@ pub enum CheckScope {
 #[derive(Default)]
 pub struct RepositoryFingerprintCache {
     glob_memo: Mutex<HashMap<String, Vec<PathBuf>>>,
-    file_contents: Mutex<HashMap<PathBuf, CachedFileBytes>>,
+    file_fingerprints: Mutex<HashMap<PathBuf, CachedFileFingerprint>>,
 }
 
-#[derive(Clone)]
-struct CachedFileBytes {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+struct FileTimestamp {
+    seconds_since_epoch: u64,
+    nanos_since_second: u32,
+}
+
+impl FileTimestamp {
+    fn from_system_time(time: SystemTime) -> Option<Self> {
+        let duration = time.duration_since(SystemTime::UNIX_EPOCH).ok()?;
+        Some(Self {
+            seconds_since_epoch: duration.as_secs(),
+            nanos_since_second: duration.subsec_nanos(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileFingerprintMetadata {
     len: u64,
-    modified: Option<std::time::SystemTime>,
-    bytes: Vec<u8>,
+    modified: Option<FileTimestamp>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+struct CachedFileFingerprint {
+    len: u64,
+    modified: Option<FileTimestamp>,
+    digest: u64,
+}
+
+impl CachedFileFingerprint {
+    fn metadata(self) -> FileFingerprintMetadata {
+        FileFingerprintMetadata {
+            len: self.len,
+            modified: self.modified,
+        }
+    }
 }
 
 impl RepositoryFingerprintCache {
+    fn from_persisted(repo_root: &Path, persisted: HashMap<String, CachedFileFingerprint>) -> Self {
+        let file_fingerprints = persisted
+            .into_iter()
+            .map(|(path, fingerprint)| (repo_root.join(path), fingerprint))
+            .collect();
+        Self {
+            glob_memo: Mutex::new(HashMap::new()),
+            file_fingerprints: Mutex::new(file_fingerprints),
+        }
+    }
+
+    fn persisted_file_fingerprints(
+        &self,
+        repo_root: &Path,
+    ) -> HashMap<String, CachedFileFingerprint> {
+        self.file_fingerprints
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|(path, fingerprint)| {
+                let relative = path.strip_prefix(repo_root).ok()?;
+                Some((relative.to_string_lossy().into_owned(), *fingerprint))
+            })
+            .collect()
+    }
+
     fn collect_globbed_paths(
         &self,
         repo_root: &Path,
@@ -101,27 +159,40 @@ impl RepositoryFingerprintCache {
         Ok(paths)
     }
 
-    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+    fn file_metadata(path: &Path) -> std::io::Result<FileFingerprintMetadata> {
         let metadata = std::fs::metadata(path)?;
-        let len = metadata.len();
-        let modified = metadata.modified().ok();
+        Ok(FileFingerprintMetadata {
+            len: metadata.len(),
+            modified: metadata
+                .modified()
+                .ok()
+                .and_then(FileTimestamp::from_system_time),
+        })
+    }
 
-        if let Some(cached) = self.file_contents.lock().unwrap().get(path).cloned() {
-            if cached.len == len && cached.modified == modified {
-                return Ok(cached.bytes);
+    fn read_file_digest(&self, path: &Path) -> std::io::Result<u64> {
+        let metadata = Self::file_metadata(path)?;
+
+        if let Some(cached) = self.file_fingerprints.lock().unwrap().get(path).copied() {
+            if cached.metadata() == metadata {
+                return Ok(cached.digest);
             }
         }
 
         let bytes = std::fs::read(path)?;
-        self.file_contents.lock().unwrap().insert(
+        let mut hasher = Fnv1aHasher::new();
+        hasher.write_bytes(&bytes);
+        let digest = hasher.finish();
+
+        self.file_fingerprints.lock().unwrap().insert(
             path.to_path_buf(),
-            CachedFileBytes {
-                len,
-                modified,
-                bytes: bytes.clone(),
+            CachedFileFingerprint {
+                len: metadata.len,
+                modified: metadata.modified,
+                digest,
             },
         );
-        Ok(bytes)
+        Ok(digest)
     }
 }
 
@@ -143,6 +214,8 @@ const RALPH_GUI_FRONTEND_SRC_GLOBS: &[ScopeGlob] = &[ScopeGlob {
     dir: "ralph-gui/ui/src",
     pattern: "*",
 }];
+const SCOPE_HASH_VERSION: &[u8] = b"scope-v2";
+const NATIVE_SCAN_HASH_VERSION: &[u8] = b"native-scan-v2";
 
 /// Returns a stable string key for a scope, used for in-process memoization.
 /// The key encodes both the scope type (directories vs build) and the directory list.
@@ -232,6 +305,7 @@ pub fn compute_scope_hash_with_snapshot(
     snapshot: &RepositoryFingerprintCache,
 ) -> std::io::Result<u64> {
     let mut hasher = Fnv1aHasher::new();
+    hasher.write_bytes(SCOPE_HASH_VERSION);
     let mut all_paths: Vec<PathBuf> = Vec::new();
 
     match scope {
@@ -304,8 +378,9 @@ pub fn compute_scope_hash_with_snapshot(
     all_paths.dedup();
 
     for path in &all_paths {
-        hasher.write_bytes(path.to_string_lossy().as_bytes());
-        hasher.write_bytes(&snapshot.read_file_bytes(path)?);
+        let relative = path.strip_prefix(repo_root).unwrap_or(path);
+        hasher.write_bytes(relative.to_string_lossy().as_bytes());
+        hasher.write_bytes(&snapshot.read_file_digest(path)?.to_le_bytes());
     }
 
     Ok(hasher.finish())
@@ -357,7 +432,7 @@ fn compute_native_scan_hash(
     snapshot: &RepositoryFingerprintCache,
 ) -> std::io::Result<u64> {
     let mut hasher = Fnv1aHasher::new();
-    hasher.write_bytes(b"native-scan-v1");
+    hasher.write_bytes(NATIVE_SCAN_HASH_VERSION);
     append_native_scan_definition_hash(&mut hasher, checks);
 
     let mut all_paths: Vec<PathBuf> = Vec::new();
@@ -386,8 +461,9 @@ fn compute_native_scan_hash(
     all_paths.dedup();
 
     for path in &all_paths {
-        hasher.write_bytes(path.to_string_lossy().as_bytes());
-        hasher.write_bytes(&snapshot.read_file_bytes(path)?);
+        let relative = path.strip_prefix(repo_root).unwrap_or(path);
+        hasher.write_bytes(relative.to_string_lossy().as_bytes());
+        hasher.write_bytes(&snapshot.read_file_digest(path)?.to_le_bytes());
     }
 
     Ok(hasher.finish())
@@ -396,7 +472,10 @@ fn compute_native_scan_hash(
 /// On-disk format for the cache file.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CacheFile {
+    #[serde(default)]
     entries: HashMap<String, CacheEntry>,
+    #[serde(default)]
+    file_fingerprints: HashMap<String, CachedFileFingerprint>,
 }
 
 /// A CommandRunner that wraps another runner and caches successful results.
@@ -419,19 +498,20 @@ pub struct CachingCommandRunner {
 impl CachingCommandRunner {
     pub fn new(inner: impl CommandRunner + 'static, repo_root: PathBuf) -> Self {
         let cache_path = repo_root.join("target/xtask-verify-cache.json");
-        let memory = if let Ok(data) = std::fs::read_to_string(&cache_path) {
-            serde_json::from_str::<CacheFile>(&data)
-                .map(|f| f.entries)
-                .unwrap_or_default()
+        let cache_file = if let Ok(data) = std::fs::read_to_string(&cache_path) {
+            serde_json::from_str::<CacheFile>(&data).unwrap_or_default()
         } else {
-            HashMap::new()
+            CacheFile::default()
         };
         Self {
             inner: Box::new(inner),
-            repo_root,
-            memory: Mutex::new(memory),
+            repo_root: repo_root.clone(),
+            memory: Mutex::new(cache_file.entries),
             scope_memo: Mutex::new(HashMap::new()),
-            repo_fingerprint: RepositoryFingerprintCache::default(),
+            repo_fingerprint: RepositoryFingerprintCache::from_persisted(
+                &repo_root,
+                cache_file.file_fingerprints,
+            ),
             dirty: AtomicBool::new(false),
         }
     }
@@ -442,7 +522,13 @@ impl CachingCommandRunner {
 
     fn persist(&self) -> std::io::Result<()> {
         let entries = self.memory.lock().unwrap().clone();
-        let file = CacheFile { entries };
+        let file_fingerprints = self
+            .repo_fingerprint
+            .persisted_file_fingerprints(&self.repo_root);
+        let file = CacheFile {
+            entries,
+            file_fingerprints,
+        };
 
         let json = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
 
@@ -650,6 +736,14 @@ mod tests {
     fn success_output() -> CommandOutput {
         CommandOutput {
             exit_code: 1, // exit 1 = no matches = success for rg checks
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+
+    fn zero_exit_success_output() -> CommandOutput {
+        CommandOutput {
+            exit_code: 0,
             stdout: String::new(),
             stderr: String::new(),
         }
@@ -974,11 +1068,11 @@ mod tests {
         let _ =
             compute_scope_hash_with_snapshot(&tmp, &CheckScope::Directories(&["src"]), &snapshot)
                 .expect("first hash should succeed");
-        let file_count_after_first = snapshot.file_contents.lock().unwrap().len();
+        let file_count_after_first = snapshot.file_fingerprints.lock().unwrap().len();
         let _ =
             compute_scope_hash_with_snapshot(&tmp, &CheckScope::Directories(&["src"]), &snapshot)
                 .expect("second hash should succeed");
-        let file_count_after_second = snapshot.file_contents.lock().unwrap().len();
+        let file_count_after_second = snapshot.file_fingerprints.lock().unwrap().len();
 
         assert!(
             file_count_after_first > 0,
@@ -1641,6 +1735,60 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_cross_process_cache_hit_reuses_persisted_fingerprint_for_unreadable_unchanged_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = unique_test_dir("xtask-cache-cross-process-persisted-fingerprint");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let source_path = tmp.join("xtask/src/lib.rs");
+        std::fs::write(&source_path, b"pub fn xtask() {}\n").unwrap();
+
+        let spec = make_spec("clippy-xtask");
+
+        let (inner_first, first_count) = CountingRunner::new(success_output());
+        let runner_first = CachingCommandRunner::new(inner_first, tmp.clone());
+        let _ = runner_first.run(&spec).unwrap();
+        runner_first.flush();
+        assert_eq!(first_count.load(Ordering::SeqCst), 1);
+
+        let mut unreadable = std::fs::metadata(&source_path).unwrap().permissions();
+        unreadable.set_mode(0o000);
+        std::fs::set_permissions(&source_path, unreadable).unwrap();
+
+        let (inner_second, second_count) = CountingRunner::new(success_output());
+        let runner_second = CachingCommandRunner::new(inner_second, tmp.clone());
+        let result = runner_second.run(&spec);
+
+        let mut readable = std::fs::metadata(&source_path).unwrap().permissions();
+        readable.set_mode(0o644);
+        let _ = std::fs::set_permissions(&source_path, readable);
+
+        let output = result.expect("warm cross-process cache hit should succeed");
+        assert_eq!(output.exit_code, 1);
+        assert_eq!(
+            second_count.load(Ordering::SeqCst),
+            0,
+            "unchanged files should reuse persisted fingerprints instead of rereading bytes in a new process"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn test_flush_is_idempotent() {
         // Calling flush() multiple times must not cause errors or duplicated writes.
@@ -1697,6 +1845,133 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         assert!(
             cache_path.exists(),
             "cache must be written after permissions are restored"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_cross_process_relevant_edit_invalidates_only_affected_scope() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = unique_test_dir("xtask-cache-cross-process-scope-invalidation");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let xtask_source = tmp.join("xtask/src/lib.rs");
+        std::fs::write(&xtask_source, b"pub fn xtask() {}\n").unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package.json"),
+            b"{\"name\":\"ralph-workflow-ui\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package-lock.json"),
+            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.node.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/vite.config.ts"),
+            b"export default {};\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/eslint.config.mjs"),
+            b"export default [];\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/index.html"),
+            b"<div id=\"app\"></div>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>one</div>; }\n",
+        )
+        .unwrap();
+
+        let xtask_spec = make_spec("clippy-xtask");
+        let frontend_spec = make_zero_exit_spec("ralph-gui-frontend-test");
+
+        let (inner_first_xtask, first_xtask_count) = CountingRunner::new(success_output());
+        let runner_first_xtask = CachingCommandRunner::new(inner_first_xtask, tmp.clone());
+        let _ = runner_first_xtask.run(&xtask_spec).unwrap();
+        runner_first_xtask.flush();
+
+        let (inner_first_frontend, first_frontend_count) =
+            CountingRunner::new(zero_exit_success_output());
+        let runner_first_frontend = CachingCommandRunner::new(inner_first_frontend, tmp.clone());
+        let _ = runner_first_frontend.run(&frontend_spec).unwrap();
+        runner_first_frontend.flush();
+
+        assert_eq!(
+            first_xtask_count.load(Ordering::SeqCst),
+            1,
+            "cold xtask run should execute before the cache is populated"
+        );
+        assert_eq!(
+            first_frontend_count.load(Ordering::SeqCst),
+            1,
+            "cold frontend run should execute before the cache is populated"
+        );
+
+        let mut unreadable = std::fs::metadata(&xtask_source).unwrap().permissions();
+        unreadable.set_mode(0o000);
+        std::fs::set_permissions(&xtask_source, unreadable).unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>two</div>; }\n",
+        )
+        .unwrap();
+
+        let (inner_xtask, xtask_count) = CountingRunner::new(success_output());
+        let runner_xtask = CachingCommandRunner::new(inner_xtask, tmp.clone());
+        let xtask_result = runner_xtask.run(&xtask_spec);
+
+        let mut readable = std::fs::metadata(&xtask_source).unwrap().permissions();
+        readable.set_mode(0o644);
+        let _ = std::fs::set_permissions(&xtask_source, readable);
+
+        let _ = xtask_result.expect("xtask warm cache hit should succeed");
+        assert_eq!(
+            xtask_count.load(Ordering::SeqCst),
+            0,
+            "frontend-only edits should not invalidate unchanged xtask scope fingerprints"
+        );
+
+        let (inner_frontend, frontend_count) = CountingRunner::new(zero_exit_success_output());
+        let runner_frontend = CachingCommandRunner::new(inner_frontend, tmp.clone());
+        let _ = runner_frontend.run(&frontend_spec).unwrap();
+        assert_eq!(
+            frontend_count.load(Ordering::SeqCst),
+            1,
+            "frontend edits must still invalidate the affected frontend scope"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
