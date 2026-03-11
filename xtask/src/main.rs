@@ -135,6 +135,7 @@ fn main() -> ExitCode {
             // Total check count = native checks + 1 (native-scan) + all group checks.
             let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()
                 + 1
+                + verify::FMT_CHECKS.len()
                 + verify::CORE_CARGO_CHECKS.len()
                 + verify::XTASK_CARGO_CHECKS.len()
                 + verify::GUI_CARGO_CHECKS.len()
@@ -152,6 +153,7 @@ fn main() -> ExitCode {
             let verify_start = std::time::Instant::now();
             let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
             let groups = verify::CheckGroups {
+                fmt: verify::FMT_CHECKS,
                 core_cargo: verify::CORE_CARGO_CHECKS,
                 xtask_cargo: verify::XTASK_CARGO_CHECKS,
                 gui_cargo: verify::GUI_CARGO_CHECKS,

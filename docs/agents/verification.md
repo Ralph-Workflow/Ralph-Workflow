@@ -8,6 +8,22 @@ cargo xtask verify
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
 
+### Parallel execution architecture
+
+`cargo xtask verify` runs checks in seven concurrent lanes after a serial native-checks gate:
+
+- **Phase 0 (serial):** Native checks — instantaneous Rust function calls (compliance-timeout-wrapper, audit-no-shell-scripts).
+- **Phase 1 (concurrent):**
+  - Lane 1: Native Aho-Corasick scan (pure file I/O, no target/ interaction)
+  - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
+  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
+  - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
+  - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify)
+  - Lane 6: Frontend (npm ci, lint, test — independent of cargo)
+  - Lane 7: Release (release build, dylint — target/release-parallel-verify)
+
+Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
+
 ---
 
 ## Reference: underlying commands
