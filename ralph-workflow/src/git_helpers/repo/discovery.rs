@@ -1,3 +1,4 @@
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,86 @@ pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
     }
     // Fallback: assume standard .git directory layout.
     repo_root.join(".git").join("ralph")
+}
+
+pub fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
+    })?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+
+    let suffix = format!(
+        "ralph.tampered.{label}.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let tampered_name = format!("{}.{}", file_name.to_string_lossy(), suffix);
+    let tampered_path = parent.join(tampered_name);
+
+    match fs::rename(path, &tampered_path) {
+        Ok(()) => Ok(tampered_path),
+        Err(e) => {
+            let is_empty_dir = fs::symlink_metadata(path).ok().is_some_and(|m| m.is_dir())
+                && fs::read_dir(path)
+                    .ok()
+                    .is_some_and(|mut it| it.next().is_none());
+            if is_empty_dir {
+                fs::remove_dir(path)?;
+                Ok(path.to_path_buf())
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+fn prepare_ralph_git_dir_internal(ralph_dir: &Path, create_if_missing: bool) -> io::Result<bool> {
+    match fs::symlink_metadata(ralph_dir) {
+        Ok(meta) => {
+            let ft = meta.file_type();
+            if ft.is_symlink() || !meta.is_dir() {
+                quarantine_path_in_place(ralph_dir, "dir")?;
+                if !create_if_missing {
+                    return Ok(false);
+                }
+            } else {
+                return Ok(true);
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            if !create_if_missing {
+                return Ok(false);
+            }
+        }
+        Err(e) => return Err(e),
+    }
+
+    fs::create_dir_all(ralph_dir)?;
+    let meta = fs::symlink_metadata(ralph_dir)?;
+    let ft = meta.file_type();
+    if ft.is_symlink() || !meta.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "ralph git dir is not a regular directory",
+        ));
+    }
+
+    Ok(true)
+}
+
+pub fn ensure_ralph_git_dir(repo_root: &Path) -> io::Result<PathBuf> {
+    let ralph_dir = ralph_git_dir(repo_root);
+    prepare_ralph_git_dir_internal(&ralph_dir, true)?;
+    Ok(ralph_dir)
+}
+
+pub fn sanitize_ralph_git_dir_at(ralph_dir: &Path) -> io::Result<bool> {
+    prepare_ralph_git_dir_internal(ralph_dir, false)
 }
 
 /// Check if we're in a git repository.

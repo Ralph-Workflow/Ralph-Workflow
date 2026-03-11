@@ -58,11 +58,7 @@ pub fn init_git_repo(dir: &TempDir) -> Repository {
     cfg.set_str("user.email", "test@example.com")
         .expect("set user.email");
 
-    fs::write(
-        dir.path().join(".gitignore"),
-        ".agent/\nPROMPT.md\n",
-    )
-    .expect("write .gitignore");
+    fs::write(dir.path().join(".gitignore"), ".agent/\nPROMPT.md\n").expect("write .gitignore");
     fs::write(
         dir.path().join("PROMPT.md"),
         r"# Test Requirements

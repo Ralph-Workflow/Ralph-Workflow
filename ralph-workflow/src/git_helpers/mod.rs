@@ -146,6 +146,9 @@ pub use wrapper::{
     marker_exists_with_workspace, remove_marker_with_workspace,
 };
 
+#[cfg(any(test, feature = "test-utils"))]
+pub use wrapper::set_agent_phase_paths_for_test;
+
 // Re-export checkpoint and recovery action for tests only
 #[cfg(any(test, feature = "test-utils"))]
 pub use rebase_checkpoint::RebaseCheckpoint;

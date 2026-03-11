@@ -98,7 +98,10 @@ fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
         start_agent_phase_in_repo(target_repo.path(), &mut helpers).unwrap();
 
         assert!(
-            target_repo.path().join(".git/ralph/no_agent_commit").exists(),
+            target_repo
+                .path()
+                .join(".git/ralph/no_agent_commit")
+                .exists(),
             "target repo should receive the agent marker"
         );
         assert!(
@@ -126,7 +129,10 @@ fn test_start_agent_phase_in_repo_uses_target_repo_not_cwd_repo() {
             "cwd repo must not receive the marker for another repo"
         );
         assert!(
-            !cwd_repo.path().join(".git/ralph/git-wrapper-dir.txt").exists(),
+            !cwd_repo
+                .path()
+                .join(".git/ralph/git-wrapper-dir.txt")
+                .exists(),
             "cwd repo must not receive the wrapper track file for another repo"
         );
 
@@ -309,6 +315,203 @@ fn test_cleanup_orphaned_marker() {
 
         cleanup_orphaned_marker(&logger).unwrap();
         assert!(!marker_path.exists());
+    });
+}
+
+#[test]
+#[serial]
+fn test_cleanup_orphaned_marker_removes_legacy_root_marker() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+        let dir_path = dir.path();
+
+        git2::Repository::init(dir_path).unwrap();
+
+        let legacy_marker_path = dir_path.join(".no_agent_commit");
+        File::create(&legacy_marker_path).unwrap();
+        assert!(legacy_marker_path.exists());
+
+        cleanup_orphaned_marker(&logger).unwrap();
+        assert!(!legacy_marker_path.exists());
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_start_agent_phase_quarantines_symlinked_ralph_dir() {
+    use std::os::unix::fs::symlink;
+    use test_helpers::with_temp_cwd;
+
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let outside = tempfile::tempdir().unwrap();
+        let ralph_dir = dir.path().join(".git/ralph");
+        symlink(outside.path(), &ralph_dir).unwrap();
+
+        let mut helpers = GitHelpers::default();
+        start_agent_phase(&mut helpers).unwrap();
+
+        let ralph_meta = fs::symlink_metadata(&ralph_dir).unwrap();
+        assert!(
+            ralph_meta.is_dir() && !ralph_meta.file_type().is_symlink(),
+            "start_agent_phase should recreate ralph dir as a real directory"
+        );
+        assert!(
+            ralph_dir.join("no_agent_commit").is_file(),
+            "marker should be created inside the repo-owned ralph dir"
+        );
+        assert!(
+            !outside.path().join("no_agent_commit").exists(),
+            "marker creation must not follow a symlinked ralph dir outside the repo"
+        );
+
+        end_agent_phase();
+        disable_git_wrapper(&mut helpers);
+        uninstall_hooks(&logger).unwrap();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_install_hooks_in_repo_quarantines_symlinked_ralph_dir() {
+    use std::os::unix::fs::symlink;
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        git2::Repository::init(".").unwrap();
+
+        let outside = tempfile::tempdir().unwrap();
+        let ralph_dir = dir.path().join(".git/ralph");
+        symlink(outside.path(), &ralph_dir).unwrap();
+
+        hooks::install_hooks_in_repo(dir.path()).unwrap();
+
+        let ralph_meta = fs::symlink_metadata(&ralph_dir).unwrap();
+        assert!(
+            ralph_meta.is_dir() && !ralph_meta.file_type().is_symlink(),
+            "install_hooks_in_repo should recreate ralph dir as a real directory"
+        );
+        assert!(
+            !outside.path().join("no_agent_commit").exists()
+                && !outside.path().join("git-wrapper-dir.txt").exists(),
+            "hook setup must not write enforcement artifacts through a symlinked ralph dir"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_add_specific_in_repo_skips_legacy_root_marker() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo_root = dir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        fs::write(repo_root.join(".no_agent_commit"), "legacy").unwrap();
+
+        let staged =
+            git_helpers::git_add_specific_in_repo(repo_root, &[".no_agent_commit"]).unwrap();
+
+        assert!(
+            !staged,
+            "legacy root marker should be ignored instead of staged for commit"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_git_add_all_in_repo_skips_legacy_root_marker() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo_root = dir.path();
+        let repo = git2::Repository::init(repo_root).unwrap();
+
+        fs::write(repo_root.join("tracked.txt"), "tracked").unwrap();
+        fs::write(repo_root.join(".no_agent_commit"), "legacy").unwrap();
+
+        let staged = git_helpers::git_add_all_in_repo(repo_root).unwrap();
+        assert!(staged, "tracked content should still be staged");
+
+        let index = repo.index().unwrap();
+        assert!(
+            index
+                .get_path(std::path::Path::new("tracked.txt"), 0)
+                .is_some(),
+            "tracked file should be staged"
+        );
+        assert!(
+            index
+                .get_path(std::path::Path::new(".no_agent_commit"), 0)
+                .is_none(),
+            "legacy root marker should not be staged"
+        );
+    });
+}
+
+#[test]
+#[serial]
+fn test_cleanup_agent_phase_silent_uses_stored_ralph_dir() {
+    use test_helpers::with_temp_cwd;
+
+    with_temp_cwd(|dir| {
+        let repo_root = dir.path().to_path_buf();
+        fs::create_dir_all(repo_root.join(".git")).unwrap();
+
+        let actual_git_dir = tempfile::tempdir().unwrap();
+        let stored_ralph_dir = actual_git_dir.path().join("ralph");
+        fs::create_dir_all(&stored_ralph_dir).unwrap();
+
+        let marker = stored_ralph_dir.join("no_agent_commit");
+        let head_oid = stored_ralph_dir.join("head-oid.txt");
+        let track_file = stored_ralph_dir.join("git-wrapper-dir.txt");
+        fs::write(&marker, "").unwrap();
+        fs::write(&head_oid, "abc123\n").unwrap();
+
+        let wrapper_dir = tempfile::Builder::new()
+            .prefix("ralph-git-wrapper-")
+            .tempdir()
+            .unwrap();
+        let wrapper_dir_path = wrapper_dir.keep();
+        fs::write(&track_file, format!("{}\n", wrapper_dir_path.display())).unwrap();
+
+        ralph_workflow::git_helpers::set_agent_phase_paths_for_test(
+            Some(repo_root.clone()),
+            Some(stored_ralph_dir),
+        );
+
+        git_helpers::cleanup_agent_phase_silent();
+
+        assert!(
+            !marker.exists(),
+            "cleanup must remove the marker from the stored ralph dir"
+        );
+        assert!(
+            !head_oid.exists(),
+            "cleanup must remove the head-oid file from the stored ralph dir"
+        );
+        assert!(
+            !track_file.exists(),
+            "cleanup must remove the wrapper track file from the stored ralph dir"
+        );
+        assert!(
+            !wrapper_dir_path.exists(),
+            "cleanup must remove the wrapper temp dir tracked from the stored ralph dir"
+        );
+        assert!(
+            !repo_root.join(".git/ralph").exists(),
+            "cleanup should not recreate a fallback repo_root/.git/ralph directory"
+        );
+
+        ralph_workflow::git_helpers::set_agent_phase_paths_for_test(None, None);
     });
 }
 

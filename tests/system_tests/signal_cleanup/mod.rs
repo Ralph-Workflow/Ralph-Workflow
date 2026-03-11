@@ -675,8 +675,7 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
             set_readonly(&prompt_path);
             // Write a non-empty marker payload so we can detect the new process
             // rewriting it (workspace marker creation writes an empty file).
-            std::fs::create_dir_all(temp_dir.path().join(".git/ralph"))
-                .expect("create ralph dir");
+            std::fs::create_dir_all(temp_dir.path().join(".git/ralph")).expect("create ralph dir");
             std::fs::write(temp_dir.path().join(".git/ralph/no_agent_commit"), "stale")
                 .expect("write marker");
 

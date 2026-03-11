@@ -60,42 +60,8 @@ pub struct ProtectionCheckResult {
     pub details: Vec<String>,
 }
 
-fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
-    })?;
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
-
-    let suffix = format!(
-        "ralph.tampered.{label}.{}.{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let tampered_name = format!("{}.{}", file_name.to_string_lossy(), suffix);
-    let tampered_path = parent.join(tampered_name);
-
-    match fs::rename(path, &tampered_path) {
-        Ok(()) => Ok(tampered_path),
-        Err(e) => {
-            // Best-effort fallback: if the tampered path is an empty directory, we can remove it
-            // safely without deleting user data.
-            let is_empty_dir = fs::symlink_metadata(path).ok().is_some_and(|m| m.is_dir())
-                && fs::read_dir(path)
-                    .ok()
-                    .is_some_and(|mut it| it.next().is_none());
-            if is_empty_dir {
-                fs::remove_dir(path)?;
-                Ok(path.to_path_buf())
-            } else {
-                Err(e)
-            }
-        }
-    }
+fn legacy_marker_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".no_agent_commit")
 }
 
 fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
@@ -106,7 +72,7 @@ fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
         let ft = meta.file_type();
         let is_regular_file = ft.is_file() && !ft.is_symlink();
         if !is_regular_file {
-            quarantine_path_in_place(&marker_path, "marker")?;
+            super::repo::quarantine_path_in_place(&marker_path, "marker")?;
         }
     }
 
@@ -114,8 +80,7 @@ fn repair_marker_path_if_tampered(repo_root: &Path) -> io::Result<()> {
 }
 
 fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
-    let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    fs::create_dir_all(&ralph_dir)?;
+    let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
     let marker_path = ralph_dir.join(MARKER_FILE_NAME);
 
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
@@ -127,7 +92,7 @@ fn create_marker_in_repo_root(repo_root: &Path) -> io::Result<()> {
 
         // Any non-regular marker path (symlink/dir/socket/FIFO/device/etc) can bypass
         // hook/wrapper `-f` checks. Quarantine it and recreate a regular file marker.
-        quarantine_path_in_place(&marker_path, "marker")?;
+        super::repo::quarantine_path_in_place(&marker_path, "marker")?;
     }
 
     let open_res = {
@@ -352,16 +317,7 @@ fn ensure_wrapper_dir_prepended_to_path(wrapper_dir: &Path) {
 }
 
 fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::Result<()> {
-    let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    if let Ok(meta) = fs::symlink_metadata(&ralph_dir) {
-        if meta.file_type().is_symlink() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "ralph git dir path is a symlink; refusing to write wrapper tracking file",
-            ));
-        }
-    }
-    fs::create_dir_all(&ralph_dir)?;
+    let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
 
     let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
 
@@ -371,7 +327,7 @@ fn write_wrapper_track_file_atomic(repo_root: &Path, wrapper_dir: &Path) -> io::
         let ft = meta.file_type();
         let is_regular_file = ft.is_file() && !ft.is_symlink();
         if !is_regular_file {
-            quarantine_path_in_place(&track_file_path, "track")?;
+            super::repo::quarantine_path_in_place(&track_file_path, "track")?;
         }
     }
 
@@ -821,17 +777,7 @@ pub fn end_agent_phase() {
 /// This avoids relying on the process current working directory to locate the repo.
 pub fn end_agent_phase_in_repo(repo_root: &Path) {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
-    // Make writable before removal (marker is created as read-only 0o444).
-    #[cfg(unix)]
-    add_owner_write_if_not_symlink(&marker_path);
-    let _ = fs::remove_file(marker_path);
-
-    // Clean up HEAD OID tracking file.
-    remove_head_oid_file(repo_root);
-
-    // Best-effort: remove the empty ralph dir if it's now empty.
-    let _ = fs::remove_dir(&ralph_dir);
+    end_agent_phase_in_repo_at_ralph_dir(repo_root, &ralph_dir);
 
     // Clear stored repo root and ralph dir since agent phase is ending.
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
@@ -840,6 +786,32 @@ pub fn end_agent_phase_in_repo(repo_root: &Path) {
     if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
         *guard = None;
     }
+}
+
+fn end_agent_phase_in_repo_at_ralph_dir(repo_root: &Path, ralph_dir: &Path) {
+    let legacy_marker = legacy_marker_path(repo_root);
+    #[cfg(unix)]
+    add_owner_write_if_not_symlink(&legacy_marker);
+    let _ = fs::remove_file(&legacy_marker);
+
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(ralph_dir) else {
+        return;
+    };
+    if !ralph_dir_exists {
+        return;
+    }
+
+    let marker_path = ralph_dir.join(MARKER_FILE_NAME);
+    // Make writable before removal (marker is created as read-only 0o444).
+    #[cfg(unix)]
+    add_owner_write_if_not_symlink(&marker_path);
+    let _ = fs::remove_file(&marker_path);
+
+    // Clean up HEAD OID tracking file.
+    remove_head_oid_file_at(ralph_dir);
+
+    // Best-effort: remove the empty ralph dir if it's now empty.
+    let _ = fs::remove_dir(ralph_dir);
 }
 
 /// Verify and restore agent-phase commit protections before each agent invocation.
@@ -886,7 +858,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
             result
                 .details
                 .push("Enforcement marker was not a regular file — quarantined".to_string());
-            if let Err(e) = quarantine_path_in_place(&marker_path, "marker") {
+            if let Err(e) = super::repo::quarantine_path_in_place(&marker_path, "marker") {
                 logger.warn(&format!("Failed to quarantine marker path: {e}"));
                 result
                     .details
@@ -918,7 +890,7 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
             result
                 .details
                 .push("Git wrapper tracking path was not a regular file — quarantined".to_string());
-            if let Err(e) = quarantine_path_in_place(&track_file_path, "track") {
+            if let Err(e) = super::repo::quarantine_path_in_place(&track_file_path, "track") {
                 logger.warn(&format!("Failed to quarantine wrapper tracking path: {e}"));
                 result
                     .details
@@ -1261,7 +1233,8 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 result
                     .details
                     .push("Enforcement marker was not a regular file — quarantined".to_string());
-                if let Err(e) = quarantine_path_in_place(&marker_path, "marker-perms") {
+                if let Err(e) = super::repo::quarantine_path_in_place(&marker_path, "marker-perms")
+                {
                     logger.warn(&format!("Failed to quarantine marker path: {e}"));
                 } else if let Err(e) = create_marker_in_repo_root(&repo_root) {
                     logger.warn(&format!(
@@ -1316,7 +1289,9 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                 result
                     .details
                     .push("Track file was a directory — quarantined".to_string());
-                if let Err(e) = quarantine_path_in_place(&track_file_path, "track-perms") {
+                if let Err(e) =
+                    super::repo::quarantine_path_in_place(&track_file_path, "track-perms")
+                {
                     logger.warn(&format!("Failed to quarantine track file path: {e}"));
                 }
             }
@@ -1353,9 +1328,16 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     result
 }
 
-/// Remove the git wrapper temp directory using an explicit repo root.
-fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
-    let track_file = super::repo::ralph_git_dir(repo_root).join(WRAPPER_TRACK_FILE_NAME);
+/// Remove the git wrapper temp directory using an explicit Ralph metadata dir.
+fn cleanup_git_wrapper_dir_silent_at(ralph_dir: &Path) {
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(ralph_dir) else {
+        return;
+    };
+    if !ralph_dir_exists {
+        return;
+    }
+
+    let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
     let wrapper_dir = fs::read_to_string(&track_file)
         .ok()
         .map(|s| PathBuf::from(s.trim()));
@@ -1376,7 +1358,15 @@ fn cleanup_git_wrapper_dir_silent_at(repo_root: &Path) {
 /// track file still points to an orphaned wrapper dir. It also removes
 /// stale PATH entries for the old wrapper dir.
 fn cleanup_prior_wrapper_from_track_file(repo_root: &Path) {
-    let track_file = super::repo::ralph_git_dir(repo_root).join(WRAPPER_TRACK_FILE_NAME);
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(&ralph_dir) else {
+        return;
+    };
+    if !ralph_dir_exists {
+        return;
+    }
+
+    let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
     let Ok(content) = fs::read_to_string(&track_file) else {
         return;
     };
@@ -1433,7 +1423,12 @@ pub fn cleanup_agent_phase_silent() {
     let Some(repo_root) = repo_root else {
         return;
     };
-    cleanup_agent_phase_silent_at(&repo_root);
+
+    let stored_ralph_dir = AGENT_PHASE_RALPH_DIR
+        .try_lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    cleanup_agent_phase_silent_at_internal(&repo_root, stored_ralph_dir.as_deref());
 }
 
 /// Best-effort cleanup using an explicit repo root.
@@ -1442,10 +1437,39 @@ pub fn cleanup_agent_phase_silent() {
 /// artifacts. All sub-operations use the provided repo root instead of
 /// CWD-based discovery, ensuring reliability even if CWD has changed.
 pub fn cleanup_agent_phase_silent_at(repo_root: &Path) {
-    end_agent_phase_in_repo(repo_root);
-    cleanup_git_wrapper_dir_silent_at(repo_root);
+    cleanup_agent_phase_silent_at_internal(repo_root, None);
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub fn set_agent_phase_paths_for_test(repo_root: Option<PathBuf>, ralph_dir: Option<PathBuf>) {
+    if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
+        *guard = repo_root;
+    }
+    if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
+        *guard = ralph_dir;
+    }
+}
+
+fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Option<&Path>) {
+    let computed_ralph_dir;
+    let ralph_dir = if let Some(ralph_dir) = stored_ralph_dir {
+        ralph_dir
+    } else {
+        computed_ralph_dir = super::repo::ralph_git_dir(repo_root);
+        &computed_ralph_dir
+    };
+
+    end_agent_phase_in_repo_at_ralph_dir(repo_root, ralph_dir);
+    cleanup_git_wrapper_dir_silent_at(ralph_dir);
     uninstall_hooks_silent_at(repo_root);
     cleanup_generated_files_silent_at(repo_root);
+
+    if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
+        *guard = None;
+    }
 }
 
 /// Remove generated files silently using an explicit repo root.
@@ -1463,7 +1487,22 @@ fn cleanup_generated_files_silent_at(repo_root: &Path) {
 /// Returns error if the operation fails.
 pub fn cleanup_orphaned_marker(logger: &Logger) -> io::Result<()> {
     let repo_root = get_repo_root()?;
+    let legacy_marker = legacy_marker_path(&repo_root);
+    if fs::symlink_metadata(&legacy_marker).is_ok() {
+        #[cfg(unix)]
+        {
+            add_owner_write_if_not_symlink(&legacy_marker);
+        }
+        fs::remove_file(&legacy_marker)?;
+        logger.success("Removed orphaned enforcement marker");
+        return Ok(());
+    }
+
     let ralph_dir = super::repo::ralph_git_dir(&repo_root);
+    if !super::repo::sanitize_ralph_git_dir_at(&ralph_dir)? {
+        logger.info("No orphaned marker found");
+        return Ok(());
+    }
     let marker_path = ralph_dir.join(MARKER_FILE_NAME);
 
     if fs::symlink_metadata(&marker_path).is_ok() {
@@ -1493,16 +1532,7 @@ pub fn capture_head_oid(repo_root: &Path) {
 }
 
 fn write_head_oid_file_atomic(repo_root: &Path, oid: &str) -> io::Result<()> {
-    let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    if let Ok(meta) = fs::symlink_metadata(&ralph_dir) {
-        if meta.file_type().is_symlink() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "ralph git dir path is a symlink; refusing to write head-oid baseline",
-            ));
-        }
-    }
-    fs::create_dir_all(&ralph_dir)?;
+    let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
 
     let head_oid_path = ralph_dir.join(HEAD_OID_FILE_NAME);
     if matches!(fs::symlink_metadata(&head_oid_path), Ok(m) if m.file_type().is_symlink()) {
@@ -1577,8 +1607,8 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
 }
 
 /// Remove the head-oid tracking file, making it writable first if needed.
-fn remove_head_oid_file(repo_root: &Path) {
-    let head_oid_path = super::repo::ralph_git_dir(repo_root).join(HEAD_OID_FILE_NAME);
+fn remove_head_oid_file_at(ralph_dir: &Path) {
+    let head_oid_path = ralph_dir.join(HEAD_OID_FILE_NAME);
     if fs::symlink_metadata(&head_oid_path).is_err() {
         return;
     }

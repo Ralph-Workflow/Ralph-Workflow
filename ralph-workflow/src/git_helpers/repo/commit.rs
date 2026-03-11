@@ -20,7 +20,8 @@ fn index_has_changes_to_commit(repo: &git2::Repository, index: &git2::Index) -> 
 
 fn is_internal_agent_artifact(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy();
-    path_str == ".agent"
+    path_str == ".no_agent_commit"
+        || path_str == ".agent"
         || path_str.starts_with(".agent/")
         || path_str == ".git"
         || path_str.starts_with(".git/")

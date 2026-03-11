@@ -240,8 +240,7 @@ fn install_hook_with_repo_root(
 #[cfg(any(test, feature = "test-utils"))]
 pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
     let repo_root = super::repo::get_repo_root()?;
-    let ralph_dir = super::repo::ralph_git_dir(&repo_root);
-    fs::create_dir_all(&ralph_dir)?;
+    let ralph_dir = super::repo::ensure_ralph_git_dir(&repo_root)?;
     install_hook_with_repo_root(hook_name, &ralph_dir, hook_path)
 }
 
@@ -255,8 +254,7 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
     fs::create_dir_all(&hooks_dir)?;
 
     // Resolve the ralph metadata dir (handles worktrees via libgit2).
-    let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    fs::create_dir_all(&ralph_dir)?;
+    let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
 
     for hook_name in RALPH_HOOK_NAMES {
         let label = match *hook_name {
