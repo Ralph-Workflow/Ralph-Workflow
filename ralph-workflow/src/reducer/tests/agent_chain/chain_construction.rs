@@ -170,3 +170,27 @@ fn test_agent_chain_initialized_contains_full_fallback_chain() {
         "Current agent should be the first in the chain"
     );
 }
+
+#[test]
+fn test_consumer_signature_distinguishes_shared_chains_by_drain() {
+    let planning = crate::reducer::state::AgentChainState::initial()
+        .with_agents(
+            vec!["agent-a".to_string()],
+            vec![vec!["model-1".to_string()]],
+            AgentRole::Developer,
+        )
+        .with_drain(AgentDrain::Planning);
+    let development = crate::reducer::state::AgentChainState::initial()
+        .with_agents(
+            vec!["agent-a".to_string()],
+            vec![vec!["model-1".to_string()]],
+            AgentRole::Developer,
+        )
+        .with_drain(AgentDrain::Development);
+
+    assert_ne!(
+        planning.consumer_signature_sha256(),
+        development.consumer_signature_sha256(),
+        "shared ordered chains must still hash differently for different drains"
+    );
+}

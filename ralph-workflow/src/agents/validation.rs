@@ -7,9 +7,10 @@
 //! Validation errors include helpful suggestions for typos using Levenshtein
 //! distance matching.
 
-use crate::agents::fallback::FallbackConfig;
+use crate::agents::fallback::{AgentDrain, FallbackConfig, ResolvedDrainConfig};
 use crate::agents::opencode_api::ApiCatalog;
 use crate::agents::opencode_resolver::OpenCodeResolver;
+use std::collections::BTreeSet;
 
 /// Validate all `OpenCode` agent references in the fallback configuration.
 ///
@@ -26,26 +27,28 @@ pub fn validate_opencode_agents(
     fallback: &FallbackConfig,
     catalog: &ApiCatalog,
 ) -> Result<(), String> {
-    let resolver = OpenCodeResolver::new(catalog.clone());
+    validate_opencode_agents_in_resolved_drains(&fallback.resolve_drains(), catalog)
+}
+
+/// Validate all `OpenCode` agent references in resolved drain bindings.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn validate_opencode_agents_in_resolved_drains(
+    resolved: &ResolvedDrainConfig,
+    catalog: &ApiCatalog,
+) -> Result<(), String> {
+    let opencode_resolver = OpenCodeResolver::new(catalog.clone());
     let mut errors = Vec::new();
 
-    // Collect all agent names from both roles
-    let all_agents: Vec<&str> = fallback
-        .get_fallbacks(crate::agents::AgentRole::Developer)
-        .iter()
-        .chain(
-            fallback
-                .get_fallbacks(crate::agents::AgentRole::Reviewer)
-                .iter(),
-        )
-        .map(std::string::String::as_str)
-        .collect();
+    let all_agents = get_opencode_refs_in_resolved_drains(resolved);
 
     // Validate each opencode/* agent
     for agent_name in all_agents {
-        if let Some((provider, model)) = parse_opencode_ref(agent_name) {
-            if let Err(e) = resolver.validate(&provider, &model) {
-                let msg = resolver.format_error(&e, agent_name);
+        if let Some((provider, model)) = parse_opencode_ref(&agent_name) {
+            if let Err(e) = opencode_resolver.validate(&provider, &model) {
+                let msg = opencode_resolver.format_error(&e, &agent_name);
                 errors.push(msg);
             }
         }
@@ -80,17 +83,20 @@ fn parse_opencode_ref(agent_name: &str) -> Option<(String, String)> {
 /// Get all `OpenCode` agent references from the fallback configuration.
 #[must_use]
 pub fn get_opencode_refs(fallback: &FallbackConfig) -> Vec<String> {
-    fallback
-        .get_fallbacks(crate::agents::AgentRole::Developer)
-        .iter()
-        .chain(
-            fallback
-                .get_fallbacks(crate::agents::AgentRole::Reviewer)
-                .iter(),
-        )
+    get_opencode_refs_in_resolved_drains(&fallback.resolve_drains())
+}
+
+/// Get all `OpenCode` agent references from resolved drain bindings.
+#[must_use]
+pub fn get_opencode_refs_in_resolved_drains(resolved: &ResolvedDrainConfig) -> Vec<String> {
+    let unique = AgentDrain::all()
+        .into_iter()
+        .filter_map(|drain| resolved.binding(drain))
+        .flat_map(|binding| binding.agents.iter().cloned())
         .filter(|name| name.starts_with("opencode/"))
-        .cloned()
-        .collect()
+        .collect::<BTreeSet<_>>();
+
+    unique.into_iter().collect()
 }
 
 /// Count the number of `OpenCode` agent references in the fallback configuration.

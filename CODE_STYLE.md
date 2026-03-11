@@ -79,6 +79,8 @@ All pipeline control-flow decisions (iteration advancement, retry/continuation/f
 
 **Chain config is separate from runtime drain identity:** Config may define reusable named chains and bind built-in drains to those chains, but runtime effects/events/state should operate on resolved concrete drain bindings rather than re-deriving role-shaped defaults during execution.
 
+**Legacy compatibility is config-only:** Legacy `[agent_chain]` input may still be accepted, but it must be normalized into the same built-in resolved drain bindings before runtime code, handlers, or tests consume it.
+
 **Invariants:**
 
 - **Single source of truth:** Any advance/retry/continue decision is derived from reducer state plus the latest event

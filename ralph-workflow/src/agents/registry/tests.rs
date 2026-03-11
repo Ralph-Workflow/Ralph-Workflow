@@ -286,6 +286,39 @@ fn test_validate_agent_chains() {
 }
 
 #[test]
+fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback_compatibility() {
+    let mut registry = AgentRegistry::new().unwrap();
+
+    let toml_str = r#"
+        [agent_chains]
+        developer = ["codex"]
+        reviewer = ["claude"]
+        commit = ["opencode"]
+        analysis = ["gemini"]
+
+        [agent_drains]
+        planning = "developer"
+        development = "developer"
+        review = "reviewer"
+        fix = "reviewer"
+        commit = "commit"
+        analysis = "analysis"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    registry.apply_unified_config(&unified);
+
+    assert_eq!(
+        registry.fallback_config().developer,
+        vec!["codex"],
+        "named drain bindings should project into the compatibility fallback config"
+    );
+    assert_eq!(registry.fallback_config().reviewer, vec!["claude"]);
+    assert_eq!(registry.fallback_config().commit, vec!["opencode"]);
+    assert_eq!(registry.fallback_config().analysis, vec!["gemini"]);
+}
+
+#[test]
 fn test_validate_agent_chains_error_mentions_searched_sources() {
     let mut registry = AgentRegistry::new().unwrap();
     // Override chains with empty values via apply_unified_config

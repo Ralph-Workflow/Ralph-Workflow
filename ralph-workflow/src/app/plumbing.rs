@@ -14,7 +14,7 @@
 //!
 //! Tests should use the workspace-aware variants with `MemoryWorkspace` for isolation.
 
-use crate::agents::{AgentRegistry, AgentRole};
+use crate::agents::{AgentDrain, AgentRegistry};
 use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use crate::config::Config;
 use crate::executor::ProcessExecutor;
@@ -215,8 +215,10 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
 
     // Get the commit agent chain from the fallback config.
     // If no commit chain is configured, fall back to using the developer agent.
-    let fallback_config = config.registry.fallback_config();
-    let commit_chain = fallback_config.get_fallbacks(AgentRole::Commit);
+    let commit_chain = config
+        .registry
+        .resolved_drain(AgentDrain::Commit)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     let agents: Vec<String> = if commit_chain.is_empty() {
         // No commit chain configured, use developer agent as fallback
         vec![config.developer_agent.to_string()]

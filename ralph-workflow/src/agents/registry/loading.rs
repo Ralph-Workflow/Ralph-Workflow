@@ -16,6 +16,7 @@ impl AgentRegistry {
                 }
                 // Load fallback configuration
                 self.fallback = config.fallback;
+                self.resolved_drains = self.fallback.resolve_drains();
                 Ok(count)
             }
             None => Ok(0),
@@ -33,13 +34,11 @@ impl AgentRegistry {
         let mut loaded = self.apply_ccs_aliases(unified);
         loaded += self.apply_agent_overrides(unified);
 
-        if let Some(chain) = &unified.agent_chain {
-            self.fallback = chain.clone();
-        }
-
-        self.resolved_drains = unified
+        let resolved_drains = unified
             .resolve_agent_drains()
             .unwrap_or_else(|| self.fallback.resolve_drains());
+        self.fallback = resolved_drains.to_legacy_fallback();
+        self.resolved_drains = resolved_drains;
 
         loaded
     }

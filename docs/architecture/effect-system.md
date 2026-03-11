@@ -471,6 +471,8 @@ When the pipeline executes agents, the effect system should operate on a consist
 - runtime executes concrete chains for the active drain
 - retry and continuation remain drain-local modes unless they truly need separate chain attachment
 
+Legacy `[agent_chain]` remains a config-input compatibility path only. The effect boundary should see the same resolved built-in drain bindings regardless of whether the user wrote legacy role-keyed config or explicit named chains and drains.
+
 Effect handlers must not become a second policy engine for agent architecture. In particular:
 
 - do not push unresolved chain aliases into handler-time logic

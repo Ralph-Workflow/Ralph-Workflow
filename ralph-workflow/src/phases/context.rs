@@ -4,7 +4,7 @@
 //! of the pipeline. It contains references to configuration, registry,
 //! logging utilities, and runtime state that all phases need access to.
 
-use crate::agents::{AgentRegistry, AgentRole};
+use crate::agents::{AgentDrain, AgentRegistry};
 use crate::checkpoint::execution_history::ExecutionHistory;
 use crate::checkpoint::RunContext;
 use crate::config::Config;
@@ -126,17 +126,20 @@ impl PhaseContext<'_> {
 /// to using the reviewer chain (since commit generation is typically done after review).
 #[must_use]
 pub fn get_primary_commit_agent(ctx: &PhaseContext<'_>) -> Option<String> {
-    let fallback_config = ctx.registry.fallback_config();
-
-    // First, try to get commit-specific agents
-    let commit_agents = fallback_config.get_fallbacks(AgentRole::Commit);
+    let commit_agents = ctx
+        .registry
+        .resolved_drain(AgentDrain::Commit)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     if !commit_agents.is_empty() {
         // Return the first commit agent as the primary
         return commit_agents.first().cloned();
     }
 
     // Fallback to using reviewer agents for commit generation
-    let reviewer_agents = fallback_config.get_fallbacks(AgentRole::Reviewer);
+    let reviewer_agents = ctx
+        .registry
+        .resolved_drain(AgentDrain::Review)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     if !reviewer_agents.is_empty() {
         return reviewer_agents.first().cloned();
     }

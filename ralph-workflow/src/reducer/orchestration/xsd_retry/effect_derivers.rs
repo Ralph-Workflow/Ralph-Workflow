@@ -56,6 +56,12 @@ mod xsd_retry_fingerprint_tests {
     }
 }
 
+fn review_phase_uses_fix_drain(state: &PipelineState) -> bool {
+    state.agent_chain.current_drain == crate::agents::AgentDrain::Fix
+        || state.continuation.fix_continue_pending
+        || state.review_issues_found
+}
+
 /// Derive the effect for XSD retry based on current phase.
 ///
 /// XSD retry reuses the same agent and session if available.
@@ -80,7 +86,7 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
             }
         }
         PipelinePhase::Review => {
-            if state.review_issues_found || state.continuation.fix_continue_pending {
+            if review_phase_uses_fix_drain(state) {
                 Effect::PrepareFixPrompt {
                     pass: state.reviewer_pass,
                     prompt_mode: PromptMode::XsdRetry,
@@ -158,7 +164,7 @@ fn derive_same_agent_retry_effect(state: &PipelineState) -> Effect {
             }
         }
         PipelinePhase::Review => {
-            if state.review_issues_found || state.continuation.fix_continue_pending {
+            if review_phase_uses_fix_drain(state) {
                 Effect::PrepareFixPrompt {
                     pass: state.reviewer_pass,
                     prompt_mode: PromptMode::SameAgentRetry,
@@ -215,14 +221,10 @@ fn derive_continuation_effect(state: &PipelineState) -> Effect {
             }
         }
         // Fix continuation: start the fix chain with a fresh session
-        PipelinePhase::Review
-            if state.continuation.fix_continue_pending || state.review_issues_found =>
-        {
-            Effect::PrepareFixPrompt {
-                pass: state.reviewer_pass,
-                prompt_mode: PromptMode::Normal,
-            }
-        }
+        PipelinePhase::Review if review_phase_uses_fix_drain(state) => Effect::PrepareFixPrompt {
+            pass: state.reviewer_pass,
+            prompt_mode: PromptMode::Normal,
+        },
         // Other phases don't support continuation
         _ => Effect::SaveCheckpoint {
             trigger: CheckpointTrigger::PhaseTransition,

@@ -169,6 +169,31 @@ impl ResolvedDrainConfig {
             max_cycles: fallback.max_cycles,
         }
     }
+
+    /// Project resolved drain bindings back into the legacy role-shaped config.
+    #[must_use]
+    pub fn to_legacy_fallback(&self) -> FallbackConfig {
+        FallbackConfig {
+            developer: self
+                .binding(AgentDrain::Development)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            reviewer: self
+                .binding(AgentDrain::Review)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            commit: self
+                .binding(AgentDrain::Commit)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            analysis: self
+                .binding(AgentDrain::Analysis)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            provider_fallback: self.provider_fallback.clone(),
+            max_retries: self.max_retries,
+            retry_delay_ms: self.retry_delay_ms,
+            backoff_multiplier: self.backoff_multiplier,
+            max_backoff_ms: self.max_backoff_ms,
+            max_cycles: self.max_cycles,
+        }
+    }
 }
 
 impl std::fmt::Display for AgentRole {

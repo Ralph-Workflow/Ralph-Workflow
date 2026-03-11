@@ -103,7 +103,7 @@ impl AgentRegistry {
     ///
     /// `OpenCode` supports dynamic provider/model via `opencode/provider/model` syntax;
     /// those are validated against the API catalog and resolved lazily here.
-    #[must_use] 
+    #[must_use]
     pub fn resolve_config(&self, name: &str) -> Option<AgentConfig> {
         self.agents
             .get(name)
@@ -131,7 +131,7 @@ impl AgentRegistry {
     /// assert_eq!(registry.display_name("ccs/glm"), "ccs-glm");
     /// assert_eq!(registry.display_name("claude"), "claude");
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn display_name(&self, name: &str) -> String {
         self.resolve_config(name)
             .and_then(|config| config.display_name)
@@ -171,7 +171,7 @@ impl AgentRegistry {
     /// assert_eq!(registry.resolve_from_logfile_name("opencode-anthropic-claude-sonnet-4"),
     ///            Some("opencode/anthropic/claude-sonnet-4".to_string()));
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn resolve_from_logfile_name(&self, logfile_name: &str) -> Option<String> {
         // First check if the name is exactly a registry name (no sanitization was needed)
         if self.agents.contains_key(logfile_name) {
@@ -222,7 +222,7 @@ impl AgentRegistry {
     /// - Exact matches: Returns the name as-is
     ///
     /// Returns `None` if the name cannot be resolved to any known agent.
-    #[must_use] 
+    #[must_use]
     pub fn resolve_fuzzy(&self, name: &str) -> Option<String> {
         // First check if it's an exact match
         if self.agents.contains_key(name) {
@@ -322,27 +322,27 @@ impl AgentRegistry {
     }
 
     /// List all registered agents.
-    #[must_use] 
+    #[must_use]
     pub fn list(&self) -> Vec<(&str, &AgentConfig)> {
         self.agents.iter().map(|(k, v)| (k.as_str(), v)).collect()
     }
 
     /// Get command for developer role.
-    #[must_use] 
+    #[must_use]
     pub fn developer_cmd(&self, agent_name: &str) -> Option<String> {
         self.resolve_config(agent_name)
             .map(|c| c.build_cmd(true, true, true))
     }
 
     /// Get command for reviewer role.
-    #[must_use] 
+    #[must_use]
     pub fn reviewer_cmd(&self, agent_name: &str) -> Option<String> {
         self.resolve_config(agent_name)
             .map(|c| c.build_cmd(true, true, false))
     }
 
     /// Get the fallback configuration.
-    #[must_use] 
+    #[must_use]
     pub const fn fallback_config(&self) -> &FallbackConfig {
         &self.fallback
     }
@@ -355,8 +355,13 @@ impl AgentRegistry {
         self.resolved_drains.binding(drain)
     }
 
+    #[must_use]
+    pub const fn resolved_drains(&self) -> &crate::agents::fallback::ResolvedDrainConfig {
+        &self.resolved_drains
+    }
+
     /// Get the retry timer provider.
-    #[must_use] 
+    #[must_use]
     pub fn retry_timer(&self) -> Arc<dyn RetryTimerProvider> {
         Arc::clone(&self.retry_timer)
     }
@@ -440,7 +445,7 @@ impl AgentRegistry {
     }
 
     /// Check if an agent is available (command exists and is executable).
-    #[must_use] 
+    #[must_use]
     pub fn is_agent_available(&self, name: &str) -> bool {
         if let Some(config) = self.resolve_config(name) {
             let Ok(parts) = crate::common::split_command(&config.cmd) else {

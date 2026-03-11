@@ -181,12 +181,14 @@ const fn default_current_drain() -> AgentDrain {
     AgentDrain::Planning
 }
 
-const fn agent_role_signature_tag(role: AgentRole) -> &'static [u8] {
-    match role {
-        AgentRole::Developer => b"developer\n",
-        AgentRole::Reviewer => b"reviewer\n",
-        AgentRole::Commit => b"commit\n",
-        AgentRole::Analysis => b"analysis\n",
+const fn agent_drain_signature_tag(drain: AgentDrain) -> &'static [u8] {
+    match drain {
+        AgentDrain::Planning => b"planning\n",
+        AgentDrain::Development => b"development\n",
+        AgentDrain::Review => b"review\n",
+        AgentDrain::Fix => b"fix\n",
+        AgentDrain::Commit => b"commit\n",
+        AgentDrain::Analysis => b"analysis\n",
     }
 }
 
@@ -273,7 +275,7 @@ impl AgentChainState {
         self.agents.get(self.current_agent_index)
     }
 
-    /// Stable signature of the current consumer set (agents + configured models + role).
+    /// Stable signature of the current consumer set (agents + configured models + drain).
     ///
     /// This is used to dedupe oversize materialization decisions across reducer retries.
     /// The signature is stable under:
@@ -317,7 +319,7 @@ impl AgentChainState {
         });
 
         let mut hasher = Sha256::new();
-        hasher.update(agent_role_signature_tag(self.current_role));
+        hasher.update(agent_drain_signature_tag(self.current_drain));
         for (agent, models) in pairs {
             hasher.update(agent.as_bytes());
             hasher.update(b"|");
@@ -355,7 +357,7 @@ impl AgentChainState {
         rendered.sort();
 
         let mut hasher = Sha256::new();
-        hasher.update(agent_role_signature_tag(self.current_role));
+        hasher.update(agent_drain_signature_tag(self.current_drain));
         for line in rendered {
             hasher.update(line.as_bytes());
             hasher.update(b"\n");
@@ -417,18 +419,20 @@ mod consumer_signature_tests {
     }
 
     #[test]
-    fn test_consumer_signature_uses_stable_role_encoding() {
+    fn test_consumer_signature_uses_stable_drain_encoding() {
         // The consumer signature is persisted in reducer state and used for dedupe.
         // It must not depend on Debug formatting (variant renames would change the hash).
         // Instead, it should use a stable, explicit role tag.
-        let state = AgentChainState::initial().with_agents(
-            vec!["agent-a".to_string()],
-            vec![vec!["m1".to_string(), "m2".to_string()]],
-            AgentRole::Reviewer,
-        );
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["agent-a".to_string()],
+                vec![vec!["m1".to_string(), "m2".to_string()]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(AgentDrain::Fix);
 
         let mut hasher = Sha256::new();
-        hasher.update(b"reviewer\n");
+        hasher.update(b"fix\n");
         hasher.update(b"agent-a");
         hasher.update(b"|");
         hasher.update(b"m1");
