@@ -231,6 +231,10 @@ fn finish_pipeline(
 
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
         if cleanup_ok {
+            // Only clear global fallback paths when explicit cleanup fully
+            // succeeded and the guard is being disarmed. If cleanup failed,
+            // keep them for AgentPhaseGuard::drop() and signal-handler retries.
+            crate::git_helpers::clear_agent_phase_global_state();
             agent_phase_guard.disarm();
         } else {
             ctx.logger.warn(
@@ -458,5 +462,111 @@ mod completion_checkpoint_tests {
             checkpoint.recovery_epoch, 5,
             "completion checkpoint must preserve reducer recovery_epoch"
         );
+    }
+}
+
+#[cfg(test)]
+mod cleanup_state_tests {
+    use super::finish_pipeline;
+    use crate::agents::AgentRegistry;
+    use crate::app::context::PipelineContext;
+    use crate::config::Config;
+    use crate::executor::MockProcessExecutor;
+    use crate::git_helpers::{
+        agent_phase_test_lock, clear_agent_phase_global_state, get_agent_phase_paths_for_test,
+        set_agent_phase_paths_for_test,
+        GitHelpers,
+    };
+    use crate::logger::{Colors, Logger};
+    use crate::logging::RunLogContext;
+    use crate::pipeline::{AgentPhaseGuard, Timer};
+    use crate::prompts::template_context::TemplateContext;
+    use crate::reducer::PipelineState;
+    use crate::workspace::{Workspace, WorkspaceFs};
+    use crate::{app::event_loop::EventLoopResult, cli::Args};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    #[test]
+    fn finish_pipeline_keeps_global_cleanup_state_when_sigint_cleanup_fails() {
+        let _lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        let ralph_dir = repo_root.join(".git/ralph");
+        std::fs::create_dir_all(&ralph_dir).unwrap();
+        std::fs::write(ralph_dir.join("quarantine.bin"), "keep").unwrap();
+        let hooks_dir = repo_root.join(".git/hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+
+        set_agent_phase_paths_for_test(
+            Some(repo_root.to_path_buf()),
+            Some(ralph_dir.clone()),
+            Some(hooks_dir.clone()),
+        );
+
+        let workspace = Arc::new(WorkspaceFs::new(repo_root.to_path_buf())) as Arc<dyn Workspace>;
+        let colors = Colors::with_enabled(false);
+        let logger = Logger::new(colors);
+        let registry = AgentRegistry::new().unwrap();
+        let executor =
+            Arc::new(MockProcessExecutor::new()) as Arc<dyn crate::executor::ProcessExecutor>;
+        let run_log_context = RunLogContext::new(&*workspace).unwrap();
+        let config = Config::test_default();
+
+        let ctx = PipelineContext {
+            args: Args::default(),
+            config: config.clone(),
+            registry,
+            developer_agent: "codex".to_string(),
+            reviewer_agent: "codex".to_string(),
+            developer_display: "codex".to_string(),
+            reviewer_display: "codex".to_string(),
+            repo_root: PathBuf::from(repo_root),
+            workspace: Arc::clone(&workspace),
+            logger,
+            colors,
+            template_context: TemplateContext::default(),
+            executor,
+            run_log_context,
+        };
+
+        let loop_result = EventLoopResult {
+            completed: true,
+            events_processed: 0,
+            final_phase: crate::reducer::event::PipelinePhase::Interrupted,
+            final_state: PipelineState::initial(1, 1),
+        };
+
+        let mut helpers = GitHelpers::default();
+        let mut guard = AgentPhaseGuard::new(&mut helpers, &ctx.logger, &*workspace);
+        let mut prompt_monitor = None;
+        let timer = Timer::new();
+
+        finish_pipeline(
+            &ctx,
+            &config,
+            &timer,
+            &mut guard,
+            &mut prompt_monitor,
+            &loop_result,
+            true,
+        )
+        .unwrap();
+
+        let actual = get_agent_phase_paths_for_test();
+        assert_eq!(
+            actual,
+            (
+                Some(repo_root.to_path_buf()),
+                Some(ralph_dir),
+                Some(hooks_dir),
+            ),
+            "SIGINT cleanup must leave fallback cleanup paths intact when cleanup fails and the guard remains armed"
+        );
+
+        drop(guard);
+        clear_agent_phase_global_state();
     }
 }

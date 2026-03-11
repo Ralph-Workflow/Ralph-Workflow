@@ -159,6 +159,11 @@ pub fn finalize_pipeline(
     crate::files::cleanup_generated_files_with_workspace(ctx.workspace);
 
     if cleanup_ok {
+        // Clear global mutexes only when cleanup succeeded and the guard is
+        // actually being disarmed. On failure, keep the fallback paths intact
+        // so AgentPhaseGuard::drop() and the SIGINT cleanup path still have
+        // valid locations for their final best-effort cleanup.
+        crate::git_helpers::clear_agent_phase_global_state();
         agent_phase_guard.disarm();
     } else {
         ctx.logger.warn(
@@ -169,7 +174,16 @@ pub fn finalize_pipeline(
 
 #[cfg(test)]
 mod tests {
+    use super::{finalize_pipeline, FinalizeContext};
+    use crate::config::Config;
+    use crate::git_helpers::{
+        agent_phase_test_lock, clear_agent_phase_global_state, get_agent_phase_paths_for_test,
+        set_agent_phase_paths_for_test, GitHelpers,
+    };
+    use crate::logger::{Colors, Logger};
+    use crate::pipeline::{AgentPhaseGuard, Timer};
     use crate::reducer::state::PipelineState;
+    use crate::workspace::WorkspaceFs;
 
     #[test]
     fn test_summary_derives_from_reducer_metrics() {
@@ -306,5 +320,60 @@ mod tests {
             GENERATED_FILES.contains(&".git/ralph/no_agent_commit"),
             "GENERATED_FILES must include .git/ralph/no_agent_commit"
         );
+    }
+
+    #[test]
+    fn test_finalize_pipeline_keeps_global_cleanup_state_when_guard_stays_armed() {
+        let _lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        let ralph_dir = repo_root.join(".git/ralph");
+        std::fs::create_dir_all(&ralph_dir).unwrap();
+        std::fs::write(ralph_dir.join("quarantine.bin"), "keep").unwrap();
+        let hooks_dir = repo_root.join(".git/hooks");
+        std::fs::create_dir_all(&hooks_dir).unwrap();
+
+        set_agent_phase_paths_for_test(
+            Some(repo_root.to_path_buf()),
+            Some(ralph_dir.clone()),
+            Some(hooks_dir.clone()),
+        );
+
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+        let logger = Logger::new(Colors::with_enabled(false));
+        let config = Config::test_default();
+        let timer = Timer::new();
+        let final_state = PipelineState::initial(1, 1);
+        let mut helpers = GitHelpers::default();
+        let mut guard = AgentPhaseGuard::new(&mut helpers, &logger, &workspace);
+
+        finalize_pipeline(
+            &mut guard,
+            FinalizeContext {
+                logger: &logger,
+                colors: Colors::with_enabled(false),
+                config: &config,
+                timer: &timer,
+                workspace: &workspace,
+            },
+            &final_state,
+            None,
+        );
+
+        let actual = get_agent_phase_paths_for_test();
+        assert_eq!(
+            actual,
+            (
+                Some(repo_root.to_path_buf()),
+                Some(ralph_dir),
+                Some(hooks_dir),
+            ),
+            "finalize_pipeline must leave fallback cleanup paths intact when cleanup fails and the guard remains armed"
+        );
+
+        drop(guard);
+        clear_agent_phase_global_state();
     }
 }

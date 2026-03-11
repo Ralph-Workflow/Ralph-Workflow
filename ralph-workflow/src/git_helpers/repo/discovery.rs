@@ -134,5 +134,130 @@ pub fn get_hooks_dir() -> io::Result<PathBuf> {
 
 pub fn get_hooks_dir_from(discovery_root: &Path) -> io::Result<PathBuf> {
     let repo = git2::Repository::discover(discovery_root).map_err(|e| git2_to_io_error(&e))?;
-    Ok(repo.path().join("hooks"))
+    Ok(common_git_dir(&repo).join("hooks"))
+}
+
+/// Returns the common git directory for a repository.
+///
+/// For main worktrees, this is the same as `repo.path()`.
+/// For linked worktrees, this navigates from `.git/worktrees/<name>/`
+/// up to the shared `.git/` directory.
+///
+/// This is needed because git2 0.18 does not expose `Repository::commondir()`.
+/// Hooks are shared across worktrees and must be installed/cleaned at the
+/// common dir, not the worktree-specific dir.
+fn common_git_dir(repo: &git2::Repository) -> PathBuf {
+    let path = repo.path();
+    if repo.is_worktree() {
+        // For linked worktrees, path() returns .git/worktrees/<name>/
+        // Common dir is the grandparent: .git/
+        if let Some(worktrees_dir) = path.parent() {
+            if worktrees_dir.file_name().and_then(|n| n.to_str()) == Some("worktrees") {
+                if let Some(common) = worktrees_dir.parent() {
+                    return common.to_path_buf();
+                }
+            }
+        }
+    }
+    path.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a git repo with an initial commit (required for worktree creation).
+    fn init_repo_with_commit(path: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(path).unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let sig = git2::Signature::now("test", "test@test.com").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+        repo
+    }
+
+    /// Canonicalize a path, tolerating non-existent trailing components.
+    ///
+    /// On macOS `/var` is a symlink to `/private/var`, so tempdir paths
+    /// and libgit2-resolved paths may differ. Canonicalize the parent
+    /// (which must exist) and re-append the leaf to get a comparable path.
+    fn canon(path: &Path) -> PathBuf {
+        if let Ok(c) = fs::canonicalize(path) {
+            return c;
+        }
+        // Path doesn't exist yet (e.g., .git/hooks before creation).
+        // Canonicalize the existing parent and append the remaining component.
+        if let (Some(parent), Some(leaf)) = (path.parent(), path.file_name()) {
+            if let Ok(canon_parent) = fs::canonicalize(parent) {
+                return canon_parent.join(leaf);
+            }
+        }
+        path.to_path_buf()
+    }
+
+    #[test]
+    fn common_git_dir_for_regular_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        let result = common_git_dir(&repo);
+        assert_eq!(canon(&result), canon(repo.path()));
+    }
+
+    #[test]
+    fn common_git_dir_for_linked_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = init_repo_with_commit(tmp.path());
+        let wt_path = tmp.path().join("wt-test");
+        let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
+        let wt_repo = git2::Repository::open(&wt_path).unwrap();
+
+        assert!(wt_repo.is_worktree());
+        let result = common_git_dir(&wt_repo);
+        // Should return the main .git/ dir, not .git/worktrees/wt-test/
+        assert_eq!(canon(&result), canon(main_repo.path()));
+    }
+
+    #[test]
+    fn get_hooks_dir_from_regular_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _repo = git2::Repository::init(tmp.path()).unwrap();
+        let hooks_dir = get_hooks_dir_from(tmp.path()).unwrap();
+        assert_eq!(canon(&hooks_dir), canon(&tmp.path().join(".git/hooks")));
+    }
+
+    #[test]
+    fn get_hooks_dir_from_linked_worktree_returns_common_hooks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = init_repo_with_commit(tmp.path());
+        let wt_path = tmp.path().join("wt-test");
+        let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
+
+        let hooks_dir = get_hooks_dir_from(&wt_path).unwrap();
+        // Hooks should be in the common .git/hooks, not .git/worktrees/wt-test/hooks
+        assert_eq!(canon(&hooks_dir), canon(&tmp.path().join(".git/hooks")));
+    }
+
+    #[test]
+    fn ralph_git_dir_for_regular_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let _repo = git2::Repository::init(tmp.path()).unwrap();
+        let dir = ralph_git_dir(tmp.path());
+        assert_eq!(canon(&dir), canon(&tmp.path().join(".git/ralph")));
+    }
+
+    #[test]
+    fn ralph_git_dir_for_linked_worktree_returns_common_ralph_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = init_repo_with_commit(tmp.path());
+        let wt_path = tmp.path().join("wt-test");
+        let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
+
+        let dir = ralph_git_dir(&wt_path);
+        // Should be .git/ralph at the common dir, not .git/worktrees/wt-test/ralph
+        assert_eq!(canon(&dir), canon(&tmp.path().join(".git/ralph")));
+    }
 }

@@ -47,6 +47,13 @@ static AGENT_PHASE_REPO_ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// on the main thread and store it here. Signal handlers read via `try_lock`.
 static AGENT_PHASE_RALPH_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+/// Process-global hooks dir set during `start_agent_phase_in_repo`.
+///
+/// Used by signal handler cleanup to avoid recomputation via libgit2.
+/// For linked worktrees, hooks are shared at the common git dir, so this
+/// ensures the signal handler cleans hooks from the correct location.
+static AGENT_PHASE_HOOKS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
 /// Result of checking and self-healing agent-phase protections.
 ///
 /// When `ensure_agent_phase_protections` detects and repairs tampering,
@@ -671,9 +678,9 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
 /// controlled shutdown sequences, so this is acceptable in practice.
 pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
     let removed_wrapper_dir = helpers.wrapper_dir.take();
-    let removed_success = removed_wrapper_dir
-        .as_ref()
-        .is_none_or(|wrapper_dir_path| remove_wrapper_dir_and_path_entry(wrapper_dir_path));
+    removed_wrapper_dir.as_ref().inspect(|wrapper_dir_path| {
+        remove_wrapper_dir_and_path_entry(wrapper_dir_path);
+    });
 
     // IMPORTANT: remove the tracking file using an absolute repo root path.
     // The process CWD may not be the repo root (e.g., tests or effects that change CWD).
@@ -691,22 +698,23 @@ pub fn disable_git_wrapper(helpers: &mut GitHelpers) {
     );
 
     // If we didn't have in-memory wrapper state (or it was out of date), fall back
-    // to the track file for best-effort cleanup.
-    let track_cleanup_ok = fs::read_to_string(&track_file).map_or(removed_success, |content| {
+    // to the track file for best-effort cleanup of the wrapper dir in /tmp.
+    if let Ok(content) = fs::read_to_string(&track_file) {
         let wrapper_dir = PathBuf::from(content.trim());
         let same_as_removed = removed_wrapper_dir
             .as_ref()
             .is_some_and(|p| p == &wrapper_dir);
-        if same_as_removed {
-            removed_success || !wrapper_dir_is_safe_existing_dir(&wrapper_dir)
-        } else {
-            remove_wrapper_dir_and_path_entry(&wrapper_dir)
+        if !same_as_removed {
+            remove_wrapper_dir_and_path_entry(&wrapper_dir);
         }
-    });
-
-    if track_cleanup_ok {
-        let _ = fs::remove_file(track_file);
     }
+
+    // ALWAYS remove the track file. Hooks check marker OR track_file with ||
+    // logic, so a surviving track file blocks commits even after the marker is
+    // removed. The wrapper dir in /tmp is harmless and will be cleaned by the OS.
+    #[cfg(unix)]
+    add_owner_write_if_not_symlink(&track_file);
+    let _ = fs::remove_file(&track_file);
 }
 
 fn remove_path_entry(path_to_remove: &Path) {
@@ -776,6 +784,13 @@ pub fn start_agent_phase_in_repo(repo_root: &Path, helpers: &mut GitHelpers) -> 
         *guard = Some(ralph_dir.clone());
     }
 
+    // Store hooks dir for signal handler cleanup reliability.
+    if let Ok(hooks_dir) = super::repo::get_hooks_dir_from(repo_root) {
+        if let Ok(mut guard) = AGENT_PHASE_HOOKS_DIR.lock() {
+            *guard = Some(hooks_dir);
+        }
+    }
+
     // Self-heal: treat non-regular marker path as tampering and recover.
     repair_marker_path_if_tampered(repo_root)?;
     // Make marker read-only (0o444) to deter agent deletion.
@@ -800,31 +815,46 @@ pub fn end_agent_phase() {
 /// End agent phase for an explicit repository.
 ///
 /// This avoids relying on the process current working directory to locate the repo.
+///
+/// **Note:** This function does NOT clear the process-global mutexes
+/// (`AGENT_PHASE_REPO_ROOT`, `AGENT_PHASE_RALPH_DIR`, `AGENT_PHASE_HOOKS_DIR`).
+/// Callers must invoke [`clear_agent_phase_global_state`] after ALL cleanup steps
+/// (wrapper removal, hook uninstallation) are complete. This prevents a race
+/// where SIGINT arrives between mutex clearing and hook cleanup, causing the
+/// signal handler to find empty mutexes and skip cleanup.
 pub fn end_agent_phase_in_repo(repo_root: &Path) {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
     end_agent_phase_in_repo_at_ralph_dir(repo_root, &ralph_dir);
+}
 
-    // Clear stored repo root and ralph dir since agent phase is ending.
+/// Clear the process-global agent-phase state mutexes.
+///
+/// Must be called after ALL cleanup steps (marker removal, wrapper removal,
+/// hook uninstallation) are complete. Clearing earlier creates a race window
+/// where SIGINT can arrive with empty mutexes, causing incomplete cleanup.
+pub fn clear_agent_phase_global_state() {
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
         *guard = None;
     }
     if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
         *guard = None;
     }
+    if let Ok(mut guard) = AGENT_PHASE_HOOKS_DIR.lock() {
+        *guard = None;
+    }
 }
 
 fn end_agent_phase_in_repo_at_ralph_dir(repo_root: &Path, ralph_dir: &Path) {
+    // Legacy marker cleanup (always attempt).
     let legacy_marker = legacy_marker_path(repo_root);
     #[cfg(unix)]
     add_owner_write_if_not_symlink(&legacy_marker);
     let _ = fs::remove_file(&legacy_marker);
 
-    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(ralph_dir) else {
-        return;
-    };
-    if !ralph_dir_exists {
-        return;
-    }
+    // Always attempt marker removal regardless of sanitize result.
+    // sanitize may fail due to transient metadata issues, but the
+    // marker file itself may still be removable.
+    let ralph_dir_ok = super::repo::sanitize_ralph_git_dir_at(ralph_dir).unwrap_or(false);
 
     let marker_path = ralph_dir.join(MARKER_FILE_NAME);
     // Make writable before removal (marker is created as read-only 0o444).
@@ -832,15 +862,12 @@ fn end_agent_phase_in_repo_at_ralph_dir(repo_root: &Path, ralph_dir: &Path) {
     add_owner_write_if_not_symlink(&marker_path);
     let _ = fs::remove_file(&marker_path);
 
-    // Clean up HEAD OID tracking file.
-    remove_head_oid_file_at(ralph_dir);
-
-    // Clean up stray temp files left by interrupted atomic writes before
-    // attempting to remove the directory. Without this, remove_dir fails
-    // silently when .head-oid.tmp.* or .git-wrapper-dir.tmp.* files exist.
-    cleanup_stray_tmp_files_in_ralph_dir(ralph_dir);
-    // Best-effort: remove the empty ralph dir if it's now empty.
-    let _ = fs::remove_dir(ralph_dir);
+    // Only attempt head-oid and dir cleanup if sanitize confirmed dir exists.
+    if ralph_dir_ok {
+        remove_head_oid_file_at(ralph_dir);
+        cleanup_stray_tmp_files_in_ralph_dir(ralph_dir);
+        let _ = fs::remove_dir(ralph_dir);
+    }
 }
 
 /// Verify and restore agent-phase commit protections before each agent invocation.
@@ -1359,26 +1386,25 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
 
 /// Remove the git wrapper temp directory using an explicit Ralph metadata dir.
 fn cleanup_git_wrapper_dir_silent_at(ralph_dir: &Path) {
-    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(ralph_dir) else {
-        return;
-    };
-    if !ralph_dir_exists {
-        return;
-    }
-
     let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
-    let wrapper_dir = fs::read_to_string(&track_file)
+
+    // Read the track file to find wrapper dir (best-effort).
+    // Do not gate on sanitize — we want to clean up even if the ralph dir
+    // has unexpected metadata (sanitize failure should not block cleanup).
+    if let Some(wrapper_dir) = fs::read_to_string(&track_file)
         .ok()
-        .map(|s| PathBuf::from(s.trim()));
-
-    let cleanup_ok = wrapper_dir.as_ref().is_none_or(|wrapper_dir| {
+        .map(|s| PathBuf::from(s.trim()))
+    {
         // Treat track file as untrusted; only remove plausible wrapper dirs under temp.
-        remove_wrapper_dir_and_path_entry(wrapper_dir)
-    });
-
-    if cleanup_ok {
-        let _ = fs::remove_file(track_file);
+        remove_wrapper_dir_and_path_entry(&wrapper_dir);
     }
+
+    // ALWAYS remove the track file. Hooks check marker OR track_file with ||
+    // logic, so a surviving track file blocks commits even after the marker is
+    // removed. The wrapper dir in /tmp is harmless and will be cleaned by the OS.
+    #[cfg(unix)]
+    add_owner_write_if_not_symlink(&track_file);
+    let _ = fs::remove_file(&track_file);
 }
 
 /// Clean up a prior wrapper dir tracked in the track file.
@@ -1457,7 +1483,15 @@ pub fn cleanup_agent_phase_silent() {
         .try_lock()
         .ok()
         .and_then(|guard| guard.clone());
-    cleanup_agent_phase_silent_at_internal(&repo_root, stored_ralph_dir.as_deref());
+    let stored_hooks_dir = AGENT_PHASE_HOOKS_DIR
+        .try_lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    cleanup_agent_phase_silent_at_internal(
+        &repo_root,
+        stored_ralph_dir.as_deref(),
+        stored_hooks_dir.as_deref(),
+    );
 }
 
 /// Best-effort cleanup using an explicit repo root.
@@ -1465,21 +1499,62 @@ pub fn cleanup_agent_phase_silent() {
 /// This is the consolidated cleanup function that removes all agent-phase
 /// artifacts. All sub-operations use the provided repo root instead of
 /// CWD-based discovery, ensuring reliability even if CWD has changed.
+///
+/// Unlike [`cleanup_agent_phase_silent`], this function does NOT read the
+/// process-global hooks dir mutex. It derives the hooks directory from the
+/// repo root, making it safe to call from parallel tests without global
+/// state interference.
 pub fn cleanup_agent_phase_silent_at(repo_root: &Path) {
-    cleanup_agent_phase_silent_at_internal(repo_root, None);
+    cleanup_agent_phase_silent_at_internal(repo_root, None, None);
 }
 
 #[cfg(any(test, feature = "test-utils"))]
-pub fn set_agent_phase_paths_for_test(repo_root: Option<PathBuf>, ralph_dir: Option<PathBuf>) {
+pub fn set_agent_phase_paths_for_test(
+    repo_root: Option<PathBuf>,
+    ralph_dir: Option<PathBuf>,
+    hooks_dir: Option<PathBuf>,
+) {
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
         *guard = repo_root;
     }
     if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
         *guard = ralph_dir;
     }
+    if let Ok(mut guard) = AGENT_PHASE_HOOKS_DIR.lock() {
+        *guard = hooks_dir;
+    }
 }
 
-fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Option<&Path>) {
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn get_agent_phase_paths_for_test() -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    let repo_root = AGENT_PHASE_REPO_ROOT
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let ralph_dir = AGENT_PHASE_RALPH_DIR
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let hooks_dir = AGENT_PHASE_HOOKS_DIR
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    (repo_root, ralph_dir, hooks_dir)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn agent_phase_test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    &TEST_LOCK
+}
+
+fn cleanup_agent_phase_silent_at_internal(
+    repo_root: &Path,
+    stored_ralph_dir: Option<&Path>,
+    stored_hooks_dir: Option<&Path>,
+) {
     let computed_ralph_dir;
     let ralph_dir = if let Some(ralph_dir) = stored_ralph_dir {
         ralph_dir
@@ -1491,13 +1566,15 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
     end_agent_phase_in_repo_at_ralph_dir(repo_root, ralph_dir);
     cleanup_git_wrapper_dir_silent_at(ralph_dir);
 
-    // Derive the hooks dir from the already-known ralph_dir to bypass an extra
-    // libgit2 discovery call. The hooks dir is a sibling of ralph/ inside the
-    // git metadata directory (e.g. .git/hooks/ next to .git/ralph/).
-    if let Some(git_dir) = ralph_dir.parent() {
+    // Prefer the stored hooks dir (set during start_agent_phase_in_repo) over
+    // deriving from ralph_dir.parent(). The stored hooks dir was resolved via
+    // get_hooks_dir_from which uses common_git_dir, so it is correct for
+    // linked worktrees. Deriving from ralph_dir.parent() is a fallback.
+    if let Some(hooks_dir) = stored_hooks_dir {
+        super::hooks::uninstall_hooks_silent_in_hooks_dir(hooks_dir);
+    } else if let Some(git_dir) = ralph_dir.parent() {
         super::hooks::uninstall_hooks_silent_in_hooks_dir(&git_dir.join("hooks"));
     } else {
-        // Fallback: ralph dir has no parent (should not happen in practice).
         uninstall_hooks_silent_at(repo_root);
     }
 
@@ -1513,12 +1590,7 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
 
     cleanup_generated_files_silent_at(repo_root);
 
-    if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
-        *guard = None;
-    }
-    if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
-        *guard = None;
-    }
+    clear_agent_phase_global_state();
 }
 
 /// Best-effort removal of the ralph git directory after all artifacts are cleaned.
@@ -2599,7 +2671,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn test_disable_git_wrapper_keeps_track_file_when_dir_removal_fails() {
+    fn test_disable_git_wrapper_removes_track_file_even_when_dir_removal_fails() {
         use std::os::unix::fs::PermissionsExt;
 
         let _lock = ENV_LOCK.lock().unwrap();
@@ -2633,23 +2705,17 @@ mod tests {
 
         disable_git_wrapper(&mut helpers);
 
+        // Track file MUST be removed even when the wrapper dir removal fails.
+        // Hooks check marker OR track_file, so leaving it behind blocks commits.
         assert!(
-            track_file.exists(),
-            "track file should remain when wrapper removal fails"
-        );
-        let remaining = verify_wrapper_cleaned(repo_root);
-        assert!(
-            remaining
-                .iter()
-                .any(|entry| entry.contains("wrapper temp dir still exists")),
-            "verification should report the leaked wrapper dir: {remaining:?}"
+            !track_file.exists(),
+            "track file must be removed unconditionally, even when wrapper dir removal fails"
         );
 
         let mut restore_permissions = fs::metadata(blocked_parent.path()).unwrap().permissions();
         restore_permissions.set_mode(original_parent_mode);
         fs::set_permissions(blocked_parent.path(), restore_permissions).unwrap();
         fs::remove_dir_all(&wrapper_dir_path).unwrap();
-        fs::remove_file(&track_file).unwrap();
     }
 
     // =========================================================================
@@ -2981,5 +3047,334 @@ mod tests {
                 "Ralph hook {hook_name} should be removed by cleanup_agent_phase_silent_at"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_cleanup_removes_readonly_marker_and_track_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git/ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        // Create read-only marker (0o444).
+        let marker = ralph_dir.join(MARKER_FILE_NAME);
+        fs::write(&marker, "").unwrap();
+        fs::set_permissions(&marker, fs::Permissions::from_mode(0o444)).unwrap();
+
+        // Create read-only track file (0o444).
+        let track = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+        fs::write(&track, "/nonexistent\n").unwrap();
+        fs::set_permissions(&track, fs::Permissions::from_mode(0o444)).unwrap();
+
+        end_agent_phase_in_repo_at_ralph_dir(repo_root, &ralph_dir);
+        cleanup_git_wrapper_dir_silent_at(&ralph_dir);
+
+        assert!(!marker.exists(), "read-only marker should be removed");
+        assert!(!track.exists(), "read-only track file should be removed");
+    }
+
+    #[test]
+    fn test_cleanup_is_idempotent_called_twice() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git/ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        let marker = ralph_dir.join(MARKER_FILE_NAME);
+        fs::write(&marker, "").unwrap();
+
+        // First cleanup.
+        cleanup_agent_phase_silent_at(repo_root);
+        assert!(!marker.exists());
+
+        // Second cleanup — should not panic or error.
+        cleanup_agent_phase_silent_at(repo_root);
+        assert!(!marker.exists());
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_from_worktree_root() {
+        use crate::git_helpers::hooks;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = git2::Repository::init(tmp.path()).unwrap();
+        {
+            let mut index = main_repo.index().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = main_repo.find_tree(tree_oid).unwrap();
+            let sig = git2::Signature::now("test", "test@test.com").unwrap();
+            main_repo
+                .commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+
+        let wt_path = tmp.path().join("wt-cleanup");
+        let _wt = main_repo.worktree("wt-cleanup", &wt_path, None).unwrap();
+
+        // Install artifacts at the COMMON git dir (what start_agent_phase does after fix).
+        let common_hooks_dir = tmp.path().join(".git/hooks");
+        fs::create_dir_all(&common_hooks_dir).unwrap();
+        let hook_content = format!("#!/bin/bash\n# {}\nexit 0\n", hooks::HOOK_MARKER);
+        for name in hooks::RALPH_HOOK_NAMES {
+            fs::write(common_hooks_dir.join(name), &hook_content).unwrap();
+        }
+        let common_ralph_dir = tmp.path().join(".git/ralph");
+        fs::create_dir_all(&common_ralph_dir).unwrap();
+        fs::write(common_ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+        // Also create a track file pointing to a nonexistent wrapper dir.
+        fs::write(
+            common_ralph_dir.join(WRAPPER_TRACK_FILE_NAME),
+            "/nonexistent/wrapper\n",
+        )
+        .unwrap();
+
+        // Cleanup from the WORKTREE root — must clean the common dir.
+        cleanup_agent_phase_silent_at(&wt_path);
+
+        assert!(
+            !common_ralph_dir.join(MARKER_FILE_NAME).exists(),
+            "marker at common git dir should be removed when cleaning from worktree root"
+        );
+        assert!(
+            !common_ralph_dir.join(WRAPPER_TRACK_FILE_NAME).exists(),
+            "track file at common git dir should be removed when cleaning from worktree root"
+        );
+        for name in hooks::RALPH_HOOK_NAMES {
+            let hook_path = common_hooks_dir.join(name);
+            let still_ralph = hook_path.exists()
+                && crate::files::file_contains_marker(&hook_path, hooks::HOOK_MARKER)
+                    .unwrap_or(false);
+            assert!(
+                !still_ralph,
+                "hook {name} at common hooks dir should be removed from worktree root"
+            );
+        }
+    }
+
+    // =========================================================================
+    // Unconditional track file removal tests
+    // =========================================================================
+
+    #[test]
+    fn test_track_file_removed_even_when_wrapper_dir_cleanup_fails() {
+        // The track file must be removed unconditionally because hooks use OR logic
+        // (marker OR track_file) to block commits. If the wrapper dir in /tmp can't
+        // be removed, the track file should still be cleaned so hooks don't block.
+        let tmp = tempfile::tempdir().unwrap();
+        let ralph_dir = tmp.path().join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        // Write a track file pointing to a path that does NOT exist under system
+        // temp dir (so wrapper_dir_is_safe_existing_dir returns false and the
+        // wrapper dir cleanup "fails" in the sense that the dir wasn't cleaned).
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+        fs::write(&track_file, "/not-a-real-temp-dir/ralph-git-wrapper-fake\n").unwrap();
+
+        cleanup_git_wrapper_dir_silent_at(&ralph_dir);
+
+        assert!(
+            !track_file.exists(),
+            "track file must be removed unconditionally, even when wrapper dir cleanup fails"
+        );
+    }
+
+    #[test]
+    fn test_disable_git_wrapper_always_removes_track_file() {
+        // disable_git_wrapper must always remove the track file regardless of
+        // whether the wrapper dir could be cleaned up.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        // Write a read-only track file pointing to a non-existent path.
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+        fs::write(&track_file, "/nonexistent/not-temp-prefixed\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&track_file).unwrap().permissions();
+            perms.set_mode(0o444);
+            fs::set_permissions(&track_file, perms).unwrap();
+        }
+
+        let mut helpers = GitHelpers {
+            wrapper_dir: None,
+            wrapper_repo_root: Some(repo_root.to_path_buf()),
+            ..GitHelpers::default()
+        };
+
+        disable_git_wrapper(&mut helpers);
+
+        assert!(
+            !track_file.exists(),
+            "track file must be removed unconditionally by disable_git_wrapper"
+        );
+    }
+
+    // =========================================================================
+    // Global mutex clearing tests
+    // =========================================================================
+
+    #[test]
+    fn test_global_mutexes_not_cleared_by_end_agent_phase_in_repo() {
+        // end_agent_phase_in_repo must NOT clear global mutexes — callers are
+        // responsible for calling clear_agent_phase_global_state after ALL cleanup.
+        //
+        // IMPORTANT: This test modifies process-global mutexes, so we must:
+        // 1. Use ClearOnDrop guard to ensure cleanup even on panic.
+        // 2. Only set REPO_ROOT and RALPH_DIR (not HOOKS_DIR) to avoid
+        //    poisoning parallel tests that call cleanup_agent_phase_silent_at,
+        //    which reads HOOKS_DIR to determine the hooks cleanup location.
+        struct ClearOnDrop;
+        impl Drop for ClearOnDrop {
+            fn drop(&mut self) {
+                clear_agent_phase_global_state();
+            }
+        }
+        let _guard = ClearOnDrop;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+
+        // Only set REPO_ROOT and RALPH_DIR. Skip HOOKS_DIR to avoid
+        // interfering with parallel tests that read it for cleanup.
+        set_agent_phase_paths_for_test(Some(repo_root.to_path_buf()), Some(ralph_dir), None);
+
+        end_agent_phase_in_repo(repo_root);
+
+        // REPO_ROOT and RALPH_DIR should still hold their values.
+        let repo_root_val = AGENT_PHASE_REPO_ROOT.lock().unwrap().clone();
+        assert!(
+            repo_root_val.is_some(),
+            "AGENT_PHASE_REPO_ROOT should NOT be cleared by end_agent_phase_in_repo"
+        );
+
+        let ralph_dir_val = AGENT_PHASE_RALPH_DIR.lock().unwrap().clone();
+        assert!(
+            ralph_dir_val.is_some(),
+            "AGENT_PHASE_RALPH_DIR should NOT be cleared by end_agent_phase_in_repo"
+        );
+        // _guard's Drop clears mutexes even on panic.
+    }
+
+    #[test]
+    fn test_clear_agent_phase_global_state_clears_all_mutexes() {
+        set_agent_phase_paths_for_test(
+            Some(PathBuf::from("/test/repo")),
+            Some(PathBuf::from("/test/repo/.git/ralph")),
+            Some(PathBuf::from("/test/repo/.git/hooks")),
+        );
+
+        clear_agent_phase_global_state();
+
+        assert!(
+            AGENT_PHASE_REPO_ROOT.lock().unwrap().is_none(),
+            "AGENT_PHASE_REPO_ROOT should be cleared"
+        );
+        assert!(
+            AGENT_PHASE_RALPH_DIR.lock().unwrap().is_none(),
+            "AGENT_PHASE_RALPH_DIR should be cleared"
+        );
+        assert!(
+            AGENT_PHASE_HOOKS_DIR.lock().unwrap().is_none(),
+            "AGENT_PHASE_HOOKS_DIR should be cleared"
+        );
+    }
+
+    // =========================================================================
+    // Comprehensive cleanup test
+    // =========================================================================
+
+    /// Helper: install all agent-phase artifacts for comprehensive cleanup tests.
+    fn install_all_agent_phase_artifacts(repo_root: &Path) {
+        use crate::git_helpers::hooks;
+
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        let hooks_dir = repo_root.join(".git").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+
+        let marker = ralph_dir.join(MARKER_FILE_NAME);
+        fs::write(&marker, "").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&marker, fs::Permissions::from_mode(0o444)).unwrap();
+        }
+
+        let track_file = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
+        fs::write(&track_file, "/nonexistent/wrapper\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&track_file, fs::Permissions::from_mode(0o444)).unwrap();
+        }
+
+        fs::write(ralph_dir.join(HEAD_OID_FILE_NAME), "abc123\n").unwrap();
+
+        let hook_content = format!("#!/bin/bash\n# {}\nexit 0\n", hooks::HOOK_MARKER);
+        for name in hooks::RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(name);
+            fs::write(&hook_path, &hook_content).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&hook_path, fs::Permissions::from_mode(0o555)).unwrap();
+            }
+        }
+
+        set_agent_phase_paths_for_test(
+            Some(repo_root.to_path_buf()),
+            Some(ralph_dir),
+            Some(hooks_dir),
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_all_artifacts_including_track_file() {
+        use crate::git_helpers::hooks;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        install_all_agent_phase_artifacts(repo_root);
+        cleanup_agent_phase_silent_at(repo_root);
+
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        let hooks_dir = repo_root.join(".git").join("hooks");
+
+        assert!(
+            !ralph_dir.join(MARKER_FILE_NAME).exists(),
+            "marker should be removed"
+        );
+        assert!(
+            !ralph_dir.join(WRAPPER_TRACK_FILE_NAME).exists(),
+            "track file should be removed"
+        );
+        assert!(
+            !ralph_dir.join(HEAD_OID_FILE_NAME).exists(),
+            "head-oid should be removed"
+        );
+        assert!(!ralph_dir.exists(), "ralph dir should be removed");
+        for name in hooks::RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(name);
+            let still_ralph = hook_path.exists()
+                && crate::files::file_contains_marker(&hook_path, hooks::HOOK_MARKER)
+                    .unwrap_or(false);
+            assert!(!still_ralph, "hook {name} should be removed");
+        }
+
+        // Global mutexes should be cleared.
+        assert!(AGENT_PHASE_REPO_ROOT.lock().unwrap().is_none());
+        assert!(AGENT_PHASE_RALPH_DIR.lock().unwrap().is_none());
+        assert!(AGENT_PHASE_HOOKS_DIR.lock().unwrap().is_none());
     }
 }
