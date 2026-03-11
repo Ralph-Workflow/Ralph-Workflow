@@ -183,13 +183,19 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         {
             use std::sync::OnceLock;
 
-            /// Parse "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
+            /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
             fn parse_cputime_ms(s: &str) -> Option<u64> {
                 let parts: Vec<&str> = s.split(':').collect();
                 match parts.len() {
                     3 => {
-                        // HH:MM:SS (or HH:MM:SS.ss)
-                        let hours: u64 = parts[0].parse().ok()?;
+                        // DD-HH:MM:SS or HH:MM:SS (or HH:MM:SS.ss)
+                        let hours = if let Some((days, hours)) = parts[0].split_once('-') {
+                            let days: u64 = days.parse().ok()?;
+                            let hours: u64 = hours.parse().ok()?;
+                            days.checked_mul(24)?.checked_add(hours)?
+                        } else {
+                            parts[0].parse().ok()?
+                        };
                         let minutes: u64 = parts[1].parse().ok()?;
                         let seconds_str = parts[2];
                         let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
@@ -220,6 +226,20 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
 
             fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
                 use std::collections::{HashMap, HashSet, VecDeque};
+
+                fn descendant_pid_signature(descendants: &[u32]) -> u64 {
+                    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+                    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+                    let mut signature = FNV_OFFSET;
+                    for pid in descendants {
+                        for byte in pid.to_le_bytes() {
+                            signature ^= u64::from(byte);
+                            signature = signature.wrapping_mul(FNV_PRIME);
+                        }
+                    }
+                    signature
+                }
 
                 // First pass: parse all (pid, ppid, cpu_time_ms) tuples.
                 let mut children_of: HashMap<u32, Vec<(u32, u64)>> = HashMap::new();
@@ -257,6 +277,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 // BFS from parent_pid to find all descendants.
                 let mut child_count: u32 = 0;
                 let mut total_cpu_ms: u64 = 0;
+                let mut descendant_pids = Vec::new();
                 let mut visited = HashSet::new();
                 let mut queue = VecDeque::new();
                 queue.push_back(parent_pid);
@@ -267,15 +288,19 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             if visited.insert(pid) {
                                 child_count += 1;
                                 total_cpu_ms += cpu_ms;
+                                descendant_pids.push(pid);
                                 queue.push_back(pid);
                             }
                         }
                     }
                 }
 
+                descendant_pids.sort_unstable();
+
                 Some(ChildProcessInfo {
                     child_count,
                     cpu_time_ms: total_cpu_ms,
+                    descendant_pid_signature: descendant_pid_signature(&descendant_pids),
                 })
             }
 
@@ -435,6 +460,23 @@ mod tests {
             info.cpu_time_ms,
             (3600 + 2 * 60 + 3) * 1000,
             "HH:MM:SS should parse to correct ms"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn parse_cputime_with_day_prefix() {
+        let pid = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output("200 100 1-02:03:04\n"));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(pid);
+        assert_eq!(
+            info.cpu_time_ms,
+            ((24 + 2) * 3600 + 3 * 60 + 4) * 1000,
+            "DD-HH:MM:SS should parse to correct ms"
         );
     }
 

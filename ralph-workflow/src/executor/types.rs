@@ -115,6 +115,13 @@ pub struct ChildProcessInfo {
     /// - If `cpu_time_ms` advances between checks, children are actively working.
     /// - If `cpu_time_ms` is unchanged, children exist but are idle/stalled.
     pub cpu_time_ms: u64,
+    /// Deterministic signature of the current descendant PID set.
+    ///
+    /// This lets the idle-timeout monitor distinguish "the same child subtree is
+    /// still running" from "the old subtree exited and a new one replaced it
+    /// between polls", even when the cumulative CPU time drops or resets.
+    #[serde(default)]
+    pub descendant_pid_signature: u64,
 }
 
 impl ChildProcessInfo {
@@ -122,6 +129,7 @@ impl ChildProcessInfo {
     pub const NONE: Self = Self {
         child_count: 0,
         cpu_time_ms: 0,
+        descendant_pid_signature: 0,
     };
 
     /// Whether any child processes exist.
@@ -171,6 +179,7 @@ mod tests {
         let info = ChildProcessInfo {
             child_count: 3,
             cpu_time_ms: 42000,
+            descendant_pid_signature: 12345,
         };
         let json = serde_json::to_string(&info).unwrap();
         let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();

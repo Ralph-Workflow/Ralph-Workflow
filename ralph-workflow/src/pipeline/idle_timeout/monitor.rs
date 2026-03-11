@@ -196,7 +196,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
     let mut last_file_activity: Option<std::time::Instant> = None;
     let mut consecutive_idle_count: u32 = 0;
-    let mut last_child_cpu_time_ms: Option<u64> = None;
+    let mut last_child_observation: Option<ChildProcessInfo> = None;
     let mut last_child_info: Option<ChildProcessInfo> = None;
 
     loop {
@@ -388,28 +388,32 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             };
             let info = executor.get_child_process_info(child_pid);
             if info.has_children() {
+                let is_fresh_child_observation = last_child_observation.is_none_or(|prev| {
+                    prev.descendant_pid_signature != info.descendant_pid_signature
+                        || info.cpu_time_ms < prev.cpu_time_ms
+                });
                 let cpu_advanced =
-                    last_child_cpu_time_ms.is_none_or(|prev| info.cpu_time_ms > prev);
-                last_child_cpu_time_ms = Some(info.cpu_time_ms);
+                    last_child_observation.is_none_or(|prev| info.cpu_time_ms > prev.cpu_time_ms);
+                last_child_observation = Some(info);
                 last_child_info = Some(info);
 
-                if cpu_advanced {
+                if is_fresh_child_observation || cpu_advanced {
                     consecutive_idle_count = 0;
                     eprintln!(
                         "Agent has active child processes (pid {child_pid}, \
-                         {} children, cpu {}ms); continuing monitoring",
-                        info.child_count, info.cpu_time_ms
+                         {} children, cpu {}ms, signature {}); continuing monitoring",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
                     );
                     continue;
                 }
                 // Children exist but CPU hasn't advanced — treat as idle.
                 eprintln!(
                     "Agent has child processes (pid {child_pid}, {} children) \
-                     but CPU time unchanged ({}ms); treating as idle",
-                    info.child_count, info.cpu_time_ms
+                     but CPU time unchanged ({}ms, signature {}); treating as idle",
+                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
                 );
             } else {
-                last_child_cpu_time_ms = None;
+                last_child_observation = None;
                 last_child_info = None;
             }
         }

@@ -1057,6 +1057,7 @@ fn stalled_subprocess_timeout_includes_child_status() {
             ChildProcessInfo {
                 child_count: 2,
                 cpu_time_ms: 4200,
+                descendant_pid_signature: 77,
             },
         ));
         let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
@@ -1106,6 +1107,7 @@ fn child_status_at_timeout_survives_event_serde_round_trip() {
         let info = ChildProcessInfo {
             child_count: 2,
             cpu_time_ms: 5000,
+            descendant_pid_signature: 88,
         };
         let event = PipelineEvent::agent_timed_out(
             ralph_workflow::agents::AgentRole::Developer,

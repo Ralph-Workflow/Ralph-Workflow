@@ -197,6 +197,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         ChildProcessInfo {
             child_count: 1,
             cpu_time_ms: 100,
+            descendant_pid_signature: 11,
         },
     ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
@@ -284,6 +285,7 @@ fn stalled_children_allow_idle_kill() {
             ChildProcessInfo {
                 child_count: 2,
                 cpu_time_ms: 5000,
+                descendant_pid_signature: 22,
             },
         ));
 
@@ -469,18 +471,19 @@ fn children_disappearing_and_reappearing_resets_tracking() {
     thread::sleep(Duration::from_millis(15));
 
     // Remove children (simulates subprocess completing).
-    // This resets last_child_cpu_time_ms to None in the monitor.
+    // This resets the last child observation in the monitor.
     executor_impl.remove_active_children_for(child_pid);
     thread::sleep(Duration::from_millis(10));
 
     // Re-add children (simulates a new subprocess spawning). The monitor's
-    // last_child_cpu_time_ms is None, so the first observation of the new
+    // there is no previous child observation, so the first observation of the new
     // children grants grace again (idle counter resets).
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
             child_count: 1,
             cpu_time_ms: 0,
+            descendant_pid_signature: 33,
         },
     );
     // Grace observation happens on next check. After that, CPU stays at 0
@@ -490,6 +493,73 @@ fn children_disappearing_and_reappearing_resets_tracking() {
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
         "monitor should kill after re-appeared children stall"
+    );
+}
+
+/// Replacing one child subtree with another between polls should grant a fresh
+/// observation grace even if the new subtree reports a lower cumulative CPU time.
+#[test]
+fn child_identity_change_between_polls_resets_tracking() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            cpu_time_ms: 5_000,
+            descendant_pid_signature: 101,
+        },
+    ));
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(50),
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: true,
+    };
+
+    let handle = thread::spawn(move || {
+        monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            None,
+            &child,
+            &should_stop_clone,
+            &executor,
+            config,
+        )
+    });
+
+    thread::sleep(Duration::from_millis(60));
+
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            cpu_time_ms: 100,
+            descendant_pid_signature: 202,
+        },
+    );
+
+    thread::sleep(Duration::from_millis(60));
+    assert!(
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "changing to a new child subtree between polls should grant a fresh grace period"
+    );
+
+    let result = handle.join().expect("monitor thread panicked");
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "monitor should still time out once the replacement child subtree also stalls"
     );
 }
 
@@ -512,6 +582,7 @@ fn timeout_with_stalled_children_reports_child_status() {
             ChildProcessInfo {
                 child_count: 3,
                 cpu_time_ms: 7500,
+                descendant_pid_signature: 44,
             },
         ));
 
