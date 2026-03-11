@@ -486,6 +486,7 @@ fn test_cleanup_agent_phase_silent_uses_stored_ralph_dir() {
         ralph_workflow::git_helpers::set_agent_phase_paths_for_test(
             Some(repo_root.clone()),
             Some(stored_ralph_dir),
+            None,
         );
 
         git_helpers::cleanup_agent_phase_silent();
@@ -511,7 +512,7 @@ fn test_cleanup_agent_phase_silent_uses_stored_ralph_dir() {
             "cleanup should not recreate a fallback repo_root/.git/ralph directory"
         );
 
-        ralph_workflow::git_helpers::set_agent_phase_paths_for_test(None, None);
+        ralph_workflow::git_helpers::set_agent_phase_paths_for_test(None, None, None);
     });
 }
 
