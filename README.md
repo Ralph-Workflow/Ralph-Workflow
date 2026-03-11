@@ -59,6 +59,8 @@ and watch the AI agent plan out, work through the refactor.
 
 By default ralph-workflow will use `claude` and `codex` as the default dev and review agent. To change them, edit your config in `$HOME/.config/ralph-workflow.toml`
 
+You can see a sample config file [here](ralph-workflow/examples/ralph-workflow.toml)
+
 ## Currently Supported Clients
 
 * Claude Code (and Claude Code Switch profiles)
