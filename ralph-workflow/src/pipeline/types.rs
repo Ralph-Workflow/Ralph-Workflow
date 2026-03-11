@@ -102,5 +102,7 @@ impl Drop for AgentPhaseGuard<'_> {
             }
         }
         cleanup_generated_files_with_workspace(self.workspace);
+        // Clear global mutexes AFTER all cleanup steps complete.
+        crate::git_helpers::clear_agent_phase_global_state();
     }
 }

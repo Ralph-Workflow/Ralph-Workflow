@@ -230,6 +230,8 @@ fn finish_pipeline(
         }
 
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
+        // Clear global mutexes AFTER all cleanup steps complete.
+        crate::git_helpers::clear_agent_phase_global_state();
         if cleanup_ok {
             agent_phase_guard.disarm();
         } else {

@@ -158,6 +158,11 @@ pub fn finalize_pipeline(
     // disarm() prevents Drop from running.
     crate::files::cleanup_generated_files_with_workspace(ctx.workspace);
 
+    // Clear global mutexes AFTER all cleanup steps complete. This prevents a
+    // race where SIGINT arrives between mutex clearing and hook cleanup, causing
+    // the signal handler to find empty mutexes and skip cleanup.
+    crate::git_helpers::clear_agent_phase_global_state();
+
     if cleanup_ok {
         agent_phase_guard.disarm();
     } else {
