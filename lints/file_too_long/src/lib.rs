@@ -8,6 +8,7 @@ extern crate rustc_span;
 use rustc_lint::{EarlyContext, EarlyLintPass, LintContext};
 use rustc_span::{FileName, SourceFile, Span};
 use std::collections::HashSet;
+use std::path::{Component, Path};
 use std::sync::Arc;
 
 dylint_linting::impl_early_lint! {
@@ -47,21 +48,42 @@ pub struct FileTooLong {
     warned_files: HashSet<String>,
 }
 
+fn path_contains_component(path: &Path, target: &str) -> bool {
+    path.components().any(|component| match component {
+        Component::Normal(name) => name == target,
+        _ => false,
+    })
+}
+
+fn current_workspace_root() -> Option<std::path::PathBuf> {
+    std::env::current_dir()
+        .ok()
+        .and_then(|path| path.canonicalize().ok().or(Some(path)))
+}
+
+fn canonicalize_for_filter(path: &Path) -> std::path::PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// Check if the file is a local project file (not stdlib, cargo registry, or external)
 fn is_local_project_file(name: &FileName) -> bool {
     match name {
         FileName::Real(real_name) => {
             if let Some(path) = real_name.local_path() {
-                let path_str = path.display().to_string();
-                // Skip cargo registry files
-                if path_str.contains(".cargo/registry") || path_str.contains(".cargo\\registry") {
+                let canonical_path = canonicalize_for_filter(path);
+
+                if path_contains_component(&canonical_path, ".cargo")
+                    || path_contains_component(&canonical_path, ".rustup")
+                    || path_contains_component(&canonical_path, "target")
+                {
                     return false;
                 }
-                // Skip rustup toolchain files
-                if path_str.contains(".rustup") {
+
+                let Some(workspace_root) = current_workspace_root() else {
                     return false;
-                }
-                true
+                };
+
+                canonical_path.starts_with(workspace_root)
             } else {
                 false
             }
@@ -140,6 +162,34 @@ impl EarlyLintPass for FileTooLong {
 
 #[cfg(test)]
 mod tests {
+    use super::is_local_project_file;
+    use rustc_span::{FileName, RealFileName};
+    use std::path::PathBuf;
+
+    #[test]
+    fn excludes_cargo_registry_paths_outside_workspace_root() {
+        let file_name = FileName::Real(RealFileName::LocalPath(PathBuf::from(
+            "/tmp/ralph-cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/anyhow-1.0.102/src/lib.rs",
+        )));
+
+        assert!(
+            !is_local_project_file(&file_name),
+            "registry sources outside the workspace root must not be linted"
+        );
+    }
+
+    #[test]
+    fn excludes_rustup_toolchain_paths_outside_workspace_root() {
+        let file_name = FileName::Real(RealFileName::LocalPath(PathBuf::from(
+            "/tmp/ralph-rustup-home/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/lib.rs",
+        )));
+
+        assert!(
+            !is_local_project_file(&file_name),
+            "toolchain sources outside the workspace root must not be linted"
+        );
+    }
+
     #[test]
     fn ui() {
         dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");

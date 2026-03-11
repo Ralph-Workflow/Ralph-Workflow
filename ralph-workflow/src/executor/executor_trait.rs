@@ -183,6 +183,14 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         {
             use std::sync::OnceLock;
 
+            #[derive(Clone, Copy)]
+            struct ProcessSnapshotEntry {
+                pid: u32,
+                parent_pid: u32,
+                cpu_time_ms: u64,
+                qualifies: bool,
+            }
+
             /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
             fn parse_cputime_ms(s: &str) -> Option<u64> {
                 let parts: Vec<&str> = s.split(':').collect();
@@ -224,6 +232,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 }
             }
 
+            fn qualifies_process_state(state: &str) -> bool {
+                match state.chars().next() {
+                    Some('Z' | 'X' | 'T' | 'I') | None => false,
+                    Some(_) => true,
+                }
+            }
+
+            fn state_indicates_current_activity(state: &str) -> bool {
+                matches!(state.chars().next(), Some('R' | 'U'))
+            }
+
             fn descendant_pid_signature(descendants: &[u32]) -> u64 {
                 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
                 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -241,33 +260,53 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
                 use std::collections::{HashMap, HashSet, VecDeque};
 
-                // First pass: parse all (pid, ppid, cpu_time_ms) tuples.
-                let mut children_of: HashMap<u32, Vec<(u32, u64)>> = HashMap::new();
+                // First pass: parse all descendant snapshot entries. Prefer richer
+                // 5-column output (pid ppid pgid stat cputime) when available and
+                // fall back to the legacy 3-column format (pid ppid cputime).
+                let mut children_of: HashMap<u32, Vec<ProcessSnapshotEntry>> = HashMap::new();
                 let mut saw_parseable = false;
 
                 for line in stdout.lines() {
-                    let mut parts = line.split_whitespace();
-                    let Some(col_pid) = parts.next() else {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() < 3 {
                         continue;
-                    };
-                    let Some(col_parent) = parts.next() else {
-                        continue;
-                    };
-                    let cputime_text = parts.next().unwrap_or("0:00");
+                    }
 
-                    let Ok(entry_pid) = col_pid.parse::<u32>() else {
+                    let Ok(entry_pid) = parts[0].parse::<u32>() else {
                         continue;
                     };
-                    let Ok(parent_of_entry) = col_parent.parse::<u32>() else {
+                    let Ok(parent_of_entry) = parts[1].parse::<u32>() else {
                         continue;
                     };
                     saw_parseable = true;
+
+                    let (qualifies, cputime_text) = if parts.len() >= 5 {
+                        let pgid_matches_parent = parts[2]
+                            .parse::<u32>()
+                            .ok()
+                            .is_some_and(|pgid| pgid == parent_pid);
+                        let state_qualifies = qualifies_process_state(parts[3]);
+                        let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
+                        let has_activity_evidence =
+                            cpu_ms > 0 || state_indicates_current_activity(parts[3]);
+                        (
+                            pgid_matches_parent && state_qualifies && has_activity_evidence,
+                            parts[4],
+                        )
+                    } else {
+                        (true, parts[2])
+                    };
 
                     let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
                     children_of
                         .entry(parent_of_entry)
                         .or_default()
-                        .push((entry_pid, cpu_ms));
+                        .push(ProcessSnapshotEntry {
+                            pid: entry_pid,
+                            parent_pid: parent_of_entry,
+                            cpu_time_ms: cpu_ms,
+                            qualifies,
+                        });
                 }
 
                 if !saw_parseable {
@@ -284,18 +323,25 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
 
                 while let Some(current) = queue.pop_front() {
                     if let Some(kids) = children_of.get(&current) {
-                        for &(pid, cpu_ms) in kids {
-                            if visited.insert(pid) {
-                                child_count += 1;
-                                total_cpu_ms += cpu_ms;
-                                descendant_pids.push(pid);
-                                queue.push_back(pid);
+                        for child in kids {
+                            if !child.qualifies || !visited.insert(child.pid) {
+                                continue;
                             }
+
+                            debug_assert_eq!(child.parent_pid, current);
+                            child_count += 1;
+                            total_cpu_ms += child.cpu_time_ms;
+                            descendant_pids.push(child.pid);
+                            queue.push_back(child.pid);
                         }
                     }
                 }
 
                 descendant_pids.sort_unstable();
+
+                if child_count == 0 {
+                    return Some(ChildProcessInfo::NONE);
+                }
 
                 Some(ChildProcessInfo {
                     child_count,
@@ -322,6 +368,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                     eprintln!(
                         "Warning: child-process detection degraded (ps unavailable or failing); \
                          idle-timeout false-positive prevention may be reduced"
+                    );
+                }
+            }
+
+            fn warn_child_process_detection_conservative() {
+                static WARNED: OnceLock<()> = OnceLock::new();
+                if WARNED.set(()).is_ok() {
+                    eprintln!(
+                        "Warning: child-process detection is running in conservative fallback mode \
+                         (descendant PIDs found without state/CPU evidence); idle timeout will not \
+                         be suppressed by those descendants"
                     );
                 }
             }
@@ -359,8 +416,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 Some(descendants)
             };
 
-            // Try BSD-style (macOS) then GNU-style (Linux) ps invocations.
-            let ps_attempts: [&[&str]; 2] = [
+            // Try richer ps invocations first so detached/stopped descendants can
+            // be filtered out, then fall back to the legacy shape for compatibility.
+            let ps_attempts: [&[&str]; 4] = [
+                &[
+                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                    "cputime=",
+                ],
+                &[
+                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                    "cputime=",
+                ],
                 &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
                 &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
             ];
@@ -376,11 +442,10 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             }
 
             if let Some(descendants) = discover_descendants_with_pgrep(parent_pid) {
-                return ChildProcessInfo {
-                    child_count: u32::try_from(descendants.len()).unwrap_or(u32::MAX),
-                    cpu_time_ms: 0,
-                    descendant_pid_signature: descendant_pid_signature(&descendants),
-                };
+                if !descendants.is_empty() {
+                    warn_child_process_detection_conservative();
+                }
+                return ChildProcessInfo::NONE;
             }
 
             // Degraded: emit one-time warning, return no-children (conservative).
@@ -456,6 +521,26 @@ mod tests {
                 "pid=".to_string(),
                 "-o".to_string(),
                 "ppid=".to_string(),
+                "-o".to_string(),
+                "cputime=".to_string(),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn ps_key_with_state_and_group() -> (String, Vec<String>) {
+        (
+            "ps".to_string(),
+            vec![
+                "-ax".to_string(),
+                "-o".to_string(),
+                "pid=".to_string(),
+                "-o".to_string(),
+                "ppid=".to_string(),
+                "-o".to_string(),
+                "pgid=".to_string(),
+                "-o".to_string(),
+                "stat=".to_string(),
                 "-o".to_string(),
                 "cputime=".to_string(),
             ],
@@ -605,7 +690,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn get_child_process_info_falls_back_to_pgrep_when_ps_is_unavailable() {
+    fn get_child_process_info_pgrep_fallback_does_not_report_active_children() {
         let parent = 100;
 
         let mut results: ResultMap = HashMap::new();
@@ -618,10 +703,116 @@ mod tests {
         let info = exec.get_child_process_info(parent);
 
         assert_eq!(
-            info.child_count, 3,
-            "fallback should discover descendants via pgrep"
+            info,
+            ChildProcessInfo::NONE,
+            "fallback without process state or cpu evidence must not report active children"
         );
-        assert_eq!(info.cpu_time_ms, 0, "pgrep fallback has no CPU accounting");
-        assert!(info.has_children(), "fallback should not collapse to NONE");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_excludes_descendants_in_other_process_groups() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_and_group(),
+            ok_output(
+                "200 100 100 S 0:01.00\n201 100 201 S 0:05.00\n300 200 100 S 0:02.00\n301 201 201 S 0:09.00\n",
+            ),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info.child_count, 2,
+            "only descendants that remain in the agent process group should qualify"
+        );
+        assert_eq!(
+            info.cpu_time_ms,
+            1000 + 2000,
+            "detached descendants in a different process group must be excluded"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_excludes_zombie_descendants() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_and_group(),
+            ok_output("200 100 100 S 0:01.00\n201 100 100 Z 0:05.00\n"),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(info.child_count, 1, "zombie descendants must not qualify");
+        assert_eq!(info.cpu_time_ms, 1000, "zombie cpu time must be ignored");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_returns_none_when_only_non_qualifying_descendants_exist() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_and_group(),
+            ok_output("200 100 200 S 0:01.00\n300 200 200 S 0:02.00\n"),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info,
+            ChildProcessInfo::NONE,
+            "an empty qualified descendant set must normalize to no active child work"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_excludes_zero_cpu_descendants_without_activity_evidence() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_and_group(),
+            ok_output("200 100 100 S 0:00.00\n"),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info,
+            ChildProcessInfo::NONE,
+            "descendants without any CPU evidence must not count as qualifying child work"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_pgrep_fallback_is_conservative() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(pgrep_key(100), ok_output("200\n300\n"));
+        results.insert(pgrep_key(200), ok_output(""));
+        results.insert(pgrep_key(300), ok_output(""));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info,
+            ChildProcessInfo::NONE,
+            "fallback without process-state or cpu evidence must not suppress idle timeout"
+        );
     }
 }

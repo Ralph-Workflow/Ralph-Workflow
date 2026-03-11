@@ -802,7 +802,7 @@ fn test_run_with_agent_spawn_logs_child_activity_timeout_suppression() {
         .read(std::path::Path::new(".agent/tmp/child-activity.log"))
         .expect("expected workspace log output");
     assert!(
-        log_output.contains("idle timeout suppression: child processes remained active"),
+        log_output.contains("idle timeout suppression: qualifying child processes remained active"),
         "structured logger output should explain child-process timeout suppression"
     );
 }

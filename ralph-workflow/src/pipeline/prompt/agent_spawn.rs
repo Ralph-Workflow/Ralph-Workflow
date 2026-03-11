@@ -352,7 +352,7 @@ pub(super) fn run_with_agent_spawn(
                 || ", no active child processes".to_string(),
                 |info| {
                     format!(
-                        ", child processes present ({} children, CPU stalled at {}ms)",
+                        ", qualifying child processes present ({} children, CPU stalled at {}ms)",
                         info.child_count, info.cpu_time_ms
                     )
                 },
@@ -372,7 +372,7 @@ pub(super) fn run_with_agent_spawn(
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
                 runtime.logger.info(&format!(
-                    "idle timeout suppression: child processes remained active \
+                    "idle timeout suppression: qualifying child processes remained active \
                      ({} children, CPU advanced to {}ms, signature {})",
                     info.child_count, info.cpu_time_ms, info.descendant_pid_signature
                 ));

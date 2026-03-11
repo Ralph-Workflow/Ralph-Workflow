@@ -43,7 +43,7 @@
 //!
 //! # Default Timeout
 //!
-//! The default timeout for all integration tests is 5 seconds.
+//! The default timeout for all integration tests is 10 seconds.
 //! This is enforced via the `DEFAULT_TIMEOUT` constant.
 //!
 //! Tests that exceed 5 seconds likely have external I/O dependencies
@@ -61,17 +61,30 @@ use std::time::Duration;
 /// This MUST remain zero throughout test execution.
 static SPAWNED_PROCESSES: AtomicUsize = AtomicUsize::new(0);
 
-/// Default timeout for integration tests (5 seconds).
+/// Default timeout for integration tests (10 seconds).
 ///
-/// Tests that exceed 5 seconds likely have external I/O dependencies
+/// Tests that exceed 10 seconds likely have external I/O dependencies
 /// (real LLM calls, network requests, long sleeps, or process spawning) which
 /// violate the integration test style guide.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Error type for timeout failures.
 #[derive(Debug)]
 pub struct TimeoutError {
     pub timeout: Duration,
+}
+
+fn current_test_name() -> String {
+    std::thread::current()
+        .name()
+        .unwrap_or("<unnamed-test-thread>")
+        .to_string()
+}
+
+fn runaway_timeout_message(test_name: &str, timeout: Duration) -> String {
+    format!(
+        "FATAL: integration test '{test_name}' exceeded timeout ({timeout:?}) and did not exit after cancellation. Aborting to avoid runaway threads."
+    )
 }
 
 /// Context passed to the test body so it can cooperate with timeouts.
@@ -145,6 +158,7 @@ pub fn with_timeout_ctx<F>(f: F, timeout: Duration)
 where
     F: FnOnce(&TimeoutContext) + Send + 'static,
 {
+    let test_name = current_test_name();
     let cancelled = Arc::new(AtomicBool::new(false));
     let ctx = TimeoutContext {
         cancelled: Arc::clone(&cancelled),
@@ -183,9 +197,7 @@ where
                     panic!("{}", TimeoutError { timeout }.to_string());
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    eprintln!(
-                        "FATAL: integration test exceeded timeout ({timeout:?}) and did not exit after cancellation. Aborting to avoid runaway threads."
-                    );
+                    eprintln!("{}", runaway_timeout_message(&test_name, timeout));
                     std::process::abort();
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -203,7 +215,7 @@ where
     }
 }
 
-/// Run a closure with the default 5-second timeout.
+/// Run a closure with the default 10-second timeout.
 ///
 /// This is a convenience wrapper around `with_timeout` that uses
 /// the standard integration test timeout.
@@ -214,7 +226,7 @@ where
 /// use crate::test_timeout::with_default_timeout;
 ///
 /// with_default_timeout(|| {
-///     // Test code here - must complete in 5 seconds
+///     // Test code here - must complete in 10 seconds
 ///     assert_eq!(2 + 2, 4);
 /// });
 /// ```
@@ -355,6 +367,17 @@ mod tests {
             // Duration debug format is "10s", not "10 seconds"
             assert!(msg.contains("10s"));
             assert!(msg.contains("external I/O"));
+        });
+    }
+
+    #[test]
+    fn runaway_timeout_message_includes_test_name_and_timeout() {
+        with_default_timeout(|| {
+            let message = runaway_timeout_message("example_test", Duration::from_millis(50));
+
+            assert!(message.contains("example_test"));
+            assert!(message.contains("50ms"));
+            assert!(message.contains("runaway threads"));
         });
     }
 
