@@ -908,6 +908,9 @@ pub(crate) fn collect_files_with_glob(
 }
 
 fn file_matches_include_glob(path: &Path, glob: &str) -> bool {
+    if glob == "*" {
+        return path.is_file();
+    }
     if let Some(ext_pattern) = glob.strip_prefix("*.") {
         return path.extension().and_then(|e| e.to_str()) == Some(ext_pattern);
     }

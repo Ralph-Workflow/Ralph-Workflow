@@ -625,7 +625,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         program: "make",
         args: &["dylint"],
         success_exit_codes: &[0],
-        extra_env: &[],
+        extra_env: &[("DYLINT_DRIVER_PATH", "target/dylint-driver")],
     },
 ];
 
@@ -1256,6 +1256,22 @@ mod tests {
                 .any(|c| c.name == "ralph-gui-frontend-test"),
             "REQUIRED_CHECKS must include ralph-gui-frontend-test to run vitest component tests"
         );
+    }
+
+    #[test]
+    fn test_dylint_check_uses_repo_local_writable_cache_dirs() {
+        let spec = REQUIRED_CHECKS
+            .iter()
+            .find(|c| c.name == "dylint")
+            .expect("REQUIRED_CHECKS must include dylint");
+
+        let env: HashMap<_, _> = spec.extra_env.iter().copied().collect();
+
+        assert!(
+            !env.contains_key("CARGO_HOME"),
+            "dylint should use the pre-provisioned cargo home unless installation is needed"
+        );
+        assert_eq!(env.get("DYLINT_DRIVER_PATH"), Some(&"target/dylint-driver"));
     }
 
     #[test]

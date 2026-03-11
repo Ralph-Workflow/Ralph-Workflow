@@ -45,12 +45,43 @@ pub struct CacheEntry {
 
 /// Scope definition: which directories/glob patterns constitute the
 /// relevant input for a given check name.
+#[derive(Clone, Copy)]
+pub struct ScopeGlob {
+    pub dir: &'static str,
+    pub pattern: &'static str,
+}
+
 pub enum CheckScope {
     /// Hash all .rs files under the given directory paths.
     Directories(&'static [&'static str]),
     /// Hash Cargo.lock plus all .rs files under the given paths.
     Build(&'static [&'static str]),
+    /// Hash explicitly selected files and globbed inputs.
+    Patterns {
+        globs: &'static [ScopeGlob],
+        files: &'static [&'static str],
+        include_lock: bool,
+    },
 }
+
+const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui", "ralph-workflow/src"];
+const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] = &[
+    "ralph-gui/ui/package.json",
+    "ralph-gui/ui/package-lock.json",
+];
+const RALPH_GUI_FRONTEND_CHECK_FILES: &[&str] = &[
+    "ralph-gui/ui/package.json",
+    "ralph-gui/ui/package-lock.json",
+    "ralph-gui/ui/tsconfig.json",
+    "ralph-gui/ui/tsconfig.node.json",
+    "ralph-gui/ui/vite.config.ts",
+    "ralph-gui/ui/eslint.config.mjs",
+    "ralph-gui/ui/index.html",
+];
+const RALPH_GUI_FRONTEND_SRC_GLOBS: &[ScopeGlob] = &[ScopeGlob {
+    dir: "ralph-gui/ui/src",
+    pattern: "*",
+}];
 
 /// Returns a stable string key for a scope, used for in-process memoization.
 /// The key encodes both the scope type (directories vs build) and the directory list.
@@ -58,6 +89,18 @@ pub fn scope_memo_key(scope: &CheckScope) -> String {
     match scope {
         CheckScope::Directories(dirs) => format!("d:{}", dirs.join(",")),
         CheckScope::Build(dirs) => format!("b:{}", dirs.join(",")),
+        CheckScope::Patterns {
+            globs,
+            files,
+            include_lock,
+        } => {
+            let glob_key = globs
+                .iter()
+                .map(|glob| format!("{}@{}", glob.dir, glob.pattern))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("p:{include_lock}:{glob_key}:{}", files.join(","))
+        }
     }
 }
 
@@ -88,6 +131,20 @@ pub fn scope_for(check_name: &str) -> CheckScope {
         "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
 
         "clippy-test-helpers" => CheckScope::Build(&["test-helpers/src", "ralph-workflow/src"]),
+
+        "clippy-ralph-gui" | "test-ralph-gui-lib" => CheckScope::Build(RALPH_GUI_RUST_SCOPE_DIRS),
+
+        "ralph-gui-frontend-install" => CheckScope::Patterns {
+            globs: &[],
+            files: RALPH_GUI_FRONTEND_INSTALL_FILES,
+            include_lock: false,
+        },
+
+        "ralph-gui-frontend-lint" | "ralph-gui-frontend-test" => CheckScope::Patterns {
+            globs: RALPH_GUI_FRONTEND_SRC_GLOBS,
+            files: RALPH_GUI_FRONTEND_CHECK_FILES,
+            include_lock: false,
+        },
 
         "clippy-ralph-workflow-tests" => {
             CheckScope::Build(&["tests", "ralph-workflow/src", "test-helpers/src"])
@@ -172,53 +229,75 @@ fn read_files_parallel(paths: &[PathBuf]) -> std::io::Result<Vec<Vec<u8>>> {
 pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Result<u64> {
     let mut hasher = Fnv1aHasher::new();
 
-    let (dirs, include_lock) = match scope {
-        CheckScope::Directories(dirs) => (dirs, false),
-        CheckScope::Build(dirs) => (dirs, true),
-    };
-
     let mut all_paths: Vec<PathBuf> = Vec::new();
+    match scope {
+        CheckScope::Directories(dirs) | CheckScope::Build(dirs) => {
+            // Include check-specific sources.
+            for dir in *dirs {
+                let full = repo_root.join(dir);
+                if full.exists() {
+                    crate::scanner::collect_files_with_glob(&full, "*.rs", &mut all_paths)?;
+                }
 
-    // Include check-specific sources.
-    for dir in *dirs {
-        let full = repo_root.join(dir);
-        if full.exists() {
-            crate::scanner::collect_files_with_glob(&full, "*.rs", &mut all_paths)?;
-        }
-
-        // Include Cargo.toml from this directory's crate (and any parent crates)
-        // so build/lint caches invalidate on manifest changes.
-        let mut cur = full.as_path();
-        while let Some(parent) = cur.parent() {
-            let manifest = cur.join("Cargo.toml");
-            if manifest.exists() {
-                all_paths.push(manifest);
+                // Include Cargo.toml from this directory's crate (and any parent crates)
+                // so build/lint caches invalidate on manifest changes.
+                let mut cur = full.as_path();
+                while let Some(parent) = cur.parent() {
+                    let manifest = cur.join("Cargo.toml");
+                    if manifest.exists() {
+                        all_paths.push(manifest);
+                    }
+                    if cur == repo_root {
+                        break;
+                    }
+                    cur = parent;
+                }
             }
-            if cur == repo_root {
-                break;
-            }
-            cur = parent;
-        }
-    }
 
-    // Include repo-wide config inputs that affect verification results.
-    let mut config_candidates: Vec<&str> = vec![
-        "Cargo.toml",
-        "rustfmt.toml",
-        "clippy.toml",
-        ".cargo/config.toml",
-        ".cargo/config",
-        "rust-toolchain.toml",
-        "rust-toolchain",
-        "Makefile",
-    ];
-    if include_lock {
-        config_candidates.push("Cargo.lock");
-    }
-    for rel in config_candidates {
-        let p = repo_root.join(rel);
-        if p.exists() {
-            all_paths.push(p);
+            // Include repo-wide config inputs that affect verification results.
+            let mut config_candidates: Vec<&str> = vec![
+                "Cargo.toml",
+                "rustfmt.toml",
+                "clippy.toml",
+                ".cargo/config.toml",
+                ".cargo/config",
+                "rust-toolchain.toml",
+                "rust-toolchain",
+                "Makefile",
+            ];
+            if matches!(scope, CheckScope::Build(_)) {
+                config_candidates.push("Cargo.lock");
+            }
+            for rel in config_candidates {
+                let p = repo_root.join(rel);
+                if p.exists() {
+                    all_paths.push(p);
+                }
+            }
+        }
+        CheckScope::Patterns {
+            globs,
+            files,
+            include_lock,
+        } => {
+            for glob in *globs {
+                let full = repo_root.join(glob.dir);
+                if full.exists() {
+                    crate::scanner::collect_files_with_glob(&full, glob.pattern, &mut all_paths)?;
+                }
+            }
+            for rel in *files {
+                let path = repo_root.join(rel);
+                if path.exists() {
+                    all_paths.push(path);
+                }
+            }
+            if *include_lock {
+                let lock_path = repo_root.join("Cargo.lock");
+                if lock_path.exists() {
+                    all_paths.push(lock_path);
+                }
+            }
         }
     }
 
@@ -558,6 +637,18 @@ mod tests {
     }
 
     #[test]
+    fn test_scope_for_clippy_ralph_gui_is_granular() {
+        let key = scope_memo_key(&scope_for("clippy-ralph-gui"));
+        assert_eq!(key, "b:ralph-gui,ralph-workflow/src");
+    }
+
+    #[test]
+    fn test_scope_for_test_ralph_gui_lib_is_granular() {
+        let key = scope_memo_key(&scope_for("test-ralph-gui-lib"));
+        assert_eq!(key, "b:ralph-gui,ralph-workflow/src");
+    }
+
+    #[test]
     fn test_scope_for_fmt_check_uses_directories_not_build() {
         let key = scope_memo_key(&scope_for("fmt-check"));
         // fmt-check should be a Directories scope (no Cargo.lock dependency).
@@ -718,6 +809,109 @@ mod tests {
         let h2 = compute_scope_hash(&tmp, &scope).unwrap();
 
         assert_ne!(h1, h2, "Cargo.toml change must change scope hash");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_frontend_scope_hash_changes_when_ui_source_changes() {
+        let tmp = std::env::temp_dir().join("xtask-cache-test-frontend-source-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+
+        std::fs::write(tmp.join("Cargo.toml"), b"[workspace]\nmembers = []\n").unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package.json"),
+            b"{\"name\":\"ralph-workflow-ui\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package-lock.json"),
+            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>one</div>; }\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("ralph-gui-frontend-test");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>two</div>; }\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "frontend scope hash must change when UI source content changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_frontend_scope_hash_ignores_unrelated_rust_changes() {
+        let tmp = std::env::temp_dir().join("xtask-cache-test-frontend-unrelated-rust");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+
+        std::fs::write(tmp.join("Cargo.toml"), b"[workspace]\nmembers = []\n").unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package.json"),
+            b"{\"name\":\"ralph-workflow-ui\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package-lock.json"),
+            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>one</div>; }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("ralph-gui-frontend-lint");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() { println!(\"changed\"); }\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_eq!(
+            hash_before, hash_after,
+            "frontend scope hash must ignore unrelated Rust source changes"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
