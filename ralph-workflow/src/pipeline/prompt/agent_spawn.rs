@@ -3,7 +3,7 @@ use crate::common::{format_argv_for_log, split_command, truncate_text};
 use crate::logger::argv_requests_json;
 use crate::pipeline::idle_timeout::KillConfig;
 use crate::pipeline::idle_timeout::{
-    monitor_idle_timeout_with_interval_and_kill_config, new_activity_timestamp,
+    monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
     new_file_activity_tracker, time_since_activity, FileActivityConfig, MonitorConfig,
     MonitorResult, StderrActivityTracker, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
 };
@@ -146,6 +146,7 @@ pub(super) fn run_with_agent_spawn(
                 exit_code,
                 stderr: format!("{}: {} - {}", argv[0], detail, e),
                 session_id: None,
+                child_status_at_timeout: None,
             });
         }
     };
@@ -167,6 +168,8 @@ pub(super) fn run_with_agent_spawn(
     let monitor_should_stop = Arc::new(AtomicBool::new(false));
     let monitor_should_stop_clone = Arc::clone(&monitor_should_stop);
     let activity_timestamp_clone = activity_timestamp.clone();
+    let child_activity_suppressed = Arc::new(std::sync::Mutex::new(None));
+    let child_activity_suppressed_for_monitor = Arc::clone(&child_activity_suppressed);
 
     // Cancel stdout parsing when the user presses Ctrl+C. Idle-timeout-driven
     // cancellation is set by the monitor only after timeout enforcement actually
@@ -181,25 +184,27 @@ pub(super) fn run_with_agent_spawn(
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
 
-    let mut monitor_handle = Some(std::thread::spawn(move || {
-        let result = monitor_idle_timeout_with_interval_and_kill_config(
-            &activity_timestamp_clone,
-            file_activity_config.as_ref(),
-            &child_for_monitor,
-            &monitor_should_stop_clone,
-            &monitor_executor,
-            MonitorConfig {
-                timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
-                check_interval: Duration::from_secs(30), // 30-second check interval
-                kill_config: DEFAULT_KILL_CONFIG,
-                ..MonitorConfig::default()
-            },
-        );
-        if matches!(result, MonitorResult::TimedOut { .. }) {
-            stdout_cancel_for_monitor.store(true, Ordering::Release);
-        }
-        result
-    }));
+    let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> =
+        Some(std::thread::spawn(move || {
+            let result = monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+                &activity_timestamp_clone,
+                file_activity_config.as_ref(),
+                &child_for_monitor,
+                &monitor_should_stop_clone,
+                &monitor_executor,
+                MonitorConfig {
+                    timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
+                    check_interval: Duration::from_secs(30), // 30-second check interval
+                    kill_config: DEFAULT_KILL_CONFIG,
+                    ..MonitorConfig::default()
+                },
+                Some(&child_activity_suppressed_for_monitor),
+            );
+            if matches!(result, MonitorResult::TimedOut { .. }) {
+                stdout_cancel_for_monitor.store(true, Ordering::Release);
+            }
+            result
+        }));
 
     let stderr_activity_timestamp = activity_timestamp.clone();
     let stderr_cancel = Arc::new(AtomicBool::new(false));
@@ -320,12 +325,19 @@ pub(super) fn run_with_agent_spawn(
         monitor_should_stop.store(true, Ordering::Release);
     }
 
-    let monitor_result = monitor_result_early
+    let monitor_result: MonitorResult = monitor_result_early
         .or_else(|| monitor_handle.take().and_then(|handle| handle.join().ok()))
         .unwrap_or(MonitorResult::ProcessCompleted);
 
-    let final_exit_code = match monitor_result {
-        MonitorResult::TimedOut { escalated } => {
+    let child_activity_suppression_info = *child_activity_suppressed
+        .lock()
+        .expect("child activity observer mutex poisoned");
+
+    let (final_exit_code, child_status) = match monitor_result {
+        MonitorResult::TimedOut {
+            escalated,
+            child_status_at_timeout,
+        } => {
             let idle_duration = time_since_activity(&activity_timestamp_for_timeout);
             let escalation_msg = if escalated {
                 if cfg!(windows) {
@@ -336,18 +348,37 @@ pub(super) fn run_with_agent_spawn(
             } else {
                 ""
             };
+            let child_msg = child_status_at_timeout.map_or_else(
+                || ", no active child processes".to_string(),
+                |info| {
+                    format!(
+                        ", child processes present ({} children, CPU stalled at {}ms)",
+                        info.child_count, info.cpu_time_ms
+                    )
+                },
+            );
             runtime.logger.warn(&format!(
                 "Agent killed due to idle timeout (no stdout/stderr and no AI file updates for {} seconds, \
-                 last activity {:.1}s ago, process exit code was {}{}, \
+                 last activity {:.1}s ago, process exit code was {}{}{}, \
                  kill reason: IDLE_TIMEOUT_MONITOR)",
                 IDLE_TIMEOUT_SECS,
                 idle_duration.as_secs_f64(),
                 exit_code,
-                escalation_msg
+                escalation_msg,
+                child_msg
             ));
-            super::SIGTERM_EXIT_CODE
+            (super::SIGTERM_EXIT_CODE, child_status_at_timeout)
         }
-        MonitorResult::ProcessCompleted => exit_code,
+        MonitorResult::ProcessCompleted => {
+            if let Some(info) = child_activity_suppression_info {
+                runtime.logger.info(&format!(
+                    "idle timeout suppression: child processes remained active \
+                     ({} children, CPU advanced to {}ms, signature {})",
+                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                ));
+            }
+            (exit_code, None)
+        }
     };
 
     if runtime.config.verbosity.is_verbose() {
@@ -364,6 +395,7 @@ pub(super) fn run_with_agent_spawn(
         exit_code: final_exit_code,
         stderr: stderr_output,
         session_id,
+        child_status_at_timeout: child_status,
     })
 }
 

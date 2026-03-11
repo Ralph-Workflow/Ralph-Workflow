@@ -77,6 +77,7 @@ pub use clock::{
 };
 pub use file_activity::FileActivityTracker;
 pub use kill::{KillConfig, DEFAULT_KILL_CONFIG};
+pub(crate) use monitor::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
 pub use monitor::{
     monitor_idle_timeout, monitor_idle_timeout_with_interval,
     monitor_idle_timeout_with_interval_and_kill_config, FileActivityConfig, MonitorConfig,

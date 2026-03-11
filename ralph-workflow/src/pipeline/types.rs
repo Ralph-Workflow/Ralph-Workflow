@@ -1,5 +1,6 @@
 //! Core pipeline types (cleanup guards and command results).
 
+use crate::executor::ChildProcessInfo;
 use crate::files::{cleanup_generated_files_with_workspace, make_prompt_writable_with_workspace};
 use crate::git_helpers::{
     disable_git_wrapper, end_agent_phase_in_repo, try_remove_ralph_dir, uninstall_hooks_in_repo,
@@ -19,6 +20,11 @@ pub struct CommandResult {
     /// This is extracted from the agent's JSON output and can be used for
     /// session continuation (XSD retry). Not all agents provide session IDs.
     pub session_id: Option<String>,
+    /// Child process status at the time of an idle timeout.
+    ///
+    /// Only populated when the process was killed due to idle timeout.
+    /// Contains the child count and cumulative CPU time when the timeout fired.
+    pub(crate) child_status_at_timeout: Option<ChildProcessInfo>,
 }
 
 /// RAII guard for agent phase cleanup.

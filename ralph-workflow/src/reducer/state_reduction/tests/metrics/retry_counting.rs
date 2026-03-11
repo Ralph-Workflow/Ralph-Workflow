@@ -176,6 +176,7 @@ fn test_same_agent_retry_increments_counter() {
         "claude".to_string(),
         TimeoutOutputKind::PartialOutput,
         Some(".agent/logs/developer_0.log".to_string()),
+        None,
     );
     let state = reduce(state, event);
 
@@ -388,6 +389,7 @@ fn test_same_agent_retry_exhausted_does_not_increment() {
         "claude".to_string(),
         TimeoutOutputKind::PartialOutput,
         Some(".agent/logs/developer_0.log".to_string()),
+        None,
     );
     let state = reduce(state, event);
 
@@ -409,6 +411,7 @@ fn test_no_output_timeout_increments_timeout_no_output_agent_switches_total() {
         "claude".to_string(),
         TimeoutOutputKind::NoOutput,
         None,
+        None,
     );
     let state = reduce(state, event);
 
@@ -426,6 +429,7 @@ fn test_partial_output_timeout_does_not_increment_timeout_no_output_agent_switch
         "claude".to_string(),
         TimeoutOutputKind::PartialOutput,
         Some(".agent/logs/developer_0.log".to_string()),
+        None,
     );
     let state = reduce(state, event);
 
@@ -447,6 +451,7 @@ fn test_no_output_timeout_does_not_increment_same_agent_retry_attempts_total() {
         AgentRole::Developer,
         "claude".to_string(),
         TimeoutOutputKind::NoOutput,
+        None,
         None,
     );
     let state = reduce(state, event);

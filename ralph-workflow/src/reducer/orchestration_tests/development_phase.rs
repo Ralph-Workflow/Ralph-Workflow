@@ -378,6 +378,7 @@ fn test_development_timeout_retry_does_not_use_xsd_retry_prompt_mode() {
             "agent-a".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 

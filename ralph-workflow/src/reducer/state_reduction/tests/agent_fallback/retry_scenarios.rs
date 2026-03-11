@@ -415,6 +415,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
             "agent1".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
     assert_eq!(
@@ -435,6 +436,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
             "agent1".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
     assert_eq!(
@@ -534,6 +536,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
             "agent1".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -573,6 +576,7 @@ fn test_timeout_retries_same_agent_until_retry_budget_exhausted() {
             "agent1".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -826,6 +830,7 @@ fn test_no_output_timeout_triggers_immediate_agent_switch() {
             "agent1".to_string(),
             TimeoutOutputKind::NoOutput,
             None,
+            None,
         ),
     );
 
@@ -887,6 +892,7 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
             AgentRole::Developer,
             "agent1".to_string(),
             TimeoutOutputKind::NoOutput,
+            None,
             None,
         ),
     );

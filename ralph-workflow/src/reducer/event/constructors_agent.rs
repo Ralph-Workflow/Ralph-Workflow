@@ -117,8 +117,9 @@ impl PipelineEvent {
         agent: String,
         output_kind: TimeoutOutputKind,
         logfile_path: Option<String>,
+        child_status_at_timeout: Option<ChildProcessInfo>,
     ) -> Self {
-        Self::Agent(AgentEvent::TimedOut { role, agent, output_kind, logfile_path })
+        Self::Agent(AgentEvent::TimedOut { role, agent, output_kind, logfile_path, child_status_at_timeout })
     }
 
     /// Create an `AgentSessionEstablished` event.

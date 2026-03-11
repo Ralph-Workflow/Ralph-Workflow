@@ -8,15 +8,27 @@ use std::time::Duration;
 fn monitor_result_variants_are_distinct() {
     assert_ne!(
         MonitorResult::ProcessCompleted,
-        MonitorResult::TimedOut { escalated: false }
+        MonitorResult::TimedOut {
+            escalated: false,
+            child_status_at_timeout: None
+        }
     );
     assert_ne!(
         MonitorResult::ProcessCompleted,
-        MonitorResult::TimedOut { escalated: true }
+        MonitorResult::TimedOut {
+            escalated: true,
+            child_status_at_timeout: None
+        }
     );
     assert_ne!(
-        MonitorResult::TimedOut { escalated: false },
-        MonitorResult::TimedOut { escalated: true }
+        MonitorResult::TimedOut {
+            escalated: false,
+            child_status_at_timeout: None
+        },
+        MonitorResult::TimedOut {
+            escalated: true,
+            child_status_at_timeout: None
+        }
     );
 }
 

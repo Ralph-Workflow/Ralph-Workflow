@@ -4,6 +4,7 @@
 //! including process output, agent spawn configuration, and agent child handles.
 
 use crate::agents::JsonParserType;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
 
@@ -99,6 +100,45 @@ impl AgentChild for RealAgentChild {
     }
 }
 
+/// Information about child processes of a given parent.
+///
+/// Used by the idle-timeout monitor to determine whether child processes
+/// are actively working (CPU time advancing) versus merely existing
+/// (stalled, zombie, or idle daemon).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChildProcessInfo {
+    /// Number of live child processes found.
+    pub child_count: u32,
+    /// Cumulative CPU time in milliseconds across all child processes.
+    ///
+    /// The monitor compares this value across consecutive checks:
+    /// - If `cpu_time_ms` advances between checks, children are actively working.
+    /// - If `cpu_time_ms` is unchanged, children exist but are idle/stalled.
+    pub cpu_time_ms: u64,
+    /// Deterministic signature of the current descendant PID set.
+    ///
+    /// This lets the idle-timeout monitor distinguish "the same child subtree is
+    /// still running" from "the old subtree exited and a new one replaced it
+    /// between polls", even when the cumulative CPU time drops or resets.
+    #[serde(default)]
+    pub descendant_pid_signature: u64,
+}
+
+impl ChildProcessInfo {
+    /// No child processes found.
+    pub const NONE: Self = Self {
+        child_count: 0,
+        cpu_time_ms: 0,
+        descendant_pid_signature: 0,
+    };
+
+    /// Whether any child processes exist.
+    #[must_use]
+    pub const fn has_children(&self) -> bool {
+        self.child_count > 0
+    }
+}
+
 /// Result of an agent command execution (for testing).
 ///
 /// This is used by `MockProcessExecutor` to return mock results without
@@ -127,5 +167,30 @@ impl AgentCommandResult {
             exit_code,
             stderr: stderr.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_process_info_serde_round_trip() {
+        let info = ChildProcessInfo {
+            child_count: 3,
+            cpu_time_ms: 42000,
+            descendant_pid_signature: 12345,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, restored);
+    }
+
+    #[test]
+    fn child_process_info_none_serde_round_trip() {
+        let info = ChildProcessInfo::NONE;
+        let json = serde_json::to_string(&info).unwrap();
+        let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, restored);
     }
 }

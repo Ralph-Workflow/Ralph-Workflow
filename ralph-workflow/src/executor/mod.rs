@@ -56,8 +56,8 @@ mod types;
 pub use executor_trait::ProcessExecutor;
 pub use real::RealProcessExecutor;
 pub use types::{
-    AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ProcessOutput,
-    RealAgentChild,
+    AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
+    ProcessOutput, RealAgentChild,
 };
 
 #[cfg(any(test, feature = "test-utils"))]

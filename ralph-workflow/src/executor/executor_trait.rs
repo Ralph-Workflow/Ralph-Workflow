@@ -3,7 +3,7 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::{AgentChildHandle, AgentSpawnConfig, ProcessOutput, RealAgentChild};
+use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
 use std::io;
 use std::path::Path;
 
@@ -164,109 +164,233 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         }
     }
 
-    /// Returns true if the process identified by `parent_pid` has at least one
-    /// live child process.
+    /// Returns information about child processes of the given parent, including
+    /// their cumulative CPU time.
     ///
-    /// Used by the idle-timeout monitor to avoid false-positive kills when the
-    /// agent has spawned a subprocess (e.g. `cargo test`, `npm install`) that is
-    /// still running even though the agent produces no stdout/stderr output.
+    /// Used by the idle-timeout monitor to determine whether child processes
+    /// are actively working (CPU time advancing between consecutive checks)
+    /// versus merely existing (stalled, zombie, or idle daemon).
     ///
-    /// Default implementation: invokes `pgrep -P <pid>` on Unix platforms and
-    /// falls back to parsing `ps` output (PID/PPID pairs) if `pgrep` is unavailable.
-    /// Returns `false` (conservative no-op) on non-Unix.
+    /// Default implementation: parses `ps` output for PID, PPID, and cputime
+    /// columns on Unix platforms. Returns `ChildProcessInfo::NONE` on non-Unix.
     ///
     /// Any execution error is treated as "no children" to avoid blocking the
-    /// timeout system. If both `pgrep` and the `ps` fallback are unavailable or
-    /// fail unexpectedly, a one-time warning is emitted to stderr so operators can
-    /// diagnose reduced protection against false-positive idle kills.
-    fn has_active_child_processes(&self, parent_pid: u32) -> bool {
+    /// timeout system. If `ps` is unavailable or fails unexpectedly, a one-time
+    /// warning is emitted to stderr so operators can diagnose reduced protection
+    /// against false-positive idle kills.
+    fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
         {
             use std::sync::OnceLock;
 
-            fn parse_ps_pid_ppid_pairs(stdout: &str, parent_pid: u32) -> Option<bool> {
-                let mut saw_parseable_line = false;
+            /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
+            fn parse_cputime_ms(s: &str) -> Option<u64> {
+                let parts: Vec<&str> = s.split(':').collect();
+                match parts.len() {
+                    3 => {
+                        // DD-HH:MM:SS or HH:MM:SS (or HH:MM:SS.ss)
+                        let hours = if let Some((days, hours)) = parts[0].split_once('-') {
+                            let days: u64 = days.parse().ok()?;
+                            let hours: u64 = hours.parse().ok()?;
+                            days.checked_mul(24)?.checked_add(hours)?
+                        } else {
+                            parts[0].parse().ok()?
+                        };
+                        let minutes: u64 = parts[1].parse().ok()?;
+                        let seconds_str = parts[2];
+                        let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
+                            let secs: u64 = s.parse().ok()?;
+                            let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
+                            (secs, frac * 10)
+                        } else {
+                            (seconds_str.parse().ok()?, 0)
+                        };
+                        Some((hours * 3600 + minutes * 60 + secs) * 1000 + frac_ms)
+                    }
+                    2 => {
+                        // MM:SS or M:SS (or MM:SS.ss)
+                        let minutes: u64 = parts[0].parse().ok()?;
+                        let seconds_str = parts[1];
+                        let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
+                            let secs: u64 = s.parse().ok()?;
+                            let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
+                            (secs, frac * 10)
+                        } else {
+                            (seconds_str.parse().ok()?, 0)
+                        };
+                        Some((minutes * 60 + secs) * 1000 + frac_ms)
+                    }
+                    _ => None,
+                }
+            }
+
+            fn descendant_pid_signature(descendants: &[u32]) -> u64 {
+                const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+                const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+                let mut signature = FNV_OFFSET;
+                for pid in descendants {
+                    for byte in pid.to_le_bytes() {
+                        signature ^= u64::from(byte);
+                        signature = signature.wrapping_mul(FNV_PRIME);
+                    }
+                }
+                signature
+            }
+
+            fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
+                use std::collections::{HashMap, HashSet, VecDeque};
+
+                // First pass: parse all (pid, ppid, cpu_time_ms) tuples.
+                let mut children_of: HashMap<u32, Vec<(u32, u64)>> = HashMap::new();
+                let mut saw_parseable = false;
+
                 for line in stdout.lines() {
                     let mut parts = line.split_whitespace();
-                    let Some(child_pid_text) = parts.next() else {
+                    let Some(col_pid) = parts.next() else {
                         continue;
                     };
-                    let Some(parent_pid_text) = parts.next() else {
+                    let Some(col_parent) = parts.next() else {
                         continue;
                     };
+                    let cputime_text = parts.next().unwrap_or("0:00");
 
-                    let Ok(_pid) = child_pid_text.parse::<u32>() else {
+                    let Ok(entry_pid) = col_pid.parse::<u32>() else {
                         continue;
                     };
-                    let Ok(ppid) = parent_pid_text.parse::<u32>() else {
+                    let Ok(parent_of_entry) = col_parent.parse::<u32>() else {
                         continue;
                     };
+                    saw_parseable = true;
 
-                    saw_parseable_line = true;
-                    if ppid == parent_pid {
-                        return Some(true);
+                    let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
+                    children_of
+                        .entry(parent_of_entry)
+                        .or_default()
+                        .push((entry_pid, cpu_ms));
+                }
+
+                if !saw_parseable {
+                    return None;
+                }
+
+                // BFS from parent_pid to find all descendants.
+                let mut child_count: u32 = 0;
+                let mut total_cpu_ms: u64 = 0;
+                let mut descendant_pids = Vec::new();
+                let mut visited = HashSet::new();
+                let mut queue = VecDeque::new();
+                queue.push_back(parent_pid);
+
+                while let Some(current) = queue.pop_front() {
+                    if let Some(kids) = children_of.get(&current) {
+                        for &(pid, cpu_ms) in kids {
+                            if visited.insert(pid) {
+                                child_count += 1;
+                                total_cpu_ms += cpu_ms;
+                                descendant_pids.push(pid);
+                                queue.push_back(pid);
+                            }
+                        }
                     }
                 }
 
-                if saw_parseable_line {
-                    Some(false)
-                } else {
-                    None
+                descendant_pids.sort_unstable();
+
+                Some(ChildProcessInfo {
+                    child_count,
+                    cpu_time_ms: total_cpu_ms,
+                    descendant_pid_signature: descendant_pid_signature(&descendant_pids),
+                })
+            }
+
+            fn parse_pgrep_output(stdout: &str) -> Option<Vec<u32>> {
+                let mut child_pids = Vec::new();
+                for line in stdout.lines() {
+                    let pid = line.trim();
+                    if pid.is_empty() {
+                        continue;
+                    }
+                    child_pids.push(pid.parse::<u32>().ok()?);
                 }
+                Some(child_pids)
             }
 
             fn warn_child_process_detection_degraded() {
                 static WARNED: OnceLock<()> = OnceLock::new();
                 if WARNED.set(()).is_ok() {
                     eprintln!(
-                        "Warning: child-process detection degraded (pgrep/ps unavailable or failing); idle-timeout false-positive prevention may be reduced"
+                        "Warning: child-process detection degraded (ps unavailable or failing); \
+                         idle-timeout false-positive prevention may be reduced"
                     );
                 }
             }
 
-            let pid_str = parent_pid.to_string();
+            let discover_descendants_with_pgrep = |parent_pid: u32| -> Option<Vec<u32>> {
+                use std::collections::{HashSet, VecDeque};
 
-            // Primary: `pgrep -P <pid>`
-            if let Ok(out) = self.execute("pgrep", &["-P", &pid_str], &[], None) {
-                let stdout = out.stdout.trim();
+                let mut descendants = Vec::new();
+                let mut visited = HashSet::new();
+                let mut queue = VecDeque::new();
+                queue.push_back(parent_pid);
 
-                // pgrep exit codes: 0 = match, 1 = no match, 2 = error.
-                if !stdout.is_empty() {
-                    return true;
+                while let Some(current_pid) = queue.pop_front() {
+                    let output = self
+                        .execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
+                        .ok()?;
+
+                    let child_pids = if output.status.success() {
+                        parse_pgrep_output(&output.stdout)?
+                    } else if output.status.code() == Some(1) {
+                        Vec::new()
+                    } else {
+                        return None;
+                    };
+
+                    for child_pid in child_pids {
+                        if visited.insert(child_pid) {
+                            descendants.push(child_pid);
+                            queue.push_back(child_pid);
+                        }
+                    }
                 }
 
-                if out.status.code() == Some(1) {
-                    return false;
-                }
-            }
+                descendants.sort_unstable();
+                Some(descendants)
+            };
 
-            // Fallback: parse `ps` output. Avoid GNU-only flags like `--ppid`.
-            //
-            // - BSD/macOS: `ps -ax -o pid= -o ppid=`
-            // - GNU procps: `ps -e -o pid= -o ppid=`
+            // Try BSD-style (macOS) then GNU-style (Linux) ps invocations.
             let ps_attempts: [&[&str]; 2] = [
-                &["-ax", "-o", "pid=", "-o", "ppid="],
-                &["-e", "-o", "pid=", "-o", "ppid="],
+                &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+                &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
             ];
 
             for args in ps_attempts {
                 if let Ok(out) = self.execute("ps", args, &[], None) {
                     if out.status.success() {
-                        if let Some(has_children) = parse_ps_pid_ppid_pairs(&out.stdout, parent_pid)
-                        {
-                            return has_children;
+                        if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
+                            return info;
                         }
                     }
                 }
             }
 
+            if let Some(descendants) = discover_descendants_with_pgrep(parent_pid) {
+                return ChildProcessInfo {
+                    child_count: u32::try_from(descendants.len()).unwrap_or(u32::MAX),
+                    cpu_time_ms: 0,
+                    descendant_pid_signature: descendant_pid_signature(&descendants),
+                };
+            }
+
+            // Degraded: emit one-time warning, return no-children (conservative).
             warn_child_process_detection_degraded();
-            false
+            ChildProcessInfo::NONE
         }
         #[cfg(not(unix))]
         {
             let _ = parent_pid;
-            false
+            ChildProcessInfo::NONE
         }
     }
 }
@@ -275,8 +399,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::io;
-    use std::sync::Mutex;
 
     #[cfg(unix)]
     fn ok_output(stdout: &str) -> ProcessOutput {
@@ -290,49 +412,18 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[derive(Debug, Clone)]
-    enum TestResult {
-        Ok(ProcessOutput),
-        Err {
-            kind: io::ErrorKind,
-            message: String,
-        },
-    }
-
-    #[cfg(unix)]
-    impl TestResult {
-        fn to_io_result(&self) -> io::Result<ProcessOutput> {
-            match self {
-                Self::Ok(out) => Ok(out.clone()),
-                Self::Err { kind, message } => Err(io::Error::new(*kind, message.clone())),
-            }
-        }
-    }
+    type ResultMap = HashMap<(String, Vec<String>), ProcessOutput>;
 
     #[cfg(unix)]
     #[derive(Debug)]
     struct TestExecutor {
-        calls: Mutex<Vec<(String, Vec<String>)>>,
-        results: HashMap<(String, Vec<String>), TestResult>,
+        results: ResultMap,
     }
 
     #[cfg(unix)]
     impl TestExecutor {
-        fn new(results: HashMap<(String, Vec<String>), TestResult>) -> Self {
-            Self {
-                calls: Mutex::new(Vec::new()),
-                results,
-            }
-        }
-
-        fn calls_for(&self, command: &str) -> Vec<(String, Vec<String>)> {
-            self.calls
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|(c, _)| c == command)
-                .cloned()
-                .collect()
+        fn new(results: ResultMap) -> Self {
+            Self { results }
         }
     }
 
@@ -345,54 +436,192 @@ mod tests {
             _env: &[(String, String)],
             _workdir: Option<&std::path::Path>,
         ) -> std::io::Result<ProcessOutput> {
-            let key = (
-                command.to_string(),
-                args.iter().map(ToString::to_string).collect(),
-            );
-            self.calls.lock().unwrap().push(key.clone());
-            self.results.get(&key).map_or_else(
-                || Err(std::io::Error::other("unexpected execute")),
-                TestResult::to_io_result,
-            )
+            self.results
+                .get(&(
+                    command.to_string(),
+                    args.iter().map(ToString::to_string).collect(),
+                ))
+                .cloned()
+                .ok_or_else(|| std::io::Error::other("unexpected execute"))
         }
+    }
+
+    #[cfg(unix)]
+    fn ps_key() -> (String, Vec<String>) {
+        (
+            "ps".to_string(),
+            vec![
+                "-ax".to_string(),
+                "-o".to_string(),
+                "pid=".to_string(),
+                "-o".to_string(),
+                "ppid=".to_string(),
+                "-o".to_string(),
+                "cputime=".to_string(),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn pgrep_key(parent_pid: u32) -> (String, Vec<String>) {
+        (
+            "pgrep".to_string(),
+            vec!["-P".to_string(), parent_pid.to_string()],
+        )
     }
 
     #[test]
     #[cfg(unix)]
-    fn has_active_child_processes_falls_back_to_ps_when_pgrep_missing() {
+    fn get_child_process_info_returns_info_from_ps() {
         let pid = 4242;
-        let pid_str = pid.to_string();
 
-        let mut results: HashMap<(String, Vec<String>), TestResult> = HashMap::new();
+        let mut results: ResultMap = HashMap::new();
         results.insert(
-            ("pgrep".to_string(), vec!["-P".to_string(), pid_str]),
-            TestResult::Err {
-                kind: io::ErrorKind::NotFound,
-                message: "pgrep missing".to_string(),
-            },
-        );
-        results.insert(
-            (
-                "ps".to_string(),
-                vec![
-                    "-ax".to_string(),
-                    "-o".to_string(),
-                    "pid=".to_string(),
-                    "-o".to_string(),
-                    "ppid=".to_string(),
-                ],
-            ),
-            TestResult::Ok(ok_output("12345 4242\n")),
+            ps_key(),
+            ok_output("12345 4242 0:01.50\n12346 4242 0:03.00\n99999 1 0:10.00\n"),
         );
 
         let exec = TestExecutor::new(results);
-        assert!(
-            exec.has_active_child_processes(pid),
-            "ps fallback should detect children when pgrep is unavailable"
+        let info = exec.get_child_process_info(pid);
+        assert_eq!(info.child_count, 2, "should find 2 children of pid 4242");
+        assert_eq!(
+            info.cpu_time_ms,
+            1500 + 3000,
+            "should sum CPU times of both children"
         );
-        assert!(
-            !exec.calls_for("ps").is_empty(),
-            "ps should be invoked as a fallback"
+        assert!(info.has_children());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_no_children_returns_zero() {
+        let pid = 4242;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output("99999 1 0:10.00\n"));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(pid);
+        assert_eq!(info.child_count, 0);
+        assert_eq!(info.cpu_time_ms, 0);
+        assert!(!info.has_children());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn parse_cputime_formats() {
+        let pid = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output("200 100 01:02:03\n"));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(pid);
+        assert_eq!(
+            info.cpu_time_ms,
+            (3600 + 2 * 60 + 3) * 1000,
+            "HH:MM:SS should parse to correct ms"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn parse_cputime_with_day_prefix() {
+        let pid = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output("200 100 1-02:03:04\n"));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(pid);
+        assert_eq!(
+            info.cpu_time_ms,
+            ((24 + 2) * 3600 + 3 * 60 + 4) * 1000,
+            "DD-HH:MM:SS should parse to correct ms"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_includes_grandchildren() {
+        let parent = 100;
+        // PID 200 is child of 100, PID 300 is child of 200 (grandchild of 100).
+        let ps_output = "200 100 0:01.00\n300 200 0:02.00\n999 1 0:05.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(
+            info.child_count, 2,
+            "should count both child and grandchild"
+        );
+        assert_eq!(
+            info.cpu_time_ms,
+            1000 + 2000,
+            "should sum CPU of child and grandchild"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_excludes_unrelated_processes() {
+        let parent = 100;
+        // PID 200 is child of 100. PID 300's ppid chain goes to 1, NOT to 100.
+        let ps_output = "200 100 0:01.00\n300 400 0:02.00\n400 1 0:03.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(info.child_count, 1, "should only count PID 200");
+        assert_eq!(info.cpu_time_ms, 1000, "should only sum CPU of PID 200");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_deep_tree() {
+        let parent = 100;
+        // 3+ levels of nesting: 100 → 200 → 300 → 400
+        let ps_output = "200 100 0:01.00\n300 200 0:02.00\n400 300 0:03.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(
+            info.child_count, 3,
+            "should count all 3 levels of descendants"
+        );
+        assert_eq!(
+            info.cpu_time_ms,
+            1000 + 2000 + 3000,
+            "should sum CPU across all descendants"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_falls_back_to_pgrep_when_ps_is_unavailable() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(pgrep_key(100), ok_output("200\n300\n"));
+        results.insert(pgrep_key(200), ok_output("400\n"));
+        results.insert(pgrep_key(300), ok_output(""));
+        results.insert(pgrep_key(400), ok_output(""));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info.child_count, 3,
+            "fallback should discover descendants via pgrep"
+        );
+        assert_eq!(info.cpu_time_ms, 0, "pgrep fallback has no CPU accounting");
+        assert!(info.has_children(), "fallback should not collapse to NONE");
     }
 }

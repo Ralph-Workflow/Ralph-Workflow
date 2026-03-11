@@ -35,6 +35,7 @@ fn test_planning_timeout_retry_recleans_plan_xml_before_reinvoke() {
             "claude".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/planning_0.log".to_string()),
+            None,
         ),
     );
     assert!(
@@ -85,6 +86,7 @@ fn test_development_timeout_retry_recleans_dev_xml_before_reinvoke() {
             "claude".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
     assert!(
@@ -135,6 +137,7 @@ fn test_review_timeout_retry_recleans_issues_xml_before_reinvoke() {
             "codex".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/reviewer_0.log".to_string()),
+            None,
         ),
     );
     assert!(
@@ -185,6 +188,7 @@ fn test_fix_timeout_retry_recleans_fix_xml_before_reinvoke() {
             "codex".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/reviewer_0.log".to_string()),
+            None,
         ),
     );
     assert!(
@@ -237,6 +241,7 @@ fn test_commit_timeout_retry_recleans_commit_xml_before_reinvoke() {
             "commit-agent".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/commit_1.log".to_string()),
+            None,
         ),
     );
     assert!(

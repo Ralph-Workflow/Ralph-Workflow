@@ -185,6 +185,13 @@ impl ProcessExecutor for KillNotifyingExecutor {
 
         out
     }
+
+    fn get_child_process_info(
+        &self,
+        parent_pid: u32,
+    ) -> ralph_workflow::executor::ChildProcessInfo {
+        self.inner.get_child_process_info(parent_pid)
+    }
 }
 
 const fn fast_kill_config() -> KillConfig {
@@ -913,8 +920,9 @@ fn output_activity_during_file_scan_prevents_kill() {
     });
 }
 
-/// When the agent has active child processes (e.g. a running `cargo build`),
-/// the monitor must not kill it even though stdout/stderr is idle.
+/// When the agent has active child processes with advancing CPU time
+/// (e.g. a running `cargo build`), the monitor must not kill it even though
+/// stdout/stderr is idle.
 #[test]
 fn active_subprocess_prevents_idle_kill() {
     with_default_timeout(|| {
@@ -934,6 +942,18 @@ fn active_subprocess_prevents_idle_kill() {
             Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
         let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
+        // Simulate CPU time advancing so the monitor treats children as active.
+        let cpu_advancer_executor = executor_impl.clone();
+        let cpu_advancer_stop = Arc::clone(&should_stop);
+        let cpu_advancer = thread::spawn(move || {
+            let mut cpu_ms = 0u64;
+            while !cpu_advancer_stop.load(Ordering::Acquire) {
+                cpu_ms += 100;
+                cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
+                thread::sleep(Duration::from_millis(3));
+            }
+        });
+
         let handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
                 &timestamp,
@@ -951,7 +971,7 @@ fn active_subprocess_prevents_idle_kill() {
             )
         });
 
-        // While children are present the monitor must not kill.
+        // While children are present with advancing CPU, the monitor must not kill.
         thread::sleep(Duration::from_millis(40));
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
@@ -961,6 +981,7 @@ fn active_subprocess_prevents_idle_kill() {
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
+        cpu_advancer.join().expect("cpu advancer thread panicked");
         assert_eq!(
             result,
             MonitorResult::ProcessCompleted,
@@ -1012,5 +1033,163 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
             matches!(result, MonitorResult::TimedOut { .. }),
             "no active subprocess and no file activity should time out"
         );
+    });
+}
+
+/// Timeout with stalled children includes `child_status_at_timeout` in result.
+#[test]
+fn stalled_subprocess_timeout_includes_child_status() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        // Stalled children: fixed CPU time that never advances.
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 2,
+                cpu_time_ms: 4200,
+                descendant_pid_signature: 77,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl,
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: Some(info),
+                ..
+            } => {
+                assert_eq!(info.child_count, 2);
+                assert_eq!(info.cpu_time_ms, 4200);
+            }
+            other => panic!("expected TimedOut with child_status_at_timeout=Some, got {other:?}"),
+        }
+    });
+}
+
+/// Event round-trip: `child_status_at_timeout` survives serialization.
+#[test]
+fn child_status_at_timeout_survives_event_serde_round_trip() {
+    with_default_timeout(|| {
+        use ralph_workflow::executor::ChildProcessInfo;
+        use ralph_workflow::reducer::event::{PipelineEvent, TimeoutOutputKind};
+
+        let info = ChildProcessInfo {
+            child_count: 2,
+            cpu_time_ms: 5000,
+            descendant_pid_signature: 88,
+        };
+        let event = PipelineEvent::agent_timed_out(
+            ralph_workflow::agents::AgentRole::Developer,
+            "test-agent".to_string(),
+            TimeoutOutputKind::PartialOutput,
+            Some("/tmp/test.log".to_string()),
+            Some(info),
+        );
+
+        let json = serde_json::to_string(&event).expect("serialize");
+        let restored: PipelineEvent = serde_json::from_str(&json).expect("deserialize");
+
+        // Verify the event round-trips correctly
+        let json2 = serde_json::to_string(&restored).expect("re-serialize");
+        assert_eq!(json, json2, "event should survive JSON round-trip");
+    });
+}
+
+/// Backward compatibility: `TimedOut` events without `child_status_at_timeout` deserialize as None.
+#[test]
+fn timed_out_event_without_child_status_deserializes_as_none() {
+    with_default_timeout(|| {
+        use ralph_workflow::reducer::event::PipelineEvent;
+
+        // JSON representing a TimedOut event from before the child_status_at_timeout field existed
+        let old_json = r#"{"Agent":{"TimedOut":{"role":"Developer","agent":"old-agent","output_kind":"NoOutput","logfile_path":"/tmp/old.log"}}}"#;
+
+        let event: PipelineEvent = serde_json::from_str(old_json)
+            .expect("old-format TimedOut event should still deserialize");
+
+        let json = serde_json::to_string(&event).expect("serialize");
+        // The deserialized event should include child_status_at_timeout: null
+        assert!(
+            json.contains("child_status_at_timeout"),
+            "serialized event should include child_status_at_timeout field"
+        );
+    });
+}
+
+/// Timeout with no children has `child_status_at_timeout: None`.
+#[test]
+fn no_subprocess_timeout_has_none_child_status() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl,
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: None,
+                ..
+            } => {}
+            other => panic!("expected TimedOut with child_status_at_timeout=None, got {other:?}"),
+        }
     });
 }

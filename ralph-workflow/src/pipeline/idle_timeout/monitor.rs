@@ -4,7 +4,7 @@ use super::kill::{
     force_kill_best_effort, kill_process, KillConfig, KillResult, DEFAULT_KILL_CONFIG,
 };
 use super::{is_idle_timeout_exceeded, SharedActivityTimestamp, SharedFileActivityTracker};
-use crate::executor::{AgentChild, ProcessExecutor};
+use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};
 use crate::workspace::Workspace;
 use std::sync::Arc;
 use std::time::Duration;
@@ -80,7 +80,15 @@ pub enum MonitorResult {
     /// The `escalated` flag indicates whether SIGKILL/taskkill was required:
     /// - `false`: Process terminated after SIGTERM within grace period
     /// - `true`: Process did not respond to SIGTERM, required SIGKILL/taskkill
-    TimedOut { escalated: bool },
+    ///
+    /// `child_status_at_timeout` records the child-process state when the timeout
+    /// was enforced, enabling observability (AC #9):
+    /// - `None`: no children existed (or child-process checking was disabled)
+    /// - `Some(info)`: children were present (with stalled CPU) at kill time
+    TimedOut {
+        escalated: bool,
+        child_status_at_timeout: Option<ChildProcessInfo>,
+    },
 }
 
 /// Default check interval for the idle monitor (30 seconds).
@@ -169,6 +177,26 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     executor: &Arc<dyn ProcessExecutor>,
     config: MonitorConfig,
 ) -> MonitorResult {
+    monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+        activity_timestamp,
+        file_activity_config,
+        child,
+        should_stop,
+        executor,
+        config,
+        None,
+    )
+}
+
+pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+    activity_timestamp: &SharedActivityTimestamp,
+    file_activity_config: Option<&FileActivityConfig>,
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    should_stop: &Arc<std::sync::atomic::AtomicBool>,
+    executor: &Arc<dyn ProcessExecutor>,
+    config: MonitorConfig,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) -> MonitorResult {
     use std::sync::atomic::Ordering;
 
     #[derive(Debug, Clone, Copy)]
@@ -188,6 +216,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
     let mut last_file_activity: Option<std::time::Instant> = None;
     let mut consecutive_idle_count: u32 = 0;
+    let mut last_child_observation: Option<ChildProcessInfo> = None;
+    let mut last_child_info: Option<ChildProcessInfo> = None;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -213,6 +243,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             if let Ok(Some(_)) = status {
                 return MonitorResult::TimedOut {
                     escalated: state.escalated,
+                    child_status_at_timeout: last_child_info,
                 };
             }
 
@@ -282,6 +313,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
                 return MonitorResult::TimedOut {
                     escalated: state.escalated,
+                    child_status_at_timeout: last_child_info,
                 };
             }
 
@@ -366,19 +398,68 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         // Check for active child processes: the agent may have spawned a subprocess
         // (e.g. cargo test, cargo build, npm install) that is still running even
         // though there is no stdout/stderr output and no file-system activity in
-        // tracked locations. If children exist the agent is working; reset the
-        // idle counter and wait for the next check interval.
+        // tracked locations. Children only suppress the idle counter when their
+        // cumulative CPU time is advancing between checks — mere existence of
+        // child processes (e.g. zombies, idle daemons) is not sufficient.
         if check_child_processes {
             let child_pid = {
                 let locked_child = child.lock().expect("child process mutex poisoned");
                 locked_child.id()
             };
-            if executor.has_active_child_processes(child_pid) {
-                consecutive_idle_count = 0;
-                eprintln!(
-                    "Agent has active child processes (pid {child_pid}); continuing monitoring"
-                );
-                continue;
+            let info = executor.get_child_process_info(child_pid);
+            if info.has_children() {
+                let first_child_observation = last_child_observation.is_none();
+                let subtree_changed = last_child_observation.is_some_and(|prev| {
+                    prev.descendant_pid_signature != info.descendant_pid_signature
+                        || info.cpu_time_ms < prev.cpu_time_ms
+                });
+                let cpu_advanced = last_child_observation.is_some_and(|prev| {
+                    prev.descendant_pid_signature == info.descendant_pid_signature
+                        && info.cpu_time_ms > prev.cpu_time_ms
+                });
+                last_child_observation = Some(info);
+                last_child_info = Some(info);
+
+                if first_child_observation {
+                    consecutive_idle_count = 0;
+                    eprintln!(
+                        "Agent has child processes for the first time during idle timeout \
+                         (pid {child_pid}, {} children, cpu {}ms, signature {}); granting startup grace",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                    continue;
+                }
+                if cpu_advanced {
+                    if let Some(observed_activity) = child_activity_suppressed.as_ref() {
+                        *observed_activity
+                            .lock()
+                            .expect("child activity observer mutex poisoned") = Some(info);
+                    }
+                    consecutive_idle_count = 0;
+                    eprintln!(
+                        "Agent has active child processes (pid {child_pid}, \
+                         {} children, cpu {}ms, signature {}); continuing monitoring",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                    continue;
+                }
+                if subtree_changed {
+                    eprintln!(
+                        "Agent child subtree changed during idle timeout (pid {child_pid}, \
+                         {} children, cpu {}ms, signature {}); waiting for future CPU advancement before suppressing timeout",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                } else {
+                    // Children exist but CPU hasn't advanced — treat as idle.
+                    eprintln!(
+                        "Agent has child processes (pid {child_pid}, {} children) \
+                         but CPU time unchanged ({}ms, signature {}); treating as idle",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                }
+            } else {
+                last_child_observation = None;
+                last_child_info = None;
             }
         }
 
@@ -405,8 +486,18 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
         let kill_result = kill_process(child_id, executor.as_ref(), Some(child), kill_config);
         match kill_result {
-            KillResult::TerminatedByTerm => return MonitorResult::TimedOut { escalated: false },
-            KillResult::TerminatedByKill => return MonitorResult::TimedOut { escalated: true },
+            KillResult::TerminatedByTerm => {
+                return MonitorResult::TimedOut {
+                    escalated: false,
+                    child_status_at_timeout: last_child_info,
+                }
+            }
+            KillResult::TerminatedByKill => {
+                return MonitorResult::TimedOut {
+                    escalated: true,
+                    child_status_at_timeout: last_child_info,
+                }
+            }
             KillResult::SignalsSentAwaitingExit { escalated } => {
                 timeout_triggered = Some(TimeoutEnforcementState {
                     pid: child_id,

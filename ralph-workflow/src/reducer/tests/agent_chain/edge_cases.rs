@@ -139,6 +139,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
             "agent-a".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -172,6 +173,7 @@ fn test_timed_out_retries_same_agent_before_fallback() {
             "agent-a".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -263,6 +265,7 @@ fn test_timed_out_partial_output_preserves_session_id_for_context_retry() {
             "agent-a".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -314,6 +317,7 @@ fn test_timed_out_no_output_clears_session_id_for_immediate_switch() {
             AgentRole::Developer,
             "agent-a".to_string(),
             TimeoutOutputKind::NoOutput,
+            None,
             None,
         ),
     );
@@ -371,6 +375,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
             "agent-b".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 
@@ -398,6 +403,7 @@ fn test_timed_out_from_last_agent_increments_retry_cycle_when_budget_exhausted()
             "agent-b".to_string(),
             TimeoutOutputKind::PartialOutput,
             Some(".agent/logs/developer_0.log".to_string()),
+            None,
         ),
     );
 

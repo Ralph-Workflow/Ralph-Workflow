@@ -86,7 +86,10 @@ pub(super) fn wait_for_completion_and_collect_stderr(
                 runtime.logger.warn(&format!(
                     "Idle-timeout monitor thread panicked: {panic_msg}. Treating as timeout and forcing termination."
                 ));
-                break WaitOutcome::TimedOut(MonitorResult::TimedOut { escalated: true });
+                break WaitOutcome::TimedOut(MonitorResult::TimedOut {
+                    escalated: true,
+                    child_status_at_timeout: None,
+                });
             }
         }
 

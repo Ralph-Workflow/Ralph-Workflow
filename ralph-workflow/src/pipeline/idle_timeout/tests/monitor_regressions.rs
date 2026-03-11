@@ -193,7 +193,13 @@ fn monitor_reports_timeout_even_if_sigkill_confirmation_times_out() {
     }
 
     let result = monitor_handle.join().expect("Monitor thread panicked");
-    assert_eq!(result, MonitorResult::TimedOut { escalated: true });
+    assert!(matches!(
+        result,
+        MonitorResult::TimedOut {
+            escalated: true,
+            ..
+        }
+    ));
     assert!(!running_controller.load(Ordering::Acquire));
 }
 
@@ -258,7 +264,13 @@ fn monitor_treats_try_wait_errors_as_status_unknown_and_continues_enforcement() 
         },
     );
 
-    assert_eq!(result, MonitorResult::TimedOut { escalated: true });
+    assert!(matches!(
+        result,
+        MonitorResult::TimedOut {
+            escalated: true,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -321,7 +333,13 @@ fn monitor_escalates_to_sigkill_when_sigterm_ignored() {
     }
 
     let result = monitor_handle.join().expect("Monitor thread panicked");
-    assert_eq!(result, MonitorResult::TimedOut { escalated: true });
+    assert!(matches!(
+        result,
+        MonitorResult::TimedOut {
+            escalated: true,
+            ..
+        }
+    ));
     assert!(!running_controller.load(Ordering::Acquire));
 }
 
@@ -388,7 +406,13 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
     }
 
     let result = monitor_handle.join().expect("Monitor thread panicked");
-    assert_eq!(result, MonitorResult::TimedOut { escalated: false });
+    assert!(matches!(
+        result,
+        MonitorResult::TimedOut {
+            escalated: false,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -442,7 +466,13 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
     let result = rx
         .recv_timeout(Duration::from_secs(2))
         .expect("expected monitor to return within bounded time");
-    assert_eq!(result, MonitorResult::TimedOut { escalated: true });
+    assert!(matches!(
+        result,
+        MonitorResult::TimedOut {
+            escalated: true,
+            ..
+        }
+    ));
 
     assert!(
         controller.load(Ordering::Acquire),

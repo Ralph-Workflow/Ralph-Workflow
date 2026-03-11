@@ -260,6 +260,7 @@ fn try_agent_execution(
                         config.agent_name.to_string(),
                         output_kind,
                         Some(config.logfile.to_string()),
+                        result.child_status_at_timeout,
                     ),
                     session_id: None,
                 };
@@ -296,6 +297,7 @@ fn try_agent_execution(
                         config.agent_name.to_string(),
                         TimeoutOutputKind::NoOutput,
                         Some(config.logfile.to_string()),
+                        None, // No CommandResult available in error path
                     ),
                     session_id: None,
                 };

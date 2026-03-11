@@ -6,6 +6,7 @@ use super::{
     PipelinePhase, PlanningEvent, PromptInputEvent, PromptInputKind, RebaseEvent, RebasePhase,
     ReviewEvent, TimeoutOutputKind,
 };
+use crate::executor::ChildProcessInfo;
 
 // Include constructor implementations split by category
 include!("constructors_lifecycle.rs");

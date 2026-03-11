@@ -1,10 +1,11 @@
 use super::super::{
-    AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ProcessExecutor, ProcessOutput,
+    AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo, ProcessExecutor,
+    ProcessOutput,
 };
 use super::agent_child::MockAgentChild;
 use super::agent_output::generate_mock_agent_output;
 use super::ExecuteCall;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::path::Path;
 use std::process::ExitStatus;
@@ -59,7 +60,7 @@ pub struct MockProcessExecutor {
     agent_calls: Mutex<Vec<AgentSpawnConfig>>,
     agent_results: Mutex<HashMap<String, MockResult<AgentCommandResult>>>,
     default_agent_result: Mutex<MockResult<AgentCommandResult>>,
-    active_children: Mutex<HashSet<u32>>,
+    active_children: Mutex<HashMap<u32, ChildProcessInfo>>,
 }
 
 impl Default for MockProcessExecutor {
@@ -85,7 +86,7 @@ impl Default for MockProcessExecutor {
             agent_calls: Mutex::new(Vec::new()),
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(MockResult::Ok(AgentCommandResult::success())),
-            active_children: Mutex::new(HashSet::new()),
+            active_children: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -112,7 +113,7 @@ impl MockProcessExecutor {
             agent_calls: Mutex::new(Vec::new()),
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(err_result("mock agent error")),
-            active_children: Mutex::new(HashSet::new()),
+            active_children: Mutex::new(HashMap::new()),
         }
     }
 
@@ -246,15 +247,79 @@ impl MockProcessExecutor {
 
     /// Configure this mock to report active child processes for the given parent PID.
     ///
-    /// When `has_active_child_processes` is called with `parent_pid`, returns `true`.
+    /// When `get_child_process_info` is called with `parent_pid`, returns a
+    /// `ChildProcessInfo` with `child_count: 1` and `cpu_time_ms: 0`.
     ///
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn with_active_children_for(self, parent_pid: u32) -> Self {
-        self.active_children.lock().unwrap().insert(parent_pid);
+        self.active_children.lock().unwrap().insert(
+            parent_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                cpu_time_ms: 0,
+                descendant_pid_signature: u64::from(parent_pid),
+            },
+        );
         self
+    }
+
+    /// Configure this mock with specific child process info for a parent PID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn with_active_children_info(self, parent_pid: u32, info: ChildProcessInfo) -> Self {
+        self.active_children
+            .lock()
+            .unwrap()
+            .insert(parent_pid, info);
+        self
+    }
+
+    /// Add or replace child process info for a parent PID after construction.
+    ///
+    /// Unlike [`with_active_children_info`](Self::with_active_children_info), this
+    /// takes `&self` so it can be called on an already-constructed executor (e.g.
+    /// after [`remove_active_children_for`](Self::remove_active_children_for)).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn add_active_children_info(&self, parent_pid: u32, info: ChildProcessInfo) {
+        self.active_children
+            .lock()
+            .unwrap()
+            .insert(parent_pid, info);
+    }
+
+    /// Update the CPU time reported for a parent PID's children.
+    ///
+    /// If the parent PID is not present (e.g. after removal), inserts a new
+    /// entry with `child_count: 1` and the given CPU time. This makes the API
+    /// forgiving for tests that remove and re-add children.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn set_child_cpu_time(&self, parent_pid: u32, cpu_time_ms: u64) {
+        let mut children = self.active_children.lock().unwrap();
+        match children.get_mut(&parent_pid) {
+            Some(info) => info.cpu_time_ms = cpu_time_ms,
+            None => {
+                children.insert(
+                    parent_pid,
+                    ChildProcessInfo {
+                        child_count: 1,
+                        cpu_time_ms,
+                        descendant_pid_signature: u64::from(parent_pid),
+                    },
+                );
+            }
+        }
     }
 
     /// Remove a PID from the set of active children.
@@ -295,8 +360,13 @@ impl MockProcessExecutor {
 }
 
 impl ProcessExecutor for MockProcessExecutor {
-    fn has_active_child_processes(&self, parent_pid: u32) -> bool {
-        self.active_children.lock().unwrap().contains(&parent_pid)
+    fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
+        self.active_children
+            .lock()
+            .unwrap()
+            .get(&parent_pid)
+            .copied()
+            .unwrap_or(ChildProcessInfo::NONE)
     }
 
     fn spawn(
