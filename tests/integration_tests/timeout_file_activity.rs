@@ -1097,6 +1097,84 @@ fn stalled_subprocess_timeout_includes_child_status() {
     });
 }
 
+/// Reappearing children without fresh work must not restart startup grace.
+#[test]
+fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                cpu_time_ms: 0,
+                descendant_pid_signature: 33,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop_for_monitor,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(20),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 3,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        thread::sleep(Duration::from_millis(45));
+        executor_impl.remove_active_children_for(child_pid);
+        thread::sleep(Duration::from_millis(25));
+        executor_impl.add_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                cpu_time_ms: 0,
+                descendant_pid_signature: 44,
+            },
+        );
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: Some(info),
+                ..
+            } => {
+                assert_eq!(info.child_count, 1);
+                assert_eq!(info.cpu_time_ms, 0);
+                assert_eq!(
+                    info.descendant_pid_signature, 44,
+                    "timeout should reflect the reappeared stalled child subtree rather than timing out before it was observed"
+                );
+            }
+            other => panic!(
+                "expected timed out result that observed the reappeared stalled child, got {other:?}"
+            ),
+        }
+    });
+}
+
 /// Event round-trip: `child_status_at_timeout` survives serialization.
 #[test]
 fn child_status_at_timeout_survives_event_serde_round_trip() {

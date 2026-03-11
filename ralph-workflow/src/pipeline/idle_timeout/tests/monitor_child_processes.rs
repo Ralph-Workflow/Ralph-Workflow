@@ -430,10 +430,10 @@ fn first_child_observation_grants_grace() {
     );
 }
 
-/// When children disappear and reappear, the CPU time tracking resets.
-/// The reappearing children get the first-observation grace again.
+/// Reappearing children during the same idle spell must not earn a second
+/// startup grace if no fresh work happened in between.
 #[test]
-fn children_disappearing_and_reappearing_resets_tracking() {
+fn children_reappearing_after_stale_gap_do_not_get_second_startup_grace() {
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
@@ -449,9 +449,10 @@ fn children_disappearing_and_reappearing_resets_tracking() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(5),
+        check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
-        // Require 3 confirmations so we have time for the remove/re-add cycle.
+        // Require 3 confirmations so the monitor observes: grace -> stalled ->
+        // no-children -> reappeared stalled children.
         required_idle_confirmations: 3,
         check_child_processes: true,
     };
@@ -467,17 +468,16 @@ fn children_disappearing_and_reappearing_resets_tracking() {
         )
     });
 
-    // Let the first observation grant grace, then children stall for one check.
-    thread::sleep(Duration::from_millis(15));
+    // Poll 1 at ~20ms grants the startup grace. Poll 2 at ~40ms sees the same
+    // stalled child and records the first idle confirmation.
+    thread::sleep(Duration::from_millis(45));
 
-    // Remove children (simulates subprocess completing).
-    // This resets the last child observation in the monitor.
+    // Remove children before poll 3 so the monitor records the stale gap.
     executor_impl.remove_active_children_for(child_pid);
-    thread::sleep(Duration::from_millis(10));
+    thread::sleep(Duration::from_millis(25));
 
-    // Re-add children (simulates a new subprocess spawning). The monitor's
-    // there is no previous child observation, so the first observation of the new
-    // children grants grace again (idle counter resets).
+    // Re-add children before poll 4 without any fresh output, file activity, or
+    // child CPU advancement. The monitor must continue treating the run as idle.
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
@@ -486,13 +486,16 @@ fn children_disappearing_and_reappearing_resets_tracking() {
             descendant_pid_signature: 33,
         },
     );
-    // Grace observation happens on next check. After that, CPU stays at 0
-    // (stalled), so idle confirmations accumulate → eventually kill.
+    thread::sleep(Duration::from_millis(35));
+    assert!(
+        !executor_impl.execute_calls_for("kill").is_empty(),
+        "reappearing stalled children should not restart startup grace after the monitor already observed an idle gap"
+    );
 
     let result = handle.join().expect("monitor thread panicked");
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
-        "monitor should kill after re-appeared children stall"
+        "monitor should time out when children reappear without fresh work"
     );
 }
 

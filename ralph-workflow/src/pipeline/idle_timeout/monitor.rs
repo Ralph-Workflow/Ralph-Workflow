@@ -218,6 +218,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     let mut consecutive_idle_count: u32 = 0;
     let mut last_child_observation: Option<ChildProcessInfo> = None;
     let mut last_child_info: Option<ChildProcessInfo> = None;
+    let mut child_startup_grace_available = true;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -323,6 +324,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
 
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
             consecutive_idle_count = 0;
+            last_child_observation = None;
+            last_child_info = None;
+            child_startup_grace_available = true;
             continue;
         }
 
@@ -341,6 +345,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             // check because check_interval has elapsed.
             if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
                 consecutive_idle_count = 0;
+                last_child_observation = None;
+                last_child_info = None;
+                child_startup_grace_available = true;
                 eprintln!(
                     "Continuing monitoring: file activity was confirmed within the last timeout window"
                 );
@@ -370,6 +377,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 Ok(true) => {
                     consecutive_idle_count = 0;
                     last_file_activity = Some(std::time::Instant::now());
+                    last_child_observation = None;
+                    last_child_info = None;
+                    child_startup_grace_available = true;
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
                 }
@@ -391,6 +401,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         // "kill is sent".
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
             consecutive_idle_count = 0;
+            last_child_observation = None;
+            last_child_info = None;
+            child_startup_grace_available = true;
             eprintln!("Output activity detected after file scan; continuing monitoring");
             continue;
         }
@@ -420,7 +433,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 last_child_observation = Some(info);
                 last_child_info = Some(info);
 
-                if first_child_observation {
+                if first_child_observation && child_startup_grace_available {
+                    child_startup_grace_available = false;
                     consecutive_idle_count = 0;
                     eprintln!(
                         "Agent has child processes for the first time during idle timeout \
@@ -436,6 +450,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                             .expect("child activity observer mutex poisoned") = Some(info);
                     }
                     consecutive_idle_count = 0;
+                    child_startup_grace_available = true;
                     eprintln!(
                         "Agent has active child processes (pid {child_pid}, \
                          {} children, cpu {}ms, signature {}); continuing monitoring",
@@ -443,7 +458,13 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     );
                     continue;
                 }
-                if subtree_changed {
+                if first_child_observation {
+                    eprintln!(
+                        "Agent child processes reappeared during idle timeout without fresh work \
+                         (pid {child_pid}, {} children, cpu {}ms, signature {}); treating as idle",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                } else if subtree_changed {
                     eprintln!(
                         "Agent child subtree changed during idle timeout (pid {child_pid}, \
                          {} children, cpu {}ms, signature {}); waiting for future CPU advancement before suppressing timeout",
