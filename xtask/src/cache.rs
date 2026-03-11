@@ -121,14 +121,12 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             "xtask/src",
             "test-helpers/src",
         ]),
-        // per-package clippy and tests: only the package's own source + Cargo.lock
-        "clippy-ralph-workflow" | "test-ralph-workflow-lib" | "dylint" => {
-            CheckScope::Build(&["ralph-workflow/src"])
-        }
+        // clippy-core spans ralph-workflow + ralph-workflow-tests + test-helpers
+        "clippy-core" => CheckScope::Build(&["ralph-workflow/src", "tests", "test-helpers/src"]),
+
+        "test-ralph-workflow-lib" | "dylint" => CheckScope::Build(&["ralph-workflow/src"]),
 
         "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
-
-        "clippy-test-helpers" => CheckScope::Build(&["test-helpers/src", "ralph-workflow/src"]),
 
         "clippy-ralph-gui" | "test-ralph-gui-lib" => CheckScope::Build(RALPH_GUI_RUST_SCOPE_DIRS),
 
@@ -143,10 +141,6 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             files: RALPH_GUI_FRONTEND_CHECK_FILES,
             include_lock: false,
         },
-
-        "clippy-ralph-workflow-tests" => {
-            CheckScope::Build(&["tests", "ralph-workflow/src", "test-helpers/src"])
-        }
 
         "test-integration" => CheckScope::Build(&[
             "ralph-workflow/src",
@@ -616,10 +610,10 @@ mod tests {
     // ── Granular scope tests ──────────────────────────────────────────────────
 
     #[test]
-    fn test_scope_for_clippy_ralph_workflow_is_granular() {
-        let key = scope_memo_key(&scope_for("clippy-ralph-workflow"));
-        // Must be a Build scope targeting only ralph-workflow/src, not the broad fallback.
-        assert_eq!(key, "b:ralph-workflow/src");
+    fn test_scope_for_clippy_core_is_granular() {
+        let key = scope_memo_key(&scope_for("clippy-core"));
+        // Must be a Build scope targeting ralph-workflow/src + tests + test-helpers/src.
+        assert_eq!(key, "b:ralph-workflow/src,tests,test-helpers/src");
     }
 
     #[test]
@@ -935,7 +929,7 @@ mod tests {
         perms.set_mode(0o000);
         std::fs::set_permissions(&file_path, perms).unwrap();
 
-        let spec = make_spec("clippy-ralph-workflow");
+        let spec = make_spec("clippy-core");
 
         let (inner, count) = CountingRunner::new(success_output());
         let runner = CachingCommandRunner::new(inner, tmp.clone());

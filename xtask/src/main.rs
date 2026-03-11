@@ -135,7 +135,9 @@ fn main() -> ExitCode {
             // Total check count = native checks + 1 (native-scan) + all group checks.
             let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()
                 + 1
-                + verify::CARGO_DEBUG_CHECKS.len()
+                + verify::CORE_CARGO_CHECKS.len()
+                + verify::XTASK_CARGO_CHECKS.len()
+                + verify::GUI_CARGO_CHECKS.len()
                 + verify::FRONTEND_CHECKS.len()
                 + verify::RELEASE_CHECKS.len();
             let reporter: Arc<dyn ProgressReporter> =
@@ -150,10 +152,11 @@ fn main() -> ExitCode {
             let verify_start = std::time::Instant::now();
             let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
             let groups = verify::CheckGroups {
-                cargo_debug: verify::CARGO_DEBUG_CHECKS,
+                core_cargo: verify::CORE_CARGO_CHECKS,
+                xtask_cargo: verify::XTASK_CARGO_CHECKS,
+                gui_cargo: verify::GUI_CARGO_CHECKS,
                 frontend: verify::FRONTEND_CHECKS,
                 release: verify::RELEASE_CHECKS,
-                prefetch: verify::CARGO_PREFETCH_SPECS,
             };
             let report = match verify::verify_fast(
                 runner_for_verify,

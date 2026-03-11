@@ -58,9 +58,11 @@ pub trait ProgressReporter: Send + Sync {
     fn check_progress(&self, _name: &str, _info: &str) {}
 }
 
-/// No-op implementation used in tests and when progress output is not desired.
+/// No-op implementation used in tests.
+#[cfg(test)]
 pub struct NoopProgressReporter;
 
+#[cfg(test)]
 impl ProgressReporter for NoopProgressReporter {
     fn check_started(&self, _name: &str) {}
     fn check_passed(&self, _name: &str, _elapsed: Duration) {}
@@ -219,6 +221,7 @@ fn classify(
 /// during slow cargo compilations without live streaming (e.g., cold-cache builds).
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(3);
 
+#[cfg(test)]
 pub fn run_checks(
     runner: &(dyn CommandRunner + Sync),
     checks: &[CommandSpec],
@@ -228,6 +231,7 @@ pub fn run_checks(
 }
 
 /// Inner implementation of `run_checks` with a configurable heartbeat interval.
+#[cfg(test)]
 ///
 /// For each check a background thread wakes every `heartbeat_interval` and calls
 /// `reporter.check_still_running()` so the user sees progress during long compilations
@@ -358,22 +362,21 @@ fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) ->
 
 /// Check groups for parallel verification.
 pub struct CheckGroups<'a> {
-    pub cargo_debug: &'a [CommandSpec],
+    pub core_cargo: &'a [CommandSpec],
+    pub xtask_cargo: &'a [CommandSpec],
+    pub gui_cargo: &'a [CommandSpec],
     pub frontend: &'a [CommandSpec],
     pub release: &'a [CommandSpec],
-    pub prefetch: &'a [CommandSpec],
 }
 
-/// Fast verification: native scan checks, then three parallel groups of checks.
+/// Fast verification: native scan checks, then five parallel groups of checks.
 ///
 /// Groups run concurrently using `std::thread::scope`:
-/// - Main thread: `groups.cargo_debug` with optional `groups.prefetch`
-/// - Thread 2: `groups.frontend` (npm, independent of cargo)
-/// - Thread 3: `groups.release` (release build + dylint, separate target dir)
-///
-/// `groups.prefetch` are run concurrently in a background thread during the cargo debug
-/// phase to pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no
-/// prefetch is desired (e.g., in tests with fake runners).
+/// - Main thread: `groups.core_cargo` (uses default target/)
+/// - Thread 2: `groups.xtask_cargo` (uses target/xtask-parallel-verify)
+/// - Thread 3: `groups.gui_cargo` (uses target/gui-parallel-verify)
+/// - Thread 4: `groups.frontend` (npm, independent of cargo)
+/// - Thread 5: `groups.release` (release build + dylint, separate target dir)
 pub fn verify_fast(
     runner: std::sync::Arc<dyn CommandRunner>,
     repo_root: &std::path::Path,
@@ -432,15 +435,41 @@ pub fn verify_fast(
     }
     reporter.check_passed("native-scan", scan_elapsed);
 
-    // Phase 2: run three check groups in parallel.
+    // Phase 2: run five check groups in parallel.
     // Cancellation flag: when any group fails, other groups skip remaining checks.
     let cancel = std::sync::Arc::new(AtomicBool::new(false));
 
+    let xtask_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
+    let gui_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
     let frontend_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
     let release_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
 
     let cargo_report = std::thread::scope(|s| {
-        // Thread 2: frontend checks (npm, independent of cargo).
+        // Thread 2: xtask cargo checks (separate target dir).
+        if !groups.xtask_cargo.is_empty() {
+            let runner_xt = &runner;
+            let cancel_xt = &cancel;
+            let result_xt = &xtask_result;
+            let xtask = groups.xtask_cargo;
+            s.spawn(move || {
+                let report = run_checks_cancellable(runner_xt.as_ref(), xtask, reporter, cancel_xt);
+                *result_xt.lock().unwrap() = Some(report);
+            });
+        }
+
+        // Thread 3: gui cargo checks (separate target dir).
+        if !groups.gui_cargo.is_empty() {
+            let runner_gui = &runner;
+            let cancel_gui = &cancel;
+            let result_gui = &gui_result;
+            let gui = groups.gui_cargo;
+            s.spawn(move || {
+                let report = run_checks_cancellable(runner_gui.as_ref(), gui, reporter, cancel_gui);
+                *result_gui.lock().unwrap() = Some(report);
+            });
+        }
+
+        // Thread 4: frontend checks (npm, independent of cargo).
         if !groups.frontend.is_empty() {
             let runner_fe = &runner;
             let cancel_fe = &cancel;
@@ -453,7 +482,7 @@ pub fn verify_fast(
             });
         }
 
-        // Thread 3: release checks (release build + dylint, separate target dir).
+        // Thread 5: release checks (release build + dylint, separate target dir).
         if !groups.release.is_empty() {
             let runner_rel = &runner;
             let cancel_rel = &cancel;
@@ -466,13 +495,9 @@ pub fn verify_fast(
             });
         }
 
-        // Main thread: cargo debug checks with prefetch.
-        let cargo_report = run_cargo_prefetch(
-            runner.clone(),
-            groups.prefetch,
-            groups.cargo_debug,
-            reporter,
-        );
+        // Main thread: core cargo checks (uses default target/).
+        let cargo_report =
+            run_checks_cancellable(runner.as_ref(), groups.core_cargo, reporter, &cancel);
         if let Ok(ref report) = cargo_report {
             if report.exit == VerifyExitCode::Failure {
                 cancel.store(true, Ordering::SeqCst);
@@ -481,10 +506,26 @@ pub fn verify_fast(
         cargo_report
     });
 
-    // Collect results: cargo group has highest priority.
+    // Collect results: core_cargo failure has highest priority, then xtask, gui, frontend, release.
     let cargo_report = cargo_report?;
     if cargo_report.exit == VerifyExitCode::Failure {
         return Ok(cargo_report);
+    }
+
+    // Check xtask group result.
+    if let Some(xt_result) = xtask_result.lock().unwrap().take() {
+        let xt_report = xt_result?;
+        if xt_report.exit == VerifyExitCode::Failure {
+            return Ok(xt_report);
+        }
+    }
+
+    // Check gui group result.
+    if let Some(gui_res) = gui_result.lock().unwrap().take() {
+        let gui_report = gui_res?;
+        if gui_report.exit == VerifyExitCode::Failure {
+            return Ok(gui_report);
+        }
     }
 
     // Check frontend group result.
@@ -509,11 +550,11 @@ pub fn verify_fast(
     })
 }
 
-/// Cargo debug checks: format, lint, and test commands that share the default target/ directory.
+/// Core cargo checks: format, lint, and test commands that share the default target/ directory.
 ///
 /// These run sequentially within their group (they share the cargo build cache)
-/// but the group itself runs in parallel with frontend and release groups.
-pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
+/// but the group itself runs in parallel with xtask, gui, frontend, and release groups.
+pub const CORE_CARGO_CHECKS: &[CommandSpec] = &[
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
@@ -523,12 +564,16 @@ pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
         extra_env: &[],
     },
     CommandSpec {
-        name: "clippy-ralph-workflow",
+        name: "clippy-core",
         program: "cargo",
         args: &[
             "clippy",
             "-p",
             "ralph-workflow",
+            "-p",
+            "ralph-workflow-tests",
+            "-p",
+            "test-helpers",
             "--all-targets",
             "--all-features",
             "--",
@@ -538,59 +583,7 @@ pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
-    CommandSpec {
-        name: "clippy-ralph-workflow-tests",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "ralph-workflow-tests",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "clippy-test-helpers",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "test-helpers",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "clippy-xtask",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "xtask",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
     // ── tests ────────────────────────────────────────────────────────────────
-    CommandSpec {
-        name: "test-xtask",
-        program: "cargo",
-        args: &["test", "-p", "xtask"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
     CommandSpec {
         name: "test-ralph-workflow-lib",
         program: "cargo",
@@ -611,7 +604,42 @@ pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
-    // ── ralph-gui crate: lint and unit tests ─────────────────────────────────
+];
+
+/// Xtask cargo checks: lint and test for the xtask crate.
+///
+/// Uses a separate `CARGO_TARGET_DIR` to avoid cargo lock contention with the
+/// core cargo group running in parallel.
+pub const XTASK_CARGO_CHECKS: &[CommandSpec] = &[
+    CommandSpec {
+        name: "clippy-xtask",
+        program: "cargo",
+        args: &[
+            "clippy",
+            "-p",
+            "xtask",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+    CommandSpec {
+        name: "test-xtask",
+        program: "cargo",
+        args: &["test", "-p", "xtask"],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+    },
+];
+
+/// GUI cargo checks: lint and unit tests for the ralph-gui crate.
+///
+/// Uses a separate `CARGO_TARGET_DIR` to avoid cargo lock contention with the
+/// core cargo group running in parallel.
+pub const GUI_CARGO_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "clippy-ralph-gui",
         program: "cargo",
@@ -625,14 +653,14 @@ pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
             "warnings",
         ],
         success_exit_codes: &[0],
-        extra_env: &[],
+        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
     },
     CommandSpec {
         name: "test-ralph-gui-lib",
         program: "cargo",
         args: &["test", "-p", "ralph-gui", "--lib"],
         success_exit_codes: &[0],
-        extra_env: &[],
+        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
     },
 ];
 
@@ -698,59 +726,6 @@ pub const RELEASE_CHECKS: &[CommandSpec] = &[
             ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
             ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
         ],
-    },
-];
-
-/// Prefetch specs for xtask and ralph-gui checks run concurrently with the sequential
-/// cargo debug phase.
-///
-/// These use the same `name` as the corresponding entries in `CARGO_DEBUG_CHECKS` so they
-/// share the same cache key (name + scope hash).  A separate `CARGO_TARGET_DIR` avoids
-/// holding the default target/ lock while the main sequential phase compiles other crates.
-pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "clippy-xtask",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "xtask",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
-    },
-    CommandSpec {
-        name: "test-xtask",
-        program: "cargo",
-        args: &["test", "-p", "xtask"],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
-    },
-    CommandSpec {
-        name: "clippy-ralph-gui",
-        program: "cargo",
-        args: &[
-            "clippy",
-            "-p",
-            "ralph-gui",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
-    },
-    CommandSpec {
-        name: "test-ralph-gui-lib",
-        program: "cargo",
-        args: &["test", "-p", "ralph-gui", "--lib"],
-        success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
     },
 ];
 
@@ -860,61 +835,6 @@ fn run_checks_cancellable(
     })
 }
 
-/// Run prefetch specs concurrently with main specs.
-///
-/// Launches a background thread that runs `prefetch_specs` while the current
-/// thread runs `main_specs` sequentially.  When `prefetch_specs` complete they
-/// populate the `CachingCommandRunner` cache so that, if the sequential phase
-/// later reaches the same check names, it gets instant cache hits.
-///
-/// Returns the first failure in `main_specs` order.
-///
-/// Prefetch is a best-effort optimisation: failures in `prefetch_specs` must
-/// never fail verification, and are intentionally ignored.
-pub fn run_cargo_prefetch(
-    runner: std::sync::Arc<dyn CommandRunner>,
-    prefetch_specs: &[CommandSpec],
-    main_specs: &[CommandSpec],
-    reporter: &dyn ProgressReporter,
-) -> Result<VerifyReport> {
-    let cancel_prefetch = std::sync::Arc::new(AtomicBool::new(false));
-
-    // Spawn best-effort prefetch in a background thread.
-    // Critical behavior: do NOT block surfacing main-spec failures on a slow prefetch.
-    // On success we join so cache warm results can be flushed deterministically.
-    let prefetch_handle = if prefetch_specs.is_empty() {
-        None
-    } else {
-        let runner_bg = std::sync::Arc::clone(&runner);
-        let cancel_bg = std::sync::Arc::clone(&cancel_prefetch);
-        let specs: Vec<CommandSpec> = prefetch_specs.to_vec();
-        Some(std::thread::spawn(move || {
-            // Cancellation is best-effort: if a prefetch check is already running, we let it
-            // complete, but we do not start additional prefetch work once cancelled.
-            for spec in specs {
-                if cancel_bg.load(Ordering::SeqCst) {
-                    break;
-                }
-                let _ = run_checks(
-                    runner_bg.as_ref(),
-                    std::slice::from_ref(&spec),
-                    &NoopProgressReporter,
-                );
-            }
-        }))
-    };
-
-    let main_report = run_checks(runner.as_ref(), main_specs, reporter)?;
-    if main_report.exit == VerifyExitCode::Success {
-        if let Some(h) = prefetch_handle {
-            let _ = h.join();
-        }
-    } else {
-        cancel_prefetch.store(true, Ordering::SeqCst);
-    }
-    Ok(main_report)
-}
-
 /// Returns all required checks across all groups, in group-priority order.
 ///
 /// Used by tests to verify check existence.  The returned specs use the
@@ -922,8 +842,10 @@ pub fn run_cargo_prefetch(
 /// set for parallel execution).
 #[cfg(test)]
 fn all_required_checks() -> Vec<&'static CommandSpec> {
-    CARGO_DEBUG_CHECKS
+    CORE_CARGO_CHECKS
         .iter()
+        .chain(XTASK_CARGO_CHECKS.iter())
+        .chain(GUI_CARGO_CHECKS.iter())
         .chain(FRONTEND_CHECKS.iter())
         .chain(RELEASE_CHECKS.iter())
         .collect()
@@ -1000,7 +922,6 @@ mod tests {
     #[derive(Debug, Default)]
     struct ByNameRunner {
         outputs: Mutex<HashMap<&'static str, CommandOutput>>,
-        ran: Mutex<Vec<&'static str>>,
     }
 
     impl ByNameRunner {
@@ -1008,15 +929,10 @@ mod tests {
             self.outputs.lock().unwrap().insert(name, output);
             self
         }
-
-        fn ran(&self) -> Vec<&'static str> {
-            self.ran.lock().unwrap().clone()
-        }
     }
 
     impl CommandRunner for ByNameRunner {
         fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.ran.lock().unwrap().push(spec.name);
             self.outputs
                 .lock()
                 .unwrap()
@@ -1316,9 +1232,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cargo_debug_checks_run_in_stable_order() {
+    fn test_core_cargo_checks_run_in_stable_order() {
         let runner = std::sync::Arc::new(RecordingRunner::default());
-        let all_checks: Vec<CommandSpec> = CARGO_DEBUG_CHECKS.to_vec();
+        let all_checks: Vec<CommandSpec> = CORE_CARGO_CHECKS.to_vec();
         let report = verify(
             runner.clone(),
             std::path::Path::new("/fake"),
@@ -1332,17 +1248,98 @@ mod tests {
             runner.ran(),
             vec![
                 "fmt-check",
-                "clippy-ralph-workflow",
-                "clippy-ralph-workflow-tests",
-                "clippy-test-helpers",
-                "clippy-xtask",
-                "test-xtask",
+                "clippy-core",
                 "test-ralph-workflow-lib",
                 "test-integration",
-                "clippy-ralph-gui",
-                "test-ralph-gui-lib",
             ]
         );
+    }
+
+    #[test]
+    fn test_xtask_cargo_checks_run_in_stable_order() {
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let report = verify(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            XTASK_CARGO_CHECKS,
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(runner.ran(), vec!["clippy-xtask", "test-xtask",]);
+    }
+
+    #[test]
+    fn test_gui_cargo_checks_run_in_stable_order() {
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let report = verify(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            GUI_CARGO_CHECKS,
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(
+            runner.ran(),
+            vec!["clippy-ralph-gui", "test-ralph-gui-lib",]
+        );
+    }
+
+    #[test]
+    fn test_clippy_core_uses_multi_package_invocation() {
+        let clippy_core = CORE_CARGO_CHECKS
+            .iter()
+            .find(|c| c.name == "clippy-core")
+            .expect("clippy-core must exist in CORE_CARGO_CHECKS");
+        assert!(
+            clippy_core.args.contains(&"-p"),
+            "clippy-core must use -p flag for multi-package"
+        );
+        let pkg_args: Vec<&&str> = clippy_core
+            .args
+            .windows(2)
+            .filter(|w| w[0] == "-p")
+            .map(|w| &w[1])
+            .collect();
+        assert!(
+            pkg_args.contains(&&"ralph-workflow"),
+            "clippy-core must include ralph-workflow"
+        );
+        assert!(
+            pkg_args.contains(&&"ralph-workflow-tests"),
+            "clippy-core must include ralph-workflow-tests"
+        );
+        assert!(
+            pkg_args.contains(&&"test-helpers"),
+            "clippy-core must include test-helpers"
+        );
+    }
+
+    #[test]
+    fn test_xtask_checks_use_separate_target_dir() {
+        for spec in XTASK_CARGO_CHECKS {
+            let has_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
+            assert!(
+                has_target_dir,
+                "xtask check '{}' must set CARGO_TARGET_DIR for parallel execution",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_gui_cargo_checks_use_separate_target_dir() {
+        for spec in GUI_CARGO_CHECKS {
+            let has_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
+            assert!(
+                has_target_dir,
+                "gui check '{}' must set CARGO_TARGET_DIR for parallel execution",
+                spec.name
+            );
+        }
     }
 
     #[test]
@@ -1573,10 +1570,10 @@ mod tests {
     // ── TDD tests for concurrent execution ──────────────────────────────────
 
     #[test]
-    fn test_cargo_debug_checks_first_entry_is_fmt_check() {
+    fn test_core_cargo_checks_first_entry_is_fmt_check() {
         assert_eq!(
-            CARGO_DEBUG_CHECKS[0].name, "fmt-check",
-            "CARGO_DEBUG_CHECKS[0] must be fmt-check (first cargo check)"
+            CORE_CARGO_CHECKS[0].name, "fmt-check",
+            "CORE_CARGO_CHECKS[0] must be fmt-check (first cargo check)"
         );
     }
 
@@ -1594,22 +1591,29 @@ mod tests {
     // ── TDD tests for concurrent execution ──────────────────────────────────
 
     fn test_groups<'a>(
-        cargo_debug: &'a [CommandSpec],
+        core_cargo: &'a [CommandSpec],
         frontend: &'a [CommandSpec],
         release: &'a [CommandSpec],
     ) -> CheckGroups<'a> {
         CheckGroups {
-            cargo_debug,
+            core_cargo,
+            xtask_cargo: &[],
+            gui_cargo: &[],
             frontend,
             release,
-            prefetch: &[],
         }
     }
 
     #[test]
     fn test_verify_fast_runs_all_required_checks() {
         let runner = std::sync::Arc::new(RecordingRunner::default());
-        let groups = test_groups(CARGO_DEBUG_CHECKS, FRONTEND_CHECKS, RELEASE_CHECKS);
+        let groups = CheckGroups {
+            core_cargo: CORE_CARGO_CHECKS,
+            xtask_cargo: XTASK_CARGO_CHECKS,
+            gui_cargo: GUI_CARGO_CHECKS,
+            frontend: FRONTEND_CHECKS,
+            release: RELEASE_CHECKS,
+        };
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
@@ -1643,7 +1647,7 @@ mod tests {
             stderr: "error: formatting differences found".to_string(),
         }]));
 
-        let groups = test_groups(CARGO_DEBUG_CHECKS, &[], &[]);
+        let groups = test_groups(CORE_CARGO_CHECKS, &[], &[]);
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
@@ -1666,7 +1670,7 @@ mod tests {
             stderr: "error: formatting differences found".to_string(),
         }]));
 
-        let groups = test_groups(CARGO_DEBUG_CHECKS, &[], &[]);
+        let groups = test_groups(CORE_CARGO_CHECKS, &[], &[]);
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
@@ -1679,288 +1683,6 @@ mod tests {
         assert_eq!(report.exit, VerifyExitCode::Failure);
         let failure = report.failure.expect("expected failure");
         assert_eq!(failure.name, "fmt-check");
-    }
-
-    // ── TDD tests for cargo prefetch ────────────────────────────────────────
-
-    #[derive(Debug)]
-    struct BlockingByNameRunner {
-        outputs: Mutex<HashMap<&'static str, CommandOutput>>,
-        ran: Mutex<Vec<&'static str>>,
-        prefetch_started: std::sync::mpsc::Sender<()>,
-        prefetch_release: Mutex<std::sync::mpsc::Receiver<()>>,
-    }
-
-    impl BlockingByNameRunner {
-        fn new(
-            prefetch_started: std::sync::mpsc::Sender<()>,
-            prefetch_release: std::sync::mpsc::Receiver<()>,
-        ) -> Self {
-            Self {
-                outputs: Mutex::new(HashMap::new()),
-                ran: Mutex::new(Vec::new()),
-                prefetch_started,
-                prefetch_release: Mutex::new(prefetch_release),
-            }
-        }
-
-        fn with_output(self, name: &'static str, output: CommandOutput) -> Self {
-            self.outputs.lock().unwrap().insert(name, output);
-            self
-        }
-
-        fn ran(&self) -> Vec<&'static str> {
-            self.ran.lock().unwrap().clone()
-        }
-    }
-
-    impl CommandRunner for BlockingByNameRunner {
-        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.ran.lock().unwrap().push(spec.name);
-
-            if spec.name == "prefetch-slow" {
-                let _ = self.prefetch_started.send(());
-                let rx = self.prefetch_release.lock().unwrap();
-                let _ = rx.recv();
-            }
-
-            self.outputs
-                .lock()
-                .unwrap()
-                .get(spec.name)
-                .cloned()
-                .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("no output configured for {}", spec.name),
-                    )
-                })
-        }
-    }
-
-    #[test]
-    fn test_cargo_prefetch_specs_use_same_names_as_cargo_debug_checks() {
-        // CARGO_PREFETCH_SPECS must use the same check names as CARGO_DEBUG_CHECKS
-        // so the cache key (name + scope hash) is shared between prefetch and sequential runs.
-        for spec in CARGO_PREFETCH_SPECS {
-            assert!(
-                CARGO_DEBUG_CHECKS.iter().any(|c| c.name == spec.name),
-                "prefetch spec '{}' must have a matching entry in CARGO_DEBUG_CHECKS",
-                spec.name
-            );
-        }
-    }
-
-    #[test]
-    fn test_cargo_prefetch_specs_have_extra_env() {
-        // TDD anchor: prefetch specs must carry CARGO_TARGET_DIR override to avoid lock
-        // contention with the main sequential build.
-        for spec in CARGO_PREFETCH_SPECS {
-            let has_cargo_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
-            assert!(
-                has_cargo_target_dir,
-                "prefetch spec \'{}\' must set CARGO_TARGET_DIR in extra_env",
-                spec.name
-            );
-        }
-    }
-
-    #[test]
-    fn test_run_cargo_prefetch_populates_results_for_all_specs() {
-        // TDD anchor: run_cargo_prefetch must run all prefetch specs and all main specs,
-        // returning Success when all pass.
-        let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
-
-        let runner = std::sync::Arc::new(RecordingRunner::default());
-
-        let main_specs: &[CommandSpec] = &[CommandSpec {
-            name: "fmt-check",
-            program: "cargo",
-            args: &["fmt", "--all", "--check"],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let prefetch_specs = CARGO_PREFETCH_SPECS;
-
-        let report = run_cargo_prefetch(
-            runner.clone(),
-            prefetch_specs,
-            main_specs,
-            &NoopProgressReporter,
-        )
-        .expect("run_cargo_prefetch should not error");
-
-        assert_eq!(report.exit, VerifyExitCode::Success);
-
-        let ran = runner.ran();
-        assert!(
-            ran.contains(&"fmt-check"),
-            "run_cargo_prefetch must run main specs"
-        );
-        for name in &prefetch_names {
-            assert!(
-                ran.contains(name),
-                "run_cargo_prefetch must run prefetch spec \'{name}\'"
-            );
-        }
-    }
-
-    #[test]
-    fn test_run_cargo_prefetch_returns_failure_on_main_spec_failure() {
-        // TDD anchor: if a main spec fails, run_cargo_prefetch must return Failure.
-        let outputs = vec![CommandOutput {
-            exit_code: 1, // exit 1 = failure for cargo
-            stdout: String::new(),
-            stderr: "error: formatting differences found".to_string(),
-        }];
-        let runner = std::sync::Arc::new(FakeRunner::new(outputs));
-
-        let main_specs: &[CommandSpec] = &[CommandSpec {
-            name: "fmt-check-fail",
-            program: "cargo",
-            args: &["fmt", "--all", "--check"],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let report = run_cargo_prefetch(runner.clone(), &[], main_specs, &NoopProgressReporter)
-            .expect("run_cargo_prefetch should not error");
-
-        assert_eq!(report.exit, VerifyExitCode::Failure);
-        let failure = report.failure.expect("expected failure");
-        assert_eq!(failure.name, "fmt-check-fail");
-    }
-
-    #[test]
-    fn test_run_cargo_prefetch_does_not_fail_when_only_prefetch_fails() {
-        // Prefetch is a best-effort optimisation; verification correctness is determined
-        // by the sequential main specs.
-        let runner = std::sync::Arc::new(
-            ByNameRunner::default()
-                .with_output(
-                    "prefetch-fails",
-                    CommandOutput {
-                        exit_code: 1,
-                        stdout: String::new(),
-                        stderr: "error: prefetch failed".to_string(),
-                    },
-                )
-                .with_output(
-                    "main-passes",
-                    CommandOutput {
-                        exit_code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    },
-                ),
-        );
-
-        let prefetch_specs: &[CommandSpec] = &[CommandSpec {
-            name: "prefetch-fails",
-            program: "cargo",
-            args: &[],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let main_specs: &[CommandSpec] = &[CommandSpec {
-            name: "main-passes",
-            program: "cargo",
-            args: &[],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let report = run_cargo_prefetch(
-            runner.clone(),
-            prefetch_specs,
-            main_specs,
-            &NoopProgressReporter,
-        )
-        .expect("run_cargo_prefetch should not error");
-
-        assert_eq!(report.exit, VerifyExitCode::Success);
-
-        // Both specs should have been invoked (order is not guaranteed due to concurrency).
-        let ran = runner.ran();
-        assert!(ran.contains(&"prefetch-fails"));
-        assert!(ran.contains(&"main-passes"));
-    }
-
-    #[test]
-    fn test_run_cargo_prefetch_does_not_block_on_prefetch_when_main_fails() {
-        // Regression: run_cargo_prefetch previously used std::thread::scope, which
-        // forced the prefetch thread to finish before returning. This delayed
-        // surfacing fast failures (e.g., fmt-check) by the full prefetch duration.
-
-        use std::sync::mpsc;
-
-        let (prefetch_started_tx, prefetch_started_rx) = mpsc::channel();
-        let (prefetch_release_tx, prefetch_release_rx) = mpsc::channel();
-        let runner = std::sync::Arc::new(
-            BlockingByNameRunner::new(prefetch_started_tx, prefetch_release_rx)
-                .with_output(
-                    "prefetch-slow",
-                    CommandOutput {
-                        exit_code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    },
-                )
-                .with_output(
-                    "main-fails",
-                    CommandOutput {
-                        exit_code: 1,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    },
-                ),
-        );
-
-        let prefetch_specs: &[CommandSpec] = &[CommandSpec {
-            name: "prefetch-slow",
-            program: "fake",
-            args: &[],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let main_specs: &[CommandSpec] = &[CommandSpec {
-            name: "main-fails",
-            program: "fake",
-            args: &[],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let (done_tx, done_rx) = mpsc::channel();
-        let runner_bg = runner.clone();
-        std::thread::spawn(move || {
-            let report =
-                run_cargo_prefetch(runner_bg, prefetch_specs, main_specs, &NoopProgressReporter)
-                    .expect("run_cargo_prefetch should not error");
-            done_tx.send(report).unwrap();
-        });
-
-        // Ensure the prefetch thread actually started before we assert that the main
-        // failure surfaces without waiting for it.
-        prefetch_started_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("prefetch should start");
-
-        let report = done_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("main failure should surface without waiting for prefetch");
-        assert_eq!(report.exit, VerifyExitCode::Failure);
-
-        // Unblock the prefetch thread so it can complete and not leak a blocked thread.
-        let _ = prefetch_release_tx.send(());
-
-        // Sanity: both specs should have been invoked.
-        let ran = runner.ran();
-        assert!(ran.contains(&"prefetch-slow"));
-        assert!(ran.contains(&"main-fails"));
     }
 
     // ── TDD tests for ProgressReporter ──────────────────────────────────────
@@ -2286,7 +2008,9 @@ mod tests {
     fn test_total_check_count_matches_reporter_constructor_expectation() {
         let expected_total = NATIVE_REQUIRED_CHECKS.len()
             + 1
-            + CARGO_DEBUG_CHECKS.len()
+            + CORE_CARGO_CHECKS.len()
+            + XTASK_CARGO_CHECKS.len()
+            + GUI_CARGO_CHECKS.len()
             + FRONTEND_CHECKS.len()
             + RELEASE_CHECKS.len();
         assert!(
@@ -2333,140 +2057,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(report.exit, VerifyExitCode::Success);
-    }
-
-    #[derive(Default)]
-    struct CoordinatedRunner {
-        ran: Mutex<Vec<&'static str>>,
-        prefetch_1_started: (Mutex<bool>, Condvar),
-        prefetch_1_released: (Mutex<bool>, Condvar),
-        prefetch_2_started: (Mutex<bool>, Condvar),
-    }
-
-    impl CoordinatedRunner {
-        fn ran(&self) -> Vec<&'static str> {
-            self.ran.lock().unwrap().clone()
-        }
-
-        fn wait_prefetch_1_started(&self, timeout: Duration) {
-            let (lock, cvar) = &self.prefetch_1_started;
-            let started = lock.lock().unwrap();
-            let _ = cvar.wait_timeout_while(started, timeout, |v| !*v).unwrap();
-        }
-
-        fn release_prefetch_1(&self) {
-            let (lock, cvar) = &self.prefetch_1_released;
-            let mut released = lock.lock().unwrap();
-            *released = true;
-            cvar.notify_all();
-        }
-
-        fn wait_prefetch_2_started(&self, timeout: Duration) -> bool {
-            let (lock, cvar) = &self.prefetch_2_started;
-            let started = lock.lock().unwrap();
-            let (started, _) = cvar.wait_timeout_while(started, timeout, |v| !*v).unwrap();
-            *started
-        }
-    }
-
-    impl CommandRunner for CoordinatedRunner {
-        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-            self.ran.lock().unwrap().push(spec.name);
-
-            match spec.name {
-                "prefetch-1" => {
-                    let (lock, cvar) = &self.prefetch_1_started;
-                    let mut started = lock.lock().unwrap();
-                    *started = true;
-                    cvar.notify_all();
-
-                    let (lock, cvar) = &self.prefetch_1_released;
-                    let released = lock.lock().unwrap();
-                    let _ = cvar
-                        .wait_timeout_while(released, Duration::from_secs(2), |v| !*v)
-                        .unwrap();
-
-                    Ok(CommandOutput {
-                        exit_code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    })
-                }
-                "prefetch-2" => {
-                    let (lock, cvar) = &self.prefetch_2_started;
-                    let mut started = lock.lock().unwrap();
-                    *started = true;
-                    cvar.notify_all();
-                    Ok(CommandOutput {
-                        exit_code: 0,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    })
-                }
-                "main-fails" => {
-                    // Ensure the background thread has started the first prefetch before we fail.
-                    self.wait_prefetch_1_started(Duration::from_secs(2));
-                    Ok(CommandOutput {
-                        exit_code: 1,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    })
-                }
-                _ => Ok(CommandOutput {
-                    exit_code: 0,
-                    stdout: String::new(),
-                    stderr: String::new(),
-                }),
-            }
-        }
-    }
-
-    #[test]
-    fn test_run_cargo_prefetch_cancels_remaining_prefetch_specs_after_main_failure() {
-        let runner = std::sync::Arc::new(CoordinatedRunner::default());
-        let prefetch_specs: &[CommandSpec] = &[
-            CommandSpec {
-                name: "prefetch-1",
-                program: "fake",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-            CommandSpec {
-                name: "prefetch-2",
-                program: "fake",
-                args: &[],
-                success_exit_codes: &[0],
-                extra_env: &[],
-            },
-        ];
-        let main_specs: &[CommandSpec] = &[CommandSpec {
-            name: "main-fails",
-            program: "fake",
-            args: &[],
-            success_exit_codes: &[0],
-            extra_env: &[],
-        }];
-
-        let report = run_cargo_prefetch(
-            runner.clone(),
-            prefetch_specs,
-            main_specs,
-            &NoopProgressReporter,
-        )
-        .expect("run_cargo_prefetch should not error");
-        assert_eq!(report.exit, VerifyExitCode::Failure);
-
-        // Let the background thread finish the first prefetch.
-        // Cancellation is best-effort: depending on scheduling, the second prefetch may
-        // already be queued by the time the main failure is observed.
-        runner.release_prefetch_1();
-        let _prefetch_2_started = runner.wait_prefetch_2_started(Duration::from_millis(200));
-
-        // Sanity: we should at least have run prefetch-1 and main-fails.
-        let ran = runner.ran();
-        assert!(ran.contains(&"prefetch-1"));
-        assert!(ran.contains(&"main-fails"));
     }
 
     // ── TDD tests for redundant memory-safety check removal ─────────────────
@@ -2764,25 +2354,15 @@ mod tests {
     #[test]
     fn test_all_required_checks_returns_union_of_all_groups() {
         let all = all_required_checks();
-        let expected_count =
-            CARGO_DEBUG_CHECKS.len() + FRONTEND_CHECKS.len() + RELEASE_CHECKS.len();
+        let expected_count = CORE_CARGO_CHECKS.len()
+            + XTASK_CARGO_CHECKS.len()
+            + GUI_CARGO_CHECKS.len()
+            + FRONTEND_CHECKS.len()
+            + RELEASE_CHECKS.len();
         assert_eq!(
             all.len(),
             expected_count,
             "all_required_checks() must return exactly the union of all groups"
-        );
-    }
-
-    #[test]
-    fn test_cargo_prefetch_includes_ralph_gui_checks() {
-        let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
-        assert!(
-            prefetch_names.contains(&"clippy-ralph-gui"),
-            "CARGO_PREFETCH_SPECS must include clippy-ralph-gui"
-        );
-        assert!(
-            prefetch_names.contains(&"test-ralph-gui-lib"),
-            "CARGO_PREFETCH_SPECS must include test-ralph-gui-lib"
         );
     }
 }

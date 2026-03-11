@@ -49,28 +49,21 @@ rg --pcre2 -n '#\[ignore\b(?!.*https://)' tests/ ralph-workflow/src/ --glob '*.r
 # Format check
 cargo fmt --all --check
 
-# Lint main crate (all targets: lib, tests, benchmarks, examples)
+# Lint core crates (ralph-workflow + ralph-workflow-tests + test-helpers) in a single invocation
 # Note: Enforces clippy::all, clippy::pedantic, clippy::nursery
 # via #![deny(...)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow --all-targets --all-features -- -D warnings
+cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
 
-# Lint integration tests
-# Note: Enforces clippy::all, clippy::pedantic, clippy::nursery
-# via #![deny(...)] attributes in tests/integration_tests/main.rs and tests/system_tests/main.rs
-# (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings
-
-# Lint test helpers
-# Enforces clippy::all, clippy::pedantic, clippy::nursery
-# via #![deny(...)] attributes in test-helpers/src/lib.rs
-cargo clippy -p test-helpers --all-targets -- -D warnings
-
-# Lint xtask runner
+# Lint xtask runner (runs in parallel group with separate target dir)
 cargo clippy -p xtask --all-targets -- -D warnings
+
+# Lint ralph-gui (runs in parallel group with separate target dir)
+cargo clippy -p ralph-gui --all-targets -- -D warnings
 
 # Unit tests
 cargo test -p xtask
+cargo test -p ralph-gui --lib
 cargo test -p ralph-workflow --lib --all-features
 
 # Integration tests
