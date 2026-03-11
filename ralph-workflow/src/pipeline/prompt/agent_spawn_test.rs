@@ -205,7 +205,10 @@ pub fn run_with_agent_spawn_with_monitor_config(
         .unwrap_or(MonitorResult::ProcessCompleted);
 
     let final_exit_code = match monitor_result {
-        MonitorResult::TimedOut { escalated } => {
+        MonitorResult::TimedOut {
+            escalated,
+            child_status_at_timeout,
+        } => {
             let idle_duration = time_since_activity(&activity_timestamp_for_timeout);
             let escalation_msg = if escalated {
                 if cfg!(windows) {
@@ -216,14 +219,24 @@ pub fn run_with_agent_spawn_with_monitor_config(
             } else {
                 ""
             };
+            let child_msg = child_status_at_timeout.map_or_else(
+                || ", no active child processes".to_string(),
+                |info| {
+                    format!(
+                        ", child processes present ({} children, CPU stalled at {}ms)",
+                        info.child_count, info.cpu_time_ms
+                    )
+                },
+            );
             runtime.logger.warn(&format!(
                 "Agent killed due to idle timeout (no stdout/stderr for {:.1} seconds, \
-                 last activity {:.1}s ago, process exit code was {}{}, \
+                 last activity {:.1}s ago, process exit code was {}{}{}, \
                  kill reason: IDLE_TIMEOUT_MONITOR)",
                 idle_timeout.as_secs_f64(),
                 idle_duration.as_secs_f64(),
                 exit_code,
-                escalation_msg
+                escalation_msg,
+                child_msg
             ));
             super::SIGTERM_EXIT_CODE
         }

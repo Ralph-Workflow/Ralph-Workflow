@@ -279,16 +279,44 @@ impl MockProcessExecutor {
         self
     }
 
+    /// Add or replace child process info for a parent PID after construction.
+    ///
+    /// Unlike [`with_active_children_info`](Self::with_active_children_info), this
+    /// takes `&self` so it can be called on an already-constructed executor (e.g.
+    /// after [`remove_active_children_for`](Self::remove_active_children_for)).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    pub fn add_active_children_info(&self, parent_pid: u32, info: ChildProcessInfo) {
+        self.active_children
+            .lock()
+            .unwrap()
+            .insert(parent_pid, info);
+    }
+
     /// Update the CPU time reported for a parent PID's children.
     ///
-    /// Call this to simulate child process CPU time advancing over time.
+    /// If the parent PID is not present (e.g. after removal), inserts a new
+    /// entry with `child_count: 1` and the given CPU time. This makes the API
+    /// forgiving for tests that remove and re-add children.
     ///
     /// # Panics
     ///
     /// Panics if the mutex is poisoned.
     pub fn set_child_cpu_time(&self, parent_pid: u32, cpu_time_ms: u64) {
-        if let Some(info) = self.active_children.lock().unwrap().get_mut(&parent_pid) {
-            info.cpu_time_ms = cpu_time_ms;
+        let mut children = self.active_children.lock().unwrap();
+        match children.get_mut(&parent_pid) {
+            Some(info) => info.cpu_time_ms = cpu_time_ms,
+            None => {
+                children.insert(
+                    parent_pid,
+                    ChildProcessInfo {
+                        child_count: 1,
+                        cpu_time_ms,
+                    },
+                );
+            }
         }
     }
 

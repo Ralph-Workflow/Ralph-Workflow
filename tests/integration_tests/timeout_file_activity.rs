@@ -1035,3 +1035,110 @@ fn no_active_subprocess_and_no_file_activity_times_out() {
         );
     });
 }
+
+/// Timeout with stalled children includes `child_status_at_timeout` in result.
+#[test]
+fn stalled_subprocess_timeout_includes_child_status() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        // Stalled children: fixed CPU time that never advances.
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 2,
+                cpu_time_ms: 4200,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl,
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: Some(info),
+                ..
+            } => {
+                assert_eq!(info.child_count, 2);
+                assert_eq!(info.cpu_time_ms, 4200);
+            }
+            other => panic!("expected TimedOut with child_status_at_timeout=Some, got {other:?}"),
+        }
+    });
+}
+
+/// Timeout with no children has `child_status_at_timeout: None`.
+#[test]
+fn no_subprocess_timeout_has_none_child_status() {
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new());
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl,
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::ZERO,
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: None,
+                ..
+            } => {}
+            other => panic!("expected TimedOut with child_status_at_timeout=None, got {other:?}"),
+        }
+    });
+}

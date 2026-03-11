@@ -219,8 +219,10 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             }
 
             fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
-                let mut child_count: u32 = 0;
-                let mut total_cpu_ms: u64 = 0;
+                use std::collections::{HashMap, HashSet, VecDeque};
+
+                // First pass: parse all (pid, ppid, cpu_time_ms) tuples.
+                let mut children_of: HashMap<u32, Vec<(u32, u64)>> = HashMap::new();
                 let mut saw_parseable = false;
 
                 for line in stdout.lines() {
@@ -233,28 +235,48 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                     };
                     let cputime_text = parts.next().unwrap_or("0:00");
 
-                    let Ok(_pid) = col_pid.parse::<u32>() else {
+                    let Ok(entry_pid) = col_pid.parse::<u32>() else {
                         continue;
                     };
-                    let Ok(ppid) = col_parent.parse::<u32>() else {
+                    let Ok(parent_of_entry) = col_parent.parse::<u32>() else {
                         continue;
                     };
                     saw_parseable = true;
 
-                    if ppid == parent_pid {
-                        child_count += 1;
-                        total_cpu_ms += parse_cputime_ms(cputime_text).unwrap_or(0);
+                    let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
+                    children_of
+                        .entry(parent_of_entry)
+                        .or_default()
+                        .push((entry_pid, cpu_ms));
+                }
+
+                if !saw_parseable {
+                    return None;
+                }
+
+                // BFS from parent_pid to find all descendants.
+                let mut child_count: u32 = 0;
+                let mut total_cpu_ms: u64 = 0;
+                let mut visited = HashSet::new();
+                let mut queue = VecDeque::new();
+                queue.push_back(parent_pid);
+
+                while let Some(current) = queue.pop_front() {
+                    if let Some(kids) = children_of.get(&current) {
+                        for &(pid, cpu_ms) in kids {
+                            if visited.insert(pid) {
+                                child_count += 1;
+                                total_cpu_ms += cpu_ms;
+                                queue.push_back(pid);
+                            }
+                        }
                     }
                 }
 
-                if saw_parseable {
-                    Some(ChildProcessInfo {
-                        child_count,
-                        cpu_time_ms: total_cpu_ms,
-                    })
-                } else {
-                    None
-                }
+                Some(ChildProcessInfo {
+                    child_count,
+                    cpu_time_ms: total_cpu_ms,
+                })
             }
 
             fn warn_child_process_detection_degraded() {
@@ -413,6 +435,68 @@ mod tests {
             info.cpu_time_ms,
             (3600 + 2 * 60 + 3) * 1000,
             "HH:MM:SS should parse to correct ms"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_includes_grandchildren() {
+        let parent = 100;
+        // PID 200 is child of 100, PID 300 is child of 200 (grandchild of 100).
+        let ps_output = "200 100 0:01.00\n300 200 0:02.00\n999 1 0:05.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(
+            info.child_count, 2,
+            "should count both child and grandchild"
+        );
+        assert_eq!(
+            info.cpu_time_ms,
+            1000 + 2000,
+            "should sum CPU of child and grandchild"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_excludes_unrelated_processes() {
+        let parent = 100;
+        // PID 200 is child of 100. PID 300's ppid chain goes to 1, NOT to 100.
+        let ps_output = "200 100 0:01.00\n300 400 0:02.00\n400 1 0:03.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(info.child_count, 1, "should only count PID 200");
+        assert_eq!(info.cpu_time_ms, 1000, "should only sum CPU of PID 200");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_deep_tree() {
+        let parent = 100;
+        // 3+ levels of nesting: 100 → 200 → 300 → 400
+        let ps_output = "200 100 0:01.00\n300 200 0:02.00\n400 300 0:03.00\n";
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(ps_key(), ok_output(ps_output));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+        assert_eq!(
+            info.child_count, 3,
+            "should count all 3 levels of descendants"
+        );
+        assert_eq!(
+            info.cpu_time_ms,
+            1000 + 2000 + 3000,
+            "should sum CPU across all descendants"
         );
     }
 }

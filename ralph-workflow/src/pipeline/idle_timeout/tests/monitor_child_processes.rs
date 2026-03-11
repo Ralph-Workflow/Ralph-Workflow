@@ -449,7 +449,7 @@ fn children_disappearing_and_reappearing_resets_tracking() {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        // Require 3 confirmations so we have time to remove and re-add children.
+        // Require 3 confirmations so we have time for the remove/re-add cycle.
         required_idle_confirmations: 3,
         check_child_processes: true,
     };
@@ -469,31 +469,160 @@ fn children_disappearing_and_reappearing_resets_tracking() {
     thread::sleep(Duration::from_millis(15));
 
     // Remove children (simulates subprocess completing).
+    // This resets last_child_cpu_time_ms to None in the monitor.
     executor_impl.remove_active_children_for(child_pid);
     thread::sleep(Duration::from_millis(10));
 
-    // Re-add children (simulates new subprocess spawning). This should reset
-    // tracking so the first observation of the new children grants grace again.
-    executor_impl.set_child_cpu_time(child_pid, 0);
-    // Re-add by inserting fresh info (with_active_children_for is a builder method,
-    // so we manually insert via the existing remove/set pattern).
-    // Actually, remove_active_children_for already removed it. We need to re-add.
-    // The mock doesn't have a non-builder insert method, but set_child_cpu_time
-    // only updates existing entries. Let's just stop the test here — the children
-    // are gone, so idle confirmations will accumulate and kill will happen.
-
-    should_stop.store(true, Ordering::Release);
-    let result = handle.join().expect("monitor thread panicked");
-
-    // The test verifies that removing children allows the monitor to proceed
-    // toward timeout (children gone → last_child_cpu_time_ms resets to None).
-    // This is already covered by child_processes_that_finish_eventually_allow_kill,
-    // but we verify the tracking reset behavior here.
-    assert!(
-        matches!(
-            result,
-            MonitorResult::ProcessCompleted | MonitorResult::TimedOut { .. }
-        ),
-        "monitor should proceed after children disappear"
+    // Re-add children (simulates a new subprocess spawning). The monitor's
+    // last_child_cpu_time_ms is None, so the first observation of the new
+    // children grants grace again (idle counter resets).
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            cpu_time_ms: 0,
+        },
     );
+    // Grace observation happens on next check. After that, CPU stays at 0
+    // (stalled), so idle confirmations accumulate → eventually kill.
+
+    let result = handle.join().expect("monitor thread panicked");
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "monitor should kill after re-appeared children stall"
+    );
+}
+
+/// When timeout fires with stalled children present, `child_status_at_timeout`
+/// must be `Some` with the correct child count and CPU time.
+#[test]
+fn timeout_with_stalled_children_reports_child_status() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> =
+        Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 3,
+                cpu_time_ms: 7500,
+            },
+        ));
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::ZERO,
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 2,
+        check_child_processes: true,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop,
+        &executor,
+        config,
+    );
+
+    match result {
+        MonitorResult::TimedOut {
+            child_status_at_timeout: Some(info),
+            ..
+        } => {
+            assert_eq!(info.child_count, 3);
+            assert_eq!(info.cpu_time_ms, 7500);
+        }
+        other => panic!("expected TimedOut with child_status_at_timeout=Some, got {other:?}"),
+    }
+}
+
+/// When timeout fires with no children, `child_status_at_timeout` must be `None`.
+#[test]
+fn timeout_without_children_reports_none_child_status() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = Arc::new(MockProcessExecutor::new());
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::ZERO,
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: true,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop,
+        &executor,
+        config,
+    );
+
+    match result {
+        MonitorResult::TimedOut {
+            child_status_at_timeout: None,
+            ..
+        } => {}
+        other => panic!("expected TimedOut with child_status_at_timeout=None, got {other:?}"),
+    }
+}
+
+/// When `check_child_processes` is disabled, `child_status_at_timeout` must be `None`
+/// even if the executor would report children.
+#[test]
+fn timeout_with_check_disabled_reports_none_child_status() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> =
+        Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::ZERO,
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: false,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop,
+        &executor,
+        config,
+    );
+
+    match result {
+        MonitorResult::TimedOut {
+            child_status_at_timeout: None,
+            ..
+        } => {}
+        other => panic!(
+            "expected TimedOut with child_status_at_timeout=None when check disabled, got {other:?}"
+        ),
+    }
 }

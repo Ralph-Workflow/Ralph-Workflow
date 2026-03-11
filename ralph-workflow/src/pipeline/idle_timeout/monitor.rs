@@ -4,7 +4,7 @@ use super::kill::{
     force_kill_best_effort, kill_process, KillConfig, KillResult, DEFAULT_KILL_CONFIG,
 };
 use super::{is_idle_timeout_exceeded, SharedActivityTimestamp, SharedFileActivityTracker};
-use crate::executor::{AgentChild, ProcessExecutor};
+use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};
 use crate::workspace::Workspace;
 use std::sync::Arc;
 use std::time::Duration;
@@ -80,7 +80,15 @@ pub enum MonitorResult {
     /// The `escalated` flag indicates whether SIGKILL/taskkill was required:
     /// - `false`: Process terminated after SIGTERM within grace period
     /// - `true`: Process did not respond to SIGTERM, required SIGKILL/taskkill
-    TimedOut { escalated: bool },
+    ///
+    /// `child_status_at_timeout` records the child-process state when the timeout
+    /// was enforced, enabling observability (AC #9):
+    /// - `None`: no children existed (or child-process checking was disabled)
+    /// - `Some(info)`: children were present (with stalled CPU) at kill time
+    TimedOut {
+        escalated: bool,
+        child_status_at_timeout: Option<ChildProcessInfo>,
+    },
 }
 
 /// Default check interval for the idle monitor (30 seconds).
@@ -189,6 +197,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let mut last_file_activity: Option<std::time::Instant> = None;
     let mut consecutive_idle_count: u32 = 0;
     let mut last_child_cpu_time_ms: Option<u64> = None;
+    let mut last_child_info: Option<ChildProcessInfo> = None;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -214,6 +223,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             if let Ok(Some(_)) = status {
                 return MonitorResult::TimedOut {
                     escalated: state.escalated,
+                    child_status_at_timeout: last_child_info,
                 };
             }
 
@@ -283,6 +293,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
                 return MonitorResult::TimedOut {
                     escalated: state.escalated,
+                    child_status_at_timeout: last_child_info,
                 };
             }
 
@@ -380,6 +391,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                 let cpu_advanced =
                     last_child_cpu_time_ms.is_none_or(|prev| info.cpu_time_ms > prev);
                 last_child_cpu_time_ms = Some(info.cpu_time_ms);
+                last_child_info = Some(info);
 
                 if cpu_advanced {
                     consecutive_idle_count = 0;
@@ -398,6 +410,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                 );
             } else {
                 last_child_cpu_time_ms = None;
+                last_child_info = None;
             }
         }
 
@@ -424,8 +437,18 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
 
         let kill_result = kill_process(child_id, executor.as_ref(), Some(child), kill_config);
         match kill_result {
-            KillResult::TerminatedByTerm => return MonitorResult::TimedOut { escalated: false },
-            KillResult::TerminatedByKill => return MonitorResult::TimedOut { escalated: true },
+            KillResult::TerminatedByTerm => {
+                return MonitorResult::TimedOut {
+                    escalated: false,
+                    child_status_at_timeout: last_child_info,
+                }
+            }
+            KillResult::TerminatedByKill => {
+                return MonitorResult::TimedOut {
+                    escalated: true,
+                    child_status_at_timeout: last_child_info,
+                }
+            }
             KillResult::SignalsSentAwaitingExit { escalated } => {
                 timeout_triggered = Some(TimeoutEnforcementState {
                     pid: child_id,
