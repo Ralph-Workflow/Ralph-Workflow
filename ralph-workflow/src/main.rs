@@ -49,3 +49,152 @@ fn main() -> anyhow::Result<()> {
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use ralph_workflow::agents::{AgentDrain, AgentRegistry};
+    use ralph_workflow::checkpoint::execution_history::ExecutionHistory;
+    use ralph_workflow::checkpoint::RunContext;
+    use ralph_workflow::config::Config;
+    use ralph_workflow::logger::{Colors, Logger};
+    use ralph_workflow::logging::RunLogContext;
+    use ralph_workflow::phases::PhaseContext;
+    use ralph_workflow::pipeline::Timer;
+    use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::reducer::effect::{Effect, EffectHandler};
+    use ralph_workflow::reducer::event::{AgentEvent, PipelineEvent};
+    use ralph_workflow::reducer::handler::MainEffectHandler;
+    use ralph_workflow::workspace::{Workspace, WorkspaceFs};
+    use ralph_workflow::RealProcessExecutor;
+    use tempfile::TempDir;
+
+    struct TestFixture {
+        config: Config,
+        registry: AgentRegistry,
+        colors: Colors,
+        logger: Logger,
+        timer: Timer,
+        template_context: TemplateContext,
+        executor: Arc<RealProcessExecutor>,
+        _temp_dir: TempDir,
+        workspace: WorkspaceFs,
+        workspace_arc: Arc<dyn Workspace>,
+        repo_root: PathBuf,
+        run_log_context: RunLogContext,
+        cloud: ralph_workflow::config::types::CloudConfig,
+    }
+
+    impl TestFixture {
+        fn new(config_toml: &str) -> Self {
+            let temp_dir = TempDir::new().unwrap();
+            let workspace = WorkspaceFs::new(temp_dir.path().to_path_buf());
+            let workspace_arc = Arc::new(workspace.clone()) as Arc<dyn Workspace>;
+            let colors = Colors::new();
+            let logger = Logger::new(colors);
+            let run_log_context = RunLogContext::new(&workspace).unwrap();
+            let mut registry = AgentRegistry::new().unwrap();
+            let unified: ralph_workflow::config::UnifiedConfig =
+                toml::from_str(config_toml).unwrap();
+            registry.apply_unified_config(&unified);
+
+            Self {
+                config: Config::default(),
+                registry,
+                colors,
+                logger,
+                timer: Timer::new(),
+                template_context: TemplateContext::default(),
+                executor: Arc::new(RealProcessExecutor::new()),
+                _temp_dir: temp_dir,
+                workspace,
+                workspace_arc,
+                repo_root: PathBuf::from("/mock/repo"),
+                run_log_context,
+                cloud: ralph_workflow::config::types::CloudConfig::disabled(),
+            }
+        }
+
+        fn ctx(&mut self) -> PhaseContext<'_> {
+            PhaseContext {
+                config: &self.config,
+                registry: &self.registry,
+                logger: &self.logger,
+                colors: &self.colors,
+                timer: &mut self.timer,
+                developer_agent: "dev",
+                reviewer_agent: "rev",
+                review_guidelines: None,
+                template_context: &self.template_context,
+                run_context: RunContext::new(),
+                execution_history: ExecutionHistory::new(),
+                executor: self.executor.as_ref(),
+                executor_arc: Arc::clone(&self.executor)
+                    as Arc<dyn ralph_workflow::executor::ProcessExecutor>,
+                repo_root: self.repo_root.as_path(),
+                workspace: &self.workspace,
+                workspace_arc: Arc::clone(&self.workspace_arc),
+                run_log_context: &self.run_log_context,
+                cloud_reporter: None,
+                cloud: &self.cloud,
+            }
+        }
+    }
+
+    fn initialized_agents_for_drain(fixture: &mut TestFixture, drain: AgentDrain) -> Vec<String> {
+        let mut handler =
+            MainEffectHandler::new(ralph_workflow::reducer::state::PipelineState::initial(1, 1));
+        let result = handler
+            .execute(Effect::InitializeAgentChain { drain }, &mut fixture.ctx())
+            .unwrap();
+
+        match result.event {
+            PipelineEvent::Agent(AgentEvent::ChainInitialized { agents, .. }) => agents,
+            event => panic!("expected ChainInitialized event, got {event:?}"),
+        }
+    }
+
+    #[test]
+    fn initialize_agent_chain_uses_resolved_drain_bindings_without_context_repair() {
+        let review_config = r#"
+            [agent_chains]
+            dev = ["codex"]
+            empty = []
+
+            [agent_drains]
+            planning = "dev"
+            development = "dev"
+            review = "empty"
+            fix = "empty"
+        "#;
+        let commit_config = r#"
+            [agent_chains]
+            dev = ["codex"]
+            review_chain = ["claude"]
+            empty = []
+
+            [agent_drains]
+            planning = "dev"
+            development = "dev"
+            review = "review_chain"
+            fix = "review_chain"
+            commit = "empty"
+        "#;
+
+        let mut review_fixture = TestFixture::new(review_config);
+        let review_agents = initialized_agents_for_drain(&mut review_fixture, AgentDrain::Review);
+        assert!(
+            review_agents.is_empty(),
+            "review initialization should use the resolved empty drain binding, got {review_agents:?}"
+        );
+
+        let mut commit_fixture = TestFixture::new(commit_config);
+        let commit_agents = initialized_agents_for_drain(&mut commit_fixture, AgentDrain::Commit);
+        assert!(
+            commit_agents.is_empty(),
+            "commit initialization should not fall back to reviewer/context agents when the resolved commit drain is empty, got {commit_agents:?}"
+        );
+    }
+}

@@ -132,7 +132,7 @@ fn derive_timeout_context_write_effect(state: &PipelineState) -> Effect {
     );
 
     Effect::WriteTimeoutContext {
-        role: state.agent_chain.current_role,
+        role: state.agent_chain.current_drain.role(),
         logfile_path,
         context_path,
     }

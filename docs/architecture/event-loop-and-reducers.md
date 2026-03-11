@@ -336,6 +336,7 @@ Rules:
 - Retry modes that continue the same logical work and session, such as XSD retry, should remain drain-local mode rather than becoming separate drains.
 - Reducer state and pipeline events must stay concrete; they must not carry unresolved config aliases or config-only indirection.
 - Legacy `[agent_chain]` config is acceptable only as an input format; normalize it into the same built-in drain bindings as `[agent_chains]` + `[agent_drains]` before runtime execution.
+- When a built-in drain is omitted from `[agent_drains]`, default it from already-resolved sibling drains first (for example commit from review/fix, analysis from planning/development) before consulting legacy compatibility names.
 - Drain-selection effects and events should address the concrete drain directly (for example `InitializeAgentChain { drain }` and `agent_chain_initialized(drain, ...)`) rather than carrying redundant role-shaped selectors.
 - Effect handlers should consume already-resolved concrete drain-to-chain mappings, not re-derive chain semantics from scattered defaults.
 

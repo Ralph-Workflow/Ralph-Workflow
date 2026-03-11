@@ -396,14 +396,21 @@ impl AgentRegistry {
     ///
     /// Returns error if the operation fails.
     pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), String> {
-        let has_developer = self.fallback.has_fallbacks(AgentRole::Developer);
-        let has_reviewer = self.fallback.has_fallbacks(AgentRole::Reviewer);
+        let dev_chain = self
+            .resolved_drain(crate::agents::AgentDrain::Development)
+            .map_or(&[][..], |binding| binding.agents.as_slice());
+        let review_chain = self
+            .resolved_drain(crate::agents::AgentDrain::Review)
+            .map_or(&[][..], |binding| binding.agents.as_slice());
+        let has_developer = !dev_chain.is_empty();
+        let has_reviewer = !review_chain.is_empty();
 
         if !has_developer && !has_reviewer {
             return Err(format!(
                 "No agent chain configured. \
                 Searched: {searched_sources}.\n\
-                Please add an [agent_chain] section to your config.\n\
+                Please add [agent_chains] and [agent_drains] sections to your config.\n\
+                Legacy [agent_chain] input is still accepted for compatibility.\n\
                 Run 'ralph --init-global' to create a default configuration."
             ));
         }
@@ -412,7 +419,7 @@ impl AgentRegistry {
             return Err(format!(
                 "No developer agent chain configured. \
                 Searched: {searched_sources}.\n\
-                Add 'developer = [\"your-agent\", ...]' to your [agent_chain] section.\n\
+                Bind the development drain in [agent_drains] to a chain from [agent_chains].\n\
                 Use --list-agents to see available agents."
             ));
         }
@@ -421,14 +428,16 @@ impl AgentRegistry {
             return Err(format!(
                 "No reviewer agent chain configured. \
                 Searched: {searched_sources}.\n\
-                Add 'reviewer = [\"your-agent\", ...]' to your [agent_chain] section.\n\
+                Bind the review drain in [agent_drains] to a chain from [agent_chains].\n\
                 Use --list-agents to see available agents."
             ));
         }
 
         // Sanity check: ensure there is at least one workflow-capable agent per role.
-        for role in [AgentRole::Developer, AgentRole::Reviewer] {
-            let chain = self.fallback.get_fallbacks(role);
+        for (role, chain) in [
+            (AgentRole::Developer, dev_chain),
+            (AgentRole::Reviewer, review_chain),
+        ] {
             let has_capable = chain
                 .iter()
                 .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
@@ -436,7 +445,7 @@ impl AgentRegistry {
                 return Err(format!(
                     "No workflow-capable agents found for {role}.\n\
                     All agents in the {role} chain have can_commit=false.\n\
-                    Fix: set can_commit=true for at least one agent or update [agent_chain]."
+                    Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
                 ));
             }
         }

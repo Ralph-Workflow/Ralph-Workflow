@@ -190,6 +190,11 @@ fn test_fix_attempt_started_resets_agent_chain() {
         new_state.agent_chain.current_role,
         crate::agents::AgentRole::Reviewer
     );
+    assert_eq!(
+        new_state.agent_chain.current_drain,
+        crate::agents::AgentDrain::Fix,
+        "fix attempts must stay on the fix drain even though they share reviewer capability"
+    );
     assert!(
         new_state.agent_chain.agents.is_empty(),
         "Expected agent chain to be cleared for re-initialization"

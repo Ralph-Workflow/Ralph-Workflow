@@ -150,10 +150,11 @@ impl ResolvedDrainConfig {
         let mut bindings = HashMap::new();
         for drain in AgentDrain::all() {
             let role = drain.role();
+            let chain_name = fallback.effective_chain_name_for_role(role).to_string();
             bindings.insert(
                 drain,
                 ResolvedDrainBinding {
-                    chain_name: role.to_string(),
+                    chain_name,
                     agents: fallback.get_fallbacks(role).to_vec(),
                 },
             );
@@ -374,6 +375,27 @@ impl Default for FallbackConfig {
 }
 
 impl FallbackConfig {
+    const fn effective_chain_name_for_role(&self, role: AgentRole) -> &'static str {
+        match role {
+            AgentRole::Developer => "developer",
+            AgentRole::Reviewer => "reviewer",
+            AgentRole::Commit => {
+                if self.commit.is_empty() {
+                    "reviewer"
+                } else {
+                    "commit"
+                }
+            }
+            AgentRole::Analysis => {
+                if self.analysis.is_empty() {
+                    "developer"
+                } else {
+                    "analysis"
+                }
+            }
+        }
+    }
+
     /// Calculate exponential backoff delay for a given cycle.
     ///
     /// Uses the formula: min(base * multiplier^cycle, `max_backoff`)

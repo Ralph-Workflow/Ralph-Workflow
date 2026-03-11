@@ -332,8 +332,47 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
 
     assert!(error.contains("planning"));
     assert!(error.contains("development"));
-    assert!(error.contains("commit"));
     assert!(error.contains("analysis"));
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("development".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should derive from existing bound drains")
+        .expect("named drain config should resolve");
+
+    let commit = resolved
+        .binding(crate::agents::AgentDrain::Commit)
+        .expect("commit drain should be derived from review/fix binding");
+    let analysis = resolved
+        .binding(crate::agents::AgentDrain::Analysis)
+        .expect("analysis drain should be derived from planning/development binding");
+
+    assert_eq!(commit.chain_name, "shared_review");
+    assert_eq!(commit.agents, vec!["claude", "opencode"]);
+    assert_eq!(analysis.chain_name, "shared_dev");
+    assert_eq!(analysis.agents, vec!["codex", "claude"]);
 }
 
 #[test]

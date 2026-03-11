@@ -473,6 +473,8 @@ When the pipeline executes agents, the effect system should operate on a consist
 
 Legacy `[agent_chain]` remains a config-input compatibility path only. The effect boundary should see the same resolved built-in drain bindings regardless of whether the user wrote legacy role-keyed config or explicit named chains and drains.
 
+Normalization should prefer already-bound drains when filling built-in defaults. For example, if `review` and `fix` are both bound to `shared_review`, then an omitted `commit` drain should inherit that resolved binding instead of inventing a new role-shaped default at handler time.
+
 Effect handlers must not become a second policy engine for agent architecture. In particular:
 
 - do not push unresolved chain aliases into handler-time logic

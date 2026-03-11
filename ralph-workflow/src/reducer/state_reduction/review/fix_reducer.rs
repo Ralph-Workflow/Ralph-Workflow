@@ -1,6 +1,6 @@
 // NOTE: split from reducer/state_reduction/review.rs (fix attempt events).
 
-use crate::agents::{AgentRole, DrainMode};
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::event::{PipelinePhase, ReviewEvent};
 use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, FixStatus, FixValidatedOutcome, PipelineState,
@@ -8,7 +8,7 @@ use crate::reducer::state::{
 
 /// Handles `ReviewEvent::FixAttemptStarted`.
 ///
-/// Starts a new fix attempt by resetting the agent chain for Reviewer role
+/// Starts a new fix attempt by resetting the agent chain for the Fix drain
 /// and clearing pending flags to prevent infinite loops.
 ///
 /// Fix attempts use the Reviewer agent chain by design. The pipeline has three
@@ -24,7 +24,7 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
                 state.agent_chain.backoff_multiplier,
                 state.agent_chain.max_backoff_ms,
             )
-            .reset_for_role(AgentRole::Reviewer),
+            .reset_for_drain(AgentDrain::Fix),
         // Clear pending flags when fix attempt starts to prevent infinite loops.
         // xsd_retry_pending is cleared to ensure the XSD retry effect doesn't re-trigger
         // after the fix attempt starts a fresh agent invocation.

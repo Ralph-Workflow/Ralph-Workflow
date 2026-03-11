@@ -224,8 +224,8 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             // - Always reset for Level 2+ recovery (phase/iteration resets imply fresh work).
             // - Also reset for Level 1 if the chain is already exhausted.
             if level >= 2 || new_state.agent_chain.is_exhausted() {
-                let role = new_state.agent_chain.current_role;
-                new_state.agent_chain = new_state.agent_chain.reset_for_role(role);
+                let drain = new_state.agent_chain.current_drain;
+                new_state.agent_chain = new_state.agent_chain.reset_for_drain(drain);
             }
 
             new_state

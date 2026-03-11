@@ -470,13 +470,13 @@ impl UnifiedConfig {
                     continue;
                 }
 
-                let Some((chain_name, agents)) = default_chain_binding_for_drain(self, drain)
-                else {
+                let Some(binding) = default_chain_binding_for_drain(self, &bindings, drain) else {
                     let missing = AgentDrain::all()
                         .into_iter()
                         .filter(|candidate| {
                             !bindings.contains_key(candidate)
-                                && default_chain_binding_for_drain(self, *candidate).is_none()
+                                && default_chain_binding_for_drain(self, &bindings, *candidate)
+                                    .is_none()
                         })
                         .map(AgentDrain::as_str)
                         .collect::<Vec<_>>()
@@ -485,7 +485,7 @@ impl UnifiedConfig {
                         "agent_drains does not resolve all built-in drains; missing bindings for: {missing}"
                     ));
                 };
-                bindings.insert(drain, ResolvedDrainBinding { chain_name, agents });
+                bindings.insert(drain, binding);
             }
 
             let legacy = self.agent_chain.clone().unwrap_or_default();
@@ -509,28 +509,45 @@ impl UnifiedConfig {
 
 fn default_chain_binding_for_drain(
     config: &UnifiedConfig,
+    bindings: &HashMap<AgentDrain, ResolvedDrainBinding>,
     drain: AgentDrain,
-) -> Option<(String, Vec<String>)> {
-    let preferred_chain = match drain {
-        AgentDrain::Planning | AgentDrain::Development => "developer",
-        AgentDrain::Review | AgentDrain::Fix => "reviewer",
-        AgentDrain::Commit => "commit",
-        AgentDrain::Analysis => "analysis",
-    };
+) -> Option<ResolvedDrainBinding> {
+    preferred_chain_names_for_drain(drain)
+        .iter()
+        .find_map(|&chain_name| {
+            config
+                .agent_chains
+                .get(chain_name)
+                .map(|agents| ResolvedDrainBinding {
+                    chain_name: chain_name.to_string(),
+                    agents: agents.clone(),
+                })
+        })
+        .or_else(|| {
+            fallback_source_drains_for_drain(drain)
+                .iter()
+                .find_map(|source| bindings.get(source).cloned())
+        })
+}
 
-    if let Some(agents) = config.agent_chains.get(preferred_chain) {
-        return Some((preferred_chain.to_string(), agents.clone()));
-    }
-
+const fn preferred_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {
     match drain {
-        AgentDrain::Analysis => config
-            .agent_chains
-            .get("developer")
-            .map(|agents| ("developer".to_string(), agents.clone())),
-        AgentDrain::Commit => config
-            .agent_chains
-            .get("reviewer")
-            .map(|agents| ("reviewer".to_string(), agents.clone())),
-        _ => None,
+        AgentDrain::Planning => &["planning", "developer"],
+        AgentDrain::Development => &["development", "developer"],
+        AgentDrain::Review => &["review", "reviewer"],
+        AgentDrain::Fix => &["fix", "reviewer"],
+        AgentDrain::Commit => &["commit", "reviewer"],
+        AgentDrain::Analysis => &["analysis", "developer"],
+    }
+}
+
+const fn fallback_source_drains_for_drain(drain: AgentDrain) -> &'static [AgentDrain] {
+    match drain {
+        AgentDrain::Planning => &[AgentDrain::Development],
+        AgentDrain::Development => &[AgentDrain::Planning],
+        AgentDrain::Review => &[AgentDrain::Fix],
+        AgentDrain::Fix => &[AgentDrain::Review],
+        AgentDrain::Commit => &[AgentDrain::Review, AgentDrain::Fix],
+        AgentDrain::Analysis => &[AgentDrain::Development, AgentDrain::Planning],
     }
 }

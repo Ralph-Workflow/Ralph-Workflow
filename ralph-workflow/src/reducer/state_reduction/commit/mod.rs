@@ -27,7 +27,7 @@ fn compute_post_commit_phase_data(
 ) {
     let (next_phase, next_iter, next_reviewer_pass) = compute_post_commit_transition(state);
 
-    // When transitioning to Review phase, reset the agent chain for Reviewer role
+    // When transitioning to Review phase, reset the agent chain for the Review drain
     // to ensure the reviewer fallback chain is used, not any other chain (Developer, Commit).
     // This handles both:
     // - Development → CommitMessage → Review (first review pass)
@@ -40,7 +40,7 @@ fn compute_post_commit_phase_data(
                 state.agent_chain.backoff_multiplier,
                 state.agent_chain.max_backoff_ms,
             )
-            .reset_for_role(crate::agents::AgentRole::Reviewer)
+            .reset_for_drain(crate::agents::AgentDrain::Review)
     } else {
         state.agent_chain.clone()
     };
@@ -438,7 +438,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                         state.agent_chain.backoff_multiplier,
                         state.agent_chain.max_backoff_ms,
                     )
-                    .reset_for_role(crate::agents::AgentRole::Reviewer)
+                    .reset_for_drain(crate::agents::AgentDrain::Review)
             } else {
                 state.agent_chain.clone()
             };

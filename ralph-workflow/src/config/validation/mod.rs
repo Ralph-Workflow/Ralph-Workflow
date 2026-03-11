@@ -554,10 +554,30 @@ fix = "shared_review"
                     if key == "agent_drains"
                         && message.contains("planning")
                         && message.contains("development")
-                        && message.contains("commit")
                         && message.contains("analysis")
             )),
             "expected incomplete drain coverage error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_file_accepts_commit_and_analysis_derived_from_bound_drains() {
+        let content = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_ok(),
+            "commit and analysis should derive from existing bound drains"
         );
     }
 }

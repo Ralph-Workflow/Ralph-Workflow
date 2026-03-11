@@ -1,6 +1,6 @@
 use super::MainEffectHandler;
 use crate::agents::{AgentDrain, AgentRole};
-use crate::phases::{get_primary_commit_agent, PhaseContext};
+use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::ui_event::UIEvent;
@@ -14,33 +14,10 @@ impl MainEffectHandler {
         let fallback_config = ctx.registry.fallback_config();
 
         // Resolve the concrete chain for this drain.
-        let mut agents = ctx
+        let agents = ctx
             .registry
             .resolved_drain(drain)
             .map_or_else(Vec::new, |binding| binding.agents.clone());
-
-        // If no fallbacks configured, fall back to context agent
-        if agents.is_empty() {
-            let fallback_agent = match role {
-                AgentRole::Reviewer => ctx.reviewer_agent.to_string(),
-                AgentRole::Commit => {
-                    if let Some(commit_agent) = get_primary_commit_agent(ctx) {
-                        commit_agent
-                    } else {
-                        return EffectResult::event(PipelineEvent::agent_chain_initialized(
-                            drain,
-                            vec![],
-                            fallback_config.max_cycles,
-                            fallback_config.retry_delay_ms,
-                            fallback_config.backoff_multiplier,
-                            fallback_config.max_backoff_ms,
-                        ));
-                    }
-                }
-                AgentRole::Developer | AgentRole::Analysis => ctx.developer_agent.to_string(),
-            };
-            agents.push(fallback_agent);
-        }
 
         ctx.logger.info(&format!(
             "Agent fallback chain for drain {drain}: {}",

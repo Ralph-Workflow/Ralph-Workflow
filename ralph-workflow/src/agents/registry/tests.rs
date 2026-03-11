@@ -319,6 +319,44 @@ fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback
 }
 
 #[test]
+fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_names() {
+    let mut registry = AgentRegistry::new().unwrap();
+
+    let toml_str = r#"
+        [agent_chains]
+        shared_dev = ["codex", "claude"]
+        shared_review = ["claude", "opencode"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    registry.apply_unified_config(&unified);
+
+    let commit = registry
+        .resolved_drain(crate::agents::AgentDrain::Commit)
+        .expect("commit drain should inherit the bound review chain");
+    let analysis = registry
+        .resolved_drain(crate::agents::AgentDrain::Analysis)
+        .expect("analysis drain should inherit the bound development chain");
+
+    assert_eq!(commit.chain_name, "shared_review");
+    assert_eq!(
+        commit.agents,
+        vec!["claude".to_string(), "opencode".to_string()]
+    );
+    assert_eq!(analysis.chain_name, "shared_dev");
+    assert_eq!(
+        analysis.agents,
+        vec!["codex".to_string(), "claude".to_string()]
+    );
+}
+
+#[test]
 fn test_validate_agent_chains_error_mentions_searched_sources() {
     let mut registry = AgentRegistry::new().unwrap();
     // Override chains with empty values via apply_unified_config
@@ -338,6 +376,10 @@ fn test_validate_agent_chains_error_mentions_searched_sources() {
     assert!(
         err.contains("built-in defaults"),
         "error should mention built-in defaults: {err}"
+    );
+    assert!(
+        err.contains("agent_chains") && err.contains("agent_drains"),
+        "error should guide users toward the named chain/drain schema: {err}"
     );
 }
 

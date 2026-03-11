@@ -79,6 +79,8 @@ All pipeline control-flow decisions (iteration advancement, retry/continuation/f
 
 **Chain config is separate from runtime drain identity:** Config may define reusable named chains and bind built-in drains to those chains, but runtime effects/events/state should operate on resolved concrete drain bindings rather than re-deriving role-shaped defaults during execution.
 
+**Drain defaults come from resolved drain bindings first:** When commit or analysis are not bound explicitly, normalization should inherit from already-bound review/fix and planning/development drains before falling back to legacy compatibility names like `reviewer` or `developer`.
+
 **Legacy compatibility is config-only:** Legacy `[agent_chain]` input may still be accepted, but it must be normalized into the same built-in resolved drain bindings before runtime code, handlers, or tests consume it.
 
 **Invariants:**
