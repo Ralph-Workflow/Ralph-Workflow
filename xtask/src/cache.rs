@@ -57,6 +57,12 @@ pub enum CheckScope {
     Directories(&'static [&'static str]),
     /// Hash Cargo.lock plus all .rs files under the given paths.
     Build(&'static [&'static str]),
+    /// Hash a build scope plus additional non-Rust files or directories watched at compile time.
+    BuildWithExtras {
+        dirs: &'static [&'static str],
+        globs: &'static [ScopeGlob],
+        files: &'static [&'static str],
+    },
     /// Hash explicitly selected files and globbed inputs.
     Patterns {
         globs: &'static [ScopeGlob],
@@ -106,6 +112,10 @@ impl CachedFileFingerprint {
             len: self.len,
             modified: self.modified,
         }
+    }
+
+    fn can_reuse_for_metadata(self, metadata: FileFingerprintMetadata) -> bool {
+        metadata.modified.is_some() && self.metadata() == metadata
     }
 }
 
@@ -174,7 +184,7 @@ impl RepositoryFingerprintCache {
         let metadata = Self::file_metadata(path)?;
 
         if let Some(cached) = self.file_fingerprints.lock().unwrap().get(path).copied() {
-            if cached.metadata() == metadata {
+            if cached.can_reuse_for_metadata(metadata) {
                 return Ok(cached.digest);
             }
         }
@@ -197,6 +207,21 @@ impl RepositoryFingerprintCache {
 }
 
 const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui", "ralph-workflow/src"];
+const RALPH_GUI_BUILD_EXTRA_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "ralph-gui/capabilities",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "ralph-gui/icons",
+        pattern: "*",
+    },
+];
+const RALPH_GUI_BUILD_EXTRA_FILES: &[&str] = &["ralph-gui/tauri.conf.json"];
+const INTEGRATION_TEST_EXTRA_GLOBS: &[ScopeGlob] = &[ScopeGlob {
+    dir: "tests/integration_tests/artifacts",
+    pattern: "*",
+}];
 const DYLINT_SCOPE_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "ralph-workflow/src",
@@ -250,6 +275,14 @@ pub fn scope_memo_key(scope: &CheckScope) -> String {
     match scope {
         CheckScope::Directories(dirs) => format!("d:{}", dirs.join(",")),
         CheckScope::Build(dirs) => format!("b:{}", dirs.join(",")),
+        CheckScope::BuildWithExtras { dirs, globs, files } => {
+            let glob_key = globs
+                .iter()
+                .map(|glob| format!("{}@{}", glob.dir, glob.pattern))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("bx:{}:{glob_key}:{}", dirs.join(","), files.join(","))
+        }
         CheckScope::Patterns {
             globs,
             files,
@@ -300,7 +333,11 @@ pub fn scope_for(check_name: &str) -> CheckScope {
 
         "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
 
-        "clippy-ralph-gui" | "test-ralph-gui-lib" => CheckScope::Build(RALPH_GUI_RUST_SCOPE_DIRS),
+        "clippy-ralph-gui" | "test-ralph-gui-lib" => CheckScope::BuildWithExtras {
+            dirs: RALPH_GUI_RUST_SCOPE_DIRS,
+            globs: RALPH_GUI_BUILD_EXTRA_GLOBS,
+            files: RALPH_GUI_BUILD_EXTRA_FILES,
+        },
 
         "ralph-gui-frontend-install" => CheckScope::Patterns {
             globs: &[],
@@ -314,11 +351,15 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             include_lock: false,
         },
 
-        "test-integration" => CheckScope::Build(&[
-            "ralph-workflow/src",
-            "tests/integration_tests",
-            "test-helpers/src",
-        ]),
+        "test-integration" => CheckScope::BuildWithExtras {
+            dirs: &[
+                "ralph-workflow/src",
+                "tests/integration_tests",
+                "test-helpers/src",
+            ],
+            globs: INTEGRATION_TEST_EXTRA_GLOBS,
+            files: &[],
+        },
 
         "release-build" => {
             CheckScope::Build(&["ralph-workflow/src", "test-helpers/src", "xtask/src"])
@@ -375,7 +416,9 @@ pub fn compute_scope_hash_with_snapshot(
     let mut all_paths: Vec<PathBuf> = Vec::new();
 
     match scope {
-        CheckScope::Directories(dirs) | CheckScope::Build(dirs) => {
+        CheckScope::Directories(dirs)
+        | CheckScope::Build(dirs)
+        | CheckScope::BuildWithExtras { dirs, .. } => {
             for dir in *dirs {
                 all_paths.extend(snapshot.collect_globbed_paths(repo_root, dir, "*.rs")?);
 
@@ -403,13 +446,32 @@ pub fn compute_scope_hash_with_snapshot(
                 "rust-toolchain",
                 "Makefile",
             ];
-            if matches!(scope, CheckScope::Build(_)) {
+            if matches!(
+                scope,
+                CheckScope::Build(_) | CheckScope::BuildWithExtras { .. }
+            ) {
                 config_candidates.push("Cargo.lock");
             }
             for rel in config_candidates {
                 let path = repo_root.join(rel);
                 if path.exists() {
                     all_paths.push(path);
+                }
+            }
+
+            if let CheckScope::BuildWithExtras { globs, files, .. } = scope {
+                for glob in *globs {
+                    all_paths.extend(snapshot.collect_globbed_paths(
+                        repo_root,
+                        glob.dir,
+                        glob.pattern,
+                    )?);
+                }
+                for rel in *files {
+                    let path = repo_root.join(rel);
+                    if path.exists() {
+                        all_paths.push(path);
+                    }
                 }
             }
         }
@@ -1224,14 +1286,87 @@ mod tests {
 
     #[test]
     fn test_scope_for_clippy_ralph_gui_is_granular() {
-        let key = scope_memo_key(&scope_for("clippy-ralph-gui"));
-        assert_eq!(key, "b:ralph-gui,ralph-workflow/src");
+        match scope_for("clippy-ralph-gui") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(dirs, RALPH_GUI_RUST_SCOPE_DIRS);
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/capabilities" && glob.pattern == "*"),
+                    "GUI verify scope must track Tauri capabilities watched by build.rs"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/icons" && glob.pattern == "*"),
+                    "GUI verify scope must track Tauri icons watched by build.rs"
+                );
+                assert!(
+                    files.contains(&"ralph-gui/tauri.conf.json"),
+                    "GUI verify scope must track tauri.conf.json watched by build.rs"
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("clippy-ralph-gui must use BuildWithExtras scope")
+            }
+        }
     }
 
     #[test]
     fn test_scope_for_test_ralph_gui_lib_is_granular() {
-        let key = scope_memo_key(&scope_for("test-ralph-gui-lib"));
-        assert_eq!(key, "b:ralph-gui,ralph-workflow/src");
+        match scope_for("test-ralph-gui-lib") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(dirs, RALPH_GUI_RUST_SCOPE_DIRS);
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/capabilities" && glob.pattern == "*"),
+                    "GUI lib test scope must track Tauri capabilities watched by build.rs"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/icons" && glob.pattern == "*"),
+                    "GUI lib test scope must track Tauri icons watched by build.rs"
+                );
+                assert!(
+                    files.contains(&"ralph-gui/tauri.conf.json"),
+                    "GUI lib test scope must track tauri.conf.json watched by build.rs"
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("test-ralph-gui-lib must use BuildWithExtras scope")
+            }
+        }
+    }
+
+    #[test]
+    fn test_scope_for_test_integration_tracks_compile_time_artifacts() {
+        match scope_for("test-integration") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(
+                    dirs,
+                    &[
+                        "ralph-workflow/src",
+                        "tests/integration_tests",
+                        "test-helpers/src"
+                    ]
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "tests/integration_tests/artifacts" && glob.pattern == "*"
+                    }),
+                    "integration test scope must track compile-time fixtures included from tests/integration_tests/artifacts"
+                );
+                assert!(
+                    files.is_empty(),
+                    "integration test scope should use directory extras instead of ad hoc files"
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("test-integration must use BuildWithExtras scope")
+            }
+        }
     }
 
     #[test]
@@ -1253,7 +1388,9 @@ mod tests {
                     "fmt-check must scan ralph-gui because cargo fmt --all --check formats GUI Rust too"
                 );
             }
-            CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+            CheckScope::Build(_)
+            | CheckScope::BuildWithExtras { .. }
+            | CheckScope::Patterns { .. } => {
                 panic!("fmt-check must use Directories scope")
             }
         }
@@ -1284,7 +1421,9 @@ mod tests {
                     "forbidden allow/expect scan must cover ralph-gui so GUI Rust is scanned too"
                 );
             }
-            CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+            CheckScope::Build(_)
+            | CheckScope::BuildWithExtras { .. }
+            | CheckScope::Patterns { .. } => {
                 panic!("forbidden-allow-expect-scan must use Directories scope")
             }
         }
@@ -1329,7 +1468,9 @@ mod tests {
                     "dylint uses explicit files for its lockfiles instead of the workspace lock toggle"
                 );
             }
-            CheckScope::Directories(_) | CheckScope::Build(_) => {
+            CheckScope::Directories(_)
+            | CheckScope::Build(_)
+            | CheckScope::BuildWithExtras { .. } => {
                 panic!("dylint must use a dedicated Patterns scope")
             }
         }
@@ -1735,6 +1876,71 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[test]
+    fn test_compute_scope_hash_test_integration_changes_when_fixture_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-integration-artifact-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+        let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests/artifacts"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"ralph-workflow\", \"test-helpers\", \"tests\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("test-helpers/Cargo.toml"),
+            b"[package]\nname = \"test-helpers\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("tests/Cargo.toml"),
+            b"[package]\nname = \"tests\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("tests/integration_tests/sample.rs"),
+            b"const LOG: &str = include_str!(\"artifacts/example_log.log\");\n#[test]\nfn integration() { assert!(!LOG.is_empty()); }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("tests/integration_tests/artifacts/example_log.log"),
+            b"first fixture\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("test-integration");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("tests/integration_tests/artifacts/example_log.log"),
+            b"second fixture\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "integration test scope must invalidate when compile-time fixtures change"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     fn write_release_build_scope_fixture(tmp: &Path) {
         let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
         let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
@@ -1935,6 +2141,97 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_gui_scope_hash_changes_when_build_script_input_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-gui-build-inputs");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/capabilities"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/icons"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"ralph-gui\", \"ralph-workflow\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/Cargo.toml"),
+            b"[package]\nname = \"ralph-gui\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("ralph-gui/build.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/src/lib.rs"), b"pub fn gui() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/tauri.conf.json"),
+            b"{\"app\":\"one\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/capabilities/default.json"),
+            b"{\"capability\":\"one\"}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("ralph-gui/icons/icon.png"), b"icon-one\n").unwrap();
+
+        let scope = scope_for("clippy-ralph-gui");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/capabilities/default.json"),
+            b"{\"capability\":\"two\"}\n",
+        )
+        .unwrap();
+
+        let hash_after_capabilities = compute_scope_hash(&tmp, &scope).unwrap();
+        assert_ne!(
+            hash_before, hash_after_capabilities,
+            "GUI verify scope must invalidate when capabilities watched by build.rs change"
+        );
+
+        std::fs::write(
+            tmp.join("ralph-gui/tauri.conf.json"),
+            b"{\"app\":\"three\"}\n",
+        )
+        .unwrap();
+
+        let hash_after_tauri = compute_scope_hash(&tmp, &scope).unwrap();
+        assert_ne!(
+            hash_after_capabilities, hash_after_tauri,
+            "GUI verify scope must invalidate when tauri.conf.json watched by build.rs changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_cached_file_fingerprint_requires_available_modified_time_for_reuse() {
+        let cached = CachedFileFingerprint {
+            len: 11,
+            modified: None,
+            digest: 42,
+        };
+
+        assert!(
+            !cached.can_reuse_for_metadata(FileFingerprintMetadata {
+                len: 11,
+                modified: None,
+            }),
+            "persisted digests must not be trusted when metadata.modified() is unavailable"
+        );
     }
 
     #[cfg(unix)]
