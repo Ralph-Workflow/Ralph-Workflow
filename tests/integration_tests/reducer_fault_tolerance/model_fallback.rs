@@ -304,6 +304,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
 
@@ -334,6 +335,7 @@ fn test_timeout_retries_same_agent_then_agent_fallback_not_model_fallback() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
 
@@ -391,6 +393,7 @@ fn test_timeout_no_output_clears_session_id() {
                 "agent1".to_string(),
                 TimeoutOutputKind::NoOutput,
                 None,
+                None,
             ),
         );
 
@@ -429,6 +432,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
 
@@ -446,6 +450,7 @@ fn test_timeout_followed_by_successful_retry_with_different_agent() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
 
@@ -497,6 +502,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         state = ralph_workflow::reducer::state_reduction::reduce(
@@ -506,6 +512,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent1".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         assert_eq!(
@@ -521,6 +528,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent2".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         state = ralph_workflow::reducer::state_reduction::reduce(
@@ -530,6 +538,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent2".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         assert_eq!(
@@ -545,6 +554,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent3".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         state = ralph_workflow::reducer::state_reduction::reduce(
@@ -554,6 +564,7 @@ fn test_multiple_timeouts_cycle_through_agents() {
                 "agent3".to_string(),
                 TimeoutOutputKind::PartialOutput,
                 Some(".agent/logs/developer_0.log".to_string()),
+                None,
             ),
         );
         assert_eq!(

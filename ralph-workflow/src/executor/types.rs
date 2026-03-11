@@ -4,6 +4,7 @@
 //! including process output, agent spawn configuration, and agent child handles.
 
 use crate::agents::JsonParserType;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io;
 
@@ -104,7 +105,7 @@ impl AgentChild for RealAgentChild {
 /// Used by the idle-timeout monitor to determine whether child processes
 /// are actively working (CPU time advancing) versus merely existing
 /// (stalled, zombie, or idle daemon).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChildProcessInfo {
     /// Number of live child processes found.
     pub child_count: u32,
@@ -158,5 +159,29 @@ impl AgentCommandResult {
             exit_code,
             stderr: stderr.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_process_info_serde_round_trip() {
+        let info = ChildProcessInfo {
+            child_count: 3,
+            cpu_time_ms: 42000,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, restored);
+    }
+
+    #[test]
+    fn child_process_info_none_serde_round_trip() {
+        let info = ChildProcessInfo::NONE;
+        let json = serde_json::to_string(&info).unwrap();
+        let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(info, restored);
     }
 }

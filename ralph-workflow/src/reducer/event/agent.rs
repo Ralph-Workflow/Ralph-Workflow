@@ -1,6 +1,7 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
 use crate::agents::AgentRole;
+use crate::executor::ChildProcessInfo;
 use serde::{Deserialize, Serialize};
 
 /// Agent invocation and chain management events.
@@ -142,6 +143,12 @@ pub enum AgentEvent {
         /// this path is used to extract context for the retry prompt.
         #[serde(default)]
         logfile_path: Option<String>,
+        /// Child process status when the timeout was enforced.
+        ///
+        /// `None` if no children existed or child checking was disabled.
+        /// When `Some`, contains the child count and cumulative CPU time at timeout.
+        #[serde(default)]
+        child_status_at_timeout: Option<ChildProcessInfo>,
     },
 
     /// Session established with agent.

@@ -146,6 +146,7 @@ pub(super) fn run_with_agent_spawn(
                 exit_code,
                 stderr: format!("{}: {} - {}", argv[0], detail, e),
                 session_id: None,
+                child_status_at_timeout: None,
             });
         }
     };
@@ -324,7 +325,7 @@ pub(super) fn run_with_agent_spawn(
         .or_else(|| monitor_handle.take().and_then(|handle| handle.join().ok()))
         .unwrap_or(MonitorResult::ProcessCompleted);
 
-    let final_exit_code = match monitor_result {
+    let (final_exit_code, child_status) = match monitor_result {
         MonitorResult::TimedOut {
             escalated,
             child_status_at_timeout,
@@ -358,9 +359,9 @@ pub(super) fn run_with_agent_spawn(
                 escalation_msg,
                 child_msg
             ));
-            super::SIGTERM_EXIT_CODE
+            (super::SIGTERM_EXIT_CODE, child_status_at_timeout)
         }
-        MonitorResult::ProcessCompleted => exit_code,
+        MonitorResult::ProcessCompleted => (exit_code, None),
     };
 
     if runtime.config.verbosity.is_verbose() {
@@ -377,6 +378,7 @@ pub(super) fn run_with_agent_spawn(
         exit_code: final_exit_code,
         stderr: stderr_output,
         session_id,
+        child_status_at_timeout: child_status,
     })
 }
 

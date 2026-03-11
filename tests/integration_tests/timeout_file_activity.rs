@@ -1096,6 +1096,55 @@ fn stalled_subprocess_timeout_includes_child_status() {
     });
 }
 
+/// Event round-trip: `child_status_at_timeout` survives serialization.
+#[test]
+fn child_status_at_timeout_survives_event_serde_round_trip() {
+    with_default_timeout(|| {
+        use ralph_workflow::executor::ChildProcessInfo;
+        use ralph_workflow::reducer::event::{PipelineEvent, TimeoutOutputKind};
+
+        let info = ChildProcessInfo {
+            child_count: 2,
+            cpu_time_ms: 5000,
+        };
+        let event = PipelineEvent::agent_timed_out(
+            ralph_workflow::agents::AgentRole::Developer,
+            "test-agent".to_string(),
+            TimeoutOutputKind::PartialOutput,
+            Some("/tmp/test.log".to_string()),
+            Some(info),
+        );
+
+        let json = serde_json::to_string(&event).expect("serialize");
+        let restored: PipelineEvent = serde_json::from_str(&json).expect("deserialize");
+
+        // Verify the event round-trips correctly
+        let json2 = serde_json::to_string(&restored).expect("re-serialize");
+        assert_eq!(json, json2, "event should survive JSON round-trip");
+    });
+}
+
+/// Backward compatibility: `TimedOut` events without `child_status_at_timeout` deserialize as None.
+#[test]
+fn timed_out_event_without_child_status_deserializes_as_none() {
+    with_default_timeout(|| {
+        use ralph_workflow::reducer::event::PipelineEvent;
+
+        // JSON representing a TimedOut event from before the child_status_at_timeout field existed
+        let old_json = r#"{"Agent":{"TimedOut":{"role":"Developer","agent":"old-agent","output_kind":"NoOutput","logfile_path":"/tmp/old.log"}}}"#;
+
+        let event: PipelineEvent = serde_json::from_str(old_json)
+            .expect("old-format TimedOut event should still deserialize");
+
+        let json = serde_json::to_string(&event).expect("serialize");
+        // The deserialized event should include child_status_at_timeout: null
+        assert!(
+            json.contains("child_status_at_timeout"),
+            "serialized event should include child_status_at_timeout field"
+        );
+    });
+}
+
 /// Timeout with no children has `child_status_at_timeout: None`.
 #[test]
 fn no_subprocess_timeout_has_none_child_status() {

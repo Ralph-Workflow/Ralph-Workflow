@@ -20,6 +20,7 @@ fn test_same_agent_retry_within_budget_does_increment() {
         "claude".to_string(),
         TimeoutOutputKind::PartialOutput,
         Some(".agent/logs/developer_0.log".to_string()),
+        None,
     );
     let state = reduce(state, event);
 
