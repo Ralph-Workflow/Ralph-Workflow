@@ -188,6 +188,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     let mut timeout_triggered: Option<TimeoutEnforcementState> = None;
     let mut last_file_activity: Option<std::time::Instant> = None;
     let mut consecutive_idle_count: u32 = 0;
+    let mut last_child_cpu_time_ms: Option<u64> = None;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -366,19 +367,37 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
         // Check for active child processes: the agent may have spawned a subprocess
         // (e.g. cargo test, cargo build, npm install) that is still running even
         // though there is no stdout/stderr output and no file-system activity in
-        // tracked locations. If children exist the agent is working; reset the
-        // idle counter and wait for the next check interval.
+        // tracked locations. Children only suppress the idle counter when their
+        // cumulative CPU time is advancing between checks — mere existence of
+        // child processes (e.g. zombies, idle daemons) is not sufficient.
         if check_child_processes {
             let child_pid = {
                 let locked_child = child.lock().expect("child process mutex poisoned");
                 locked_child.id()
             };
-            if executor.has_active_child_processes(child_pid) {
-                consecutive_idle_count = 0;
+            let info = executor.get_child_process_info(child_pid);
+            if info.has_children() {
+                let cpu_advanced =
+                    last_child_cpu_time_ms.is_none_or(|prev| info.cpu_time_ms > prev);
+                last_child_cpu_time_ms = Some(info.cpu_time_ms);
+
+                if cpu_advanced {
+                    consecutive_idle_count = 0;
+                    eprintln!(
+                        "Agent has active child processes (pid {child_pid}, \
+                         {} children, cpu {}ms); continuing monitoring",
+                        info.child_count, info.cpu_time_ms
+                    );
+                    continue;
+                }
+                // Children exist but CPU hasn't advanced — treat as idle.
                 eprintln!(
-                    "Agent has active child processes (pid {child_pid}); continuing monitoring"
+                    "Agent has child processes (pid {child_pid}, {} children) \
+                     but CPU time unchanged ({}ms); treating as idle",
+                    info.child_count, info.cpu_time_ms
                 );
-                continue;
+            } else {
+                last_child_cpu_time_ms = None;
             }
         }
 

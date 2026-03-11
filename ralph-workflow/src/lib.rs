@@ -141,8 +141,8 @@ pub use files::llm_output_extraction::validate_issues_xml;
 // Re-export process executor types for dependency injection.
 // See [`executor`] module for documentation.
 pub use executor::{
-    AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ProcessExecutor,
-    ProcessOutput, RealAgentChild, RealProcessExecutor,
+    AgentChild, AgentChildHandle, AgentCommandResult, AgentSpawnConfig, ChildProcessInfo,
+    ProcessExecutor, ProcessOutput, RealAgentChild, RealProcessExecutor,
 };
 
 // Re-export mock executor for test-utils feature.

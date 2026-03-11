@@ -99,6 +99,37 @@ impl AgentChild for RealAgentChild {
     }
 }
 
+/// Information about child processes of a given parent.
+///
+/// Used by the idle-timeout monitor to determine whether child processes
+/// are actively working (CPU time advancing) versus merely existing
+/// (stalled, zombie, or idle daemon).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChildProcessInfo {
+    /// Number of live child processes found.
+    pub child_count: u32,
+    /// Cumulative CPU time in milliseconds across all child processes.
+    ///
+    /// The monitor compares this value across consecutive checks:
+    /// - If `cpu_time_ms` advances between checks, children are actively working.
+    /// - If `cpu_time_ms` is unchanged, children exist but are idle/stalled.
+    pub cpu_time_ms: u64,
+}
+
+impl ChildProcessInfo {
+    /// No child processes found.
+    pub const NONE: Self = Self {
+        child_count: 0,
+        cpu_time_ms: 0,
+    };
+
+    /// Whether any child processes exist.
+    #[must_use]
+    pub const fn has_children(&self) -> bool {
+        self.child_count > 0
+    }
+}
+
 /// Result of an agent command execution (for testing).
 ///
 /// This is used by `MockProcessExecutor` to return mock results without

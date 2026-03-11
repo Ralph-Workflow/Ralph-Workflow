@@ -185,6 +185,13 @@ impl ProcessExecutor for KillNotifyingExecutor {
 
         out
     }
+
+    fn get_child_process_info(
+        &self,
+        parent_pid: u32,
+    ) -> ralph_workflow::executor::ChildProcessInfo {
+        self.inner.get_child_process_info(parent_pid)
+    }
 }
 
 const fn fast_kill_config() -> KillConfig {
@@ -913,8 +920,9 @@ fn output_activity_during_file_scan_prevents_kill() {
     });
 }
 
-/// When the agent has active child processes (e.g. a running `cargo build`),
-/// the monitor must not kill it even though stdout/stderr is idle.
+/// When the agent has active child processes with advancing CPU time
+/// (e.g. a running `cargo build`), the monitor must not kill it even though
+/// stdout/stderr is idle.
 #[test]
 fn active_subprocess_prevents_idle_kill() {
     with_default_timeout(|| {
@@ -934,6 +942,18 @@ fn active_subprocess_prevents_idle_kill() {
             Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
         let executor: Arc<dyn ProcessExecutor> = executor_impl.clone();
 
+        // Simulate CPU time advancing so the monitor treats children as active.
+        let cpu_advancer_executor = executor_impl.clone();
+        let cpu_advancer_stop = Arc::clone(&should_stop);
+        let cpu_advancer = thread::spawn(move || {
+            let mut cpu_ms = 0u64;
+            while !cpu_advancer_stop.load(Ordering::Acquire) {
+                cpu_ms += 100;
+                cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
+                thread::sleep(Duration::from_millis(3));
+            }
+        });
+
         let handle = thread::spawn(move || {
             monitor_idle_timeout_with_interval_and_kill_config(
                 &timestamp,
@@ -951,7 +971,7 @@ fn active_subprocess_prevents_idle_kill() {
             )
         });
 
-        // While children are present the monitor must not kill.
+        // While children are present with advancing CPU, the monitor must not kill.
         thread::sleep(Duration::from_millis(40));
         assert!(
             executor_impl.execute_calls_for("kill").is_empty(),
@@ -961,6 +981,7 @@ fn active_subprocess_prevents_idle_kill() {
         should_stop.store(true, Ordering::Release);
 
         let result = handle.join().expect("monitor thread panicked");
+        cpu_advancer.join().expect("cpu advancer thread panicked");
         assert_eq!(
             result,
             MonitorResult::ProcessCompleted,
