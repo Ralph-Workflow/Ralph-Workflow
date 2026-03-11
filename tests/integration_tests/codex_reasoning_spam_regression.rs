@@ -29,6 +29,23 @@ use std::time::Duration;
 
 const REAL_LOG_TIMEOUT: Duration = Duration::from_secs(20);
 
+fn codex_reasoning_fixture() -> &'static str {
+    let log = include_str!("artifacts/codex_reasoning_spam.log");
+    assert!(
+        log.contains("\"type\":\"item.started\""),
+        "Codex regression fixture must contain item.started events"
+    );
+    assert!(
+        log.contains("\"type\":\"reasoning\""),
+        "Codex regression fixture must contain reasoning items"
+    );
+    assert!(
+        !log.contains("thinking_delta"),
+        "Codex regression fixture must not silently use Claude-style thinking_delta events"
+    );
+    log
+}
+
 #[test]
 fn test_codex_reasoning_no_spam_in_non_tty_basic_mode() {
     with_timeout(
@@ -44,7 +61,7 @@ fn test_codex_reasoning_no_spam_in_non_tty_basic_mode() {
                     .with_terminal_mode(TerminalMode::Basic);
 
             // Use the captured reproduction log from the acceptance criteria.
-            let log = include_str!("artifacts/example_log.log");
+            let log = codex_reasoning_fixture();
             let reader = BufReader::new(Cursor::new(log));
             let workspace = MemoryWorkspace::new_test();
             parser.parse_stream_for_test(reader, &workspace).unwrap();
@@ -82,7 +99,7 @@ fn test_codex_reasoning_no_spam_in_non_tty_none_mode() {
                     .with_terminal_mode(TerminalMode::None);
 
             // Use the captured reproduction log from the acceptance criteria.
-            let log = include_str!("artifacts/example_log.log");
+            let log = codex_reasoning_fixture();
             let reader = BufReader::new(Cursor::new(log));
             let workspace = MemoryWorkspace::new_test();
             parser.parse_stream_for_test(reader, &workspace).unwrap();

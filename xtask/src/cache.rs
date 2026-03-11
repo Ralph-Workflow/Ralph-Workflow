@@ -104,6 +104,8 @@ struct CachedFileFingerprint {
     len: u64,
     modified: Option<FileTimestamp>,
     digest: u64,
+    #[serde(skip)]
+    trust_metadata_match: bool,
 }
 
 impl CachedFileFingerprint {
@@ -115,7 +117,7 @@ impl CachedFileFingerprint {
     }
 
     fn can_reuse_for_metadata(self, metadata: FileFingerprintMetadata) -> bool {
-        metadata.modified.is_some() && self.metadata() == metadata
+        self.trust_metadata_match && metadata.modified.is_some() && self.metadata() == metadata
     }
 }
 
@@ -123,7 +125,10 @@ impl RepositoryFingerprintCache {
     fn from_persisted(repo_root: &Path, persisted: HashMap<String, CachedFileFingerprint>) -> Self {
         let file_fingerprints = persisted
             .into_iter()
-            .map(|(path, fingerprint)| (repo_root.join(path), fingerprint))
+            .map(|(path, mut fingerprint)| {
+                fingerprint.trust_metadata_match = false;
+                (repo_root.join(path), fingerprint)
+            })
             .collect();
         Self {
             glob_memo: Mutex::new(HashMap::new()),
@@ -200,6 +205,7 @@ impl RepositoryFingerprintCache {
                 len: metadata.len,
                 modified: metadata.modified,
                 digest,
+                trust_metadata_match: true,
             },
         );
         Ok(digest)
@@ -294,9 +300,33 @@ const RALPH_GUI_FRONTEND_SRC_GLOBS: &[ScopeGlob] = &[ScopeGlob {
     dir: "ralph-gui/ui/src",
     pattern: "*",
 }];
+const FORBIDDEN_ALLOW_EXPECT_SCOPE_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "ralph-workflow/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "tests",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "xtask/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "test-helpers/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "ralph-gui/src",
+        pattern: "*.rs",
+    },
+];
+const FORBIDDEN_ALLOW_EXPECT_SCOPE_FILES: &[&str] = &["ralph-gui/build.rs"];
 const SCOPE_HASH_VERSION: &[u8] = b"scope-v2";
 const NATIVE_SCAN_HASH_VERSION: &[u8] = b"native-scan-v2";
 const NATIVE_REQUIRED_HASH_VERSION: &[u8] = b"native-required-v1";
+const COMMAND_DEFINITION_HASH_VERSION: &[u8] = b"command-definition-v1";
 
 /// Returns a stable string key for a scope, used for in-process memoization.
 /// The key encodes both the scope type (directories vs build) and the directory list.
@@ -334,13 +364,11 @@ pub fn scope_for(check_name: &str) -> CheckScope {
         // rg check spanning both src and tests (complex PCRE2 negative lookahead)
         "audit-ignore-has-url" => CheckScope::Directories(&["tests", "ralph-workflow/src"]),
         // rg check spanning all .rs files (complex PCRE2 multiline)
-        "forbidden-allow-expect-scan" => CheckScope::Directories(&[
-            "ralph-workflow/src",
-            "tests",
-            "xtask/src",
-            "test-helpers/src",
-            "ralph-gui",
-        ]),
+        "forbidden-allow-expect-scan" => CheckScope::Patterns {
+            globs: FORBIDDEN_ALLOW_EXPECT_SCOPE_GLOBS,
+            files: FORBIDDEN_ALLOW_EXPECT_SCOPE_FILES,
+            include_lock: false,
+        },
         // fmt-check: only .rs file content matters, not Cargo.lock
         "fmt-check" => CheckScope::Directories(&[
             "ralph-workflow/src",
@@ -659,6 +687,36 @@ fn compute_native_required_hash(
     Ok(hasher.finish())
 }
 
+fn compute_xtask_implementation_hash(
+    repo_root: &Path,
+    snapshot: &RepositoryFingerprintCache,
+) -> std::io::Result<u64> {
+    compute_scope_hash_with_snapshot(repo_root, &CheckScope::Build(&["xtask/src"]), snapshot)
+}
+
+fn compute_command_definition_hash(
+    repo_root: &Path,
+    spec: &CommandSpec,
+    snapshot: &RepositoryFingerprintCache,
+) -> std::io::Result<u64> {
+    let mut hasher = Fnv1aHasher::new();
+    hasher.write_bytes(COMMAND_DEFINITION_HASH_VERSION);
+    hasher.write_bytes(spec.name.as_bytes());
+    hasher.write_bytes(spec.program.as_bytes());
+    for arg in spec.args {
+        hasher.write_bytes(arg.as_bytes());
+    }
+    for exit_code in spec.success_exit_codes {
+        hasher.write_bytes(&exit_code.to_le_bytes());
+    }
+    for (key, value) in spec.extra_env {
+        hasher.write_bytes(key.as_bytes());
+        hasher.write_bytes(value.as_bytes());
+    }
+    hasher.write_bytes(&compute_xtask_implementation_hash(repo_root, snapshot)?.to_le_bytes());
+    Ok(hasher.finish())
+}
+
 /// On-disk format for the cache file.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CacheFile {
@@ -682,6 +740,7 @@ pub struct CachingCommandRunner {
     pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
     repo_fingerprint: RepositoryFingerprintCache,
     prepared_native_check_hashes: Mutex<HashMap<String, u64>>,
+    prepared_command_definition_hashes: Mutex<HashMap<String, u64>>,
     prepared_native_scan_hash: Mutex<Option<(u64, u64)>>,
     /// Set to true when in-memory cache has unsaved changes.
     dirty: AtomicBool,
@@ -705,6 +764,7 @@ impl CachingCommandRunner {
                 cache_file.file_fingerprints,
             ),
             prepared_native_check_hashes: Mutex::new(HashMap::new()),
+            prepared_command_definition_hashes: Mutex::new(HashMap::new()),
             prepared_native_scan_hash: Mutex::new(None),
             dirty: AtomicBool::new(false),
         }
@@ -845,6 +905,19 @@ impl CachingCommandRunner {
             .collect()
     }
 
+    fn precompute_command_definition_hashes(
+        &self,
+        checks: &[CommandSpec],
+    ) -> std::io::Result<Vec<(String, u64)>> {
+        checks
+            .iter()
+            .map(|spec| {
+                compute_command_definition_hash(&self.repo_root, spec, &self.repo_fingerprint)
+                    .map(|hash| (spec.name.to_string(), hash))
+            })
+            .collect()
+    }
+
     fn native_required_hash(
         &self,
         repo_root: &Path,
@@ -861,6 +934,20 @@ impl CachingCommandRunner {
         }
 
         compute_native_required_hash(repo_root, check, &self.repo_fingerprint)
+    }
+
+    fn command_definition_hash(&self, spec: &CommandSpec) -> std::io::Result<u64> {
+        if let Some(hash) = self
+            .prepared_command_definition_hashes
+            .lock()
+            .unwrap()
+            .get(spec.name)
+            .copied()
+        {
+            return Ok(hash);
+        }
+
+        compute_command_definition_hash(&self.repo_root, spec, &self.repo_fingerprint)
     }
 
     pub fn run_native_scan(
@@ -930,6 +1017,13 @@ impl CommandRunner for CachingCommandRunner {
             memo.extend(prepared_native_checks);
         }
 
+        let prepared_command_hashes = self.precompute_command_definition_hashes(checks)?;
+        {
+            let mut memo = self.prepared_command_definition_hashes.lock().unwrap();
+            memo.clear();
+            memo.extend(prepared_command_hashes);
+        }
+
         let prepared_hashes = self.precompute_scope_hashes(checks)?;
         {
             let mut memo = self.scope_memo.lock().unwrap();
@@ -993,7 +1087,8 @@ impl CommandRunner for CachingCommandRunner {
             // bypass caching completely to avoid incorrect cache hits.
             return self.inner.run(spec);
         };
-        let key = format!("{}:{}", spec.name, hash);
+        let verifier_hash = self.command_definition_hash(spec)?;
+        let key = format!("{}:{}:{verifier_hash}", spec.name, hash);
 
         // Check cache.
         {
@@ -1485,32 +1580,54 @@ mod tests {
     #[test]
     fn test_scope_for_forbidden_allow_expect_scan_covers_all_scanned_rust_trees() {
         match scope_for("forbidden-allow-expect-scan") {
-            CheckScope::Directories(dirs) => {
+            CheckScope::Patterns {
+                globs,
+                files,
+                include_lock,
+            } => {
                 assert!(
-                    dirs.contains(&"ralph-workflow/src"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-workflow/src" && glob.pattern == "*.rs"),
                     "forbidden allow/expect scan must cover ralph-workflow/src"
                 );
                 assert!(
-                    dirs.contains(&"tests"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "tests" && glob.pattern == "*.rs"),
                     "forbidden allow/expect scan must cover tests"
                 );
                 assert!(
-                    dirs.contains(&"xtask/src"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "xtask/src" && glob.pattern == "*.rs"),
                     "forbidden allow/expect scan must cover xtask/src"
                 );
                 assert!(
-                    dirs.contains(&"test-helpers/src"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "test-helpers/src" && glob.pattern == "*.rs"),
                     "forbidden allow/expect scan must cover test-helpers/src"
                 );
                 assert!(
-                    dirs.contains(&"ralph-gui"),
-                    "forbidden allow/expect scan must cover ralph-gui so GUI Rust is scanned too"
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/src" && glob.pattern == "*.rs"),
+                    "forbidden allow/expect scan must cover stable GUI Rust sources"
+                );
+                assert!(
+                    files.contains(&"ralph-gui/build.rs"),
+                    "forbidden allow/expect scan must cover ralph-gui/build.rs"
+                );
+                assert!(
+                    !include_lock,
+                    "forbidden allow/expect scan should not depend on Cargo.lock"
                 );
             }
-            CheckScope::Build(_)
-            | CheckScope::BuildWithExtras { .. }
-            | CheckScope::Patterns { .. } => {
-                panic!("forbidden-allow-expect-scan must use Directories scope")
+            CheckScope::Directories(_)
+            | CheckScope::Build(_)
+            | CheckScope::BuildWithExtras { .. } => {
+                panic!("forbidden-allow-expect-scan must use a stable Patterns scope")
             }
         }
     }
@@ -2469,6 +2586,53 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
     }
 
     #[test]
+    fn test_forbidden_allow_expect_scope_ignores_transient_frontend_files() {
+        let tmp = unique_test_dir("xtask-cache-test-forbidden-allow-scope-excludes-transient");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+        let _ = std::fs::create_dir_all(tmp.join("tests"));
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/node_modules/pkg"));
+
+        std::fs::write(tmp.join("Cargo.toml"), b"[workspace]\nmembers = []\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("tests/smoke.rs"), b"#[test]\nfn smoke() {}\n").unwrap();
+        std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/build.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/src/lib.rs"), b"pub fn gui() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn transient() {}\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("forbidden-allow-expect-scan");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn changed_transient() {}\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_eq!(
+            hash_before, hash_after,
+            "forbidden-allow-expect scope must ignore transient frontend directories under ralph-gui"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn test_gui_scope_hash_changes_when_build_script_input_changes() {
         let tmp = unique_test_dir("xtask-cache-test-gui-build-inputs");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -2548,6 +2712,7 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
             len: 11,
             modified: None,
             digest: 42,
+            trust_metadata_match: false,
         };
 
         assert!(
@@ -2557,6 +2722,54 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
             }),
             "persisted digests must not be trusted when metadata.modified() is unavailable"
         );
+    }
+
+    #[test]
+    fn test_persisted_file_fingerprint_is_rehashed_even_when_metadata_matches() {
+        let tmp = unique_test_dir("xtask-cache-test-persisted-rehash");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+
+        let file_path = tmp.join("src/lib.rs");
+        std::fs::write(&file_path, b"fn fresh() {}\n").unwrap();
+        let metadata = RepositoryFingerprintCache::file_metadata(&file_path)
+            .expect("file metadata should be readable");
+
+        let cache = RepositoryFingerprintCache::from_persisted(
+            &tmp,
+            HashMap::from([(
+                "src/lib.rs".to_string(),
+                CachedFileFingerprint {
+                    len: metadata.len,
+                    modified: metadata.modified,
+                    digest: 7,
+                    trust_metadata_match: false,
+                },
+            )]),
+        );
+
+        let digest = cache
+            .read_file_digest(&file_path)
+            .expect("persisted fingerprint should fall back to rehashing file bytes");
+
+        assert_ne!(
+            digest, 7,
+            "persisted digest metadata alone must not be trusted"
+        );
+        assert_eq!(
+            cache
+                .file_fingerprints
+                .lock()
+                .unwrap()
+                .get(&file_path)
+                .copied()
+                .expect("fresh fingerprint should be stored after rehashing")
+                .digest,
+            digest,
+            "rehashing should replace the stale persisted digest with fresh file content"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[cfg(unix)]
@@ -2837,7 +3050,7 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
 
     #[cfg(unix)]
     #[test]
-    fn test_cross_process_cache_hit_reuses_persisted_fingerprint_for_unreadable_unchanged_file() {
+    fn test_cross_process_unreadable_file_bypasses_persisted_digest_cache() {
         use std::os::unix::fs::PermissionsExt;
 
         let tmp = unique_test_dir("xtask-cache-cross-process-persisted-fingerprint");
@@ -2878,12 +3091,12 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         readable.set_mode(0o644);
         let _ = std::fs::set_permissions(&source_path, readable);
 
-        let output = result.expect("warm cross-process cache hit should succeed");
+        let output = result.expect("unreadable warm cross-process run should still succeed");
         assert_eq!(output.exit_code, 1);
         assert_eq!(
             second_count.load(Ordering::SeqCst),
-            0,
-            "unchanged files should reuse persisted fingerprints instead of rereading bytes in a new process"
+            1,
+            "persisted digests must not be trusted for unreadable files in a new process; the command should rerun"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -2953,8 +3166,6 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
     #[cfg(unix)]
     #[test]
     fn test_cross_process_relevant_edit_invalidates_only_affected_scope() {
-        use std::os::unix::fs::PermissionsExt;
-
         let tmp = unique_test_dir("xtask-cache-cross-process-scope-invalidation");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
@@ -3041,9 +3252,6 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
             "cold frontend run should execute before the cache is populated"
         );
 
-        let mut unreadable = std::fs::metadata(&xtask_source).unwrap().permissions();
-        unreadable.set_mode(0o000);
-        std::fs::set_permissions(&xtask_source, unreadable).unwrap();
         std::fs::write(
             tmp.join("ralph-gui/ui/src/App.tsx"),
             b"export function App() { return <div>two</div>; }\n",
@@ -3052,17 +3260,13 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
 
         let (inner_xtask, xtask_count) = CountingRunner::new(success_output());
         let runner_xtask = CachingCommandRunner::new(inner_xtask, tmp.clone());
-        let xtask_result = runner_xtask.run(&xtask_spec);
-
-        let mut readable = std::fs::metadata(&xtask_source).unwrap().permissions();
-        readable.set_mode(0o644);
-        let _ = std::fs::set_permissions(&xtask_source, readable);
-
-        let _ = xtask_result.expect("xtask warm cache hit should succeed");
+        let _ = runner_xtask
+            .run(&xtask_spec)
+            .expect("xtask warm cache hit should succeed");
         assert_eq!(
             xtask_count.load(Ordering::SeqCst),
             0,
-            "frontend-only edits should not invalidate unchanged xtask scope fingerprints"
+            "frontend-only edits should not invalidate unchanged xtask scope fingerprints when xtask inputs can be rehashed"
         );
 
         let (inner_frontend, frontend_count) = CountingRunner::new(zero_exit_success_output());
@@ -3072,6 +3276,94 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
             frontend_count.load(Ordering::SeqCst),
             1,
             "frontend edits must still invalidate the affected frontend scope"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_frontend_cache_invalidates_when_xtask_verifier_definition_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-verifier-definition");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package.json"),
+            b"{\"name\":\"ralph-workflow-ui\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/package-lock.json"),
+            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/tsconfig.node.json"),
+            b"{\"compilerOptions\":{}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/vite.config.ts"),
+            b"export default {};\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/eslint.config.mjs"),
+            b"export default [];\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/index.html"),
+            b"<div id=\"app\"></div>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/src/App.tsx"),
+            b"export function App() { return <div>one</div>; }\n",
+        )
+        .unwrap();
+
+        let spec = make_zero_exit_spec("ralph-gui-frontend-test");
+
+        let (inner_first, first_count) = CountingRunner::new(zero_exit_success_output());
+        let runner_first = CachingCommandRunner::new(inner_first, tmp.clone());
+        let _ = runner_first.run(&spec).unwrap();
+        runner_first.flush();
+        assert_eq!(first_count.load(Ordering::SeqCst), 1);
+
+        std::fs::write(
+            tmp.join("xtask/src/main.rs"),
+            b"fn main() { println!(\"verifier changed\"); }\n",
+        )
+        .unwrap();
+
+        let (inner_second, second_count) = CountingRunner::new(zero_exit_success_output());
+        let runner_second = CachingCommandRunner::new(inner_second, tmp.clone());
+        let _ = runner_second.run(&spec).unwrap();
+
+        assert_eq!(
+            second_count.load(Ordering::SeqCst),
+            1,
+            "changes to xtask verifier code must invalidate cached command successes even when the command scope is unchanged"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);

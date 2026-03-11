@@ -23,6 +23,23 @@ use std::cell::RefCell;
 use std::io::BufReader;
 use std::rc::Rc;
 
+fn codex_full_log_fixture() -> &'static str {
+    let log = include_str!("artifacts/codex_reasoning_spam.log");
+    assert!(
+        log.contains("\"type\":\"item.started\""),
+        "Codex full-log regression fixture must contain item.started events"
+    );
+    assert!(
+        log.contains("\"type\":\"reasoning\""),
+        "Codex full-log regression fixture must contain reasoning items"
+    );
+    assert!(
+        !log.contains("thinking_delta"),
+        "Codex full-log regression fixture must not silently use Claude-style thinking deltas"
+    );
+    log
+}
+
 #[test]
 fn test_ccs_codex_full_example_log_no_spam_none_mode() {
     with_default_timeout(|| {
@@ -34,14 +51,7 @@ fn test_ccs_codex_full_example_log_no_spam_none_mode() {
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::None);
 
-        // Use existing example_log.log (already referenced in codex_reasoning_spam_regression.rs)
-        let log = include_str!("artifacts/example_log.log");
-
-        // NOTE: This fixture is Claude/CCS-focused and may not include Codex events.
-        // Codex regression coverage is validated by tests that provide Codex-specific streams.
-        if !log.contains("item.started") {
-            return;
-        }
+        let log = codex_full_log_fixture();
 
         let reader = BufReader::new(log.as_bytes());
         let workspace = MemoryWorkspace::new_test();
