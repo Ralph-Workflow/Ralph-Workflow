@@ -1525,6 +1525,31 @@ pub fn set_agent_phase_paths_for_test(
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn get_agent_phase_paths_for_test() -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    let repo_root = AGENT_PHASE_REPO_ROOT
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let ralph_dir = AGENT_PHASE_RALPH_DIR
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    let hooks_dir = AGENT_PHASE_HOOKS_DIR
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    (repo_root, ralph_dir, hooks_dir)
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn agent_phase_test_lock() -> &'static Mutex<()> {
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    &TEST_LOCK
+}
+
 fn cleanup_agent_phase_silent_at_internal(
     repo_root: &Path,
     stored_ralph_dir: Option<&Path>,
