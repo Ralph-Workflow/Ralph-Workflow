@@ -149,6 +149,12 @@ impl ChildProcessInfo {
     pub const fn has_currently_active_children(&self) -> bool {
         self.active_child_count > 0
     }
+
+    /// Whether descendants are still observable but no longer show current work.
+    #[must_use]
+    pub const fn has_stalled_children(&self) -> bool {
+        self.has_children() && !self.has_currently_active_children()
+    }
 }
 
 /// Result of an agent command execution (for testing).
@@ -205,5 +211,25 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(info, restored);
+    }
+
+    #[test]
+    fn child_process_info_distinguishes_stalled_children_from_current_work() {
+        let stalled = ChildProcessInfo {
+            child_count: 2,
+            active_child_count: 0,
+            cpu_time_ms: 4200,
+            descendant_pid_signature: 99,
+        };
+        let active = ChildProcessInfo {
+            child_count: 2,
+            active_child_count: 1,
+            cpu_time_ms: 4200,
+            descendant_pid_signature: 99,
+        };
+
+        assert!(stalled.has_stalled_children());
+        assert!(!active.has_stalled_children());
+        assert!(!ChildProcessInfo::NONE.has_stalled_children());
     }
 }

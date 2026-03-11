@@ -426,15 +426,16 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 let active_subtree_changed = last_child_observation.is_some_and(|prev| {
                     prev.descendant_pid_signature != info.descendant_pid_signature
                 });
-                let first_child_observation =
-                    first_active_observation && child_startup_grace_available;
+                let first_active_child_observation = first_active_observation
+                    && child_startup_grace_available
+                    && info.has_currently_active_children();
 
-                if first_child_observation {
+                if first_active_child_observation {
                     child_startup_grace_available = false;
                     consecutive_idle_count = 0;
                     last_child_observation = Some(info);
                     eprintln!(
-                        "Agent has child processes for the first time during idle timeout \
+                        "Agent has currently active child processes for the first time during idle timeout \
                          (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
                         info.active_child_count,
                         info.child_count,
@@ -477,13 +478,15 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     continue;
                 }
                 last_child_observation = None;
-                eprintln!(
-                    "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
-                     but none show current work; treating as idle",
-                    info.child_count,
-                    info.cpu_time_ms,
-                    info.descendant_pid_signature
-                );
+                if info.has_stalled_children() {
+                    eprintln!(
+                        "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
+                         but none show current work; treating as idle",
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
+                    );
+                }
             } else {
                 if last_child_info.is_some() {
                     child_startup_grace_available = false;

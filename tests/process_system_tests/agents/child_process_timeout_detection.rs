@@ -97,3 +97,29 @@ fn same_process_group_sleeping_descendants_with_only_historical_cpu_do_not_quali
         "same-process-group descendants that are only sleeping after brief CPU bursts must not count as currently active child work"
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn same_process_group_busy_descendant_qualifies_as_active_child_work() {
+    let executor = RealProcessExecutor::new();
+    let script = "python3 -c 'import time\nend=time.time()+1.0\nwhile time.time()<end:\n    pass' & sleep 1.2";
+    let mut shell = spawn_shell_in_own_process_group(script);
+
+    let info = wait_for_descendant_snapshot_matching(
+        &executor,
+        shell.id(),
+        Duration::from_secs(1),
+        |info| info.active_child_count > 0,
+    );
+
+    shell.wait().expect("wait for shell");
+
+    assert!(
+        info.child_count > 0,
+        "busy descendants should remain observable while the shell waits"
+    );
+    assert!(
+        info.active_child_count > 0,
+        "same-process-group descendants doing current CPU work must qualify as active child work"
+    );
+}

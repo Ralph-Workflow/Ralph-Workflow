@@ -228,10 +228,12 @@ pub fn run_with_agent_spawn_with_monitor_config(
             } else {
                 ""
             };
-            let idle_timeout_cause = child_status_at_timeout.map_or(
-                IdleTimeoutCause::NoQualifyingChildren,
-                IdleTimeoutCause::StalledChildren,
-            );
+            let idle_timeout_cause = child_status_at_timeout
+                .filter(crate::executor::ChildProcessInfo::has_stalled_children)
+                .map_or(
+                    IdleTimeoutCause::NoQualifyingChildren,
+                    IdleTimeoutCause::StalledChildren,
+                );
             let child_msg = match idle_timeout_cause {
                 IdleTimeoutCause::NoQualifyingChildren => ", no active child processes".to_string(),
                 IdleTimeoutCause::StalledChildren(info) => {

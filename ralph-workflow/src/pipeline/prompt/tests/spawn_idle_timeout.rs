@@ -809,3 +809,168 @@ fn test_run_with_agent_spawn_logs_child_activity_timeout_suppression() {
         "structured logger output should explain child-process timeout suppression"
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn test_run_with_agent_spawn_logs_stalled_child_timeout_reason() {
+    use std::path::Path;
+    use std::process::ExitStatus;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use std::os::unix::process::ExitStatusExt;
+
+    #[derive(Debug)]
+    struct SharedRunningChild {
+        still_running: Arc<AtomicBool>,
+    }
+
+    impl crate::executor::AgentChild for SharedRunningChild {
+        fn id(&self) -> u32 {
+            12345
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            while self.still_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(ExitStatus::from_raw(0))
+        }
+
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            if self.still_running.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+            Ok(Some(ExitStatus::from_raw(0)))
+        }
+    }
+
+    #[derive(Debug)]
+    struct StalledChildExecutor {
+        still_running: Arc<AtomicBool>,
+        child_info: Arc<Mutex<crate::executor::ChildProcessInfo>>,
+    }
+
+    impl crate::executor::ProcessExecutor for StalledChildExecutor {
+        fn execute(
+            &self,
+            command: &str,
+            args: &[&str],
+            _env: &[(String, String)],
+            _workdir: Option<&Path>,
+        ) -> io::Result<crate::executor::ProcessOutput> {
+            if command == "kill" && args.contains(&"-TERM") {
+                self.still_running.store(false, Ordering::Release);
+            }
+
+            Ok(crate::executor::ProcessOutput {
+                status: ExitStatus::from_raw(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn spawn_agent(
+            &self,
+            _config: &crate::executor::AgentSpawnConfig,
+        ) -> io::Result<crate::executor::AgentChildHandle> {
+            let stdout = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let stderr = Box::new(Cursor::new(Vec::<u8>::new())) as Box<dyn io::Read + Send>;
+            let inner: Box<dyn crate::executor::AgentChild> = Box::new(SharedRunningChild {
+                still_running: Arc::clone(&self.still_running),
+            });
+
+            Ok(crate::executor::AgentChildHandle {
+                stdout,
+                stderr,
+                inner,
+            })
+        }
+
+        fn get_child_process_info(&self, _parent_pid: u32) -> crate::executor::ChildProcessInfo {
+            *self
+                .child_info
+                .lock()
+                .expect("child info mutex should not be poisoned")
+        }
+    }
+
+    let workspace = MemoryWorkspace::new_test();
+    let log_workspace = Arc::new(workspace.clone());
+    let logger = Logger::new(Colors::with_enabled(false)).with_workspace_log(
+        Arc::clone(&log_workspace) as Arc<dyn Workspace>,
+        ".agent/tmp/stalled-child-timeout.log",
+    );
+    let colors = Colors::with_enabled(false);
+    let config = Config::test_default();
+    let mut timer = Timer::new();
+
+    let still_running = Arc::new(AtomicBool::new(true));
+    let child_info = Arc::new(Mutex::new(crate::executor::ChildProcessInfo {
+        child_count: 2,
+        active_child_count: 0,
+        cpu_time_ms: 4200,
+        descendant_pid_signature: 57,
+    }));
+    let executor = Arc::new(StalledChildExecutor {
+        still_running: Arc::clone(&still_running),
+        child_info,
+    });
+    let executor_arc: Arc<dyn crate::executor::ProcessExecutor> = executor.clone();
+
+    let env_vars: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let cmd = PromptCommand {
+        label: "test",
+        display_name: "test",
+        cmd_str: "mock-agent",
+        prompt: "hello",
+        log_prefix: ".agent/logs/test",
+        model_index: None,
+        attempt: None,
+        logfile: ".agent/logs/test.log",
+        parser_type: JsonParserType::Generic,
+        env_vars: &env_vars,
+    };
+
+    let runtime = PipelineRuntime {
+        timer: &mut timer,
+        logger: &logger,
+        colors: &colors,
+        config: &config,
+        executor: executor.as_ref(),
+        executor_arc,
+        workspace: &workspace,
+        workspace_arc: Arc::new(workspace.clone()),
+    };
+
+    let result = run_with_agent_spawn_with_monitor_config(
+        &cmd,
+        &runtime,
+        &[],
+        Duration::ZERO,
+        Duration::from_millis(10),
+        crate::pipeline::idle_timeout::KillConfig::new(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_millis(20),
+            Duration::from_millis(100),
+            Duration::from_millis(20),
+        ),
+    )
+    .expect("expected successful CommandResult");
+
+    assert_eq!(
+        result.exit_code,
+        super::SIGTERM_EXIT_CODE,
+        "stalled descendants should not suppress idle timeout"
+    );
+
+    let log_output = log_workspace
+        .read(std::path::Path::new(".agent/tmp/stalled-child-timeout.log"))
+        .expect("expected workspace log output");
+    assert!(
+        log_output.contains("child processes present but not currently active"),
+        "structured logger output should distinguish stalled descendants from runs with no qualifying children"
+    );
+}

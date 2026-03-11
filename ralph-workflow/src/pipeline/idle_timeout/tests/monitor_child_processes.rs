@@ -391,17 +391,16 @@ fn children_transition_active_to_stalled_allows_kill() {
     );
 }
 
-/// Even if CPU time is 0, the first observation of in-scope children should grant
-/// grace (not count as stalled) because the process may have just started.
+/// Mere descendant existence must not earn startup grace.
 #[test]
-fn first_child_observation_grants_grace() {
+fn first_child_observation_without_current_activity_times_out_immediately() {
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let (mock_child, controller) = MockAgentChild::new_running(0);
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
@@ -419,7 +418,6 @@ fn first_child_observation_grants_grace() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        // Use a longer check interval so we can verify the first check grants grace.
         check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
@@ -437,22 +435,18 @@ fn first_child_observation_grants_grace() {
         )
     });
 
-    // After the first check (which should grant grace), verify no kill yet.
-    // The check_interval is 20ms, so after 25ms we should have had the first
-    // check pass (grace) and possibly be in the second check.
-    thread::sleep(Duration::from_millis(25));
+    thread::sleep(Duration::from_millis(30));
     assert!(
-        executor_impl.execute_calls_for("kill").is_empty(),
-        "first observation of children should grant grace even without current activity evidence"
+        !executor_impl.execute_calls_for("kill").is_empty(),
+        "timeout enforcement should start on the first idle check when descendants are not currently active"
     );
+    controller.store(false, Ordering::Release);
+    should_stop.store(true, Ordering::Release);
 
-    // The second check will see the same child subtree but no current activity.
-    // With required_idle_confirmations=1, it will kill after one stalled observation.
-    // Wait for the monitor to finish (it should kill on the second check).
     let result = handle.join().expect("monitor thread panicked");
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
-        "second observation with unchanged CPU should allow kill"
+        "non-active descendants should not delay timeout on their first observation"
     );
 }
 
