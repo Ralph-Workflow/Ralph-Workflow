@@ -1461,7 +1461,23 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
 
     end_agent_phase_in_repo_at_ralph_dir(repo_root, ralph_dir);
     cleanup_git_wrapper_dir_silent_at(ralph_dir);
-    uninstall_hooks_silent_at(repo_root);
+
+    // Derive the hooks dir from the already-known ralph_dir to bypass an extra
+    // libgit2 discovery call. The hooks dir is a sibling of ralph/ inside the
+    // git metadata directory (e.g. .git/hooks/ next to .git/ralph/).
+    if let Some(git_dir) = ralph_dir.parent() {
+        super::hooks::uninstall_hooks_silent_in_hooks_dir(&git_dir.join("hooks"));
+    } else {
+        // Fallback: ralph dir has no parent (should not happen in practice).
+        uninstall_hooks_silent_at(repo_root);
+    }
+
+    // Best-effort: remove the ralph dir itself now that all artifacts are gone.
+    // end_agent_phase_in_repo_at_ralph_dir removed marker + head-oid and tried
+    // remove_dir too early (track file was still present). Now the track file has
+    // been cleaned by cleanup_git_wrapper_dir_silent_at, so the dir is empty.
+    let _ = fs::remove_dir(ralph_dir);
+
     cleanup_generated_files_silent_at(repo_root);
 
     if let Ok(mut guard) = AGENT_PHASE_REPO_ROOT.lock() {
@@ -1470,6 +1486,20 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
     if let Ok(mut guard) = AGENT_PHASE_RALPH_DIR.lock() {
         *guard = None;
     }
+}
+
+/// Best-effort removal of the ralph git directory after all artifacts are cleaned.
+///
+/// Called after [`end_agent_phase_in_repo`] and [`disable_git_wrapper`] have removed
+/// all files from `.git/ralph/`. The directory should be empty at this point; this
+/// call removes it so no empty directory is left behind.
+///
+/// Uses [`fs::remove_dir`] (not `remove_dir_all`) — if the directory is non-empty
+/// for any reason (e.g., a quarantine file from tamper detection), the call silently
+/// fails and leaves the directory for the next run's cleanup or tamper detection.
+pub fn try_remove_ralph_dir(repo_root: &Path) {
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let _ = fs::remove_dir(&ralph_dir);
 }
 
 /// Remove generated files silently using an explicit repo root.
@@ -2488,5 +2518,79 @@ mod tests {
         fs::set_permissions(blocked_parent.path(), restore_permissions).unwrap();
         fs::remove_dir_all(&wrapper_dir_path).unwrap();
         fs::remove_file(&track_file).unwrap();
+    }
+
+    // =========================================================================
+    // ralph dir removal tests (TDD: these fail until try_remove_ralph_dir fix lands)
+    // =========================================================================
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_ralph_dir_when_all_artifacts_present() {
+        // Simulates active agent phase state: marker, head-oid, and track file all present.
+        // After cleanup, all files AND the directory itself must be gone.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+        fs::write(ralph_dir.join(HEAD_OID_FILE_NAME), "abc123\n").unwrap();
+        // Track file pointing to a non-existent wrapper dir (safe to clean).
+        fs::write(
+            ralph_dir.join(WRAPPER_TRACK_FILE_NAME),
+            "/nonexistent/wrapper\n",
+        )
+        .unwrap();
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph/ should be fully removed after cleanup_agent_phase_silent_at; \
+             all artifacts were removed but the directory still exists"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_removes_ralph_hooks() {
+        // Verifies that Ralph-managed hooks are removed when cleanup uses the precomputed
+        // hooks dir derived from ralph_dir.parent() (bypasses extra libgit2 discovery).
+        use crate::git_helpers::hooks;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        // Use a real git repo so libgit2 discovery succeeds for all code paths.
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        let hooks_dir = repo_root.join(".git").join("hooks");
+        fs::create_dir_all(&hooks_dir).unwrap();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        // Install read-only Ralph-managed hooks.
+        let hook_content = format!("#!/bin/bash\n# {}\nexit 0\n", hooks::HOOK_MARKER);
+        for hook_name in hooks::RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            fs::write(&hook_path, &hook_content).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = fs::metadata(&hook_path).unwrap().permissions();
+                perms.set_mode(0o555);
+                fs::set_permissions(&hook_path, perms).unwrap();
+            }
+        }
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        for hook_name in hooks::RALPH_HOOK_NAMES {
+            let hook_path = hooks_dir.join(hook_name);
+            let still_has_marker = hook_path.exists()
+                && crate::files::file_contains_marker(&hook_path, hooks::HOOK_MARKER)
+                    .unwrap_or(false);
+            assert!(
+                !still_has_marker,
+                "Ralph hook {hook_name} should be removed by cleanup_agent_phase_silent_at"
+            );
+        }
     }
 }

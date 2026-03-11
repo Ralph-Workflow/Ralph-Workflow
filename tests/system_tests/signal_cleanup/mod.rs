@@ -521,6 +521,9 @@ fn test_ctrl_c_removes_no_agent_commit() {
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());
+
+            // The entire .git/ralph/ directory must be removed, not just its contents.
+            assert_ralph_dir_removed(temp_dir.path());
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -717,6 +720,28 @@ fn test_startup_cleanup_restores_prompt_md_from_prior_run() {
     );
 }
 
+/// Assert the `.git/ralph/` enforcement directory has been fully removed.
+///
+/// After cleanup, all agent-phase artifact files AND the directory itself must be gone.
+fn assert_ralph_dir_removed(repo_dir: &Path) {
+    let ralph_dir = repo_dir.join(".git/ralph");
+    // Verify individual artifact files are gone.
+    for artifact in &["no_agent_commit", "head-oid.txt", "git-wrapper-dir.txt"] {
+        let path = ralph_dir.join(artifact);
+        assert!(
+            !path.exists(),
+            ".git/ralph/{artifact} should be removed after cleanup: {}",
+            path.display()
+        );
+    }
+    // The directory itself must also be gone.
+    assert!(
+        !ralph_dir.exists(),
+        ".git/ralph/ directory should be removed after all artifacts are cleaned: {}",
+        ralph_dir.display()
+    );
+}
+
 /// Assert head-oid tracking file has been removed.
 fn assert_head_oid_removed(repo_dir: &Path) {
     let head_oid = repo_dir.join(".git/ralph/head-oid.txt");
@@ -815,6 +840,9 @@ fn test_ctrl_c_removes_generated_files() {
             assert_status_is_sigint_130(status, &stdout, &stderr);
 
             assert_generated_files_removed(temp_dir.path());
+
+            // The entire .git/ralph/ directory must be removed, not just its contents.
+            assert_ralph_dir_removed(temp_dir.path());
         },
         SIGNAL_TEST_TIMEOUT,
     );
@@ -1004,6 +1032,9 @@ fn test_graceful_exit_removes_wrapper_temp_dir() {
 
             // All generated files should be removed.
             assert_generated_files_removed(temp_dir.path());
+
+            // The entire .git/ralph/ directory must be removed, not just its contents.
+            assert_ralph_dir_removed(temp_dir.path());
         },
         SIGNAL_TEST_TIMEOUT,
     );

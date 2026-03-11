@@ -368,6 +368,20 @@ pub fn uninstall_hooks_silent_at(repo_root: &Path) {
     uninstall_hooks_silent_in_dir(&hooks_dir);
 }
 
+/// Silently uninstall Ralph-managed hooks from an explicitly provided hooks directory.
+///
+/// Use this when the hooks directory is already known (e.g., derived from a
+/// pre-computed ralph dir as `ralph_dir.parent().join("hooks")`) to avoid an
+/// extra libgit2 discovery call.
+///
+/// Only files that contain [`HOOK_MARKER`] are removed or restored — arbitrary
+/// files in the hooks directory are never touched.
+///
+/// All operations are best-effort; errors are silently ignored.
+pub fn uninstall_hooks_silent_in_hooks_dir(hooks_dir: &Path) {
+    uninstall_hooks_silent_in_dir(hooks_dir);
+}
+
 /// Shared implementation for silent hook uninstallation.
 fn uninstall_hooks_silent_in_dir(hooks_dir: &Path) {
     if !hooks_dir.exists() {

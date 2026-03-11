@@ -2,8 +2,8 @@
 
 use crate::files::{cleanup_generated_files_with_workspace, make_prompt_writable_with_workspace};
 use crate::git_helpers::{
-    disable_git_wrapper, end_agent_phase_in_repo, uninstall_hooks_in_repo, verify_hooks_removed,
-    verify_wrapper_cleaned, GitHelpers,
+    disable_git_wrapper, end_agent_phase_in_repo, try_remove_ralph_dir, uninstall_hooks_in_repo,
+    verify_hooks_removed, verify_wrapper_cleaned, GitHelpers,
 };
 use crate::logger::Logger;
 use crate::workspace::Workspace;
@@ -72,6 +72,8 @@ impl Drop for AgentPhaseGuard<'_> {
         let repo_root = self.workspace.root();
         end_agent_phase_in_repo(repo_root);
         disable_git_wrapper(self.git_helpers);
+        // Best-effort: remove the now-empty ralph dir after all artifacts are cleaned.
+        try_remove_ralph_dir(repo_root);
         let _ = uninstall_hooks_in_repo(repo_root, self.logger);
         let wrapper_remaining = verify_wrapper_cleaned(repo_root);
         if !wrapper_remaining.is_empty() {

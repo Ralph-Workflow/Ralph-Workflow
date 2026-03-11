@@ -84,7 +84,7 @@ pub use branch::{get_default_branch, is_main_or_master_branch};
 pub use hooks::{file_contains_marker_with_workspace, verify_hook_integrity_with_workspace};
 pub use hooks::{
     install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
-    verify_hooks_removed,
+    uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
 };
 pub use hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 pub use rebase::{
@@ -135,8 +135,8 @@ pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_silent, cleanup_agent_phase_silent_at,
     cleanup_orphaned_marker, cleanup_orphaned_wrapper_at, detect_unauthorized_commit,
     disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo, ensure_agent_phase_protections,
-    start_agent_phase, start_agent_phase_in_repo, verify_wrapper_cleaned, GitHelpers,
-    ProtectionCheckResult,
+    start_agent_phase, start_agent_phase_in_repo, try_remove_ralph_dir, verify_wrapper_cleaned,
+    GitHelpers, ProtectionCheckResult,
 };
 
 // Workspace-aware variants (used by tests and by code paths that must operate
