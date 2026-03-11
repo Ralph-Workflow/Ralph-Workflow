@@ -780,6 +780,12 @@ fn test_agent_phase_guard_drop_cleans_up_hooks() {
                 );
             }
         }
+
+        // The .git/ralph/ directory itself must be fully removed, not just emptied.
+        assert!(
+            !dir.path().join(".git/ralph").exists(),
+            "expected .git/ralph/ directory to be fully removed by AgentPhaseGuard::drop"
+        );
     });
 }
 

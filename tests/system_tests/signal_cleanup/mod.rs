@@ -613,10 +613,8 @@ fn test_ctrl_c_removes_hook_when_no_prior_hook_existed() {
 
             // Ensure no hooks exist
             let hooks_dir = temp_dir.path().join(".git/hooks");
-            let precommit_path = hooks_dir.join("pre-commit");
-            let prepush_path = hooks_dir.join("pre-push");
             assert!(
-                !precommit_path.exists(),
+                !hooks_dir.join("pre-commit").exists(),
                 "Test precondition: no pre-commit hook"
             );
 
@@ -629,15 +627,16 @@ fn test_ctrl_c_removes_hook_when_no_prior_hook_existed() {
             let (status, stdout, stderr) = collect_output(child);
             assert_status_is_sigint_130(status, &stdout, &stderr);
 
-            // Hooks should not exist after cleanup (they were installed by Ralph, no original).
-            assert!(
-                !precommit_path.exists(),
-                "pre-commit should be removed when no prior hook existed"
-            );
-            assert!(
-                !prepush_path.exists(),
-                "pre-push should be removed when no prior hook existed"
-            );
+            // All 4 Ralph-managed hooks must be removed (none should contain RALPH_HOOK_MARKER).
+            for hook_name in &["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"] {
+                let hook_path = hooks_dir.join(hook_name);
+                // Hooks that didn't exist before Ralph started must not exist after cleanup.
+                // (The test sets up a fresh repo with no hooks, so none pre-existed.)
+                assert!(
+                    !hook_path.exists(),
+                    "{hook_name} should be removed when no prior hook existed"
+                );
+            }
 
             // Wrapper tracking file (PATH injection) should be cleaned up
             assert_git_wrapper_track_file_removed(temp_dir.path());

@@ -153,6 +153,31 @@ fn set_readonly_mode_if_not_symlink(path: &Path, mode: u32) {
     }
 }
 
+fn relax_temp_cleanup_permissions_if_regular_file(path: &Path) {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return;
+    };
+    let file_type = meta.file_type();
+    if !file_type.is_file() || file_type.is_symlink() {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = meta.permissions();
+        perms.set_mode(perms.mode() | 0o200);
+        let _ = fs::set_permissions(path, perms);
+    }
+
+    #[cfg(windows)]
+    {
+        let mut perms = meta.permissions();
+        perms.set_readonly(false);
+        let _ = fs::set_permissions(path, perms);
+    }
+}
+
 /// Git helper state.
 pub struct GitHelpers {
     real_git: Option<PathBuf>,
@@ -810,6 +835,10 @@ fn end_agent_phase_in_repo_at_ralph_dir(repo_root: &Path, ralph_dir: &Path) {
     // Clean up HEAD OID tracking file.
     remove_head_oid_file_at(ralph_dir);
 
+    // Clean up stray temp files left by interrupted atomic writes before
+    // attempting to remove the directory. Without this, remove_dir fails
+    // silently when .head-oid.tmp.* or .git-wrapper-dir.tmp.* files exist.
+    cleanup_stray_tmp_files_in_ralph_dir(ralph_dir);
     // Best-effort: remove the empty ralph dir if it's now empty.
     let _ = fs::remove_dir(ralph_dir);
 }
@@ -1472,6 +1501,10 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
         uninstall_hooks_silent_at(repo_root);
     }
 
+    // Clean up any stray tmp files not yet removed before attempting remove_dir.
+    // This handles .git-wrapper-dir.tmp.* files that were not present during
+    // the earlier end_agent_phase_in_repo_at_ralph_dir call.
+    cleanup_stray_tmp_files_in_ralph_dir(ralph_dir);
     // Best-effort: remove the ralph dir itself now that all artifacts are gone.
     // end_agent_phase_in_repo_at_ralph_dir removed marker + head-oid and tried
     // remove_dir too early (track file was still present). Now the track file has
@@ -1499,6 +1532,10 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
 /// fails and leaves the directory for the next run's cleanup or tamper detection.
 pub fn try_remove_ralph_dir(repo_root: &Path) {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    // Clean up stray temp files from interrupted atomic writes before attempting
+    // remove_dir. Without this, remove_dir silently fails and the directory is
+    // left behind across restarts.
+    cleanup_stray_tmp_files_in_ralph_dir(&ralph_dir);
     let _ = fs::remove_dir(&ralph_dir);
 }
 
@@ -1634,6 +1671,43 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
     };
 
     current_oid.trim() != stored_oid
+}
+
+/// Remove stray atomic-write temp files from the ralph git directory.
+///
+/// `write_head_oid_file_atomic` and `write_wrapper_track_file_atomic` create
+/// temp files (`.head-oid.tmp.PID.NANOS` and `.git-wrapper-dir.tmp.PID.NANOS`)
+/// and rename them atomically. If the process is killed or the rename fails the
+/// temp file is left behind and blocks [`fs::remove_dir`] from removing the
+/// directory.
+///
+/// Only files whose names start with the known temp prefixes are removed.
+/// Quarantine files (`*.ralph.tampered.*`) and other unexpected files are
+/// intentionally left in place.
+fn cleanup_stray_tmp_files_in_ralph_dir(ralph_dir: &Path) {
+    let Ok(entries) = fs::read_dir(ralph_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if name_str.starts_with(".head-oid.tmp.") || name_str.starts_with(".git-wrapper-dir.tmp.") {
+            let path = entry.path();
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            let file_type = meta.file_type();
+            if !file_type.is_file() || file_type.is_symlink() {
+                continue;
+            }
+
+            // Make writable before removal; temp files may have been set read-only
+            // by write_head_oid_file_atomic (0o444 / readonly) or
+            // write_wrapper_track_file_atomic (0o444 / readonly).
+            relax_temp_cleanup_permissions_if_regular_file(&path);
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 /// Remove the head-oid tracking file, making it writable first if needed.
@@ -2547,6 +2621,140 @@ mod tests {
             !ralph_dir.exists(),
             ".git/ralph/ should be fully removed after cleanup_agent_phase_silent_at; \
              all artifacts were removed but the directory still exists"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_removes_ralph_dir_when_stray_head_oid_tmp_file_exists() {
+        // Simulates a crash mid-write_head_oid_file_atomic that left a temp file.
+        // cleanup_agent_phase_silent_at must remove the stray temp file and the directory.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+        // Stray temp file left by an interrupted write_head_oid_file_atomic.
+        let stray = ralph_dir.join(format!(".head-oid.tmp.{}.123456789", std::process::id()));
+        fs::write(&stray, "deadbeef\n").unwrap();
+        // Make it read-only as the atomic writer does.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&stray).unwrap().permissions();
+            perms.set_mode(0o444);
+            fs::set_permissions(&stray, perms).unwrap();
+        }
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph/ should be fully removed even when a stray .head-oid.tmp.* file exists"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_removes_ralph_dir_when_stray_wrapper_track_tmp_file_exists() {
+        // Simulates a crash mid-write_wrapper_track_file_atomic that left a temp file.
+        // cleanup_agent_phase_silent_at must remove the stray temp file and the directory.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+        // Stray temp file left by an interrupted write_wrapper_track_file_atomic.
+        let stray = ralph_dir.join(format!(
+            ".git-wrapper-dir.tmp.{}.987654321",
+            std::process::id()
+        ));
+        fs::write(&stray, "/tmp/some-wrapper-dir\n").unwrap();
+        // Make it read-only as the atomic writer does.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&stray).unwrap().permissions();
+            perms.set_mode(0o444);
+            fs::set_permissions(&stray, perms).unwrap();
+        }
+
+        cleanup_agent_phase_silent_at(repo_root);
+
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph/ should be fully removed even when a stray .git-wrapper-dir.tmp.* file exists"
+        );
+    }
+
+    #[test]
+    fn test_try_remove_ralph_dir_removes_dir_containing_only_stray_tmp_files() {
+        // try_remove_ralph_dir must handle a directory containing only stray temp files.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        // Stray head-oid temp file only (no other artifacts).
+        let stray = ralph_dir.join(".head-oid.tmp.99999.111111111");
+        fs::write(&stray, "cafebabe\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&stray).unwrap().permissions();
+            perms.set_mode(0o444);
+            fs::set_permissions(&stray, perms).unwrap();
+        }
+
+        try_remove_ralph_dir(repo_root);
+
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph/ should be fully removed by try_remove_ralph_dir when only stray tmp files remain"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_cleanup_stray_tmp_files_in_ralph_dir_ignores_symlink_entries() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        let outside_target = repo_root.join("outside-target.txt");
+        fs::write(&outside_target, "keep readonly mode untouched\n").unwrap();
+        let symlink_path = ralph_dir.join(".head-oid.tmp.99999.222222222");
+        symlink(&outside_target, &symlink_path).unwrap();
+
+        cleanup_stray_tmp_files_in_ralph_dir(&ralph_dir);
+
+        assert!(
+            symlink_path.exists(),
+            "cleanup must skip temp-name symlinks instead of deleting them"
+        );
+        let target_contents = fs::read_to_string(&outside_target).unwrap();
+        assert_eq!(target_contents, "keep readonly mode untouched\n");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_cleanup_stray_tmp_files_in_ralph_dir_removes_readonly_files_on_windows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+
+        let stray = ralph_dir.join(".head-oid.tmp.99999.333333333");
+        fs::write(&stray, "deadbeef\n").unwrap();
+        let mut perms = fs::metadata(&stray).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&stray, perms).unwrap();
+
+        cleanup_stray_tmp_files_in_ralph_dir(&ralph_dir);
+
+        assert!(
+            !stray.exists(),
+            "cleanup must clear the readonly attribute before removing stray temp files on Windows"
         );
     }
 
