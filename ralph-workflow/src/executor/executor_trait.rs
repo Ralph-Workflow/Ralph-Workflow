@@ -224,22 +224,22 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 }
             }
 
+            fn descendant_pid_signature(descendants: &[u32]) -> u64 {
+                const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+                const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+                let mut signature = FNV_OFFSET;
+                for pid in descendants {
+                    for byte in pid.to_le_bytes() {
+                        signature ^= u64::from(byte);
+                        signature = signature.wrapping_mul(FNV_PRIME);
+                    }
+                }
+                signature
+            }
+
             fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
                 use std::collections::{HashMap, HashSet, VecDeque};
-
-                fn descendant_pid_signature(descendants: &[u32]) -> u64 {
-                    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-                    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-                    let mut signature = FNV_OFFSET;
-                    for pid in descendants {
-                        for byte in pid.to_le_bytes() {
-                            signature ^= u64::from(byte);
-                            signature = signature.wrapping_mul(FNV_PRIME);
-                        }
-                    }
-                    signature
-                }
 
                 // First pass: parse all (pid, ppid, cpu_time_ms) tuples.
                 let mut children_of: HashMap<u32, Vec<(u32, u64)>> = HashMap::new();
@@ -304,6 +304,18 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 })
             }
 
+            fn parse_pgrep_output(stdout: &str) -> Option<Vec<u32>> {
+                let mut child_pids = Vec::new();
+                for line in stdout.lines() {
+                    let pid = line.trim();
+                    if pid.is_empty() {
+                        continue;
+                    }
+                    child_pids.push(pid.parse::<u32>().ok()?);
+                }
+                Some(child_pids)
+            }
+
             fn warn_child_process_detection_degraded() {
                 static WARNED: OnceLock<()> = OnceLock::new();
                 if WARNED.set(()).is_ok() {
@@ -313,6 +325,39 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                     );
                 }
             }
+
+            let discover_descendants_with_pgrep = |parent_pid: u32| -> Option<Vec<u32>> {
+                use std::collections::{HashSet, VecDeque};
+
+                let mut descendants = Vec::new();
+                let mut visited = HashSet::new();
+                let mut queue = VecDeque::new();
+                queue.push_back(parent_pid);
+
+                while let Some(current_pid) = queue.pop_front() {
+                    let output = self
+                        .execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
+                        .ok()?;
+
+                    let child_pids = if output.status.success() {
+                        parse_pgrep_output(&output.stdout)?
+                    } else if output.status.code() == Some(1) {
+                        Vec::new()
+                    } else {
+                        return None;
+                    };
+
+                    for child_pid in child_pids {
+                        if visited.insert(child_pid) {
+                            descendants.push(child_pid);
+                            queue.push_back(child_pid);
+                        }
+                    }
+                }
+
+                descendants.sort_unstable();
+                Some(descendants)
+            };
 
             // Try BSD-style (macOS) then GNU-style (Linux) ps invocations.
             let ps_attempts: [&[&str]; 2] = [
@@ -328,6 +373,14 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                         }
                     }
                 }
+            }
+
+            if let Some(descendants) = discover_descendants_with_pgrep(parent_pid) {
+                return ChildProcessInfo {
+                    child_count: u32::try_from(descendants.len()).unwrap_or(u32::MAX),
+                    cpu_time_ms: 0,
+                    descendant_pid_signature: descendant_pid_signature(&descendants),
+                };
             }
 
             // Degraded: emit one-time warning, return no-children (conservative).
@@ -406,6 +459,14 @@ mod tests {
                 "-o".to_string(),
                 "cputime=".to_string(),
             ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn pgrep_key(parent_pid: u32) -> (String, Vec<String>) {
+        (
+            "pgrep".to_string(),
+            vec!["-P".to_string(), parent_pid.to_string()],
         )
     }
 
@@ -540,5 +601,27 @@ mod tests {
             1000 + 2000 + 3000,
             "should sum CPU across all descendants"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_falls_back_to_pgrep_when_ps_is_unavailable() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(pgrep_key(100), ok_output("200\n300\n"));
+        results.insert(pgrep_key(200), ok_output("400\n"));
+        results.insert(pgrep_key(300), ok_output(""));
+        results.insert(pgrep_key(400), ok_output(""));
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(
+            info.child_count, 3,
+            "fallback should discover descendants via pgrep"
+        );
+        assert_eq!(info.cpu_time_ms, 0, "pgrep fallback has no CPU accounting");
+        assert!(info.has_children(), "fallback should not collapse to NONE");
     }
 }

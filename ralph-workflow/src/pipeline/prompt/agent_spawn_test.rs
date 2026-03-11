@@ -1,6 +1,7 @@
 use crate::common::{format_argv_for_log, split_command, truncate_text};
 use crate::pipeline::idle_timeout::{
-    new_activity_timestamp, time_since_activity, MonitorResult, StderrActivityTracker,
+    monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
+    time_since_activity, MonitorResult, StderrActivityTracker,
 };
 use crate::pipeline::types::CommandResult;
 use std::io::{self, BufReader};
@@ -99,13 +100,15 @@ pub fn run_with_agent_spawn_with_monitor_config(
     let monitor_should_stop = Arc::new(AtomicBool::new(false));
     let monitor_should_stop_clone = Arc::clone(&monitor_should_stop);
     let activity_timestamp_clone = activity_timestamp.clone();
+    let child_activity_suppressed = Arc::new(std::sync::Mutex::new(None));
+    let child_activity_suppressed_for_monitor = Arc::clone(&child_activity_suppressed);
 
     let monitor_executor: Arc<dyn crate::executor::ProcessExecutor> =
         std::sync::Arc::clone(&runtime.executor_arc);
 
-    let mut monitor_handle = Some(std::thread::spawn(move || {
-        let result =
-            crate::pipeline::idle_timeout::monitor_idle_timeout_with_interval_and_kill_config(
+    let mut monitor_handle: Option<std::thread::JoinHandle<MonitorResult>> =
+        Some(std::thread::spawn(move || {
+            let result = monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 &activity_timestamp_clone,
                 None, // No file activity config
                 &child_for_monitor,
@@ -118,12 +121,13 @@ pub fn run_with_agent_spawn_with_monitor_config(
                     required_idle_confirmations: 2,
                     check_child_processes: true,
                 },
+                Some(&child_activity_suppressed_for_monitor),
             );
-        if matches!(result, MonitorResult::TimedOut { .. }) {
-            stdout_cancel_for_monitor.store(true, Ordering::Release);
-        }
-        result
-    }));
+            if matches!(result, MonitorResult::TimedOut { .. }) {
+                stdout_cancel_for_monitor.store(true, Ordering::Release);
+            }
+            result
+        }));
 
     let stderr_activity_timestamp = activity_timestamp.clone();
     let stderr_cancel = Arc::new(AtomicBool::new(false));
@@ -201,9 +205,13 @@ pub fn run_with_agent_spawn_with_monitor_config(
         monitor_should_stop.store(true, Ordering::Release);
     }
 
-    let monitor_result = monitor_result_early
+    let monitor_result: MonitorResult = monitor_result_early
         .or_else(|| monitor_handle.take().and_then(|handle| handle.join().ok()))
         .unwrap_or(MonitorResult::ProcessCompleted);
+
+    let child_activity_suppression_info = *child_activity_suppressed
+        .lock()
+        .expect("child activity observer mutex poisoned");
 
     let (final_exit_code, child_status) = match monitor_result {
         MonitorResult::TimedOut {
@@ -241,7 +249,16 @@ pub fn run_with_agent_spawn_with_monitor_config(
             ));
             (super::SIGTERM_EXIT_CODE, child_status_at_timeout)
         }
-        MonitorResult::ProcessCompleted => (exit_code, None),
+        MonitorResult::ProcessCompleted => {
+            if let Some(info) = child_activity_suppression_info {
+                runtime.logger.info(&format!(
+                    "idle timeout suppression: child processes remained active \
+                     ({} children, CPU advanced to {}ms, signature {})",
+                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                ));
+            }
+            (exit_code, None)
+        }
     };
 
     let session_id =

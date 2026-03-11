@@ -496,10 +496,11 @@ fn children_disappearing_and_reappearing_resets_tracking() {
     );
 }
 
-/// Replacing one child subtree with another between polls should grant a fresh
-/// observation grace even if the new subtree reports a lower cumulative CPU time.
+/// Replacing one child subtree with another between polls is not proof of current work.
+/// The replacement subtree must show CPU advancement on a later poll before it can
+/// suppress timeout enforcement.
 #[test]
-fn child_identity_change_between_polls_resets_tracking() {
+fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
@@ -522,7 +523,7 @@ fn child_identity_change_between_polls_resets_tracking() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(50),
+        check_interval: Duration::from_millis(40),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
@@ -539,7 +540,8 @@ fn child_identity_change_between_polls_resets_tracking() {
         )
     });
 
-    thread::sleep(Duration::from_millis(60));
+    // First poll sees the original subtree and grants the initial observation grace.
+    thread::sleep(Duration::from_millis(50));
 
     executor_impl.add_active_children_info(
         child_pid,
@@ -550,16 +552,18 @@ fn child_identity_change_between_polls_resets_tracking() {
         },
     );
 
-    thread::sleep(Duration::from_millis(60));
+    // The replacement subtree has never shown CPU advancement, so the second poll
+    // should still proceed to timeout enforcement instead of resetting idle state.
+    thread::sleep(Duration::from_millis(55));
     assert!(
-        executor_impl.execute_calls_for("kill").is_empty(),
-        "changing to a new child subtree between polls should grant a fresh grace period"
+        !executor_impl.execute_calls_for("kill").is_empty(),
+        "replacement child subtree should not suppress timeout until it shows CPU advancement"
     );
 
     let result = handle.join().expect("monitor thread panicked");
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
-        "monitor should still time out once the replacement child subtree also stalls"
+        "monitor should time out when replacement children never advance CPU"
     );
 }
 

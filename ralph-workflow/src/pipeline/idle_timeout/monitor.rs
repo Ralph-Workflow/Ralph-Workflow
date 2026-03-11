@@ -177,6 +177,26 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     executor: &Arc<dyn ProcessExecutor>,
     config: MonitorConfig,
 ) -> MonitorResult {
+    monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+        activity_timestamp,
+        file_activity_config,
+        child,
+        should_stop,
+        executor,
+        config,
+        None,
+    )
+}
+
+pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
+    activity_timestamp: &SharedActivityTimestamp,
+    file_activity_config: Option<&FileActivityConfig>,
+    child: &Arc<std::sync::Mutex<Box<dyn AgentChild>>>,
+    should_stop: &Arc<std::sync::atomic::AtomicBool>,
+    executor: &Arc<dyn ProcessExecutor>,
+    config: MonitorConfig,
+    child_activity_suppressed: Option<&Arc<std::sync::Mutex<Option<ChildProcessInfo>>>>,
+) -> MonitorResult {
     use std::sync::atomic::Ordering;
 
     #[derive(Debug, Clone, Copy)]
@@ -388,16 +408,33 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
             };
             let info = executor.get_child_process_info(child_pid);
             if info.has_children() {
-                let is_fresh_child_observation = last_child_observation.is_none_or(|prev| {
+                let first_child_observation = last_child_observation.is_none();
+                let subtree_changed = last_child_observation.is_some_and(|prev| {
                     prev.descendant_pid_signature != info.descendant_pid_signature
                         || info.cpu_time_ms < prev.cpu_time_ms
                 });
-                let cpu_advanced =
-                    last_child_observation.is_none_or(|prev| info.cpu_time_ms > prev.cpu_time_ms);
+                let cpu_advanced = last_child_observation.is_some_and(|prev| {
+                    prev.descendant_pid_signature == info.descendant_pid_signature
+                        && info.cpu_time_ms > prev.cpu_time_ms
+                });
                 last_child_observation = Some(info);
                 last_child_info = Some(info);
 
-                if is_fresh_child_observation || cpu_advanced {
+                if first_child_observation {
+                    consecutive_idle_count = 0;
+                    eprintln!(
+                        "Agent has child processes for the first time during idle timeout \
+                         (pid {child_pid}, {} children, cpu {}ms, signature {}); granting startup grace",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                    continue;
+                }
+                if cpu_advanced {
+                    if let Some(observed_activity) = child_activity_suppressed.as_ref() {
+                        *observed_activity
+                            .lock()
+                            .expect("child activity observer mutex poisoned") = Some(info);
+                    }
                     consecutive_idle_count = 0;
                     eprintln!(
                         "Agent has active child processes (pid {child_pid}, \
@@ -406,12 +443,20 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
                     );
                     continue;
                 }
-                // Children exist but CPU hasn't advanced — treat as idle.
-                eprintln!(
-                    "Agent has child processes (pid {child_pid}, {} children) \
-                     but CPU time unchanged ({}ms, signature {}); treating as idle",
-                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
-                );
+                if subtree_changed {
+                    eprintln!(
+                        "Agent child subtree changed during idle timeout (pid {child_pid}, \
+                         {} children, cpu {}ms, signature {}); waiting for future CPU advancement before suppressing timeout",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                } else {
+                    // Children exist but CPU hasn't advanced — treat as idle.
+                    eprintln!(
+                        "Agent has child processes (pid {child_pid}, {} children) \
+                         but CPU time unchanged ({}ms, signature {}); treating as idle",
+                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    );
+                }
             } else {
                 last_child_observation = None;
                 last_child_info = None;
