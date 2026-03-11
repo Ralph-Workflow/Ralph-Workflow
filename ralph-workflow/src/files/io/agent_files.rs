@@ -28,6 +28,7 @@ pub const GENERATED_FILES: &[&str] = &[
     ".agent/PLAN.md",
     ".agent/commit-message.txt",
     ".agent/checkpoint.json.tmp",
+    ".git/ralph/no_agent_commit",
 ];
 
 /// Check if a file contains a specific marker string.
@@ -389,12 +390,14 @@ mod tests {
         fn test_cleanup_generated_files_with_workspace() {
             let workspace = MemoryWorkspace::new_test()
                 .with_file(".agent/PLAN.md", "plan")
-                .with_file(".agent/commit-message.txt", "msg");
+                .with_file(".agent/commit-message.txt", "msg")
+                .with_file(".git/ralph/no_agent_commit", "");
 
             cleanup_generated_files_with_workspace(&workspace);
 
             assert!(!workspace.exists(Path::new(".agent/PLAN.md")));
             assert!(!workspace.exists(Path::new(".agent/commit-message.txt")));
+            assert!(!workspace.exists(Path::new(".git/ralph/no_agent_commit")));
         }
 
         #[test]

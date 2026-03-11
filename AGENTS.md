@@ -112,6 +112,7 @@ You MUST NEVER:
 **Why this matters:**
 - Ralph reinstalls hooks before every agent invocation — tampering will be detected immediately
 - The `.git/ralph/` enforcement state is recreated before every agent invocation
+- `.git/ralph/` lives inside git metadata, not tracked repo code, so it will not appear in `git status` or normal working-tree scans
 - Ralph's deterministic pipeline depends on ALL commits going through its commit effect
 - A commit made outside Ralph cannot be undone automatically and breaks the review pipeline
 

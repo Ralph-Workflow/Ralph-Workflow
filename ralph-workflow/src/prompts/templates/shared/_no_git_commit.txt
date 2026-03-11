@@ -61,6 +61,7 @@ FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
 
 WHY BYPASS IS FUTILE — DO NOT WASTE YOUR EXECUTION BUDGET:
 1. The `.git/ralph/no_agent_commit` marker is recreated before EVERY agent invocation. Deleting it is pointless.
+   `.git/ralph/` is git metadata, not repo code, so it will not appear in `git status` or normal working-tree scans.
 2. All git hooks (pre-commit, pre-push, pre-merge-commit) are reinstalled before EVERY agent invocation. Deleting or modifying them is pointless.
 3. Hook and marker permissions are verified and restored before EVERY agent invocation. Using chmod is pointless.
 4. The PATH wrapper unsets GIT_DIR, GIT_WORK_TREE, and GIT_EXEC_PATH when the marker exists. Setting env vars is pointless.

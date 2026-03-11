@@ -276,8 +276,9 @@ mod tests {
         use crate::files::io::agent_files::GENERATED_FILES;
         // Verify GENERATED_FILES contains all known generated artifacts.
         // If a new artifact is added to the pipeline, add it here too.
-        // Note: enforcement state files (.no_agent_commit, head-oid.txt, git-wrapper-dir.txt)
-        // now live in <git-dir>/ralph/ and are managed by git_helpers, not GENERATED_FILES.
+        // Workspace cleanup must remove the marker because startup/finalization can operate
+        // purely through Workspace, but head-oid.txt and git-wrapper-dir.txt remain git-helper
+        // managed metadata outside the generated-files set.
         assert!(
             GENERATED_FILES.contains(&".agent/PLAN.md"),
             "GENERATED_FILES must include .agent/PLAN.md"
@@ -289,6 +290,10 @@ mod tests {
         assert!(
             GENERATED_FILES.contains(&".agent/checkpoint.json.tmp"),
             "GENERATED_FILES must include .agent/checkpoint.json.tmp"
+        );
+        assert!(
+            GENERATED_FILES.contains(&".git/ralph/no_agent_commit"),
+            "GENERATED_FILES must include .git/ralph/no_agent_commit"
         );
     }
 }

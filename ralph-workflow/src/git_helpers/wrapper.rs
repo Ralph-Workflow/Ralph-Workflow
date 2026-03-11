@@ -1629,6 +1629,7 @@ fn remove_head_oid_file_at(ralph_dir: &Path) {
 /// The workspace abstraction represents this as a relative path so `MemoryWorkspace`
 /// can test the create/remove/exists operations without a real git repository.
 const MARKER_WORKSPACE_PATH: &str = ".git/ralph/no_agent_commit";
+const LEGACY_MARKER_WORKSPACE_PATH: &str = ".no_agent_commit";
 
 /// Create the agent phase marker file using workspace abstraction.
 ///
@@ -1708,9 +1709,21 @@ pub fn cleanup_orphaned_marker_with_workspace(
     logger: &Logger,
 ) -> io::Result<()> {
     let marker_path = Path::new(MARKER_WORKSPACE_PATH);
-
-    if workspace.exists(marker_path) {
+    let legacy_marker_path = Path::new(LEGACY_MARKER_WORKSPACE_PATH);
+    let removed_marker = if workspace.exists(marker_path) {
         workspace.remove(marker_path)?;
+        true
+    } else {
+        false
+    };
+    let removed_legacy_marker = if workspace.exists(legacy_marker_path) {
+        workspace.remove(legacy_marker_path)?;
+        true
+    } else {
+        false
+    };
+
+    if removed_marker || removed_legacy_marker {
         logger.success("Removed orphaned enforcement marker");
     } else {
         logger.info("No orphaned marker found");
@@ -1808,16 +1821,18 @@ mod tests {
 
     #[test]
     fn test_cleanup_orphaned_marker_with_workspace_exists() {
-        let workspace = MemoryWorkspace::new_test();
+        let workspace = MemoryWorkspace::new_test().with_file(".no_agent_commit", "");
         let logger = Logger::new(crate::logger::Colors { enabled: false });
 
         // Create an orphaned marker
         create_marker_with_workspace(&workspace).unwrap();
         assert!(marker_exists_with_workspace(&workspace));
+        assert!(workspace.exists(Path::new(".no_agent_commit")));
 
         // Clean up should remove it
         cleanup_orphaned_marker_with_workspace(&workspace, &logger).unwrap();
         assert!(!marker_exists_with_workspace(&workspace));
+        assert!(!workspace.exists(Path::new(".no_agent_commit")));
     }
 
     #[test]
@@ -1831,22 +1846,8 @@ mod tests {
         // Clean up should succeed without error
         cleanup_orphaned_marker_with_workspace(&workspace, &logger).unwrap();
         assert!(!marker_exists_with_workspace(&workspace));
-    }
-
-    #[test]
-    fn test_marker_file_name_constant() {
-        // Verify the marker filename constant matches expected value.
-        // The marker now lives at <git-dir>/ralph/no_agent_commit.
         assert_eq!(MARKER_FILE_NAME, "no_agent_commit");
-    }
-
-    #[test]
-    fn test_wrapper_track_file_name_constant() {
         assert_eq!(WRAPPER_TRACK_FILE_NAME, "git-wrapper-dir.txt");
-    }
-
-    #[test]
-    fn test_head_oid_file_name_constant() {
         assert_eq!(HEAD_OID_FILE_NAME, "head-oid.txt");
     }
 
@@ -2051,6 +2052,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_create_marker_in_repo_root_quarantines_special_file() {
+        use std::os::unix::fs::symlink;
         use std::os::unix::fs::FileTypeExt;
         use std::os::unix::net::UnixListener;
 
@@ -2064,13 +2066,24 @@ mod tests {
         let ralph_dir = repo_root.join(".git").join("ralph");
         fs::create_dir_all(&ralph_dir).unwrap();
         let marker_path = ralph_dir.join(MARKER_FILE_NAME);
-        let listener = UnixListener::bind(&marker_path).unwrap();
-        drop(listener);
+        let created_socket = match UnixListener::bind(&marker_path) {
+            Ok(listener) => {
+                drop(listener);
+                true
+            }
+            Err(err) if err.kind() == io::ErrorKind::PermissionDenied => {
+                let fallback_target = ralph_dir.join("marker-symlink-target");
+                fs::write(&fallback_target, b"blocked special file fallback").unwrap();
+                symlink(&fallback_target, &marker_path).unwrap();
+                false
+            }
+            Err(err) => panic!("failed to create non-regular marker path: {err}"),
+        };
 
         let ft = fs::symlink_metadata(&marker_path).unwrap().file_type();
         assert!(
-            ft.is_socket(),
-            "precondition: marker path should be a socket"
+            ft.is_socket() || (!created_socket && ft.is_symlink()),
+            "precondition: marker path should be a socket or fallback symlink"
         );
 
         create_marker_in_repo_root(repo_root).unwrap();
