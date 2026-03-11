@@ -84,14 +84,15 @@ fmt-check:
 	$(CARGO) fmt -- --check
 	echo "Format check passed"
 
-# Run clippy lints (per-package, matching verification.md)
-# Enforces clippy::all, clippy::pedantic, clippy::nursery via #![deny(...)] in crate roots
+# Run clippy lints only (NOT the full required verification contract).
+# For the canonical pre-PR gate, use `cargo xtask verify` or `make ci`.
 # NOTE: When adding a new workspace member, add its clippy check here AND in docs/agents/verification.md
 lint:
 	$(CARGO) clippy -p ralph-workflow $(CARGO_FLAGS) --all-targets --all-features -- -D warnings
 	$(CARGO) clippy -p ralph-workflow-tests $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
+	$(CARGO) clippy -p ralph-gui $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
 # Run custom dylint lints (safe default: lib only)
@@ -516,8 +517,9 @@ dylint-verbose:
 		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q -p ralph-workflow --lib file_too_long -- --lib --quiet >/dev/null 2>&1; \
 '
 
-# Run all checks (format, lint, test)
-ci: fmt-check lint test
+# Run the canonical verification contract.
+ci:
+	$(CARGO) xtask verify
 	echo "All CI checks passed"
 
 # Build documentation

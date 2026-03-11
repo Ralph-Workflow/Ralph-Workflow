@@ -499,14 +499,12 @@ pub fn verify_fast(
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
     let all_checks = all_group_checks(groups);
-    runner
-        .prepare_for_verify(
-            repo_root,
-            native_checks,
-            &all_checks,
-            crate::scanner::NATIVE_SCAN_CHECKS,
-        )
-        .with_context(|| "prepare verify cache state".to_string())?;
+    let _ = runner.prepare_for_verify(
+        repo_root,
+        native_checks,
+        &all_checks,
+        crate::scanner::NATIVE_SCAN_CHECKS,
+    );
 
     // Phase 1: native checks (always sequential, very fast).
     for check in native_checks {
@@ -1609,6 +1607,80 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct FailingPrepareRunner {
+        events: Mutex<Vec<String>>,
+    }
+
+    impl FailingPrepareRunner {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl CommandRunner for FailingPrepareRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("run:{}", spec.name));
+            Ok(CommandOutput {
+                exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn run_native_check(
+            &self,
+            _repo_root: &std::path::Path,
+            check: &NativeCheck,
+        ) -> std::io::Result<NativeCheckResult> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("native-required:{}", check.name));
+            Ok(NativeCheckResult {
+                status: CheckStatus::Pass,
+                message: String::new(),
+            })
+        }
+
+        fn prepare_for_verify(
+            &self,
+            _repo_root: &std::path::Path,
+            _native_checks: &[NativeCheck],
+            _checks: &[CommandSpec],
+            _native_scan_checks: &[crate::scanner::NativeScanCheck],
+        ) -> std::io::Result<()> {
+            self.events
+                .lock()
+                .unwrap()
+                .push("prepare:error".to_string());
+            Err(std::io::Error::other("simulated cache prep failure"))
+        }
+
+        fn run_native_scan(
+            &self,
+            _repo_root: &std::path::Path,
+            checks: &[crate::scanner::NativeScanCheck],
+            _progress: &(dyn Fn(&str, &str) + Sync),
+        ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("native-scan:{}", checks.len()));
+            Ok(checks
+                .iter()
+                .map(|check| crate::scanner::NativeScanCheckResult {
+                    check_name: check.name,
+                    passed: true,
+                    violations: Vec::new(),
+                })
+                .collect())
+        }
+    }
+
     #[derive(Default)]
     struct EventOrderReporter {
         events: Mutex<Vec<String>>,
@@ -2264,6 +2336,61 @@ mod tests {
                 .first()
                 .is_some_and(|event| event.starts_with("start:")),
             "progress reporting should still begin with check start events, got {reporter_events:?}"
+        );
+    }
+
+    #[test]
+    fn test_verify_fast_continues_uncached_when_prepare_for_verify_fails() {
+        let runner = std::sync::Arc::new(FailingPrepareRunner::default());
+        let reporter = EventOrderReporter::default();
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[NativeCheck {
+                name: "fake-native-required",
+                run: |_| NativeCheckResult {
+                    status: CheckStatus::Pass,
+                    message: String::new(),
+                },
+            }],
+            &CheckGroups {
+                fmt: &[check("fmt-check")],
+                core_cargo: &[check("clippy-core")],
+                xtask_cargo: &[],
+                gui_cargo: &[],
+                frontend_install: &[],
+                frontend_post_install: &[],
+                release: &[],
+            },
+            &reporter,
+        )
+        .expect("verify_fast should continue even when prepare_for_verify fails");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let events = runner.events();
+        assert!(
+            events.iter().any(|event| event == "prepare:error"),
+            "runner should record the simulated prepare failure"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "native-required:fake-native-required"),
+            "native required checks must still run after prepare failure"
+        );
+        assert!(
+            events.iter().any(|event| event == "run:fmt-check"),
+            "fmt lane should still execute uncached after prepare failure"
+        );
+        assert!(
+            events.iter().any(|event| event == "run:clippy-core"),
+            "core cargo lane should still execute uncached after prepare failure"
+        );
+        assert!(
+            events.iter().any(|event| event.starts_with("native-scan:")),
+            "native scan lane should still execute after prepare failure"
         );
     }
 

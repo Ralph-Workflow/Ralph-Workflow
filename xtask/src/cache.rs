@@ -218,10 +218,39 @@ const RALPH_GUI_BUILD_EXTRA_GLOBS: &[ScopeGlob] = &[
     },
 ];
 const RALPH_GUI_BUILD_EXTRA_FILES: &[&str] = &["ralph-gui/tauri.conf.json"];
-const INTEGRATION_TEST_EXTRA_GLOBS: &[ScopeGlob] = &[ScopeGlob {
-    dir: "tests/integration_tests/artifacts",
-    pattern: "*",
-}];
+const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "templates/prompts",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "ralph-workflow/src/prompts/templates",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "ralph-workflow/src/files/llm_output_extraction",
+        pattern: "*",
+    },
+];
+const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES: &[&str] = &[];
+const INTEGRATION_TEST_AND_RALPH_WORKFLOW_EXTRA_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "tests/integration_tests/artifacts",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "templates/prompts",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "ralph-workflow/src/prompts/templates",
+        pattern: "*",
+    },
+    ScopeGlob {
+        dir: "ralph-workflow/src/files/llm_output_extraction",
+        pattern: "*",
+    },
+];
 const DYLINT_SCOPE_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "ralph-workflow/src",
@@ -321,9 +350,17 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             "ralph-gui",
         ]),
         // clippy-core spans ralph-workflow + ralph-workflow-tests + test-helpers
-        "clippy-core" => CheckScope::Build(&["ralph-workflow/src", "tests", "test-helpers/src"]),
+        "clippy-core" => CheckScope::BuildWithExtras {
+            dirs: &["ralph-workflow/src", "tests", "test-helpers/src"],
+            globs: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS,
+            files: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES,
+        },
 
-        "test-ralph-workflow-lib" => CheckScope::Build(&["ralph-workflow/src"]),
+        "test-ralph-workflow-lib" => CheckScope::BuildWithExtras {
+            dirs: &["ralph-workflow/src"],
+            globs: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS,
+            files: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES,
+        },
 
         "dylint" => CheckScope::Patterns {
             globs: DYLINT_SCOPE_GLOBS,
@@ -357,13 +394,15 @@ pub fn scope_for(check_name: &str) -> CheckScope {
                 "tests/integration_tests",
                 "test-helpers/src",
             ],
-            globs: INTEGRATION_TEST_EXTRA_GLOBS,
-            files: &[],
+            globs: INTEGRATION_TEST_AND_RALPH_WORKFLOW_EXTRA_GLOBS,
+            files: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES,
         },
 
-        "release-build" => {
-            CheckScope::Build(&["ralph-workflow/src", "test-helpers/src", "xtask/src"])
-        }
+        "release-build" => CheckScope::BuildWithExtras {
+            dirs: &["ralph-workflow/src", "test-helpers/src", "xtask/src"],
+            globs: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS,
+            files: RALPH_WORKFLOW_COMPILE_TIME_EXTRA_FILES,
+        },
 
         // conservative fallback for any unrecognised check
         _ => CheckScope::Build(&["ralph-workflow/src", "tests", "xtask/src"]),
@@ -1267,9 +1306,37 @@ mod tests {
 
     #[test]
     fn test_scope_for_clippy_core_is_granular() {
-        let key = scope_memo_key(&scope_for("clippy-core"));
-        // Must be a Build scope targeting ralph-workflow/src + tests + test-helpers/src.
-        assert_eq!(key, "b:ralph-workflow/src,tests,test-helpers/src");
+        match scope_for("clippy-core") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(dirs, &["ralph-workflow/src", "tests", "test-helpers/src"]);
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "templates/prompts" && glob.pattern == "*"),
+                    "clippy-core must track embedded prompt markdown files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
+                    }),
+                    "clippy-core must track embedded prompt template text files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/files/llm_output_extraction"
+                            && glob.pattern == "*"
+                    }),
+                    "clippy-core must track embedded XSD files consumed by ralph-workflow"
+                );
+                assert!(
+                    files.is_empty(),
+                    "clippy-core should track compile-time resources via directory extras"
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("clippy-core must use BuildWithExtras scope")
+            }
+        }
     }
 
     #[test]
@@ -1357,6 +1424,25 @@ mod tests {
                         glob.dir == "tests/integration_tests/artifacts" && glob.pattern == "*"
                     }),
                     "integration test scope must track compile-time fixtures included from tests/integration_tests/artifacts"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "templates/prompts" && glob.pattern == "*"),
+                    "integration test scope must track embedded prompt markdown files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
+                    }),
+                    "integration test scope must track embedded prompt template text files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/files/llm_output_extraction"
+                            && glob.pattern == "*"
+                    }),
+                    "integration test scope must track embedded XSD files used by integration tests and prompts"
                 );
                 assert!(
                     files.is_empty(),
@@ -1477,9 +1563,85 @@ mod tests {
     }
 
     #[test]
+    fn test_scope_for_test_ralph_workflow_lib_tracks_ralph_workflow_compile_time_resources() {
+        match scope_for("test-ralph-workflow-lib") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(dirs, &["ralph-workflow/src"]);
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "templates/prompts" && glob.pattern == "*"),
+                    "ralph-workflow lib tests must track embedded prompt markdown files"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
+                    }),
+                    "ralph-workflow lib tests must track embedded prompt template text files"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/files/llm_output_extraction"
+                            && glob.pattern == "*"
+                    }),
+                    "ralph-workflow lib tests must track embedded XSD files"
+                );
+                assert!(files.is_empty());
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("test-ralph-workflow-lib must use BuildWithExtras scope")
+            }
+        }
+    }
+
+    #[test]
+    fn test_scope_for_release_build_tracks_ralph_workflow_compile_time_resources() {
+        match scope_for("release-build") {
+            CheckScope::BuildWithExtras { dirs, globs, files } => {
+                assert_eq!(
+                    dirs,
+                    &["ralph-workflow/src", "test-helpers/src", "xtask/src"]
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "templates/prompts" && glob.pattern == "*"),
+                    "release-build must track embedded prompt markdown files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/prompts/templates" && glob.pattern == "*"
+                    }),
+                    "release-build must track embedded prompt template text files consumed by ralph-workflow"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "ralph-workflow/src/files/llm_output_extraction"
+                            && glob.pattern == "*"
+                    }),
+                    "release-build must track embedded XSD files consumed by ralph-workflow"
+                );
+                assert!(files.is_empty());
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("release-build must use BuildWithExtras scope")
+            }
+        }
+    }
+
+    #[test]
     fn test_scope_for_release_build_tracks_default_members_only() {
-        let key = scope_memo_key(&scope_for("release-build"));
-        assert_eq!(key, "b:ralph-workflow/src,test-helpers/src,xtask/src");
+        match scope_for("release-build") {
+            CheckScope::BuildWithExtras { dirs, .. } => {
+                assert_eq!(
+                    dirs,
+                    &["ralph-workflow/src", "test-helpers/src", "xtask/src"]
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("release-build must keep tracking workspace default members via BuildWithExtras")
+            }
+        }
     }
 
     #[test]
@@ -1941,6 +2103,138 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[test]
+    fn test_compute_scope_hash_test_integration_changes_when_embedded_xsd_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-integration-xsd-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src/files/llm_output_extraction"));
+        let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"ralph-workflow\", \"test-helpers\", \"tests\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("test-helpers/Cargo.toml"),
+            b"[package]\nname = \"test-helpers\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("tests/Cargo.toml"),
+            b"[package]\nname = \"tests\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("tests/integration_tests/development_xml.rs"),
+            b"const XSD: &str = include_str!(\"../../ralph-workflow/src/files/llm_output_extraction/development_result.xsd\");\n#[test]\nfn integration() { assert!(!XSD.is_empty()); }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
+            b"<schema>one</schema>\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("test-integration");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
+            b"<schema>two</schema>\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "integration test scope must invalidate when embedded XSD dependencies change"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_compute_scope_hash_clippy_core_changes_when_embedded_prompt_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-clippy-core-template-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src/templates"));
+        let _ = std::fs::create_dir_all(tmp.join("templates/prompts"));
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
+        let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"ralph-workflow\", \"test-helpers\", \"tests\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("test-helpers/Cargo.toml"),
+            b"[package]\nname = \"test-helpers\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("tests/Cargo.toml"),
+            b"[package]\nname = \"tests\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/templates/mod.rs"),
+            b"pub const TEMPLATE: &str = include_str!(\"../../templates/prompts/feature-spec.md\");\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("tests/integration_tests/smoke.rs"),
+            b"#[test]\nfn smoke() {}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("templates/prompts/feature-spec.md"),
+            b"prompt one\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("clippy-core");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("templates/prompts/feature-spec.md"),
+            b"prompt two\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "clippy-core scope must invalidate when embedded prompt markdown changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     fn write_release_build_scope_fixture(tmp: &Path) {
         let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
         let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
@@ -2035,6 +2329,37 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         assert_ne!(
             hash_before, hash_after,
             "release-build scope must still invalidate when a default-member source file changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_release_build_scope_changes_when_embedded_xsd_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-release-build-xsd-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        write_release_build_scope_fixture(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src/files/llm_output_extraction"));
+        std::fs::write(
+            tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
+            b"<schema>one</schema>\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("release-build");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-workflow/src/files/llm_output_extraction/development_result.xsd"),
+            b"<schema>two</schema>\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "release-build scope must invalidate when embedded XSD dependencies change"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
