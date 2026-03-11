@@ -64,6 +64,67 @@ pub enum CheckScope {
     },
 }
 
+#[derive(Default)]
+pub struct RepositoryFingerprintCache {
+    glob_memo: Mutex<HashMap<String, Vec<PathBuf>>>,
+    file_contents: Mutex<HashMap<PathBuf, CachedFileBytes>>,
+}
+
+#[derive(Clone)]
+struct CachedFileBytes {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    bytes: Vec<u8>,
+}
+
+impl RepositoryFingerprintCache {
+    fn collect_globbed_paths(
+        &self,
+        repo_root: &Path,
+        rel_dir: &str,
+        pattern: &str,
+    ) -> std::io::Result<Vec<PathBuf>> {
+        let key = format!("{rel_dir}@{pattern}");
+        if let Some(paths) = self.glob_memo.lock().unwrap().get(&key).cloned() {
+            return Ok(paths);
+        }
+
+        let full = repo_root.join(rel_dir);
+        let mut paths = Vec::new();
+        if full.exists() {
+            crate::scanner::collect_files_with_glob(&full, pattern, &mut paths)?;
+            paths.sort();
+            paths.dedup();
+        }
+
+        self.glob_memo.lock().unwrap().insert(key, paths.clone());
+        Ok(paths)
+    }
+
+    fn read_file_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        let metadata = std::fs::metadata(path)?;
+        let len = metadata.len();
+        let modified = metadata.modified().ok();
+
+        if let Some(cached) = self.file_contents.lock().unwrap().get(path).cloned() {
+            if cached.len == len && cached.modified == modified {
+                return Ok(cached.bytes);
+            }
+        }
+
+        let bytes = std::fs::read(path)?;
+        self.file_contents.lock().unwrap().insert(
+            path.to_path_buf(),
+            CachedFileBytes {
+                len,
+                modified,
+                bytes: bytes.clone(),
+            },
+        );
+        Ok(bytes)
+    }
+}
+
 const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui", "ralph-workflow/src"];
 const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] = &[
     "ralph-gui/ui/package.json",
@@ -160,79 +221,28 @@ pub fn scope_for(check_name: &str) -> CheckScope {
     }
 }
 
-/// Read file contents in parallel using scoped threads.
-///
-/// Files are returned in the same order as `paths` so the caller can hash
-/// them deterministically without re-sorting.
-fn io_worker_count(len: usize) -> usize {
-    const MAX_IO_WORKERS: usize = 32;
-    let avail = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
-    std::cmp::min(len, std::cmp::min(avail, MAX_IO_WORKERS)).max(1)
-}
-
-fn read_files_parallel(paths: &[PathBuf]) -> std::io::Result<Vec<Vec<u8>>> {
-    if paths.is_empty() {
-        return Ok(Vec::new());
-    }
-    // For small file lists, thread overhead exceeds benefit; use serial reads.
-    const PARALLEL_THRESHOLD: usize = 4;
-    if paths.len() < PARALLEL_THRESHOLD {
-        return paths.iter().map(std::fs::read).collect();
-    }
-
-    // Spawn a bounded number of workers and reassemble in order.
-    let workers = io_worker_count(paths.len());
-    let mut slots: Vec<Option<std::io::Result<Vec<u8>>>> = (0..paths.len()).map(|_| None).collect();
-
-    std::thread::scope(|s| {
-        let handles: Vec<_> = (0..workers)
-            .map(|worker_id| {
-                s.spawn(move || {
-                    let mut out: Vec<(usize, std::io::Result<Vec<u8>>)> = Vec::new();
-                    for i in (worker_id..paths.len()).step_by(workers) {
-                        out.push((i, std::fs::read(&paths[i])));
-                    }
-                    out
-                })
-            })
-            .collect();
-
-        for h in handles {
-            for (i, r) in h.join().expect("file read worker panicked") {
-                slots[i] = Some(r);
-            }
-        }
-    });
-
-    let mut results: Vec<Vec<u8>> = Vec::with_capacity(paths.len());
-    for slot in slots {
-        // Every index must be populated by exactly one worker.
-        let r = slot.expect("worker must write slot");
-        results.push(r?);
-    }
-    Ok(results)
-}
-
 /// Compute a u64 hash of the scope by iterating relevant files and
 /// hashing (path, content bytes) pairs. Content-based hashing ensures
 /// cache keys are stable across mtime changes (e.g., git checkout round-trips).
+#[cfg(test)]
 pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Result<u64> {
-    let mut hasher = Fnv1aHasher::new();
+    compute_scope_hash_with_snapshot(repo_root, scope, &RepositoryFingerprintCache::default())
+}
 
+pub fn compute_scope_hash_with_snapshot(
+    repo_root: &Path,
+    scope: &CheckScope,
+    snapshot: &RepositoryFingerprintCache,
+) -> std::io::Result<u64> {
+    let mut hasher = Fnv1aHasher::new();
     let mut all_paths: Vec<PathBuf> = Vec::new();
+
     match scope {
         CheckScope::Directories(dirs) | CheckScope::Build(dirs) => {
-            // Include check-specific sources.
             for dir in *dirs {
-                let full = repo_root.join(dir);
-                if full.exists() {
-                    crate::scanner::collect_files_with_glob(&full, "*.rs", &mut all_paths)?;
-                }
+                all_paths.extend(snapshot.collect_globbed_paths(repo_root, dir, "*.rs")?);
 
-                // Include Cargo.toml from this directory's crate (and any parent crates)
-                // so build/lint caches invalidate on manifest changes.
+                let full = repo_root.join(dir);
                 let mut cur = full.as_path();
                 while let Some(parent) = cur.parent() {
                     let manifest = cur.join("Cargo.toml");
@@ -246,7 +256,6 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Resu
                 }
             }
 
-            // Include repo-wide config inputs that affect verification results.
             let mut config_candidates: Vec<&str> = vec![
                 "Cargo.toml",
                 "rustfmt.toml",
@@ -261,9 +270,9 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Resu
                 config_candidates.push("Cargo.lock");
             }
             for rel in config_candidates {
-                let p = repo_root.join(rel);
-                if p.exists() {
-                    all_paths.push(p);
+                let path = repo_root.join(rel);
+                if path.exists() {
+                    all_paths.push(path);
                 }
             }
         }
@@ -273,10 +282,11 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Resu
             include_lock,
         } => {
             for glob in *globs {
-                let full = repo_root.join(glob.dir);
-                if full.exists() {
-                    crate::scanner::collect_files_with_glob(&full, glob.pattern, &mut all_paths)?;
-                }
+                all_paths.extend(snapshot.collect_globbed_paths(
+                    repo_root,
+                    glob.dir,
+                    glob.pattern,
+                )?);
             }
             for rel in *files {
                 let path = repo_root.join(rel);
@@ -293,15 +303,94 @@ pub fn compute_scope_hash(repo_root: &Path, scope: &CheckScope) -> std::io::Resu
         }
     }
 
-    // Deduplicate + sort for deterministic hashing.
     all_paths.sort();
     all_paths.dedup();
 
-    // Read files in parallel (bounded); hash results in sorted order.
-    let file_bytes = read_files_parallel(&all_paths)?;
-    for (path, bytes) in all_paths.iter().zip(file_bytes.iter()) {
+    for path in &all_paths {
         hasher.write_bytes(path.to_string_lossy().as_bytes());
-        hasher.write_bytes(bytes);
+        hasher.write_bytes(&snapshot.read_file_bytes(path)?);
+    }
+
+    Ok(hasher.finish())
+}
+
+fn append_native_scan_definition_hash(
+    hasher: &mut Fnv1aHasher,
+    checks: &[crate::scanner::NativeScanCheck],
+) {
+    for check in checks {
+        hasher.write_bytes(check.name.as_bytes());
+        for literal in check.literals {
+            hasher.write_bytes(literal.as_bytes());
+        }
+        for dir in check.directories {
+            hasher.write_bytes(dir.as_bytes());
+        }
+        hasher.write_bytes(check.include_glob.as_bytes());
+        for exclude in check.exclude_globs {
+            hasher.write_bytes(exclude.as_bytes());
+        }
+        match check.mode {
+            crate::scanner::MatchMode::AnyLiteral { skip_comment_lines } => {
+                hasher.write_bytes(b"any-literal");
+                hasher.write_bytes(&[u8::from(skip_comment_lines)]);
+            }
+            crate::scanner::MatchMode::StemWithBoolSuffix => {
+                hasher.write_bytes(b"stem-with-bool-suffix");
+            }
+            crate::scanner::MatchMode::AnyLiteralAtLineStart { skip_comment_lines } => {
+                hasher.write_bytes(b"any-literal-at-line-start");
+                hasher.write_bytes(&[u8::from(skip_comment_lines)]);
+            }
+            crate::scanner::MatchMode::NegativeLookahead {
+                negative_context,
+                word_boundary_at_end,
+            } => {
+                hasher.write_bytes(b"negative-lookahead");
+                hasher.write_bytes(negative_context.as_bytes());
+                hasher.write_bytes(&[u8::from(word_boundary_at_end)]);
+            }
+        }
+    }
+}
+
+fn compute_native_scan_hash(
+    repo_root: &Path,
+    checks: &[crate::scanner::NativeScanCheck],
+    snapshot: &RepositoryFingerprintCache,
+) -> std::io::Result<u64> {
+    let mut hasher = Fnv1aHasher::new();
+    hasher.write_bytes(b"native-scan-v1");
+    append_native_scan_definition_hash(&mut hasher, checks);
+
+    let mut all_paths: Vec<PathBuf> = Vec::new();
+    for check in checks {
+        for dir in check.directories {
+            all_paths.extend(snapshot.collect_globbed_paths(repo_root, dir, check.include_glob)?);
+        }
+    }
+
+    all_paths.extend(snapshot.collect_globbed_paths(repo_root, "xtask/src", "*.rs")?);
+
+    for rel in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "xtask/Cargo.toml",
+        "rust-toolchain.toml",
+        "rust-toolchain",
+    ] {
+        let path = repo_root.join(rel);
+        if path.exists() {
+            all_paths.push(path);
+        }
+    }
+
+    all_paths.sort();
+    all_paths.dedup();
+
+    for path in &all_paths {
+        hasher.write_bytes(path.to_string_lossy().as_bytes());
+        hasher.write_bytes(&snapshot.read_file_bytes(path)?);
     }
 
     Ok(hasher.finish())
@@ -325,6 +414,7 @@ pub struct CachingCommandRunner {
     /// In-process memoization: avoids re-traversing the same directories
     /// for multiple checks that share the same scope within a single run.
     pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
+    repo_fingerprint: RepositoryFingerprintCache,
     /// Set to true when in-memory cache has unsaved changes.
     dirty: AtomicBool,
 }
@@ -344,6 +434,7 @@ impl CachingCommandRunner {
             repo_root,
             memory: Mutex::new(memory),
             scope_memo: Mutex::new(HashMap::new()),
+            repo_fingerprint: RepositoryFingerprintCache::default(),
             dirty: AtomicBool::new(false),
         }
     }
@@ -396,13 +487,53 @@ impl CachingCommandRunner {
                 return Some(h);
             }
         }
-        match compute_scope_hash(&self.repo_root, scope) {
+        match compute_scope_hash_with_snapshot(&self.repo_root, scope, &self.repo_fingerprint) {
             Ok(h) => {
                 self.scope_memo.lock().unwrap().insert(key, h);
                 Some(h)
             }
             Err(_) => None,
         }
+    }
+
+    pub fn run_native_scan(
+        &self,
+        repo_root: &Path,
+        checks: &[crate::scanner::NativeScanCheck],
+        progress: &(dyn Fn(&str, &str) + Sync),
+    ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+        let hash = compute_native_scan_hash(repo_root, checks, &self.repo_fingerprint)?;
+        let key = format!("native-scan:{hash}");
+
+        {
+            let memory = self.memory.lock().unwrap();
+            if memory.contains_key(&key) {
+                progress("native-scan", "cache hit");
+                return Ok(checks
+                    .iter()
+                    .map(|check| crate::scanner::NativeScanCheckResult {
+                        check_name: check.name,
+                        passed: true,
+                        violations: Vec::new(),
+                    })
+                    .collect());
+            }
+        }
+
+        let results = crate::scanner::run_native_scan_checks_reporting(repo_root, checks, progress);
+        if results.iter().all(|result| result.passed) {
+            self.memory.lock().unwrap().insert(
+                key,
+                CacheEntry {
+                    scope_hash: hash,
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            );
+            self.dirty.store(true, Ordering::Relaxed);
+        }
+        Ok(results)
     }
 }
 
@@ -454,6 +585,15 @@ impl CommandRunner for CachingCommandRunner {
 
         Ok(output)
     }
+
+    fn run_native_scan(
+        &self,
+        repo_root: &Path,
+        checks: &[crate::scanner::NativeScanCheck],
+        progress: &(dyn Fn(&str, &str) + Sync),
+    ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+        CachingCommandRunner::run_native_scan(self, repo_root, checks, progress)
+    }
 }
 
 #[cfg(test)]
@@ -461,6 +601,13 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    static TEST_DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn unique_test_dir(prefix: &str) -> std::path::PathBuf {
+        let id = TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("{prefix}-{}-{id}", std::process::id()))
+    }
 
     /// A runner that records call count and returns a preset output.
     struct CountingRunner {
@@ -517,7 +664,7 @@ mod tests {
     #[test]
     fn test_caching_runner_skips_check_on_cache_hit() {
         // Use a temp directory so compute_scope_hash works without real repo files.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-hit");
+        let tmp = unique_test_dir("xtask-cache-test-hit");
         let _ = std::fs::create_dir_all(&tmp);
 
         let spec = make_spec("no-test-flags-cfg-test");
@@ -546,7 +693,7 @@ mod tests {
 
     #[test]
     fn test_caching_runner_reruns_check_on_cache_miss() {
-        let tmp = std::env::temp_dir().join("xtask-cache-test-miss");
+        let tmp = unique_test_dir("xtask-cache-test-miss");
         let _ = std::fs::create_dir_all(&tmp);
 
         let spec = make_spec("no-test-flags-cfg-test");
@@ -582,7 +729,7 @@ mod tests {
 
     #[test]
     fn test_caching_runner_does_not_cache_failures() {
-        let tmp = std::env::temp_dir().join("xtask-cache-test-no-failure-cache");
+        let tmp = unique_test_dir("xtask-cache-test-no-failure-cache");
         let _ = std::fs::create_dir_all(&tmp);
 
         let spec = make_spec("no-test-flags-cfg-test");
@@ -675,7 +822,7 @@ mod tests {
         // Two checks that share the same scope should only traverse directories once.
         // We verify this by checking that both checks produce the same hash AND
         // that after the first run the scope_memo is populated.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-scope-memo");
+        let tmp = unique_test_dir("xtask-cache-test-scope-memo");
         let _ = std::fs::create_dir_all(&tmp);
 
         let (inner, _count) = CountingRunner::new(success_output());
@@ -713,9 +860,256 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_scope_hash_with_snapshot_reuses_glob_collection_for_shared_scope() {
+        let tmp = unique_test_dir("xtask-cache-test-shared-snapshot");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        std::fs::write(tmp.join("xtask/src/lib.rs"), b"pub fn xtask() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+
+        let snapshot = RepositoryFingerprintCache::default();
+        let first = compute_scope_hash_with_snapshot(&tmp, &scope_for("clippy-xtask"), &snapshot)
+            .expect("first hash should succeed");
+        let second = compute_scope_hash_with_snapshot(&tmp, &scope_for("test-xtask"), &snapshot)
+            .expect("second hash should succeed");
+
+        assert_eq!(first, second, "same shared scope must hash identically");
+        assert_eq!(
+            snapshot.glob_memo.lock().unwrap().len(),
+            1,
+            "shared scope hashing should memoize one directory walk for both xtask checks"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_compute_scope_hash_with_snapshot_reuses_file_bytes_across_calls() {
+        let tmp = unique_test_dir("xtask-cache-test-shared-file-bytes");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+        std::fs::write(tmp.join("src/lib.rs"), b"pub fn demo() {}\n").unwrap();
+
+        let snapshot = RepositoryFingerprintCache::default();
+        let _ =
+            compute_scope_hash_with_snapshot(&tmp, &CheckScope::Directories(&["src"]), &snapshot)
+                .expect("first hash should succeed");
+        let file_count_after_first = snapshot.file_contents.lock().unwrap().len();
+        let _ =
+            compute_scope_hash_with_snapshot(&tmp, &CheckScope::Directories(&["src"]), &snapshot)
+                .expect("second hash should succeed");
+        let file_count_after_second = snapshot.file_contents.lock().unwrap().len();
+
+        assert!(
+            file_count_after_first > 0,
+            "snapshot hashing should memoize file bytes after the first call"
+        );
+        assert_eq!(
+            file_count_after_first, file_count_after_second,
+            "second hash should reuse file bytes instead of rereading the same files"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_native_scan_clean_result_is_cached_for_unchanged_run() {
+        let tmp = unique_test_dir("xtask-cache-test-native-scan-cache");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+        std::fs::write(tmp.join("src/lib.rs"), b"pub fn ok() {}\n").unwrap();
+
+        let check = crate::scanner::NativeScanCheck {
+            name: "native-scan-cache-test",
+            literals: &["definitely_missing_literal"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: crate::scanner::MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let first_progress = Mutex::new(Vec::new());
+        let first = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|name, info| {
+                first_progress
+                    .lock()
+                    .unwrap()
+                    .push(format!("{name}:{info}"));
+            })
+            .expect("first native scan should succeed");
+        let second_progress = Mutex::new(Vec::new());
+        let second = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|name, info| {
+                second_progress
+                    .lock()
+                    .unwrap()
+                    .push(format!("{name}:{info}"));
+            })
+            .expect("second native scan should succeed");
+
+        assert!(first[0].passed, "first native scan should pass");
+        assert!(second[0].passed, "second native scan should pass");
+        assert!(
+            !first_progress
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.contains("cache hit")),
+            "cold native scan should not report a cache hit"
+        );
+        assert!(
+            second_progress
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.contains("cache hit")),
+            "unchanged native scan should report a cache hit on the warm run"
+        );
+        assert!(
+            runner
+                .memory
+                .lock()
+                .unwrap()
+                .keys()
+                .any(|key| key.starts_with("native-scan:")),
+            "clean native scan results should be stored in the verify cache"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_native_scan_cache_invalidates_when_relevant_file_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-native-scan-invalidation");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+        std::fs::write(tmp.join("src/lib.rs"), b"pub fn ok() {}\n").unwrap();
+
+        let check = crate::scanner::NativeScanCheck {
+            name: "native-scan-cache-invalidation",
+            literals: &["blocked_literal"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: crate::scanner::MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let first = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|_, _| {})
+            .expect("first native scan should succeed");
+        assert!(first[0].passed, "first native scan should pass");
+
+        std::fs::write(tmp.join("src/lib.rs"), b"pub fn blocked_literal() {}\n").unwrap();
+
+        let second_progress = Mutex::new(Vec::new());
+        let second = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|name, info| {
+                second_progress
+                    .lock()
+                    .unwrap()
+                    .push(format!("{name}:{info}"));
+            })
+            .expect("second native scan should succeed");
+
+        assert!(
+            !second[0].passed,
+            "relevant file changes must invalidate the cached clean native scan result"
+        );
+        assert!(
+            !second_progress
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.contains("cache hit")),
+            "native scan must not report a cache hit after relevant file content changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_native_scan_cache_ignores_irrelevant_file_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-native-scan-irrelevant-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("src"));
+        let _ = std::fs::create_dir_all(tmp.join("docs"));
+        let _ = std::fs::create_dir_all(tmp.join("target"));
+        std::fs::write(tmp.join("src/lib.rs"), b"pub fn ok() {}\n").unwrap();
+        std::fs::write(tmp.join("docs/readme.md"), b"first\n").unwrap();
+
+        let check = crate::scanner::NativeScanCheck {
+            name: "native-scan-cache-irrelevant-change",
+            literals: &["blocked_literal"],
+            directories: &["src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: crate::scanner::MatchMode::AnyLiteral {
+                skip_comment_lines: false,
+            },
+        };
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let first = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|_, _| {})
+            .expect("first native scan should succeed");
+        assert!(first[0].passed, "first native scan should pass");
+
+        std::fs::write(tmp.join("docs/readme.md"), b"second\n").unwrap();
+
+        let second_progress = Mutex::new(Vec::new());
+        let second = runner
+            .run_native_scan(&tmp, std::slice::from_ref(&check), &|name, info| {
+                second_progress
+                    .lock()
+                    .unwrap()
+                    .push(format!("{name}:{info}"));
+            })
+            .expect("second native scan should succeed");
+
+        assert!(
+            second[0].passed,
+            "irrelevant file changes must preserve the cached clean native scan result"
+        );
+        assert!(
+            second_progress
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|entry| entry.contains("cache hit")),
+            "native scan should report a cache hit after irrelevant file changes"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn test_compute_scope_hash_stable_across_mtime_change() {
         // TDD: same file content must produce same hash even after mtime changes.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-content-stable");
+        let tmp = unique_test_dir("xtask-cache-test-content-stable");
         let _ = std::fs::create_dir_all(&tmp);
         let src_dir = tmp.join("src");
         let _ = std::fs::create_dir_all(&src_dir);
@@ -743,7 +1137,7 @@ mod tests {
     #[test]
     fn test_compute_scope_hash_differs_on_content_change() {
         // TDD: different file content must produce different hash.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-content-change");
+        let tmp = unique_test_dir("xtask-cache-test-content-change");
         let _ = std::fs::create_dir_all(&tmp);
         let src_dir = tmp.join("src");
         let _ = std::fs::create_dir_all(&src_dir);
@@ -771,7 +1165,7 @@ mod tests {
     fn test_compute_scope_hash_build_scope_includes_cargo_toml_inputs() {
         // Cache invalidation must include Cargo.toml inputs for build-related checks.
         // Regression: hashing only Cargo.lock + *.rs can produce false cache hits.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-cargo-toml");
+        let tmp = unique_test_dir("xtask-cache-test-cargo-toml");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
 
@@ -807,7 +1201,7 @@ mod tests {
 
     #[test]
     fn test_frontend_scope_hash_changes_when_ui_source_changes() {
-        let tmp = std::env::temp_dir().join("xtask-cache-test-frontend-source-change");
+        let tmp = unique_test_dir("xtask-cache-test-frontend-source-change");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
         let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
@@ -856,7 +1250,7 @@ mod tests {
 
     #[test]
     fn test_frontend_scope_hash_ignores_unrelated_rust_changes() {
-        let tmp = std::env::temp_dir().join("xtask-cache-test-frontend-unrelated-rust");
+        let tmp = unique_test_dir("xtask-cache-test-frontend-unrelated-rust");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/src"));
         let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
@@ -915,7 +1309,7 @@ mod tests {
 
         // If a file is unreadable, scope hashing must not collapse it to empty content,
         // otherwise we can incorrectly reuse cached successes.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-unreadable");
+        let tmp = unique_test_dir("xtask-cache-test-unreadable");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
         let _ = std::fs::create_dir_all(tmp.join("target"));
@@ -954,7 +1348,7 @@ mod tests {
     #[test]
     fn test_caching_runner_reuses_scope_hash_for_same_scope() {
         // After running two checks with the same scope, scope_memo must hold exactly one entry.
-        let tmp = std::env::temp_dir().join("xtask-cache-test-reuse-scope");
+        let tmp = unique_test_dir("xtask-cache-test-reuse-scope");
         let _ = std::fs::create_dir_all(&tmp);
 
         let spec1 = make_spec("clippy-xtask");
@@ -982,7 +1376,7 @@ mod tests {
     fn test_fnv_hasher_is_deterministic_for_same_content() {
         // FNV-1a must produce the same hash for identical file content
         // regardless of when it is computed (no DefaultHasher randomisation).
-        let tmp = std::env::temp_dir().join("xtask-fnv-deterministic");
+        let tmp = unique_test_dir("xtask-fnv-deterministic");
         let _ = std::fs::create_dir_all(&tmp);
         let src = tmp.join("src");
         let _ = std::fs::create_dir_all(&src);
@@ -998,7 +1392,7 @@ mod tests {
 
     #[test]
     fn test_fnv_hasher_differs_for_different_content() {
-        let tmp = std::env::temp_dir().join("xtask-fnv-differs");
+        let tmp = unique_test_dir("xtask-fnv-differs");
         let _ = std::fs::create_dir_all(&tmp);
         let src = tmp.join("src");
         let _ = std::fs::create_dir_all(&src);
@@ -1019,7 +1413,7 @@ mod tests {
         // Empty directory: hash must be consistent across two calls.
         // We only assert the result is the same across two calls to avoid
         // pinning to implementation details.
-        let tmp = std::env::temp_dir().join("xtask-fnv-empty-scope");
+        let tmp = unique_test_dir("xtask-fnv-empty-scope");
         let _ = std::fs::create_dir_all(tmp.join("src"));
 
         let scope = CheckScope::Directories(&["src"]);
@@ -1035,7 +1429,7 @@ mod tests {
     fn test_run_does_not_persist_before_flush() {
         // After a successful run, the cache must be updated in memory but NOT
         // written to disk until flush() is called.
-        let tmp = std::env::temp_dir().join("xtask-cache-deferred-persist");
+        let tmp = unique_test_dir("xtask-cache-deferred-persist");
         let _ = std::fs::create_dir_all(&tmp);
 
         let spec = make_spec("no-test-flags-cfg-test");
@@ -1057,7 +1451,7 @@ mod tests {
 
     #[test]
     fn test_flush_writes_cache_to_disk() {
-        let tmp = std::env::temp_dir().join("xtask-cache-flush-writes");
+        let tmp = unique_test_dir("xtask-cache-flush-writes");
         let _ = std::fs::create_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("target"));
 
@@ -1081,7 +1475,7 @@ mod tests {
     #[test]
     fn test_flush_is_idempotent() {
         // Calling flush() multiple times must not cause errors or duplicated writes.
-        let tmp = std::env::temp_dir().join("xtask-cache-flush-idempotent");
+        let tmp = unique_test_dir("xtask-cache-flush-idempotent");
         let _ = std::fs::create_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("target"));
 
@@ -1101,7 +1495,7 @@ mod tests {
     fn test_flush_retries_after_persist_failure() {
         use std::os::unix::fs::PermissionsExt;
 
-        let tmp = std::env::temp_dir().join("xtask-cache-flush-retry-after-fail");
+        let tmp = unique_test_dir("xtask-cache-flush-retry-after-fail");
         let _ = std::fs::create_dir_all(&tmp);
         let target_dir = tmp.join("target");
         let _ = std::fs::create_dir_all(&target_dir);
@@ -1144,7 +1538,7 @@ mod tests {
     #[test]
     fn test_parallel_file_read_same_hash_as_sequential() {
         // Parallel read_files_parallel must produce the same bytes as sequential read.
-        let tmp = std::env::temp_dir().join("xtask-parallel-hash");
+        let tmp = unique_test_dir("xtask-parallel-hash");
         let _ = std::fs::create_dir_all(&tmp);
         let src = tmp.join("src");
         let _ = std::fs::create_dir_all(&src);

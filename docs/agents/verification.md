@@ -24,6 +24,8 @@ Verification passes when required checks complete successfully with **no ERROR/W
 
 Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
 
+On an unchanged tree, `cargo xtask verify` may reuse cached clean results for eligible lanes, including the native scan lane. This does not weaken the contract: the cache key includes the relevant source inputs plus `xtask` scan implementation inputs, so any relevant source or verifier change invalidates the warm-run shortcut and the check runs again.
+
 ---
 
 ## Reference: underlying commands

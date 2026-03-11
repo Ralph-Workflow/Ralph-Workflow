@@ -139,7 +139,8 @@ fn main() -> ExitCode {
                 + verify::CORE_CARGO_CHECKS.len()
                 + verify::XTASK_CARGO_CHECKS.len()
                 + verify::GUI_CARGO_CHECKS.len()
-                + verify::FRONTEND_CHECKS.len()
+                + verify::FRONTEND_INSTALL_CHECKS.len()
+                + verify::FRONTEND_POST_INSTALL_CHECKS.len()
                 + verify::RELEASE_CHECKS.len();
             let reporter: Arc<dyn ProgressReporter> =
                 Arc::new(verify::StderrProgressReporter::new(total_checks));
@@ -157,7 +158,8 @@ fn main() -> ExitCode {
                 core_cargo: verify::CORE_CARGO_CHECKS,
                 xtask_cargo: verify::XTASK_CARGO_CHECKS,
                 gui_cargo: verify::GUI_CARGO_CHECKS,
-                frontend: verify::FRONTEND_CHECKS,
+                frontend_install: verify::FRONTEND_INSTALL_CHECKS,
+                frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
                 release: verify::RELEASE_CHECKS,
             };
             let report = match verify::verify_fast(

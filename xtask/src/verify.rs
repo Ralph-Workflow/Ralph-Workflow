@@ -30,6 +30,17 @@ pub struct CommandOutput {
 
 pub trait CommandRunner: Send + Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
+
+    fn run_native_scan(
+        &self,
+        repo_root: &std::path::Path,
+        checks: &[crate::scanner::NativeScanCheck],
+        progress: &(dyn Fn(&str, &str) + Sync),
+    ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+        Ok(crate::scanner::run_native_scan_checks_reporting(
+            repo_root, checks, progress,
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +67,9 @@ pub trait ProgressReporter: Send + Sync {
     /// (e.g., "Compiling foo" lines forwarded from cargo, or per-file scan counts).
     /// Default is a no-op so existing test fakes need no changes.
     fn check_progress(&self, _name: &str, _info: &str) {}
+    /// Called when a parallel lane finishes; `elapsed` is the total wall-clock time.
+    /// Default is a no-op so existing implementations compile unchanged.
+    fn lane_finished(&self, _lane_name: &str, _elapsed: Duration) {}
 }
 
 /// No-op implementation used in tests.
@@ -111,6 +125,10 @@ impl StderrProgressReporter {
     fn fmt_progress(name: &str, info: &str) -> String {
         format!("  progress: {name}: {info}")
     }
+
+    fn fmt_lane_finished(lane_name: &str, elapsed: Duration) -> String {
+        format!("  lane done: {lane_name} ({elapsed:.1?})")
+    }
 }
 
 impl ProgressReporter for StderrProgressReporter {
@@ -129,6 +147,9 @@ impl ProgressReporter for StderrProgressReporter {
     }
     fn check_progress(&self, name: &str, info: &str) {
         eprintln!("{}", Self::fmt_progress(name, info));
+    }
+    fn lane_finished(&self, lane_name: &str, elapsed: Duration) {
+        eprintln!("{}", Self::fmt_lane_finished(lane_name, elapsed));
     }
 }
 
@@ -366,7 +387,8 @@ pub struct CheckGroups<'a> {
     pub core_cargo: &'a [CommandSpec],
     pub xtask_cargo: &'a [CommandSpec],
     pub gui_cargo: &'a [CommandSpec],
-    pub frontend: &'a [CommandSpec],
+    pub frontend_install: &'a [CommandSpec],
+    pub frontend_post_install: &'a [CommandSpec],
     pub release: &'a [CommandSpec],
 }
 
@@ -380,7 +402,7 @@ pub struct CheckGroups<'a> {
 /// - Lane 3: `groups.core_cargo` (uses default target/)
 /// - Lane 4: `groups.xtask_cargo` (uses target/xtask-parallel-verify)
 /// - Lane 5: `groups.gui_cargo` (uses target/gui-parallel-verify)
-/// - Lane 6: `groups.frontend` (npm, independent of cargo)
+/// - Lane 6: `groups.frontend_install` then `groups.frontend_post_install` (parallel after install)
 /// - Lane 7: `groups.release` (release build + dylint, separate target dir)
 ///
 /// Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
@@ -426,27 +448,46 @@ pub fn verify_fast(
     let cargo_report = std::thread::scope(|s| {
         // Lane 1: native Aho-Corasick scan (pure file I/O, zero target/ interaction).
         {
+            let runner_scan = std::sync::Arc::clone(&runner);
             let cancel_scan = &cancel;
             let result_scan = &scan_result;
             s.spawn(move || {
+                let lane_start = Instant::now();
                 if cancel_scan.load(Ordering::SeqCst) {
                     return;
                 }
                 let scan_start = Instant::now();
                 reporter.check_started("native-scan");
-                let scan_results = crate::scanner::run_native_scan_checks_reporting(
-                    repo_root,
-                    crate::scanner::NATIVE_SCAN_CHECKS,
-                    &|name, info| reporter.check_progress(name, info),
-                );
+                let scan_results = runner_scan
+                    .run_native_scan(
+                        repo_root,
+                        crate::scanner::NATIVE_SCAN_CHECKS,
+                        &|name, info| reporter.check_progress(name, info),
+                    )
+                    .with_context(|| "run native-scan".to_string());
                 let scan_elapsed = scan_start.elapsed();
+                let scan_results = match scan_results {
+                    Ok(scan_results) => scan_results,
+                    Err(error) => {
+                        reporter.check_failed("native-scan", scan_elapsed, CheckStatus::Error);
+                        cancel_scan.store(true, Ordering::SeqCst);
+                        *result_scan.lock().unwrap() = Some(Ok(VerifyReport {
+                            exit: VerifyExitCode::Failure,
+                            failure: Some(CheckFailure {
+                                name: "native-scan",
+                                status: CheckStatus::Error,
+                                exit_code: 1,
+                                stdout: String::new(),
+                                stderr: format!("{error:#}"),
+                            }),
+                        }));
+                        reporter.lane_finished("native-scan", lane_start.elapsed());
+                        return;
+                    }
+                };
                 for result in &scan_results {
                     if !result.passed {
-                        reporter.check_failed(
-                            result.check_name,
-                            scan_elapsed,
-                            CheckStatus::Error,
-                        );
+                        reporter.check_failed(result.check_name, scan_elapsed, CheckStatus::Error);
                         let output = format_scan_violations(&result.violations);
                         cancel_scan.store(true, Ordering::SeqCst);
                         *result_scan.lock().unwrap() = Some(Ok(VerifyReport {
@@ -459,6 +500,7 @@ pub fn verify_fast(
                                 stderr: String::new(),
                             }),
                         }));
+                        reporter.lane_finished("native-scan", lane_start.elapsed());
                         return;
                     }
                 }
@@ -467,73 +509,147 @@ pub fn verify_fast(
                     exit: VerifyExitCode::Success,
                     failure: None,
                 }));
+                reporter.lane_finished("native-scan", lane_start.elapsed());
             });
         }
 
         // Lane 2: fmt checks (cargo fmt --check, no target/ needed, zero contention).
         if !groups.fmt.is_empty() {
-            let runner_fmt = &runner;
+            let runner_fmt = std::sync::Arc::clone(&runner);
             let cancel_fmt = &cancel;
             let result_fmt = &fmt_result;
             let fmt = groups.fmt;
             s.spawn(move || {
-                let report =
-                    run_checks_cancellable(runner_fmt.as_ref(), fmt, reporter, cancel_fmt);
+                let lane_start = Instant::now();
+                let report = run_checks_cancellable(runner_fmt.as_ref(), fmt, reporter, cancel_fmt);
                 *result_fmt.lock().unwrap() = Some(report);
+                reporter.lane_finished("fmt", lane_start.elapsed());
             });
         }
 
         // Lane 3 (xtask cargo checks, separate target dir).
         if !groups.xtask_cargo.is_empty() {
-            let runner_xt = &runner;
+            let runner_xt = std::sync::Arc::clone(&runner);
             let cancel_xt = &cancel;
             let result_xt = &xtask_result;
             let xtask = groups.xtask_cargo;
             s.spawn(move || {
+                let lane_start = Instant::now();
                 let report = run_checks_cancellable(runner_xt.as_ref(), xtask, reporter, cancel_xt);
                 *result_xt.lock().unwrap() = Some(report);
+                reporter.lane_finished("xtask-cargo", lane_start.elapsed());
             });
         }
 
         // Lane 4 (gui cargo checks, separate target dir).
         if !groups.gui_cargo.is_empty() {
-            let runner_gui = &runner;
+            let runner_gui = std::sync::Arc::clone(&runner);
             let cancel_gui = &cancel;
             let result_gui = &gui_result;
             let gui = groups.gui_cargo;
             s.spawn(move || {
+                let lane_start = Instant::now();
                 let report = run_checks_cancellable(runner_gui.as_ref(), gui, reporter, cancel_gui);
                 *result_gui.lock().unwrap() = Some(report);
+                reporter.lane_finished("gui-cargo", lane_start.elapsed());
             });
         }
 
-        // Lane 5 (frontend checks, npm, independent of cargo).
-        if !groups.frontend.is_empty() {
-            let runner_fe = &runner;
+        // Lane 5 (frontend: install sequentially, then lint+test in parallel).
+        let has_frontend =
+            !groups.frontend_install.is_empty() || !groups.frontend_post_install.is_empty();
+        if has_frontend {
+            let runner_fe = std::sync::Arc::clone(&runner);
             let cancel_fe = &cancel;
             let result_fe = &frontend_result;
-            let frontend = groups.frontend;
+            let install = groups.frontend_install;
+            let post_install = groups.frontend_post_install;
             s.spawn(move || {
-                let report =
-                    run_checks_cancellable(runner_fe.as_ref(), frontend, reporter, cancel_fe);
-                *result_fe.lock().unwrap() = Some(report);
+                let lane_start = Instant::now();
+                // Phase A: run install checks sequentially (must complete before lint/test).
+                let install_report =
+                    run_checks_cancellable(runner_fe.as_ref(), install, reporter, cancel_fe);
+                match &install_report {
+                    Ok(report) if report.exit == VerifyExitCode::Success => {}
+                    _ => {
+                        // Install failed or errored — store result and bail.
+                        *result_fe.lock().unwrap() = Some(install_report);
+                        reporter.lane_finished("frontend", lane_start.elapsed());
+                        return;
+                    }
+                }
+
+                // Phase B: run post-install checks in parallel (lint + test are independent).
+                if post_install.is_empty() || cancel_fe.load(Ordering::SeqCst) {
+                    *result_fe.lock().unwrap() = Some(install_report);
+                    reporter.lane_finished("frontend", lane_start.elapsed());
+                    return;
+                }
+
+                let sub_results: Vec<Result<VerifyReport>> = std::thread::scope(|sub_s| {
+                    let runner_fe = std::sync::Arc::clone(&runner_fe);
+                    let handles: Vec<_> = post_install
+                        .iter()
+                        .map(|spec| {
+                            let runner_fe = std::sync::Arc::clone(&runner_fe);
+                            sub_s.spawn(move || {
+                                run_checks_cancellable(
+                                    runner_fe.as_ref(),
+                                    std::slice::from_ref(spec),
+                                    reporter,
+                                    cancel_fe,
+                                )
+                            })
+                        })
+                        .collect();
+                    handles
+                        .into_iter()
+                        .map(|h| h.join().expect("frontend sub-thread panicked"))
+                        .collect()
+                });
+
+                // Return the first failure (if any).
+                for sub_result in sub_results {
+                    match &sub_result {
+                        Ok(report) if report.exit == VerifyExitCode::Failure => {
+                            *result_fe.lock().unwrap() = Some(sub_result);
+                            reporter.lane_finished("frontend", lane_start.elapsed());
+                            return;
+                        }
+                        Err(_) => {
+                            *result_fe.lock().unwrap() = Some(sub_result);
+                            reporter.lane_finished("frontend", lane_start.elapsed());
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+
+                *result_fe.lock().unwrap() = Some(Ok(VerifyReport {
+                    exit: VerifyExitCode::Success,
+                    failure: None,
+                }));
+                reporter.lane_finished("frontend", lane_start.elapsed());
             });
         }
 
         // Lane 6 (release checks, release build + dylint, separate target dir).
         if !groups.release.is_empty() {
-            let runner_rel = &runner;
+            let runner_rel = std::sync::Arc::clone(&runner);
             let cancel_rel = &cancel;
             let result_rel = &release_result;
             let release = groups.release;
             s.spawn(move || {
+                let lane_start = Instant::now();
                 let report =
                     run_checks_cancellable(runner_rel.as_ref(), release, reporter, cancel_rel);
                 *result_rel.lock().unwrap() = Some(report);
+                reporter.lane_finished("release", lane_start.elapsed());
             });
         }
 
         // Lane 7 (main thread): core cargo checks (uses default target/).
+        let lane_start = Instant::now();
         let cargo_report =
             run_checks_cancellable(runner.as_ref(), groups.core_cargo, reporter, &cancel);
         if let Ok(ref report) = cargo_report {
@@ -541,6 +657,7 @@ pub fn verify_fast(
                 cancel.store(true, Ordering::SeqCst);
             }
         }
+        reporter.lane_finished("core-cargo", lane_start.elapsed());
         cargo_report
     });
 
@@ -715,10 +832,50 @@ pub const GUI_CARGO_CHECKS: &[CommandSpec] = &[
     },
 ];
 
-/// Frontend checks: npm install, lint, and test.
+/// Frontend install: npm ci must complete before lint/test can start.
+pub const FRONTEND_INSTALL_CHECKS: &[CommandSpec] = &[CommandSpec {
+    name: "ralph-gui-frontend-install",
+    program: "npm",
+    args: &[
+        "--prefix",
+        "ralph-gui/ui",
+        "ci",
+        "--no-audit",
+        "--no-fund",
+        "--include=dev",
+    ],
+    success_exit_codes: &[0],
+    // Force devDependencies installation even if the outer environment sets
+    // NODE_ENV=production or npm_config_production=true.
+    extra_env: &[
+        ("NODE_ENV", "development"),
+        ("NPM_CONFIG_PRODUCTION", "false"),
+        ("npm_config_production", "false"),
+    ],
+}];
+
+/// Frontend post-install checks: lint and test run in parallel after install.
 ///
-/// These are completely independent of cargo and run in their own parallel group.
-/// Within the group, install must precede lint/test.
+/// These are read-only operations on node_modules, so they can safely overlap.
+pub const FRONTEND_POST_INSTALL_CHECKS: &[CommandSpec] = &[
+    CommandSpec {
+        name: "ralph-gui-frontend-lint",
+        program: "npm",
+        args: &["--prefix", "ralph-gui/ui", "run", "lint"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+    CommandSpec {
+        name: "ralph-gui-frontend-test",
+        program: "npm",
+        args: &["--prefix", "ralph-gui/ui", "run", "test", "--", "--run"],
+        success_exit_codes: &[0],
+        extra_env: &[],
+    },
+];
+
+/// All frontend checks combined (install + post-install), for test convenience.
+#[cfg(test)]
 pub const FRONTEND_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-install",
@@ -732,8 +889,6 @@ pub const FRONTEND_CHECKS: &[CommandSpec] = &[
             "--include=dev",
         ],
         success_exit_codes: &[0],
-        // Force devDependencies installation even if the outer environment sets
-        // NODE_ENV=production or npm_config_production=true.
         extra_env: &[
             ("NODE_ENV", "development"),
             ("NPM_CONFIG_PRODUCTION", "false"),
@@ -898,7 +1053,8 @@ fn all_required_checks() -> Vec<&'static CommandSpec> {
         .chain(CORE_CARGO_CHECKS.iter())
         .chain(XTASK_CARGO_CHECKS.iter())
         .chain(GUI_CARGO_CHECKS.iter())
-        .chain(FRONTEND_CHECKS.iter())
+        .chain(FRONTEND_INSTALL_CHECKS.iter())
+        .chain(FRONTEND_POST_INSTALL_CHECKS.iter())
         .chain(RELEASE_CHECKS.iter())
         .collect()
 }
@@ -1200,6 +1356,40 @@ mod tests {
                 stdout: String::new(),
                 stderr: String::new(),
             })
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct NativeScanTrackingRunner {
+        ran: Mutex<Vec<&'static str>>,
+        native_scan_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CommandRunner for NativeScanTrackingRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.ran.lock().unwrap().push(spec.name);
+            Ok(CommandOutput {
+                exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn run_native_scan(
+            &self,
+            _repo_root: &std::path::Path,
+            checks: &[crate::scanner::NativeScanCheck],
+            _progress: &(dyn Fn(&str, &str) + Sync),
+        ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+            self.native_scan_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(checks
+                .iter()
+                .map(|check| crate::scanner::NativeScanCheckResult {
+                    check_name: check.name,
+                    passed: true,
+                    violations: Vec::new(),
+                })
+                .collect())
         }
     }
 
@@ -1651,7 +1841,8 @@ mod tests {
             core_cargo,
             xtask_cargo: &[],
             gui_cargo: &[],
-            frontend,
+            frontend_install: frontend,
+            frontend_post_install: &[],
             release,
         }
     }
@@ -1664,7 +1855,8 @@ mod tests {
             core_cargo: CORE_CARGO_CHECKS,
             xtask_cargo: XTASK_CARGO_CHECKS,
             gui_cargo: GUI_CARGO_CHECKS,
-            frontend: FRONTEND_CHECKS,
+            frontend_install: FRONTEND_INSTALL_CHECKS,
+            frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
             release: RELEASE_CHECKS,
         };
         let report = verify_fast(
@@ -1690,6 +1882,36 @@ mod tests {
                 spec.name
             );
         }
+    }
+
+    #[test]
+    fn test_verify_fast_uses_runner_native_scan_path() {
+        let runner = std::sync::Arc::new(NativeScanTrackingRunner::default());
+        let groups = CheckGroups {
+            fmt: &[],
+            core_cargo: &[check("cargo-a")],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(
+            runner.native_scan_calls.load(Ordering::SeqCst),
+            1,
+            "verify_fast must route native scan through CommandRunner so warm-run caching can hook in"
+        );
     }
 
     #[test]
@@ -1728,7 +1950,8 @@ mod tests {
             core_cargo: &[],
             xtask_cargo: &[],
             gui_cargo: &[],
-            frontend: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
             release: &[],
         };
         let report = verify_fast(
@@ -2072,7 +2295,8 @@ mod tests {
             + CORE_CARGO_CHECKS.len()
             + XTASK_CARGO_CHECKS.len()
             + GUI_CARGO_CHECKS.len()
-            + FRONTEND_CHECKS.len()
+            + FRONTEND_INSTALL_CHECKS.len()
+            + FRONTEND_POST_INSTALL_CHECKS.len()
             + RELEASE_CHECKS.len();
         assert!(
             expected_total > 0,
@@ -2419,7 +2643,8 @@ mod tests {
             + CORE_CARGO_CHECKS.len()
             + XTASK_CARGO_CHECKS.len()
             + GUI_CARGO_CHECKS.len()
-            + FRONTEND_CHECKS.len()
+            + FRONTEND_INSTALL_CHECKS.len()
+            + FRONTEND_POST_INSTALL_CHECKS.len()
             + RELEASE_CHECKS.len();
         assert_eq!(
             all.len(),
@@ -2536,7 +2761,8 @@ mod tests {
             core_cargo: cargo_checks,
             xtask_cargo: &[],
             gui_cargo: &[],
-            frontend: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
             release: &[],
         };
         let report = verify_fast(
@@ -2575,7 +2801,8 @@ mod tests {
             core_cargo: &[],
             xtask_cargo: &[],
             gui_cargo: &[],
-            frontend: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
             release: &[],
         };
         // With empty groups and a valid repo root, scan should pass (no violations).
@@ -2622,7 +2849,8 @@ mod tests {
             core_cargo: cargo_checks,
             xtask_cargo: &[],
             gui_cargo: &[],
-            frontend: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
             release: &[],
         };
         let report = verify_fast(
@@ -2644,10 +2872,252 @@ mod tests {
 
     #[test]
     fn test_fmt_checks_constant_contains_fmt_check() {
-        assert_eq!(FMT_CHECKS.len(), 1, "FMT_CHECKS must have exactly one check");
+        assert_eq!(
+            FMT_CHECKS.len(),
+            1,
+            "FMT_CHECKS must have exactly one check"
+        );
         assert_eq!(FMT_CHECKS[0].name, "fmt-check");
         assert_eq!(FMT_CHECKS[0].program, "cargo");
         assert!(FMT_CHECKS[0].args.contains(&"fmt"));
         assert!(FMT_CHECKS[0].args.contains(&"--check"));
+    }
+
+    // ── TDD tests for frontend sub-parallelism ──────────────────────────────
+
+    #[test]
+    fn test_frontend_install_checks_contains_only_install() {
+        assert_eq!(FRONTEND_INSTALL_CHECKS.len(), 1);
+        assert_eq!(
+            FRONTEND_INSTALL_CHECKS[0].name,
+            "ralph-gui-frontend-install"
+        );
+    }
+
+    #[test]
+    fn test_frontend_post_install_checks_contains_lint_and_test() {
+        assert_eq!(FRONTEND_POST_INSTALL_CHECKS.len(), 2);
+        let names: Vec<&str> = FRONTEND_POST_INSTALL_CHECKS
+            .iter()
+            .map(|c| c.name)
+            .collect();
+        assert!(names.contains(&"ralph-gui-frontend-lint"));
+        assert!(names.contains(&"ralph-gui-frontend-test"));
+    }
+
+    #[test]
+    fn test_frontend_checks_equals_install_plus_post_install() {
+        let combined: Vec<&str> = FRONTEND_INSTALL_CHECKS
+            .iter()
+            .chain(FRONTEND_POST_INSTALL_CHECKS.iter())
+            .map(|c| c.name)
+            .collect();
+        let legacy: Vec<&str> = FRONTEND_CHECKS.iter().map(|c| c.name).collect();
+        assert_eq!(combined, legacy);
+    }
+
+    #[test]
+    fn test_verify_fast_frontend_lint_and_test_run_in_parallel_after_install() {
+        use std::sync::Arc;
+        use std::thread::ThreadId;
+
+        #[derive(Debug, Default)]
+        struct TimedRunner {
+            threads: Mutex<HashMap<&'static str, ThreadId>>,
+            start_times: Mutex<HashMap<&'static str, Instant>>,
+            end_times: Mutex<HashMap<&'static str, Instant>>,
+        }
+
+        impl CommandRunner for TimedRunner {
+            fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+                self.threads
+                    .lock()
+                    .unwrap()
+                    .insert(spec.name, std::thread::current().id());
+                self.start_times
+                    .lock()
+                    .unwrap()
+                    .insert(spec.name, Instant::now());
+                // Lint and test sleep long enough to prove overlap.
+                if spec.name.contains("lint") || spec.name.contains("test") {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                self.end_times
+                    .lock()
+                    .unwrap()
+                    .insert(spec.name, Instant::now());
+                Ok(CommandOutput {
+                    exit_code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                })
+            }
+        }
+
+        let runner = Arc::new(TimedRunner::default());
+        let install: &[CommandSpec] = &[check("ralph-gui-frontend-install")];
+        let post_install: &[CommandSpec] = &[
+            check("ralph-gui-frontend-lint"),
+            check("ralph-gui-frontend-test"),
+        ];
+
+        let groups = CheckGroups {
+            fmt: &[],
+            core_cargo: &[],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: install,
+            frontend_post_install: post_install,
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        // Lint and test must run on different threads (proving sub-parallelism).
+        let threads = runner.threads.lock().unwrap();
+        let lint_thread = threads
+            .get("ralph-gui-frontend-lint")
+            .expect("lint must have run");
+        let test_thread = threads
+            .get("ralph-gui-frontend-test")
+            .expect("test must have run");
+        assert_ne!(
+            lint_thread, test_thread,
+            "frontend lint and test must run on different threads (proving parallelism)"
+        );
+
+        // Both must have started before either finished (proving concurrency).
+        let starts = runner.start_times.lock().unwrap();
+        let ends = runner.end_times.lock().unwrap();
+        let lint_start = starts["ralph-gui-frontend-lint"];
+        let test_start = starts["ralph-gui-frontend-test"];
+        let lint_end = ends["ralph-gui-frontend-lint"];
+        let test_end = ends["ralph-gui-frontend-test"];
+        assert!(
+            lint_start < test_end && test_start < lint_end,
+            "lint and test must overlap in time (both started before either finished)"
+        );
+    }
+
+    #[test]
+    fn test_verify_fast_frontend_install_failure_skips_post_install() {
+        let runner = std::sync::Arc::new(ByNameRunner::default().with_output(
+            "ralph-gui-frontend-install",
+            CommandOutput {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "error: npm ci failed".to_string(),
+            },
+        ));
+
+        let install: &[CommandSpec] = &[check("ralph-gui-frontend-install")];
+        let post_install: &[CommandSpec] = &[
+            check("ralph-gui-frontend-lint"),
+            check("ralph-gui-frontend-test"),
+        ];
+
+        let groups = CheckGroups {
+            fmt: &[],
+            core_cargo: &[],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: install,
+            frontend_post_install: post_install,
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner,
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "ralph-gui-frontend-install");
+    }
+
+    // ── TDD tests for per-lane timing reporting ─────────────────────────────
+
+    #[test]
+    fn test_verify_fast_reports_lane_timing() {
+        #[derive(Debug, Default)]
+        struct LaneRecordingReporter {
+            lanes: Mutex<Vec<String>>,
+        }
+
+        impl ProgressReporter for LaneRecordingReporter {
+            fn check_started(&self, _name: &str) {}
+            fn check_passed(&self, _name: &str, _elapsed: Duration) {}
+            fn check_failed(&self, _name: &str, _elapsed: Duration, _status: CheckStatus) {}
+            fn lane_finished(&self, lane_name: &str, _elapsed: Duration) {
+                self.lanes.lock().unwrap().push(lane_name.to_string());
+            }
+        }
+
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let reporter = LaneRecordingReporter::default();
+
+        let groups = CheckGroups {
+            fmt: FMT_CHECKS,
+            core_cargo: CORE_CARGO_CHECKS,
+            xtask_cargo: XTASK_CARGO_CHECKS,
+            gui_cargo: GUI_CARGO_CHECKS,
+            frontend_install: FRONTEND_INSTALL_CHECKS,
+            frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
+            release: RELEASE_CHECKS,
+        };
+
+        let report = verify_fast(
+            runner,
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &reporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let lanes = reporter.lanes.lock().unwrap();
+        let expected_lanes = [
+            "native-scan",
+            "fmt",
+            "core-cargo",
+            "xtask-cargo",
+            "gui-cargo",
+            "frontend",
+            "release",
+        ];
+        for lane_name in &expected_lanes {
+            assert!(
+                lanes.contains(&lane_name.to_string()),
+                "lane_finished must be called for '{lane_name}', got: {lanes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_noop_reporter_lane_finished_does_not_panic() {
+        NoopProgressReporter.lane_finished("test-lane", Duration::ZERO);
+    }
+
+    #[test]
+    fn test_stderr_reporter_formats_lane_finished() {
+        let s = StderrProgressReporter::fmt_lane_finished("frontend", Duration::from_millis(1234));
+        assert!(s.starts_with("  lane done: frontend ("));
+        assert!(s.ends_with(')'));
     }
 }
