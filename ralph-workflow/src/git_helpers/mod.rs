@@ -135,8 +135,8 @@ pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_silent, cleanup_agent_phase_silent_at,
     cleanup_orphaned_marker, cleanup_orphaned_wrapper_at, detect_unauthorized_commit,
     disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo, ensure_agent_phase_protections,
-    start_agent_phase, start_agent_phase_in_repo, try_remove_ralph_dir, verify_wrapper_cleaned,
-    GitHelpers, ProtectionCheckResult,
+    start_agent_phase, start_agent_phase_in_repo, try_remove_ralph_dir, verify_ralph_dir_removed,
+    verify_wrapper_cleaned, GitHelpers, ProtectionCheckResult,
 };
 
 // Workspace-aware variants (used by tests and by code paths that must operate

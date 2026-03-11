@@ -77,8 +77,15 @@ pub fn finalize_pipeline(
     // Best-effort: remove the now-empty ralph dir.
     // end_agent_phase_in_repo removed marker + head-oid; disable_git_wrapper removed
     // the track file. The directory should now be empty.
-    crate::git_helpers::try_remove_ralph_dir(repo_root);
     let mut cleanup_ok = true;
+    if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
+        cleanup_ok = false;
+        let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
+        ctx.logger.warn(&format!(
+            "Ralph git dir still present after cleanup: {}",
+            remaining.join(", ")
+        ));
+    }
 
     if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, ctx.logger) {
         if err.kind() == std::io::ErrorKind::NotFound {

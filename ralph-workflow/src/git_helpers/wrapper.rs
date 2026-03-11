@@ -1527,16 +1527,50 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
 /// all files from `.git/ralph/`. The directory should be empty at this point; this
 /// call removes it so no empty directory is left behind.
 ///
-/// Uses [`fs::remove_dir`] (not `remove_dir_all`) — if the directory is non-empty
-/// for any reason (e.g., a quarantine file from tamper detection), the call silently
-/// fails and leaves the directory for the next run's cleanup or tamper detection.
-pub fn try_remove_ralph_dir(repo_root: &Path) {
+/// Returns `true` when `.git/ralph` no longer exists after cleanup. Uses
+/// [`fs::remove_dir`] (not `remove_dir_all`) — if the directory is non-empty
+/// for any reason (e.g., a quarantine file from tamper detection), the call
+/// leaves it in place for inspection and returns `false`.
+#[must_use]
+pub fn try_remove_ralph_dir(repo_root: &Path) -> bool {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
     // Clean up stray temp files from interrupted atomic writes before attempting
     // remove_dir. Without this, remove_dir silently fails and the directory is
     // left behind across restarts.
     cleanup_stray_tmp_files_in_ralph_dir(&ralph_dir);
-    let _ = fs::remove_dir(&ralph_dir);
+    match fs::remove_dir(&ralph_dir) {
+        Ok(()) => true,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => true,
+        Err(_) => !ralph_dir.exists(),
+    }
+}
+
+/// Verify that the Ralph metadata dir itself has been removed.
+///
+/// Returns a list of remaining artifacts for diagnostic purposes.
+/// An empty list means cleanup was successful.
+#[must_use]
+pub fn verify_ralph_dir_removed(repo_root: &Path) -> Vec<String> {
+    let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    if !ralph_dir.exists() {
+        return Vec::new();
+    }
+
+    let mut remaining = vec![format!("directory still exists: {}", ralph_dir.display())];
+    match fs::read_dir(&ralph_dir) {
+        Ok(entries) => {
+            let mut names = entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            names.sort();
+            if !names.is_empty() {
+                remaining.push(format!("remaining entries: {}", names.join(", ")));
+            }
+        }
+        Err(err) => remaining.push(format!("could not inspect directory contents: {err}")),
+    }
+    remaining
 }
 
 /// Remove generated files silently using an explicit repo root.
@@ -2703,11 +2737,44 @@ mod tests {
             fs::set_permissions(&stray, perms).unwrap();
         }
 
-        try_remove_ralph_dir(repo_root);
+        let removed = try_remove_ralph_dir(repo_root);
 
+        assert!(
+            removed,
+            "try_remove_ralph_dir should report success when the directory is gone"
+        );
         assert!(
             !ralph_dir.exists(),
             ".git/ralph/ should be fully removed by try_remove_ralph_dir when only stray tmp files remain"
+        );
+    }
+
+    #[test]
+    fn test_try_remove_ralph_dir_reports_failure_when_unexpected_artifact_remains() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let ralph_dir = repo_root.join(".git").join("ralph");
+        fs::create_dir_all(&ralph_dir).unwrap();
+        fs::write(ralph_dir.join("quarantine.bin"), "keep").unwrap();
+
+        let removed = try_remove_ralph_dir(repo_root);
+
+        assert!(
+            !removed,
+            "try_remove_ralph_dir should report failure when .git/ralph remains on disk"
+        );
+        let remaining = verify_ralph_dir_removed(repo_root);
+        assert!(
+            remaining
+                .iter()
+                .any(|entry| entry.contains("directory still exists")),
+            "verification should report that the directory still exists: {remaining:?}"
+        );
+        assert!(
+            remaining
+                .iter()
+                .any(|entry| entry.contains("quarantine.bin")),
+            "verification should report the unexpected artifact that blocked removal: {remaining:?}"
         );
     }
 

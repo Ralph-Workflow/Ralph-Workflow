@@ -1039,6 +1039,76 @@ fn test_graceful_exit_removes_wrapper_temp_dir() {
     );
 }
 
+/// Test: Graceful pipeline exit reports incomplete cleanup when `.git/ralph`
+/// cannot be removed because an unexpected artifact remains.
+#[test]
+#[serial]
+fn test_graceful_exit_warns_when_ralph_dir_still_exists() {
+    with_timeout(
+        || {
+            let temp_dir = TempDir::new().expect("create temp dir");
+            let _repo = init_git_repo(&temp_dir);
+
+            let workspace =
+                ralph_workflow::workspace::WorkspaceFs::new(temp_dir.path().to_path_buf());
+            let log_path = temp_dir.path().join("cleanup.log");
+            let logger = ralph_workflow::logger::Logger::new(
+                ralph_workflow::logger::Colors::with_enabled(false),
+            )
+            .with_log_file(log_path.to_str().expect("utf-8 log path"));
+            let mut helpers = ralph_workflow::git_helpers::GitHelpers::default();
+
+            ralph_workflow::git_helpers::start_agent_phase_in_repo(temp_dir.path(), &mut helpers)
+                .expect("start agent phase in target repo");
+
+            // Leave behind an unexpected non-temp artifact that cleanup must not delete.
+            let quarantine_file = temp_dir.path().join(".git/ralph/quarantine.bin");
+            std::fs::write(&quarantine_file, "keep me").expect("write quarantine file");
+
+            {
+                let mut guard = ralph_workflow::pipeline::AgentPhaseGuard::new(
+                    &mut helpers,
+                    &logger,
+                    &workspace,
+                );
+                let config = ralph_workflow::config::Config::test_default();
+                let timer = ralph_workflow::pipeline::Timer::new();
+                let final_state = ralph_workflow::reducer::PipelineState::initial(1, 1);
+
+                ralph_workflow::app::finalization::finalize_pipeline(
+                    &mut guard,
+                    ralph_workflow::app::finalization::FinalizeContext {
+                        logger: &logger,
+                        colors: ralph_workflow::logger::Colors::with_enabled(false),
+                        config: &config,
+                        timer: &timer,
+                        workspace: &workspace,
+                    },
+                    &final_state,
+                    None,
+                );
+            }
+
+            let logs = std::fs::read_to_string(&log_path).expect("read cleanup log");
+            assert!(
+                logs.contains("Ralph git dir still present after cleanup"),
+                "finalization must verify .git/ralph removal when unexpected artifacts remain. logs:\n{logs}"
+            );
+            assert!(
+                logs.contains(
+                    "Agent phase cleanup incomplete; leaving AgentPhaseGuard armed for Drop best-effort"
+                ),
+                "finalization must leave the guard armed when .git/ralph remains. logs:\n{logs}"
+            );
+            assert!(
+                quarantine_file.exists(),
+                "unexpected artifact should remain in place for inspection rather than being deleted"
+            );
+        },
+        SIGNAL_TEST_TIMEOUT,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

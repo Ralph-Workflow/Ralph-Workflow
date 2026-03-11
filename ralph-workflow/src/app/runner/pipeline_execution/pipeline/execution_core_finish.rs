@@ -175,8 +175,14 @@ fn finish_pipeline(
         let mut cleanup_ok = true;
         crate::git_helpers::end_agent_phase_in_repo(repo_root);
         crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-        // Best-effort: remove the now-empty ralph dir.
-        crate::git_helpers::try_remove_ralph_dir(repo_root);
+        if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
+            cleanup_ok = false;
+            let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
+            ctx.logger.warn(&format!(
+                "Ralph git dir still present after SIGINT cleanup: {}",
+                remaining.join(", ")
+            ));
+        }
         if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger) {
             if err.kind() == std::io::ErrorKind::NotFound {
                 ctx.logger.warn(&format!(
