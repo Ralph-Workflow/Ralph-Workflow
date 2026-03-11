@@ -911,7 +911,7 @@ pub(crate) fn collect_files_with_glob(
     collect_files_with_glob_excluding(dir, include_glob, &[], files)
 }
 
-fn collect_files_with_glob_excluding(
+pub(crate) fn collect_files_with_glob_excluding(
     dir: &Path,
     include_glob: &str,
     exclude_globs: &[&str],

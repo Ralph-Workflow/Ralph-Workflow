@@ -116,8 +116,11 @@ impl CachedFileFingerprint {
         }
     }
 
-    fn can_reuse_for_metadata(self, metadata: FileFingerprintMetadata) -> bool {
-        self.trust_metadata_match && metadata.modified.is_some() && self.metadata() == metadata
+    fn can_reuse_for_metadata(self, path: &Path, metadata: FileFingerprintMetadata) -> bool {
+        self.trust_metadata_match
+            && metadata.modified.is_some()
+            && self.metadata() == metadata
+            && std::fs::File::open(path).is_ok()
     }
 }
 
@@ -126,7 +129,7 @@ impl RepositoryFingerprintCache {
         let file_fingerprints = persisted
             .into_iter()
             .map(|(path, mut fingerprint)| {
-                fingerprint.trust_metadata_match = false;
+                fingerprint.trust_metadata_match = fingerprint.modified.is_some();
                 (repo_root.join(path), fingerprint)
             })
             .collect();
@@ -157,7 +160,17 @@ impl RepositoryFingerprintCache {
         rel_dir: &str,
         pattern: &str,
     ) -> std::io::Result<Vec<PathBuf>> {
-        let key = format!("{rel_dir}@{pattern}");
+        self.collect_globbed_paths_excluding(repo_root, rel_dir, pattern, &[])
+    }
+
+    fn collect_globbed_paths_excluding(
+        &self,
+        repo_root: &Path,
+        rel_dir: &str,
+        pattern: &str,
+        exclude_globs: &[&str],
+    ) -> std::io::Result<Vec<PathBuf>> {
+        let key = format!("{rel_dir}@{pattern}@{}", exclude_globs.join(","));
         if let Some(paths) = self.glob_memo.lock().unwrap().get(&key).cloned() {
             return Ok(paths);
         }
@@ -165,7 +178,12 @@ impl RepositoryFingerprintCache {
         let full = repo_root.join(rel_dir);
         let mut paths = Vec::new();
         if full.exists() {
-            crate::scanner::collect_files_with_glob(&full, pattern, &mut paths)?;
+            crate::scanner::collect_files_with_glob_excluding(
+                &full,
+                pattern,
+                exclude_globs,
+                &mut paths,
+            )?;
             paths.sort();
             paths.dedup();
         }
@@ -189,7 +207,7 @@ impl RepositoryFingerprintCache {
         let metadata = Self::file_metadata(path)?;
 
         if let Some(cached) = self.file_fingerprints.lock().unwrap().get(path).copied() {
-            if cached.can_reuse_for_metadata(metadata) {
+            if cached.can_reuse_for_metadata(path, metadata) {
                 return Ok(cached.digest);
             }
         }
@@ -212,7 +230,7 @@ impl RepositoryFingerprintCache {
     }
 }
 
-const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui", "ralph-workflow/src"];
+const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui/src", "ralph-workflow/src"];
 const RALPH_GUI_BUILD_EXTRA_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "ralph-gui/capabilities",
@@ -223,7 +241,30 @@ const RALPH_GUI_BUILD_EXTRA_GLOBS: &[ScopeGlob] = &[
         pattern: "*",
     },
 ];
-const RALPH_GUI_BUILD_EXTRA_FILES: &[&str] = &["ralph-gui/tauri.conf.json"];
+const RALPH_GUI_BUILD_EXTRA_FILES: &[&str] = &["ralph-gui/build.rs", "ralph-gui/tauri.conf.json"];
+const FMT_CHECK_SCOPE_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "ralph-workflow/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "tests",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "xtask/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "test-helpers/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "ralph-gui/src",
+        pattern: "*.rs",
+    },
+];
+const FMT_CHECK_SCOPE_FILES: &[&str] = &["ralph-gui/build.rs"];
 const RALPH_WORKFLOW_COMPILE_TIME_EXTRA_GLOBS: &[ScopeGlob] = &[
     ScopeGlob {
         dir: "templates/prompts",
@@ -370,13 +411,11 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             include_lock: false,
         },
         // fmt-check: only .rs file content matters, not Cargo.lock
-        "fmt-check" => CheckScope::Directories(&[
-            "ralph-workflow/src",
-            "tests",
-            "xtask/src",
-            "test-helpers/src",
-            "ralph-gui",
-        ]),
+        "fmt-check" => CheckScope::Patterns {
+            globs: FMT_CHECK_SCOPE_GLOBS,
+            files: FMT_CHECK_SCOPE_FILES,
+            include_lock: false,
+        },
         // clippy-core spans ralph-workflow + ralph-workflow-tests + test-helpers
         "clippy-core" => CheckScope::BuildWithExtras {
             dirs: &["ralph-workflow/src", "tests", "test-helpers/src"],
@@ -633,7 +672,12 @@ fn compute_native_scan_hash(
     let mut all_paths: Vec<PathBuf> = Vec::new();
     for check in checks {
         for dir in check.directories {
-            all_paths.extend(snapshot.collect_globbed_paths(repo_root, dir, check.include_glob)?);
+            all_paths.extend(snapshot.collect_globbed_paths_excluding(
+                repo_root,
+                dir,
+                check.include_glob,
+                check.exclude_globs,
+            )?);
         }
     }
 
@@ -1452,6 +1496,10 @@ mod tests {
             CheckScope::BuildWithExtras { dirs, globs, files } => {
                 assert_eq!(dirs, RALPH_GUI_RUST_SCOPE_DIRS);
                 assert!(
+                    files.contains(&"ralph-gui/build.rs"),
+                    "GUI verify scope must track build.rs as stable Rust-owned input"
+                );
+                assert!(
                     globs
                         .iter()
                         .any(|glob| glob.dir == "ralph-gui/capabilities" && glob.pattern == "*"),
@@ -1479,6 +1527,10 @@ mod tests {
         match scope_for("test-ralph-gui-lib") {
             CheckScope::BuildWithExtras { dirs, globs, files } => {
                 assert_eq!(dirs, RALPH_GUI_RUST_SCOPE_DIRS);
+                assert!(
+                    files.contains(&"ralph-gui/build.rs"),
+                    "GUI lib test scope must track build.rs as stable Rust-owned input"
+                );
                 assert!(
                     globs
                         .iter()
@@ -1553,26 +1605,51 @@ mod tests {
     #[test]
     fn test_scope_for_fmt_check_uses_directories_not_build() {
         match scope_for("fmt-check") {
-            CheckScope::Directories(dirs) => {
+            CheckScope::Patterns {
+                globs,
+                files,
+                include_lock,
+            } => {
                 assert!(
-                    dirs.contains(&"ralph-workflow/src"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-workflow/src" && glob.pattern == "*.rs"),
                     "fmt-check must scan ralph-workflow/src"
                 );
-                assert!(dirs.contains(&"tests"), "fmt-check must scan tests");
-                assert!(dirs.contains(&"xtask/src"), "fmt-check must scan xtask/src");
                 assert!(
-                    dirs.contains(&"test-helpers/src"),
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "tests" && glob.pattern == "*.rs"),
+                    "fmt-check must scan tests"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "xtask/src" && glob.pattern == "*.rs"),
+                    "fmt-check must scan xtask/src"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "test-helpers/src" && glob.pattern == "*.rs"),
                     "fmt-check must scan test-helpers/src"
                 );
                 assert!(
-                    dirs.contains(&"ralph-gui"),
-                    "fmt-check must scan ralph-gui because cargo fmt --all --check formats GUI Rust too"
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "ralph-gui/src" && glob.pattern == "*.rs"),
+                    "fmt-check must scan stable GUI Rust sources without traversing transient frontend trees"
                 );
+                assert!(
+                    files.contains(&"ralph-gui/build.rs"),
+                    "fmt-check must scan GUI build.rs because cargo fmt --all --check formats it"
+                );
+                assert!(!include_lock, "fmt-check should not depend on Cargo.lock");
             }
-            CheckScope::Build(_)
-            | CheckScope::BuildWithExtras { .. }
-            | CheckScope::Patterns { .. } => {
-                panic!("fmt-check must use Directories scope")
+            CheckScope::Directories(_)
+            | CheckScope::Build(_)
+            | CheckScope::BuildWithExtras { .. } => {
+                panic!("fmt-check must use a stable Patterns scope")
             }
         }
     }
@@ -2714,19 +2791,23 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
             digest: 42,
             trust_metadata_match: false,
         };
+        let tmp = unique_test_dir("xtask-cache-test-metadata-required");
 
         assert!(
-            !cached.can_reuse_for_metadata(FileFingerprintMetadata {
-                len: 11,
-                modified: None,
-            }),
+            !cached.can_reuse_for_metadata(
+                &tmp.join("missing.rs"),
+                FileFingerprintMetadata {
+                    len: 11,
+                    modified: None,
+                }
+            ),
             "persisted digests must not be trusted when metadata.modified() is unavailable"
         );
     }
 
     #[test]
-    fn test_persisted_file_fingerprint_is_rehashed_even_when_metadata_matches() {
-        let tmp = unique_test_dir("xtask-cache-test-persisted-rehash");
+    fn test_persisted_file_fingerprint_reuses_digest_when_metadata_matches() {
+        let tmp = unique_test_dir("xtask-cache-test-persisted-reuse");
         let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(tmp.join("src"));
 
@@ -2743,18 +2824,18 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
                     len: metadata.len,
                     modified: metadata.modified,
                     digest: 7,
-                    trust_metadata_match: false,
+                    trust_metadata_match: true,
                 },
             )]),
         );
 
         let digest = cache
             .read_file_digest(&file_path)
-            .expect("persisted fingerprint should fall back to rehashing file bytes");
+            .expect("persisted fingerprint should be reusable when metadata matches");
 
-        assert_ne!(
+        assert_eq!(
             digest, 7,
-            "persisted digest metadata alone must not be trusted"
+            "persisted digest should be reused on a warm cross-process read when metadata matches"
         );
         assert_eq!(
             cache
@@ -2763,10 +2844,146 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
                 .unwrap()
                 .get(&file_path)
                 .copied()
-                .expect("fresh fingerprint should be stored after rehashing")
+                .expect("persisted fingerprint should stay cached after reuse")
                 .digest,
             digest,
-            "rehashing should replace the stale persisted digest with fresh file content"
+            "reused persisted digests should remain cached for later reads"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_gui_scope_hash_ignores_transient_frontend_rust_files() {
+        let tmp = unique_test_dir("xtask-cache-test-gui-scope-excludes-transient");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/capabilities"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/icons"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/node_modules/pkg"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"ralph-gui\", \"ralph-workflow\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/Cargo.toml"),
+            b"[package]\nname = \"ralph-gui\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("ralph-gui/build.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/src/lib.rs"), b"pub fn gui() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/tauri.conf.json"),
+            b"{\"app\":\"one\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/capabilities/default.json"),
+            b"{\"capability\":\"one\"}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("ralph-gui/icons/icon.png"), b"icon\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn transient() {}\n",
+        )
+        .unwrap();
+
+        let scope = scope_for("clippy-ralph-gui");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn changed_transient() {}\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_eq!(
+            hash_before, hash_after,
+            "GUI Rust scope must ignore transient frontend directories under ralph-gui"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_native_scan_hash_ignores_excluded_transient_frontend_files() {
+        let tmp = unique_test_dir("xtask-cache-test-native-scan-excludes-transient");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/src"));
+        let _ = std::fs::create_dir_all(tmp.join("ralph-gui/ui/node_modules/pkg"));
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/build.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("ralph-gui/src/lib.rs"), b"pub fn gui() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn transient() {}\n",
+        )
+        .unwrap();
+
+        let check = crate::scanner::NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow("],
+            directories: &["ralph-gui"],
+            include_glob: "*.rs",
+            exclude_globs: &["**/node_modules/**", "**/dist/**"],
+            mode: crate::scanner::MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let hash_before = compute_native_scan_hash(
+            &tmp,
+            std::slice::from_ref(&check),
+            &RepositoryFingerprintCache::default(),
+        )
+        .unwrap();
+
+        std::fs::write(
+            tmp.join("ralph-gui/ui/node_modules/pkg/index.rs"),
+            b"pub fn changed_transient() {}\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_native_scan_hash(
+            &tmp,
+            std::slice::from_ref(&check),
+            &RepositoryFingerprintCache::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            hash_before, hash_after,
+            "native scan cache keys must ignore files beneath excluded transient frontend directories"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
