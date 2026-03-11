@@ -36,6 +36,27 @@ use std::time::Duration;
 
 const REAL_LOG_TIMEOUT: Duration = Duration::from_secs(20);
 
+fn real_world_log_fixture() -> &'static str {
+    let log = include_str!("artifacts/example_log.log");
+    assert!(
+        log.contains("\"type\":\"content_block_start\""),
+        "real-world fixture must contain content_block_start events"
+    );
+    assert!(
+        log.contains("\"type\":\"content_block_delta\""),
+        "real-world fixture must contain content_block_delta events"
+    );
+    assert!(
+        log.contains("\"type\":\"thinking_delta\""),
+        "real-world fixture must contain thinking deltas for the spam regression"
+    );
+    assert!(
+        log.contains("\"type\":\"input_json_delta\""),
+        "real-world fixture must contain tool-input deltas for the spam regression"
+    );
+    log
+}
+
 #[test]
 fn test_real_world_log_no_spam_any_delta_type_none_mode() {
     with_timeout(
@@ -53,10 +74,7 @@ fn test_real_world_log_no_spam_any_delta_type_none_mode() {
             // Parse the full real-world log.
             // NOTE: This fixture is Claude/CCS-focused and may not include Codex events.
             // Codex regression coverage is validated by tests that provide Codex-specific streams.
-            let log = include_str!("artifacts/example_log.log");
-            if !log.contains("item.started") {
-                return;
-            }
+            let log = real_world_log_fixture();
 
             let reader = BufReader::new(Cursor::new(log));
             let workspace = MemoryWorkspace::new_test();
@@ -152,10 +170,7 @@ fn test_real_world_log_no_spam_any_delta_type_basic_mode() {
             // Parse the full real-world log.
             // NOTE: This fixture is Claude/CCS-focused and may not include Codex events.
             // Codex regression coverage is validated by tests that provide Codex-specific streams.
-            let log = include_str!("artifacts/example_log.log");
-            if !log.contains("item.started") {
-                return;
-            }
+            let log = real_world_log_fixture();
 
             let reader = BufReader::new(Cursor::new(log));
             let workspace = MemoryWorkspace::new_test();
@@ -214,7 +229,7 @@ fn test_real_world_log_text_deltas_accumulated() {
                     .with_display_name_for_test("ccs/codex")
                     .with_terminal_mode(TerminalMode::None);
 
-            let log = include_str!("artifacts/example_log.log");
+            let log = real_world_log_fixture();
             let reader = BufReader::new(Cursor::new(log));
             let workspace = MemoryWorkspace::new_test();
             parser.parse_stream_for_test(reader, &workspace).unwrap();

@@ -83,6 +83,14 @@ cargo clippy -p xtask --all-targets -- -D warnings
 # Lint ralph-gui (runs in parallel group with separate target dir)
 cargo clippy -p ralph-gui --all-targets -- -D warnings
 
+# Frontend install (xtask forces devDependencies on even under production outer env)
+NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm_config_production=false \
+  npm --prefix ralph-gui/ui ci --no-audit --no-fund --include=dev
+
+# Frontend checks
+npm --prefix ralph-gui/ui run lint
+npm --prefix ralph-gui/ui run test -- --run
+
 # Unit tests
 cargo test -p xtask
 cargo test -p ralph-gui --lib

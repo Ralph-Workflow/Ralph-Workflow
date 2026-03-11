@@ -197,6 +197,32 @@ impl RepositoryFingerprintCache {
 }
 
 const RALPH_GUI_RUST_SCOPE_DIRS: &[&str] = &["ralph-gui", "ralph-workflow/src"];
+const DYLINT_SCOPE_GLOBS: &[ScopeGlob] = &[
+    ScopeGlob {
+        dir: "ralph-workflow/src",
+        pattern: "*.rs",
+    },
+    ScopeGlob {
+        dir: "lints/file_too_long/src",
+        pattern: "*.rs",
+    },
+];
+const DYLINT_SCOPE_FILES: &[&str] = &[
+    "Cargo.toml",
+    "Cargo.lock",
+    "Makefile",
+    "rust-toolchain.toml",
+    "rust-toolchain",
+    ".cargo/config.toml",
+    ".cargo/config",
+    "clippy.toml",
+    "lints/file_too_long/Cargo.toml",
+    "lints/file_too_long/Cargo.lock",
+    "lints/file_too_long/.cargo/config.toml",
+    "lints/file_too_long/rust-toolchain.toml",
+    "lints/file_too_long/dylint-link",
+    "lints/file_too_long/rustc-nightly",
+];
 const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] = &[
     "ralph-gui/ui/package.json",
     "ralph-gui/ui/package-lock.json",
@@ -246,20 +272,31 @@ pub fn scope_for(check_name: &str) -> CheckScope {
         // rg check spanning both src and tests (complex PCRE2 negative lookahead)
         "audit-ignore-has-url" => CheckScope::Directories(&["tests", "ralph-workflow/src"]),
         // rg check spanning all .rs files (complex PCRE2 multiline)
-        "forbidden-allow-expect-scan" => {
-            CheckScope::Directories(&["ralph-workflow/src", "tests", "xtask/src"])
-        }
+        "forbidden-allow-expect-scan" => CheckScope::Directories(&[
+            "ralph-workflow/src",
+            "tests",
+            "xtask/src",
+            "test-helpers/src",
+            "ralph-gui",
+        ]),
         // fmt-check: only .rs file content matters, not Cargo.lock
         "fmt-check" => CheckScope::Directories(&[
             "ralph-workflow/src",
             "tests",
             "xtask/src",
             "test-helpers/src",
+            "ralph-gui",
         ]),
         // clippy-core spans ralph-workflow + ralph-workflow-tests + test-helpers
         "clippy-core" => CheckScope::Build(&["ralph-workflow/src", "tests", "test-helpers/src"]),
 
-        "test-ralph-workflow-lib" | "dylint" => CheckScope::Build(&["ralph-workflow/src"]),
+        "test-ralph-workflow-lib" => CheckScope::Build(&["ralph-workflow/src"]),
+
+        "dylint" => CheckScope::Patterns {
+            globs: DYLINT_SCOPE_GLOBS,
+            files: DYLINT_SCOPE_FILES,
+            include_lock: false,
+        },
 
         "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
 
@@ -1199,20 +1236,103 @@ mod tests {
 
     #[test]
     fn test_scope_for_fmt_check_uses_directories_not_build() {
-        let key = scope_memo_key(&scope_for("fmt-check"));
-        // fmt-check should be a Directories scope (no Cargo.lock dependency).
-        assert!(
-            key.starts_with("d:"),
-            "fmt-check must use Directories scope, got: {key}"
-        );
-        // Must include all four source trees.
-        assert!(
-            key.contains("ralph-workflow/src"),
-            "missing ralph-workflow/src"
-        );
-        assert!(key.contains("tests"), "missing tests");
-        assert!(key.contains("xtask/src"), "missing xtask/src");
-        assert!(key.contains("test-helpers/src"), "missing test-helpers/src");
+        match scope_for("fmt-check") {
+            CheckScope::Directories(dirs) => {
+                assert!(
+                    dirs.contains(&"ralph-workflow/src"),
+                    "fmt-check must scan ralph-workflow/src"
+                );
+                assert!(dirs.contains(&"tests"), "fmt-check must scan tests");
+                assert!(dirs.contains(&"xtask/src"), "fmt-check must scan xtask/src");
+                assert!(
+                    dirs.contains(&"test-helpers/src"),
+                    "fmt-check must scan test-helpers/src"
+                );
+                assert!(
+                    dirs.contains(&"ralph-gui"),
+                    "fmt-check must scan ralph-gui because cargo fmt --all --check formats GUI Rust too"
+                );
+            }
+            CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("fmt-check must use Directories scope")
+            }
+        }
+    }
+
+    #[test]
+    fn test_scope_for_forbidden_allow_expect_scan_covers_all_scanned_rust_trees() {
+        match scope_for("forbidden-allow-expect-scan") {
+            CheckScope::Directories(dirs) => {
+                assert!(
+                    dirs.contains(&"ralph-workflow/src"),
+                    "forbidden allow/expect scan must cover ralph-workflow/src"
+                );
+                assert!(
+                    dirs.contains(&"tests"),
+                    "forbidden allow/expect scan must cover tests"
+                );
+                assert!(
+                    dirs.contains(&"xtask/src"),
+                    "forbidden allow/expect scan must cover xtask/src"
+                );
+                assert!(
+                    dirs.contains(&"test-helpers/src"),
+                    "forbidden allow/expect scan must cover test-helpers/src"
+                );
+                assert!(
+                    dirs.contains(&"ralph-gui"),
+                    "forbidden allow/expect scan must cover ralph-gui so GUI Rust is scanned too"
+                );
+            }
+            CheckScope::Build(_) | CheckScope::Patterns { .. } => {
+                panic!("forbidden-allow-expect-scan must use Directories scope")
+            }
+        }
+    }
+
+    #[test]
+    fn test_scope_for_dylint_tracks_custom_lint_inputs() {
+        match scope_for("dylint") {
+            CheckScope::Patterns {
+                globs,
+                files,
+                include_lock,
+            } => {
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| { glob.dir == "ralph-workflow/src" && glob.pattern == "*.rs" }),
+                    "dylint must still include ralph-workflow Rust sources"
+                );
+                assert!(
+                    globs.iter().any(|glob| {
+                        glob.dir == "lints/file_too_long/src" && glob.pattern == "*.rs"
+                    }),
+                    "dylint must include the custom lint crate sources"
+                );
+                for required_file in [
+                    "Makefile",
+                    "lints/file_too_long/Cargo.toml",
+                    "lints/file_too_long/Cargo.lock",
+                    "lints/file_too_long/.cargo/config.toml",
+                    "lints/file_too_long/rust-toolchain.toml",
+                    "lints/file_too_long/dylint-link",
+                    "lints/file_too_long/rustc-nightly",
+                ] {
+                    assert!(
+                        files.contains(&required_file),
+                        "dylint must track {required_file} because make dylint depends on it"
+                    );
+                }
+                assert!(
+                    !include_lock,
+                    "dylint uses explicit files for its lockfiles instead of the workspace lock toggle"
+                );
+            }
+            CheckScope::Directories(_) | CheckScope::Build(_) => {
+                panic!("dylint must use a dedicated Patterns scope")
+            }
+        }
     }
 
     #[test]

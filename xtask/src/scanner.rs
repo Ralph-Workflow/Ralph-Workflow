@@ -416,6 +416,7 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             "tests",
             "xtask/src",
             "test-helpers/src",
+            "ralph-gui",
         ],
         include_glob: "*.rs",
         exclude_globs: &[],
@@ -2640,6 +2641,23 @@ mod tests {
                 .iter()
                 .any(|c| c.name == "forbidden-allow-expect-scan"),
             "NATIVE_SCAN_CHECKS must include forbidden-allow-expect-scan"
+        );
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_covers_gui_rust() {
+        let check = NATIVE_SCAN_CHECKS
+            .iter()
+            .find(|check| check.name == "forbidden-allow-expect-scan")
+            .expect("forbidden-allow-expect-scan must be present");
+
+        assert!(
+            check.directories.contains(&"test-helpers/src"),
+            "forbidden-allow-expect-scan must cover test-helpers/src"
+        );
+        assert!(
+            check.directories.contains(&"ralph-gui"),
+            "forbidden-allow-expect-scan must cover ralph-gui so GUI Rust files are scanned"
         );
     }
 
