@@ -216,6 +216,7 @@ const RALPH_GUI_FRONTEND_SRC_GLOBS: &[ScopeGlob] = &[ScopeGlob {
 }];
 const SCOPE_HASH_VERSION: &[u8] = b"scope-v2";
 const NATIVE_SCAN_HASH_VERSION: &[u8] = b"native-scan-v2";
+const NATIVE_REQUIRED_HASH_VERSION: &[u8] = b"native-required-v1";
 
 /// Returns a stable string key for a scope, used for in-process memoization.
 /// The key encodes both the scope type (directories vs build) and the directory list.
@@ -288,6 +289,34 @@ pub fn scope_for(check_name: &str) -> CheckScope {
 
         // conservative fallback for any unrecognised check
         _ => CheckScope::Build(&["ralph-workflow/src", "tests", "xtask/src"]),
+    }
+}
+
+fn native_required_scope_for(check_name: &str) -> CheckScope {
+    match check_name {
+        "compliance-timeout-wrapper" => CheckScope::Patterns {
+            globs: &[ScopeGlob {
+                dir: "tests/integration_tests",
+                pattern: "*.rs",
+            }],
+            files: &[],
+            include_lock: false,
+        },
+        "audit-no-shell-scripts" => CheckScope::Patterns {
+            globs: &[
+                ScopeGlob {
+                    dir: "scripts",
+                    pattern: "*.sh",
+                },
+                ScopeGlob {
+                    dir: "tests/integration_tests",
+                    pattern: "*.sh",
+                },
+            ],
+            files: &[],
+            include_lock: false,
+        },
+        _ => CheckScope::Build(&["tests", "xtask/src"]),
     }
 }
 
@@ -469,6 +498,29 @@ fn compute_native_scan_hash(
     Ok(hasher.finish())
 }
 
+fn compute_native_required_hash(
+    repo_root: &Path,
+    check: &crate::verify::NativeCheck,
+    snapshot: &RepositoryFingerprintCache,
+) -> std::io::Result<u64> {
+    let mut hasher = Fnv1aHasher::new();
+    hasher.write_bytes(NATIVE_REQUIRED_HASH_VERSION);
+    hasher.write_bytes(check.name.as_bytes());
+
+    let input_hash = compute_scope_hash_with_snapshot(
+        repo_root,
+        &native_required_scope_for(check.name),
+        snapshot,
+    )?;
+    hasher.write_bytes(&input_hash.to_le_bytes());
+
+    let implementation_hash =
+        compute_scope_hash_with_snapshot(repo_root, &CheckScope::Build(&["xtask/src"]), snapshot)?;
+    hasher.write_bytes(&implementation_hash.to_le_bytes());
+
+    Ok(hasher.finish())
+}
+
 /// On-disk format for the cache file.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CacheFile {
@@ -491,6 +543,7 @@ pub struct CachingCommandRunner {
     /// for multiple checks that share the same scope within a single run.
     pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
     repo_fingerprint: RepositoryFingerprintCache,
+    prepared_native_check_hashes: Mutex<HashMap<String, u64>>,
     prepared_native_scan_hash: Mutex<Option<(u64, u64)>>,
     /// Set to true when in-memory cache has unsaved changes.
     dirty: AtomicBool,
@@ -513,6 +566,7 @@ impl CachingCommandRunner {
                 &repo_root,
                 cache_file.file_fingerprints,
             ),
+            prepared_native_check_hashes: Mutex::new(HashMap::new()),
             prepared_native_scan_hash: Mutex::new(None),
             dirty: AtomicBool::new(false),
         }
@@ -640,6 +694,37 @@ impl CachingCommandRunner {
         hasher.finish()
     }
 
+    fn precompute_native_required_hashes(
+        &self,
+        checks: &[crate::verify::NativeCheck],
+    ) -> std::io::Result<Vec<(String, u64)>> {
+        checks
+            .iter()
+            .map(|check| {
+                compute_native_required_hash(&self.repo_root, check, &self.repo_fingerprint)
+                    .map(|hash| (check.name.to_string(), hash))
+            })
+            .collect()
+    }
+
+    fn native_required_hash(
+        &self,
+        repo_root: &Path,
+        check: &crate::verify::NativeCheck,
+    ) -> std::io::Result<u64> {
+        if let Some(hash) = self
+            .prepared_native_check_hashes
+            .lock()
+            .unwrap()
+            .get(check.name)
+            .copied()
+        {
+            return Ok(hash);
+        }
+
+        compute_native_required_hash(repo_root, check, &self.repo_fingerprint)
+    }
+
     pub fn run_native_scan(
         &self,
         repo_root: &Path,
@@ -696,9 +781,17 @@ impl CommandRunner for CachingCommandRunner {
     fn prepare_for_verify(
         &self,
         _repo_root: &Path,
+        native_checks: &[crate::verify::NativeCheck],
         checks: &[CommandSpec],
         native_scan_checks: &[crate::scanner::NativeScanCheck],
     ) -> std::io::Result<()> {
+        let prepared_native_checks = self.precompute_native_required_hashes(native_checks)?;
+        {
+            let mut memo = self.prepared_native_check_hashes.lock().unwrap();
+            memo.clear();
+            memo.extend(prepared_native_checks);
+        }
+
         let prepared_hashes = self.precompute_scope_hashes(checks)?;
         {
             let mut memo = self.scope_memo.lock().unwrap();
@@ -719,6 +812,40 @@ impl CommandRunner for CachingCommandRunner {
         };
         *self.prepared_native_scan_hash.lock().unwrap() = prepared_native_hash;
         Ok(())
+    }
+
+    fn run_native_check(
+        &self,
+        repo_root: &Path,
+        check: &crate::verify::NativeCheck,
+    ) -> std::io::Result<crate::verify::NativeCheckResult> {
+        let hash = self.native_required_hash(repo_root, check)?;
+        let key = format!("native-required:{}:{hash}", check.name);
+
+        {
+            let memory = self.memory.lock().unwrap();
+            if memory.contains_key(&key) {
+                return Ok(crate::verify::NativeCheckResult {
+                    status: crate::verify::CheckStatus::Pass,
+                    message: String::new(),
+                });
+            }
+        }
+
+        let result = self.inner.run_native_check(repo_root, check)?;
+        if result.status == crate::verify::CheckStatus::Pass {
+            self.memory.lock().unwrap().insert(
+                key,
+                CacheEntry {
+                    scope_hash: hash,
+                    exit_code: 0,
+                    stdout: result.message.clone(),
+                    stderr: String::new(),
+                },
+            );
+            self.dirty.store(true, Ordering::Relaxed);
+        }
+        Ok(result)
     }
 
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
@@ -864,6 +991,31 @@ mod tests {
             stderr:
                 "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
                     .to_string(),
+        }
+    }
+
+    static NATIVE_REQUIRED_CHECK_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counted_native_required_check(repo_root: &Path) -> crate::verify::NativeCheckResult {
+        NATIVE_REQUIRED_CHECK_CALLS.fetch_add(1, Ordering::SeqCst);
+        let sentinel = repo_root.join("tests/integration_tests/sentinel.rs");
+        if sentinel.exists() {
+            crate::verify::NativeCheckResult {
+                status: crate::verify::CheckStatus::Pass,
+                message: String::new(),
+            }
+        } else {
+            crate::verify::NativeCheckResult {
+                status: crate::verify::CheckStatus::Warning,
+                message: "missing sentinel".to_string(),
+            }
+        }
+    }
+
+    fn native_required_check(name: &'static str) -> crate::verify::NativeCheck {
+        crate::verify::NativeCheck {
+            name,
+            run: counted_native_required_check,
         }
     }
 
@@ -1756,7 +1908,7 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         let checks = [make_spec("clippy-xtask"), make_spec("test-xtask")];
 
         runner
-            .prepare_for_verify(&tmp, &checks, &[])
+            .prepare_for_verify(&tmp, &[], &checks, &[])
             .expect("prepare_for_verify should succeed");
 
         let memo = runner.scope_memo.lock().unwrap();
@@ -1768,6 +1920,72 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         assert!(
             memo.contains_key(&scope_memo_key(&scope_for("clippy-xtask"))),
             "prepare_for_verify should populate the shared xtask scope hash"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_prepare_for_verify_precomputes_native_required_check_hashes() {
+        let tmp = unique_test_dir("xtask-cache-test-prepare-native-required");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
+        std::fs::write(
+            tmp.join("tests/integration_tests/sentinel.rs"),
+            b"#[test]\nfn sentinel() {}\n",
+        )
+        .unwrap();
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        runner
+            .prepare_for_verify(
+                &tmp,
+                &[native_required_check("compliance-timeout-wrapper")],
+                &[],
+                &[],
+            )
+            .expect("prepare_for_verify should succeed");
+
+        assert!(
+            runner
+                .prepared_native_check_hashes
+                .lock()
+                .unwrap()
+                .contains_key("compliance-timeout-wrapper"),
+            "prepare_for_verify should precompute native required hashes before dispatch"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_native_required_check_clean_result_is_cached_for_unchanged_run() {
+        NATIVE_REQUIRED_CHECK_CALLS.store(0, Ordering::SeqCst);
+
+        let tmp = unique_test_dir("xtask-cache-native-required-hit");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
+        std::fs::write(
+            tmp.join("tests/integration_tests/sentinel.rs"),
+            b"#[test]\nfn sentinel() {}\n",
+        )
+        .unwrap();
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+        let check = native_required_check("compliance-timeout-wrapper");
+
+        let first = runner.run_native_check(&tmp, &check).unwrap();
+        let second = runner.run_native_check(&tmp, &check).unwrap();
+
+        assert_eq!(first.status, crate::verify::CheckStatus::Pass);
+        assert_eq!(second.status, crate::verify::CheckStatus::Pass);
+        assert_eq!(
+            NATIVE_REQUIRED_CHECK_CALLS.load(Ordering::SeqCst),
+            1,
+            "unchanged native required checks should hit the in-process cache on the second run"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);

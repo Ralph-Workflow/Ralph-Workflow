@@ -30,9 +30,18 @@ pub struct CommandOutput {
 pub trait CommandRunner: Send + Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
 
+    fn run_native_check(
+        &self,
+        repo_root: &std::path::Path,
+        check: &NativeCheck,
+    ) -> std::io::Result<NativeCheckResult> {
+        Ok((check.run)(repo_root))
+    }
+
     fn prepare_for_verify(
         &self,
         _repo_root: &std::path::Path,
+        _native_checks: &[NativeCheck],
         _checks: &[CommandSpec],
         _native_scan_checks: &[crate::scanner::NativeScanCheck],
     ) -> std::io::Result<()> {
@@ -466,11 +475,13 @@ fn all_group_checks(groups: &CheckGroups<'_>) -> Vec<CommandSpec> {
         .collect()
 }
 
-/// Fast verification: native checks gate, then seven parallel lanes.
+/// Fast verification: shared cache preparation, native checks gate, then seven parallel lanes.
 ///
-/// Phase 0 (serial): native checks — instantaneous Rust function calls that gate everything.
+/// Phase 0 (serial): shared cache preparation for all verify checks.
 ///
-/// Phase 1 (concurrent via `std::thread::scope`):
+/// Phase 1 (serial): native checks — instantaneous Rust function calls that gate everything.
+///
+/// Phase 2 (concurrent via `std::thread::scope`):
 /// - Lane 1: native Aho-Corasick scan (pure file I/O, no target/ interaction)
 /// - Lane 2: `groups.fmt` (cargo fmt --check, no target/ interaction)
 /// - Lane 3: `groups.core_cargo` (uses default target/)
@@ -487,11 +498,23 @@ pub fn verify_fast(
     groups: &CheckGroups<'_>,
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
-    // Phase 0: native checks (always sequential, very fast).
+    let all_checks = all_group_checks(groups);
+    runner
+        .prepare_for_verify(
+            repo_root,
+            native_checks,
+            &all_checks,
+            crate::scanner::NATIVE_SCAN_CHECKS,
+        )
+        .with_context(|| "prepare verify cache state".to_string())?;
+
+    // Phase 1: native checks (always sequential, very fast).
     for check in native_checks {
         let start = Instant::now();
         reporter.check_started(check.name);
-        let result = (check.run)(repo_root);
+        let result = runner
+            .run_native_check(repo_root, check)
+            .with_context(|| format!("run native check {}", check.name))?;
         let elapsed = start.elapsed();
         if result.status != CheckStatus::Pass {
             reporter.check_failed(check.name, elapsed, result.status);
@@ -509,12 +532,7 @@ pub fn verify_fast(
         reporter.check_passed(check.name, elapsed);
     }
 
-    let all_checks = all_group_checks(groups);
-    runner
-        .prepare_for_verify(repo_root, &all_checks, crate::scanner::NATIVE_SCAN_CHECKS)
-        .with_context(|| "prepare verify cache state".to_string())?;
-
-    // Phase 1: run all groups concurrently — scan and fmt overlap with cargo compilation.
+    // Phase 2: run all groups concurrently — scan and fmt overlap with cargo compilation.
     let cancel = std::sync::Arc::new(CancellationState::new());
 
     let scan_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
@@ -1471,6 +1489,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct NativeScanTrackingRunner {
         ran: Mutex<Vec<&'static str>>,
+        native_check_calls: std::sync::atomic::AtomicUsize,
         native_scan_calls: std::sync::atomic::AtomicUsize,
     }
 
@@ -1481,6 +1500,18 @@ mod tests {
                 exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
                 stdout: String::new(),
                 stderr: String::new(),
+            })
+        }
+
+        fn run_native_check(
+            &self,
+            _repo_root: &std::path::Path,
+            _check: &NativeCheck,
+        ) -> std::io::Result<NativeCheckResult> {
+            self.native_check_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(NativeCheckResult {
+                status: CheckStatus::Pass,
+                message: String::new(),
             })
         }
 
@@ -1526,14 +1557,31 @@ mod tests {
             })
         }
 
+        fn run_native_check(
+            &self,
+            _repo_root: &std::path::Path,
+            check: &NativeCheck,
+        ) -> std::io::Result<NativeCheckResult> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("native-required:{}", check.name));
+            Ok(NativeCheckResult {
+                status: CheckStatus::Pass,
+                message: String::new(),
+            })
+        }
+
         fn prepare_for_verify(
             &self,
             _repo_root: &std::path::Path,
+            native_checks: &[NativeCheck],
             checks: &[CommandSpec],
             native_scan_checks: &[crate::scanner::NativeScanCheck],
         ) -> std::io::Result<()> {
             self.events.lock().unwrap().push(format!(
-                "prepare:{}:{}",
+                "prepare:{}:{}:{}",
+                native_checks.len(),
                 checks.len(),
                 native_scan_checks.len()
             ));
@@ -2120,9 +2168,50 @@ mod tests {
 
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(
+            runner.native_check_calls.load(Ordering::SeqCst),
+            0,
+            "this coverage is focused on the native-scan lane only"
+        );
+        assert_eq!(
             runner.native_scan_calls.load(Ordering::SeqCst),
             1,
             "verify_fast must route native scan through CommandRunner so warm-run caching can hook in"
+        );
+    }
+
+    #[test]
+    fn test_verify_fast_uses_runner_native_check_path() {
+        let runner = std::sync::Arc::new(NativeScanTrackingRunner::default());
+        let groups = CheckGroups {
+            fmt: &[],
+            core_cargo: &[check("cargo-a")],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[NativeCheck {
+                name: "native-required",
+                run: |_| NativeCheckResult {
+                    status: CheckStatus::Pass,
+                    message: String::new(),
+                },
+            }],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(
+            runner.native_check_calls.load(Ordering::SeqCst),
+            1,
+            "verify_fast must route native required checks through CommandRunner so warm-run caching can hook in"
         );
     }
 
@@ -2158,7 +2247,11 @@ mod tests {
             .expect("verify_fast must call prepare_for_verify before running checks");
         let first_run_index = runner_events
             .iter()
-            .position(|event| event.starts_with("native-scan:") || event.starts_with("run:"))
+            .position(|event| {
+                event.starts_with("native-required:")
+                    || event.starts_with("native-scan:")
+                    || event.starts_with("run:")
+            })
             .expect("verify_fast should run at least one check");
         assert!(
             prepare_index < first_run_index,
