@@ -3,7 +3,7 @@ use crate::pipeline::idle_timeout::{
     monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
     time_since_activity, MonitorResult, StderrActivityTracker,
 };
-use crate::pipeline::types::CommandResult;
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
@@ -228,15 +228,19 @@ pub fn run_with_agent_spawn_with_monitor_config(
             } else {
                 ""
             };
-            let child_msg = child_status_at_timeout.map_or_else(
-                || ", no active child processes".to_string(),
-                |info| {
+            let idle_timeout_cause = child_status_at_timeout.map_or(
+                IdleTimeoutCause::NoQualifyingChildren,
+                IdleTimeoutCause::StalledChildren,
+            );
+            let child_msg = match idle_timeout_cause {
+                IdleTimeoutCause::NoQualifyingChildren => ", no active child processes".to_string(),
+                IdleTimeoutCause::StalledChildren(info) => {
                     format!(
-                        ", qualifying child processes present ({} children, CPU stalled at {}ms)",
+                        ", child processes present but not currently active (0 active of {} total, CPU at {}ms)",
                         info.child_count, info.cpu_time_ms
                     )
-                },
-            );
+                }
+            };
             runtime.logger.warn(&format!(
                 "Agent killed due to idle timeout (no stdout/stderr for {:.1} seconds, \
                  last activity {:.1}s ago, process exit code was {}{}{}, \
@@ -252,9 +256,12 @@ pub fn run_with_agent_spawn_with_monitor_config(
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
                 runtime.logger.info(&format!(
-                    "idle timeout suppression: qualifying child processes remained active \
-                     ({} children, CPU advanced to {}ms, signature {})",
-                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    "idle timeout suppression: currently active child processes remained relevant \
+                     ({} active of {} total, CPU at {}ms, signature {})",
+                    info.active_child_count,
+                    info.child_count,
+                    info.cpu_time_ms,
+                    info.descendant_pid_signature
                 ));
             }
             (exit_code, None)

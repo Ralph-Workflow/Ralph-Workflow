@@ -79,6 +79,11 @@ cargo test -p ralph-workflow-tests --test integration_tests
 # Process system tests (parallel, manual only — not in CI)
 cargo test -p ralph-workflow-tests --test process-system-tests
 
+# Timeout / child-process relevance changes
+# Run this focused process-topology check when changing idle-timeout suppression,
+# descendant relevance, or child-process observability logic.
+cargo test -p ralph-workflow-tests --test process-system-tests child_process_timeout_detection
+
 # Memory safety verification (bounded growth, thread cleanup, Arc patterns)
 cargo test -p ralph-workflow-tests --test integration_tests memory_safety
 cargo test -p ralph-workflow --lib benchmarks

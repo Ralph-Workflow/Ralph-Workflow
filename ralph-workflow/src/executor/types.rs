@@ -103,17 +103,22 @@ impl AgentChild for RealAgentChild {
 /// Information about child processes of a given parent.
 ///
 /// Used by the idle-timeout monitor to determine whether child processes
-/// are actively working (CPU time advancing) versus merely existing
-/// (stalled, zombie, or idle daemon).
+/// are currently active versus merely present but stalled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChildProcessInfo {
     /// Number of live child processes found.
     pub child_count: u32,
+    /// Number of descendants that are currently in an active process state.
+    ///
+    /// This counts descendants that are actively running or blocked in a
+    /// state that still indicates current work, rather than merely sleeping
+    /// with historical CPU usage.
+    #[serde(default)]
+    pub active_child_count: u32,
     /// Cumulative CPU time in milliseconds across all child processes.
     ///
-    /// The monitor compares this value across consecutive checks:
-    /// - If `cpu_time_ms` advances between checks, children are actively working.
-    /// - If `cpu_time_ms` is unchanged, children exist but are idle/stalled.
+    /// This remains useful for observability when child work is present but no
+    /// longer current enough to suppress the idle timeout.
     pub cpu_time_ms: u64,
     /// Deterministic signature of the current descendant PID set.
     ///
@@ -128,6 +133,7 @@ impl ChildProcessInfo {
     /// No child processes found.
     pub const NONE: Self = Self {
         child_count: 0,
+        active_child_count: 0,
         cpu_time_ms: 0,
         descendant_pid_signature: 0,
     };
@@ -136,6 +142,12 @@ impl ChildProcessInfo {
     #[must_use]
     pub const fn has_children(&self) -> bool {
         self.child_count > 0
+    }
+
+    /// Whether any child processes are currently active enough to suppress timeout.
+    #[must_use]
+    pub const fn has_currently_active_children(&self) -> bool {
+        self.active_child_count > 0
     }
 }
 
@@ -178,6 +190,7 @@ mod tests {
     fn child_process_info_serde_round_trip() {
         let info = ChildProcessInfo {
             child_count: 3,
+            active_child_count: 2,
             cpu_time_ms: 42000,
             descendant_pid_signature: 12345,
         };

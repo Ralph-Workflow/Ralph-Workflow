@@ -990,6 +990,85 @@ fn active_subprocess_prevents_idle_kill() {
     });
 }
 
+/// Historical CPU growth alone must not suppress timeout when the current child
+/// snapshot shows no active descendants.
+#[test]
+fn sleeping_subprocess_with_historical_cpu_still_times_out() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 0,
+                cpu_time_ms: 100,
+                descendant_pid_signature: 55,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let cpu_history_updater = executor_impl.clone();
+        let cpu_history = thread::spawn(move || {
+            let mut cpu_ms = 100u64;
+            for _ in 0..10 {
+                cpu_ms += 25;
+                cpu_history_updater.add_active_children_info(
+                    child_pid,
+                    ChildProcessInfo {
+                        child_count: 1,
+                        active_child_count: 0,
+                        cpu_time_ms: cpu_ms,
+                        descendant_pid_signature: 55,
+                    },
+                );
+                thread::sleep(Duration::from_millis(3));
+            }
+        });
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(5),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+        cpu_history.join().expect("cpu history thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "historical CPU alone should not keep a sleeping subprocess alive"
+        );
+        assert!(
+            !executor_impl.execute_calls_for("kill").is_empty(),
+            "timeout enforcement should proceed when children are present but not currently active"
+        );
+    });
+}
+
 /// When output is idle, no file activity is present, and no child processes are
 /// running, the monitor must enforce the idle timeout.
 #[test]
@@ -1056,6 +1135,7 @@ fn stalled_subprocess_timeout_includes_child_status() {
             child_pid,
             ChildProcessInfo {
                 child_count: 2,
+                active_child_count: 0,
                 cpu_time_ms: 4200,
                 descendant_pid_signature: 77,
             },
@@ -1117,6 +1197,7 @@ fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
             child_pid,
             ChildProcessInfo {
                 child_count: 1,
+                active_child_count: 0,
                 cpu_time_ms: 0,
                 descendant_pid_signature: 33,
             },
@@ -1137,19 +1218,20 @@ fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
                     timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(20),
                     kill_config: fast_kill_config(),
-                    required_idle_confirmations: 3,
+                    required_idle_confirmations: 4,
                     check_child_processes: true,
                 },
             )
         });
 
-        thread::sleep(Duration::from_millis(45));
+        thread::sleep(Duration::from_millis(25));
         executor_impl.remove_active_children_for(child_pid);
         thread::sleep(Duration::from_millis(25));
         executor_impl.add_active_children_info(
             child_pid,
             ChildProcessInfo {
                 child_count: 1,
+                active_child_count: 0,
                 cpu_time_ms: 0,
                 descendant_pid_signature: 44,
             },
@@ -1184,6 +1266,7 @@ fn child_status_at_timeout_survives_event_serde_round_trip() {
 
         let info = ChildProcessInfo {
             child_count: 2,
+            active_child_count: 0,
             cpu_time_ms: 5000,
             descendant_pid_signature: 88,
         };

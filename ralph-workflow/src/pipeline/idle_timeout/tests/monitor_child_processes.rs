@@ -196,6 +196,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 1,
             cpu_time_ms: 100,
             descendant_pid_signature: 11,
         },
@@ -284,6 +285,7 @@ fn stalled_children_allow_idle_kill() {
             child_pid,
             ChildProcessInfo {
                 child_count: 2,
+                active_child_count: 0,
                 cpu_time_ms: 5000,
                 descendant_pid_signature: 22,
             },
@@ -329,19 +331,26 @@ fn children_transition_active_to_stalled_allows_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 0,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     // Advance CPU time for a short period, then stop.
+    let cpu_advancer_executor = executor_impl.clone();
     let cpu_advancer = thread::spawn(move || {
-        let cpu_advancer_executor = executor_impl;
         let mut cpu_ms = 0u64;
         for _ in 0..10 {
             cpu_ms += 100;
             cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
             thread::sleep(Duration::from_millis(2));
         }
-        // Stop advancing — children are now stalled.
     });
 
     let config = MonitorConfig {
@@ -364,6 +373,15 @@ fn children_transition_active_to_stalled_allows_kill() {
     });
 
     cpu_advancer.join().expect("cpu advancer panicked");
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 1000,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    );
 
     // After CPU stops advancing, the monitor should eventually kill.
     let result = handle.join().expect("monitor thread panicked");
@@ -373,7 +391,7 @@ fn children_transition_active_to_stalled_allows_kill() {
     );
 }
 
-/// Even if CPU time is 0, the first observation of children should grant
+/// Even if CPU time is 0, the first observation of in-scope children should grant
 /// grace (not count as stalled) because the process may have just started.
 #[test]
 fn first_child_observation_grants_grace() {
@@ -387,8 +405,16 @@ fn first_child_observation_grants_grace() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    // Children with 0 CPU time (just spawned).
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    // Children with 0 CPU time (just spawned, no current activity evidence yet).
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 0,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     let config = MonitorConfig {
@@ -417,10 +443,10 @@ fn first_child_observation_grants_grace() {
     thread::sleep(Duration::from_millis(25));
     assert!(
         executor_impl.execute_calls_for("kill").is_empty(),
-        "first observation of children should grant grace even with 0 CPU time"
+        "first observation of children should grant grace even without current activity evidence"
     );
 
-    // The second check will see unchanged CPU time (still 0) and treat as idle.
+    // The second check will see the same child subtree but no current activity.
     // With required_idle_confirmations=1, it will kill after one stalled observation.
     // Wait for the monitor to finish (it should kill on the second check).
     let result = handle.join().expect("monitor thread panicked");
@@ -482,11 +508,18 @@ fn children_reappearing_after_stale_gap_do_not_get_second_startup_grace() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 0,
             cpu_time_ms: 0,
             descendant_pid_signature: 33,
         },
     );
-    thread::sleep(Duration::from_millis(35));
+    let deadline = std::time::Instant::now() + Duration::from_millis(200);
+    while std::time::Instant::now() < deadline {
+        if !executor_impl.execute_calls_for("kill").is_empty() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
     assert!(
         !executor_impl.execute_calls_for("kill").is_empty(),
         "reappearing stalled children should not restart startup grace after the monitor already observed an idle gap"
@@ -518,6 +551,7 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 0,
             cpu_time_ms: 5_000,
             descendant_pid_signature: 101,
         },
@@ -550,6 +584,7 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 0,
             cpu_time_ms: 100,
             descendant_pid_signature: 202,
         },
@@ -588,6 +623,7 @@ fn timeout_with_stalled_children_reports_child_status() {
             child_pid,
             ChildProcessInfo {
                 child_count: 3,
+                active_child_count: 0,
                 cpu_time_ms: 7500,
                 descendant_pid_signature: 44,
             },

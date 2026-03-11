@@ -259,6 +259,7 @@ impl MockProcessExecutor {
             parent_pid,
             ChildProcessInfo {
                 child_count: 1,
+                active_child_count: 1,
                 cpu_time_ms: 0,
                 descendant_pid_signature: u64::from(parent_pid),
             },
@@ -314,6 +315,7 @@ impl MockProcessExecutor {
                     parent_pid,
                     ChildProcessInfo {
                         child_count: 1,
+                        active_child_count: 1,
                         cpu_time_ms,
                         descendant_pid_signature: u64::from(parent_pid),
                     },

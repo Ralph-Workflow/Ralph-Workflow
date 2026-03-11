@@ -720,6 +720,7 @@ fn test_run_with_agent_spawn_logs_child_activity_timeout_suppression() {
     let still_running = Arc::new(AtomicBool::new(true));
     let child_info = Arc::new(Mutex::new(crate::executor::ChildProcessInfo {
         child_count: 1,
+        active_child_count: 1,
         cpu_time_ms: 0,
         descendant_pid_signature: 41,
     }));
@@ -802,7 +803,9 @@ fn test_run_with_agent_spawn_logs_child_activity_timeout_suppression() {
         .read(std::path::Path::new(".agent/tmp/child-activity.log"))
         .expect("expected workspace log output");
     assert!(
-        log_output.contains("idle timeout suppression: qualifying child processes remained active"),
+        log_output.contains(
+            "idle timeout suppression: currently active child processes remained relevant"
+        ),
         "structured logger output should explain child-process timeout suppression"
     );
 }
