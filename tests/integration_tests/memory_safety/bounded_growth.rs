@@ -428,25 +428,29 @@ fn test_memory_does_not_grow_with_many_checkpoint_cycles() {
         // This tests for subtle memory leaks that might occur during serialization
 
         let limit = 1000;
+        let mut state = PipelineState::initial(1000, 5);
         let mut final_states = Vec::new();
 
+        // Fill history once, then repeatedly round-trip the checkpoint payload.
+        // Rebuilding the same 1000-entry state on every cycle only adds CPU cost
+        // and can push this test over the suite timeout without increasing coverage.
+        for i in 0..1000 {
+            state.add_execution_step(create_test_step(i), limit);
+        }
+
+        let mut checkpoint_json =
+            serde_json::to_string(&state).expect("Serialization should succeed");
+
         for cycle in 0..100 {
-            let mut state = PipelineState::initial(1000, 5);
-
-            // Add entries to fill history
-            for i in 0..1000 {
-                state.add_execution_step(create_test_step(i), limit);
-            }
-
-            // Serialize and deserialize (checkpoint cycle)
-            let json = serde_json::to_string(&state).expect("Serialization should succeed");
-            let _restored: PipelineState =
-                serde_json::from_str(&json).expect("Deserialization should succeed");
-
             // Store checkpoint size every 10 cycles
             if cycle % 10 == 0 {
-                final_states.push((cycle, json.len()));
+                final_states.push((cycle, checkpoint_json.len()));
             }
+
+            let restored: PipelineState =
+                serde_json::from_str(&checkpoint_json).expect("Deserialization should succeed");
+            checkpoint_json =
+                serde_json::to_string(&restored).expect("Serialization should succeed");
         }
 
         // Verify checkpoint size remains stable across cycles
