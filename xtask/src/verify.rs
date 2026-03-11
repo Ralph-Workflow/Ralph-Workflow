@@ -236,6 +236,20 @@ fn classify(
     }
 }
 
+pub(crate) fn is_cacheable_success_output(
+    check_name: &str,
+    output: &CommandOutput,
+    success_exit_codes: &[i32],
+) -> bool {
+    classify(
+        check_name,
+        output.exit_code,
+        &output.stdout,
+        &output.stderr,
+        success_exit_codes,
+    ) == CheckStatus::Pass
+}
+
 /// Heartbeat interval for long-running checks: print progress every 3 seconds.
 ///
 /// Reduced from 10 s to 3 s so users see "still running" feedback much sooner
@@ -1614,6 +1628,25 @@ mod tests {
 
         assert_eq!(report.exit, VerifyExitCode::Success);
         assert_eq!(runner.ran(), vec!["release-build", "dylint",]);
+    }
+
+    #[test]
+    fn test_release_build_uses_workspace_default_members() {
+        let release_build = RELEASE_CHECKS
+            .iter()
+            .find(|c| c.name == "release-build")
+            .expect("RELEASE_CHECKS must include release-build");
+
+        assert_eq!(release_build.program, "cargo");
+        assert_eq!(release_build.args, ["build", "--release"]);
+        assert!(
+            !release_build.args.contains(&"--workspace"),
+            "release-build must stay scoped to workspace default members so unrelated tests/ edits do not invalidate its verify cache"
+        );
+        assert!(
+            !release_build.args.contains(&"-p"),
+            "release-build must not be widened to extra packages without revisiting its verify cache scope"
+        );
     }
 
     #[test]

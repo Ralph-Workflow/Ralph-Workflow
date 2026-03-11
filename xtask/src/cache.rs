@@ -209,12 +209,9 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             "test-helpers/src",
         ]),
 
-        "release-build" => CheckScope::Build(&[
-            "ralph-workflow/src",
-            "tests",
-            "xtask/src",
-            "test-helpers/src",
-        ]),
+        "release-build" => {
+            CheckScope::Build(&["ralph-workflow/src", "test-helpers/src", "xtask/src"])
+        }
 
         // conservative fallback for any unrecognised check
         _ => CheckScope::Build(&["ralph-workflow/src", "tests", "xtask/src"]),
@@ -564,12 +561,7 @@ impl CommandRunner for CachingCommandRunner {
         // Cache miss: run the real command.
         let output = self.inner.run(spec)?;
 
-        // Only cache successful results (exit code in success list, no error/warning diagnostics).
-        use crate::scanner::{scan_has_diagnostic_prefix, DiagnosticLevel};
-        let is_success = spec.success_exit_codes.contains(&output.exit_code)
-            && scan_has_diagnostic_prefix(&output.stdout) == DiagnosticLevel::Clean
-            && scan_has_diagnostic_prefix(&output.stderr) == DiagnosticLevel::Clean;
-        if is_success {
+        if crate::verify::is_cacheable_success_output(spec.name, &output, spec.success_exit_codes) {
             self.memory.lock().unwrap().insert(
                 key,
                 CacheEntry {
@@ -645,6 +637,16 @@ mod tests {
         }
     }
 
+    fn make_zero_exit_spec(name: &'static str) -> CommandSpec {
+        CommandSpec {
+            name,
+            program: "npm",
+            args: &[],
+            success_exit_codes: &[0],
+            extra_env: &[],
+        }
+    }
+
     fn success_output() -> CommandOutput {
         CommandOutput {
             exit_code: 1, // exit 1 = no matches = success for rg checks
@@ -658,6 +660,16 @@ mod tests {
             exit_code: 0, // exit 0 = matches found = failure for rg checks
             stdout: "match found".to_string(),
             stderr: String::new(),
+        }
+    }
+
+    fn allowed_frontend_warning_output() -> CommandOutput {
+        CommandOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr:
+                "Warning: An update to Configuration inside a test was not wrapped in act(...)\n"
+                    .to_string(),
         }
     }
 
@@ -754,6 +766,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    #[test]
+    fn test_caching_runner_caches_allowed_frontend_test_warning_output() {
+        let tmp = unique_test_dir("xtask-cache-test-frontend-warning-cache");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let spec = make_zero_exit_spec("ralph-gui-frontend-test");
+
+        let (inner, count) = CountingRunner::new(allowed_frontend_warning_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let first = runner.run(&spec).unwrap();
+        let second = runner.run(&spec).unwrap();
+
+        assert_eq!(
+            first.exit_code, 0,
+            "frontend test output must still be returned"
+        );
+        assert_eq!(
+            second.exit_code, 0,
+            "cache hit must preserve the original frontend test output"
+        );
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "allowed frontend test warning output must be cached after the first run"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_caching_runner_does_not_cache_allowed_frontend_warning_for_other_checks() {
+        let tmp = unique_test_dir("xtask-cache-test-non-frontend-warning");
+        let _ = std::fs::create_dir_all(&tmp);
+
+        let spec = make_zero_exit_spec("some-other-check");
+
+        let (inner, count) = CountingRunner::new(allowed_frontend_warning_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+
+        let _ = runner.run(&spec).unwrap();
+        let _ = runner.run(&spec).unwrap();
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            2,
+            "the allowed warning exception must stay limited to the frontend test check"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     // ── Granular scope tests ──────────────────────────────────────────────────
 
     #[test]
@@ -803,6 +867,12 @@ mod tests {
         assert!(key.contains("tests"), "missing tests");
         assert!(key.contains("xtask/src"), "missing xtask/src");
         assert!(key.contains("test-helpers/src"), "missing test-helpers/src");
+    }
+
+    #[test]
+    fn test_scope_for_release_build_tracks_default_members_only() {
+        let key = scope_memo_key(&scope_for("release-build"));
+        assert_eq!(key, "b:ralph-workflow/src,test-helpers/src,xtask/src");
     }
 
     #[test]
@@ -1195,6 +1265,105 @@ mod tests {
         let h2 = compute_scope_hash(&tmp, &scope).unwrap();
 
         assert_ne!(h1, h2, "Cargo.toml change must change scope hash");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    fn write_release_build_scope_fixture(tmp: &Path) {
+        let _ = std::fs::create_dir_all(tmp.join("ralph-workflow/src"));
+        let _ = std::fs::create_dir_all(tmp.join("test-helpers/src"));
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        let _ = std::fs::create_dir_all(tmp.join("tests/integration_tests"));
+
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            br#"[workspace]
+members = ["ralph-workflow", "test-helpers", "tests", "xtask"]
+default-members = ["ralph-workflow", "test-helpers", "xtask"]
+"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/Cargo.toml"),
+            b"[package]\nname = \"ralph-workflow\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("test-helpers/Cargo.toml"),
+            b"[package]\nname = \"test-helpers\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("tests/Cargo.toml"),
+            b"[package]\nname = \"tests\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("ralph-workflow/src/lib.rs"),
+            b"pub fn workflow() {}\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("test-helpers/src/lib.rs"), b"pub fn helper() {}\n").unwrap();
+        std::fs::write(tmp.join("xtask/src/main.rs"), b"fn main() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("tests/integration_tests/release_scope.rs"),
+            b"#[test]\nfn integration() {}\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_release_build_scope_ignores_non_default_member_tests_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-release-build-ignores-tests");
+        let _ = std::fs::remove_dir_all(&tmp);
+        write_release_build_scope_fixture(&tmp);
+
+        let scope = scope_for("release-build");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("tests/integration_tests/release_scope.rs"),
+            b"#[test]\nfn integration() { panic!(\"changed\"); }\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_eq!(
+            hash_before, hash_after,
+            "release-build scope must ignore tests/ changes because cargo build --release only builds workspace default members"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_release_build_scope_changes_when_default_member_source_changes() {
+        let tmp = unique_test_dir("xtask-cache-test-release-build-member-change");
+        let _ = std::fs::remove_dir_all(&tmp);
+        write_release_build_scope_fixture(&tmp);
+
+        let scope = scope_for("release-build");
+        let hash_before = compute_scope_hash(&tmp, &scope).unwrap();
+
+        std::fs::write(
+            tmp.join("xtask/src/main.rs"),
+            b"fn main() { println!(\"changed\"); }\n",
+        )
+        .unwrap();
+
+        let hash_after = compute_scope_hash(&tmp, &scope).unwrap();
+
+        assert_ne!(
+            hash_before, hash_after,
+            "release-build scope must still invalidate when a default-member source file changes"
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
