@@ -1534,10 +1534,17 @@ fn cleanup_agent_phase_silent_at_internal(repo_root: &Path, stored_ralph_dir: Op
 #[must_use]
 pub fn try_remove_ralph_dir(repo_root: &Path) -> bool {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(&ralph_dir) else {
+        return !ralph_dir.exists();
+    };
+    if !ralph_dir_exists {
+        return true;
+    }
+
     // Clean up stray temp files from interrupted atomic writes before attempting
     // remove_dir. Without this, remove_dir silently fails and the directory is
     // left behind across restarts.
-    cleanup_stray_tmp_files_in_ralph_dir(&ralph_dir);
+    cleanup_stray_tmp_files_in_sanitized_ralph_dir(&ralph_dir);
     match fs::remove_dir(&ralph_dir) {
         Ok(()) => true,
         Err(err) if err.kind() == io::ErrorKind::NotFound => true,
@@ -1552,7 +1559,13 @@ pub fn try_remove_ralph_dir(repo_root: &Path) -> bool {
 #[must_use]
 pub fn verify_ralph_dir_removed(repo_root: &Path) -> Vec<String> {
     let ralph_dir = super::repo::ralph_git_dir(repo_root);
-    if !ralph_dir.exists() {
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(&ralph_dir) else {
+        return vec![format!(
+            "could not sanitize ralph directory before verification: {}",
+            ralph_dir.display()
+        )];
+    };
+    if !ralph_dir_exists {
         return Vec::new();
     }
 
@@ -1719,6 +1732,17 @@ pub fn detect_unauthorized_commit(repo_root: &Path) -> bool {
 /// Quarantine files (`*.ralph.tampered.*`) and other unexpected files are
 /// intentionally left in place.
 fn cleanup_stray_tmp_files_in_ralph_dir(ralph_dir: &Path) {
+    let Ok(ralph_dir_exists) = super::repo::sanitize_ralph_git_dir_at(ralph_dir) else {
+        return;
+    };
+    if !ralph_dir_exists {
+        return;
+    }
+
+    cleanup_stray_tmp_files_in_sanitized_ralph_dir(ralph_dir);
+}
+
+fn cleanup_stray_tmp_files_in_sanitized_ralph_dir(ralph_dir: &Path) {
     let Ok(entries) = fs::read_dir(ralph_dir) else {
         return;
     };
@@ -2775,6 +2799,96 @@ mod tests {
                 .iter()
                 .any(|entry| entry.contains("quarantine.bin")),
             "verification should report the unexpected artifact that blocked removal: {remaining:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_try_remove_ralph_dir_quarantines_symlinked_ralph_dir_without_touching_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let git_dir = repo_root.join(".git");
+        fs::create_dir_all(&git_dir).unwrap();
+
+        let outside_dir = repo_root.join("outside-ralph-target");
+        fs::create_dir_all(&outside_dir).unwrap();
+        let outside_tmp = outside_dir.join(".head-oid.tmp.12345.999");
+        fs::write(&outside_tmp, "keep me\n").unwrap();
+
+        let ralph_dir = git_dir.join("ralph");
+        symlink(&outside_dir, &ralph_dir).unwrap();
+
+        let removed = try_remove_ralph_dir(repo_root);
+
+        assert!(
+            removed,
+            "try_remove_ralph_dir should treat a quarantined symlink as cleaned up"
+        );
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph path should be removed after quarantining the symlink"
+        );
+        assert!(
+            outside_tmp.exists(),
+            "cleanup must not follow a symlinked .git/ralph and delete temp-like files in the target directory"
+        );
+
+        let quarantined = fs::read_dir(&git_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .find(|name| name.starts_with("ralph.ralph.tampered.dir."))
+            .unwrap_or_default();
+        assert!(
+            !quarantined.is_empty(),
+            "symlinked .git/ralph should be quarantined for inspection"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_verify_ralph_dir_removed_quarantines_symlinked_ralph_dir_without_touching_target() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let git_dir = repo_root.join(".git");
+        fs::create_dir_all(&git_dir).unwrap();
+
+        let outside_dir = repo_root.join("outside-verify-target");
+        fs::create_dir_all(&outside_dir).unwrap();
+        let outside_tmp = outside_dir.join(".git-wrapper-dir.tmp.12345.999");
+        fs::write(&outside_tmp, "keep me too\n").unwrap();
+
+        let ralph_dir = git_dir.join("ralph");
+        symlink(&outside_dir, &ralph_dir).unwrap();
+
+        let remaining = verify_ralph_dir_removed(repo_root);
+
+        assert!(
+            remaining.is_empty(),
+            "verification should report .git/ralph as removed after quarantining the symlink: {remaining:?}"
+        );
+        assert!(
+            !ralph_dir.exists(),
+            ".git/ralph path should no longer exist after verification sanitizes it"
+        );
+        assert!(
+            outside_tmp.exists(),
+            "verification must not follow a symlinked .git/ralph and inspect/delete the target directory"
+        );
+
+        let quarantined = fs::read_dir(&git_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .find(|name| name.starts_with("ralph.ralph.tampered.dir."))
+            .unwrap_or_default();
+        assert!(
+            !quarantined.is_empty(),
+            "verification should quarantine a symlinked .git/ralph path for inspection"
         );
     }
 
