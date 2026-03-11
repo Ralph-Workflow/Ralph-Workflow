@@ -356,17 +356,29 @@ fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) ->
         .join("\n")
 }
 
-/// Fast verification: native scan checks, then cargo checks via prefetch + sequential.
+/// Check groups for parallel verification.
+pub struct CheckGroups<'a> {
+    pub cargo_debug: &'a [CommandSpec],
+    pub frontend: &'a [CommandSpec],
+    pub release: &'a [CommandSpec],
+    pub prefetch: &'a [CommandSpec],
+}
+
+/// Fast verification: native scan checks, then three parallel groups of checks.
 ///
-/// `prefetch_specs` are run concurrently in a background thread during the cargo phase to
-/// pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no prefetch is
-/// desired (e.g., in tests with fake runners).
+/// Groups run concurrently using `std::thread::scope`:
+/// - Main thread: `groups.cargo_debug` with optional `groups.prefetch`
+/// - Thread 2: `groups.frontend` (npm, independent of cargo)
+/// - Thread 3: `groups.release` (release build + dylint, separate target dir)
+///
+/// `groups.prefetch` are run concurrently in a background thread during the cargo debug
+/// phase to pre-populate the cache (see `CachingCommandRunner`).  Pass `&[]` when no
+/// prefetch is desired (e.g., in tests with fake runners).
 pub fn verify_fast(
     runner: std::sync::Arc<dyn CommandRunner>,
     repo_root: &std::path::Path,
     native_checks: &[NativeCheck],
-    checks: &[CommandSpec],
-    prefetch_specs: &[CommandSpec],
+    groups: &CheckGroups<'_>,
     reporter: &dyn ProgressReporter,
 ) -> Result<VerifyReport> {
     // Phase 0: native checks (always sequential, very fast).
@@ -420,15 +432,88 @@ pub fn verify_fast(
     }
     reporter.check_passed("native-scan", scan_elapsed);
 
-    // Phase 2: cargo checks with optional concurrent prefetch.
-    // All scanning is now native (Phase 0.5), so we go directly to cargo checks.
-    run_cargo_prefetch(runner, prefetch_specs, checks, reporter)
+    // Phase 2: run three check groups in parallel.
+    // Cancellation flag: when any group fails, other groups skip remaining checks.
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+
+    let frontend_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
+    let release_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
+
+    let cargo_report = std::thread::scope(|s| {
+        // Thread 2: frontend checks (npm, independent of cargo).
+        if !groups.frontend.is_empty() {
+            let runner_fe = &runner;
+            let cancel_fe = &cancel;
+            let result_fe = &frontend_result;
+            let frontend = groups.frontend;
+            s.spawn(move || {
+                let report =
+                    run_checks_cancellable(runner_fe.as_ref(), frontend, reporter, cancel_fe);
+                *result_fe.lock().unwrap() = Some(report);
+            });
+        }
+
+        // Thread 3: release checks (release build + dylint, separate target dir).
+        if !groups.release.is_empty() {
+            let runner_rel = &runner;
+            let cancel_rel = &cancel;
+            let result_rel = &release_result;
+            let release = groups.release;
+            s.spawn(move || {
+                let report =
+                    run_checks_cancellable(runner_rel.as_ref(), release, reporter, cancel_rel);
+                *result_rel.lock().unwrap() = Some(report);
+            });
+        }
+
+        // Main thread: cargo debug checks with prefetch.
+        let cargo_report = run_cargo_prefetch(
+            runner.clone(),
+            groups.prefetch,
+            groups.cargo_debug,
+            reporter,
+        );
+        if let Ok(ref report) = cargo_report {
+            if report.exit == VerifyExitCode::Failure {
+                cancel.store(true, Ordering::SeqCst);
+            }
+        }
+        cargo_report
+    });
+
+    // Collect results: cargo group has highest priority.
+    let cargo_report = cargo_report?;
+    if cargo_report.exit == VerifyExitCode::Failure {
+        return Ok(cargo_report);
+    }
+
+    // Check frontend group result.
+    if let Some(fe_result) = frontend_result.lock().unwrap().take() {
+        let fe_report = fe_result?;
+        if fe_report.exit == VerifyExitCode::Failure {
+            return Ok(fe_report);
+        }
+    }
+
+    // Check release group result.
+    if let Some(rel_result) = release_result.lock().unwrap().take() {
+        let rel_report = rel_result?;
+        if rel_report.exit == VerifyExitCode::Failure {
+            return Ok(rel_report);
+        }
+    }
+
+    Ok(VerifyReport {
+        exit: VerifyExitCode::Success,
+        failure: None,
+    })
 }
 
-/// All verification checks.  All scanning is now native (Aho-Corasick, Phase 0.5).
-/// Any future check that cannot be expressed natively should be added here with
-/// an explanation of why native expression is not feasible.
-pub const REQUIRED_CHECKS: &[CommandSpec] = &[
+/// Cargo debug checks: format, lint, and test commands that share the default target/ directory.
+///
+/// These run sequentially within their group (they share the cargo build cache)
+/// but the group itself runs in parallel with frontend and release groups.
+pub const CARGO_DEBUG_CHECKS: &[CommandSpec] = &[
     // ── format and lint ──────────────────────────────────────────────────────
     CommandSpec {
         name: "fmt-check",
@@ -526,36 +611,7 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
-    // ── memory safety (replaces verify_memory_safety.sh and ci_performance_regression.sh) ──
-    CommandSpec {
-        name: "memory-safety-integration",
-        program: "cargo",
-        args: &[
-            "test",
-            "-p",
-            "ralph-workflow-tests",
-            "--test",
-            "integration_tests",
-            "memory_safety",
-        ],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "memory-safety-benchmarks",
-        program: "cargo",
-        args: &["test", "-p", "ralph-workflow", "--lib", "benchmarks"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    CommandSpec {
-        name: "memory-safety-executor",
-        program: "cargo",
-        args: &["test", "-p", "ralph-workflow", "--lib", "executor::tests"],
-        success_exit_codes: &[0],
-        extra_env: &[],
-    },
-    // ── ralph-gui crate: lint, unit tests, and frontend ─────────────────────
+    // ── ralph-gui crate: lint and unit tests ─────────────────────────────────
     CommandSpec {
         name: "clippy-ralph-gui",
         program: "cargo",
@@ -578,6 +634,13 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
+];
+
+/// Frontend checks: npm install, lint, and test.
+///
+/// These are completely independent of cargo and run in their own parallel group.
+/// Within the group, install must precede lint/test.
+pub const FRONTEND_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-install",
         program: "npm",
@@ -612,26 +675,36 @@ pub const REQUIRED_CHECKS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[],
     },
-    // ── release build and custom lints ───────────────────────────────────────
+];
+
+/// Release build and custom lints.
+///
+/// Uses a separate `CARGO_TARGET_DIR` to avoid cargo lock contention with the
+/// debug cargo group running in parallel.
+pub const RELEASE_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "release-build",
         program: "cargo",
         args: &["build", "--release"],
         success_exit_codes: &[0],
-        extra_env: &[],
+        extra_env: &[("CARGO_TARGET_DIR", "target/release-parallel-verify")],
     },
     CommandSpec {
         name: "dylint",
         program: "make",
         args: &["dylint"],
         success_exit_codes: &[0],
-        extra_env: &[("DYLINT_DRIVER_PATH", "target/dylint-driver")],
+        extra_env: &[
+            ("DYLINT_DRIVER_PATH", "target/dylint-driver"),
+            ("CARGO_TARGET_DIR", "target/release-parallel-verify"),
+        ],
     },
 ];
 
-/// Prefetch specs for xtask checks run concurrently with the sequential cargo phase.
+/// Prefetch specs for xtask and ralph-gui checks run concurrently with the sequential
+/// cargo debug phase.
 ///
-/// These use the same `name` as the corresponding entries in REQUIRED_CHECKS so they
+/// These use the same `name` as the corresponding entries in `CARGO_DEBUG_CHECKS` so they
 /// share the same cache key (name + scope hash).  A separate `CARGO_TARGET_DIR` avoids
 /// holding the default target/ lock while the main sequential phase compiles other crates.
 pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
@@ -657,7 +730,135 @@ pub const CARGO_PREFETCH_SPECS: &[CommandSpec] = &[
         success_exit_codes: &[0],
         extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
     },
+    CommandSpec {
+        name: "clippy-ralph-gui",
+        program: "cargo",
+        args: &[
+            "clippy",
+            "-p",
+            "ralph-gui",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
+    },
+    CommandSpec {
+        name: "test-ralph-gui-lib",
+        program: "cargo",
+        args: &["test", "-p", "ralph-gui", "--lib"],
+        success_exit_codes: &[0],
+        extra_env: &[("CARGO_TARGET_DIR", "target/gui-parallel-verify")],
+    },
 ];
+
+/// Run checks sequentially with cancellation support.
+///
+/// Like `run_checks`, but checks the `cancel` flag before starting each check.
+/// When a check fails, the cancel flag is set to signal other parallel groups.
+fn run_checks_cancellable(
+    runner: &(dyn CommandRunner + Sync),
+    checks: &[CommandSpec],
+    reporter: &dyn ProgressReporter,
+    cancel: &AtomicBool,
+) -> Result<VerifyReport> {
+    for spec in checks {
+        if cancel.load(Ordering::SeqCst) {
+            break;
+        }
+        reporter.check_started(spec.name);
+        let start = Instant::now();
+
+        let done = Mutex::new(false);
+        let cvar = Condvar::new();
+
+        let output_result: anyhow::Result<CommandOutput> = std::thread::scope(|s| {
+            s.spawn(|| {
+                let mut guard = done.lock().unwrap();
+                loop {
+                    if *guard {
+                        break;
+                    }
+                    let (g, timeout_result) = cvar.wait_timeout(guard, HEARTBEAT_INTERVAL).unwrap();
+                    guard = g;
+                    if *guard {
+                        break;
+                    }
+                    if timeout_result.timed_out() {
+                        drop(guard);
+                        reporter.check_still_running(spec.name, start.elapsed());
+                        guard = done.lock().unwrap();
+                    }
+                }
+            });
+
+            let result = runner
+                .run(spec)
+                .with_context(|| format!("run {}", spec.name));
+            {
+                let mut guard = done.lock().unwrap();
+                *guard = true;
+                cvar.notify_one();
+            }
+            result
+        });
+
+        let elapsed = start.elapsed();
+
+        let output = match output_result {
+            Ok(output) => output,
+            Err(e) => {
+                reporter.check_failed(spec.name, elapsed, CheckStatus::Error);
+                cancel.store(true, Ordering::SeqCst);
+                return Ok(VerifyReport {
+                    exit: VerifyExitCode::Failure,
+                    failure: Some(CheckFailure {
+                        name: spec.name,
+                        status: CheckStatus::Error,
+                        exit_code: -1,
+                        stdout: String::new(),
+                        stderr: format!("{e:#}"),
+                    }),
+                });
+            }
+        };
+
+        let status = classify(
+            spec.name,
+            output.exit_code,
+            &output.stdout,
+            &output.stderr,
+            spec.success_exit_codes,
+        );
+
+        match status {
+            CheckStatus::Pass => {
+                reporter.check_passed(spec.name, elapsed);
+            }
+            CheckStatus::Warning | CheckStatus::Error => {
+                reporter.check_failed(spec.name, elapsed, status);
+                cancel.store(true, Ordering::SeqCst);
+                return Ok(VerifyReport {
+                    exit: VerifyExitCode::Failure,
+                    failure: Some(CheckFailure {
+                        name: spec.name,
+                        status,
+                        exit_code: output.exit_code,
+                        stdout: output.stdout,
+                        stderr: output.stderr,
+                    }),
+                });
+            }
+        }
+    }
+
+    Ok(VerifyReport {
+        exit: VerifyExitCode::Success,
+        failure: None,
+    })
+}
 
 /// Run prefetch specs concurrently with main specs.
 ///
@@ -712,6 +913,20 @@ pub fn run_cargo_prefetch(
         cancel_prefetch.store(true, Ordering::SeqCst);
     }
     Ok(main_report)
+}
+
+/// Returns all required checks across all groups, in group-priority order.
+///
+/// Used by tests to verify check existence.  The returned specs use the
+/// group-specific `extra_env` (e.g., release checks have `CARGO_TARGET_DIR`
+/// set for parallel execution).
+#[cfg(test)]
+fn all_required_checks() -> Vec<&'static CommandSpec> {
+    CARGO_DEBUG_CHECKS
+        .iter()
+        .chain(FRONTEND_CHECKS.iter())
+        .chain(RELEASE_CHECKS.iter())
+        .collect()
 }
 
 #[cfg(test)]
@@ -1101,59 +1316,75 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_runs_required_checks_in_stable_order() {
-        // Arrange
+    fn test_cargo_debug_checks_run_in_stable_order() {
         let runner = std::sync::Arc::new(RecordingRunner::default());
-
-        // Act
-        // Pass a nonexistent path so native checks (compliance-timeout-wrapper) return Pass
+        let all_checks: Vec<CommandSpec> = CARGO_DEBUG_CHECKS.to_vec();
         let report = verify(
             runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
-            REQUIRED_CHECKS,
+            &all_checks,
         )
         .expect("verify should not error");
 
-        // Assert
         assert_eq!(report.exit, VerifyExitCode::Success);
-        assert_eq!(report.failure, None);
-        // After the Aho-Corasick migration, REQUIRED_CHECKS contains only the 2 complex
-        // PCRE2 rg checks and the cargo checks.  The 17 literal pattern checks and
-        // audit-no-shell-scripts are now handled natively (no CommandRunner involvement).
         assert_eq!(
             runner.ran(),
             vec![
-                // format and lint
                 "fmt-check",
                 "clippy-ralph-workflow",
                 "clippy-ralph-workflow-tests",
                 "clippy-test-helpers",
                 "clippy-xtask",
-                // tests
                 "test-xtask",
                 "test-ralph-workflow-lib",
                 "test-integration",
-                // memory safety
-                "memory-safety-integration",
-                "memory-safety-benchmarks",
-                "memory-safety-executor",
-                // ralph-gui
                 "clippy-ralph-gui",
                 "test-ralph-gui-lib",
-                "ralph-gui-frontend-install",
-                "ralph-gui-frontend-lint",
-                "ralph-gui-frontend-test",
-                // build and custom lints
-                "release-build",
-                "dylint",
             ]
         );
     }
 
     #[test]
+    fn test_frontend_checks_run_in_stable_order() {
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let report = verify(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            FRONTEND_CHECKS,
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(
+            runner.ran(),
+            vec![
+                "ralph-gui-frontend-install",
+                "ralph-gui-frontend-lint",
+                "ralph-gui-frontend-test",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_release_checks_run_in_stable_order() {
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let report = verify(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            RELEASE_CHECKS,
+        )
+        .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+        assert_eq!(runner.ran(), vec!["release-build", "dylint",]);
+    }
+
+    #[test]
     fn test_required_checks_do_not_invoke_shell_scripts() {
-        for spec in REQUIRED_CHECKS {
+        for spec in all_required_checks() {
             assert_ne!(
                 spec.program, "bash",
                 "verify steps must not invoke bash scripts: {}",
@@ -1177,45 +1408,44 @@ mod tests {
 
     #[test]
     fn test_clippy_ralph_gui_check_is_in_required_checks() {
-        // TDD anchor: fails until clippy-ralph-gui is added to REQUIRED_CHECKS.
         assert!(
-            REQUIRED_CHECKS.iter().any(|c| c.name == "clippy-ralph-gui"),
-            "REQUIRED_CHECKS must include clippy-ralph-gui to lint the GUI crate"
+            all_required_checks()
+                .iter()
+                .any(|c| c.name == "clippy-ralph-gui"),
+            "checks must include clippy-ralph-gui to lint the GUI crate"
         );
     }
 
     #[test]
     fn test_ralph_gui_lib_test_check_is_in_required_checks() {
-        // TDD anchor: fails until test-ralph-gui-lib is added to REQUIRED_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            all_required_checks()
                 .iter()
                 .any(|c| c.name == "test-ralph-gui-lib"),
-            "REQUIRED_CHECKS must include test-ralph-gui-lib to run GUI crate unit tests"
+            "checks must include test-ralph-gui-lib to run GUI crate unit tests"
         );
     }
 
     #[test]
     fn test_ralph_gui_frontend_lint_check_is_in_required_checks() {
-        // TDD anchor: fails until ralph-gui-frontend-lint is added to REQUIRED_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            all_required_checks()
                 .iter()
                 .any(|c| c.name == "ralph-gui-frontend-lint"),
-            "REQUIRED_CHECKS must include ralph-gui-frontend-lint to enforce TypeScript strict rules"
+            "checks must include ralph-gui-frontend-lint to enforce TypeScript strict rules"
         );
     }
 
     #[test]
     fn test_ralph_gui_frontend_install_check_runs_before_lint() {
-        let install_index = REQUIRED_CHECKS
+        let install_index = FRONTEND_CHECKS
             .iter()
             .position(|c| c.name == "ralph-gui-frontend-install")
-            .expect("REQUIRED_CHECKS must include ralph-gui-frontend-install");
-        let lint_index = REQUIRED_CHECKS
+            .expect("FRONTEND_CHECKS must include ralph-gui-frontend-install");
+        let lint_index = FRONTEND_CHECKS
             .iter()
             .position(|c| c.name == "ralph-gui-frontend-lint")
-            .expect("REQUIRED_CHECKS must include ralph-gui-frontend-lint");
+            .expect("FRONTEND_CHECKS must include ralph-gui-frontend-lint");
 
         assert!(
             install_index < lint_index,
@@ -1225,13 +1455,10 @@ mod tests {
 
     #[test]
     fn test_ralph_gui_frontend_install_forces_and_includes_dev_dependencies() {
-        // In CI environments NODE_ENV can be set to "production", causing `npm ci`
-        // to omit devDependencies and breaking eslint/vitest checks.
-        // The install step must both include dev deps and force production mode off.
-        let spec = REQUIRED_CHECKS
+        let spec = FRONTEND_CHECKS
             .iter()
             .find(|c| c.name == "ralph-gui-frontend-install")
-            .expect("REQUIRED_CHECKS must include ralph-gui-frontend-install");
+            .expect("FRONTEND_CHECKS must include ralph-gui-frontend-install");
 
         let mut env = std::collections::HashMap::new();
         for (k, v) in spec.extra_env {
@@ -1249,21 +1476,20 @@ mod tests {
 
     #[test]
     fn test_ralph_gui_frontend_test_check_is_in_required_checks() {
-        // TDD anchor: fails until ralph-gui-frontend-test is added to REQUIRED_CHECKS.
         assert!(
-            REQUIRED_CHECKS
+            all_required_checks()
                 .iter()
                 .any(|c| c.name == "ralph-gui-frontend-test"),
-            "REQUIRED_CHECKS must include ralph-gui-frontend-test to run vitest component tests"
+            "checks must include ralph-gui-frontend-test to run vitest component tests"
         );
     }
 
     #[test]
     fn test_dylint_check_uses_repo_local_writable_cache_dirs() {
-        let spec = REQUIRED_CHECKS
+        let spec = RELEASE_CHECKS
             .iter()
             .find(|c| c.name == "dylint")
-            .expect("REQUIRED_CHECKS must include dylint");
+            .expect("RELEASE_CHECKS must include dylint");
 
         let env: HashMap<_, _> = spec.extra_env.iter().copied().collect();
 
@@ -1347,18 +1573,16 @@ mod tests {
     // ── TDD tests for concurrent execution ──────────────────────────────────
 
     #[test]
-    fn test_required_checks_first_entry_is_fmt_check() {
-        // TDD anchor: now that all scanning is native, fmt-check is the first entry.
+    fn test_cargo_debug_checks_first_entry_is_fmt_check() {
         assert_eq!(
-            REQUIRED_CHECKS[0].name, "fmt-check",
-            "REQUIRED_CHECKS[0] must be fmt-check (first cargo check)"
+            CARGO_DEBUG_CHECKS[0].name, "fmt-check",
+            "CARGO_DEBUG_CHECKS[0] must be fmt-check (first cargo check)"
         );
     }
 
     #[test]
     fn test_required_checks_contain_no_rg_entries() {
-        // TDD anchor: all scanning is now native; no rg subprocesses should remain.
-        for spec in REQUIRED_CHECKS {
+        for spec in all_required_checks() {
             assert_ne!(
                 spec.program, "rg",
                 "check '{}' must not use rg — all scanning is now native",
@@ -1369,16 +1593,28 @@ mod tests {
 
     // ── TDD tests for concurrent execution ──────────────────────────────────
 
+    fn test_groups<'a>(
+        cargo_debug: &'a [CommandSpec],
+        frontend: &'a [CommandSpec],
+        release: &'a [CommandSpec],
+    ) -> CheckGroups<'a> {
+        CheckGroups {
+            cargo_debug,
+            frontend,
+            release,
+            prefetch: &[],
+        }
+    }
+
     #[test]
     fn test_verify_fast_runs_all_required_checks() {
-        // TDD anchor: verify_fast() must exercise all REQUIRED_CHECKS.
         let runner = std::sync::Arc::new(RecordingRunner::default());
+        let groups = test_groups(CARGO_DEBUG_CHECKS, FRONTEND_CHECKS, RELEASE_CHECKS);
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
-            REQUIRED_CHECKS,
-            &[], // no prefetch in tests
+            &groups,
             &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
@@ -1390,7 +1626,7 @@ mod tests {
         use std::collections::HashSet;
         let ran_set: HashSet<&str> = ran.iter().copied().collect();
 
-        for spec in REQUIRED_CHECKS {
+        for spec in all_required_checks() {
             assert!(
                 ran_set.contains(spec.name),
                 "verify_fast must run check '{}'",
@@ -1401,21 +1637,18 @@ mod tests {
 
     #[test]
     fn test_verify_fast_stops_on_first_cargo_failure() {
-        // TDD anchor: all scanning is now native (no rg phase); verify_fast proceeds
-        // directly to cargo checks.  When the first cargo check (fmt-check) fails,
-        // later checks must NOT run.
         let runner = std::sync::Arc::new(FakeRunner::new([CommandOutput {
-            exit_code: 1, // exit 1 = failure for cargo
+            exit_code: 1,
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
         }]));
 
+        let groups = test_groups(CARGO_DEBUG_CHECKS, &[], &[]);
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
-            REQUIRED_CHECKS,
-            &[], // no prefetch in tests
+            &groups,
             &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
@@ -1427,20 +1660,18 @@ mod tests {
 
     #[test]
     fn test_verify_fast_stops_on_cargo_check_failure() {
-        // TDD anchor: when first cargo check (fmt-check) fails, later cargo checks must not run.
-        // All scanning is now native (no rg phase), so the first runner call is fmt-check.
         let runner = std::sync::Arc::new(FakeRunner::new([CommandOutput {
-            exit_code: 1, // exit 1 = failure for cargo (success_exit_codes: &[0])
+            exit_code: 1,
             stdout: String::new(),
             stderr: "error: formatting differences found".to_string(),
         }]));
 
+        let groups = test_groups(CARGO_DEBUG_CHECKS, &[], &[]);
         let report = verify_fast(
             runner.clone(),
             std::path::Path::new("/fake"),
             NATIVE_REQUIRED_CHECKS,
-            REQUIRED_CHECKS,
-            &[], // no prefetch in tests
+            &groups,
             &NoopProgressReporter,
         )
         .expect("verify_fast should not error");
@@ -1508,13 +1739,13 @@ mod tests {
     }
 
     #[test]
-    fn test_cargo_prefetch_specs_use_same_names_as_required_checks() {
-        // TDD anchor: CARGO_PREFETCH_SPECS must use the same check names as REQUIRED_CHECKS
+    fn test_cargo_prefetch_specs_use_same_names_as_cargo_debug_checks() {
+        // CARGO_PREFETCH_SPECS must use the same check names as CARGO_DEBUG_CHECKS
         // so the cache key (name + scope hash) is shared between prefetch and sequential runs.
         for spec in CARGO_PREFETCH_SPECS {
             assert!(
-                REQUIRED_CHECKS.iter().any(|c| c.name == spec.name),
-                "prefetch spec '{}' must have a matching entry in REQUIRED_CHECKS",
+                CARGO_DEBUG_CHECKS.iter().any(|c| c.name == spec.name),
+                "prefetch spec '{}' must have a matching entry in CARGO_DEBUG_CHECKS",
                 spec.name
             );
         }
@@ -2049,21 +2280,23 @@ mod tests {
     }
 
     /// Total check count must equal NATIVE_REQUIRED_CHECKS.len() + 1 (native-scan)
-    /// plus REQUIRED_CHECKS.len().  Guards against drift when new checks are added
+    /// plus all group checks.  Guards against drift when new checks are added
     /// without updating the StderrProgressReporter constructor call in main.rs.
     #[test]
     fn test_total_check_count_matches_reporter_constructor_expectation() {
-        let expected_total = NATIVE_REQUIRED_CHECKS.len() + 1 + REQUIRED_CHECKS.len();
-        // 2 native required + 1 native-scan + 16 cargo = 19 currently.
-        // The exact value is not asserted here (it changes as checks are added),
-        // but total must be > 0 and >= REQUIRED_CHECKS.len().
+        let expected_total = NATIVE_REQUIRED_CHECKS.len()
+            + 1
+            + CARGO_DEBUG_CHECKS.len()
+            + FRONTEND_CHECKS.len()
+            + RELEASE_CHECKS.len();
         assert!(
             expected_total > 0,
             "total check count must be positive, got {expected_total}"
         );
+        let all_checks = all_required_checks();
         assert!(
-            expected_total >= REQUIRED_CHECKS.len(),
-            "total must include at least the cargo checks"
+            expected_total >= all_checks.len(),
+            "total must include at least the cargo/frontend/release checks"
         );
     }
 
@@ -2234,5 +2467,322 @@ mod tests {
         let ran = runner.ran();
         assert!(ran.contains(&"prefetch-1"));
         assert!(ran.contains(&"main-fails"));
+    }
+
+    // ── TDD tests for redundant memory-safety check removal ─────────────────
+
+    #[test]
+    fn test_no_redundant_memory_safety_checks() {
+        // memory-safety-integration, memory-safety-benchmarks, memory-safety-executor
+        // are subsets of test-integration and test-ralph-workflow-lib respectively.
+        let all = all_required_checks();
+        for spec in &all {
+            assert!(
+                !spec.name.starts_with("memory-safety-"),
+                "redundant memory-safety check '{}' must not be in required checks",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_required_checks_include_parent_test_commands() {
+        let all = all_required_checks();
+        let names: Vec<&str> = all.iter().map(|c| c.name).collect();
+        assert!(
+            names.contains(&"test-integration"),
+            "must include test-integration (superset of memory-safety-integration)"
+        );
+        assert!(
+            names.contains(&"test-ralph-workflow-lib"),
+            "must include test-ralph-workflow-lib (superset of memory-safety-benchmarks/executor)"
+        );
+    }
+
+    // ── TDD tests for parallel group execution ──────────────────────────────
+
+    #[test]
+    fn test_verify_fast_runs_frontend_and_cargo_concurrently() {
+        // Use a ByNameRunner that records thread IDs to prove concurrency.
+        use std::sync::Arc;
+        use std::thread::ThreadId;
+
+        #[derive(Debug, Default)]
+        struct ThreadTrackingRunner {
+            threads: Mutex<HashMap<&'static str, ThreadId>>,
+        }
+
+        impl CommandRunner for ThreadTrackingRunner {
+            fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+                self.threads
+                    .lock()
+                    .unwrap()
+                    .insert(spec.name, std::thread::current().id());
+                // Small sleep to increase chance of overlap visibility
+                std::thread::sleep(Duration::from_millis(10));
+                Ok(CommandOutput {
+                    exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
+                    stdout: String::new(),
+                    stderr: String::new(),
+                })
+            }
+        }
+
+        let runner = Arc::new(ThreadTrackingRunner::default());
+
+        let cargo_checks: &[CommandSpec] = &[check("cargo-a")];
+        let frontend_checks: &[CommandSpec] = &[check("frontend-a")];
+
+        let groups = test_groups(cargo_checks, frontend_checks, &[]);
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let threads = runner.threads.lock().unwrap();
+        let cargo_thread = threads.get("cargo-a").expect("cargo-a must have run");
+        let frontend_thread = threads.get("frontend-a").expect("frontend-a must have run");
+
+        // The cargo debug group runs on the main thread, frontend on a spawned thread.
+        // They must run on different threads to prove concurrency.
+        assert_ne!(
+            cargo_thread, frontend_thread,
+            "cargo and frontend checks must run on different threads (proving concurrency)"
+        );
+    }
+
+    #[test]
+    fn test_verify_fast_failure_in_cargo_cancels_other_groups() {
+        // When the cargo group fails, the cancellation flag should be set,
+        // preventing remaining checks in other groups from running.
+        let runner = std::sync::Arc::new(
+            ByNameRunner::default()
+                .with_output(
+                    "cargo-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: cargo failure".to_string(),
+                    },
+                )
+                .with_output(
+                    "frontend-a",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                )
+                .with_output(
+                    "release-a",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                ),
+        );
+
+        let cargo_checks: &[CommandSpec] = &[check("cargo-fails")];
+        let frontend_checks: &[CommandSpec] = &[check("frontend-a")];
+        let release_checks: &[CommandSpec] = &[check("release-a")];
+
+        let groups = test_groups(cargo_checks, frontend_checks, release_checks);
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "cargo-fails");
+    }
+
+    #[test]
+    fn test_verify_fast_reports_frontend_failure_when_cargo_succeeds() {
+        let runner = std::sync::Arc::new(
+            ByNameRunner::default()
+                .with_output(
+                    "cargo-ok",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                )
+                .with_output(
+                    "frontend-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: lint failure".to_string(),
+                    },
+                )
+                .with_output(
+                    "release-ok",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                ),
+        );
+
+        let cargo_checks: &[CommandSpec] = &[check("cargo-ok")];
+        let frontend_checks: &[CommandSpec] = &[check("frontend-fails")];
+        let release_checks: &[CommandSpec] = &[check("release-ok")];
+
+        let groups = test_groups(cargo_checks, frontend_checks, release_checks);
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "frontend-fails");
+    }
+
+    #[test]
+    fn test_verify_fast_reports_release_failure_when_others_succeed() {
+        let runner = std::sync::Arc::new(
+            ByNameRunner::default()
+                .with_output(
+                    "cargo-ok",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                )
+                .with_output(
+                    "frontend-ok",
+                    CommandOutput {
+                        exit_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    },
+                )
+                .with_output(
+                    "release-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: release failure".to_string(),
+                    },
+                ),
+        );
+
+        let cargo_checks: &[CommandSpec] = &[check("cargo-ok")];
+        let frontend_checks: &[CommandSpec] = &[check("frontend-ok")];
+        let release_checks: &[CommandSpec] = &[check("release-fails")];
+
+        let groups = test_groups(cargo_checks, frontend_checks, release_checks);
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "release-fails");
+    }
+
+    #[test]
+    fn test_verify_fast_cargo_failure_takes_priority_over_frontend_failure() {
+        // When both cargo and frontend fail, cargo failure is reported (highest priority).
+        let runner = std::sync::Arc::new(
+            ByNameRunner::default()
+                .with_output(
+                    "cargo-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: cargo".to_string(),
+                    },
+                )
+                .with_output(
+                    "frontend-fails",
+                    CommandOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "error: frontend".to_string(),
+                    },
+                ),
+        );
+
+        let cargo_checks: &[CommandSpec] = &[check("cargo-fails")];
+        let frontend_checks: &[CommandSpec] = &[check("frontend-fails")];
+
+        let groups = test_groups(cargo_checks, frontend_checks, &[]);
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "cargo-fails");
+    }
+
+    #[test]
+    fn test_release_checks_use_separate_target_dir() {
+        // Release checks must set CARGO_TARGET_DIR to avoid lock contention
+        // with the debug cargo group.
+        for spec in RELEASE_CHECKS {
+            let has_target_dir = spec.extra_env.iter().any(|(k, _)| *k == "CARGO_TARGET_DIR");
+            assert!(
+                has_target_dir,
+                "release check '{}' must set CARGO_TARGET_DIR for parallel execution",
+                spec.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_required_checks_returns_union_of_all_groups() {
+        let all = all_required_checks();
+        let expected_count =
+            CARGO_DEBUG_CHECKS.len() + FRONTEND_CHECKS.len() + RELEASE_CHECKS.len();
+        assert_eq!(
+            all.len(),
+            expected_count,
+            "all_required_checks() must return exactly the union of all groups"
+        );
+    }
+
+    #[test]
+    fn test_cargo_prefetch_includes_ralph_gui_checks() {
+        let prefetch_names: Vec<&str> = CARGO_PREFETCH_SPECS.iter().map(|s| s.name).collect();
+        assert!(
+            prefetch_names.contains(&"clippy-ralph-gui"),
+            "CARGO_PREFETCH_SPECS must include clippy-ralph-gui"
+        );
+        assert!(
+            prefetch_names.contains(&"test-ralph-gui-lib"),
+            "CARGO_PREFETCH_SPECS must include test-ralph-gui-lib"
+        );
     }
 }

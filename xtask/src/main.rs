@@ -132,9 +132,12 @@ fn main() -> ExitCode {
 
     match args.next().as_deref() {
         Some("verify") => {
-            // Total check count = native checks + 1 (native-scan) + cargo checks.
-            let total_checks =
-                verify::NATIVE_REQUIRED_CHECKS.len() + 1 + verify::REQUIRED_CHECKS.len();
+            // Total check count = native checks + 1 (native-scan) + all group checks.
+            let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()
+                + 1
+                + verify::CARGO_DEBUG_CHECKS.len()
+                + verify::FRONTEND_CHECKS.len()
+                + verify::RELEASE_CHECKS.len();
             let reporter: Arc<dyn ProgressReporter> =
                 Arc::new(verify::StderrProgressReporter::new(total_checks));
             let real_runner = RealRunner::new(Arc::clone(&reporter));
@@ -146,12 +149,17 @@ fn main() -> ExitCode {
             eprintln!("=== cargo xtask verify ===");
             let verify_start = std::time::Instant::now();
             let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
+            let groups = verify::CheckGroups {
+                cargo_debug: verify::CARGO_DEBUG_CHECKS,
+                frontend: verify::FRONTEND_CHECKS,
+                release: verify::RELEASE_CHECKS,
+                prefetch: verify::CARGO_PREFETCH_SPECS,
+            };
             let report = match verify::verify_fast(
                 runner_for_verify,
                 &repo_root,
                 verify::NATIVE_REQUIRED_CHECKS,
-                verify::REQUIRED_CHECKS,
-                verify::CARGO_PREFETCH_SPECS,
+                &groups,
                 reporter.as_ref(),
             ) {
                 Ok(report) => report,

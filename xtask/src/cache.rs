@@ -122,11 +122,9 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             "test-helpers/src",
         ]),
         // per-package clippy and tests: only the package's own source + Cargo.lock
-        "clippy-ralph-workflow"
-        | "test-ralph-workflow-lib"
-        | "memory-safety-benchmarks"
-        | "memory-safety-executor"
-        | "dylint" => CheckScope::Build(&["ralph-workflow/src"]),
+        "clippy-ralph-workflow" | "test-ralph-workflow-lib" | "dylint" => {
+            CheckScope::Build(&["ralph-workflow/src"])
+        }
 
         "clippy-xtask" | "test-xtask" => CheckScope::Build(&["xtask/src"]),
 
@@ -150,7 +148,7 @@ pub fn scope_for(check_name: &str) -> CheckScope {
             CheckScope::Build(&["tests", "ralph-workflow/src", "test-helpers/src"])
         }
 
-        "test-integration" | "memory-safety-integration" => CheckScope::Build(&[
+        "test-integration" => CheckScope::Build(&[
             "ralph-workflow/src",
             "tests/integration_tests",
             "test-helpers/src",
