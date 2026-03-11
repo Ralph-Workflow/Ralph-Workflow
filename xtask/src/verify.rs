@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use std::borrow::Cow;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -31,6 +30,15 @@ pub struct CommandOutput {
 pub trait CommandRunner: Send + Sync {
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput>;
 
+    fn prepare_for_verify(
+        &self,
+        _repo_root: &std::path::Path,
+        _checks: &[CommandSpec],
+        _native_scan_checks: &[crate::scanner::NativeScanCheck],
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+
     fn run_native_scan(
         &self,
         repo_root: &std::path::Path,
@@ -48,6 +56,44 @@ pub enum CheckStatus {
     Pass,
     Warning,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum FailurePriority {
+    Scan = 0,
+    Fmt = 1,
+    CoreCargo = 2,
+    XtaskCargo = 3,
+    GuiCargo = 4,
+    Frontend = 5,
+    Release = 6,
+}
+
+struct CancellationState {
+    highest_priority_failure: AtomicUsize,
+}
+
+impl CancellationState {
+    const NO_FAILURE: usize = usize::MAX;
+
+    fn new() -> Self {
+        Self {
+            highest_priority_failure: AtomicUsize::new(Self::NO_FAILURE),
+        }
+    }
+
+    fn record_failure(&self, priority: FailurePriority) {
+        let priority = priority as usize;
+        let _ = self.highest_priority_failure.fetch_update(
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+            |current| (priority < current).then_some(priority),
+        );
+    }
+
+    fn should_cancel(&self, priority: FailurePriority) -> bool {
+        self.highest_priority_failure.load(Ordering::SeqCst) < priority as usize
+    }
 }
 
 /// Observer interface for verification progress.
@@ -406,6 +452,20 @@ pub struct CheckGroups<'a> {
     pub release: &'a [CommandSpec],
 }
 
+fn all_group_checks(groups: &CheckGroups<'_>) -> Vec<CommandSpec> {
+    groups
+        .fmt
+        .iter()
+        .chain(groups.core_cargo.iter())
+        .chain(groups.xtask_cargo.iter())
+        .chain(groups.gui_cargo.iter())
+        .chain(groups.frontend_install.iter())
+        .chain(groups.frontend_post_install.iter())
+        .chain(groups.release.iter())
+        .cloned()
+        .collect()
+}
+
 /// Fast verification: native checks gate, then seven parallel lanes.
 ///
 /// Phase 0 (serial): native checks — instantaneous Rust function calls that gate everything.
@@ -449,8 +509,13 @@ pub fn verify_fast(
         reporter.check_passed(check.name, elapsed);
     }
 
+    let all_checks = all_group_checks(groups);
+    runner
+        .prepare_for_verify(repo_root, &all_checks, crate::scanner::NATIVE_SCAN_CHECKS)
+        .with_context(|| "prepare verify cache state".to_string())?;
+
     // Phase 1: run all groups concurrently — scan and fmt overlap with cargo compilation.
-    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let cancel = std::sync::Arc::new(CancellationState::new());
 
     let scan_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
     let fmt_result: Mutex<Option<Result<VerifyReport>>> = Mutex::new(None);
@@ -467,7 +532,7 @@ pub fn verify_fast(
             let result_scan = &scan_result;
             s.spawn(move || {
                 let lane_start = Instant::now();
-                if cancel_scan.load(Ordering::SeqCst) {
+                if cancel_scan.should_cancel(FailurePriority::Scan) {
                     return;
                 }
                 let scan_start = Instant::now();
@@ -484,7 +549,7 @@ pub fn verify_fast(
                     Ok(scan_results) => scan_results,
                     Err(error) => {
                         reporter.check_failed("native-scan", scan_elapsed, CheckStatus::Error);
-                        cancel_scan.store(true, Ordering::SeqCst);
+                        cancel_scan.record_failure(FailurePriority::Scan);
                         *result_scan.lock().unwrap() = Some(Ok(VerifyReport {
                             exit: VerifyExitCode::Failure,
                             failure: Some(CheckFailure {
@@ -503,7 +568,7 @@ pub fn verify_fast(
                     if !result.passed {
                         reporter.check_failed(result.check_name, scan_elapsed, CheckStatus::Error);
                         let output = format_scan_violations(&result.violations);
-                        cancel_scan.store(true, Ordering::SeqCst);
+                        cancel_scan.record_failure(FailurePriority::Scan);
                         *result_scan.lock().unwrap() = Some(Ok(VerifyReport {
                             exit: VerifyExitCode::Failure,
                             failure: Some(CheckFailure {
@@ -535,7 +600,13 @@ pub fn verify_fast(
             let fmt = groups.fmt;
             s.spawn(move || {
                 let lane_start = Instant::now();
-                let report = run_checks_cancellable(runner_fmt.as_ref(), fmt, reporter, cancel_fmt);
+                let report = run_checks_cancellable(
+                    runner_fmt.as_ref(),
+                    fmt,
+                    reporter,
+                    cancel_fmt,
+                    FailurePriority::Fmt,
+                );
                 *result_fmt.lock().unwrap() = Some(report);
                 reporter.lane_finished("fmt", lane_start.elapsed());
             });
@@ -549,7 +620,13 @@ pub fn verify_fast(
             let xtask = groups.xtask_cargo;
             s.spawn(move || {
                 let lane_start = Instant::now();
-                let report = run_checks_cancellable(runner_xt.as_ref(), xtask, reporter, cancel_xt);
+                let report = run_checks_cancellable(
+                    runner_xt.as_ref(),
+                    xtask,
+                    reporter,
+                    cancel_xt,
+                    FailurePriority::XtaskCargo,
+                );
                 *result_xt.lock().unwrap() = Some(report);
                 reporter.lane_finished("xtask-cargo", lane_start.elapsed());
             });
@@ -563,7 +640,13 @@ pub fn verify_fast(
             let gui = groups.gui_cargo;
             s.spawn(move || {
                 let lane_start = Instant::now();
-                let report = run_checks_cancellable(runner_gui.as_ref(), gui, reporter, cancel_gui);
+                let report = run_checks_cancellable(
+                    runner_gui.as_ref(),
+                    gui,
+                    reporter,
+                    cancel_gui,
+                    FailurePriority::GuiCargo,
+                );
                 *result_gui.lock().unwrap() = Some(report);
                 reporter.lane_finished("gui-cargo", lane_start.elapsed());
             });
@@ -581,8 +664,13 @@ pub fn verify_fast(
             s.spawn(move || {
                 let lane_start = Instant::now();
                 // Phase A: run install checks sequentially (must complete before lint/test).
-                let install_report =
-                    run_checks_cancellable(runner_fe.as_ref(), install, reporter, cancel_fe);
+                let install_report = run_checks_cancellable(
+                    runner_fe.as_ref(),
+                    install,
+                    reporter,
+                    cancel_fe,
+                    FailurePriority::Frontend,
+                );
                 match &install_report {
                     Ok(report) if report.exit == VerifyExitCode::Success => {}
                     _ => {
@@ -594,7 +682,7 @@ pub fn verify_fast(
                 }
 
                 // Phase B: run post-install checks in parallel (lint + test are independent).
-                if post_install.is_empty() || cancel_fe.load(Ordering::SeqCst) {
+                if post_install.is_empty() || cancel_fe.should_cancel(FailurePriority::Frontend) {
                     *result_fe.lock().unwrap() = Some(install_report);
                     reporter.lane_finished("frontend", lane_start.elapsed());
                     return;
@@ -612,6 +700,7 @@ pub fn verify_fast(
                                     std::slice::from_ref(spec),
                                     reporter,
                                     cancel_fe,
+                                    FailurePriority::Frontend,
                                 )
                             })
                         })
@@ -655,8 +744,13 @@ pub fn verify_fast(
             let release = groups.release;
             s.spawn(move || {
                 let lane_start = Instant::now();
-                let report =
-                    run_checks_cancellable(runner_rel.as_ref(), release, reporter, cancel_rel);
+                let report = run_checks_cancellable(
+                    runner_rel.as_ref(),
+                    release,
+                    reporter,
+                    cancel_rel,
+                    FailurePriority::Release,
+                );
                 *result_rel.lock().unwrap() = Some(report);
                 reporter.lane_finished("release", lane_start.elapsed());
             });
@@ -664,13 +758,13 @@ pub fn verify_fast(
 
         // Lane 7 (main thread): core cargo checks (uses default target/).
         let lane_start = Instant::now();
-        let cargo_report =
-            run_checks_cancellable(runner.as_ref(), groups.core_cargo, reporter, &cancel);
-        if let Ok(ref report) = cargo_report {
-            if report.exit == VerifyExitCode::Failure {
-                cancel.store(true, Ordering::SeqCst);
-            }
-        }
+        let cargo_report = run_checks_cancellable(
+            runner.as_ref(),
+            groups.core_cargo,
+            reporter,
+            &cancel,
+            FailurePriority::CoreCargo,
+        );
         reporter.lane_finished("core-cargo", lane_start.elapsed());
         cargo_report
     });
@@ -957,10 +1051,11 @@ fn run_checks_cancellable(
     runner: &(dyn CommandRunner + Sync),
     checks: &[CommandSpec],
     reporter: &dyn ProgressReporter,
-    cancel: &AtomicBool,
+    cancel: &CancellationState,
+    lane_priority: FailurePriority,
 ) -> Result<VerifyReport> {
     for spec in checks {
-        if cancel.load(Ordering::SeqCst) {
+        if cancel.should_cancel(lane_priority) {
             break;
         }
         reporter.check_started(spec.name);
@@ -1006,7 +1101,7 @@ fn run_checks_cancellable(
             Ok(output) => output,
             Err(e) => {
                 reporter.check_failed(spec.name, elapsed, CheckStatus::Error);
-                cancel.store(true, Ordering::SeqCst);
+                cancel.record_failure(lane_priority);
                 return Ok(VerifyReport {
                     exit: VerifyExitCode::Failure,
                     failure: Some(CheckFailure {
@@ -1034,7 +1129,7 @@ fn run_checks_cancellable(
             }
             CheckStatus::Warning | CheckStatus::Error => {
                 reporter.check_failed(spec.name, elapsed, status);
-                cancel.store(true, Ordering::SeqCst);
+                cancel.record_failure(lane_priority);
                 return Ok(VerifyReport {
                     exit: VerifyExitCode::Failure,
                     failure: Some(CheckFailure {
@@ -1404,6 +1499,90 @@ mod tests {
                     violations: Vec::new(),
                 })
                 .collect())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct PreparingRunner {
+        events: Mutex<Vec<String>>,
+    }
+
+    impl PreparingRunner {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl CommandRunner for PreparingRunner {
+        fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("run:{}", spec.name));
+            Ok(CommandOutput {
+                exit_code: spec.success_exit_codes.first().copied().unwrap_or(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn prepare_for_verify(
+            &self,
+            _repo_root: &std::path::Path,
+            checks: &[CommandSpec],
+            native_scan_checks: &[crate::scanner::NativeScanCheck],
+        ) -> std::io::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "prepare:{}:{}",
+                checks.len(),
+                native_scan_checks.len()
+            ));
+            Ok(())
+        }
+
+        fn run_native_scan(
+            &self,
+            _repo_root: &std::path::Path,
+            checks: &[crate::scanner::NativeScanCheck],
+            _progress: &(dyn Fn(&str, &str) + Sync),
+        ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("native-scan:{}", checks.len()));
+            Ok(checks
+                .iter()
+                .map(|check| crate::scanner::NativeScanCheckResult {
+                    check_name: check.name,
+                    passed: true,
+                    violations: Vec::new(),
+                })
+                .collect())
+        }
+    }
+
+    #[derive(Default)]
+    struct EventOrderReporter {
+        events: Mutex<Vec<String>>,
+    }
+
+    impl EventOrderReporter {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl ProgressReporter for EventOrderReporter {
+        fn check_started(&self, name: &str) {
+            self.events.lock().unwrap().push(format!("start:{name}"));
+        }
+
+        fn check_passed(&self, name: &str, _elapsed: Duration) {
+            self.events.lock().unwrap().push(format!("pass:{name}"));
+        }
+
+        fn check_failed(&self, name: &str, _elapsed: Duration, _status: CheckStatus) {
+            self.events.lock().unwrap().push(format!("fail:{name}"));
         }
     }
 
@@ -1944,6 +2123,54 @@ mod tests {
             runner.native_scan_calls.load(Ordering::SeqCst),
             1,
             "verify_fast must route native scan through CommandRunner so warm-run caching can hook in"
+        );
+    }
+
+    #[test]
+    fn test_verify_fast_prepares_runner_before_starting_checks() {
+        let runner = std::sync::Arc::new(PreparingRunner::default());
+        let reporter = EventOrderReporter::default();
+        let groups = CheckGroups {
+            fmt: FMT_CHECKS,
+            core_cargo: &[],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            NATIVE_REQUIRED_CHECKS,
+            &groups,
+            &reporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Success);
+
+        let runner_events = runner.events();
+        let prepare_index = runner_events
+            .iter()
+            .position(|event| event.starts_with("prepare:"))
+            .expect("verify_fast must call prepare_for_verify before running checks");
+        let first_run_index = runner_events
+            .iter()
+            .position(|event| event.starts_with("native-scan:") || event.starts_with("run:"))
+            .expect("verify_fast should run at least one check");
+        assert!(
+            prepare_index < first_run_index,
+            "prepare_for_verify must happen before any runner work, got {runner_events:?}"
+        );
+
+        let reporter_events = reporter.events();
+        assert!(
+            reporter_events
+                .first()
+                .is_some_and(|event| event.starts_with("start:")),
+            "progress reporting should still begin with check start events, got {reporter_events:?}"
         );
     }
 

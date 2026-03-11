@@ -10,9 +10,10 @@ Verification passes when required checks complete successfully with **no ERROR/W
 
 ### Parallel execution architecture
 
-`cargo xtask verify` runs checks in seven concurrent lanes after a serial native-checks gate:
+`cargo xtask verify` runs checks in seven concurrent lanes after a serial native-checks gate and a shared cache-preparation step:
 
 - **Phase 0 (serial):** Native checks — instantaneous Rust function calls (compliance-timeout-wrapper, audit-no-shell-scripts).
+- **Phase 0.5 (serial, warm-run optimization):** Prepare verify cache state once for the full check set. `xtask` precomputes unique scope hashes and the native-scan eligibility hash before any lane dispatch, so later cache lookups are O(1) map reads instead of repeated scope traversal in each lane.
 - **Phase 1 (concurrent):**
   - Lane 1: Native Aho-Corasick scan (pure file I/O, no target/ interaction)
   - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
@@ -25,7 +26,7 @@ Verification passes when required checks complete successfully with **no ERROR/W
 Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
 
 On an unchanged tree, `cargo xtask verify` may reuse cached clean results for eligible lanes, including the native scan lane. This does not weaken the contract: the cache key includes the relevant source inputs plus `xtask` scan implementation inputs, so any relevant source or verifier change invalidates the warm-run shortcut and the check runs again.
-Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits.
+Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits. There is no fixed cross-machine runtime target, but unchanged warm runs should spend noticeably less time in cache-eligibility work than cold runs because the preparation step shares those hashes across all lanes up front.
 
 The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --release` against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles.
 

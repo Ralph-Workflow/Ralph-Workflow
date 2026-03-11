@@ -491,6 +491,7 @@ pub struct CachingCommandRunner {
     /// for multiple checks that share the same scope within a single run.
     pub(crate) scope_memo: Mutex<HashMap<String, u64>>,
     repo_fingerprint: RepositoryFingerprintCache,
+    prepared_native_scan_hash: Mutex<Option<(u64, u64)>>,
     /// Set to true when in-memory cache has unsaved changes.
     dirty: AtomicBool,
 }
@@ -512,6 +513,7 @@ impl CachingCommandRunner {
                 &repo_root,
                 cache_file.file_fingerprints,
             ),
+            prepared_native_scan_hash: Mutex::new(None),
             dirty: AtomicBool::new(false),
         }
     }
@@ -579,13 +581,83 @@ impl CachingCommandRunner {
         }
     }
 
+    fn unique_scopes_for_checks(checks: &[CommandSpec]) -> Vec<(String, CheckScope)> {
+        let mut unique = HashMap::new();
+        for spec in checks {
+            let scope = scope_for(spec.name);
+            unique.entry(scope_memo_key(&scope)).or_insert(scope);
+        }
+
+        let mut scopes: Vec<_> = unique.into_iter().collect();
+        scopes.sort_by(|left, right| left.0.cmp(&right.0));
+        scopes
+    }
+
+    fn precompute_scope_hashes(
+        &self,
+        checks: &[CommandSpec],
+    ) -> std::io::Result<Vec<(String, u64)>> {
+        let scopes = Self::unique_scopes_for_checks(checks);
+        if scopes.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let worker_count = std::thread::available_parallelism()
+            .map_or(1, |count| count.get())
+            .min(scopes.len());
+        let chunk_size = scopes.len().div_ceil(worker_count);
+
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for chunk in scopes.chunks(chunk_size) {
+                handles.push(scope.spawn(move || {
+                    chunk
+                        .iter()
+                        .map(|(key, scope)| {
+                            compute_scope_hash_with_snapshot(
+                                &self.repo_root,
+                                scope,
+                                &self.repo_fingerprint,
+                            )
+                            .map(|hash| (key.clone(), hash))
+                        })
+                        .collect::<std::io::Result<Vec<_>>>()
+                }));
+            }
+
+            let mut prepared = Vec::new();
+            for handle in handles {
+                prepared.extend(handle.join().expect("scope hash worker panicked")?);
+            }
+            prepared.sort_by(|left, right| left.0.cmp(&right.0));
+            Ok(prepared)
+        })
+    }
+
+    fn native_scan_definition_hash(checks: &[crate::scanner::NativeScanCheck]) -> u64 {
+        let mut hasher = Fnv1aHasher::new();
+        append_native_scan_definition_hash(&mut hasher, checks);
+        hasher.finish()
+    }
+
     pub fn run_native_scan(
         &self,
         repo_root: &Path,
         checks: &[crate::scanner::NativeScanCheck],
         progress: &(dyn Fn(&str, &str) + Sync),
     ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
-        let hash = compute_native_scan_hash(repo_root, checks, &self.repo_fingerprint)?;
+        let definition_hash = Self::native_scan_definition_hash(checks);
+        let hash = self
+            .prepared_native_scan_hash
+            .lock()
+            .unwrap()
+            .and_then(|(prepared_definition_hash, prepared_hash)| {
+                (prepared_definition_hash == definition_hash).then_some(prepared_hash)
+            })
+            .map_or_else(
+                || compute_native_scan_hash(repo_root, checks, &self.repo_fingerprint),
+                Ok,
+            )?;
         let key = format!("native-scan:{hash}");
 
         {
@@ -621,6 +693,34 @@ impl CachingCommandRunner {
 }
 
 impl CommandRunner for CachingCommandRunner {
+    fn prepare_for_verify(
+        &self,
+        _repo_root: &Path,
+        checks: &[CommandSpec],
+        native_scan_checks: &[crate::scanner::NativeScanCheck],
+    ) -> std::io::Result<()> {
+        let prepared_hashes = self.precompute_scope_hashes(checks)?;
+        {
+            let mut memo = self.scope_memo.lock().unwrap();
+            memo.extend(prepared_hashes);
+        }
+
+        let prepared_native_hash = if native_scan_checks.is_empty() {
+            None
+        } else {
+            Some((
+                Self::native_scan_definition_hash(native_scan_checks),
+                compute_native_scan_hash(
+                    &self.repo_root,
+                    native_scan_checks,
+                    &self.repo_fingerprint,
+                )?,
+            ))
+        };
+        *self.prepared_native_scan_hash.lock().unwrap() = prepared_native_hash;
+        Ok(())
+    }
+
     fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
         let scope = scope_for(spec.name);
         let Some(hash) = self.compute_or_cached_scope_hash(&scope) else {
@@ -1628,6 +1728,46 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         assert_eq!(
             memo_len, 1,
             "two checks with same scope should share one scope_memo entry"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_prepare_for_verify_precomputes_unique_scope_hashes() {
+        let tmp = unique_test_dir("xtask-cache-test-prepare-shared-scopes");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(tmp.join("xtask/src"));
+        std::fs::write(tmp.join("xtask/src/lib.rs"), b"pub fn xtask() {}\n").unwrap();
+        std::fs::write(
+            tmp.join("xtask/Cargo.toml"),
+            b"[package]\nname = \"xtask\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"xtask\"]\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("Cargo.lock"), b"# lock\n").unwrap();
+
+        let (inner, _count) = CountingRunner::new(success_output());
+        let runner = CachingCommandRunner::new(inner, tmp.clone());
+        let checks = [make_spec("clippy-xtask"), make_spec("test-xtask")];
+
+        runner
+            .prepare_for_verify(&tmp, &checks, &[])
+            .expect("prepare_for_verify should succeed");
+
+        let memo = runner.scope_memo.lock().unwrap();
+        assert_eq!(
+            memo.len(),
+            1,
+            "prepare_for_verify should precompute each unique scope once before dispatch"
+        );
+        assert!(
+            memo.contains_key(&scope_memo_key(&scope_for("clippy-xtask"))),
+            "prepare_for_verify should populate the shared xtask scope hash"
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
