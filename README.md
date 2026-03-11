@@ -35,8 +35,8 @@ Ralph Workflow works best if you think like a Product Manager and can scope out 
 
 ## Recommendations
 
-* Use Claude Code subscription if you have the 20x max plan, but even that will only give you like 2–3 days worth. I actually think GLM is probably best suited for this.
-* Codex is very much recommended as the reviewing agent; I personally had the most success using Codex as the reviewing agent.
+* Use Claude Code subscription if you have the 20x max plan, but even that will only give you like 2–3 days worth. I actually think GLM is probably best suited for this if you are strapped for cash.
+* Codex is very much recommended as the reviewing agent; I personally had the most success using Codex as the reviewing agent, especially when using Claude as the dev agent.
 * Make sure your PROMPT.md is through, I can't emphasize this enough. The AI agent will not ask you for clarification and will be forced to make assumptions due to it's unattended nature. Hence you really need to be through with your product specification, feature specs, and so on. Any ambiguity means the AI agent will be forced to make a decision without your input.
 
 ## Design Philosophy
@@ -59,7 +59,7 @@ If you thoroughly review the code that it outputs, it depends on your risk toler
 
 **Should I use Claude Opus or Claude Sonnet***
 
-Unless you really want to burn $2000 out of nowhere and have unlimited AI budget I **strongly don't recommend this**, I suggest saving your Claude tokens for active AI interactions than Ralph Workflow. My recommended models are generally GLM and Codex. You probably can make it work with the 20x Claude Max subscription but even then I would use it like once or twice per week since ralph really goes through your AI token budget really fast.
+Unless you really want to burn $2000 out of nowhere and have unlimited AI budget I **strongly don't recommend this** unless you have the 20x plan, I suggest saving your Claude tokens for active AI interactions than Ralph Workflow if you are low on cash or trying to save money. My recommended models are generally GLM-5 and Codex. 
 
 **What is the recommended workflow with this?**
 
