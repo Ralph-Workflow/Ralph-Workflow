@@ -636,7 +636,7 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(1),
+        check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 2,
         check_child_processes: true,

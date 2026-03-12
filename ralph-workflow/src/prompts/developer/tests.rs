@@ -376,6 +376,102 @@ fn test_context_based_uses_workspace_rooted_paths() {
 }
 
 #[test]
+fn test_continuation_xsd_retry_uses_continuation_specific_instructions() {
+    use crate::workspace::MemoryWorkspace;
+
+    let context = TemplateContext::default();
+    let workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/last_output.xml",
+        "<ralph-development-result><ralph-status>completed</ralph-status></ralph-development-result>",
+    );
+
+    let prompt = prompt_developer_iteration_xsd_retry_with_context_files(
+        &context,
+        "Continuation output must not use completed status",
+        &workspace,
+        true,
+    );
+
+    assert!(
+        prompt.contains("development_continuation_result.xsd"),
+        "Continuation-mode XSD retry should point at the continuation schema"
+    );
+    assert!(
+        prompt.contains("continuation output")
+            || prompt.contains("continuation XML")
+            || prompt.contains("recovery-critical information"),
+        "Continuation-mode XSD retry should explicitly describe continuation output requirements"
+    );
+    assert!(
+        !prompt.contains("Fix ONLY the XML structure/format issues"),
+        "Continuation-mode XSD retry must not instruct the agent to only fix generic XML formatting"
+    );
+    assert!(
+        !prompt.contains("Change the content/meaning of your response - ONLY fix the XML format"),
+        "Continuation-mode XSD retry must allow semantic contract fixes required by continuation validation"
+    );
+}
+
+#[test]
+fn test_xsd_retry_falls_back_when_last_output_is_missing() {
+    use crate::workspace::MemoryWorkspace;
+
+    let context = TemplateContext::default();
+    let workspace = MemoryWorkspace::new_test();
+
+    let prompt = prompt_developer_iteration_xsd_retry_with_context_files(
+        &context,
+        "Missing previous output",
+        &workspace,
+        false,
+    );
+
+    assert!(
+        prompt.contains("could not be found"),
+        "Missing last_output.xml should trigger the deterministic fallback prompt"
+    );
+    assert!(
+        !prompt.contains("1. Read the XSD schema"),
+        "Fallback prompt should not instruct the agent to read unavailable files"
+    );
+}
+
+#[test]
+fn test_continuation_xsd_retry_with_log_falls_back_when_last_output_is_missing() {
+    use crate::workspace::MemoryWorkspace;
+    use tempfile::tempdir;
+
+    let template_dir = tempdir().expect("create temp template dir");
+    std::fs::write(
+        template_dir
+            .path()
+            .join("developer_iteration_xsd_retry.txt"),
+        "custom template {{XSD_ERROR}} {{DEVELOPMENT_RESULT_XSD_PATH}} {{LAST_OUTPUT_XML_PATH}}",
+    )
+    .expect("write custom xsd retry template");
+
+    let context = TemplateContext::from_user_templates_dir(Some(template_dir.path().to_path_buf()));
+    let workspace = MemoryWorkspace::new_test();
+
+    let rendered = prompt_developer_iteration_xsd_retry_with_context_files_and_log(
+        &context,
+        "Missing continuation last output",
+        &workspace,
+        "developer_iteration_xsd_retry",
+        true,
+    );
+
+    assert!(
+        rendered.content.contains("could not be found"),
+        "Missing required retry context should trigger fallback instructions in the logged variant too"
+    );
+    assert!(
+        !rendered.content.contains("custom template"),
+        "Fallback path should not render the normal template when required retry context is missing"
+    );
+}
+
+#[test]
 fn test_regular_functions_use_cwd_rooted_paths() {
     use std::env;
 

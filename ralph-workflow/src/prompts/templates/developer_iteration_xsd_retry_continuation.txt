@@ -1,0 +1,30 @@
+{# ============================================================================ #}
+{# Template: developer_iteration_xsd_retry_continuation.txt                      #}
+{# Version: 1.0                                                                  #}
+{# ============================================================================ #}
+
+{{> shared/_unattended_mode}}
+
+{{> shared/_no_git_commit}}
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTINUATION XML VALIDATION FAILED
+═══════════════════════════════════════════════════════════════════════════════
+
+Your continuation XML at `{{DEVELOPMENT_RESULT_XML_PATH}}` failed validation.
+
+ERROR: {{XSD_ERROR}}
+
+Read:
+1. `{{DEVELOPMENT_RESULT_XSD_PATH}}`
+2. `{{LAST_OUTPUT_XML_PATH}}`
+
+Then rewrite the XML so it satisfies the continuation contract:
+- Keep the output focused on why the full plan was not completed.
+- Use `<ralph-status>partial</ralph-status>` or `<ralph-status>failed</ralph-status>`.
+- Include an ordered, actionable recovery checklist that finishes the remaining plan.
+- Omit bookkeeping such as `<ralph-files-changed>`.
+
+You may change the XML content as needed to satisfy the continuation contract.
+Do not modify repository files or do new implementation work in this retry.
+Write the corrected XML to `{{DEVELOPMENT_RESULT_XML_PATH}}`.
