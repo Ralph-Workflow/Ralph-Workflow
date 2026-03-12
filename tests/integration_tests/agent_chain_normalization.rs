@@ -22,6 +22,7 @@ use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::executor::{MockProcessExecutor, ProcessExecutor};
 use ralph_workflow::logger::{Colors, Logger};
+use ralph_workflow::phases::get_primary_commit_agent;
 use ralph_workflow::prompts::template_context::TemplateContext;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::{Effect, EffectHandler};
@@ -219,6 +220,70 @@ fn test_checkpoint_replay_uses_current_role_when_current_drain_is_missing() {
     });
 }
 
+#[test]
+fn test_matches_runtime_drain_does_not_treat_review_and_fix_as_interchangeable() {
+    with_default_timeout(|| {
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(AgentDrain::Review)
+            .with_mode(ralph_workflow::agents::DrainMode::Continuation);
+
+        assert!(
+            !state.matches_runtime_drain(AgentDrain::Fix),
+            "legacy resume compatibility must not reuse the review drain for fix work"
+        );
+    });
+}
+
+#[test]
+fn test_apply_unified_config_metadata_only_legacy_agent_chain_preserves_existing_drains() {
+    with_default_timeout(|| {
+        let mut registry = AgentRegistry::new().expect("default registry should build");
+        let original_development = registry
+            .available_fallbacks_for_drain(AgentDrain::Development)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let original_review = registry
+            .available_fallbacks_for_drain(AgentDrain::Review)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+
+        let unified = UnifiedConfig::load_from_content(
+            r"
+            [agent_chain]
+            max_retries = 7
+            retry_delay_ms = 2500
+            ",
+        )
+        .expect("config should parse");
+
+        registry.apply_unified_config(&unified);
+
+        assert_eq!(
+            registry.available_fallbacks_for_drain(AgentDrain::Development),
+            original_development
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            "metadata-only legacy agent_chain should not wipe the existing development drain"
+        );
+        assert_eq!(
+            registry.available_fallbacks_for_drain(AgentDrain::Review),
+            original_review
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            "metadata-only legacy agent_chain should not wipe the existing review drain"
+        );
+    });
+}
+
 /// Test that stale compatibility role metadata is ignored when drain metadata is present.
 #[test]
 fn test_checkpoint_replay_derives_role_from_authoritative_drain_when_metadata_conflicts() {
@@ -413,13 +478,6 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
         let restored_state: PipelineState =
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
 
-        assert!(
-            restored_state
-                .agent_chain
-                .matches_runtime_drain(AgentDrain::Planning),
-            "legacy planning checkpoint should remain compatible with the planning drain"
-        );
-
         let effect = determine_next_effect(&restored_state);
         assert!(
             matches!(
@@ -430,7 +488,7 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
                     duration_ms: 2_000,
                 }
             ),
-            "legacy planning checkpoint should resume in planning flow, got: {effect:?}"
+            "legacy planning checkpoint should remain in planning flow while honoring backoff, got: {effect:?}"
         );
     });
 }
@@ -460,12 +518,11 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_xsd_retry() {
         assert!(
             matches!(
                 effect,
-                Effect::PrepareFixPrompt {
-                    pass: 1,
-                    prompt_mode: PromptMode::XsdRetry,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
                 }
             ),
-            "legacy fix XSD retry should resume in the fix drain, got: {effect:?}"
+            "legacy fix XSD retry should reinitialize the fix drain before reuse, got: {effect:?}"
         );
     });
 }
@@ -490,23 +547,15 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
         let restored_state: PipelineState =
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
 
-        assert!(
-            restored_state
-                .agent_chain
-                .matches_runtime_drain(AgentDrain::Fix),
-            "legacy fix checkpoint should remain compatible with the fix drain"
-        );
-
         let effect = determine_next_effect(&restored_state);
         assert!(
             matches!(
                 effect,
-                Effect::PrepareFixPrompt {
-                    pass: 1,
-                    prompt_mode: PromptMode::Normal,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
                 }
             ),
-            "legacy fix checkpoint should resume in the fix drain, got: {effect:?}"
+            "legacy fix checkpoint should reinitialize the fix drain before reuse, got: {effect:?}"
         );
     });
 }
@@ -641,6 +690,31 @@ fn test_same_agent_retry_recovers_analysis_stage_from_development_progress_when_
     });
 }
 
+/// Test that same-agent retry reinitializes the analysis drain when the loaded chain is still development.
+#[test]
+fn test_same_agent_retry_reinitializes_analysis_drain_when_loaded_chain_is_development() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.development_agent_invoked_iteration = Some(0);
+        state.continuation.same_agent_retry_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Development;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Analysis,
+                }
+            ),
+            "analysis retry should reinitialize the analysis drain when development is still loaded, got: {effect:?}"
+        );
+    });
+}
+
 /// Test that XSD retry in Development uses drain identity, not stale role metadata.
 #[test]
 fn test_xsd_retry_uses_analysis_drain_even_when_role_is_stale() {
@@ -656,6 +730,31 @@ fn test_xsd_retry_uses_analysis_drain_even_when_role_is_stale() {
         assert!(
             matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
             "analysis drain XSD retry should stay on analysis consumer, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that development XSD retry reinitializes the analysis drain when the loaded chain is still development.
+#[test]
+fn test_xsd_retry_reinitializes_analysis_drain_when_loaded_chain_is_development() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.development_agent_invoked_iteration = Some(0);
+        state.continuation.xsd_retry_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Development;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Analysis,
+                }
+            ),
+            "analysis XSD retry should reinitialize the analysis drain when development is still loaded, got: {effect:?}"
         );
     });
 }
@@ -681,6 +780,55 @@ fn test_fix_continuation_uses_fix_drain_even_when_role_is_stale() {
                 }
             ),
             "fix continuation should stay on fix consumer, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that fix continuation reinitializes the fix drain when the loaded chain is still review.
+#[test]
+fn test_fix_continuation_reinitializes_fix_drain_when_loaded_chain_is_review() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.continuation.fix_continue_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Review;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
+                }
+            ),
+            "fix continuation should reinitialize the fix drain when review is still loaded, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that fix XSD retry reinitializes the fix drain when the loaded chain is still review.
+#[test]
+fn test_fix_xsd_retry_reinitializes_fix_drain_when_loaded_chain_is_review() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.continuation.xsd_retry_pending = true;
+        state.continuation.last_fix_xsd_error = Some("invalid fix xml".to_string());
+        state.agent_chain.current_drain = AgentDrain::Review;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
+                }
+            ),
+            "fix XSD retry should reinitialize the fix drain when review is still loaded, got: {effect:?}"
         );
     });
 }
@@ -1650,7 +1798,38 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 }
 
 #[test]
-fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_drain_is_empty() {
+fn test_get_primary_commit_agent_preserves_explicitly_empty_commit_drain() {
+    with_default_timeout(|| {
+        let mut fixture = IntegrationFixture::new();
+
+        let toml_str = r#"
+            [agent_chains]
+            shared_dev = ["developer-agent"]
+            shared_review = ["reviewer-agent"]
+            empty_commit = []
+
+            [agent_drains]
+            planning = "shared_dev"
+            development = "shared_dev"
+            review = "shared_review"
+            fix = "shared_review"
+            commit = "empty_commit"
+        "#;
+        let unified = UnifiedConfig::load_from_content(toml_str).expect("config should parse");
+        fixture.registry.apply_unified_config(&unified);
+
+        let ctx = fixture.ctx(None);
+
+        assert_eq!(
+            get_primary_commit_agent(&ctx),
+            None,
+            "explicitly empty commit drain should remain authoritative"
+        );
+    });
+}
+
+#[test]
+fn test_commit_message_agent_resolution_keeps_explicitly_empty_commit_drain_empty() {
     with_default_timeout(|| {
         let mut registry = AgentRegistry::new().expect("default registry should build");
         let unified = UnifiedConfig {
@@ -1686,8 +1865,8 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 
         assert_eq!(
             resolve_commit_message_agents_for_testing(&config),
-            vec!["claude".to_string()],
-            "empty commit drain should continue falling back to the review drain"
+            Vec::<String>::new(),
+            "explicitly empty commit drain should remain authoritative"
         );
     });
 }
@@ -1730,8 +1909,8 @@ fn test_commit_message_agent_resolution_falls_back_to_reviewer_agent_when_commit
 
         assert_eq!(
             resolve_commit_message_agents_for_testing(&config),
-            vec!["reviewer-default".to_string()],
-            "when commit/review drains resolve empty, commit generation should fall back to the reviewer agent"
+            Vec::<String>::new(),
+            "explicitly empty commit and review drains should surface the absence of commit agents"
         );
     });
 }

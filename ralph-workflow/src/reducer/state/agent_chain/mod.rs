@@ -272,18 +272,6 @@ impl AgentChainState {
     #[must_use]
     pub fn matches_runtime_drain(&self, runtime_drain: AgentDrain) -> bool {
         self.current_drain == runtime_drain
-            || (self.current_drain == AgentDrain::from(self.current_role)
-                && self.current_role == runtime_drain.role())
-                && self.has_legacy_resume_state()
-    }
-
-    fn has_legacy_resume_state(&self) -> bool {
-        self.current_agent_index > 0
-            || self.current_model_index > 0
-            || self.retry_cycle > 0
-            || self.backoff_pending_ms.is_some()
-            || self.current_mode != DrainMode::Normal
-            || self.last_session_id.is_some()
     }
 
     #[must_use]

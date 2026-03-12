@@ -61,9 +61,7 @@ pub struct CommitGenerationConfig<'a> {
 
 fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
     if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
-        if !commit_binding.agents.is_empty() {
-            return commit_binding.agents.clone();
-        }
+        return commit_binding.agents.clone();
     }
 
     let review_chain = config

@@ -290,8 +290,8 @@ impl MainEffectHandler {
         expected_drain: AgentDrain,
     ) {
         let expected_role = expected_drain.role();
-        let legacy_compatible_drain = self.state.agent_chain.matches_runtime_drain(expected_drain)
-            && self.state.agent_chain.current_drain != expected_drain;
+        let legacy_compatible_drain = self.state.agent_chain.current_drain != expected_drain
+            && self.state.agent_chain.current_drain.role() == expected_role;
         let previous_drain = self.state.agent_chain.current_drain;
         let previous_role = self.state.agent_chain.current_role;
 

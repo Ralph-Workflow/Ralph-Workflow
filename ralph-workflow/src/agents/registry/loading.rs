@@ -2,6 +2,25 @@
 // Includes loading from config files, applying unified config, and creating/merging agent configs.
 
 impl AgentRegistry {
+    fn merge_legacy_chain_metadata(
+        base: &crate::agents::fallback::ResolvedDrainConfig,
+        fallback: Option<&crate::agents::fallback::FallbackConfig>,
+    ) -> crate::agents::fallback::ResolvedDrainConfig {
+        let Some(fallback) = fallback else {
+            return base.clone();
+        };
+
+        crate::agents::fallback::ResolvedDrainConfig {
+            bindings: base.bindings.clone(),
+            provider_fallback: fallback.provider_fallback.clone(),
+            max_retries: fallback.max_retries,
+            retry_delay_ms: fallback.retry_delay_ms,
+            backoff_multiplier: fallback.backoff_multiplier,
+            max_backoff_ms: fallback.max_backoff_ms,
+            max_cycles: fallback.max_cycles,
+        }
+    }
+
     /// Load custom agents from a TOML configuration file.
     ///
     /// # Errors
@@ -16,9 +35,12 @@ impl AgentRegistry {
                 for (name, agent_toml) in config.agents {
                     self.register(&name, AgentConfig::from(agent_toml));
                 }
-                if let Some(resolved_drains) = resolved_drains {
-                    self.resolved_drains = resolved_drains;
-                }
+                self.resolved_drains = resolved_drains.unwrap_or_else(|| {
+                    Self::merge_legacy_chain_metadata(
+                        &self.resolved_drains,
+                        config.fallback.as_ref(),
+                    )
+                });
                 Ok(count)
             }
             None => Ok(0),
@@ -37,10 +59,9 @@ impl AgentRegistry {
         let mut loaded = self.apply_ccs_aliases(unified);
         loaded += self.apply_agent_overrides(unified);
 
-        let resolved_drains = unified
-            .resolve_agent_drains()
-            .unwrap_or_else(|| self.resolved_drains.clone());
-        self.resolved_drains = resolved_drains;
+        self.resolved_drains = unified.resolve_agent_drains().unwrap_or_else(|| {
+            Self::merge_legacy_chain_metadata(&self.resolved_drains, unified.agent_chain.as_ref())
+        });
 
         loaded
     }

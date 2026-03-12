@@ -519,6 +519,7 @@ impl UnifiedConfig {
         Ok(self
             .agent_chain
             .as_ref()
+            .filter(|fallback| fallback.uses_legacy_role_schema())
             .map(crate::agents::fallback::FallbackConfig::resolve_drains))
     }
 }

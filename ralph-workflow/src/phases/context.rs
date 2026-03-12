@@ -126,13 +126,8 @@ impl PhaseContext<'_> {
 /// to using the reviewer chain (since commit generation is typically done after review).
 #[must_use]
 pub fn get_primary_commit_agent(ctx: &PhaseContext<'_>) -> Option<String> {
-    let commit_agents = ctx
-        .registry
-        .resolved_drain(AgentDrain::Commit)
-        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
-    if !commit_agents.is_empty() {
-        // Return the first commit agent as the primary
-        return commit_agents.first().cloned();
+    if let Some(commit_binding) = ctx.registry.resolved_drain(AgentDrain::Commit) {
+        return commit_binding.agents.first().cloned();
     }
 
     // Fallback to using reviewer agents for commit generation

@@ -407,12 +407,11 @@ fn test_same_agent_retry_in_fix_drain_uses_fix_prompt_without_review_flags() {
     assert!(
         matches!(
             effect,
-            Effect::PrepareFixPrompt {
-                pass: 1,
-                prompt_mode: PromptMode::Continuation,
+            Effect::InitializeAgentChain {
+                drain: crate::agents::AgentDrain::Fix,
             }
         ),
-        "fix continuation markers should keep review-phase orchestration on the fix drain, got {effect:?}"
+        "fix continuation markers should reinitialize the fix drain when review is still loaded, got {effect:?}"
     );
 }
 
