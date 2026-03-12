@@ -446,9 +446,10 @@ analysis = "developer"
 #
 # PROVIDER-LEVEL FALLBACK (Legacy Compatibility Input)
 # ----------------------------------------------------
-# For backward compatibility, legacy [agent_chain] input can still configure
-# provider_fallback and shared retry metadata. Named drain bindings remain the
-# authoritative runtime model after normalization.
+# For backward compatibility, a metadata-only legacy [agent_chain] section can
+# still configure provider_fallback and shared retry metadata alongside the
+# canonical named [agent_chains] / [agent_drains] schema. Named drain bindings
+# remain the authoritative runtime model after normalization.
 #
 # FINDING AVAILABLE MODELS
 # -------------------------

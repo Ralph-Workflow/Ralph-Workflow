@@ -438,11 +438,17 @@ impl UnifiedConfig {
     /// # Errors
     ///
     /// Returns an error when the named-chain schema is internally inconsistent,
-    /// such as invalid drain references, mixed legacy/new schema, or missing
-    /// coverage for built-in drains after default resolution.
+    /// such as invalid drain references, mixed legacy/new chain bindings, or
+    /// missing coverage for built-in drains after default resolution. A
+    /// metadata-only legacy `agent_chain` section is still accepted so named
+    /// drains can reuse provider fallback and retry settings.
     pub fn resolve_agent_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, String> {
         if !self.agent_chains.is_empty() || !self.agent_drains.is_empty() {
-            if self.agent_chain.is_some() {
+            if self
+                .agent_chain
+                .as_ref()
+                .is_some_and(crate::agents::fallback::FallbackConfig::has_role_bindings)
+            {
                 return Err(
                     "agent_chain cannot be combined with agent_chains/agent_drains; use either the legacy role-keyed schema or the named chain + drain schema"
                         .to_string(),

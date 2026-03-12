@@ -332,6 +332,14 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
         development = "shared_dev"
         review = "shared_review"
         fix = "shared_review"
+
+        [agent_chain]
+        max_retries = 7
+        retry_delay_ms = 2500
+        backoff_multiplier = 3.0
+        max_backoff_ms = 90000
+        max_cycles = 5
+        provider_fallback.opencode = ["-m opencode/glm-4.7-free"]
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
@@ -353,6 +361,15 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
     assert_eq!(
         analysis.agents,
         vec!["codex".to_string(), "claude".to_string()]
+    );
+    assert_eq!(registry.resolved_drains().max_retries, 7);
+    assert_eq!(registry.resolved_drains().retry_delay_ms, 2_500);
+    assert!((registry.resolved_drains().backoff_multiplier - 3.0).abs() < f64::EPSILON);
+    assert_eq!(registry.resolved_drains().max_backoff_ms, 90_000);
+    assert_eq!(registry.resolved_drains().max_cycles, 5);
+    assert_eq!(
+        registry.resolved_drains().provider_fallback.get("opencode"),
+        Some(&vec!["-m opencode/glm-4.7-free".to_string()])
     );
 }
 

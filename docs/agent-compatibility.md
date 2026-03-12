@@ -154,7 +154,7 @@ Ralph falls back to `--print` as a safety net.
 
 This fallback is **not** a universal fix for arbitrary custom agents: if you define a
 non-CCS agent (or a custom CCS-like agent) without a `print_flag`, Ralph will not
-invent one for that agent. The built-in example `examples/agents.toml` already sets
+invent one for that agent. The built-in example `ralph-workflow/examples/agents.toml` already sets
 `[agents.ccs].print_flag = "--print"`.
 
 **Manual Workaround Configuration**:

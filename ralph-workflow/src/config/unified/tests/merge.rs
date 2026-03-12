@@ -338,6 +338,18 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
 #[test]
 fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
     let config = UnifiedConfig {
+        agent_chain: Some(crate::agents::fallback::FallbackConfig {
+            provider_fallback: std::collections::HashMap::from([(
+                "opencode".to_string(),
+                vec!["-m opencode/glm-4.7-free".to_string()],
+            )]),
+            max_retries: 7,
+            retry_delay_ms: 2_500,
+            backoff_multiplier: 3.0,
+            max_backoff_ms: 90_000,
+            max_cycles: 5,
+            ..Default::default()
+        }),
         agent_chains: std::collections::HashMap::from([
             (
                 "shared_dev".to_string(),
@@ -373,6 +385,15 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
     assert_eq!(commit.agents, vec!["claude", "opencode"]);
     assert_eq!(analysis.chain_name, "shared_dev");
     assert_eq!(analysis.agents, vec!["codex", "claude"]);
+    assert_eq!(resolved.max_retries, 7);
+    assert_eq!(resolved.retry_delay_ms, 2_500);
+    assert!((resolved.backoff_multiplier - 3.0).abs() < f64::EPSILON);
+    assert_eq!(resolved.max_backoff_ms, 90_000);
+    assert_eq!(resolved.max_cycles, 5);
+    assert_eq!(
+        resolved.provider_fallback.get("opencode"),
+        Some(&vec!["-m opencode/glm-4.7-free".to_string()])
+    );
 }
 
 #[test]

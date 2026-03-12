@@ -378,6 +378,19 @@ impl Default for FallbackConfig {
 }
 
 impl FallbackConfig {
+    /// Return whether this legacy config carries any role-keyed chain bindings.
+    #[must_use]
+    pub fn has_role_bindings(&self) -> bool {
+        [
+            self.developer.as_slice(),
+            self.reviewer.as_slice(),
+            self.commit.as_slice(),
+            self.analysis.as_slice(),
+        ]
+        .into_iter()
+        .any(|chain| !chain.is_empty())
+    }
+
     const fn effective_chain_name_for_role(&self, role: AgentRole) -> &'static str {
         match role {
             AgentRole::Developer => "developer",

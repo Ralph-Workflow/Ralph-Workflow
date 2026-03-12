@@ -401,6 +401,57 @@ fn test_named_schema_prefers_sibling_drains_for_commit_and_analysis_defaults() {
     });
 }
 
+/// Test that named drain config can still carry provider fallback and retry metadata.
+#[test]
+fn test_named_schema_accepts_metadata_only_legacy_agent_chain_section() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/agents.toml",
+            r#"
+            [agent_chains]
+            shared_dev = ["codex"]
+            shared_review = ["claude"]
+
+            [agent_drains]
+            planning = "shared_dev"
+            development = "shared_dev"
+            review = "shared_review"
+            fix = "shared_review"
+
+            [agent_chain]
+            max_retries = 7
+            retry_delay_ms = 2500
+            backoff_multiplier = 3.0
+            max_backoff_ms = 90000
+            max_cycles = 5
+            provider_fallback.opencode = ["-m opencode/glm-4.7-free"]
+            "#,
+        );
+
+        let config = AgentsConfigFile::load_from_file_with_workspace(
+            std::path::Path::new(".agent/agents.toml"),
+            &workspace,
+        )
+        .expect("config should parse")
+        .expect("config should exist");
+
+        let resolved = config
+            .resolve_drains_checked()
+            .expect("metadata-only legacy section should coexist with named drains")
+            .expect("named drain config should resolve");
+
+        assert_eq!(resolved.max_retries, 7);
+        assert_eq!(resolved.retry_delay_ms, 2_500);
+        assert!((resolved.backoff_multiplier - 3.0).abs() < f64::EPSILON);
+        assert_eq!(resolved.max_backoff_ms, 90_000);
+        assert_eq!(resolved.max_cycles, 5);
+        assert_eq!(
+            resolved.provider_fallback.get("opencode"),
+            Some(&vec!["-m opencode/glm-4.7-free".to_string()])
+        );
+    });
+}
+
 /// Test that the built-in default registry consumes the named chain + drain schema.
 #[test]
 fn test_registry_new_uses_default_named_drain_bindings() {

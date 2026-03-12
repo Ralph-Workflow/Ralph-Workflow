@@ -432,7 +432,7 @@ but provider-specific degradation strategies are not yet implemented.
 - Current opencode parser: `ralph-workflow/src/json_parser/opencode.rs`
 - Claude parser (reference): `ralph-workflow/src/json_parser/claude.rs`
 - Agent compatibility guide: `docs/agent-compatibility.md`
-- Provider configuration: `examples/agents.toml`
+- Provider configuration: `ralph-workflow/examples/agents.toml`
 
 ---
 
