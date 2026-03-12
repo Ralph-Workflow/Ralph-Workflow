@@ -12,6 +12,8 @@ pub struct ProtectionScope {
     pub hooks_dir: PathBuf,
     pub ralph_dir: PathBuf,
     pub is_linked_worktree: bool,
+    pub uses_worktree_scoped_hooks: bool,
+    pub worktree_config_path: Option<PathBuf>,
 }
 
 /// Resolve the active git-protection scope for the current repository context.
@@ -39,8 +41,21 @@ pub fn resolve_protection_scope_from(discovery_root: &Path) -> io::Result<Protec
     let git_dir = repo.path().to_path_buf();
     let common_git_dir = common_git_dir(&repo);
     let is_linked_worktree = repo.is_worktree() && git_dir != common_git_dir;
-    let hooks_dir = git_dir.join("hooks");
+    let has_linked_worktrees = common_git_dir.join("worktrees").is_dir();
+    let uses_worktree_scoped_hooks = is_linked_worktree || has_linked_worktrees;
+    let worktree_config_path = uses_worktree_scoped_hooks.then(|| {
+        if is_linked_worktree {
+            git_dir.join("config.worktree")
+        } else {
+            common_git_dir.join("config.worktree")
+        }
+    });
     let ralph_dir = git_dir.join("ralph");
+    let hooks_dir = if uses_worktree_scoped_hooks {
+        ralph_dir.join("hooks")
+    } else {
+        git_dir.join("hooks")
+    };
 
     Ok(ProtectionScope {
         repo_root,
@@ -49,6 +64,8 @@ pub fn resolve_protection_scope_from(discovery_root: &Path) -> io::Result<Protec
         hooks_dir,
         ralph_dir,
         is_linked_worktree,
+        uses_worktree_scoped_hooks,
+        worktree_config_path,
     })
 }
 
@@ -224,12 +241,20 @@ mod tests {
         if let Ok(c) = fs::canonicalize(path) {
             return c;
         }
-        // Path doesn't exist yet (e.g., .git/hooks before creation).
-        // Canonicalize the existing parent and append the remaining component.
-        if let (Some(parent), Some(leaf)) = (path.parent(), path.file_name()) {
-            if let Ok(canon_parent) = fs::canonicalize(parent) {
-                return canon_parent.join(leaf);
-            }
+        // Path doesn't exist yet (e.g., .git/ralph/hooks before creation).
+        // Canonicalize the nearest existing ancestor and append the remainder.
+        let mut existing_ancestor = path;
+        while !existing_ancestor.exists() {
+            let Some(parent) = existing_ancestor.parent() else {
+                return path.to_path_buf();
+            };
+            existing_ancestor = parent;
+        }
+        if let Ok(canon_ancestor) = fs::canonicalize(existing_ancestor) {
+            let suffix = path
+                .strip_prefix(existing_ancestor)
+                .unwrap_or_else(|_| Path::new(""));
+            return canon_ancestor.join(suffix);
         }
         path.to_path_buf()
     }
@@ -252,6 +277,8 @@ mod tests {
             canon(&scope.ralph_dir),
             canon(&tmp.path().join(".git/ralph"))
         );
+        assert!(!scope.uses_worktree_scoped_hooks);
+        assert_eq!(scope.worktree_config_path, None);
     }
 
     #[test]
@@ -265,9 +292,14 @@ mod tests {
         let scope = resolve_protection_scope_from(&wt_path).unwrap();
 
         assert!(scope.is_linked_worktree);
+        assert!(scope.uses_worktree_scoped_hooks);
         assert_eq!(canon(&scope.git_dir), canon(wt_repo.path()));
         assert_eq!(canon(&scope.common_git_dir), canon(main_repo.path()));
         assert_ne!(canon(&scope.git_dir), canon(&scope.common_git_dir));
+        assert_eq!(
+            scope.worktree_config_path.as_deref().map(canon),
+            Some(canon(&wt_repo.path().join("config.worktree")))
+        );
     }
 
     #[test]
@@ -282,7 +314,7 @@ mod tests {
 
         assert_eq!(
             canon(&scope.hooks_dir),
-            canon(&wt_repo.path().join("hooks"))
+            canon(&wt_repo.path().join("ralph/hooks"))
         );
         assert_eq!(
             canon(&scope.ralph_dir),
@@ -295,6 +327,28 @@ mod tests {
         assert_ne!(
             canon(&scope.ralph_dir),
             canon(&tmp.path().join(".git/ralph"))
+        );
+    }
+
+    #[test]
+    fn resolve_protection_scope_for_main_worktree_with_linked_siblings_uses_main_worktree_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = init_repo_with_commit(tmp.path());
+        let wt_path = tmp.path().join("wt-test");
+        let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
+
+        let scope = resolve_protection_scope_from(tmp.path()).unwrap();
+
+        assert!(!scope.is_linked_worktree);
+        assert!(scope.uses_worktree_scoped_hooks);
+        assert_eq!(canon(&scope.git_dir), canon(&scope.common_git_dir));
+        assert_eq!(
+            canon(&scope.hooks_dir),
+            canon(&tmp.path().join(".git/ralph/hooks"))
+        );
+        assert_eq!(
+            scope.worktree_config_path.as_deref().map(canon),
+            Some(canon(&tmp.path().join(".git/config.worktree")))
         );
     }
 }
