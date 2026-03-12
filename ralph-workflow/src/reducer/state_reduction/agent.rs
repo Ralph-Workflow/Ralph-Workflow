@@ -282,7 +282,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         },
         // XSD validation failed: trigger XSD retry via continuation state
         AgentEvent::XsdValidationFailed { .. } => {
-            let active_review_drain = state.agent_chain.current_drain;
+            let active_review_drain = state.runtime_drain();
             PipelineState {
                 agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
                 continuation: state.continuation.trigger_xsd_retry(),

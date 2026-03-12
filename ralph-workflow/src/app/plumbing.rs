@@ -60,12 +60,8 @@ pub struct CommitGenerationConfig<'a> {
 }
 
 fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
-    let commit_chain = config
-        .registry
-        .resolved_drain(AgentDrain::Commit)
-        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
-    if !commit_chain.is_empty() {
-        return commit_chain.to_vec();
+    if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
+        return commit_binding.agents.clone();
     }
 
     let review_chain = config

@@ -17,7 +17,7 @@ use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::{Effect, EffectHandler};
-use ralph_workflow::reducer::event::PipelinePhase;
+use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::handler::MainEffectHandler;
 use ralph_workflow::reducer::state::{FixStatus, PipelineState, PromptMode};
 use ralph_workflow::reducer::state_reduction::reduce;
@@ -63,6 +63,30 @@ fn test_xsd_retry_preserves_session() {
             state.agent_chain.last_session_id,
             Some("session-123".to_string())
         );
+    });
+}
+
+/// Test that fix-mode resume state drives fix XSD-retry metrics even if chain metadata is stale.
+#[test]
+fn test_agent_xsd_validation_failed_uses_runtime_fix_drain_for_metrics() {
+    with_default_timeout(|| {
+        let mut state = PipelineState::initial(0, 3);
+        state.phase = PipelinePhase::Review;
+        state.agent_chain.current_drain = AgentDrain::Review;
+        state.review_issues_found = true;
+
+        let state = reduce(
+            state,
+            PipelineEvent::agent_xsd_validation_failed(
+                AgentRole::Reviewer,
+                ralph_workflow::reducer::state::ArtifactType::FixResult,
+                "invalid fix xml".to_string(),
+                1,
+            ),
+        );
+
+        assert_eq!(state.metrics.xsd_retry_fix, 1);
+        assert_eq!(state.metrics.xsd_retry_review, 0);
     });
 }
 
@@ -1370,6 +1394,23 @@ fn test_commit_message_plumbing_consults_review_drain_before_developer_fallback(
             APP_PLUMBING_SOURCE.contains("resolved_drain(AgentDrain::Review)")
                 || APP_PLUMBING_SOURCE.contains("resolve_commit_message_agents"),
             "commit-message plumbing should consult the review drain before falling back to the developer agent"
+        );
+    });
+}
+
+/// Test that commit-message plumbing preserves an explicitly empty commit drain binding.
+#[test]
+fn test_commit_message_plumbing_does_not_fall_back_when_commit_drain_is_explicitly_empty() {
+    with_default_timeout(|| {
+        assert!(
+            APP_PLUMBING_SOURCE.contains(
+                "if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit)"
+            ),
+            "commit-message plumbing should distinguish an explicit commit drain binding from an absent one"
+        );
+        assert!(
+            APP_PLUMBING_SOURCE.contains("return commit_binding.agents.clone();"),
+            "commit-message plumbing should preserve an explicitly empty commit drain instead of falling back"
         );
     });
 }
