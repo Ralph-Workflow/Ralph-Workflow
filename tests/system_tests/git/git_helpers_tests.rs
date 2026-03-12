@@ -625,6 +625,44 @@ fn test_root_start_agent_phase_blocks_wrapper_git_tag_with_git_dir_and_work_tree
 
 #[test]
 #[serial]
+fn test_linked_worktree_start_agent_phase_blocks_wrapper_git_tag_with_git_dir_only_target() {
+    if !program_exists("git") {
+        return;
+    }
+
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, _root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+    let outside_dir = tempfile::tempdir().unwrap();
+    let worktree_git_dir = linked_worktree_git_dir(&worktree_one);
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_one, &mut helpers).unwrap();
+
+    let output = Command::new("git")
+        .current_dir(outside_dir.path())
+        .args([
+            "--git-dir",
+            worktree_git_dir.to_str().unwrap(),
+            "tag",
+            "blocked-via-git-dir-only",
+        ])
+        .output()
+        .unwrap();
+
+    assert_wrapper_blocks(&output, "git --git-dir <protected> tag");
+
+    end_agent_phase_in_repo(&worktree_one);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_one));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
 fn test_linked_worktree_repeated_start_cleanup_cycles_leave_no_scoped_state_behind() {
     let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
         .lock()

@@ -366,7 +366,10 @@ fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
 }
 
 fn restore_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
-    if !scope.uses_worktree_scoped_hooks || other_active_ralph_hooks_path_overrides_exist(scope)? {
+    if !scope.uses_worktree_scoped_hooks
+        || other_active_ralph_hooks_path_overrides_exist(scope)?
+        || unrelated_worktree_config_entries_exist(scope)?
+    {
         return Ok(());
     }
 
@@ -431,6 +434,75 @@ fn restore_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
 }
 
 fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> io::Result<()> {
+    validate_hooks_dir_for_scope(scope, true)
+}
+
+fn validate_hooks_dir_for_scope(
+    scope: &ProtectionScope,
+    create_if_missing: bool,
+) -> io::Result<()> {
+    if scope.uses_worktree_scoped_hooks {
+        return validate_ralph_scoped_hooks_dir(scope, create_if_missing);
+    }
+
+    validate_traditional_hooks_dir(scope, create_if_missing)
+}
+
+fn validate_traditional_hooks_dir(
+    scope: &ProtectionScope,
+    create_if_missing: bool,
+) -> io::Result<()> {
+    let expected_hooks_dir = scope.git_dir.join("hooks");
+    if scope.hooks_dir != expected_hooks_dir {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to use unexpected hooks dir for repository scope: {}",
+                scope.hooks_dir.display()
+            ),
+        ));
+    }
+
+    match fs::symlink_metadata(&scope.hooks_dir) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() || !meta.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing to use non-directory hooks dir: {}",
+                        scope.hooks_dir.display()
+                    ),
+                ));
+            }
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            if !create_if_missing {
+                return Ok(());
+            }
+            fs::create_dir_all(&scope.hooks_dir)?;
+        }
+        Err(err) => return Err(err),
+    }
+
+    let resolved_hooks_dir = fs::canonicalize(&scope.hooks_dir)?;
+    let resolved_git_dir = fs::canonicalize(&scope.git_dir)?;
+    if resolved_hooks_dir.parent() != Some(resolved_git_dir.as_path()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to use hook dir outside repository git dir: {}",
+                scope.hooks_dir.display()
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_ralph_scoped_hooks_dir(
+    scope: &ProtectionScope,
+    create_if_missing: bool,
+) -> io::Result<()> {
     if scope.hooks_dir.parent() != Some(scope.ralph_dir.as_path()) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -441,19 +513,29 @@ fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> io::Result<()> {
         ));
     }
 
-    if let Ok(meta) = fs::symlink_metadata(&scope.hooks_dir) {
-        if meta.file_type().is_symlink() || !meta.is_dir() {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!(
-                    "refusing to use non-directory scoped hooks dir: {}",
-                    scope.hooks_dir.display()
-                ),
-            ));
+    match fs::symlink_metadata(&scope.hooks_dir) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() || !meta.is_dir() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing to use non-directory scoped hooks dir: {}",
+                        scope.hooks_dir.display()
+                    ),
+                ));
+            }
         }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            if !create_if_missing {
+                return Ok(());
+            }
+        }
+        Err(err) => return Err(err),
     }
 
-    fs::create_dir_all(&scope.hooks_dir)?;
+    if create_if_missing {
+        fs::create_dir_all(&scope.hooks_dir)?;
+    }
 
     let resolved_hooks_dir = fs::canonicalize(&scope.hooks_dir)?;
     let resolved_ralph_dir = fs::canonicalize(&scope.ralph_dir)?;
@@ -468,6 +550,46 @@ fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn config_contains_only_expected_ralph_hooks_path(
+    config_path: &Path,
+    common_git_dir: &Path,
+) -> io::Result<bool> {
+    let entries = config_entries(config_path)?;
+    debug_assert!(!entries.is_empty());
+
+    let Some(expected_hooks_dir) = scoped_hooks_dir_for_config(config_path, common_git_dir) else {
+        return Ok(false);
+    };
+    let expected_hooks_path = expected_hooks_dir.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "hooks path contains invalid UTF-8 characters",
+        )
+    })?;
+
+    Ok(entries.len() == 1
+        && entries[0].0 == "core.hooksPath"
+        && entries[0].1.as_deref() == Some(expected_hooks_path))
+}
+
+fn unrelated_worktree_config_entries_exist(scope: &ProtectionScope) -> io::Result<bool> {
+    for config_path in protected_config_paths(scope) {
+        if !config_path.exists() {
+            continue;
+        }
+
+        if config_entries(&config_path)?.is_empty() {
+            continue;
+        }
+
+        if !config_contains_only_expected_ralph_hooks_path(&config_path, &scope.common_git_dir)? {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 fn hooks_path_matches_scope(scope: &ProtectionScope) -> io::Result<bool> {
@@ -503,6 +625,8 @@ pub fn uninstall_hooks_in_repo(repo_root: &Path, logger: &Logger) -> io::Result<
         remove_scoped_hooks_dir_if_empty(&scope);
         return Ok(());
     }
+
+    validate_hooks_dir_for_scope(&scope, false)?;
 
     let mut restored = 0;
     for hook_name in RALPH_HOOK_NAMES {
@@ -633,16 +757,6 @@ fn install_hook_with_repo_root(
     }
 
     let resolved_hook_dir = fs::canonicalize(hooks_dir)?;
-    let resolved_ralph_dir = fs::canonicalize(ralph_dir)?;
-    if resolved_hook_dir.parent() != Some(resolved_ralph_dir.as_path()) {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            format!(
-                "refusing to install hook outside Ralph's scoped metadata dir: {}",
-                hook_path.display()
-            ),
-        ));
-    }
 
     // Use absolute path for orig backup.
     // Handle the case where hook_path has no parent or file_name gracefully.
@@ -710,6 +824,7 @@ fn install_hook_with_repo_root(
 #[cfg(any(test, feature = "test-utils"))]
 pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
     let repo_root = super::repo::get_repo_root()?;
+    let scope = resolve_protection_scope_from(&repo_root)?;
     let ralph_dir = super::repo::ensure_ralph_git_dir(&repo_root)?;
     let hooks_dir = hook_path.parent().ok_or_else(|| {
         io::Error::new(
@@ -717,6 +832,16 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
             "Hook path has no parent directory",
         )
     })?;
+    if hooks_dir != scope.hooks_dir {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to install hook outside resolved hooks dir: {}",
+                hook_path.display()
+            ),
+        ));
+    }
+    validate_hooks_dir_for_scope(&scope, true)?;
     install_hook_with_repo_root(hook_name, &ralph_dir, hooks_dir, hook_path)
 }
 
@@ -823,6 +948,9 @@ pub fn uninstall_hooks_silent_at(repo_root: &Path) {
     let Ok(scope) = resolve_protection_scope_from(repo_root) else {
         return;
     };
+    if scope.hooks_dir.exists() && validate_hooks_dir_for_scope(&scope, false).is_err() {
+        return;
+    }
     uninstall_hooks_silent_in_dir(&scope.hooks_dir);
     let _ = restore_worktree_hook_scoping(&scope);
     remove_scoped_hooks_dir_if_empty(&scope);
@@ -1434,6 +1562,40 @@ mod tests {
     }
 
     #[test]
+    fn test_last_worktree_hook_cleanup_keeps_shared_worktree_config_extension_when_non_ralph_entries_exist(
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_one = tmp.path().join("wt-one");
+        let worktree_two = tmp.path().join("wt-two");
+        let _wt_one = main_repo.worktree("wt-one", &worktree_one, None).unwrap();
+        let _wt_two = main_repo.worktree("wt-two", &worktree_two, None).unwrap();
+        let logger = Logger::new(crate::logger::Colors::with_enabled(false));
+        let common_config = root_repo_path.join(".git/config");
+        let sibling_config = git2::Repository::open(&worktree_two)
+            .unwrap()
+            .path()
+            .join("config.worktree");
+
+        install_hooks_in_repo(&worktree_one).unwrap();
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            Some("true".to_string())
+        );
+
+        let mut sibling_cfg = open_config(&sibling_config).unwrap();
+        sibling_cfg.set_str("core.fsmonitor", "true").unwrap();
+
+        uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            Some("true".to_string())
+        );
+    }
+
+    #[test]
     fn test_install_hooks_refuses_to_enable_shared_worktree_config_when_other_worktree_config_exists(
     ) {
         let tmp = tempfile::tempdir().unwrap();
@@ -1575,6 +1737,71 @@ mod tests {
         assert!(
             !hooks_path_state_path(&scope.ralph_dir).exists(),
             "failed activation must not leave stale hooks-path.previous state behind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_uninstall_hooks_in_repo_rejects_symlinked_scoped_hooks_dir() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_path = tmp.path().join("wt-one");
+        let _wt = main_repo.worktree("wt-one", &worktree_path, None).unwrap();
+
+        let scope = resolve_protection_scope_from(&worktree_path).unwrap();
+        fs::create_dir_all(&scope.ralph_dir).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_hook = outside.path().join("pre-commit");
+        fs::write(
+            &outside_hook,
+            format!("#!/bin/bash\n# {HOOK_MARKER}\nexit 0\n"),
+        )
+        .unwrap();
+        symlink(outside.path(), &scope.hooks_dir).unwrap();
+
+        let logger = Logger::new(crate::logger::Colors::with_enabled(false));
+        let err = uninstall_hooks_in_repo(&worktree_path, &logger)
+            .expect_err("cleanup must refuse symlinked scoped hook dirs");
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            outside_hook.exists(),
+            "cleanup must not follow the scoped hook dir symlink and delete outside hooks"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_uninstall_hooks_silent_at_skips_symlinked_scoped_hooks_dir() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_path = tmp.path().join("wt-one");
+        let _wt = main_repo.worktree("wt-one", &worktree_path, None).unwrap();
+
+        let scope = resolve_protection_scope_from(&worktree_path).unwrap();
+        fs::create_dir_all(&scope.ralph_dir).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let outside_hook = outside.path().join("pre-commit");
+        fs::write(
+            &outside_hook,
+            format!("#!/bin/bash\n# {HOOK_MARKER}\nexit 0\n"),
+        )
+        .unwrap();
+        symlink(outside.path(), &scope.hooks_dir).unwrap();
+
+        uninstall_hooks_silent_at(&worktree_path);
+
+        assert!(
+            outside_hook.exists(),
+            "silent cleanup must not follow the scoped hook dir symlink and delete outside hooks"
         );
     }
 }

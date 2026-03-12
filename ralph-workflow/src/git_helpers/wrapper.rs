@@ -498,22 +498,23 @@ fn make_wrapper_content(
     done
     target_repo_root=""
     target_git_dir=""
-    if [ "${{#repo_args[@]}}" -gt 0 ] && \
-       target_repo_root=$( '{git_path_escaped}' "${{repo_args[@]}}" rev-parse --path-format=absolute --show-toplevel 2>/dev/null ) && \
-       target_git_dir=$( '{git_path_escaped}' "${{repo_args[@]}}" rev-parse --path-format=absolute --git-dir 2>/dev/null ); then
-      :
-    elif target_repo_root=$( '{git_path_escaped}' rev-parse --path-format=absolute --show-toplevel 2>/dev/null ) && \
-         target_git_dir=$( '{git_path_escaped}' rev-parse --path-format=absolute --git-dir 2>/dev/null ); then
-      :
-    elif path_is_within "$PWD" "$active_repo_root"; then
+    if [ "${{#repo_args[@]}}" -gt 0 ]; then
+      target_repo_root=$( '{git_path_escaped}' "${{repo_args[@]}}" rev-parse --path-format=absolute --show-toplevel 2>/dev/null || true )
+      target_git_dir=$( '{git_path_escaped}' "${{repo_args[@]}}" rev-parse --path-format=absolute --git-dir 2>/dev/null || true )
+    else
+      target_repo_root=$( '{git_path_escaped}' rev-parse --path-format=absolute --show-toplevel 2>/dev/null || true )
+      target_git_dir=$( '{git_path_escaped}' rev-parse --path-format=absolute --git-dir 2>/dev/null || true )
+    fi
+    if [ -z "$target_repo_root" ] && [ -z "$target_git_dir" ] && path_is_within "$PWD" "$active_repo_root"; then
       target_repo_root="$active_repo_root"
       target_git_dir="$active_git_dir"
     fi
     protection_scope_active=0
     normalized_target_repo_root=$(normalize_scope_dir "$target_repo_root")
     normalized_target_git_dir=$(normalize_scope_dir "$target_git_dir")
-    if [ -n "$target_repo_root" ] && [ -n "$target_git_dir" ] && \
-       [ "$normalized_target_repo_root" = "$active_repo_root" ] && [ "$normalized_target_git_dir" = "$active_git_dir" ]; then
+    if [ "$normalized_target_git_dir" = "$active_git_dir" ]; then
+      protection_scope_active=1
+    elif [ -n "$target_repo_root" ] && [ "$normalized_target_repo_root" = "$active_repo_root" ]; then
       protection_scope_active=1
     fi
     if [ "$protection_scope_active" = "1" ]; then
@@ -2152,6 +2153,14 @@ mod tests {
         original_path: String,
     }
 
+    struct ClearAgentPhaseStateOnDrop;
+
+    impl Drop for ClearAgentPhaseStateOnDrop {
+        fn drop(&mut self) {
+            clear_agent_phase_global_state();
+        }
+    }
+
     impl Drop for RestoreEnv {
         fn drop(&mut self) {
             let _ = std::env::set_current_dir(&self.original_cwd);
@@ -2187,6 +2196,20 @@ mod tests {
         assert!(
             content.contains("for arg in"),
             "wrapper must iterate arguments to find subcommand; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_wrapper_script_treats_git_dir_match_as_sufficient_scope_activation() {
+        let content = test_wrapper_content();
+
+        assert!(
+            content.contains("target_git_dir=$( 'git' \"${repo_args[@]}\" rev-parse --path-format=absolute --git-dir 2>/dev/null || true )"),
+            "wrapper must resolve target git-dir independently of show-toplevel; got:\n{content}"
+        );
+        assert!(
+            content.contains("[ \"$normalized_target_git_dir\" = \"$active_git_dir\" ]"),
+            "wrapper must activate protection when git-dir matches even without a repo root; got:\n{content}"
         );
     }
 
@@ -3490,6 +3513,7 @@ mod tests {
 
     #[test]
     fn test_global_mutexes_not_cleared_by_end_agent_phase_in_repo() {
+        let _lock = ENV_LOCK.lock().unwrap();
         // end_agent_phase_in_repo must NOT clear global mutexes — callers are
         // responsible for calling clear_agent_phase_global_state after ALL cleanup.
         //
@@ -3498,13 +3522,7 @@ mod tests {
         // 2. Only set REPO_ROOT and RALPH_DIR (not HOOKS_DIR) to avoid
         //    poisoning parallel tests that call cleanup_agent_phase_silent_at,
         //    which reads HOOKS_DIR to determine the hooks cleanup location.
-        struct ClearOnDrop;
-        impl Drop for ClearOnDrop {
-            fn drop(&mut self) {
-                clear_agent_phase_global_state();
-            }
-        }
-        let _guard = ClearOnDrop;
+        let _guard = ClearAgentPhaseStateOnDrop;
         let _test_lock = agent_phase_test_lock().lock().unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
@@ -3536,6 +3554,7 @@ mod tests {
 
     #[test]
     fn test_clear_agent_phase_global_state_clears_all_mutexes() {
+        let _lock = ENV_LOCK.lock().unwrap();
         set_agent_phase_paths_for_test(
             Some(PathBuf::from("/test/repo")),
             Some(PathBuf::from("/test/repo/.git/ralph")),
@@ -3610,6 +3629,8 @@ mod tests {
     #[test]
     fn test_cleanup_agent_phase_silent_at_removes_all_artifacts_including_track_file() {
         use crate::git_helpers::hooks;
+
+        let _lock = ENV_LOCK.lock().unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
