@@ -175,14 +175,6 @@ fn finish_pipeline(
         let mut cleanup_ok = true;
         crate::git_helpers::end_agent_phase_in_repo(repo_root);
         crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-        if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-            cleanup_ok = false;
-            let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
-            ctx.logger.warn(&format!(
-                "Ralph git dir still present after SIGINT cleanup: {}",
-                remaining.join(", ")
-            ));
-        }
         if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger) {
             if err.kind() == std::io::ErrorKind::NotFound {
                 ctx.logger.warn(&format!(
@@ -230,6 +222,14 @@ fn finish_pipeline(
         }
 
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
+        if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
+            cleanup_ok = false;
+            let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
+            ctx.logger.warn(&format!(
+                "Ralph git dir still present after SIGINT cleanup: {}",
+                remaining.join(", ")
+            ));
+        }
         if cleanup_ok {
             // Only clear global fallback paths when explicit cleanup fully
             // succeeded and the guard is being disarmed. If cleanup failed,
@@ -474,8 +474,7 @@ mod cleanup_state_tests {
     use crate::executor::MockProcessExecutor;
     use crate::git_helpers::{
         agent_phase_test_lock, clear_agent_phase_global_state, get_agent_phase_paths_for_test,
-        set_agent_phase_paths_for_test,
-        GitHelpers,
+        set_agent_phase_paths_for_test, GitHelpers,
     };
     use crate::logger::{Colors, Logger};
     use crate::logging::RunLogContext;

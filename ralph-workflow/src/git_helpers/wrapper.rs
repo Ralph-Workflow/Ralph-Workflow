@@ -50,8 +50,8 @@ static AGENT_PHASE_RALPH_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// Process-global hooks dir set during `start_agent_phase_in_repo`.
 ///
 /// Used by signal handler cleanup to avoid recomputation via libgit2.
-/// For linked worktrees, hooks are shared at the common git dir, so this
-/// ensures the signal handler cleans hooks from the correct location.
+/// For linked worktrees, hooks are worktree-scoped, so this ensures the signal
+/// handler cleans the active worktree's hooks instead of touching siblings.
 static AGENT_PHASE_HOOKS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Result of checking and self-healing agent-phase protections.
@@ -1581,14 +1581,16 @@ fn cleanup_agent_phase_silent_at_internal(
     // Clean up any stray tmp files not yet removed before attempting remove_dir.
     // This handles .git-wrapper-dir.tmp.* files that were not present during
     // the earlier end_agent_phase_in_repo_at_ralph_dir call.
+    cleanup_hook_scoping_state_files(ralph_dir);
     cleanup_stray_tmp_files_in_ralph_dir(ralph_dir);
     // Best-effort: remove the ralph dir itself now that all artifacts are gone.
     // end_agent_phase_in_repo_at_ralph_dir removed marker + head-oid and tried
     // remove_dir too early (track file was still present). Now the track file has
     // been cleaned by cleanup_git_wrapper_dir_silent_at, so the dir is empty.
-    let _ = fs::remove_dir(ralph_dir);
+    remove_ralph_dir_best_effort(ralph_dir);
 
     cleanup_generated_files_silent_at(repo_root);
+    cleanup_repo_root_ralph_dir_if_empty(repo_root);
 
     clear_agent_phase_global_state();
 }
@@ -1664,6 +1666,35 @@ fn cleanup_generated_files_silent_at(repo_root: &Path) {
         let absolute_path = repo_root.join(file);
         let _ = std::fs::remove_file(absolute_path);
     }
+}
+
+fn cleanup_hook_scoping_state_files(ralph_dir: &Path) {
+    for file_name in ["hooks-path.previous", "worktree-config.previous"] {
+        let path = ralph_dir.join(file_name);
+        #[cfg(unix)]
+        add_owner_write_if_not_symlink(&path);
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn cleanup_repo_root_ralph_dir_if_empty(repo_root: &Path) {
+    let fallback_ralph_dir = repo_root.join(".git/ralph");
+    cleanup_hook_scoping_state_files(&fallback_ralph_dir);
+    cleanup_stray_tmp_files_in_ralph_dir(&fallback_ralph_dir);
+    remove_ralph_dir_best_effort(&fallback_ralph_dir);
+}
+
+fn remove_ralph_dir_best_effort(ralph_dir: &Path) {
+    if fs::remove_dir(ralph_dir).is_ok() {
+        return;
+    }
+    let Ok(meta) = fs::symlink_metadata(ralph_dir) else {
+        return;
+    };
+    if meta.file_type().is_symlink() || !meta.is_dir() {
+        return;
+    }
+    let _ = fs::remove_dir_all(ralph_dir);
 }
 
 /// Clean up orphaned enforcement marker.
@@ -3114,42 +3145,45 @@ mod tests {
         let wt_path = tmp.path().join("wt-cleanup");
         let _wt = main_repo.worktree("wt-cleanup", &wt_path, None).unwrap();
 
-        // Install artifacts at the COMMON git dir (what start_agent_phase does after fix).
-        let common_hooks_dir = tmp.path().join(".git/hooks");
-        fs::create_dir_all(&common_hooks_dir).unwrap();
+        let worktree_git_dir = git2::Repository::open(&wt_path)
+            .unwrap()
+            .path()
+            .to_path_buf();
+        let worktree_hooks_dir = worktree_git_dir.join("hooks");
+        fs::create_dir_all(&worktree_hooks_dir).unwrap();
         let hook_content = format!("#!/bin/bash\n# {}\nexit 0\n", hooks::HOOK_MARKER);
         for name in hooks::RALPH_HOOK_NAMES {
-            fs::write(common_hooks_dir.join(name), &hook_content).unwrap();
+            fs::write(worktree_hooks_dir.join(name), &hook_content).unwrap();
         }
-        let common_ralph_dir = tmp.path().join(".git/ralph");
-        fs::create_dir_all(&common_ralph_dir).unwrap();
-        fs::write(common_ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
+        let worktree_ralph_dir = worktree_git_dir.join("ralph");
+        fs::create_dir_all(&worktree_ralph_dir).unwrap();
+        fs::write(worktree_ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
         // Also create a track file pointing to a nonexistent wrapper dir.
         fs::write(
-            common_ralph_dir.join(WRAPPER_TRACK_FILE_NAME),
+            worktree_ralph_dir.join(WRAPPER_TRACK_FILE_NAME),
             "/nonexistent/wrapper\n",
         )
         .unwrap();
 
-        // Cleanup from the WORKTREE root — must clean the common dir.
+        // Cleanup from the WORKTREE root — must clean only worktree-local artifacts.
         cleanup_agent_phase_silent_at(&wt_path);
 
         assert!(
-            !common_ralph_dir.join(MARKER_FILE_NAME).exists(),
-            "marker at common git dir should be removed when cleaning from worktree root"
+            !worktree_ralph_dir.join(MARKER_FILE_NAME).exists(),
+            "marker at worktree git dir should be removed when cleaning from worktree root"
         );
         assert!(
-            !common_ralph_dir.join(WRAPPER_TRACK_FILE_NAME).exists(),
-            "track file at common git dir should be removed when cleaning from worktree root"
+            !worktree_ralph_dir.join(WRAPPER_TRACK_FILE_NAME).exists(),
+            "track file at worktree git dir should be removed when cleaning from worktree root"
         );
         for name in hooks::RALPH_HOOK_NAMES {
-            let hook_path = common_hooks_dir.join(name);
+            let hook_path = worktree_hooks_dir.join(name);
             let still_ralph = hook_path.exists()
                 && crate::files::file_contains_marker(&hook_path, hooks::HOOK_MARKER)
                     .unwrap_or(false);
             assert!(
                 !still_ralph,
-                "hook {name} at common hooks dir should be removed from worktree root"
+                "hook {name} at worktree hooks dir should be removed from worktree root"
             );
         }
     }
@@ -3236,6 +3270,7 @@ mod tests {
             }
         }
         let _guard = ClearOnDrop;
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();

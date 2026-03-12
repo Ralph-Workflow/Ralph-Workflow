@@ -74,18 +74,7 @@ pub fn finalize_pipeline(
     let repo_root = ctx.workspace.root();
     crate::git_helpers::end_agent_phase_in_repo(repo_root);
     crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-    // Best-effort: remove the now-empty ralph dir.
-    // end_agent_phase_in_repo removed marker + head-oid; disable_git_wrapper removed
-    // the track file. The directory should now be empty.
     let mut cleanup_ok = true;
-    if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-        cleanup_ok = false;
-        let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
-        ctx.logger.warn(&format!(
-            "Ralph git dir still present after cleanup: {}",
-            remaining.join(", ")
-        ));
-    }
 
     if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, ctx.logger) {
         if err.kind() == std::io::ErrorKind::NotFound {
@@ -157,6 +146,14 @@ pub fn finalize_pipeline(
     // other place that calls cleanup_generated_files_with_workspace, and
     // disarm() prevents Drop from running.
     crate::files::cleanup_generated_files_with_workspace(ctx.workspace);
+    if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
+        cleanup_ok = false;
+        let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
+        ctx.logger.warn(&format!(
+            "Ralph git dir still present after cleanup: {}",
+            remaining.join(", ")
+        ));
+    }
 
     if cleanup_ok {
         // Clear global mutexes only when cleanup succeeded and the guard is
