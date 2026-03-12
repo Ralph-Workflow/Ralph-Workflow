@@ -61,7 +61,9 @@ pub struct CommitGenerationConfig<'a> {
 
 fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
     if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
-        return commit_binding.agents.clone();
+        if !commit_binding.agents.is_empty() {
+            return commit_binding.agents.clone();
+        }
     }
 
     let review_chain = config
@@ -72,7 +74,7 @@ fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<Str
         return review_chain.to_vec();
     }
 
-    vec![config.developer_agent.to_string()]
+    vec![config.reviewer_agent.to_string()]
 }
 
 #[cfg(any(test, feature = "test-utils"))]

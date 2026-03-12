@@ -12,6 +12,7 @@ use ralph_workflow::agents::{AgentDrain, AgentRegistry, AgentRole, AgentsConfigF
 use ralph_workflow::app::plumbing::{
     resolve_commit_message_agents_for_testing, CommitGenerationConfig,
 };
+use ralph_workflow::cli::handle_init_local_config_with;
 use ralph_workflow::config::loader::{
     load_config_from_path_with_env, ConfigLoadWithValidationError,
 };
@@ -26,9 +27,10 @@ use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::{Effect, EffectHandler};
 use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
 use ralph_workflow::reducer::handler::MainEffectHandler;
-use ralph_workflow::reducer::state::{FixStatus, PipelineState, PromptMode};
+use ralph_workflow::reducer::state::{AgentChainState, FixStatus, PipelineState, PromptMode};
 use ralph_workflow::reducer::state_reduction::reduce;
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::common::{with_locked_prompt_permissions, IntegrationFixture};
@@ -837,6 +839,107 @@ fn test_fix_continuation_prompt_uses_stored_fix_context() {
     });
 }
 
+#[test]
+fn test_planning_invocation_canonicalizes_legacy_development_resume_prompt() {
+    with_default_timeout(|| {
+        let workspace = Arc::new(
+            MemoryWorkspace::new_test().with_file(".agent/tmp/planning_prompt.txt", "fresh prompt"),
+        );
+        let mut fixture = IntegrationFixture::with_workspace(workspace);
+        fixture.executor = Arc::new(MockProcessExecutor::new().with_agent_result(
+            "claude",
+            Ok(ralph_workflow::executor::AgentCommandResult::success()),
+        ));
+
+        let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+        handler.state.agent_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec!["model-a".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_drain(AgentDrain::Development);
+        handler.state.agent_chain.retry_cycle = 1;
+        handler.state.agent_chain.rate_limit_continuation_prompt = Some(
+            ralph_workflow::reducer::state::RateLimitContinuationPrompt {
+                drain: AgentDrain::Development,
+                role: AgentRole::Developer,
+                prompt: "saved planning continuation prompt".to_string(),
+            },
+        );
+
+        let mut ctx = fixture.ctx(None);
+        let result = handler
+            .execute(Effect::InvokePlanningAgent { iteration: 0 }, &mut ctx)
+            .expect("planning invocation should succeed");
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Agent(
+                ralph_workflow::reducer::event::AgentEvent::InvocationStarted { .. }
+            )
+        ));
+
+        let calls = fixture.executor.agent_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].prompt, "saved planning continuation prompt",
+            "legacy-compatible planning resume should keep its continuation prompt"
+        );
+        assert_eq!(
+            handler.state.agent_chain.current_drain,
+            AgentDrain::Planning
+        );
+        assert_eq!(handler.state.agent_chain.current_role, AgentRole::Developer);
+
+        let continuation = handler
+            .state
+            .agent_chain
+            .rate_limit_continuation_prompt
+            .as_ref()
+            .expect("continuation prompt should be preserved");
+        assert_eq!(continuation.drain, AgentDrain::Planning);
+        assert_eq!(continuation.role, AgentRole::Developer);
+    });
+}
+
+#[test]
+fn test_init_local_config_tolerates_global_named_chains_without_drain_bindings() {
+    with_default_timeout(|| {
+        let env = MemoryConfigEnvironment::new()
+            .with_unified_config_path("/test/config/ralph-workflow.toml")
+            .with_local_config_path("/test/repo/.agent/ralph-workflow.toml")
+            .with_file(
+                "/test/config/ralph-workflow.toml",
+                r#"
+[agent_chains]
+shared_dev = ["codex", "claude"]
+shared_review = ["claude"]
+"#,
+            );
+
+        handle_init_local_config_with(Colors::new(), &env, false)
+            .expect("init-local-config should tolerate partial named global config");
+
+        let content = env
+            .get_file(Path::new("/test/repo/.agent/ralph-workflow.toml"))
+            .expect("local config should be written");
+
+        assert!(
+            content.contains(r#"shared_dev = ["codex", "claude"]"#),
+            "should preserve named chains from the global config, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"shared_review = ["claude"]"#),
+            "should preserve review chains from the global config, got:\n{content}"
+        );
+        assert!(
+            content.contains("# [agent_drains]"),
+            "template should still render drain bindings when global config omits them, got:\n{content}"
+        );
+    });
+}
+
 /// Test that named-schema defaults prefer sibling drain bindings before compatibility names.
 #[test]
 fn test_named_schema_prefers_sibling_drains_for_commit_and_analysis_defaults() {
@@ -1547,7 +1650,7 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 }
 
 #[test]
-fn test_commit_message_agent_resolution_preserves_explicitly_empty_commit_drain() {
+fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_drain_is_empty() {
     with_default_timeout(|| {
         let mut registry = AgentRegistry::new().expect("default registry should build");
         let unified = UnifiedConfig {
@@ -1581,9 +1684,54 @@ fn test_commit_message_agent_resolution_preserves_explicitly_empty_commit_drain(
             executor,
         );
 
-        assert!(
-            resolve_commit_message_agents_for_testing(&config).is_empty(),
-            "explicitly empty commit drain should not fall back to review or developer agents"
+        assert_eq!(
+            resolve_commit_message_agents_for_testing(&config),
+            vec!["claude".to_string()],
+            "empty commit drain should continue falling back to the review drain"
+        );
+    });
+}
+
+#[test]
+fn test_commit_message_agent_resolution_falls_back_to_reviewer_agent_when_commit_and_review_drains_are_empty(
+) {
+    with_default_timeout(|| {
+        let mut registry = AgentRegistry::new().expect("default registry should build");
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("shared_dev".to_string(), vec!["codex".to_string()]),
+                ("empty_review".to_string(), Vec::new()),
+                ("empty_commit".to_string(), Vec::new()),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("planning".to_string(), "shared_dev".to_string()),
+                ("development".to_string(), "shared_dev".to_string()),
+                ("review".to_string(), "empty_review".to_string()),
+                ("fix".to_string(), "empty_review".to_string()),
+                ("commit".to_string(), "empty_commit".to_string()),
+            ]),
+            ..Default::default()
+        };
+        registry.apply_unified_config(&unified);
+
+        let app_config = Config::test_default();
+        let workspace = Arc::new(MemoryWorkspace::new_test());
+        let logger = Logger::new(Colors::new());
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new()) as Arc<dyn ProcessExecutor>;
+        let config = commit_generation_config(
+            &app_config,
+            &registry,
+            &workspace,
+            &logger,
+            &template_context,
+            executor,
+        );
+
+        assert_eq!(
+            resolve_commit_message_agents_for_testing(&config),
+            vec!["reviewer-default".to_string()],
+            "when commit/review drains resolve empty, commit generation should fall back to the reviewer agent"
         );
     });
 }

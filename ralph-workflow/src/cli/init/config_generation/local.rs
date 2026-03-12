@@ -35,11 +35,8 @@ where
     let default_drains = default_drain_loader()?;
 
     let general = &effective.general;
-    let resolved_drains = effective
-        .resolve_agent_drains_checked()
-        .map_err(anyhow::Error::msg)?
-        .unwrap_or(default_drains);
-    let chain_definitions = collect_named_chain_definitions(&resolved_drains);
+    let resolved_drains = resolve_template_drains(&effective, &default_drains)?;
+    let chain_definitions = collect_named_chain_definitions(&effective, &resolved_drains);
     let rendered_chain_definitions = chain_definitions
         .iter()
         .map(|(name, agents)| format!("# {name} = {}", format_toml_string_array(agents)))
@@ -103,6 +100,31 @@ where
     Ok(template)
 }
 
+fn resolve_template_drains(
+    effective: &UnifiedConfig,
+    default_drains: &crate::agents::fallback::ResolvedDrainConfig,
+) -> anyhow::Result<crate::agents::fallback::ResolvedDrainConfig> {
+    match effective.resolve_agent_drains_checked() {
+        Ok(Some(resolved)) => Ok(resolved),
+        Ok(None) => Ok(default_drains.clone()),
+        Err(message)
+            if named_chain_template_can_fall_back_to_defaults(effective, message.as_str()) =>
+        {
+            Ok(default_drains.clone())
+        }
+        Err(message) => Err(anyhow::Error::msg(message)),
+    }
+}
+
+fn named_chain_template_can_fall_back_to_defaults(
+    effective: &UnifiedConfig,
+    message: &str,
+) -> bool {
+    !effective.agent_chains.is_empty()
+        && effective.agent_drains.is_empty()
+        && message.contains("agent_drains does not resolve all built-in drains")
+}
+
 fn resolve_effective_init_template_config<R: ConfigEnvironment>(
     env: &R,
 ) -> anyhow::Result<UnifiedConfig> {
@@ -148,9 +170,11 @@ fn format_toml_string_array(items: &[String]) -> String {
 }
 
 fn collect_named_chain_definitions(
+    effective: &UnifiedConfig,
     resolved: &crate::agents::fallback::ResolvedDrainConfig,
 ) -> BTreeMap<String, Vec<String>> {
-    let mut chain_definitions = BTreeMap::new();
+    let mut chain_definitions: BTreeMap<String, Vec<String>> =
+        effective.agent_chains.clone().into_iter().collect();
 
     for drain in crate::agents::AgentDrain::all() {
         let binding = resolved

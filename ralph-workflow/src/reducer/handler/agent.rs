@@ -290,6 +290,27 @@ impl MainEffectHandler {
         expected_drain: AgentDrain,
     ) {
         let expected_role = expected_drain.role();
+        let legacy_compatible_drain = self.state.agent_chain.matches_runtime_drain(expected_drain)
+            && self.state.agent_chain.current_drain != expected_drain;
+        let previous_drain = self.state.agent_chain.current_drain;
+        let previous_role = self.state.agent_chain.current_role;
+
+        if legacy_compatible_drain {
+            self.state.agent_chain.current_drain = expected_drain;
+            self.state.agent_chain.current_role = expected_role;
+
+            if let Some(prompt) = self
+                .state
+                .agent_chain
+                .rate_limit_continuation_prompt
+                .as_mut()
+            {
+                if prompt.drain == previous_drain && prompt.role == previous_role {
+                    prompt.drain = expected_drain;
+                    prompt.role = expected_role;
+                }
+            }
+        }
 
         // Defensively validate agent chain index bounds for consistency.
         // These should never be out of bounds in normal operation, but if they are
@@ -327,27 +348,7 @@ impl MainEffectHandler {
         // contamination (e.g., a review continuation prompt overriding a fix prompt).
         if let Some(ref continuation) = self.state.agent_chain.rate_limit_continuation_prompt {
             if continuation.drain != expected_drain || continuation.role != expected_role {
-                let legacy_fix_prompt_mismatch = expected_drain == AgentDrain::Fix
-                    && self.state.runtime_drain() == AgentDrain::Fix
-                    && self.state.agent_chain.current_drain == AgentDrain::Review
-                    && continuation.drain == AgentDrain::Review
-                    && continuation.role == AgentRole::Reviewer;
-
-                if legacy_fix_prompt_mismatch {
-                    if let Some(prompt) = self
-                        .state
-                        .agent_chain
-                        .rate_limit_continuation_prompt
-                        .as_mut()
-                    {
-                        prompt.drain = AgentDrain::Fix;
-                        prompt.role = AgentRole::Reviewer;
-                    }
-                    self.state.agent_chain.current_drain = AgentDrain::Fix;
-                    self.state.agent_chain.current_role = AgentRole::Reviewer;
-                } else {
-                    self.state.agent_chain.rate_limit_continuation_prompt = None;
-                }
+                self.state.agent_chain.rate_limit_continuation_prompt = None;
             }
         }
 
