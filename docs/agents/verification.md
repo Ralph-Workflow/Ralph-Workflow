@@ -147,7 +147,7 @@ cargo build --release
 # Recommended (library target only):
 make dylint
 # or:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --quiet
+cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.

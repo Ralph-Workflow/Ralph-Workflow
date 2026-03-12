@@ -223,11 +223,14 @@ ralph --developer-agent glm-direct
 # In ~/.config/ralph-workflow.toml:
 [agent_chains]
 developer = ["glm-direct", "claude", "codex"]
+reviewer = ["claude"]
 
 [agent_drains]
 planning = "developer"
 development = "developer"
 analysis = "developer"
+review = "reviewer"
+fix = "reviewer"
 ```
 
 **Requirements**:

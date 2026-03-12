@@ -107,6 +107,31 @@ enum RateLimitContinuationPromptRepr {
     },
 }
 
+fn infer_legacy_current_drain(
+    current_drain: Option<AgentDrain>,
+    current_role: Option<AgentRole>,
+    current_mode: DrainMode,
+    continuation_prompt: Option<&RateLimitContinuationPromptRepr>,
+) -> AgentDrain {
+    if let Some(current_drain) = current_drain {
+        return current_drain;
+    }
+
+    if let Some(prompt_drain) = continuation_prompt.and_then(|prompt| match prompt {
+        RateLimitContinuationPromptRepr::LegacyString(_) => None,
+        RateLimitContinuationPromptRepr::Structured { drain, .. } => *drain,
+    }) {
+        return prompt_drain;
+    }
+
+    match (current_role, current_mode) {
+        (Some(AgentRole::Reviewer), DrainMode::Continuation) => AgentDrain::Fix,
+        (Some(AgentRole::Developer), DrainMode::Continuation) => AgentDrain::Development,
+        (Some(current_role), _) => AgentDrain::from(current_role),
+        (None, _) => default_current_drain(),
+    }
+}
+
 impl<'de> Deserialize<'de> for AgentChainState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -141,10 +166,12 @@ impl<'de> Deserialize<'de> for AgentChainState {
         }
 
         let raw = AgentChainStateSerde::deserialize(deserializer)?;
-        let current_drain = raw.current_drain.unwrap_or_else(|| {
-            raw.current_role
-                .map_or(default_current_drain(), AgentDrain::from)
-        });
+        let current_drain = infer_legacy_current_drain(
+            raw.current_drain,
+            raw.current_role,
+            raw.current_mode,
+            raw.rate_limit_continuation_prompt.as_ref(),
+        );
         let current_role = current_drain.role();
 
         let rate_limit_continuation_prompt = raw.rate_limit_continuation_prompt.map(|repr| {

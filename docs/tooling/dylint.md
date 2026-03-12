@@ -17,7 +17,7 @@ cargo dylint --all
 # Run a specific lint (recommended: library target only)
 make dylint
 # or:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --quiet
+cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
 ```
 
 ## Developing Lints

@@ -57,6 +57,13 @@ fn make_dylint_target_forces_nightly_cargo_resolution() {
             "dylint target should export RUSTUP_TOOLCHAIN to nightly toolchain variable"
         );
 
+        assert!(
+            dylint_body.contains(
+                "cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet"
+            ),
+            "dylint target should lint the ralph-workflow library target only"
+        );
+
         // We should not suppress rustup component installation failures.
         assert!(
             !dylint_body.contains(

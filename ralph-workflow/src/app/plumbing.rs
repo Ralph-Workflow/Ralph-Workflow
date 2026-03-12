@@ -59,6 +59,26 @@ pub struct CommitGenerationConfig<'a> {
     pub executor: Arc<dyn ProcessExecutor>,
 }
 
+fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
+    let commit_chain = config
+        .registry
+        .resolved_drain(AgentDrain::Commit)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
+    if !commit_chain.is_empty() {
+        return commit_chain.to_vec();
+    }
+
+    let review_chain = config
+        .registry
+        .resolved_drain(AgentDrain::Review)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
+    if !review_chain.is_empty() {
+        return review_chain.to_vec();
+    }
+
+    vec![config.developer_agent.to_string()]
+}
+
 /// Handles the `--show-commit-msg` command using workspace abstraction.
 ///
 /// This is a testable version that uses `Workspace` for file I/O,
@@ -213,18 +233,7 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         workspace_arc: Arc::clone(&config.workspace_arc),
     };
 
-    // Get the commit agent chain from the fallback config.
-    // If no commit chain is configured, fall back to using the developer agent.
-    let commit_chain = config
-        .registry
-        .resolved_drain(AgentDrain::Commit)
-        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
-    let agents: Vec<String> = if commit_chain.is_empty() {
-        // No commit chain configured, use developer agent as fallback
-        vec![config.developer_agent.to_string()]
-    } else {
-        commit_chain.to_vec()
-    };
+    let agents = resolve_commit_message_agents(config);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = generate_commit_message_with_chain(

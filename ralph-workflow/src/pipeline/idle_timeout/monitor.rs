@@ -443,7 +443,17 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 }
 
                 if previous_observation.is_some_and(|prev| info.shows_fresh_progress_since(prev)) {
-                    last_child_observation = Some(info);
+                    let replacement_subtree_needs_grace =
+                        previous_observation.is_some_and(|prev| {
+                            info.has_currently_active_children()
+                                && info.descendant_pid_signature != prev.descendant_pid_signature
+                                && info.cpu_time_ms <= prev.cpu_time_ms
+                        });
+                    last_child_observation = if replacement_subtree_needs_grace {
+                        None
+                    } else {
+                        Some(info)
+                    };
                     if let Some(observed_activity) = child_activity_suppressed.as_ref() {
                         *observed_activity
                             .lock()

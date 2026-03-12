@@ -310,8 +310,8 @@ dylint:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --quiet >/dev/null 2>&1; \
-'
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+	'
 
 # Run custom dylint lints with verbose debugging output
 dylint-verbose:
@@ -539,8 +539,8 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --quiet >/dev/null 2>&1; \
-'
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+	'
 
 # Run the canonical verification contract.
 ci:

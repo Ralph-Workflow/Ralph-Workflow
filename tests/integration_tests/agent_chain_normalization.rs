@@ -26,6 +26,8 @@ const OPENCODE_RESOLVER_SOURCE: &str =
     include_str!("../../ralph-workflow/src/agents/opencode_resolver.rs");
 const CONFIG_UNIFIED_MOD_SOURCE: &str =
     include_str!("../../ralph-workflow/src/config/unified/mod.rs");
+const AGENT_COMPATIBILITY_DOC: &str = include_str!("../../docs/agent-compatibility.md");
+const APP_PLUMBING_SOURCE: &str = include_str!("../../ralph-workflow/src/app/plumbing.rs");
 
 /// Test that agent chain initializes correctly for each phase.
 #[test]
@@ -200,6 +202,57 @@ fn test_checkpoint_replay_derives_nested_prompt_role_from_authoritative_drain() 
         assert_eq!(prompt.drain, AgentDrain::Fix);
         assert_eq!(prompt.role, AgentRole::Reviewer);
         assert_eq!(prompt.prompt, "retry with fix context");
+    });
+}
+
+/// Test that legacy checkpoints in fix continuation recover the fix drain, not review.
+#[test]
+fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_continuation() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
+        state.phase = PipelinePhase::Review;
+        state.reviewer_pass = 1;
+        state.review_issues_found = true;
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+        state.agent_chain.current_mode = ralph_workflow::agents::DrainMode::Continuation;
+        state.agent_chain.rate_limit_continuation_prompt = Some(
+            ralph_workflow::reducer::state::RateLimitContinuationPrompt {
+                drain: AgentDrain::Fix,
+                role: AgentRole::Reviewer,
+                prompt: "continue fixing remaining issues".to_string(),
+            },
+        );
+        state.continuation.fix_continue_pending = true;
+        state.continuation.fix_continuation_attempt = 1;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        assert_eq!(restored_state.agent_chain.current_drain, AgentDrain::Fix);
+        assert_eq!(
+            restored_state
+                .agent_chain
+                .rate_limit_continuation_prompt
+                .as_ref()
+                .map(|prompt| prompt.drain),
+            Some(AgentDrain::Fix)
+        );
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: _,
+                }
+            ),
+            "legacy fix continuation should resume in the fix drain, got: {effect:?}"
+        );
     });
 }
 
@@ -489,6 +542,43 @@ fn test_named_schema_accepts_metadata_only_legacy_agent_chain_section() {
     });
 }
 
+/// Test that `merge_with_content` keeps metadata-only legacy `agent_chain` tables empty.
+#[test]
+fn test_named_schema_merge_keeps_metadata_only_legacy_bindings_empty() {
+    with_default_timeout(|| {
+        let global = ralph_workflow::config::UnifiedConfig::default();
+        let local_toml = r#"
+            [agent_chains]
+            shared_dev = ["codex"]
+            shared_review = ["claude"]
+
+            [agent_drains]
+            planning = "shared_dev"
+            development = "shared_dev"
+            review = "shared_review"
+            fix = "shared_review"
+
+            [agent_chain]
+            max_retries = 7
+            retry_delay_ms = 2500
+            "#;
+
+        let local = ralph_workflow::config::UnifiedConfig::load_from_content(local_toml)
+            .expect("config should parse");
+        let merged = global.merge_with_content(local_toml, &local);
+        let chain = merged
+            .agent_chain
+            .expect("metadata-only legacy table should remain available");
+
+        assert!(
+            !chain.has_role_bindings(),
+            "metadata-only legacy table must not materialize built-in role bindings when named drains are present"
+        );
+        assert_eq!(chain.max_retries, 7);
+        assert_eq!(chain.retry_delay_ms, 2_500);
+    });
+}
+
 /// Test that the built-in default registry consumes the named chain + drain schema.
 #[test]
 fn test_registry_new_uses_default_named_drain_bindings() {
@@ -590,5 +680,33 @@ fn test_user_facing_examples_teach_named_chain_and_drain_schema() {
                 "{label} should not present legacy role-keyed [agent_chain] examples as canonical"
             );
         }
+    });
+}
+
+/// Test that the compatibility guide's named-chain example resolves required review drains.
+#[test]
+fn test_agent_compatibility_named_chain_example_covers_review_and_fix_drains() {
+    with_default_timeout(|| {
+        let example_start = AGENT_COMPATIBILITY_DOC
+            .find("[agent_chains]\n")
+            .expect("compatibility guide should include a named-chain example");
+        let example = &AGENT_COMPATIBILITY_DOC[example_start..];
+
+        assert!(
+            example.contains("review = \"reviewer\"") || example.contains("fix = \"reviewer\""),
+            "named-chain example must show how review/fix drains are resolved"
+        );
+    });
+}
+
+/// Test that plumbing commit-message generation falls back through the review drain.
+#[test]
+fn test_commit_message_plumbing_consults_review_drain_before_developer_fallback() {
+    with_default_timeout(|| {
+        assert!(
+            APP_PLUMBING_SOURCE.contains("resolved_drain(AgentDrain::Review)")
+                || APP_PLUMBING_SOURCE.contains("resolve_commit_message_agents"),
+            "commit-message plumbing should consult the review drain before falling back to the developer agent"
+        );
     });
 }
