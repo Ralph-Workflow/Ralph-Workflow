@@ -115,7 +115,8 @@ pub use repo::{
     get_git_diff_from_start_with_workspace, get_repo_root, git_add_all, git_add_all_in_repo,
     git_add_specific_in_repo, git_commit, git_commit_in_repo, git_diff, git_diff_from,
     git_diff_in_repo, git_snapshot, git_snapshot_in_repo, parse_git_status_paths, require_git_repo,
-    CommitResultFallback, DiffReviewContent, DiffTruncationLevel,
+    resolve_protection_scope, resolve_protection_scope_from, CommitResultFallback,
+    DiffReviewContent, DiffTruncationLevel, ProtectionScope,
 };
 
 #[cfg(any(test, feature = "test-utils"))]

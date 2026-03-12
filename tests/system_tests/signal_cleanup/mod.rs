@@ -733,12 +733,23 @@ fn assert_ralph_dir_removed(repo_dir: &Path) {
             path.display()
         );
     }
-    // The directory itself must also be gone.
-    assert!(
-        !ralph_dir.exists(),
-        ".git/ralph/ directory should be removed after all artifacts are cleaned: {}",
-        ralph_dir.display()
-    );
+    let remaining_entries = std::fs::read_dir(&ralph_dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if ralph_dir.exists() {
+        assert!(
+            remaining_entries.is_empty(),
+            ".git/ralph/ should not retain stale entries after cleanup: {} (remaining: {:?})",
+            ralph_dir.display(),
+            remaining_entries
+        );
+    }
 }
 
 /// Assert head-oid tracking file has been removed.

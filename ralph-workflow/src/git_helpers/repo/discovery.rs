@@ -4,19 +4,65 @@ use std::path::{Path, PathBuf};
 
 use crate::git_helpers::git2_to_io_error;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtectionScope {
+    pub repo_root: PathBuf,
+    pub git_dir: PathBuf,
+    pub common_git_dir: PathBuf,
+    pub hooks_dir: PathBuf,
+    pub ralph_dir: PathBuf,
+    pub is_linked_worktree: bool,
+}
+
+/// Resolve the active git-protection scope for the current repository context.
+///
+/// # Errors
+///
+/// Returns an error when the current directory is not inside a git worktree or
+/// when the repository workdir cannot be determined.
+pub fn resolve_protection_scope() -> io::Result<ProtectionScope> {
+    resolve_protection_scope_from(Path::new("."))
+}
+
+/// Resolve the active git-protection scope for an explicit discovery root.
+///
+/// # Errors
+///
+/// Returns an error when `discovery_root` is not inside a git worktree or when
+/// the repository workdir cannot be determined.
+pub fn resolve_protection_scope_from(discovery_root: &Path) -> io::Result<ProtectionScope> {
+    let repo = git2::Repository::discover(discovery_root).map_err(|e| git2_to_io_error(&e))?;
+    let repo_root = repo
+        .workdir()
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))?;
+    let git_dir = repo.path().to_path_buf();
+    let common_git_dir = common_git_dir(&repo);
+    let is_linked_worktree = repo.is_worktree() && git_dir != common_git_dir;
+    let hooks_dir = git_dir.join("hooks");
+    let ralph_dir = git_dir.join("ralph");
+
+    Ok(ProtectionScope {
+        repo_root,
+        git_dir,
+        common_git_dir,
+        hooks_dir,
+        ralph_dir,
+        is_linked_worktree,
+    })
+}
+
 /// Returns the path to the `ralph` subdirectory inside the git metadata directory.
 ///
 /// This directory holds Ralph's runtime enforcement state (marker, track file, head-oid).
-/// It is inside `.git/` (or the actual git dir for worktrees) and is therefore invisible
-/// to working-tree scans.
+/// It is inside the active git dir for the current repository context and is therefore
+/// invisible to working-tree scans.
 ///
 /// Falls back to `repo_root/.git/ralph` if libgit2 discovery fails (e.g., plain temp
 /// directories used in unit tests).
 pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
-    if let Ok(hooks_dir) = get_hooks_dir_from(repo_root) {
-        if let Some(git_dir) = hooks_dir.parent() {
-            return git_dir.join("ralph");
-        }
+    if let Ok(scope) = resolve_protection_scope_from(repo_root) {
+        return scope.ralph_dir;
     }
     // Fallback: assume standard .git directory layout.
     repo_root.join(".git").join("ralph")
@@ -124,17 +170,8 @@ pub fn get_repo_root() -> io::Result<PathBuf> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No workdir for repository"))
 }
 
-/// Get the git hooks directory path.
-///
-/// Returns the path to the hooks directory inside .git (or the equivalent
-/// for worktrees and other configurations).
-pub fn get_hooks_dir() -> io::Result<PathBuf> {
-    get_hooks_dir_from(Path::new("."))
-}
-
 pub fn get_hooks_dir_from(discovery_root: &Path) -> io::Result<PathBuf> {
-    let repo = git2::Repository::discover(discovery_root).map_err(|e| git2_to_io_error(&e))?;
-    Ok(common_git_dir(&repo).join("hooks"))
+    Ok(resolve_protection_scope_from(discovery_root)?.hooks_dir)
 }
 
 /// Returns the common git directory for a repository.
@@ -144,8 +181,6 @@ pub fn get_hooks_dir_from(discovery_root: &Path) -> io::Result<PathBuf> {
 /// up to the shared `.git/` directory.
 ///
 /// This is needed because git2 0.18 does not expose `Repository::commondir()`.
-/// Hooks are shared across worktrees and must be installed/cleaned at the
-/// common dir, not the worktree-specific dir.
 fn common_git_dir(repo: &git2::Repository) -> PathBuf {
     let path = repo.path();
     if repo.is_worktree() {
@@ -200,64 +235,66 @@ mod tests {
     }
 
     #[test]
-    fn common_git_dir_for_regular_repo() {
+    fn resolve_protection_scope_for_regular_repo_uses_main_git_dir_for_all_paths() {
         let tmp = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(tmp.path()).unwrap();
-        let result = common_git_dir(&repo);
-        assert_eq!(canon(&result), canon(repo.path()));
+
+        let scope = resolve_protection_scope_from(tmp.path()).unwrap();
+
+        assert!(!scope.is_linked_worktree);
+        assert_eq!(canon(&scope.git_dir), canon(repo.path()));
+        assert_eq!(canon(&scope.common_git_dir), canon(repo.path()));
+        assert_eq!(
+            canon(&scope.hooks_dir),
+            canon(&tmp.path().join(".git/hooks"))
+        );
+        assert_eq!(
+            canon(&scope.ralph_dir),
+            canon(&tmp.path().join(".git/ralph"))
+        );
     }
 
     #[test]
-    fn common_git_dir_for_linked_worktree() {
+    fn resolve_protection_scope_for_linked_worktree_keeps_common_and_active_git_dirs_distinct() {
         let tmp = tempfile::tempdir().unwrap();
         let main_repo = init_repo_with_commit(tmp.path());
         let wt_path = tmp.path().join("wt-test");
         let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
         let wt_repo = git2::Repository::open(&wt_path).unwrap();
 
-        assert!(wt_repo.is_worktree());
-        let result = common_git_dir(&wt_repo);
-        // Should return the main .git/ dir, not .git/worktrees/wt-test/
-        assert_eq!(canon(&result), canon(main_repo.path()));
+        let scope = resolve_protection_scope_from(&wt_path).unwrap();
+
+        assert!(scope.is_linked_worktree);
+        assert_eq!(canon(&scope.git_dir), canon(wt_repo.path()));
+        assert_eq!(canon(&scope.common_git_dir), canon(main_repo.path()));
+        assert_ne!(canon(&scope.git_dir), canon(&scope.common_git_dir));
     }
 
     #[test]
-    fn get_hooks_dir_from_regular_repo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let _repo = git2::Repository::init(tmp.path()).unwrap();
-        let hooks_dir = get_hooks_dir_from(tmp.path()).unwrap();
-        assert_eq!(canon(&hooks_dir), canon(&tmp.path().join(".git/hooks")));
-    }
-
-    #[test]
-    fn get_hooks_dir_from_linked_worktree_returns_common_hooks() {
+    fn resolve_protection_scope_for_linked_worktree_uses_worktree_local_hook_and_ralph_dirs() {
         let tmp = tempfile::tempdir().unwrap();
         let main_repo = init_repo_with_commit(tmp.path());
         let wt_path = tmp.path().join("wt-test");
         let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
+        let wt_repo = git2::Repository::open(&wt_path).unwrap();
 
-        let hooks_dir = get_hooks_dir_from(&wt_path).unwrap();
-        // Hooks should be in the common .git/hooks, not .git/worktrees/wt-test/hooks
-        assert_eq!(canon(&hooks_dir), canon(&tmp.path().join(".git/hooks")));
-    }
+        let scope = resolve_protection_scope_from(&wt_path).unwrap();
 
-    #[test]
-    fn ralph_git_dir_for_regular_repo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let _repo = git2::Repository::init(tmp.path()).unwrap();
-        let dir = ralph_git_dir(tmp.path());
-        assert_eq!(canon(&dir), canon(&tmp.path().join(".git/ralph")));
-    }
-
-    #[test]
-    fn ralph_git_dir_for_linked_worktree_returns_common_ralph_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        let main_repo = init_repo_with_commit(tmp.path());
-        let wt_path = tmp.path().join("wt-test");
-        let _wt = main_repo.worktree("wt-test", &wt_path, None).unwrap();
-
-        let dir = ralph_git_dir(&wt_path);
-        // Should be .git/ralph at the common dir, not .git/worktrees/wt-test/ralph
-        assert_eq!(canon(&dir), canon(&tmp.path().join(".git/ralph")));
+        assert_eq!(
+            canon(&scope.hooks_dir),
+            canon(&wt_repo.path().join("hooks"))
+        );
+        assert_eq!(
+            canon(&scope.ralph_dir),
+            canon(&wt_repo.path().join("ralph"))
+        );
+        assert_ne!(
+            canon(&scope.hooks_dir),
+            canon(&tmp.path().join(".git/hooks"))
+        );
+        assert_ne!(
+            canon(&scope.ralph_dir),
+            canon(&tmp.path().join(".git/ralph"))
+        );
     }
 }

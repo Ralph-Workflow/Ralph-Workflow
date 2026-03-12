@@ -91,13 +91,6 @@ impl Drop for AgentPhaseGuard<'_> {
         let repo_root = self.workspace.root();
         end_agent_phase_in_repo(repo_root);
         disable_git_wrapper(self.git_helpers);
-        if !try_remove_ralph_dir(repo_root) {
-            let remaining = verify_ralph_dir_removed(repo_root);
-            self.logger.warn(&format!(
-                "Ralph git dir still present after guard cleanup: {}",
-                remaining.join(", ")
-            ));
-        }
         let _ = uninstall_hooks_in_repo(repo_root, self.logger);
         let wrapper_remaining = verify_wrapper_cleaned(repo_root);
         if !wrapper_remaining.is_empty() {
@@ -121,6 +114,13 @@ impl Drop for AgentPhaseGuard<'_> {
             }
         }
         cleanup_generated_files_with_workspace(self.workspace);
+        if !try_remove_ralph_dir(repo_root) {
+            let remaining = verify_ralph_dir_removed(repo_root);
+            self.logger.warn(&format!(
+                "Ralph git dir still present after guard cleanup: {}",
+                remaining.join(", ")
+            ));
+        }
         // Clear global mutexes AFTER all cleanup steps complete.
         crate::git_helpers::clear_agent_phase_global_state();
     }

@@ -7,10 +7,11 @@ use ralph_workflow::git_helpers::get_hooks_dir;
 use ralph_workflow::git_helpers::hooks::HOOK_MARKER;
 use ralph_workflow::git_helpers::{
     self, capture_head_oid, cleanup_orphaned_marker, detect_unauthorized_commit,
-    disable_git_wrapper, end_agent_phase, ensure_agent_phase_protections, git_snapshot,
-    git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES, reinstall_hooks_if_tampered,
-    start_agent_phase, start_agent_phase_in_repo, uninstall_hooks, uninstall_hooks_in_repo,
-    verify_hooks_removed, GitHelpers,
+    disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo, ensure_agent_phase_protections,
+    git_snapshot, git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES,
+    reinstall_hooks_if_tampered, start_agent_phase, start_agent_phase_in_repo,
+    try_remove_ralph_dir, uninstall_hooks, uninstall_hooks_in_repo, verify_hooks_removed,
+    GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;
@@ -21,6 +22,85 @@ use std::process::Command;
 
 fn program_exists(name: &str) -> bool {
     Command::new(name).arg("--version").output().is_ok()
+}
+
+fn resolve_real_git_from_path() -> std::path::PathBuf {
+    std::env::var("PATH")
+        .unwrap()
+        .split(':')
+        .map(std::path::PathBuf::from)
+        .map(|entry| entry.join("git"))
+        .find(|candidate| candidate.exists())
+        .unwrap()
+}
+
+fn init_repo_with_commit(path: &std::path::Path) -> git2::Repository {
+    let repo = git2::Repository::init(path).unwrap();
+    let sig = git2::Signature::now("test", "test@test.com").unwrap();
+    fs::write(path.join("tracked.txt"), "tracked\n").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("tracked.txt")).unwrap();
+    index.write().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+        .unwrap();
+    drop(tree);
+    repo
+}
+
+fn linked_worktree_git_dir(worktree_root: &std::path::Path) -> std::path::PathBuf {
+    git2::Repository::open(worktree_root)
+        .unwrap()
+        .path()
+        .to_path_buf()
+}
+
+fn assert_ralph_hook_installed(hooks_dir: &std::path::Path) {
+    for hook_name in RALPH_HOOK_NAMES {
+        let hook_path = hooks_dir.join(hook_name);
+        assert!(
+            hook_path.exists(),
+            "expected Ralph hook at {}",
+            hook_path.display()
+        );
+        let content = fs::read_to_string(&hook_path).unwrap();
+        assert!(
+            content.contains(HOOK_MARKER),
+            "expected Ralph marker in {}",
+            hook_path.display()
+        );
+    }
+}
+
+fn assert_no_ralph_hooks(hooks_dir: &std::path::Path) {
+    for hook_name in RALPH_HOOK_NAMES {
+        let hook_path = hooks_dir.join(hook_name);
+        assert!(
+            !hook_path.exists(),
+            "did not expect Ralph hook at {}",
+            hook_path.display()
+        );
+    }
+}
+
+fn create_linked_worktree_fixture() -> (
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    std::path::PathBuf,
+) {
+    let tempdir = tempfile::tempdir().unwrap();
+    let root_repo_path = tempdir.path().join("main");
+    fs::create_dir_all(&root_repo_path).unwrap();
+    let root_repo = init_repo_with_commit(&root_repo_path);
+
+    let worktree_one = tempdir.path().join("wt-one");
+    let worktree_two = tempdir.path().join("wt-two");
+    let _wt_one = root_repo.worktree("wt-one", &worktree_one, None).unwrap();
+    let _wt_two = root_repo.worktree("wt-two", &worktree_two, None).unwrap();
+
+    (tempdir, root_repo_path, worktree_one, worktree_two)
 }
 
 #[test]
@@ -51,6 +131,196 @@ fn test_agent_phase_cleanup_removes_git_wrapper_track_file() {
             "expected wrapper track file to be removed by disable_git_wrapper"
         );
     });
+}
+
+#[test]
+#[serial]
+fn test_linked_worktree_start_agent_phase_keeps_root_and_sibling_unmodified() {
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, worktree_two) = create_linked_worktree_fixture();
+
+    let root_hooks_dir = root_repo.join(".git/hooks");
+    let root_ralph_dir = root_repo.join(".git/ralph");
+    let wt_one_git_dir = linked_worktree_git_dir(&worktree_one);
+    let wt_two_git_dir = linked_worktree_git_dir(&worktree_two);
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_one, &mut helpers).unwrap();
+
+    assert_ralph_hook_installed(&wt_one_git_dir.join("hooks"));
+    assert!(wt_one_git_dir.join("ralph/no_agent_commit").exists());
+    assert!(wt_one_git_dir.join("ralph/git-wrapper-dir.txt").exists());
+
+    assert_no_ralph_hooks(&root_hooks_dir);
+    assert!(
+        !root_ralph_dir.exists(),
+        "root repo Ralph dir must stay untouched"
+    );
+    assert_no_ralph_hooks(&wt_two_git_dir.join("hooks"));
+    assert!(
+        !wt_two_git_dir.join("ralph").exists(),
+        "sibling worktree Ralph dir must stay untouched"
+    );
+
+    end_agent_phase_in_repo(&worktree_one);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_one));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_linked_worktree_absolute_git_commit_is_blocked_by_worktree_local_hooks() {
+    if !program_exists("git") {
+        return;
+    }
+
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let real_git = resolve_real_git_from_path();
+    let (_tempdir, _root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_one, &mut helpers).unwrap();
+
+    let output = Command::new(&real_git)
+        .current_dir(&worktree_one)
+        .env("GIT_AUTHOR_NAME", "Test User")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test User")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .args(["commit", "--allow-empty", "-m", "blocked"])
+        .output()
+        .unwrap();
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "absolute git commit should be blocked in linked worktree; output: {combined}"
+    );
+    assert!(
+        combined.to_lowercase().contains("blocked"),
+        "blocked commit should report hook enforcement; got: {combined}"
+    );
+
+    end_agent_phase_in_repo(&worktree_one);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_one));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_linked_worktree_cleanup_only_removes_active_worktree_protection() {
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, worktree_two) = create_linked_worktree_fixture();
+
+    let root_hooks_dir = root_repo.join(".git/hooks");
+    let root_ralph_dir = root_repo.join(".git/ralph");
+    fs::create_dir_all(&root_hooks_dir).unwrap();
+    fs::create_dir_all(&root_ralph_dir).unwrap();
+    let root_hook = root_hooks_dir.join("pre-commit");
+    fs::write(
+        &root_hook,
+        format!("#!/usr/bin/env bash\n# {HOOK_MARKER}\nexit 0\n"),
+    )
+    .unwrap();
+    fs::write(root_ralph_dir.join("no_agent_commit"), "").unwrap();
+
+    let wt_two_git_dir = linked_worktree_git_dir(&worktree_two);
+    let wt_two_hooks_dir = wt_two_git_dir.join("hooks");
+    let wt_two_ralph_dir = wt_two_git_dir.join("ralph");
+    fs::create_dir_all(&wt_two_hooks_dir).unwrap();
+    fs::create_dir_all(&wt_two_ralph_dir).unwrap();
+    let wt_two_hook = wt_two_hooks_dir.join("pre-commit");
+    fs::write(
+        &wt_two_hook,
+        format!("#!/usr/bin/env bash\n# {HOOK_MARKER}\nexit 0\n"),
+    )
+    .unwrap();
+    fs::write(wt_two_ralph_dir.join("no_agent_commit"), "").unwrap();
+
+    let wt_one_git_dir = linked_worktree_git_dir(&worktree_one);
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_one, &mut helpers).unwrap();
+
+    end_agent_phase_in_repo(&worktree_one);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_one));
+
+    assert!(
+        root_hook.exists(),
+        "root repo hook must survive linked-worktree cleanup"
+    );
+    assert!(
+        root_ralph_dir.join("no_agent_commit").exists(),
+        "root repo marker must survive linked-worktree cleanup"
+    );
+    assert!(
+        wt_two_hook.exists(),
+        "sibling worktree hook must survive cleanup"
+    );
+    assert!(
+        wt_two_ralph_dir.join("no_agent_commit").exists(),
+        "sibling worktree marker must survive cleanup"
+    );
+    assert!(
+        !wt_one_git_dir.join("ralph/no_agent_commit").exists(),
+        "active worktree marker should be removed during cleanup"
+    );
+
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_root_start_agent_phase_does_not_touch_linked_worktree_protection_paths() {
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+    let wt_one_git_dir = linked_worktree_git_dir(&worktree_one);
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&root_repo, &mut helpers).unwrap();
+
+    assert_ralph_hook_installed(&root_repo.join(".git/hooks"));
+    assert!(root_repo.join(".git/ralph/no_agent_commit").exists());
+    assert_no_ralph_hooks(&wt_one_git_dir.join("hooks"));
+    assert!(
+        !wt_one_git_dir.join("ralph").exists(),
+        "linked worktree Ralph dir must stay untouched during root run"
+    );
+
+    end_agent_phase_in_repo(&root_repo);
+    disable_git_wrapper(&mut helpers);
+    assert!(try_remove_ralph_dir(&root_repo));
+    uninstall_hooks_in_repo(&root_repo, &logger).unwrap();
+    assert!(
+        !root_repo.join(".git/ralph").exists(),
+        "root cleanup should remove only root Ralph dir"
+    );
+    assert!(
+        !wt_one_git_dir.join("ralph").exists(),
+        "linked worktree Ralph dir should remain untouched after root cleanup"
+    );
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
 }
 
 #[test]
