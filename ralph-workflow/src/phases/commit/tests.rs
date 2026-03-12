@@ -194,6 +194,42 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_commit_message_from_file_preserves_spaces_around_inline_code() {
+        let _cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/tmp/commit_message.xml",
+            r"<ralph-commit>
+<ralph-subject>fix(runner): allow promptless repo commands</ralph-subject>
+<ralph-body>Route <code>--inspect-checkpoint</code> and <code>--generate-commit-msg</code> through an early command path so they no longer require or create <code>PROMPT.md</code>.
+
+Extract shared agent-phase setup and cleanup, and preserve generated commit-message output while still removing protection artifacts.</ralph-body>
+</ralph-commit>",
+        );
+
+        let extraction = extract_commit_message_from_file_with_workspace(&workspace);
+        let CommitExtractionOutcome::Valid { extracted, .. } = extraction else {
+            panic!("expected extraction");
+        };
+
+        assert_eq!(
+            extracted.into_message(),
+            "fix(runner): allow promptless repo commands\n\nRoute --inspect-checkpoint and --generate-commit-msg through an early command path so they no longer require or create PROMPT.md.\n\nExtract shared agent-phase setup and cleanup, and preserve generated commit-message output while still removing protection artifacts."
+        );
+    }
+
+    #[test]
+    fn test_extract_commit_message_from_file_rejects_wrapped_non_xml_content() {
+        let _cloud = crate::config::types::CloudConfig::disabled();
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/tmp/commit_message.xml",
+            "Here is the commit message:\n<ralph-commit><ralph-subject>fix: exact xml only</ralph-subject></ralph-commit>",
+        );
+
+        let extraction = extract_commit_message_from_file_with_workspace(&workspace);
+        assert!(matches!(extraction, CommitExtractionOutcome::InvalidXml(_)));
+    }
+
+    #[test]
     fn test_extract_commit_message_from_file_ignores_processed_archive() {
         let _cloud = crate::config::types::CloudConfig::disabled();
         let workspace = MemoryWorkspace::new_test().with_file(

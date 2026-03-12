@@ -60,7 +60,7 @@ pub use file_based_extraction::{
 pub use cleaning::clean_plain_text;
 
 // Re-export public functions from commit module
-pub use commit::{try_extract_xml_commit_with_trace, CommitExtractionResult};
+pub use commit::{try_extract_xml_commit_document_with_trace, CommitExtractionResult};
 
 // Re-export for tests
 #[cfg(test)]

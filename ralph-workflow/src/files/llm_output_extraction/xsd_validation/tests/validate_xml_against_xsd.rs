@@ -75,10 +75,7 @@ fn test_validate_missing_root_element() {
     let result = validate_xml_against_xsd(xml);
     assert!(result.is_err());
     let error = result.unwrap_err();
-    assert!(matches!(
-        error.error_type,
-        XsdErrorType::MissingRequiredElement
-    ));
+    assert!(matches!(error.error_type, XsdErrorType::InvalidContent));
     assert_eq!(error.element_path, "ralph-commit");
 }
 

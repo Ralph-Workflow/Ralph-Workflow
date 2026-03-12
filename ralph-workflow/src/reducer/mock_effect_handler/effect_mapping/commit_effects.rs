@@ -29,7 +29,7 @@
 //! - **`CreateCommit`** returns a fake commit hash
 //! - **`RunRebase`** always succeeds with a fake head OID
 
-use crate::files::llm_output_extraction::try_extract_xml_commit_with_trace;
+use crate::files::llm_output_extraction::try_extract_xml_commit_document_with_trace;
 use crate::prompts::prompt_scope_key::{PromptScopeKey, RetryMode};
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
@@ -131,7 +131,7 @@ impl MockEffectHandler {
                 });
 
                 let (message, skip_reason, files, excluded_files, detail) =
-                    try_extract_xml_commit_with_trace(&xml);
+                    try_extract_xml_commit_document_with_trace(&xml);
 
                 let event = skip_reason.map_or_else(
                     || {

@@ -24,7 +24,7 @@
 use super::super::MainEffectHandler;
 use super::{current_commit_attempt, COMMIT_XSD_ERROR_PATH};
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
-use crate::files::llm_output_extraction::try_extract_xml_commit_with_trace;
+use crate::files::llm_output_extraction::try_extract_xml_commit_document_with_trace;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;
@@ -71,7 +71,7 @@ impl MainEffectHandler {
         };
 
         let (message, skip_reason, files, excluded_files, detail) =
-            try_extract_xml_commit_with_trace(&xml_content);
+            try_extract_xml_commit_document_with_trace(&xml_content);
 
         // Check for skip first
         if let Some(reason) = skip_reason {

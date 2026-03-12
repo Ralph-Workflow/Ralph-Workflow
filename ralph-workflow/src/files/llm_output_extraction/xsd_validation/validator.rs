@@ -64,67 +64,10 @@ pub fn validate_xml_against_xsd(
     check_for_illegal_xml_characters(content)?;
 
     let mut reader = create_reader(content);
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
 
-    // Find the root element
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-commit" => break,
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"ralph-commit" => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-commit".to_string(),
-                    expected: "either <ralph-subject> or <ralph-skip>".to_string(),
-                    found: "<ralph-commit/> (empty root element)".to_string(),
-                    suggestion:
-                        "Use <ralph-commit>...</ralph-commit> and include either <ralph-subject> or <ralph-skip>.".to_string(),
-                    example: Some(EXAMPLE_COMMIT_XML.into()),
-                });
-            }
-            Ok(Event::Start(e)) => {
-                let name_bytes = e.name();
-                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-commit".to_string(),
-                    expected: "<ralph-commit> as root element".to_string(),
-                    found: format!("<{tag_name}> (wrong root element)"),
-                    suggestion: "Use <ralph-commit> as the root element.".to_string(),
-                    example: Some(EXAMPLE_COMMIT_XML.into()),
-                });
-            }
-            Ok(Event::Empty(e)) => {
-                let name_bytes = e.name();
-                let tag_name = String::from_utf8_lossy(name_bytes.as_ref());
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-commit".to_string(),
-                    expected: "<ralph-commit> as root element".to_string(),
-                    found: format!("<{tag_name}/> (wrong root element)"),
-                    suggestion: "Use <ralph-commit> as the root element.".to_string(),
-                    example: Some(EXAMPLE_COMMIT_XML.into()),
-                });
-            }
-            Ok(Event::Eof) => {
-                return Err(XsdValidationError {
-                    error_type: XsdErrorType::MissingRequiredElement,
-                    element_path: "ralph-commit".to_string(),
-                    expected: "<ralph-commit> as root element".to_string(),
-                    found: format_content_preview(content),
-                    suggestion:
-                        "Wrap your commit message in <ralph-commit>...</ralph-commit> tags."
-                            .to_string(),
-                    example: Some(EXAMPLE_COMMIT_XML.into()),
-                });
-            }
-            Ok(Event::Text(_) | _) => {
-                // Text before root element or other events - continue to find root or reach EOF
-                // EOF will give a more informative "missing root element" error
-            }
-            Err(e) => return Err(malformed_xml_error(&e)),
-        }
-        buf.clear();
-    }
+    find_commit_root(&mut reader, &mut buf, content)?;
 
     // Parse child elements
     let mut subject: Option<String> = None;
@@ -162,7 +105,11 @@ pub fn validate_xml_against_xsd(
                         if subject.is_some() {
                             return Err(duplicate_element_error("ralph-subject", "ralph-commit"));
                         }
-                        subject = Some(read_text_until_end(&mut reader, b"ralph-subject")?);
+                        subject = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-subject",
+                            "ralph-commit/ralph-subject",
+                        )?);
                     }
                     b"ralph-body" => {
                         if skip_reason.is_some() {
@@ -196,7 +143,11 @@ pub fn validate_xml_against_xsd(
                         if body.is_some() {
                             return Err(duplicate_element_error("ralph-body", "ralph-commit"));
                         }
-                        body = Some(read_text_until_end(&mut reader, b"ralph-body")?);
+                        body = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-body",
+                            "ralph-commit/ralph-body",
+                        )?);
                     }
                     b"ralph-body-summary" => {
                         if skip_reason.is_some() {
@@ -231,8 +182,11 @@ pub fn validate_xml_against_xsd(
                                 "ralph-commit",
                             ));
                         }
-                        body_summary =
-                            Some(read_text_until_end(&mut reader, b"ralph-body-summary")?);
+                        body_summary = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-body-summary",
+                            "ralph-commit/ralph-body-summary",
+                        )?);
                     }
                     b"ralph-body-details" => {
                         if skip_reason.is_some() {
@@ -267,8 +221,11 @@ pub fn validate_xml_against_xsd(
                                 "ralph-commit",
                             ));
                         }
-                        body_details =
-                            Some(read_text_until_end(&mut reader, b"ralph-body-details")?);
+                        body_details = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-body-details",
+                            "ralph-commit/ralph-body-details",
+                        )?);
                     }
                     b"ralph-body-footer" => {
                         if skip_reason.is_some() {
@@ -303,7 +260,11 @@ pub fn validate_xml_against_xsd(
                                 "ralph-commit",
                             ));
                         }
-                        body_footer = Some(read_text_until_end(&mut reader, b"ralph-body-footer")?);
+                        body_footer = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-body-footer",
+                            "ralph-commit/ralph-body-footer",
+                        )?);
                     }
                     b"ralph-skip" => {
                         if skip_reason.is_some() {
@@ -330,7 +291,11 @@ pub fn validate_xml_against_xsd(
                                 ),
                             });
                         }
-                        skip_reason = Some(read_text_until_end(&mut reader, b"ralph-skip")?);
+                        skip_reason = Some(read_text_with_inline_code_until_end(
+                            &mut reader,
+                            b"ralph-skip",
+                            "ralph-commit/ralph-skip",
+                        )?);
                     }
                     b"ralph-files" => {
                         if files_seen {
@@ -455,6 +420,8 @@ pub fn validate_xml_against_xsd(
         }
     }
 
+    ensure_no_trailing_root_content(&mut reader, &mut buf)?;
+
     // Validate that either skip_reason OR subject is present (but not both)
     if skip_reason.is_none() && subject.is_none() {
         return Err(XsdValidationError {
@@ -539,6 +506,97 @@ pub fn validate_xml_against_xsd(
     })
 }
 
+fn find_commit_root(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    content: &str,
+) -> Result<(), XsdValidationError> {
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-commit" => return Ok(()),
+            Ok(Event::Empty(e)) if e.name().as_ref() == b"ralph-commit" => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "either <ralph-subject> or <ralph-skip>".to_string(),
+                    found: "<ralph-commit/> (empty root element)".to_string(),
+                    suggestion:
+                        "Use <ralph-commit>...</ralph-commit> and include either <ralph-subject> or <ralph-skip>.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Start(e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "<ralph-commit> as root element".to_string(),
+                    found: format!("<{tag_name}> (wrong root element)"),
+                    suggestion: "Use <ralph-commit> as the root element.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Empty(e)) => {
+                let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "<ralph-commit> as root element".to_string(),
+                    found: format!("<{tag_name}/> (wrong root element)"),
+                    suggestion: "Use <ralph-commit> as the root element.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Eof) => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MissingRequiredElement,
+                    element_path: "ralph-commit".to_string(),
+                    expected: "<ralph-commit> as root element".to_string(),
+                    found: format_content_preview(content),
+                    suggestion:
+                        "Wrap your commit message in <ralph-commit>...</ralph-commit> tags."
+                            .to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Text(e)) => reject_non_whitespace_text(&unescape_text(&e, "ralph-commit")?)?,
+            Ok(Event::CData(e)) => {
+                reject_non_whitespace_text(&String::from_utf8_lossy(e.as_ref()))?;
+            }
+            Ok(_) => {}
+            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+        buf.clear();
+    }
+}
+
+fn ensure_no_trailing_root_content(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+) -> Result<(), XsdValidationError> {
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Eof) => return Ok(()),
+            Ok(Event::Text(e)) => reject_non_whitespace_text(&unescape_text(&e, "ralph-commit")?)?,
+            Ok(Event::CData(e)) => {
+                reject_non_whitespace_text(&String::from_utf8_lossy(e.as_ref()))?;
+            }
+            Ok(_) => {}
+            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+    }
+}
+
+fn reject_non_whitespace_text(text: &str) -> Result<(), XsdValidationError> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        Ok(())
+    } else {
+        Err(text_outside_tags_error(trimmed, "ralph-commit"))
+    }
+}
+
 fn unescape_text(
     text: &quick_xml::events::BytesText<'_>,
     element_path: &str,
@@ -557,6 +615,87 @@ fn unescape_text(
         })
 }
 
+fn read_text_with_inline_code_until_end(
+    reader: &mut quick_xml::Reader<&[u8]>,
+    end_tag: &[u8],
+    element_path: &str,
+) -> Result<String, XsdValidationError> {
+    let mut buf = Vec::new();
+    let mut text = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Text(t)) => {
+                text.push_str(&unescape_text(&t, element_path)?);
+            }
+            Ok(Event::CData(c)) => {
+                text.push_str(&String::from_utf8_lossy(c.as_ref()));
+            }
+            Ok(Event::Start(e)) if e.name().as_ref() == b"code" => {
+                text.push_str(&read_text_with_inline_code_until_end(
+                    reader,
+                    b"code",
+                    &format!("{element_path}/code"),
+                )?);
+            }
+            Ok(Event::Empty(e)) if e.name().as_ref() == b"code" => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::InvalidContent,
+                    element_path: format!("{element_path}/code"),
+                    expected: "non-empty inline <code> content".to_string(),
+                    found: "<code/> (empty inline code element)".to_string(),
+                    suggestion: "Use <code>text</code> when you need inline code, or remove the empty <code/> element.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Start(e)) => {
+                let other = e.name().as_ref().to_vec();
+                let other_name = String::from_utf8_lossy(&other);
+                let _ = skip_to_end(reader, &other);
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::UnexpectedElement,
+                    element_path: format!("{element_path}/{other_name}"),
+                    expected: "text content with optional inline <code> elements".to_string(),
+                    found: format!("<{other_name}>"),
+                    suggestion: "Use plain text and optional inline <code>...</code> only; remove any other nested tags.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::Empty(e)) => {
+                let other = e.name().as_ref().to_vec();
+                let other_name = String::from_utf8_lossy(&other);
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::UnexpectedElement,
+                    element_path: format!("{element_path}/{other_name}"),
+                    expected: "text content with optional inline <code> elements".to_string(),
+                    found: format!("<{other_name}/>"),
+                    suggestion: "Use plain text and optional inline <code>...</code> only; remove any other nested tags.".to_string(),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == end_tag => break,
+            Ok(Event::Eof) => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MalformedXml,
+                    element_path: element_path.to_string(),
+                    expected: format!("closing </{}> tag", String::from_utf8_lossy(end_tag)),
+                    found: "end of content without closing tag".to_string(),
+                    suggestion: format!(
+                        "Add </{}> to close the element.",
+                        String::from_utf8_lossy(end_tag)
+                    ),
+                    example: Some(EXAMPLE_COMMIT_XML.into()),
+                });
+            }
+            Ok(_) => {}
+            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+        buf.clear();
+    }
+
+    Ok(text.trim().to_string())
+}
+
 /// Parse the `<ralph-files>` section and return the list of file paths.
 fn parse_files_section(
     reader: &mut quick_xml::Reader<&[u8]>,
@@ -567,7 +706,11 @@ fn parse_files_section(
         buf.clear();
         match reader.read_event_into(buf) {
             Ok(Event::Start(ref e)) if e.name().as_ref() == b"ralph-file" => {
-                let text = read_text_until_end(reader, b"ralph-file")?;
+                let text = read_text_with_inline_code_until_end(
+                    reader,
+                    b"ralph-file",
+                    "ralph-commit/ralph-files/ralph-file",
+                )?;
                 let trimmed = text.trim().to_string();
                 if !trimmed.is_empty() {
                     file_list.push(trimmed);
