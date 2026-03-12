@@ -286,6 +286,56 @@ fn test_validate_agent_chains() {
 }
 
 #[test]
+fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
+    let mut registry = AgentRegistry::new().unwrap();
+    registry.register(
+        "chat-only",
+        AgentConfig {
+            cmd: "echo chat-only".to_string(),
+            output_flag: String::new(),
+            yolo_flag: String::new(),
+            verbose_flag: String::new(),
+            can_commit: false,
+            json_parser: JsonParserType::Generic,
+            model_flag: None,
+            print_flag: String::new(),
+            streaming_flag: String::new(),
+            session_flag: String::new(),
+            env_vars: std::collections::HashMap::new(),
+            display_name: None,
+        },
+    );
+
+    let toml_str = r#"
+        [agent_chains]
+        shared_dev = ["codex"]
+        shared_review = ["claude"]
+        chat_commit = ["chat-only"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
+        commit = "chat_commit"
+        analysis = "shared_dev"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    registry.apply_unified_config(&unified);
+
+    let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
+    assert!(
+        err.contains("commit"),
+        "error should mention the commit drain: {err}"
+    );
+    assert!(
+        err.contains("can_commit=false"),
+        "error should explain the workflow-capability requirement: {err}"
+    );
+}
+
+#[test]
 fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback_compatibility() {
     let mut registry = AgentRegistry::new().unwrap();
 

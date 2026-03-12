@@ -339,6 +339,36 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
 }
 
 #[test]
+fn test_resolve_agent_drains_checked_rejects_empty_named_drain_binding() {
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            ("empty_dev".to_string(), Vec::new()),
+            ("shared_review".to_string(), vec!["claude".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "empty_dev".to_string()),
+            ("development".to_string(), "empty_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("empty built-in drain bindings should fail");
+
+    assert!(
+        error.contains("agent_drains.planning"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        error.contains("must not resolve to an empty chain"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
     let inherited_config = UnifiedConfig {
         agent_chain: Some(crate::agents::fallback::FallbackConfig {

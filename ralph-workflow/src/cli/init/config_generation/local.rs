@@ -89,6 +89,12 @@ where
         general.reviewer_context
     )?;
     writeln!(template)?;
+    write!(
+        template,
+        "{}",
+        render_agent_chain_metadata_comments(&resolved_drains)
+    )?;
+    writeln!(template)?;
     writeln!(template, "# [agent_chains]")?;
     writeln!(template, "# Reusable named chain definitions")?;
     writeln!(template, "{rendered_chain_definitions}")?;
@@ -98,6 +104,47 @@ where
     writeln!(template, "{rendered_drain_bindings}")?;
 
     Ok(template)
+}
+
+fn render_agent_chain_metadata_comments(
+    resolved_drains: &crate::agents::fallback::ResolvedDrainConfig,
+) -> String {
+    let mut rendered = String::new();
+    let _ = writeln!(rendered, "# [agent_chain]");
+    let _ = writeln!(
+        rendered,
+        "# Effective retry/backoff metadata you can override locally"
+    );
+    let _ = writeln!(rendered, "# max_retries = {}", resolved_drains.max_retries);
+    let _ = writeln!(
+        rendered,
+        "# retry_delay_ms = {}",
+        resolved_drains.retry_delay_ms
+    );
+    let _ = writeln!(
+        rendered,
+        "# backoff_multiplier = {}",
+        resolved_drains.backoff_multiplier
+    );
+    let _ = writeln!(
+        rendered,
+        "# max_backoff_ms = {}",
+        resolved_drains.max_backoff_ms
+    );
+    let _ = writeln!(rendered, "# max_cycles = {}", resolved_drains.max_cycles);
+
+    let mut provider_fallback_entries =
+        resolved_drains.provider_fallback.iter().collect::<Vec<_>>();
+    provider_fallback_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for (provider, models) in provider_fallback_entries {
+        let _ = writeln!(
+            rendered,
+            "# provider_fallback.{provider} = {}",
+            format_toml_string_array(models)
+        );
+    }
+
+    rendered
 }
 
 fn resolve_template_drains(
@@ -290,7 +337,10 @@ mod tests {
             .with_file(
                 "/test/config/ralph-workflow.toml",
                 "\n[general]\ndeveloper_iters = 8\nreviewer_reviews = 3\n\
-                 developer_context = 2\nreviewer_context = 1\n",
+                 developer_context = 2\nreviewer_context = 1\n\
+                 \n[agent_chain]\nmax_retries = 9\nretry_delay_ms = 2500\n\
+                 backoff_multiplier = 3.0\nmax_backoff_ms = 90000\n\
+                 provider_fallback.opencode = [\"-m opencode/glm-4.7-free\"]\n",
             );
 
         handle_init_local_config_with(Colors::new(), &env, false).unwrap();
@@ -315,6 +365,30 @@ mod tests {
         assert!(
             content.contains("reviewer_context = 1"),
             "should show global reviewer_context=1, got:\n{content}"
+        );
+        assert!(
+            content.contains("# [agent_chain]"),
+            "should include the effective agent_chain metadata section, got:\n{content}"
+        );
+        assert!(
+            content.contains("# max_retries = 9"),
+            "should show global max_retries=9, got:\n{content}"
+        );
+        assert!(
+            content.contains("# retry_delay_ms = 2500"),
+            "should show global retry_delay_ms=2500, got:\n{content}"
+        );
+        assert!(
+            content.contains("# backoff_multiplier = 3"),
+            "should show global backoff_multiplier=3.0, got:\n{content}"
+        );
+        assert!(
+            content.contains("# max_backoff_ms = 90000"),
+            "should show global max_backoff_ms=90000, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# provider_fallback.opencode = ["-m opencode/glm-4.7-free"]"#),
+            "should show global provider fallback metadata, got:\n{content}"
         );
     }
 

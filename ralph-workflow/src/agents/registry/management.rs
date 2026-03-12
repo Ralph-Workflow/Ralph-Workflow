@@ -401,22 +401,21 @@ impl AgentRegistry {
             .collect()
     }
 
-    /// Validate that agent chains are configured for both roles.
+    /// Validate that every built-in runtime drain has workflow-capable coverage.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
     pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), String> {
-        let dev_chain = self
-            .resolved_drain(crate::agents::AgentDrain::Development)
-            .map_or(&[][..], |binding| binding.agents.as_slice());
-        let review_chain = self
-            .resolved_drain(crate::agents::AgentDrain::Review)
-            .map_or(&[][..], |binding| binding.agents.as_slice());
-        let has_developer = !dev_chain.is_empty();
-        let has_reviewer = !review_chain.is_empty();
+        let drain_bindings = crate::agents::AgentDrain::all()
+            .into_iter()
+            .map(|drain| (drain, self.resolved_drain(drain)))
+            .collect::<Vec<_>>();
+        let has_any_binding = drain_bindings
+            .iter()
+            .any(|(_, binding)| binding.is_some_and(|binding| !binding.agents.is_empty()));
 
-        if !has_developer && !has_reviewer {
+        if !has_any_binding {
             return Err(format!(
                 "No agent chain configured. \
                 Searched: {searched_sources}.\n\
@@ -426,36 +425,33 @@ impl AgentRegistry {
             ));
         }
 
-        if !has_developer {
-            return Err(format!(
-                "No developer agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Bind the development drain in [agent_drains] to a chain from [agent_chains].\n\
-                Use --list-agents to see available agents."
-            ));
-        }
+        for (drain, binding) in drain_bindings {
+            let binding = binding.ok_or_else(|| {
+                format!(
+                    "No {drain} agent chain configured. \
+                    Searched: {searched_sources}.\n\
+                    Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
+                    Use --list-agents to see available agents."
+                )
+            })?;
 
-        if !has_reviewer {
-            return Err(format!(
-                "No reviewer agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Bind the review drain in [agent_drains] to a chain from [agent_chains].\n\
-                Use --list-agents to see available agents."
-            ));
-        }
+            if binding.agents.is_empty() {
+                return Err(format!(
+                    "No {drain} agent chain configured. \
+                    Searched: {searched_sources}.\n\
+                    Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
+                    Use --list-agents to see available agents."
+                ));
+            }
 
-        // Sanity check: ensure there is at least one workflow-capable agent per role.
-        for (role, chain) in [
-            (AgentRole::Developer, dev_chain),
-            (AgentRole::Reviewer, review_chain),
-        ] {
-            let has_capable = chain
+            let has_capable = binding
+                .agents
                 .iter()
                 .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
             if !has_capable {
                 return Err(format!(
-                    "No workflow-capable agents found for {role}.\n\
-                    All agents in the {role} chain have can_commit=false.\n\
+                    "No workflow-capable agents found for {drain}.\n\
+                    All agents in the {drain} drain binding have can_commit=false.\n\
                     Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
                 ));
             }

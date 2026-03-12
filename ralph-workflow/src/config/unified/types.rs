@@ -504,6 +504,22 @@ impl UnifiedConfig {
                 unresolved = next_unresolved;
             }
 
+            for drain in AgentDrain::all() {
+                let Some(binding) = bindings.get(&drain) else {
+                    return Err(format!(
+                        "agent_drains does not resolve all built-in drains; missing binding for: {}",
+                        drain.as_str()
+                    ));
+                };
+                if binding.agents.is_empty() {
+                    return Err(format!(
+                        "agent_drains.{} must not resolve to an empty chain (chain '{}')",
+                        drain.as_str(),
+                        binding.chain_name
+                    ));
+                }
+            }
+
             let legacy = self.agent_chain.clone().unwrap_or_default();
             return Ok(Some(ResolvedDrainConfig {
                 bindings,

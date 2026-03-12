@@ -22,7 +22,6 @@ use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::executor::{MockProcessExecutor, ProcessExecutor};
 use ralph_workflow::logger::{Colors, Logger};
-use ralph_workflow::phases::get_primary_commit_agent;
 use ralph_workflow::prompts::template_context::TemplateContext;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::{Effect, EffectHandler};
@@ -1798,10 +1797,8 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
 }
 
 #[test]
-fn test_get_primary_commit_agent_preserves_explicitly_empty_commit_drain() {
+fn test_named_schema_rejects_explicitly_empty_commit_drain() {
     with_default_timeout(|| {
-        let mut fixture = IntegrationFixture::new();
-
         let toml_str = r#"
             [agent_chains]
             shared_dev = ["developer-agent"]
@@ -1816,22 +1813,20 @@ fn test_get_primary_commit_agent_preserves_explicitly_empty_commit_drain() {
             commit = "empty_commit"
         "#;
         let unified = UnifiedConfig::load_from_content(toml_str).expect("config should parse");
-        fixture.registry.apply_unified_config(&unified);
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("empty built-in drain binding should be rejected");
 
-        let ctx = fixture.ctx(None);
-
-        assert_eq!(
-            get_primary_commit_agent(&ctx),
-            None,
-            "explicitly empty commit drain should remain authoritative"
+        assert!(
+            error.contains("agent_drains.commit"),
+            "error should mention the empty commit drain: {error}"
         );
     });
 }
 
 #[test]
-fn test_commit_message_agent_resolution_keeps_explicitly_empty_commit_drain_empty() {
+fn test_named_schema_rejects_empty_commit_drain_before_commit_agent_resolution() {
     with_default_timeout(|| {
-        let mut registry = AgentRegistry::new().expect("default registry should build");
         let unified = UnifiedConfig {
             agent_chains: std::collections::HashMap::from([
                 ("shared_dev".to_string(), vec!["codex".to_string()]),
@@ -1847,35 +1842,20 @@ fn test_commit_message_agent_resolution_keeps_explicitly_empty_commit_drain_empt
             ]),
             ..Default::default()
         };
-        registry.apply_unified_config(&unified);
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("empty built-in drain binding should be rejected");
 
-        let app_config = Config::test_default();
-        let workspace = Arc::new(MemoryWorkspace::new_test());
-        let logger = Logger::new(Colors::new());
-        let template_context = TemplateContext::default();
-        let executor = Arc::new(MockProcessExecutor::new()) as Arc<dyn ProcessExecutor>;
-        let config = commit_generation_config(
-            &app_config,
-            &registry,
-            &workspace,
-            &logger,
-            &template_context,
-            executor,
-        );
-
-        assert_eq!(
-            resolve_commit_message_agents_for_testing(&config),
-            Vec::<String>::new(),
-            "explicitly empty commit drain should remain authoritative"
+        assert!(
+            error.contains("agent_drains.commit"),
+            "error should mention the empty commit drain: {error}"
         );
     });
 }
 
 #[test]
-fn test_commit_message_agent_resolution_falls_back_to_reviewer_agent_when_commit_and_review_drains_are_empty(
-) {
+fn test_named_schema_rejects_empty_review_and_commit_drains() {
     with_default_timeout(|| {
-        let mut registry = AgentRegistry::new().expect("default registry should build");
         let unified = UnifiedConfig {
             agent_chains: std::collections::HashMap::from([
                 ("shared_dev".to_string(), vec!["codex".to_string()]),
@@ -1891,26 +1871,13 @@ fn test_commit_message_agent_resolution_falls_back_to_reviewer_agent_when_commit
             ]),
             ..Default::default()
         };
-        registry.apply_unified_config(&unified);
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("empty built-in drain bindings should be rejected");
 
-        let app_config = Config::test_default();
-        let workspace = Arc::new(MemoryWorkspace::new_test());
-        let logger = Logger::new(Colors::new());
-        let template_context = TemplateContext::default();
-        let executor = Arc::new(MockProcessExecutor::new()) as Arc<dyn ProcessExecutor>;
-        let config = commit_generation_config(
-            &app_config,
-            &registry,
-            &workspace,
-            &logger,
-            &template_context,
-            executor,
-        );
-
-        assert_eq!(
-            resolve_commit_message_agents_for_testing(&config),
-            Vec::<String>::new(),
-            "explicitly empty commit and review drains should surface the absence of commit agents"
+        assert!(
+            error.contains("agent_drains.review") || error.contains("agent_drains.commit"),
+            "error should mention an empty built-in drain binding: {error}"
         );
     });
 }
