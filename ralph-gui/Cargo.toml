@@ -5,6 +5,7 @@ edition = "2021"
 description = "Desktop GUI for Ralph Workflow orchestrator"
 authors = ["Mistlight"]
 license = "AGPL-3.0-only"
+exclude = ["ui/node_modules/**", "ui/dist/**"]
 
 [lib]
 name = "ralph_gui"

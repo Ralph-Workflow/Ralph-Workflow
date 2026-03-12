@@ -1,10 +1,11 @@
-//! Nuclear regression test for CCS delta spam using full production logs.
+//! Nuclear regression test for CCS delta spam using production-scale fixtures.
 //!
-//! This test consumes entire real-world captured logs from CCS agents containing
-//! thousands of streaming deltas to ensure no per-delta spam occurs in non-TTY modes.
+//! The Codex coverage here uses a focused multi-delta reasoning fixture with a
+//! single logical reasoning session. That keeps the fixture small while still
+//! asserting the real bug boundary: non-TTY modes must emit one `Thinking:`
+//! line per completed reasoning session, not one line per streamed chunk.
 //!
-//! This is the "nuclear option" mentioned in acceptance criteria - using complete production
-//! logs to validate the fix comprehensively.
+//! The Claude/GLM coverage continues to use the larger captured production log.
 //!
 //! # Integration Test Style Guide
 //!
@@ -23,6 +24,38 @@ use std::cell::RefCell;
 use std::io::BufReader;
 use std::rc::Rc;
 
+fn codex_full_log_fixture() -> &'static str {
+    let log = include_str!("artifacts/codex_reasoning_spam.log");
+    assert!(
+        log.contains("\"type\":\"item.started\""),
+        "Codex full-log regression fixture must contain item.started events"
+    );
+    assert!(
+        log.contains("\"type\":\"reasoning\""),
+        "Codex full-log regression fixture must contain reasoning items"
+    );
+    assert!(
+        !log.contains("thinking_delta"),
+        "Codex full-log regression fixture must not silently use Claude-style thinking deltas"
+    );
+    assert!(
+        log.matches(r#""type":"reasoning","text":"#).count() > 1,
+        "Codex full-log regression fixture must contain multiple reasoning chunks"
+    );
+    assert_eq!(
+        count_codex_reasoning_sessions(log),
+        1,
+        "Codex full-log regression fixture must encode exactly one completed reasoning session"
+    );
+    log
+}
+
+fn count_codex_reasoning_sessions(log: &str) -> usize {
+    log.lines()
+        .filter(|line| line.contains(r#""type":"item.completed","item":{"type":"reasoning""#))
+        .count()
+}
+
 #[test]
 fn test_ccs_codex_full_example_log_no_spam_none_mode() {
     with_default_timeout(|| {
@@ -34,14 +67,7 @@ fn test_ccs_codex_full_example_log_no_spam_none_mode() {
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::None);
 
-        // Use existing example_log.log (already referenced in codex_reasoning_spam_regression.rs)
-        let log = include_str!("artifacts/example_log.log");
-
-        // NOTE: This fixture is Claude/CCS-focused and may not include Codex events.
-        // Codex regression coverage is validated by tests that provide Codex-specific streams.
-        if !log.contains("item.started") {
-            return;
-        }
+        let log = codex_full_log_fixture();
 
         let reader = BufReader::new(log.as_bytes());
         let workspace = MemoryWorkspace::new_test();
@@ -49,19 +75,17 @@ fn test_ccs_codex_full_example_log_no_spam_none_mode() {
 
         let output = test_printer.borrow().get_output();
 
-        // Count reasoning items in log by counting message_start events (crude but effective)
-        // This log has thinking blocks, so count content_block_start with type=thinking
-        let thinking_blocks = log.matches(r#""type":"reasoning""#).count();
+        let reasoning_sessions = count_codex_reasoning_sessions(log);
         let thinking_labels = output.matches("Thinking:").count();
 
-        // Should have at most 1 "Thinking:" per thinking block completion
-        // With a margin for multi-turn scenarios
+        // The regression boundary is logical reasoning sessions, not raw streamed chunks.
+        // A broken parser that emits one prefix per chunk must fail this assertion.
         assert!(
-            thinking_labels <= thinking_blocks,
-            "SPAM DETECTED! With {} reasoning blocks in log, expected <= {} 'Thinking:' labels, found {}.\n\n\
+            thinking_labels <= reasoning_sessions,
+            "SPAM DETECTED! With {} completed reasoning session(s) in log, expected <= {} 'Thinking:' labels, found {}.\n\n\
              First 100 output lines:\n{}",
-            thinking_blocks,
-            thinking_blocks,
+            reasoning_sessions,
+            reasoning_sessions,
             thinking_labels,
             output.lines().take(100).collect::<Vec<_>>().join("\n")
         );
@@ -172,13 +196,7 @@ fn test_ccs_codex_full_example_log_no_spam_basic_mode() {
             .with_display_name_for_test("ccs/codex")
             .with_terminal_mode(TerminalMode::Basic);
 
-        let log = include_str!("artifacts/example_log.log");
-
-        // NOTE: This fixture is Claude/CCS-focused and may not include Codex events.
-        // Codex regression coverage is validated by tests that provide Codex-specific streams.
-        if !log.contains("item.started") {
-            return;
-        }
+        let log = codex_full_log_fixture();
 
         let reader = BufReader::new(log.as_bytes());
         let workspace = MemoryWorkspace::new_test();
@@ -186,15 +204,15 @@ fn test_ccs_codex_full_example_log_no_spam_basic_mode() {
 
         let output = test_printer.borrow().get_output();
 
-        let reasoning_blocks = log.matches(r#""type":"reasoning""#).count();
+        let reasoning_sessions = count_codex_reasoning_sessions(log);
         let thinking_labels = output.matches("Thinking:").count();
 
         assert!(
-            thinking_labels <= reasoning_blocks,
-            "SPAM DETECTED! With {} reasoning blocks, expected <= {} 'Thinking:' labels in Basic mode, found {}.\n\n\
+            thinking_labels <= reasoning_sessions,
+            "SPAM DETECTED! With {} completed reasoning session(s), expected <= {} 'Thinking:' labels in Basic mode, found {}.\n\n\
              Output:\n{}",
-            reasoning_blocks,
-            reasoning_blocks,
+            reasoning_sessions,
+            reasoning_sessions,
             thinking_labels,
             output.lines().take(100).collect::<Vec<_>>().join("\n")
         );

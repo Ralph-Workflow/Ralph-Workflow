@@ -8,6 +8,28 @@ cargo xtask verify
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
 
+### Parallel execution architecture
+
+`cargo xtask verify` runs a shared serial preparation step, a serial native-check gate, and then seven concurrent lanes:
+
+- **Phase 0 (serial, warm-run optimization):** Prepare verify cache state once for the full check set. `xtask` precomputes unique scope hashes, native required-check hashes, and the native-scan eligibility hash before any verify check starts, so later cache lookups are O(1) map reads instead of repeated scope traversal in each lane or native-check dispatch.
+- **Phase 1 (serial):** Native checks — Rust function checks (compliance-timeout-wrapper, audit-no-shell-scripts). On unchanged warm runs, `xtask` may satisfy these from the verify cache instead of rescanning the same inputs.
+- **Phase 2 (concurrent):**
+  - Lane 1: Native Aho-Corasick scan (pure file I/O, no target/ interaction)
+  - Lane 2: `cargo fmt --all --check` (no target/ interaction, zero contention)
+  - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
+  - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
+  - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify)
+  - Lane 6: Frontend (npm ci, lint, test — independent of cargo)
+  - Lane 7: Release (release build, dylint — target/release-parallel-verify)
+
+Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
+
+On an unchanged tree, `cargo xtask verify` may reuse cached clean results for eligible lanes, including the serial native checks and the native scan lane. This does not weaken the contract: each cache key includes the relevant source inputs plus the `xtask` implementation inputs for that verifier, so any relevant source or verifier change invalidates the warm-run shortcut and the check runs again.
+Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits. There is no fixed cross-machine runtime target, but unchanged warm runs should spend noticeably less time in cache-eligibility work than cold runs because the preparation step shares those hashes across all lanes up front.
+
+The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --release` against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles.
+
 ---
 
 ## Reference: underlying commands
@@ -49,28 +71,29 @@ rg --pcre2 -n '#\[ignore\b(?!.*https://)' tests/ ralph-workflow/src/ --glob '*.r
 # Format check
 cargo fmt --all --check
 
-# Lint main crate (all targets: lib, tests, benchmarks, examples)
+# Lint core crates (ralph-workflow + ralph-workflow-tests + test-helpers) in a single invocation
 # Note: Enforces clippy::all, clippy::pedantic, clippy::nursery
 # via #![deny(...)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow --all-targets --all-features -- -D warnings
+cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
 
-# Lint integration tests
-# Note: Enforces clippy::all, clippy::pedantic, clippy::nursery
-# via #![deny(...)] attributes in tests/integration_tests/main.rs and tests/system_tests/main.rs
-# (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
-cargo clippy -p ralph-workflow-tests --all-targets -- -D warnings
-
-# Lint test helpers
-# Enforces clippy::all, clippy::pedantic, clippy::nursery
-# via #![deny(...)] attributes in test-helpers/src/lib.rs
-cargo clippy -p test-helpers --all-targets -- -D warnings
-
-# Lint xtask runner
+# Lint xtask runner (runs in parallel group with separate target dir)
 cargo clippy -p xtask --all-targets -- -D warnings
+
+# Lint ralph-gui (runs in parallel group with separate target dir)
+cargo clippy -p ralph-gui --all-targets -- -D warnings
+
+# Frontend install (xtask forces devDependencies on even under production outer env)
+NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm_config_production=false \
+  npm --prefix ralph-gui/ui ci --no-audit --no-fund --include=dev
+
+# Frontend checks
+npm --prefix ralph-gui/ui run lint
+npm --prefix ralph-gui/ui run test -- --run
 
 # Unit tests
 cargo test -p xtask
+cargo test -p ralph-gui --lib
 cargo test -p ralph-workflow --lib --all-features
 
 # Integration tests
