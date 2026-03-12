@@ -166,6 +166,35 @@ fn test_checkpoint_replay_derives_role_from_authoritative_drain_when_metadata_co
     });
 }
 
+/// Test that nested continuation-prompt role metadata is derived from drain metadata on replay.
+#[test]
+fn test_checkpoint_replay_derives_nested_prompt_role_from_authoritative_drain() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+
+        let mut json = serde_json::to_value(&state).expect("state should serialize");
+        json["agent_chain"]["rate_limit_continuation_prompt"] = serde_json::json!({
+            "drain": "Fix",
+            "role": "Developer",
+            "prompt": "retry with fix context"
+        });
+
+        let restored_state: PipelineState = serde_json::from_value(json)
+            .expect("checkpoint with nested prompt metadata should deserialize");
+
+        let prompt = restored_state
+            .agent_chain
+            .rate_limit_continuation_prompt
+            .expect("structured prompt should deserialize");
+        assert_eq!(prompt.drain, AgentDrain::Fix);
+        assert_eq!(prompt.role, AgentRole::Reviewer);
+        assert_eq!(prompt.prompt, "retry with fix context");
+    });
+}
+
 /// Test that review completion with issues hands runtime ownership to the fix drain.
 #[test]
 fn test_review_completion_with_issues_switches_runtime_to_fix_drain() {

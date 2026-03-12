@@ -99,7 +99,8 @@ pub struct RateLimitContinuationPrompt {
 enum RateLimitContinuationPromptRepr {
     LegacyString(String),
     Structured {
-        role: AgentRole,
+        #[serde(rename = "role")]
+        _role: AgentRole,
         #[serde(default)]
         drain: Option<AgentDrain>,
         prompt: String,
@@ -158,14 +159,17 @@ impl<'de> Deserialize<'de> for AgentChainState {
                     }
                 }
                 RateLimitContinuationPromptRepr::Structured {
-                    role,
+                    _role: _,
                     drain,
                     prompt,
-                } => RateLimitContinuationPrompt {
-                    drain: drain.unwrap_or(current_drain),
-                    role,
-                    prompt,
-                },
+                } => {
+                    let prompt_drain = drain.unwrap_or(current_drain);
+                    RateLimitContinuationPrompt {
+                        drain: prompt_drain,
+                        role: prompt_drain.role(),
+                        prompt,
+                    }
+                }
             }
         });
 

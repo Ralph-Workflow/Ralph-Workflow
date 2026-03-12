@@ -13,10 +13,13 @@ fn create_resume_state(
     total_iterations: u32,
     reviewer_pass: u32,
     total_reviewer_passes: u32,
-) -> PipelineState {
+) -> Box<PipelineState> {
     // Use initial() to avoid constructing the full struct literal on the stack
     // (which would exceed the large_stack_frames threshold).
-    let mut state = PipelineState::initial(total_iterations, total_reviewer_passes);
+    let mut state = Box::new(PipelineState::initial(
+        total_iterations,
+        total_reviewer_passes,
+    ));
     state.phase = phase;
     state.iteration = iteration;
     state.reviewer_pass = reviewer_pass;
