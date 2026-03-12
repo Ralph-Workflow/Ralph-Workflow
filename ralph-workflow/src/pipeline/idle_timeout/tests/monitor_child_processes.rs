@@ -535,9 +535,9 @@ fn active_children_after_child_free_gap_get_startup_grace_again() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(1),
+        check_interval: Duration::from_millis(5),
         kill_config: fast_kill_config(),
-        required_idle_confirmations: 2,
+        required_idle_confirmations: 3,
         check_child_processes: true,
     };
 
