@@ -104,6 +104,15 @@ fn scoped_hooks_dir(worktree_root: &std::path::Path) -> std::path::PathBuf {
         .hooks_dir
 }
 
+fn read_config_value(path: &std::path::Path, key: &str) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+
+    let config = git2::Config::open(path).unwrap();
+    config.get_string(key).ok()
+}
+
 fn create_linked_worktree_fixture() -> (
     tempfile::TempDir,
     std::path::PathBuf,
@@ -543,6 +552,58 @@ fn test_root_start_agent_phase_writes_only_main_worktree_hook_config() {
     uninstall_hooks_in_repo(&root_repo, &logger).unwrap();
     assert!(try_remove_ralph_dir(&root_repo));
     ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_last_active_linked_worktree_cleanup_restores_shared_worktree_extension_state() {
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, worktree_two) = create_linked_worktree_fixture();
+    let common_config = root_repo.join(".git/config");
+
+    assert_eq!(
+        read_config_value(&common_config, "extensions.worktreeConfig"),
+        None,
+        "fixture should start without a shared worktreeConfig extension override"
+    );
+
+    let mut helpers_one = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_one, &mut helpers_one).unwrap();
+    assert_eq!(
+        read_config_value(&common_config, "extensions.worktreeConfig").as_deref(),
+        Some("true"),
+        "first protected linked worktree should enable shared worktreeConfig support"
+    );
+
+    let mut helpers_two = GitHelpers::default();
+    start_agent_phase_in_repo(&worktree_two, &mut helpers_two).unwrap();
+
+    end_agent_phase_in_repo(&worktree_one);
+    disable_git_wrapper(&mut helpers_one);
+    uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_one));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+
+    assert_eq!(
+        read_config_value(&common_config, "extensions.worktreeConfig").as_deref(),
+        Some("true"),
+        "shared worktreeConfig support must remain enabled while another linked worktree is still protected"
+    );
+
+    end_agent_phase_in_repo(&worktree_two);
+    disable_git_wrapper(&mut helpers_two);
+    uninstall_hooks_in_repo(&worktree_two, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&worktree_two));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+
+    assert_eq!(
+        read_config_value(&common_config, "extensions.worktreeConfig"),
+        None,
+        "last protected linked worktree cleanup must restore the shared extension to its original missing state"
+    );
 }
 
 #[test]

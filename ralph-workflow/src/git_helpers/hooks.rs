@@ -40,16 +40,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 const HOOKS_PATH_STATE_FILE: &str = "hooks-path.previous";
-const WORKTREE_CONFIG_STATE_FILE: &str = "worktree-config.previous";
+const WORKTREE_CONFIG_STATE_KEY: &str = "ralph.worktreeConfigOriginalState";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StoredHookPath {
-    Missing,
-    Value(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum StoredWorktreeConfigState {
     Missing,
     Value(String),
 }
@@ -58,8 +52,24 @@ fn hooks_path_state_path(ralph_dir: &Path) -> PathBuf {
     ralph_dir.join(HOOKS_PATH_STATE_FILE)
 }
 
-fn worktree_config_state_path(ralph_dir: &Path) -> PathBuf {
-    ralph_dir.join(WORKTREE_CONFIG_STATE_FILE)
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StoredSharedWorktreeConfigState {
+    Missing,
+    Value(String),
+}
+
+impl StoredSharedWorktreeConfigState {
+    fn serialize(&self) -> String {
+        match self {
+            Self::Missing => "missing".to_string(),
+            Self::Value(value) => format!("value:{value}"),
+        }
+    }
+
+    fn deserialize(raw: &str) -> Self {
+        raw.strip_prefix("value:")
+            .map_or(Self::Missing, |value| Self::Value(value.to_string()))
+    }
 }
 
 fn worktree_config_path(scope: &ProtectionScope) -> Option<&Path> {
@@ -133,23 +143,44 @@ fn load_hook_path_state(path: &Path) -> io::Result<Option<StoredHookPath>> {
     Ok(Some(StoredHookPath::Missing))
 }
 
-fn store_worktree_config_state(path: &Path, state: &StoredWorktreeConfigState) -> io::Result<()> {
-    let content = match state {
-        StoredWorktreeConfigState::Missing => "missing\n".to_string(),
-        StoredWorktreeConfigState::Value(value) => format!("value\n{value}"),
-    };
-    fs::write(path, content)
+fn read_config_path(config_path: &Path) -> io::Result<Option<PathBuf>> {
+    read_config_string(config_path, "core.hooksPath").map(|value| value.map(PathBuf::from))
 }
 
-fn load_worktree_config_state(path: &Path) -> io::Result<Option<StoredWorktreeConfigState>> {
-    if !path.exists() {
+fn read_shared_worktree_config_state(
+    common_config: &Path,
+) -> io::Result<Option<StoredSharedWorktreeConfigState>> {
+    if !common_config.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(path)?;
-    if let Some(value) = content.strip_prefix("value\n") {
-        return Ok(Some(StoredWorktreeConfigState::Value(value.to_string())));
+
+    let config =
+        Config::open(common_config).map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
+    match config.get_string(WORKTREE_CONFIG_STATE_KEY) {
+        Ok(value) => Ok(Some(StoredSharedWorktreeConfigState::deserialize(&value))),
+        Err(err) if err.code() == git2::ErrorCode::NotFound => Ok(None),
+        Err(err) => Err(crate::git_helpers::git2_to_io_error(&err)),
     }
-    Ok(Some(StoredWorktreeConfigState::Missing))
+}
+
+fn write_shared_worktree_config_state(
+    common_config: &Path,
+    state: &StoredSharedWorktreeConfigState,
+) -> io::Result<()> {
+    let mut config = open_config(common_config)?;
+    config
+        .set_str(WORKTREE_CONFIG_STATE_KEY, &state.serialize())
+        .map_err(|e| crate::git_helpers::git2_to_io_error(&e))
+}
+
+fn remove_shared_worktree_config_state(common_config: &Path) -> io::Result<()> {
+    let mut config = open_config(common_config)?;
+    match config.remove(WORKTREE_CONFIG_STATE_KEY) {
+        Ok(()) => {}
+        Err(err) if err.code() == git2::ErrorCode::NotFound => {}
+        Err(err) => return Err(crate::git_helpers::git2_to_io_error(&err)),
+    }
+    remove_config_file_if_no_entries(common_config)
 }
 
 fn write_worktree_hooks_path(scope: &ProtectionScope) -> io::Result<()> {
@@ -193,23 +224,50 @@ fn restore_worktree_hooks_path(scope: &ProtectionScope) -> io::Result<()> {
     Ok(())
 }
 
-fn other_worktree_config_files_exist(scope: &ProtectionScope) -> bool {
-    let current_config = worktree_config_path(scope);
-
-    let common_main_config = scope.common_git_dir.join("config.worktree");
-    if current_config != Some(common_main_config.as_path()) && common_main_config.exists() {
-        return true;
+fn scoped_hooks_dir_for_config(config_path: &Path, common_git_dir: &Path) -> Option<PathBuf> {
+    let git_dir = config_path.parent()?;
+    if git_dir == common_git_dir {
+        return Some(common_git_dir.join("ralph").join("hooks"));
     }
 
-    let worktrees_dir = scope.common_git_dir.join("worktrees");
-    let Ok(entries) = fs::read_dir(worktrees_dir) else {
-        return false;
-    };
+    let worktrees_dir = git_dir.parent()?;
+    (worktrees_dir.file_name()? == "worktrees").then(|| git_dir.join("ralph").join("hooks"))
+}
 
-    entries.flatten().any(|entry| {
-        let config_path = entry.path().join("config.worktree");
-        current_config != Some(config_path.as_path()) && config_path.exists()
-    })
+fn protected_config_paths(scope: &ProtectionScope) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    paths.push(scope.common_git_dir.join("config.worktree"));
+
+    let worktrees_dir = scope.common_git_dir.join("worktrees");
+    if let Ok(entries) = fs::read_dir(worktrees_dir) {
+        for entry in entries.flatten() {
+            paths.push(entry.path().join("config.worktree"));
+        }
+    }
+
+    paths
+}
+
+fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io::Result<bool> {
+    let current_config = worktree_config_path(scope);
+
+    for config_path in protected_config_paths(scope) {
+        if current_config == Some(config_path.as_path()) || !config_path.exists() {
+            continue;
+        }
+
+        let Some(expected_hooks_dir) =
+            scoped_hooks_dir_for_config(&config_path, &scope.common_git_dir)
+        else {
+            continue;
+        };
+
+        if read_config_path(&config_path)?.is_some_and(|value| value == expected_hooks_dir) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
@@ -217,24 +275,25 @@ fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
         return Ok(());
     }
 
-    let state_path = worktree_config_state_path(&scope.ralph_dir);
     let common_config = common_config_path(scope);
     let mut config = open_config(&common_config)?;
-    match config.get_string("extensions.worktreeConfig") {
-        Ok(value) => {
-            if value == "true" {
-                return Ok(());
-            }
-            if !state_path.exists() {
-                store_worktree_config_state(&state_path, &StoredWorktreeConfigState::Value(value))?;
-            }
-        }
-        Err(err) if err.code() == git2::ErrorCode::NotFound => {
-            if !state_path.exists() {
-                store_worktree_config_state(&state_path, &StoredWorktreeConfigState::Missing)?;
-            }
-        }
+    let current_state = match config.get_string("extensions.worktreeConfig") {
+        Ok(value) => Some(value),
+        Err(err) if err.code() == git2::ErrorCode::NotFound => None,
         Err(err) => return Err(crate::git_helpers::git2_to_io_error(&err)),
+    };
+
+    if read_shared_worktree_config_state(&common_config)?.is_none() {
+        let stored_state = current_state.clone().map_or(
+            StoredSharedWorktreeConfigState::Missing,
+            StoredSharedWorktreeConfigState::Value,
+        );
+        write_shared_worktree_config_state(&common_config, &stored_state)?;
+        config = open_config(&common_config)?;
+    }
+
+    if current_state.as_deref() == Some("true") {
+        return Ok(());
     }
 
     config
@@ -243,26 +302,28 @@ fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
 }
 
 fn restore_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
-    if !scope.uses_worktree_scoped_hooks || other_worktree_config_files_exist(scope) {
+    if !scope.uses_worktree_scoped_hooks || other_active_ralph_hooks_path_overrides_exist(scope)? {
         return Ok(());
     }
 
-    let state_path = worktree_config_state_path(&scope.ralph_dir);
-    let Some(state) = load_worktree_config_state(&state_path)? else {
+    let common_config = common_config_path(scope);
+    let Some(state) = read_shared_worktree_config_state(&common_config)? else {
         return Ok(());
     };
-    let mut config = open_config(&common_config_path(scope))?;
+    let mut config = open_config(&common_config)?;
     match state {
-        StoredWorktreeConfigState::Missing => match config.remove("extensions.worktreeConfig") {
-            Ok(()) => {}
-            Err(err) if err.code() == git2::ErrorCode::NotFound => {}
-            Err(err) => return Err(crate::git_helpers::git2_to_io_error(&err)),
-        },
-        StoredWorktreeConfigState::Value(value) => config
+        StoredSharedWorktreeConfigState::Missing => {
+            match config.remove("extensions.worktreeConfig") {
+                Ok(()) => {}
+                Err(err) if err.code() == git2::ErrorCode::NotFound => {}
+                Err(err) => return Err(crate::git_helpers::git2_to_io_error(&err)),
+            }
+        }
+        StoredSharedWorktreeConfigState::Value(value) => config
             .set_str("extensions.worktreeConfig", &value)
             .map_err(|e| crate::git_helpers::git2_to_io_error(&e))?,
     }
-    let _ = fs::remove_file(state_path);
+    remove_shared_worktree_config_state(&common_config)?;
     Ok(())
 }
 
@@ -853,6 +914,21 @@ mod tests {
     use super::*;
     use crate::workspace::MemoryWorkspace;
 
+    fn init_repo_with_commit(path: &Path) -> git2::Repository {
+        let repo = git2::Repository::init(path).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        fs::write(path.join("tracked.txt"), "tracked\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+        drop(tree);
+        repo
+    }
+
     // =========================================================================
     // Tests using MemoryWorkspace (workspace-aware)
     // =========================================================================
@@ -1165,5 +1241,59 @@ mod tests {
         // Should not panic when repo root doesn't exist
         let nonexistent = Path::new("/nonexistent/repo/root");
         uninstall_hooks_silent_at(nonexistent);
+    }
+
+    #[test]
+    fn test_scoped_hooks_dir_for_config_maps_main_and_linked_worktrees_to_distinct_hook_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = init_repo_with_commit(tmp.path());
+        let worktree_path = tmp.path().join("wt-test");
+        let _worktree = main_repo.worktree("wt-test", &worktree_path, None).unwrap();
+        let worktree_repo = git2::Repository::open(&worktree_path).unwrap();
+
+        let main_config = main_repo.path().join("config.worktree");
+        let linked_config = worktree_repo.path().join("config.worktree");
+
+        assert_eq!(
+            scoped_hooks_dir_for_config(&main_config, main_repo.path()),
+            Some(main_repo.path().join("ralph/hooks"))
+        );
+        assert_eq!(
+            scoped_hooks_dir_for_config(&linked_config, main_repo.path()),
+            Some(worktree_repo.path().join("ralph/hooks"))
+        );
+    }
+
+    #[test]
+    fn test_last_worktree_hook_cleanup_restores_shared_worktree_config_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_one = tmp.path().join("wt-one");
+        let worktree_two = tmp.path().join("wt-two");
+        let _wt_one = main_repo.worktree("wt-one", &worktree_one, None).unwrap();
+        let _wt_two = main_repo.worktree("wt-two", &worktree_two, None).unwrap();
+        let logger = Logger::new(crate::logger::Colors::with_enabled(false));
+        let common_config = root_repo_path.join(".git/config");
+
+        install_hooks_in_repo(&worktree_one).unwrap();
+        install_hooks_in_repo(&worktree_two).unwrap();
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            Some("true".to_string())
+        );
+
+        uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            Some("true".to_string())
+        );
+
+        uninstall_hooks_in_repo(&worktree_two, &logger).unwrap();
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            None
+        );
     }
 }
