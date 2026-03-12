@@ -357,6 +357,37 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
 }
 
 #[test]
+fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings() {
+    let mut registry = AgentRegistry::new().unwrap();
+
+    let toml_str = r#"
+        [agent_chains]
+        review_chain = ["claude"]
+        fix_chain = ["codex"]
+
+        [agent_drains]
+        planning = "review_chain"
+        development = "review_chain"
+        review = "review_chain"
+        fix = "fix_chain"
+        commit = "review_chain"
+        analysis = "review_chain"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    registry.apply_unified_config(&unified);
+
+    assert_eq!(
+        registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Review),
+        vec!["claude"]
+    );
+    assert_eq!(
+        registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Fix),
+        vec!["codex"]
+    );
+}
+
+#[test]
 fn test_validate_agent_chains_error_mentions_searched_sources() {
     let mut registry = AgentRegistry::new().unwrap();
     // Override chains with empty values via apply_unified_config

@@ -339,6 +339,8 @@ Rules:
 - When a built-in drain is omitted from `[agent_drains]`, default it from already-resolved sibling drains first (for example commit from review/fix, analysis from planning/development) before consulting legacy compatibility names.
 - Drain-selection effects and events should address the concrete drain directly (for example `InitializeAgentChain { drain }` and `agent_chain_initialized(drain, ...)`) rather than carrying redundant role-shaped selectors.
 - Effect handlers should consume already-resolved concrete drain-to-chain mappings, not re-derive chain semantics from scattered defaults.
+- Runtime effects that still need a broad role label for accounting or diagnostics should derive it from the active drain at emission time, so stale `current_role` metadata cannot misroute retry/exhaustion behavior.
+- Checkpoint compatibility should treat any stored role label as derived metadata. Resume logic must be able to reconstruct the effective role from the persisted drain when older/newer checkpoints omit or disagree on `current_role`.
 
 When changing agent architecture, apply this model consistently across config, runtime state, effects, handlers, and documentation. Do not introduce a new abstraction in one layer while leaving the other layers role-shaped and ambiguous.
 

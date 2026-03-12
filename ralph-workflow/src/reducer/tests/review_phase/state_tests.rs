@@ -140,8 +140,9 @@ fn test_review_uses_agent_from_state_chain_not_context() {
 fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
     use crate::reducer::orchestration::determine_next_effect;
 
-    // Simulate the bug/regression scenario: the chain is populated, but for the wrong role.
-    // Fix attempts must use the Reviewer role (not Developer).
+    // Simulate the regression scenario: a stale development chain is present, but reducer-owned
+    // drain state says review is entering fix flow. Orchestration must honor the explicit fix
+    // drain and reinitialize that consumer instead of inferring from the stale chain contents.
     let developer_chain = crate::reducer::state::AgentChainState::initial().with_agents(
         vec!["dev-1".to_string(), "dev-2".to_string()],
         vec![vec![], vec![]],
@@ -153,7 +154,7 @@ fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
         reviewer_pass: 0,
         total_reviewer_passes: 1,
         review_issues_found: true,
-        agent_chain: developer_chain,
+        agent_chain: developer_chain.with_drain(crate::agents::AgentDrain::Fix),
         ..create_test_state()
     };
 
@@ -161,12 +162,12 @@ fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
     assert!(
         matches!(
             effect,
-            crate::reducer::effect::Effect::InitializeAgentChain {
-                drain: crate::agents::AgentDrain::Fix,
-                ..
+            crate::reducer::effect::Effect::PrepareFixPrompt {
+                pass: 0,
+                prompt_mode: crate::reducer::state::PromptMode::Normal,
             }
         ),
-        "Expected InitializeAgentChain for Reviewer before fix attempt, got {effect:?}"
+        "Expected fix prompt preparation for explicit Fix drain, got {effect:?}"
     );
 }
 

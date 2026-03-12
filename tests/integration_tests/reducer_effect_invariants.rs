@@ -243,6 +243,82 @@ fn test_exhausted_agent_chain_emits_abort_effect() {
     });
 }
 
+/// Exhaustion reporting must derive the role from the active drain, not stale role metadata.
+#[test]
+fn test_exhausted_analysis_drain_reports_analysis_role_when_role_metadata_is_stale() {
+    with_default_timeout(|| {
+        let mut chain = AgentChainState::initial()
+            .with_agents(
+                vec!["analysis-agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Analysis)
+            .with_max_cycles(1);
+        chain.current_role = AgentRole::Developer;
+        chain = chain.start_retry_cycle();
+
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 0,
+            total_iterations: 1,
+            agent_chain: chain,
+            ..with_locked_prompt_permissions(PipelineState::initial(1, 0))
+        };
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::ReportAgentChainExhausted {
+                    role: AgentRole::Analysis,
+                    ..
+                }
+            ),
+            "Exhausted analysis drain should report analysis role, got {effect:?}"
+        );
+    });
+}
+
+/// Backoff waiting must derive the role from the active drain, not stale role metadata.
+#[test]
+fn test_backoff_wait_uses_active_drain_role_when_role_metadata_is_stale() {
+    with_default_timeout(|| {
+        let mut chain = AgentChainState::initial()
+            .with_agents(
+                vec!["analysis-agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Analysis);
+        chain.current_role = AgentRole::Developer;
+        chain.backoff_pending_ms = Some(2_500);
+
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 0,
+            total_iterations: 1,
+            agent_chain: chain,
+            ..with_locked_prompt_permissions(PipelineState::initial(1, 0))
+        };
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::BackoffWait {
+                    role: AgentRole::Analysis,
+                    cycle: 0,
+                    duration_ms: 2_500
+                }
+            ),
+            "Backoff wait should report the active drain role, got {effect:?}"
+        );
+    });
+}
+
 /// Test that Interrupted phase drives a checkpoint save before termination.
 ///
 /// Regression: an Interrupted state combined with an exhausted agent chain must not

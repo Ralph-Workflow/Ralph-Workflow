@@ -317,8 +317,7 @@ developer = ["codex"]
     let chain = merged.agent_chain.unwrap();
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.developer, vec!["codex"]);
     assert_eq!(
@@ -350,8 +349,7 @@ developer = ["codex"]
     let chain = merged.agent_chain.unwrap();
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.max_retries, builtins.max_retries);
     assert_eq!(chain.retry_delay_ms, builtins.retry_delay_ms);

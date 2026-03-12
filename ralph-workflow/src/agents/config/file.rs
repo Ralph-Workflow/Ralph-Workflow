@@ -1,6 +1,7 @@
 use super::types::{AgentConfigToml, DEFAULT_AGENTS_TOML};
 use crate::agents::ccs_env::CcsEnvVarsError;
 use crate::agents::fallback::FallbackConfig;
+use crate::agents::fallback::ResolvedDrainConfig;
 use crate::workspace::{Workspace, WorkspaceFs};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,9 +17,15 @@ pub struct AgentsConfigFile {
     /// Map of agent name to configuration.
     #[serde(default)]
     pub agents: HashMap<String, AgentConfigToml>,
-    /// Agent chain configuration (preferred agents + fallbacks).
+    /// Named reusable agent chains.
+    #[serde(default)]
+    pub agent_chains: HashMap<String, Vec<String>>,
+    /// Built-in drain bindings to named chains.
+    #[serde(default)]
+    pub agent_drains: HashMap<String, String>,
+    /// Legacy agent chain configuration (preferred agents + fallbacks).
     #[serde(default, rename = "agent_chain")]
-    pub fallback: FallbackConfig,
+    pub fallback: Option<FallbackConfig>,
 }
 
 /// Error type for agent configuration loading.
@@ -30,6 +37,8 @@ pub enum AgentConfigError {
     Toml(#[from] toml::de::Error),
     #[error("Built-in agents.toml template is invalid TOML: {0}")]
     DefaultTemplateToml(toml::de::Error),
+    #[error("Invalid agent drain configuration: {0}")]
+    InvalidDrainConfig(String),
     #[error("{0}")]
     CcsEnvVars(#[from] CcsEnvVarsError),
 }
@@ -44,6 +53,25 @@ pub enum ConfigInitResult {
 }
 
 impl AgentsConfigFile {
+    /// Resolve the configured agent chains into explicit built-in drains.
+    ///
+    /// Returns `None` when the file defines no chain configuration at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the named chain/drain schema is internally inconsistent
+    /// or mixed with the legacy `[agent_chain]` table.
+    pub fn resolve_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, AgentConfigError> {
+        crate::config::UnifiedConfig {
+            agent_chains: self.agent_chains.clone(),
+            agent_drains: self.agent_drains.clone(),
+            agent_chain: self.fallback.clone(),
+            ..crate::config::UnifiedConfig::default()
+        }
+        .resolve_agent_drains_checked()
+        .map_err(AgentConfigError::InvalidDrainConfig)
+    }
+
     /// Load agents config from a file, returning None if file doesn't exist.
     ///
     /// # Errors

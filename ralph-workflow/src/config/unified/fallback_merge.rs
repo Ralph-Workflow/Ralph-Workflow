@@ -42,7 +42,7 @@ where
 {
     registry_loader().map_or_else(
         |_error| hardcoded_fallback_defaults(),
-        |registry| registry.fallback_config().clone(),
+        |registry| registry.fallback_config(),
     )
 }
 

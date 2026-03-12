@@ -418,9 +418,10 @@ pub struct UnifiedConfig {
     /// Drain-to-chain bindings for the built-in drains.
     #[serde(default)]
     pub agent_drains: HashMap<String, String>,
-    /// Agent chain configuration.
+    /// Legacy role-keyed agent chain configuration.
     ///
-    /// When omitted, Ralph uses built-in defaults.
+    /// When present, this is normalized into the same built-in drain bindings
+    /// used by the named `[agent_chains]` / `[agent_drains]` schema.
     #[serde(default, rename = "agent_chain")]
     pub agent_chain: Option<FallbackConfig>,
 }

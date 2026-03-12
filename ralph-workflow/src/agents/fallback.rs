@@ -172,6 +172,9 @@ impl ResolvedDrainConfig {
     }
 
     /// Project resolved drain bindings back into the legacy role-shaped config.
+    ///
+    /// This is a compatibility view for config/error reporting. Runtime code
+    /// should consume resolved drain bindings directly.
     #[must_use]
     pub fn to_legacy_fallback(&self) -> FallbackConfig {
         FallbackConfig {

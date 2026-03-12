@@ -280,6 +280,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         },
         // XSD validation failed: trigger XSD retry via continuation state
         AgentEvent::XsdValidationFailed { .. } => {
+            let active_review_drain = state.agent_chain.current_drain;
             PipelineState {
                 agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
                 continuation: state.continuation.trigger_xsd_retry(),
@@ -288,10 +289,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     PipelinePhase::Planning => state.metrics.increment_xsd_retry_planning(),
                     PipelinePhase::Development => state.metrics.increment_xsd_retry_development(),
                     PipelinePhase::Review => {
-                        // Distinguish review vs fix based on whether we're in fix flow.
-                        if state.fix_agent_invoked_pass.is_some()
-                            && state.fix_result_xml_extracted_pass.is_none()
-                        {
+                        if active_review_drain == crate::agents::AgentDrain::Fix {
                             state.metrics.increment_xsd_retry_fix()
                         } else {
                             state.metrics.increment_xsd_retry_review()
@@ -437,7 +435,7 @@ fn reset_phase_xml_cleanup_for_retry(state: PipelineState) -> PipelineState {
             ..state
         },
         PipelinePhase::Review => {
-            if state.review_issues_found || state.continuation.fix_continue_pending {
+            if state.agent_chain.current_drain == crate::agents::AgentDrain::Fix {
                 PipelineState {
                     fix_required_files_cleaned_pass: None,
                     ..state

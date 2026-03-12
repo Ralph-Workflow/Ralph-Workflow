@@ -449,8 +449,7 @@ developer = ["codex"]
 
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.developer, vec!["codex"]);
     assert_eq!(
@@ -490,8 +489,7 @@ developer_iters = 9
 
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.developer, vec!["codex"]);
     assert_eq!(

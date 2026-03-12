@@ -12,10 +12,10 @@ use crate::agents::opencode_api::ApiCatalog;
 use crate::agents::opencode_resolver::OpenCodeResolver;
 use std::collections::BTreeSet;
 
-/// Validate all `OpenCode` agent references in the fallback configuration.
+/// Validate all `OpenCode` agent references in resolved drain bindings.
 ///
 /// This function checks that all `opencode/provider/model` references in the
-/// configured agent chains have valid providers and models in the API catalog.
+/// configured drain bindings have valid providers and models in the API catalog.
 ///
 /// Returns `Ok(())` if all references are valid, or `Err(String)` with a
 /// user-friendly error message if any validation fails.
@@ -24,6 +24,20 @@ use std::collections::BTreeSet;
 ///
 /// Returns error if the operation fails.
 pub fn validate_opencode_agents(
+    resolved: &ResolvedDrainConfig,
+    catalog: &ApiCatalog,
+) -> Result<(), String> {
+    validate_opencode_agents_in_resolved_drains(resolved, catalog)
+}
+
+/// Validate all `OpenCode` agent references from the legacy fallback config.
+///
+/// This compatibility wrapper exists at the config boundary only.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn validate_opencode_agents_legacy(
     fallback: &FallbackConfig,
     catalog: &ApiCatalog,
 ) -> Result<(), String> {
@@ -80,9 +94,15 @@ fn parse_opencode_ref(agent_name: &str) -> Option<(String, String)> {
     Some((provider, model))
 }
 
-/// Get all `OpenCode` agent references from the fallback configuration.
+/// Get all `OpenCode` agent references from resolved drain bindings.
 #[must_use]
-pub fn get_opencode_refs(fallback: &FallbackConfig) -> Vec<String> {
+pub fn get_opencode_refs(resolved: &ResolvedDrainConfig) -> Vec<String> {
+    get_opencode_refs_in_resolved_drains(resolved)
+}
+
+/// Get all `OpenCode` agent references from the legacy fallback configuration.
+#[must_use]
+pub fn get_opencode_refs_legacy(fallback: &FallbackConfig) -> Vec<String> {
     get_opencode_refs_in_resolved_drains(&fallback.resolve_drains())
 }
 
@@ -99,19 +119,17 @@ pub fn get_opencode_refs_in_resolved_drains(resolved: &ResolvedDrainConfig) -> V
     unique.into_iter().collect()
 }
 
-/// Count the number of `OpenCode` agent references in the fallback configuration.
+/// Count the number of `OpenCode` agent references in the resolved drain bindings.
 #[cfg(test)]
-fn count_opencode_refs(fallback: &FallbackConfig) -> usize {
-    fallback
-        .get_fallbacks(crate::agents::AgentRole::Developer)
-        .iter()
-        .chain(
-            fallback
-                .get_fallbacks(crate::agents::AgentRole::Reviewer)
-                .iter(),
-        )
+fn count_opencode_refs(resolved: &ResolvedDrainConfig) -> usize {
+    AgentDrain::all()
+        .into_iter()
+        .filter_map(|drain| resolved.binding(drain))
+        .flat_map(|binding| binding.agents.iter())
         .filter(|name| name.starts_with("opencode/"))
-        .count()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .len()
 }
 
 #[cfg(test)]
@@ -178,8 +196,9 @@ mod tests {
     fn test_validate_opencode_agents_valid() {
         let catalog = mock_catalog();
         let fallback = create_fallback_with_refs(&["opencode/anthropic/claude-sonnet-4-5"]);
+        let resolved = fallback.resolve_drains();
 
-        let result = validate_opencode_agents(&fallback, &catalog);
+        let result = validate_opencode_agents(&resolved, &catalog);
         assert!(result.is_ok());
     }
 
@@ -187,8 +206,9 @@ mod tests {
     fn test_validate_opencode_agents_invalid_provider() {
         let catalog = mock_catalog();
         let fallback = create_fallback_with_refs(&["opencode/unknown/claude-sonnet-4-5"]);
+        let resolved = fallback.resolve_drains();
 
-        let result = validate_opencode_agents(&fallback, &catalog);
+        let result = validate_opencode_agents(&resolved, &catalog);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown"));
     }
@@ -197,8 +217,9 @@ mod tests {
     fn test_validate_opencode_agents_invalid_model() {
         let catalog = mock_catalog();
         let fallback = create_fallback_with_refs(&["opencode/anthropic/unknown-model"]);
+        let resolved = fallback.resolve_drains();
 
-        let result = validate_opencode_agents(&fallback, &catalog);
+        let result = validate_opencode_agents(&resolved, &catalog);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown-model"));
     }
@@ -210,8 +231,9 @@ mod tests {
             "claude",
             "opencode/openai/gpt-4",
         ]);
+        let resolved = fallback.resolve_drains();
 
-        let count = count_opencode_refs(&fallback);
+        let count = count_opencode_refs(&resolved);
         assert_eq!(count, 2);
     }
 
@@ -222,8 +244,9 @@ mod tests {
             "claude",
             "opencode/openai/gpt-4",
         ]);
+        let resolved = fallback.resolve_drains();
 
-        let refs = get_opencode_refs(&fallback);
+        let refs = get_opencode_refs(&resolved);
         assert_eq!(refs.len(), 2);
         assert!(refs.contains(&"opencode/anthropic/claude-sonnet-4-5".to_string()));
         assert!(refs.contains(&"opencode/openai/gpt-4".to_string()));

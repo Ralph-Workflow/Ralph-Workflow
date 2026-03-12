@@ -294,9 +294,7 @@ impl MainEffectHandler {
             self.state.agent_chain.current_drain = expected_drain;
         }
 
-        // Ensure agent chain role matches expected role
-        // The agent chain should already be initialized with the correct role from
-        // the reducer, but we defensively ensure consistency here.
+        // Keep compatibility role metadata in sync with the authoritative drain.
         if self.state.agent_chain.current_role != expected_role {
             self.state.agent_chain.current_role = expected_role;
         }

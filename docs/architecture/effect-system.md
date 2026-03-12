@@ -475,6 +475,10 @@ Legacy `[agent_chain]` remains a config-input compatibility path only. The effec
 
 Normalization should prefer already-bound drains when filling built-in defaults. For example, if `review` and `fix` are both bound to `shared_review`, then an omitted `commit` drain should inherit that resolved binding instead of inventing a new role-shaped default at handler time.
 
+At runtime, handler code should read retry settings and agent lists from the resolved drain configuration itself. Do not keep a second stored fallback table in runtime state and hope it stays synchronized.
+
+Checkpoint resume follows the same rule: the persisted drain is authoritative, and any persisted broad role label is compatibility metadata only. Handlers should be able to continue correctly even when `current_role` is absent from older checkpoints.
+
 Effect handlers must not become a second policy engine for agent architecture. In particular:
 
 - do not push unresolved chain aliases into handler-time logic

@@ -16,9 +16,11 @@
 
 use std::path::Path;
 
-use ralph_workflow::agents::AgentRole;
-use ralph_workflow::reducer::effect::Effect;
-use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
+use ralph_workflow::agents::{AgentDrain, AgentRole};
+use ralph_workflow::reducer::effect::{Effect, EffectHandler};
+use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase, ReviewEvent};
+use ralph_workflow::reducer::handler::MainEffectHandler;
+use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
 use ralph_workflow::reducer::orchestration::determine_next_effect;
 use ralph_workflow::reducer::reduce;
 use ralph_workflow::reducer::state::{
@@ -26,6 +28,7 @@ use ralph_workflow::reducer::state::{
 };
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
 
+use crate::common::IntegrationFixture;
 use crate::test_timeout::with_default_timeout;
 
 /// Helper to create a base test state with prompt permissions locked.
@@ -234,6 +237,63 @@ fn test_fix_cleanup_before_invoke() {
             ),
             "Expected CleanupRequiredFiles for fix_result.xml, got {effect:?}"
         );
+    });
+}
+
+/// Test that production cleanup emits the fix cleanup event from the explicit fix drain.
+#[test]
+fn test_fix_cleanup_handler_uses_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let mut fixture = IntegrationFixture::new();
+        let files: Box<[String]> = vec![".agent/tmp/fix_result.xml".to_string()].into();
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 1,
+            review_issues_found: false,
+            agent_chain: create_test_state()
+                .agent_chain
+                .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(AgentDrain::Fix),
+            ..create_test_state()
+        };
+        let mut handler = MainEffectHandler::new(state);
+        let mut ctx = fixture.ctx(None);
+
+        let result = handler
+            .execute(Effect::CleanupRequiredFiles { files }, &mut ctx)
+            .expect("cleanup effect should execute successfully");
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned { pass: 1 })
+        ));
+    });
+}
+
+/// Test that mock cleanup emits the fix cleanup event from the explicit fix drain.
+#[test]
+fn test_fix_cleanup_mock_uses_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 1,
+            review_issues_found: false,
+            agent_chain: create_test_state()
+                .agent_chain
+                .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(AgentDrain::Fix),
+            ..create_test_state()
+        };
+        let mut handler = MockEffectHandler::new(state);
+
+        let result = handler.execute_mock(&Effect::CleanupRequiredFiles {
+            files: vec![".agent/tmp/fix_result.xml".to_string()].into(),
+        });
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned { pass: 1 })
+        ));
     });
 }
 

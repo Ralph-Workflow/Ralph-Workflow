@@ -194,7 +194,7 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
             // Fall through to determine_next_effect_for_phase
         } else {
             return Effect::ReportAgentChainExhausted {
-                role: state.agent_chain.current_role,
+                role: state.agent_chain.current_drain.role(),
                 phase: state.phase,
                 cycle: state.agent_chain.retry_cycle,
             };
@@ -203,7 +203,7 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
 
     if let Some(duration_ms) = state.agent_chain.backoff_pending_ms {
         return Effect::BackoffWait {
-            role: state.agent_chain.current_role,
+            role: state.agent_chain.current_drain.role(),
             cycle: state.agent_chain.retry_cycle,
             duration_ms,
         };

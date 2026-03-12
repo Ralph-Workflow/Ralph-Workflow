@@ -11,12 +11,14 @@ impl AgentRegistry {
         match AgentsConfigFile::load_from_file(path)? {
             Some(config) => {
                 let count = config.agents.len();
+                let resolved_drains = config.resolve_drains_checked()?;
+
                 for (name, agent_toml) in config.agents {
                     self.register(&name, AgentConfig::from(agent_toml));
                 }
-                // Load fallback configuration
-                self.fallback = config.fallback;
-                self.resolved_drains = self.fallback.resolve_drains();
+                if let Some(resolved_drains) = resolved_drains {
+                    self.resolved_drains = resolved_drains;
+                }
                 Ok(count)
             }
             None => Ok(0),
@@ -36,8 +38,7 @@ impl AgentRegistry {
 
         let resolved_drains = unified
             .resolve_agent_drains()
-            .unwrap_or_else(|| self.fallback.resolve_drains());
-        self.fallback = resolved_drains.to_legacy_fallback();
+            .unwrap_or_else(|| self.resolved_drains.clone());
         self.resolved_drains = resolved_drains;
 
         loaded

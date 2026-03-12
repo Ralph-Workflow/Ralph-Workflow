@@ -1,5 +1,5 @@
 use super::MainEffectHandler;
-use crate::agents::{AgentDrain, AgentRole};
+use crate::agents::AgentDrain;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
@@ -10,8 +10,7 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         drain: AgentDrain,
     ) -> EffectResult {
-        let role = drain.role();
-        let fallback_config = ctx.registry.fallback_config();
+        let resolved_drains = ctx.registry.resolved_drains();
 
         // Resolve the concrete chain for this drain.
         let agents = ctx
@@ -27,21 +26,21 @@ impl MainEffectHandler {
         let event = PipelineEvent::agent_chain_initialized(
             drain,
             agents,
-            fallback_config.max_cycles,
-            fallback_config.retry_delay_ms,
-            fallback_config.backoff_multiplier,
-            fallback_config.max_backoff_ms,
+            resolved_drains.max_cycles,
+            resolved_drains.retry_delay_ms,
+            resolved_drains.backoff_multiplier,
+            resolved_drains.max_backoff_ms,
         );
 
         // Emit phase transition when entering a new major phase
-        let ui_events = match role {
-            AgentRole::Developer if self.state.phase == PipelinePhase::Planning => {
+        let ui_events = match drain {
+            AgentDrain::Planning if self.state.phase == PipelinePhase::Planning => {
                 vec![UIEvent::PhaseTransition {
                     from: None,
                     to: PipelinePhase::Planning,
                 }]
             }
-            AgentRole::Reviewer if self.state.phase == PipelinePhase::Review => {
+            AgentDrain::Review if self.state.phase == PipelinePhase::Review => {
                 vec![self.phase_transition_ui(PipelinePhase::Review)]
             }
             _ => vec![],

@@ -81,9 +81,10 @@ pub const VALID_CCS_ALIAS_CONFIG_KEYS: &[&str] = &[
     "model_flag",
 ];
 
-/// Valid keys for the [`agent_chain`] section.
+/// Valid keys for the legacy-compatible [`agent_chain`] section.
 ///
-/// This must match all fields in `FallbackConfig` from agents/fallback.rs.
+/// Runtime code consumes resolved drain bindings after normalization, but the
+/// legacy role-keyed table is still accepted at the config boundary.
 pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
     "developer",
     "reviewer",
@@ -97,7 +98,7 @@ pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
     "max_cycles",
 ];
 
-/// Valid keys for the [`agent_drains`] section.
+/// Valid keys for the built-in [`agent_drains`] section.
 pub const VALID_AGENT_DRAIN_KEYS: &[&str] = &[
     "planning",
     "development",

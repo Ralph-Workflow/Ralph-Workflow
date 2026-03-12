@@ -73,6 +73,12 @@ cargo clippy -p xtask --all-targets -- -D warnings
 cargo test -p xtask
 cargo test -p ralph-workflow --lib --all-features
 
+# Drain/chain architecture changes (named chains, drain bindings, checkpoint drain metadata)
+cargo test -p ralph-workflow agents::config::file::tests
+cargo test -p ralph-workflow agents::registry::tests
+cargo test -p ralph-workflow agents::validation::tests
+cargo test -p ralph-workflow-tests --test integration_tests agent_chain_normalization
+
 # Integration tests
 cargo test -p ralph-workflow-tests --test integration_tests
 
@@ -85,7 +91,13 @@ cargo test -p ralph-workflow --lib benchmarks
 cargo test -p ralph-workflow --lib executor::tests
 
 # Per-run logging tests (when changing logging infrastructure)
-cargo test -p ralph-workflow-tests logging_per_run
+cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
+
+# Metrics regressions (when changing iteration/retry/continuation/fallback logic)
+cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
+cargo test -p ralph-workflow-tests --test integration_tests iteration_counter
+cargo test -p ralph-workflow-tests --test integration_tests continuation_budget
+cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
 
 # Release build
 cargo build --release

@@ -457,8 +457,9 @@ where
             recovery.recovery_failed
         ));
         ctx.logger.info(&format!(
-            "Final state: agent_chain.retry_cycle={}, agent_chain.current_role={:?}",
-            runtime.state.agent_chain.retry_cycle, runtime.state.agent_chain.current_role
+            "Final state: agent_chain.retry_cycle={}, agent_chain.active_role={:?}",
+            runtime.state.agent_chain.retry_cycle,
+            runtime.state.agent_chain.active_role()
         ));
     }
 

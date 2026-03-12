@@ -11,7 +11,6 @@
 /// the `opencode/` prefix.
 pub struct AgentRegistry {
     agents: HashMap<String, AgentConfig>,
-    fallback: FallbackConfig,
     resolved_drains: crate::agents::fallback::ResolvedDrainConfig,
     /// CCS alias resolver for `ccs/alias` syntax.
     ccs_resolver: CcsAliasResolver,
@@ -28,13 +27,16 @@ impl AgentRegistry {
     ///
     /// Returns error if the operation fails.
     pub fn new() -> Result<Self, AgentConfigError> {
-        let AgentsConfigFile { agents, fallback } =
+        let AgentsConfigFile {
+            agents, fallback, ..
+        } =
             toml::from_str(DEFAULT_AGENTS_TOML).map_err(AgentConfigError::DefaultTemplateToml)?;
 
         let mut registry = Self {
             agents: HashMap::new(),
-            fallback: fallback.clone(),
-            resolved_drains: crate::agents::fallback::ResolvedDrainConfig::from_legacy(&fallback),
+            resolved_drains: crate::agents::fallback::ResolvedDrainConfig::from_legacy(
+                &fallback.unwrap_or_default(),
+            ),
             ccs_resolver: CcsAliasResolver::empty(),
             opencode_resolver: None,
             retry_timer: production_timer(),
@@ -341,12 +343,6 @@ impl AgentRegistry {
             .map(|c| c.build_cmd(true, true, false))
     }
 
-    /// Get the fallback configuration.
-    #[must_use]
-    pub const fn fallback_config(&self) -> &FallbackConfig {
-        &self.fallback
-    }
-
     #[must_use]
     pub fn resolved_drain(
         &self,
@@ -358,6 +354,14 @@ impl AgentRegistry {
     #[must_use]
     pub const fn resolved_drains(&self) -> &crate::agents::fallback::ResolvedDrainConfig {
         &self.resolved_drains
+    }
+
+    /// Get a compatibility projection of the resolved drain bindings.
+    ///
+    /// Runtime code should prefer `resolved_drains()` / `resolved_drain()`.
+    #[must_use]
+    pub fn fallback_config(&self) -> FallbackConfig {
+        self.resolved_drains.to_legacy_fallback()
     }
 
     /// Get the retry timer provider.
@@ -376,9 +380,19 @@ impl AgentRegistry {
     }
 
     /// Get all fallback agents for a role that are registered in this registry.
+    #[must_use]
     pub fn available_fallbacks(&self, role: AgentRole) -> Vec<&str> {
-        self.fallback
-            .get_fallbacks(role)
+        self.available_fallbacks_for_drain(crate::agents::AgentDrain::from(role))
+    }
+
+    /// Get all fallback agents for a drain that are registered in this registry.
+    #[must_use]
+    pub fn available_fallbacks_for_drain(
+        &self,
+        drain: crate::agents::AgentDrain,
+    ) -> Vec<&str> {
+        self.resolved_drain(drain)
+            .map_or(&[][..], |binding| binding.agents.as_slice())
             .iter()
             .filter(|name| self.is_agent_available(name))
             // Agents with can_commit=false are chat-only / non-tool agents and will stall Ralph.

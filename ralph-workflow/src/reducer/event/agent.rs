@@ -25,7 +25,10 @@ use serde::{Deserialize, Serialize};
 pub enum AgentEvent {
     /// Agent invocation started.
     InvocationStarted {
-        /// The role this agent is fulfilling.
+        /// Compatibility role metadata for the active drain.
+        ///
+        /// Runtime routing is drain-owned; reducers use explicit drain state as the
+        /// authoritative consumer identity.
         role: AgentRole,
         /// The agent being invoked.
         agent: String,
@@ -34,14 +37,14 @@ pub enum AgentEvent {
     },
     /// Agent invocation succeeded.
     InvocationSucceeded {
-        /// The role this agent fulfilled.
+        /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that succeeded.
         agent: String,
     },
     /// Agent invocation failed.
     InvocationFailed {
-        /// The role this agent was fulfilling.
+        /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that failed.
         agent: String,

@@ -73,9 +73,9 @@ impl MockEffectHandler {
                         })
                     }
                     PipelinePhase::Review => {
-                        // Distinguish between issues XML and fix result XML based on
-                        // whether we're in fix mode (review_issues_found = true)
-                        if self.state.review_issues_found {
+                        // Review-phase cleanup follows the active drain so mock execution stays
+                        // aligned with reducer-owned fix continuation and retry flows.
+                        if self.state.agent_chain.current_drain == crate::agents::AgentDrain::Fix {
                             PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
                                 pass: self.state.reviewer_pass,
                             })

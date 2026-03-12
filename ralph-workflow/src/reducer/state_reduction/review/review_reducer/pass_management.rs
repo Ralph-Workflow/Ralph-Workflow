@@ -3,9 +3,9 @@
 //! This module handles the logic for completing review passes and transitioning
 //! between passes or to the commit phase. All functions are pure state transformations.
 
-use crate::agents::DrainMode;
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::state::{CommitState, ContinuationState, PipelineState};
+use crate::reducer::state::{AgentChainState, CommitState, ContinuationState, PipelineState};
 
 /// Handles `ReviewEvent::Completed`.
 ///
@@ -69,9 +69,22 @@ pub(in crate::reducer::state_reduction::review) fn reduce_completed(
             ..state
         }
     } else {
+        let agent_chain = if issues_found {
+            AgentChainState::initial()
+                .with_max_cycles(state.agent_chain.max_cycles)
+                .with_backoff_policy(
+                    state.agent_chain.retry_delay_ms,
+                    state.agent_chain.backoff_multiplier,
+                    state.agent_chain.max_backoff_ms,
+                )
+                .reset_for_drain(AgentDrain::Fix)
+        } else {
+            state.agent_chain.with_mode(DrainMode::Normal)
+        };
+
         PipelineState {
             phase: next_phase,
-            agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
+            agent_chain,
             reviewer_pass: next_pass,
             review_issues_found: issues_found,
             review_context_prepared_pass: None,

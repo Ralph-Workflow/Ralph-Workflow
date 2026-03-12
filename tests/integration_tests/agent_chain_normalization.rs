@@ -8,11 +8,13 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
-use ralph_workflow::agents::{AgentDrain, AgentRole};
+use ralph_workflow::agents::{AgentDrain, AgentRole, AgentsConfigFile};
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::PipelinePhase;
 use ralph_workflow::reducer::state::{PipelineState, PromptMode};
+use ralph_workflow::reducer::state_reduction::reduce;
+use ralph_workflow::workspace::MemoryWorkspace;
 
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
@@ -100,6 +102,89 @@ fn test_checkpoint_replay_consistency() {
     });
 }
 
+/// Test that checkpoint replay remains compatible when legacy role metadata is absent.
+#[test]
+fn test_checkpoint_replay_uses_drain_identity_when_current_role_is_missing() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.agent_chain.current_drain = AgentDrain::Analysis;
+        state.agent_chain.current_role = AgentRole::Analysis;
+        state.continuation.same_agent_retry_pending = true;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_free_json = json.replace("\"current_role\":\"Analysis\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_free_json).expect("checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+
+        assert!(
+            matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
+            "analysis drain should remain authoritative after checkpoint restore, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that legacy checkpoints without `current_drain` recover drain identity from role metadata.
+#[test]
+fn test_checkpoint_replay_uses_current_role_when_current_drain_is_missing() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.agent_chain.current_drain = AgentDrain::Review;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Review\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("checkpoint should deserialize");
+
+        assert_eq!(restored_state.agent_chain.current_role, AgentRole::Reviewer);
+        assert_eq!(restored_state.agent_chain.current_drain, AgentDrain::Review);
+    });
+}
+
+/// Test that review completion with issues hands runtime ownership to the fix drain.
+#[test]
+fn test_review_completion_with_issues_switches_runtime_to_fix_drain() {
+    with_default_timeout(|| {
+        let state = with_locked_prompt_permissions(PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 2,
+            review_issues_found: false,
+            agent_chain: PipelineState::initial(1, 0)
+                .agent_chain
+                .with_agents(
+                    vec!["reviewer".to_string()],
+                    vec![vec![]],
+                    AgentRole::Reviewer,
+                )
+                .with_drain(AgentDrain::Review),
+            ..PipelineState::initial(1, 0)
+        });
+
+        let new_state = reduce(
+            state,
+            ralph_workflow::reducer::event::PipelineEvent::review_completed(0, true),
+        );
+
+        assert_eq!(new_state.phase, PipelinePhase::Review);
+        assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Fix);
+        assert!(new_state.agent_chain.agents.is_empty());
+        assert!(matches!(
+            determine_next_effect(&new_state),
+            Effect::InitializeAgentChain {
+                drain: AgentDrain::Fix,
+                ..
+            }
+        ));
+    });
+}
+
 /// Test that agent chain normalization is consistent across phases.
 #[test]
 fn test_agent_chain_normalization_across_phases() {
@@ -157,5 +242,53 @@ fn test_same_agent_retry_uses_analysis_drain_even_when_role_is_stale() {
             matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
             "analysis drain retry should stay on analysis consumer, got: {effect:?}"
         );
+    });
+}
+
+/// Test that agent config file loading resolves named chain/drain schema through the workspace API.
+#[test]
+fn test_agents_config_file_loads_named_drain_schema() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/agents.toml",
+            r#"
+            [agent_chains]
+            shared_dev = ["codex", "claude"]
+            review_chain = ["claude"]
+            fix_chain = ["codex"]
+
+            [agent_drains]
+            planning = "shared_dev"
+            development = "shared_dev"
+            review = "review_chain"
+            fix = "fix_chain"
+            commit = "review_chain"
+            analysis = "shared_dev"
+            "#,
+        );
+
+        let config = AgentsConfigFile::load_from_file_with_workspace(
+            std::path::Path::new(".agent/agents.toml"),
+            &workspace,
+        )
+        .expect("config should parse")
+        .expect("config should exist");
+
+        let resolved = config
+            .resolve_drains_checked()
+            .expect("drains should validate")
+            .expect("named drain schema should resolve");
+
+        let review = resolved
+            .binding(AgentDrain::Review)
+            .expect("review drain should resolve");
+        let fix = resolved
+            .binding(AgentDrain::Fix)
+            .expect("fix drain should resolve");
+
+        assert_eq!(review.chain_name, "review_chain");
+        assert_eq!(review.agents, vec!["claude"]);
+        assert_eq!(fix.chain_name, "fix_chain");
+        assert_eq!(fix.agents, vec!["codex"]);
     });
 }

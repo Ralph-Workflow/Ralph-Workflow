@@ -58,6 +58,11 @@ pub struct AgentChainState {
     /// Pending backoff delay (milliseconds) that must be waited before continuing.
     #[serde(default)]
     pub backoff_pending_ms: Option<u64>,
+    /// Compatibility copy of the broad capability role.
+    ///
+    /// Runtime code should treat `current_drain` as authoritative and derive the
+    /// active role from it. This field is retained for checkpoint compatibility
+    /// and diagnostics only.
     pub current_role: AgentRole,
     #[serde(default = "default_current_drain")]
     pub current_drain: AgentDrain,
@@ -116,9 +121,10 @@ impl<'de> Deserialize<'de> for AgentChainState {
             max_backoff_ms: u64,
             #[serde(default)]
             backoff_pending_ms: Option<u64>,
-            current_role: AgentRole,
-            #[serde(default = "default_current_drain")]
-            current_drain: AgentDrain,
+            #[serde(default)]
+            current_drain: Option<AgentDrain>,
+            #[serde(default)]
+            current_role: Option<AgentRole>,
             #[serde(default)]
             current_mode: DrainMode,
             #[serde(default)]
@@ -128,14 +134,19 @@ impl<'de> Deserialize<'de> for AgentChainState {
         }
 
         let raw = AgentChainStateSerde::deserialize(deserializer)?;
+        let current_drain = raw.current_drain.unwrap_or_else(|| {
+            raw.current_role
+                .map_or(default_current_drain(), AgentDrain::from)
+        });
+        let current_role = raw.current_role.unwrap_or_else(|| current_drain.role());
 
         let rate_limit_continuation_prompt = raw.rate_limit_continuation_prompt.map(|repr| {
             match repr {
                 RateLimitContinuationPromptRepr::LegacyString(prompt) => {
                     // Legacy checkpoints stored only the prompt string. Scope it to the
-                    // chain's current role so resume can't cross-contaminate roles.
+                    // resolved drain role so resume can't cross-contaminate drains.
                     RateLimitContinuationPrompt {
-                        role: raw.current_role,
+                        role: current_role,
                         prompt,
                     }
                 }
@@ -156,8 +167,8 @@ impl<'de> Deserialize<'de> for AgentChainState {
             backoff_multiplier: raw.backoff_multiplier,
             max_backoff_ms: raw.max_backoff_ms,
             backoff_pending_ms: raw.backoff_pending_ms,
-            current_role: raw.current_role,
-            current_drain: raw.current_drain,
+            current_role,
+            current_drain,
             current_mode: raw.current_mode,
             rate_limit_continuation_prompt,
             last_session_id: raw.last_session_id,
@@ -245,6 +256,11 @@ impl AgentChainState {
     pub const fn with_mode(mut self, mode: DrainMode) -> Self {
         self.current_mode = mode;
         self
+    }
+
+    #[must_use]
+    pub const fn active_role(&self) -> AgentRole {
+        self.current_drain.role()
     }
 
     /// Builder method to set the maximum number of retry cycles.

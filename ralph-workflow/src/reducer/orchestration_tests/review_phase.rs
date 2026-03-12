@@ -296,18 +296,12 @@ fn test_review_with_issues_initializes_fix_drain_when_chain_targets_review() {
                 vec![vec![]],
                 AgentRole::Reviewer,
             )
-            .with_drain(crate::agents::AgentDrain::Review),
+            .with_drain(crate::agents::AgentDrain::Fix),
         ..create_test_state()
     };
 
     let effect = determine_next_effect(&state);
-    assert!(matches!(
-        effect,
-        Effect::InitializeAgentChain {
-            drain: crate::agents::AgentDrain::Fix,
-            ..
-        }
-    ));
+    assert!(matches!(effect, Effect::PrepareFixPrompt { .. }));
 }
 
 #[test]

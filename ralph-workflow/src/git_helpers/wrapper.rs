@@ -2401,6 +2401,7 @@ mod tests {
 
         let _ = fs::remove_file(&marker_path);
         let _ = fs::remove_dir_all(&marker_path);
+        fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
         fs::create_dir(&marker_path).unwrap();
 
         let _result = ensure_thread.join().unwrap();

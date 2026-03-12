@@ -2,9 +2,9 @@
 //!
 //! Pure orchestration: State → Effect, no I/O.
 //!
-//! Review phase has two modes:
+//! Review phase has two drain-owned modes:
 //!
-//! 1. Fix mode (when `review_issues_found` = true):
+//! 1. Fix drain (`current_drain == Fix`):
 //!    a. Initialize agent chain (Reviewer role)
 //!    b. Prepare fix prompt
 //!    c. Cleanup fix result XML
@@ -14,7 +14,7 @@
 //!    g. Archive fix result XML
 //!    h. Apply fix outcome
 //!
-//! 2. Review mode (normal flow):
+//! 2. Review drain (`current_drain == Review`):
 //!    For each review pass (up to `total_reviewer_passes)`:
 //!    a. Initialize agent chain (Reviewer role)
 //!    b. Prepare review context
@@ -54,8 +54,7 @@ pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
 pub const REQUIRED_FILES_FIX: &[&str] = &[".agent/tmp/fix_result.xml"];
 
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
-    // If review found issues, run fix attempt
-    if state.review_issues_found {
+    if state.agent_chain.current_drain == AgentDrain::Fix {
         if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Fix
         {
             return Effect::InitializeAgentChain {

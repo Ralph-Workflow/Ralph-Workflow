@@ -54,6 +54,7 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
 /// Clears retry and continuation flags to prevent infinite loops.
 pub(super) fn reduce_fix_prompt_prepared(state: PipelineState, pass: u32) -> PipelineState {
     PipelineState {
+        agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_prompt_prepared_pass: Some(pass),
         continuation: ContinuationState {
             xsd_retry_pending: false,
@@ -86,6 +87,7 @@ pub(super) fn reduce_fix_result_xml_cleaned(state: PipelineState, pass: u32) -> 
 /// Clears retry flags since agent invocation is a fresh attempt.
 pub(super) fn reduce_fix_agent_invoked(state: PipelineState, pass: u32) -> PipelineState {
     PipelineState {
+        agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_agent_invoked_pass: Some(pass),
         continuation: ContinuationState {
             xsd_retry_pending: false,
@@ -234,7 +236,10 @@ pub(super) fn reduce_fix_continuation_triggered(
 ) -> PipelineState {
     // Fix output is valid but indicates work is incomplete (issues_remain)
     PipelineState {
-        agent_chain: state.agent_chain.with_mode(DrainMode::Continuation),
+        agent_chain: state
+            .agent_chain
+            .with_drain(AgentDrain::Fix)
+            .with_mode(DrainMode::Continuation),
         reviewer_pass: pass,
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
@@ -340,11 +345,17 @@ pub(super) fn reduce_fix_output_validation_failed(
     if new_xsd_count >= state.continuation.max_xsd_retry_count {
         // XSD retries exhausted - switch to next agent
         // Reset orchestration flags to ensure prompt is prepared and new agent is invoked
-        let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
+        let new_agent_chain = state
+            .agent_chain
+            .with_drain(AgentDrain::Fix)
+            .switch_to_next_agent()
+            .clear_session_id();
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
-            agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
+            agent_chain: new_agent_chain
+                .with_drain(AgentDrain::Fix)
+                .with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
                 xsd_retry_count: 0,
@@ -375,7 +386,10 @@ pub(super) fn reduce_fix_output_validation_failed(
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
-            agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
+            agent_chain: state
+                .agent_chain
+                .with_drain(AgentDrain::Fix)
+                .with_mode(DrainMode::XsdRetry),
             continuation: ContinuationState {
                 invalid_output_attempts: attempt + 1,
                 xsd_retry_count: new_xsd_count,
