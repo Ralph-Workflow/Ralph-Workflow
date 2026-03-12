@@ -420,7 +420,7 @@ impl AgentRegistry {
                 "No agent chain configured. \
                 Searched: {searched_sources}.\n\
                 Please add [agent_chains] and [agent_drains] sections to your config.\n\
-                Legacy [agent_chain] input is still accepted for compatibility.\n\
+                Legacy [agent_chain] input is deprecated but still accepted with default drain bindings.\n\
                 Run 'ralph --init-global' to create a default configuration."
             ));
         }

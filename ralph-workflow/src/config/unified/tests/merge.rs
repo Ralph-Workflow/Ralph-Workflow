@@ -6,6 +6,7 @@ fn test_merge_with_scalar_override() {
         general: GeneralConfig {
             verbosity: 2,
             developer_iters: 5,
+            max_retries: 3,
             ..Default::default()
         },
         ..Default::default()
@@ -15,6 +16,7 @@ fn test_merge_with_scalar_override() {
         general: GeneralConfig {
             verbosity: 4,
             developer_iters: 10,
+            max_retries: 6,
             ..Default::default()
         },
         ..Default::default()
@@ -24,6 +26,7 @@ fn test_merge_with_scalar_override() {
 
     assert_eq!(merged.general.verbosity, 4);
     assert_eq!(merged.general.developer_iters, 10);
+    assert_eq!(merged.general.max_retries, 6);
 }
 
 #[test]
@@ -294,25 +297,27 @@ fn test_merge_with_ccs_empty_string_preserves_global() {
 }
 
 #[test]
-fn test_resolve_agent_drains_checked_rejects_mixed_legacy_and_named_schema() {
+fn test_resolve_agent_drains_checked_accepts_legacy_agent_chain_schema() {
     let config = UnifiedConfig {
         agent_chain: Some(crate::agents::fallback::FallbackConfig {
             developer: vec!["codex".to_string()],
             ..Default::default()
         }),
-        agent_chains: std::collections::HashMap::from([(
-            "shared_dev".to_string(),
-            vec!["claude".to_string()],
-        )]),
         ..Default::default()
     };
 
-    let error = config
+    let resolved = config
         .resolve_agent_drains_checked()
-        .expect_err("mixed schemas should fail");
+        .expect("legacy agent_chain should remain compatible")
+        .expect("legacy agent_chain should resolve drains");
 
-    assert!(error.contains("agent_chain"));
-    assert!(error.contains("agent_chains/agent_drains"));
+    assert_eq!(
+        resolved
+            .binding(crate::agents::AgentDrain::Planning)
+            .expect("planning drain should resolve")
+            .agents,
+        vec!["codex"]
+    );
 }
 
 #[test]
@@ -371,18 +376,14 @@ fn test_resolve_agent_drains_checked_rejects_empty_named_drain_binding() {
 #[test]
 fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
     let inherited_config = UnifiedConfig {
-        agent_chain: Some(crate::agents::fallback::FallbackConfig {
-            provider_fallback: std::collections::HashMap::from([(
-                "opencode".to_string(),
-                vec!["-m opencode/glm-4.7-free".to_string()],
-            )]),
+        general: GeneralConfig {
             max_retries: 7,
             retry_delay_ms: 2_500,
             backoff_multiplier: 3.0,
             max_backoff_ms: 90_000,
             max_cycles: 5,
             ..Default::default()
-        }),
+        },
         agent_chains: std::collections::HashMap::from([
             (
                 "shared_dev".to_string(),
@@ -423,10 +424,7 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
     assert!((resolved.backoff_multiplier - 3.0).abs() < f64::EPSILON);
     assert_eq!(resolved.max_backoff_ms, 90_000);
     assert_eq!(resolved.max_cycles, 5);
-    assert_eq!(
-        resolved.provider_fallback.get("opencode"),
-        Some(&vec!["-m opencode/glm-4.7-free".to_string()])
-    );
+    assert!(resolved.provider_fallback.is_empty());
 
     let preferred_named_config = UnifiedConfig {
         agent_chains: std::collections::HashMap::from([

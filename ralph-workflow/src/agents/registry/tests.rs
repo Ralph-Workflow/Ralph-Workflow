@@ -249,8 +249,16 @@ fn test_registry_available_fallbacks() {
 
     // Set fallback chain using registered agents
     let toml_str = r#"
-        [agent_chain]
-        developer = ["echo-agent", "nonexistent-agent", "cat-agent"]
+        [agent_chains]
+        shared_dev = ["echo-agent", "nonexistent-agent", "cat-agent"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        analysis = "shared_dev"
+        review = "shared_dev"
+        fix = "shared_dev"
+        commit = "shared_dev"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
     registry.apply_unified_config(&unified).unwrap();
@@ -276,9 +284,17 @@ fn test_validate_agent_chains() {
 
     // Both chains configured should pass - use apply_unified_config (public API)
     let toml_str = r#"
-        [agent_chain]
-        developer = ["claude"]
-        reviewer = ["codex"]
+        [agent_chains]
+        shared_dev = ["claude"]
+        shared_review = ["codex"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        analysis = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
+        commit = "shared_review"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
     registry.apply_unified_config(&unified).unwrap();
@@ -400,19 +416,21 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
         shared_dev = ["codex", "claude"]
         shared_review = ["claude", "opencode"]
 
-        [agent_drains]
-        planning = "shared_dev"
-        development = "shared_dev"
-        review = "shared_review"
-        fix = "shared_review"
-
-        [agent_chain]
+        [general]
         max_retries = 7
         retry_delay_ms = 2500
         backoff_multiplier = 3.0
         max_backoff_ms = 90000
         max_cycles = 5
-        provider_fallback.opencode = ["-m opencode/glm-4.7-free"]
+
+        [general.provider_fallback]
+        opencode = ["-m opencode/glm-4.7-free"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
@@ -440,6 +458,32 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
     assert!((registry.resolved_drains().backoff_multiplier - 3.0).abs() < f64::EPSILON);
     assert_eq!(registry.resolved_drains().max_backoff_ms, 90_000);
     assert_eq!(registry.resolved_drains().max_cycles, 5);
+    assert_eq!(
+        registry.resolved_drains().provider_fallback.get("opencode"),
+        Some(&vec!["-m opencode/glm-4.7-free".to_string()])
+    );
+}
+
+#[test]
+fn test_load_from_file_metadata_only_legacy_agent_chain_preserves_provider_fallback() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("agents.toml");
+    std::fs::write(
+        &config_path,
+        r#"
+[agent_chain]
+max_retries = 7
+
+[agent_chain.provider_fallback]
+opencode = ["-m opencode/glm-4.7-free"]
+"#,
+    )
+    .unwrap();
+
+    let mut registry = AgentRegistry::new().unwrap();
+    registry.load_from_file(&config_path).unwrap();
+
+    assert_eq!(registry.resolved_drains().max_retries, 7);
     assert_eq!(
         registry.resolved_drains().provider_fallback.get("opencode"),
         Some(&vec!["-m opencode/glm-4.7-free".to_string()])
@@ -478,50 +522,35 @@ fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings
 }
 
 #[test]
-fn test_validate_agent_chains_error_mentions_searched_sources() {
+fn test_apply_unified_config_accepts_legacy_agent_chain_schema() {
     let mut registry = AgentRegistry::new().unwrap();
-    // Override chains with empty values via apply_unified_config
     let toml_str = "\n[agent_chain]\ndeveloper = []\nreviewer = []\n";
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified).unwrap();
-
-    let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
-    assert!(
-        err.contains("local config"),
-        "error should mention local config: {err}"
-    );
-    assert!(
-        err.contains("global config"),
-        "error should mention global config: {err}"
-    );
-    assert!(
-        err.contains("built-in defaults"),
-        "error should mention built-in defaults: {err}"
-    );
-    assert!(
-        err.contains("agent_chains") && err.contains("agent_drains"),
-        "error should guide users toward the named chain/drain schema: {err}"
-    );
+    registry
+        .apply_unified_config(&unified)
+        .expect("legacy agent_chain should remain compatible");
 }
 
 #[test]
-fn test_validate_agent_chains_uses_provided_sources_verbatim() {
+fn test_apply_unified_config_suggests_agent_chains_for_singular_typo() {
     let mut registry = AgentRegistry::new().unwrap();
-    let toml_str = "\n[agent_chain]\ndeveloper = []\nreviewer = []\n";
+    let toml_str = r#"
+[agent_chain]
+shared_dev = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+"#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified).unwrap();
-
     let err = registry
-        .validate_agent_chains("global config (/custom/path.toml), built-in defaults")
-        .unwrap_err();
+        .apply_unified_config(&unified)
+        .expect_err("singular agent_chain typo should be rejected")
+        .to_string();
 
     assert!(
-        err.contains("global config (/custom/path.toml), built-in defaults"),
-        "error should include provided sources: {err}"
-    );
-    assert!(
-        !err.contains("local config"),
-        "error should not mention local config when not part of provided sources: {err}"
+        err.contains("did you mean [agent_chains]?"),
+        "error should suggest the plural named chain section: {err}"
     );
 }
 
@@ -611,9 +640,17 @@ fn test_ccs_in_fallback_chain() {
 
     // Set fallback chain with CCS alias using apply_unified_config (public API)
     let toml_str = r#"
-        [agent_chain]
-        developer = ["ccs/work", "echo-agent"]
-        reviewer = ["echo-agent"]
+        [agent_chains]
+        shared_dev = ["ccs/work", "echo-agent"]
+        shared_review = ["echo-agent"]
+
+        [agent_drains]
+        planning = "shared_dev"
+        development = "shared_dev"
+        analysis = "shared_dev"
+        review = "shared_review"
+        fix = "shared_review"
+        commit = "shared_review"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
     registry.apply_unified_config(&unified).unwrap();

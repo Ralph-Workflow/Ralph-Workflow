@@ -2,22 +2,22 @@
 // Includes loading from config files, applying unified config, and creating/merging agent configs.
 
 impl AgentRegistry {
-    fn merge_legacy_chain_metadata(
+    fn merge_general_runtime_settings(
         base: &crate::agents::fallback::ResolvedDrainConfig,
-        fallback: Option<&crate::agents::fallback::FallbackConfig>,
+        general: &crate::config::unified::GeneralConfig,
     ) -> crate::agents::fallback::ResolvedDrainConfig {
-        let Some(fallback) = fallback else {
-            return base.clone();
-        };
-
         crate::agents::fallback::ResolvedDrainConfig {
             bindings: base.bindings.clone(),
-            provider_fallback: fallback.provider_fallback.clone(),
-            max_retries: fallback.max_retries,
-            retry_delay_ms: fallback.retry_delay_ms,
-            backoff_multiplier: fallback.backoff_multiplier,
-            max_backoff_ms: fallback.max_backoff_ms,
-            max_cycles: fallback.max_cycles,
+            provider_fallback: if general.provider_fallback.is_empty() {
+                base.provider_fallback.clone()
+            } else {
+                general.provider_fallback.clone()
+            },
+            max_retries: general.max_retries,
+            retry_delay_ms: general.retry_delay_ms,
+            backoff_multiplier: general.backoff_multiplier,
+            max_backoff_ms: general.max_backoff_ms,
+            max_cycles: general.max_cycles,
         }
     }
 
@@ -36,9 +36,9 @@ impl AgentRegistry {
                     self.register(&name, AgentConfig::from(agent_toml));
                 }
                 self.resolved_drains = resolved_drains.unwrap_or_else(|| {
-                    Self::merge_legacy_chain_metadata(
+                    Self::merge_general_runtime_settings(
                         &self.resolved_drains,
-                        config.fallback.as_ref(),
+                        &crate::config::unified::GeneralConfig::default(),
                     )
                 });
                 Ok(count)
@@ -70,10 +70,7 @@ impl AgentRegistry {
             .resolve_agent_drains_checked()
             .map_err(AgentConfigError::InvalidDrainConfig)?
             .unwrap_or_else(|| {
-                Self::merge_legacy_chain_metadata(
-                    &self.resolved_drains,
-                    unified.agent_chain.as_ref(),
-                )
+                Self::merge_general_runtime_settings(&self.resolved_drains, &unified.general)
             });
 
         Ok(loaded)

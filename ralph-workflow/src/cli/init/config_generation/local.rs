@@ -89,11 +89,8 @@ where
         general.reviewer_context
     )?;
     writeln!(template)?;
-    write!(
-        template,
-        "{}",
-        render_agent_chain_metadata_comments(&resolved_drains)
-    )?;
+    write!(template, "{}", render_retry_settings_comments(general))?;
+    write!(template, "{}", render_provider_fallback_comments(general))?;
     writeln!(template)?;
     writeln!(template, "# [agent_chains]")?;
     writeln!(template, "# Reusable named chain definitions")?;
@@ -106,40 +103,41 @@ where
     Ok(template)
 }
 
-fn render_agent_chain_metadata_comments(
-    resolved_drains: &crate::agents::fallback::ResolvedDrainConfig,
-) -> String {
+fn render_retry_settings_comments(general: &crate::config::unified::GeneralConfig) -> String {
     let mut rendered = String::new();
-    let _ = writeln!(rendered, "# [agent_chain]");
     let _ = writeln!(
         rendered,
-        "# Effective retry/backoff metadata you can override locally"
+        "# Agent retry/backoff settings for all configured drains"
     );
-    let _ = writeln!(rendered, "# max_retries = {}", resolved_drains.max_retries);
-    let _ = writeln!(
-        rendered,
-        "# retry_delay_ms = {}",
-        resolved_drains.retry_delay_ms
-    );
+    let _ = writeln!(rendered, "# max_retries = {}", general.max_retries);
+    let _ = writeln!(rendered, "# retry_delay_ms = {}", general.retry_delay_ms);
     let _ = writeln!(
         rendered,
         "# backoff_multiplier = {}",
-        resolved_drains.backoff_multiplier
+        general.backoff_multiplier
     );
-    let _ = writeln!(
-        rendered,
-        "# max_backoff_ms = {}",
-        resolved_drains.max_backoff_ms
-    );
-    let _ = writeln!(rendered, "# max_cycles = {}", resolved_drains.max_cycles);
+    let _ = writeln!(rendered, "# max_backoff_ms = {}", general.max_backoff_ms);
+    let _ = writeln!(rendered, "# max_cycles = {}", general.max_cycles);
 
-    let mut provider_fallback_entries =
-        resolved_drains.provider_fallback.iter().collect::<Vec<_>>();
-    provider_fallback_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-    for (provider, models) in provider_fallback_entries {
+    rendered
+}
+
+fn render_provider_fallback_comments(general: &crate::config::unified::GeneralConfig) -> String {
+    if general.provider_fallback.is_empty() {
+        return String::new();
+    }
+
+    let mut rendered = String::new();
+    let _ = writeln!(rendered);
+    let _ = writeln!(rendered, "# [general.provider_fallback]");
+    let _ = writeln!(rendered, "# Provider/model fallback settings by agent");
+
+    let mut provider_entries = general.provider_fallback.iter().collect::<Vec<_>>();
+    provider_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for (provider, models) in provider_entries {
         let _ = writeln!(
             rendered,
-            "# provider_fallback.{provider} = {}",
+            "# {provider} = {}",
             format_toml_string_array(models)
         );
     }
@@ -338,9 +336,9 @@ mod tests {
                 "/test/config/ralph-workflow.toml",
                 "\n[general]\ndeveloper_iters = 8\nreviewer_reviews = 3\n\
                  developer_context = 2\nreviewer_context = 1\n\
-                 \n[agent_chain]\nmax_retries = 9\nretry_delay_ms = 2500\n\
+                 max_retries = 9\nretry_delay_ms = 2500\n\
                  backoff_multiplier = 3.0\nmax_backoff_ms = 90000\n\
-                 provider_fallback.opencode = [\"-m opencode/glm-4.7-free\"]\n",
+                 max_cycles = 7\n",
             );
 
         handle_init_local_config_with(Colors::new(), &env, false).unwrap();
@@ -367,8 +365,8 @@ mod tests {
             "should show global reviewer_context=1, got:\n{content}"
         );
         assert!(
-            content.contains("# [agent_chain]"),
-            "should include the effective agent_chain metadata section, got:\n{content}"
+            !content.contains("# [agent_chain]"),
+            "should not include the removed legacy agent_chain section, got:\n{content}"
         );
         assert!(
             content.contains("# max_retries = 9"),
@@ -387,8 +385,60 @@ mod tests {
             "should show global max_backoff_ms=90000, got:\n{content}"
         );
         assert!(
-            content.contains(r#"# provider_fallback.opencode = ["-m opencode/glm-4.7-free"]"#),
-            "should show global provider fallback metadata, got:\n{content}"
+            content.contains("# max_cycles = 7"),
+            "should show global max_cycles=7, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_init_local_config_shows_general_provider_fallback_values() {
+        let env = MemoryConfigEnvironment::new()
+            .with_unified_config_path("/test/config/ralph-workflow.toml")
+            .with_local_config_path("/test/repo/.agent/ralph-workflow.toml")
+            .with_file(
+                "/test/config/ralph-workflow.toml",
+                "\n[general]\nmax_retries = 9\n\n[general.provider_fallback]\nopencode = [\"-m opencode/glm-4.7-free\"]\n",
+            );
+
+        handle_init_local_config_with(Colors::new(), &env, false).unwrap();
+
+        let content = env
+            .get_file(Path::new("/test/repo/.agent/ralph-workflow.toml"))
+            .expect("local config should be written");
+
+        assert!(
+            content.contains("# [general.provider_fallback]"),
+            "should render general.provider_fallback section, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# opencode = ["-m opencode/glm-4.7-free"]"#),
+            "should render provider fallback values, got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_init_local_config_mentions_named_chain_migration_not_agent_chain() {
+        let env = MemoryConfigEnvironment::new()
+            .with_unified_config_path("/test/config/ralph-workflow.toml")
+            .with_local_config_path("/test/repo/.agent/ralph-workflow.toml");
+
+        handle_init_local_config_with(Colors::new(), &env, false).unwrap();
+
+        let content = env
+            .get_file(Path::new("/test/repo/.agent/ralph-workflow.toml"))
+            .expect("local config should be written");
+
+        assert!(
+            content.contains("[agent_chains]"),
+            "should include named chain section, got:\n{content}"
+        );
+        assert!(
+            content.contains("[agent_drains]"),
+            "should include drain binding section, got:\n{content}"
+        );
+        assert!(
+            !content.contains("[agent_chain]"),
+            "should not mention the legacy [agent_chain] section, got:\n{content}"
         );
     }
 

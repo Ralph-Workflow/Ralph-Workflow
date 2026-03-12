@@ -28,9 +28,15 @@ pub const VALID_GENERAL_KEYS: &[&str] = &[
     "templates_dir",
     "git_user_name",
     "git_user_email",
+    "provider_fallback",
     "max_dev_continuations",
     "max_xsd_retries",
     "max_same_agent_retries",
+    "max_retries",
+    "retry_delay_ms",
+    "backoff_multiplier",
+    "max_backoff_ms",
+    "max_cycles",
     "behavior",
     "workflow",
     "execution",
@@ -81,10 +87,10 @@ pub const VALID_CCS_ALIAS_CONFIG_KEYS: &[&str] = &[
     "model_flag",
 ];
 
-/// Valid keys for the legacy-compatible [`agent_chain`] section.
+/// Valid keys for the removed legacy [`agent_chain`] section.
 ///
-/// Runtime code consumes resolved drain bindings after normalization, but the
-/// legacy role-keyed table is still accepted at the config boundary.
+/// Keep these for typo detection so validation can emit a focused migration
+/// message instead of a generic unknown-key error.
 pub const VALID_AGENT_CHAIN_KEYS: &[&str] = &[
     "developer",
     "reviewer",
@@ -138,9 +144,15 @@ pub fn get_valid_config_keys() -> Vec<&'static str> {
         "templates_dir",
         "git_user_name",
         "git_user_email",
+        "provider_fallback",
         "max_dev_continuations",
         "max_xsd_retries",
         "max_same_agent_retries",
+        "max_retries",
+        "retry_delay_ms",
+        "backoff_multiplier",
+        "max_backoff_ms",
+        "max_cycles",
         // Behavior flags (nested)
         "behavior",
         // Workflow flags (nested)

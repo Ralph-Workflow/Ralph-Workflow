@@ -126,6 +126,21 @@ pub fn validate_config_file(
     // but we've already detected them in Step 2
     match toml::from_str::<crate::config::unified::UnifiedConfig>(content) {
         Ok(config) => {
+            if parsed_value.get("agent_chain").is_some() {
+                if !config.agent_drains.is_empty() && config.agent_chains.is_empty() {
+                    errors.push(ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key: "agent_chain".to_string(),
+                        message: "found [agent_drains] with singular [agent_chain]; did you mean [agent_chains]? Move retry/backoff settings to [general] (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)".to_string(),
+                    });
+                } else {
+                    warnings.push(format!(
+                        "Deprecated section '[agent_chain]' in {} - Ralph will keep legacy role-keyed behavior by adding the default drain bindings automatically. Migrate agent lists to [agent_chains]/[agent_drains] and move retry/backoff settings to [general]",
+                        path.display()
+                    ));
+                }
+            }
+
             let has_named_chains = !config.agent_chains.is_empty();
             let has_named_drains = !config.agent_drains.is_empty();
             let has_legacy_role_bindings = config
@@ -143,7 +158,7 @@ pub fn validate_config_file(
                             .split_whitespace()
                             .next()
                             .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
-                    } else if message.contains("cannot be combined") {
+                    } else if message.contains("agent_chain") {
                         "agent_chain".to_string()
                     } else {
                         "agent_drains".to_string()
@@ -218,9 +233,35 @@ mod tests {
 [general]
 verbosity = 2
 developer_iters = 5
+max_retries = 4
+retry_delay_ms = 1500
 ";
         let result = validate_config_file(Path::new("test.toml"), content);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_config_file_warns_for_legacy_agent_chain_with_migration_message() {
+        let content = r#"
+[agent_chain]
+developer = ["codex"]
+max_retries = 5
+retry_delay_ms = 2000
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_ok(),
+            "legacy agent_chain should remain compatible"
+        );
+
+        let warnings = result.expect("validation should succeed with warnings");
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("Deprecated section '[agent_chain]'")),
+            "expected legacy migration warning, got: {warnings:?}"
+        );
     }
 
     #[test]
@@ -358,8 +399,47 @@ work = "ccs work"
     }
 
     #[test]
+    fn test_validate_general_retry_keys() {
+        let content = r#"
+[general]
+developer_iters = 5
+max_retries = 5
+retry_delay_ms = 2000
+backoff_multiplier = 2.5
+max_backoff_ms = 120000
+max_cycles = 5
+
+[agent_chains]
+shared_dev = ["claude", "codex"]
+shared_review = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+analysis = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+commit = "shared_review"
+"#;
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(result.is_ok(), "general retry/backoff keys should be valid");
+    }
+
+    #[test]
+    fn test_validate_general_provider_fallback_key() {
+        let content = r#"
+[general]
+
+[general.provider_fallback]
+opencode = ["-m opencode/glm-4.7-free"]
+"#;
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(result.is_ok(), "general.provider_fallback should be valid");
+    }
+
+    #[test]
     fn test_validate_agent_chain_with_all_valid_keys() {
-        // Verify all FallbackConfig fields are accepted in agent_chain section
+        // Legacy [agent_chain] remains accepted with a warning for compatibility.
         let content = r#"
 [general]
 developer_iters = 5
@@ -379,7 +459,7 @@ max_cycles = 5
 opencode = ["-m opencode/glm-4.7-free", "-m opencode/claude-sonnet-4"]
 "#;
         let result = validate_config_file(Path::new("test.toml"), content);
-        assert!(result.is_ok(), "All FallbackConfig fields should be valid");
+        assert!(result.is_ok(), "legacy agent_chain should remain valid");
     }
 
     #[test]

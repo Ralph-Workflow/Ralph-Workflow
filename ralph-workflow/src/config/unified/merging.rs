@@ -162,6 +162,11 @@ impl UnifiedConfig {
                 .git_user_email
                 .clone()
                 .or_else(|| self.general.git_user_email.clone()),
+            provider_fallback: if local.general.provider_fallback.is_empty() {
+                self.general.provider_fallback.clone()
+            } else {
+                local.general.provider_fallback.clone()
+            },
             max_dev_continuations: if local.general.max_dev_continuations
                 == defaults.max_dev_continuations
             {
@@ -180,6 +185,34 @@ impl UnifiedConfig {
                 self.general.max_same_agent_retries
             } else {
                 local.general.max_same_agent_retries
+            },
+            max_retries: if local.general.max_retries == defaults.max_retries {
+                self.general.max_retries
+            } else {
+                local.general.max_retries
+            },
+            retry_delay_ms: if local.general.retry_delay_ms == defaults.retry_delay_ms {
+                self.general.retry_delay_ms
+            } else {
+                local.general.retry_delay_ms
+            },
+            backoff_multiplier: if (local.general.backoff_multiplier - defaults.backoff_multiplier)
+                .abs()
+                < f64::EPSILON
+            {
+                self.general.backoff_multiplier
+            } else {
+                local.general.backoff_multiplier
+            },
+            max_backoff_ms: if local.general.max_backoff_ms == defaults.max_backoff_ms {
+                self.general.max_backoff_ms
+            } else {
+                local.general.max_backoff_ms
+            },
+            max_cycles: if local.general.max_cycles == defaults.max_cycles {
+                self.general.max_cycles
+            } else {
+                local.general.max_cycles
             },
             execution_history_limit: if local.general.execution_history_limit
                 == defaults.execution_history_limit
@@ -290,6 +323,8 @@ impl UnifiedConfig {
         // Helper to check if a field is present in the TOML
         let general_table = local_toml.get("general");
         let behavior_table = general_table.and_then(|g| g.get("behavior"));
+        let provider_fallback_table = general_table.and_then(|g| g.get("provider_fallback"));
+        let chain_table = local_toml.get("agent_chain");
 
         // NOTE: workflow and execution fields are flattened into [general], not separate tables.
         // So we check for them at the [general] level, not [general.workflow] or [general.execution].
@@ -386,6 +421,19 @@ impl UnifiedConfig {
                 .git_user_email
                 .clone()
                 .or_else(|| self.general.git_user_email.clone()),
+            provider_fallback: if provider_fallback_table.is_some() {
+                local_parsed.general.provider_fallback.clone()
+            } else if chain_table
+                .and_then(|c| c.get("provider_fallback"))
+                .is_some()
+            {
+                local_parsed.agent_chain.as_ref().map_or_else(
+                    || self.general.provider_fallback.clone(),
+                    |fallback| fallback.provider_fallback.clone(),
+                )
+            } else {
+                self.general.provider_fallback.clone()
+            },
             max_dev_continuations: if has_field("max_dev_continuations") {
                 local_parsed.general.max_dev_continuations
             } else {
@@ -400,6 +448,65 @@ impl UnifiedConfig {
                 local_parsed.general.max_same_agent_retries
             } else {
                 self.general.max_same_agent_retries
+            },
+            max_retries: if has_field("max_retries") {
+                local_parsed.general.max_retries
+            } else if chain_table.and_then(|c| c.get("max_retries")).is_some() {
+                local_parsed
+                    .agent_chain
+                    .as_ref()
+                    .map_or(self.general.max_retries, |fallback| fallback.max_retries)
+            } else {
+                self.general.max_retries
+            },
+            retry_delay_ms: if has_field("retry_delay_ms") {
+                local_parsed.general.retry_delay_ms
+            } else if chain_table.and_then(|c| c.get("retry_delay_ms")).is_some() {
+                local_parsed
+                    .agent_chain
+                    .as_ref()
+                    .map_or(self.general.retry_delay_ms, |fallback| {
+                        fallback.retry_delay_ms
+                    })
+            } else {
+                self.general.retry_delay_ms
+            },
+            backoff_multiplier: if has_field("backoff_multiplier") {
+                local_parsed.general.backoff_multiplier
+            } else if chain_table
+                .and_then(|c| c.get("backoff_multiplier"))
+                .is_some()
+            {
+                local_parsed
+                    .agent_chain
+                    .as_ref()
+                    .map_or(self.general.backoff_multiplier, |fallback| {
+                        fallback.backoff_multiplier
+                    })
+            } else {
+                self.general.backoff_multiplier
+            },
+            max_backoff_ms: if has_field("max_backoff_ms") {
+                local_parsed.general.max_backoff_ms
+            } else if chain_table.and_then(|c| c.get("max_backoff_ms")).is_some() {
+                local_parsed
+                    .agent_chain
+                    .as_ref()
+                    .map_or(self.general.max_backoff_ms, |fallback| {
+                        fallback.max_backoff_ms
+                    })
+            } else {
+                self.general.max_backoff_ms
+            },
+            max_cycles: if has_field("max_cycles") {
+                local_parsed.general.max_cycles
+            } else if chain_table.and_then(|c| c.get("max_cycles")).is_some() {
+                local_parsed
+                    .agent_chain
+                    .as_ref()
+                    .map_or(self.general.max_cycles, |fallback| fallback.max_cycles)
+            } else {
+                self.general.max_cycles
             },
             execution_history_limit: if has_field("execution_history_limit") {
                 local_parsed.general.execution_history_limit

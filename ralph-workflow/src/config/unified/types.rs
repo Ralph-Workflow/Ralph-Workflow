@@ -23,7 +23,7 @@
 //! ├── agents (HashMap<String, AgentConfigToml>)
 //! ├── agent_chains (HashMap<String, Vec<String>>)
 //! ├── agent_drains (HashMap<String, String>)
-//! └── agent_chain (FallbackConfig)
+//! └── agent_chain (legacy migration detection only)
 //! ```
 
 use crate::agents::fallback::{
@@ -113,6 +113,9 @@ pub struct GeneralConfig {
     /// Git user email for commits (optional, falls back to git config).
     #[serde(default)]
     pub git_user_email: Option<String>,
+    /// Provider/model fallbacks keyed by agent name.
+    #[serde(default)]
+    pub provider_fallback: HashMap<String, Vec<String>>,
     /// Maximum continuation attempts when developer returns "partial" or "failed".
     ///
     /// Higher values allow more attempts to complete complex tasks within a single plan.
@@ -152,6 +155,21 @@ pub struct GeneralConfig {
     /// Default: 2 (one retry before falling back).
     #[serde(default = "default_max_same_agent_retries")]
     pub max_same_agent_retries: u32,
+    /// Maximum retries per agent before trying the next agent in the active drain.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Base delay between agent retries in milliseconds.
+    #[serde(default = "default_retry_delay_ms")]
+    pub retry_delay_ms: u64,
+    /// Multiplier for exponential retry backoff.
+    #[serde(default = "default_backoff_multiplier")]
+    pub backoff_multiplier: f64,
+    /// Maximum retry backoff delay in milliseconds.
+    #[serde(default = "default_max_backoff_ms")]
+    pub max_backoff_ms: u64,
+    /// Maximum number of full fallback cycles through a drain before giving up.
+    #[serde(default = "default_max_cycles")]
+    pub max_cycles: u32,
     /// Maximum number of execution history entries to keep in memory.
     ///
     /// This limits memory growth by dropping oldest entries when the limit is reached.
@@ -182,6 +200,26 @@ const fn default_max_xsd_retries() -> u32 {
 /// This allows 2 retries for the same agent before switching to the next agent.
 const fn default_max_same_agent_retries() -> u32 {
     2
+}
+
+const fn default_max_retries() -> u32 {
+    3
+}
+
+const fn default_retry_delay_ms() -> u64 {
+    1000
+}
+
+const fn default_backoff_multiplier() -> f64 {
+    2.0
+}
+
+const fn default_max_backoff_ms() -> u64 {
+    60_000
+}
+
+const fn default_max_cycles() -> u32 {
+    3
 }
 
 /// Default maximum execution history entries to keep in memory.
@@ -217,9 +255,15 @@ impl Default for GeneralConfig {
             templates_dir: None,
             git_user_name: None,
             git_user_email: None,
+            provider_fallback: HashMap::new(),
             max_dev_continuations: default_max_dev_continuations(),
             max_xsd_retries: default_max_xsd_retries(),
             max_same_agent_retries: default_max_same_agent_retries(),
+            max_retries: default_max_retries(),
+            retry_delay_ms: default_retry_delay_ms(),
+            backoff_multiplier: default_backoff_multiplier(),
+            max_backoff_ms: default_max_backoff_ms(),
+            max_cycles: default_max_cycles(),
             execution_history_limit: default_execution_history_limit(),
         }
     }
@@ -420,8 +464,8 @@ pub struct UnifiedConfig {
     pub agent_drains: HashMap<String, String>,
     /// Legacy role-keyed agent chain configuration.
     ///
-    /// When present, this is normalized into the same built-in drain bindings
-    /// used by the named `[agent_chains]` / `[agent_drains]` schema.
+    /// This is retained only so validation can produce an explicit migration
+    /// error instead of silently ignoring the removed schema.
     #[serde(default, rename = "agent_chain")]
     pub agent_chain: Option<FallbackConfig>,
 }
@@ -443,16 +487,20 @@ impl UnifiedConfig {
     /// metadata-only legacy `agent_chain` section is still accepted so named
     /// drains can reuse provider fallback and retry settings.
     pub fn resolve_agent_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, String> {
+        if self.agent_chain.is_some()
+            && !self.agent_drains.is_empty()
+            && self.agent_chains.is_empty()
+        {
+            return Err(agent_chain_migration_message(self));
+        }
+
         if !self.agent_chains.is_empty() || !self.agent_drains.is_empty() {
             if self
                 .agent_chain
                 .as_ref()
                 .is_some_and(crate::agents::fallback::FallbackConfig::uses_legacy_role_schema)
             {
-                return Err(
-                    "agent_chain cannot be combined with agent_chains/agent_drains; use either the legacy role-keyed schema or the named chain + drain schema"
-                        .to_string(),
-                );
+                return Err(agent_chain_migration_message(self));
             }
 
             let mut bindings = HashMap::new();
@@ -520,15 +568,22 @@ impl UnifiedConfig {
                 }
             }
 
-            let legacy = self.agent_chain.clone().unwrap_or_default();
+            let provider_fallback = if self.general.provider_fallback.is_empty() {
+                self.agent_chain
+                    .as_ref()
+                    .map_or_else(HashMap::new, |legacy| legacy.provider_fallback.clone())
+            } else {
+                self.general.provider_fallback.clone()
+            };
+
             return Ok(Some(ResolvedDrainConfig {
                 bindings,
-                provider_fallback: legacy.provider_fallback,
-                max_retries: legacy.max_retries,
-                retry_delay_ms: legacy.retry_delay_ms,
-                backoff_multiplier: legacy.backoff_multiplier,
-                max_backoff_ms: legacy.max_backoff_ms,
-                max_cycles: legacy.max_cycles,
+                provider_fallback,
+                max_retries: self.general.max_retries,
+                retry_delay_ms: self.general.retry_delay_ms,
+                backoff_multiplier: self.general.backoff_multiplier,
+                max_backoff_ms: self.general.max_backoff_ms,
+                max_cycles: self.general.max_cycles,
             }));
         }
 
@@ -536,8 +591,76 @@ impl UnifiedConfig {
             .agent_chain
             .as_ref()
             .filter(|fallback| fallback.uses_legacy_role_schema())
-            .map(crate::agents::fallback::FallbackConfig::resolve_drains))
+            .map(|fallback| {
+                let mut resolved = fallback.resolve_drains();
+                if !self.general.provider_fallback.is_empty() {
+                    resolved
+                        .provider_fallback
+                        .clone_from(&self.general.provider_fallback);
+                }
+                resolved.max_retries = self.general.max_retries;
+                resolved.retry_delay_ms = self.general.retry_delay_ms;
+                resolved.backoff_multiplier = self.general.backoff_multiplier;
+                resolved.max_backoff_ms = self.general.max_backoff_ms;
+                resolved.max_cycles = self.general.max_cycles;
+                resolved
+            }))
     }
+}
+
+fn agent_chain_migration_message(config: &UnifiedConfig) -> String {
+    let conflicting_legacy_names = conflicting_legacy_chain_names(config);
+    if !conflicting_legacy_names.is_empty() {
+        return format!(
+            "conflicting agent chain definitions in [agent_chain] and [agent_chains] for: {}; remove the duplicate legacy definitions and keep the canonical agent_chains/agent_drains config ([agent_chains]/[agent_drains])",
+            conflicting_legacy_names.join(", ")
+        );
+    }
+
+    if !config.agent_drains.is_empty() && config.agent_chains.is_empty() {
+        "found [agent_drains] with singular [agent_chain]; did you mean [agent_chains]? Move retry/backoff settings to [general] (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)".to_string()
+    } else {
+        "deprecated legacy [agent_chain] role bindings cannot be combined with the canonical agent_chains/agent_drains schema; migrate agent lists to [agent_chains] + [agent_drains] and move retry/backoff settings to [general] (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)".to_string()
+    }
+}
+
+fn conflicting_legacy_chain_names(config: &UnifiedConfig) -> Vec<&'static str> {
+    let mut conflicts = Vec::new();
+
+    if config
+        .agent_chain
+        .as_ref()
+        .is_some_and(|fallback| !fallback.developer.is_empty())
+        && config.agent_chains.contains_key("developer")
+    {
+        conflicts.push("developer");
+    }
+    if config
+        .agent_chain
+        .as_ref()
+        .is_some_and(|fallback| !fallback.reviewer.is_empty())
+        && config.agent_chains.contains_key("reviewer")
+    {
+        conflicts.push("reviewer");
+    }
+    if config
+        .agent_chain
+        .as_ref()
+        .is_some_and(|fallback| !fallback.commit.is_empty())
+        && config.agent_chains.contains_key("commit")
+    {
+        conflicts.push("commit");
+    }
+    if config
+        .agent_chain
+        .as_ref()
+        .is_some_and(|fallback| !fallback.analysis.is_empty())
+        && config.agent_chains.contains_key("analysis")
+    {
+        conflicts.push("analysis");
+    }
+
+    conflicts
 }
 
 fn default_chain_binding_for_drain(
