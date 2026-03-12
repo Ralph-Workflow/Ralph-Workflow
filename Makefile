@@ -136,7 +136,26 @@ dylint:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
-		mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		CARGO_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
+			if [ ! -d "$$CARGO_HOME" ]; then \
+				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$CARGO_HOME" ]; then \
+			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
+			echo "Set CARGO_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$CARGO_HOME" ]; then \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ "$$CARGO_HOME_WRITABLE" = "1" ]; then \
+			mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		fi; \
 		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
 			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
 				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
@@ -161,23 +180,6 @@ dylint:
 				exit 1; \
 			fi; \
 		done; \
-		CARGO_HOME_WRITABLE=1; \
-		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
-			if [ ! -d "$$CARGO_HOME" ]; then \
-				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
-				echo "Set CARGO_HOME to an existing readable location." >&2; \
-				exit 1; \
-			fi; \
-			CARGO_HOME_WRITABLE=0; \
-		fi; \
-		if [ ! -r "$$CARGO_HOME" ]; then \
-			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
-			echo "Set CARGO_HOME to an existing readable location." >&2; \
-			exit 1; \
-		fi; \
-		if [ ! -w "$$CARGO_HOME" ]; then \
-			CARGO_HOME_WRITABLE=0; \
-		fi; \
 		RUSTUP_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
 			if [ ! -d "$$RUSTUP_HOME" ]; then \
@@ -354,7 +356,26 @@ dylint-verbose:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
-		mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		CARGO_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
+			if [ ! -d "$$CARGO_HOME" ]; then \
+				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$CARGO_HOME" ]; then \
+			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
+			echo "Set CARGO_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$CARGO_HOME" ]; then \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ "$$CARGO_HOME_WRITABLE" = "1" ]; then \
+			mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		fi; \
 		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
 			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
 				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
@@ -379,23 +400,6 @@ dylint-verbose:
 				exit 1; \
 			fi; \
 		done; \
-		CARGO_HOME_WRITABLE=1; \
-		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
-			if [ ! -d "$$CARGO_HOME" ]; then \
-				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
-				echo "Set CARGO_HOME to an existing readable location." >&2; \
-				exit 1; \
-			fi; \
-			CARGO_HOME_WRITABLE=0; \
-		fi; \
-		if [ ! -r "$$CARGO_HOME" ]; then \
-			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
-			echo "Set CARGO_HOME to an existing readable location." >&2; \
-			exit 1; \
-		fi; \
-		if [ ! -w "$$CARGO_HOME" ]; then \
-			CARGO_HOME_WRITABLE=0; \
-		fi; \
 		RUSTUP_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
 			if [ ! -d "$$RUSTUP_HOME" ]; then \
