@@ -27,6 +27,19 @@ pub struct CommandResult {
     pub(crate) child_status_at_timeout: Option<ChildProcessInfo>,
 }
 
+/// Why the idle-timeout monitor stopped waiting for an agent process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdleTimeoutCause {
+    /// The agent timed out with no qualifying child work present.
+    NoQualifying,
+    /// The agent timed out while child processes still existed but no longer showed
+    /// current work that should suppress enforcement.
+    Stalled(ChildProcessInfo),
+    /// The agent timed out while child snapshots still looked active, but they
+    /// stopped showing fresh progress across idle checks.
+    StaleActive(ChildProcessInfo),
+}
+
 /// RAII guard for agent phase cleanup.
 ///
 /// Ensures that agent phase cleanup happens even if the pipeline is interrupted

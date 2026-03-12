@@ -36,6 +36,7 @@ fn wait_until_idle_timeout_exceeded(
 struct ReadDirCountingWorkspace {
     inner: MemoryWorkspace,
     read_dir_calls: std::sync::atomic::AtomicUsize,
+    gate: Option<Arc<ReadDirGate>>,
 }
 
 impl ReadDirCountingWorkspace {
@@ -43,12 +44,72 @@ impl ReadDirCountingWorkspace {
         Self {
             inner,
             read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+            gate: None,
+        }
+    }
+
+    const fn with_gate(inner: MemoryWorkspace, gate: Arc<ReadDirGate>) -> Self {
+        Self {
+            inner,
+            read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+            gate: Some(gate),
         }
     }
 
     fn read_dir_calls(&self) -> usize {
         self.read_dir_calls
             .load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+#[derive(Debug)]
+struct ReadDirGate {
+    scan_started: AtomicBool,
+    released: Mutex<bool>,
+    release_condvar: std::sync::Condvar,
+}
+
+impl ReadDirGate {
+    const fn new() -> Self {
+        Self {
+            scan_started: AtomicBool::new(false),
+            released: Mutex::new(false),
+            release_condvar: std::sync::Condvar::new(),
+        }
+    }
+
+    fn wait_for_scan_to_start(&self) {
+        while !self.scan_started.load(Ordering::Acquire) {
+            std::thread::yield_now();
+        }
+    }
+
+    fn release_scan(&self) {
+        {
+            let mut released = self
+                .released
+                .lock()
+                .expect("read_dir gate mutex should not be poisoned");
+            *released = true;
+        }
+        self.release_condvar.notify_all();
+    }
+
+    fn block_until_released(&self) {
+        self.scan_started.store(true, Ordering::Release);
+        {
+            let mut released = self
+                .released
+                .lock()
+                .expect("read_dir gate mutex should not be poisoned");
+            while !*released {
+                released = self
+                    .release_condvar
+                    .wait(released)
+                    .expect("read_dir gate wait should not be poisoned");
+            }
+            drop(released);
+        }
     }
 }
 
@@ -112,6 +173,9 @@ impl Workspace for ReadDirCountingWorkspace {
     fn read_dir(&self, relative: &Path) -> std::io::Result<Vec<DirEntry>> {
         self.read_dir_calls
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        if let Some(gate) = &self.gate {
+            gate.block_until_released();
+        }
         self.inner.read_dir(relative)
     }
 
@@ -862,15 +926,15 @@ fn output_activity_during_file_scan_prevents_kill() {
     with_default_timeout(|| {
         let timeout = Duration::from_millis(80);
 
-        // Empty workspace — file scan always returns false.
-        let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
+        // Empty workspace - file scan always returns false.
+        let gate = Arc::new(ReadDirGate::new());
+        let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::with_gate(
+            MemoryWorkspace::new_test(),
+            Arc::clone(&gate),
+        ));
 
         let timestamp = new_activity_timestamp();
         wait_until_idle_timeout_exceeded(&timestamp, timeout);
-
-        // Simulate output activity arriving: reset the timestamp so timeout is no
-        // longer exceeded. The monitor must re-check before proceeding with kill.
-        touch_activity(&timestamp);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
@@ -903,7 +967,14 @@ fn output_activity_during_file_scan_prevents_kill() {
             )
         });
 
-        // Give the monitor a moment, then stop cleanly.
+        gate.wait_for_scan_to_start();
+
+        // Simulate output activity arriving after the file scan started but
+        // before the monitor can proceed to the kill path.
+        touch_activity(&timestamp);
+        gate.release_scan();
+
+        // Give the monitor a moment to observe the refreshed timestamp, then stop cleanly.
         std::thread::sleep(Duration::from_millis(20));
         should_stop.store(true, Ordering::Release);
 
@@ -990,6 +1061,145 @@ fn active_subprocess_prevents_idle_kill() {
     });
 }
 
+/// Historical CPU growth alone must not suppress timeout when the current child
+/// snapshot shows no active descendants.
+#[test]
+fn sleeping_subprocess_with_historical_cpu_still_times_out() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 0,
+                cpu_time_ms: 100,
+                descendant_pid_signature: 55,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let cpu_history_updater = executor_impl.clone();
+        let cpu_history = thread::spawn(move || {
+            let mut cpu_ms = 100u64;
+            for _ in 0..10 {
+                cpu_ms += 25;
+                cpu_history_updater.add_active_children_info(
+                    child_pid,
+                    ChildProcessInfo {
+                        child_count: 1,
+                        active_child_count: 0,
+                        cpu_time_ms: cpu_ms,
+                        descendant_pid_signature: 55,
+                    },
+                );
+                thread::sleep(Duration::from_millis(3));
+            }
+        });
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(5),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 1,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+        cpu_history.join().expect("cpu history thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "historical CPU alone should not keep a sleeping subprocess alive"
+        );
+        assert!(
+            !executor_impl.execute_calls_for("kill").is_empty(),
+            "timeout enforcement should proceed when children are present but not currently active"
+        );
+    });
+}
+
+/// Repeated child snapshots that stay marked active but never show fresh CPU
+/// progress must still time out.
+#[test]
+fn active_flag_without_fresh_subprocess_progress_still_times_out() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 1,
+                cpu_time_ms: 5_000,
+                descendant_pid_signature: 155,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(5),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "an active flag without fresh child progress must not keep the run alive"
+        );
+        assert!(
+            !executor_impl.execute_calls_for("kill").is_empty(),
+            "timeout enforcement should still trigger when child snapshots stay active but stale"
+        );
+    });
+}
+
 /// When output is idle, no file activity is present, and no child processes are
 /// running, the monitor must enforce the idle timeout.
 #[test]
@@ -1056,6 +1266,7 @@ fn stalled_subprocess_timeout_includes_child_status() {
             child_pid,
             ChildProcessInfo {
                 child_count: 2,
+                active_child_count: 0,
                 cpu_time_ms: 4200,
                 descendant_pid_signature: 77,
             },
@@ -1097,6 +1308,86 @@ fn stalled_subprocess_timeout_includes_child_status() {
     });
 }
 
+/// Reappearing children without fresh work must not restart startup grace.
+#[test]
+fn reappearing_stalled_subprocess_does_not_reset_idle_confirmation() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+        let should_stop_for_monitor = Arc::clone(&should_stop);
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 0,
+                cpu_time_ms: 0,
+                descendant_pid_signature: 33,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop_for_monitor,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(20),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 4,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        thread::sleep(Duration::from_millis(25));
+        executor_impl.remove_active_children_for(child_pid);
+        thread::sleep(Duration::from_millis(25));
+        executor_impl.add_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 0,
+                cpu_time_ms: 0,
+                descendant_pid_signature: 44,
+            },
+        );
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+        match result {
+            MonitorResult::TimedOut {
+                child_status_at_timeout: Some(info),
+                ..
+            } => {
+                assert_eq!(info.child_count, 1);
+                assert_eq!(info.cpu_time_ms, 0);
+                assert_eq!(
+                    info.descendant_pid_signature, 44,
+                    "timeout should reflect the reappeared stalled child subtree rather than timing out before it was observed"
+                );
+            }
+            other => panic!(
+                "expected timed out result that observed the reappeared stalled child, got {other:?}"
+            ),
+        }
+    });
+}
+
 /// Event round-trip: `child_status_at_timeout` survives serialization.
 #[test]
 fn child_status_at_timeout_survives_event_serde_round_trip() {
@@ -1106,6 +1397,7 @@ fn child_status_at_timeout_survives_event_serde_round_trip() {
 
         let info = ChildProcessInfo {
             child_count: 2,
+            active_child_count: 0,
             cpu_time_ms: 5000,
             descendant_pid_signature: 88,
         };

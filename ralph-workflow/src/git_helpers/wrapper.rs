@@ -3235,6 +3235,7 @@ mod tests {
                 clear_agent_phase_global_state();
             }
         }
+        let _lock = ENV_LOCK.lock().unwrap();
         let _guard = ClearOnDrop;
 
         let tmp = tempfile::tempdir().unwrap();
@@ -3266,6 +3267,7 @@ mod tests {
 
     #[test]
     fn test_clear_agent_phase_global_state_clears_all_mutexes() {
+        let _lock = ENV_LOCK.lock().unwrap();
         set_agent_phase_paths_for_test(
             Some(PathBuf::from("/test/repo")),
             Some(PathBuf::from("/test/repo/.git/ralph")),
@@ -3341,6 +3343,7 @@ mod tests {
     fn test_cleanup_agent_phase_silent_at_removes_all_artifacts_including_track_file() {
         use crate::git_helpers::hooks;
 
+        let _lock = ENV_LOCK.lock().unwrap();
         let tmp = tempfile::tempdir().unwrap();
         let repo_root = tmp.path();
         let _repo = git2::Repository::init(repo_root).unwrap();

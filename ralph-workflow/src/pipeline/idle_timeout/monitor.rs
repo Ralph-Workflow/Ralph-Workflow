@@ -218,6 +218,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     let mut consecutive_idle_count: u32 = 0;
     let mut last_child_observation: Option<ChildProcessInfo> = None;
     let mut last_child_info: Option<ChildProcessInfo> = None;
+    let mut child_startup_grace_available = true;
 
     loop {
         // Fast-path teardown: if the process completed and we have not already
@@ -323,6 +324,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
 
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
             consecutive_idle_count = 0;
+            last_child_observation = None;
+            last_child_info = None;
+            child_startup_grace_available = true;
             continue;
         }
 
@@ -341,6 +345,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             // check because check_interval has elapsed.
             if last_file_activity.is_some_and(|t| t.elapsed() < timeout) {
                 consecutive_idle_count = 0;
+                last_child_observation = None;
+                last_child_info = None;
+                child_startup_grace_available = true;
                 eprintln!(
                     "Continuing monitoring: file activity was confirmed within the last timeout window"
                 );
@@ -370,6 +377,9 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 Ok(true) => {
                     consecutive_idle_count = 0;
                     last_file_activity = Some(std::time::Instant::now());
+                    last_child_observation = None;
+                    last_child_info = None;
+                    child_startup_grace_available = true;
                     eprintln!("AI-generated files were updated recently, continuing monitoring");
                     continue;
                 }
@@ -391,16 +401,19 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         // "kill is sent".
         if !is_idle_timeout_exceeded(activity_timestamp, timeout) {
             consecutive_idle_count = 0;
+            last_child_observation = None;
+            last_child_info = None;
+            child_startup_grace_available = true;
             eprintln!("Output activity detected after file scan; continuing monitoring");
             continue;
         }
 
         // Check for active child processes: the agent may have spawned a subprocess
-        // (e.g. cargo test, cargo build, npm install) that is still running even
-        // though there is no stdout/stderr output and no file-system activity in
-        // tracked locations. Children only suppress the idle counter when their
-        // cumulative CPU time is advancing between checks — mere existence of
-        // child processes (e.g. zombies, idle daemons) is not sufficient.
+        // (e.g. cargo test, cargo build, npm install) that is still doing useful
+        // work even though there is no stdout/stderr output and no file-system
+        // activity in tracked locations. Mere descendant existence is not enough:
+        // suppression only applies when the executor reports currently active child
+        // work in the latest snapshot.
         if check_child_processes {
             let child_pid = {
                 let locked_child = child.lock().expect("child process mutex poisoned");
@@ -408,58 +421,70 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             };
             let info = executor.get_child_process_info(child_pid);
             if info.has_children() {
-                let first_child_observation = last_child_observation.is_none();
-                let subtree_changed = last_child_observation.is_some_and(|prev| {
-                    prev.descendant_pid_signature != info.descendant_pid_signature
-                        || info.cpu_time_ms < prev.cpu_time_ms
-                });
-                let cpu_advanced = last_child_observation.is_some_and(|prev| {
-                    prev.descendant_pid_signature == info.descendant_pid_signature
-                        && info.cpu_time_ms > prev.cpu_time_ms
-                });
-                last_child_observation = Some(info);
                 last_child_info = Some(info);
+                let previous_observation = last_child_observation;
+                let first_active_child_observation = previous_observation.is_none()
+                    && child_startup_grace_available
+                    && info.has_currently_active_children();
 
-                if first_child_observation {
+                if first_active_child_observation {
+                    child_startup_grace_available = false;
                     consecutive_idle_count = 0;
+                    last_child_observation = Some(info);
                     eprintln!(
-                        "Agent has child processes for the first time during idle timeout \
-                         (pid {child_pid}, {} children, cpu {}ms, signature {}); granting startup grace",
-                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                        "Agent has currently active child processes for the first time during idle timeout \
+                         (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
+                        info.active_child_count,
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
                     );
                     continue;
                 }
-                if cpu_advanced {
+
+                if previous_observation.is_some_and(|prev| info.shows_fresh_progress_since(prev)) {
+                    last_child_observation = Some(info);
                     if let Some(observed_activity) = child_activity_suppressed.as_ref() {
                         *observed_activity
                             .lock()
                             .expect("child activity observer mutex poisoned") = Some(info);
                     }
                     consecutive_idle_count = 0;
+                    child_startup_grace_available = true;
                     eprintln!(
-                        "Agent has active child processes (pid {child_pid}, \
-                         {} children, cpu {}ms, signature {}); continuing monitoring",
-                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                        "Agent has currently active child processes (pid {child_pid}, \
+                         {} active of {} children, cpu {}ms, signature {}); continuing monitoring",
+                        info.active_child_count,
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
                     );
                     continue;
                 }
-                if subtree_changed {
+
+                if info.has_stalled_children() {
                     eprintln!(
-                        "Agent child subtree changed during idle timeout (pid {child_pid}, \
-                         {} children, cpu {}ms, signature {}); waiting for future CPU advancement before suppressing timeout",
-                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                        "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
+                         but none show current work; treating as idle",
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
                     );
-                } else {
-                    // Children exist but CPU hasn't advanced — treat as idle.
+                } else if info.has_currently_active_children() {
                     eprintln!(
-                        "Agent has child processes (pid {child_pid}, {} children) \
-                         but CPU time unchanged ({}ms, signature {}); treating as idle",
-                        info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                        "Agent has child processes (pid {child_pid}, {} active of {} total, cpu {}ms, signature {}) \
+                         but they showed no fresh progress since the last idle check; treating as idle",
+                        info.active_child_count,
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
                     );
                 }
+                last_child_observation = Some(info);
             } else {
                 last_child_observation = None;
                 last_child_info = None;
+                child_startup_grace_available = true;
             }
         }
 
