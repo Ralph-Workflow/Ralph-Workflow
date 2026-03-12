@@ -103,13 +103,6 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
     }
 
-    fn is_passive_wrapper_command(command: &str) -> bool {
-        matches!(
-            command,
-            "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish" | "tcsh" | "csh"
-        )
-    }
-
     fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
         let pid = libc::pid_t::try_from(parent_pid).ok()?;
         let mut capacity: usize = 32;
@@ -175,19 +168,6 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
             )
         };
         (bytes == expected).then_some(info)
-    }
-
-    fn short_info_command(info: &ProcBsdShortInfo) -> Option<String> {
-        let len = info
-            .command
-            .iter()
-            .position(|&byte| byte == 0)
-            .unwrap_or(info.command.len());
-        let bytes = info.command[..len]
-            .iter()
-            .map(|&byte| u8::try_from(byte).ok())
-            .collect::<Option<Vec<_>>>()?;
-        std::str::from_utf8(&bytes).ok().map(ToString::to_string)
     }
 
     fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
@@ -271,23 +251,11 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
 
         child_count += 1;
         total_cpu_ms += cpu_time_ms;
-        let has_qualifying_descendants =
-            list_child_pids(descendant_pid).is_some_and(|child_pids| {
-                child_pids.into_iter().any(|child_pid| {
-                    fetch_bsd_short_info(child_pid).is_some_and(|child_info| {
-                        child_info.process_group_id == parent_pid
-                            && qualifies_libproc_status(child_info.status)
-                    })
-                })
-            });
         let counts_as_current_activity = libproc_state_indicates_current_activity(
             bsd_info.status,
             cpu_time_ms,
             num_running_threads,
-        ) && (has_qualifying_descendants
-            || !short_info_command(&bsd_info)
-                .as_deref()
-                .is_some_and(is_passive_wrapper_command));
+        );
 
         if counts_as_current_activity {
             active_child_count += 1;
@@ -490,7 +458,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 cpu_time_ms: u64,
                 in_scope: bool,
                 currently_active: bool,
-                is_passive_wrapper: bool,
             }
 
             /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
@@ -549,13 +516,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 }
             }
 
-            fn is_passive_wrapper_command(command: &str) -> bool {
-                matches!(
-                    command,
-                    "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish" | "tcsh" | "csh"
-                )
-            }
-
             fn descendant_pid_signature(descendants: &[u32]) -> u64 {
                 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
                 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -607,26 +567,21 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                     };
                     saw_parseable = true;
 
-                    let (in_scope, currently_active, cputime_text, is_passive_wrapper) =
-                        if parts.len() >= 5 {
-                            let pgid_matches_parent = parts[2]
-                                .parse::<u32>()
-                                .ok()
-                                .is_some_and(|pgid| pgid == parent_pid);
-                            let state_qualifies = qualifies_process_state(parts[3]);
-                            let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
-                            let is_passive_wrapper = parts
-                                .get(5)
-                                .is_some_and(|command| is_passive_wrapper_command(command));
-                            (
-                                pgid_matches_parent && state_qualifies,
-                                state_indicates_current_activity(parts[3], cpu_ms),
-                                parts[4],
-                                is_passive_wrapper,
-                            )
-                        } else {
-                            (true, false, parts[2], false)
-                        };
+                    let (in_scope, currently_active, cputime_text) = if parts.len() >= 5 {
+                        let pgid_matches_parent = parts[2]
+                            .parse::<u32>()
+                            .ok()
+                            .is_some_and(|pgid| pgid == parent_pid);
+                        let state_qualifies = qualifies_process_state(parts[3]);
+                        let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
+                        (
+                            pgid_matches_parent && state_qualifies,
+                            state_indicates_current_activity(parts[3], cpu_ms),
+                            parts[4],
+                        )
+                    } else {
+                        (true, false, parts[2])
+                    };
 
                     let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
                     children_of
@@ -638,7 +593,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             cpu_time_ms: cpu_ms,
                             in_scope,
                             currently_active,
-                            is_passive_wrapper,
                         });
                 }
 
@@ -663,13 +617,8 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             }
 
                             debug_assert_eq!(child.parent_pid, current);
-                            let has_in_scope_descendants = children_of
-                                .get(&child.pid)
-                                .is_some_and(|entries| entries.iter().any(|entry| entry.in_scope));
                             child_count += 1;
-                            if child.currently_active
-                                && (!child.is_passive_wrapper || has_in_scope_descendants)
-                            {
+                            if child.currently_active {
                                 active_child_count += 1;
                             }
                             total_cpu_ms += child.cpu_time_ms;
@@ -1134,7 +1083,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn get_child_process_info_treats_busy_shell_wrapper_without_descendants_as_stalled() {
+    fn get_child_process_info_counts_busy_shell_without_descendants_as_current_work() {
         let parent = 100;
 
         let mut results: ResultMap = HashMap::new();
@@ -1148,8 +1097,8 @@ mod tests {
 
         assert_eq!(info.child_count, 1);
         assert_eq!(
-            info.active_child_count, 0,
-            "shell wrappers without qualifying descendants must remain observable but not count as current child work"
+            info.active_child_count, 1,
+            "a shell process that is itself running with accumulated CPU must count as current child work even without descendants"
         );
         assert_eq!(info.cpu_time_ms, 1000);
     }

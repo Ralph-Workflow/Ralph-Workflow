@@ -484,6 +484,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             } else {
                 last_child_observation = None;
                 last_child_info = None;
+                child_startup_grace_available = true;
             }
         }
 

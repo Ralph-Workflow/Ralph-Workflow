@@ -61,6 +61,7 @@ pub struct MockProcessExecutor {
     agent_results: Mutex<HashMap<String, MockResult<AgentCommandResult>>>,
     default_agent_result: Mutex<MockResult<AgentCommandResult>>,
     active_children: Mutex<HashMap<u32, ChildProcessInfo>>,
+    child_info_queries: Mutex<HashMap<u32, u32>>,
 }
 
 impl Default for MockProcessExecutor {
@@ -87,6 +88,7 @@ impl Default for MockProcessExecutor {
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(MockResult::Ok(AgentCommandResult::success())),
             active_children: Mutex::new(HashMap::new()),
+            child_info_queries: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -114,6 +116,7 @@ impl MockProcessExecutor {
             agent_results: Mutex::new(HashMap::new()),
             default_agent_result: Mutex::new(err_result("mock agent error")),
             active_children: Mutex::new(HashMap::new()),
+            child_info_queries: Mutex::new(HashMap::new()),
         }
     }
 
@@ -335,6 +338,21 @@ impl MockProcessExecutor {
         self.active_children.lock().unwrap().remove(&parent_pid);
     }
 
+    /// Return how many times child-process info was requested for a parent PID.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned.
+    #[must_use]
+    pub fn child_info_query_count_for(&self, parent_pid: u32) -> u32 {
+        self.child_info_queries
+            .lock()
+            .unwrap()
+            .get(&parent_pid)
+            .copied()
+            .unwrap_or(0)
+    }
+
     fn find_agent_result(&self, command: &str) -> AgentCommandResult {
         if let Some(result) = self.agent_results.lock().unwrap().get(command) {
             return result
@@ -363,6 +381,12 @@ impl MockProcessExecutor {
 
 impl ProcessExecutor for MockProcessExecutor {
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
+        *self
+            .child_info_queries
+            .lock()
+            .unwrap()
+            .entry(parent_pid)
+            .or_insert(0) += 1;
         self.active_children
             .lock()
             .unwrap()

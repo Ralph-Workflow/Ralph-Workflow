@@ -3,6 +3,17 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+fn python3_is_available() -> bool {
+    Command::new("python3")
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(unix)]
 fn spawn_shell_in_own_process_group(script: &str) -> Child {
     use std::os::unix::process::CommandExt;
 
@@ -53,6 +64,9 @@ fn wait_for_descendant_snapshot_matching(
 #[test]
 #[cfg(unix)]
 fn detached_descendant_process_group_does_not_qualify_as_active_child_work() {
+    if !python3_is_available() {
+        return;
+    }
     let executor = RealProcessExecutor::new();
     let script = "python3 -c 'import os,time; os.setpgid(0,0); time.sleep(1.0)' & wait";
     let mut shell = spawn_shell_in_own_process_group(script);
@@ -79,6 +93,9 @@ fn detached_descendant_process_group_does_not_qualify_as_active_child_work() {
 #[test]
 #[cfg(unix)]
 fn same_process_group_sleeping_descendants_with_only_historical_cpu_do_not_qualify() {
+    if !python3_is_available() {
+        return;
+    }
     let executor = RealProcessExecutor::new();
     let script = "python3 -c 'import time\nfor _ in range(5):\n    start=time.time()\n    while time.time()-start < 0.03:\n        pass\n    time.sleep(0.2)' & sleep 1.5";
     let mut shell = spawn_shell_in_own_process_group(script);
@@ -101,6 +118,9 @@ fn same_process_group_sleeping_descendants_with_only_historical_cpu_do_not_quali
 #[test]
 #[cfg(unix)]
 fn same_process_group_busy_descendant_qualifies_as_active_child_work() {
+    if !python3_is_available() {
+        return;
+    }
     let executor = RealProcessExecutor::new();
     let script = "python3 -c 'import time\nend=time.time()+1.0\nwhile time.time()<end:\n    pass' & sleep 1.2";
     let mut shell = spawn_shell_in_own_process_group(script);
@@ -127,6 +147,9 @@ fn same_process_group_busy_descendant_qualifies_as_active_child_work() {
 #[test]
 #[cfg(unix)]
 fn same_process_group_descendant_stops_qualifying_after_busy_work_finishes() {
+    if !python3_is_available() {
+        return;
+    }
     let executor = RealProcessExecutor::new();
     let script = "python3 -c 'import time\nend=time.time()+0.3\nwhile time.time()<end:\n    pass\ntime.sleep(0.8)' & sleep 1.3";
     let mut shell = spawn_shell_in_own_process_group(script);
