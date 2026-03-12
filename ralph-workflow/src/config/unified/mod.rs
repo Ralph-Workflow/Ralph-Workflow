@@ -19,9 +19,17 @@
 //! work = "ccs work"
 //! personal = "ccs personal"
 //!
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["ccs/work", "claude"]
 //! reviewer = ["claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
+//! review = "reviewer"
+//! fix = "reviewer"
+//! commit = "reviewer"
+//! analysis = "developer"
 //! ```
 //!
 //! # Module Organization

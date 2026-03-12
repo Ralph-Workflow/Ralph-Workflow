@@ -219,10 +219,15 @@ display_name = "GLM (Direct via Claude)"
 # Use glm-direct instead of ccs/glm
 ralph --developer-agent glm-direct
 
-# Add to agent chain for automatic fallback
+# Add to a named chain for automatic fallback
 # In ~/.config/ralph-workflow.toml:
-[agent_chain]
+[agent_chains]
 developer = ["glm-direct", "claude", "codex"]
+
+[agent_drains]
+planning = "developer"
+development = "developer"
+analysis = "developer"
 ```
 
 **Requirements**:
@@ -319,39 +324,53 @@ Ralph uses an **agent chain** system for fault-tolerant execution. When an agent
 
 ### Agent Chain Configuration
 
-Configure fallback chains per role in `~/.config/ralph-workflow.toml`:
+Configure reusable named chains, then bind the built-in runtime drains in `~/.config/ralph-workflow.toml`:
 
 ```toml
-[agent_chain]
+[agent_chains]
 developer = ["claude", "codex", "aider"]  # Primary -> Secondary -> Tertiary
 reviewer = ["claude", "codex"]
-commit = []  # Empty = use reviewer chain as fallback
+
+[agent_drains]
+planning = "developer"
+development = "developer"
+analysis = "developer"
+review = "reviewer"
+fix = "reviewer"
+# Omit commit to inherit the resolved review/fix binding by default
 ```
 
 ### Fallback Behavior by Role
 
-| Role | Chain Config | Fallback If Empty |
-|------|--------------|-------------------|
-| **Developer** | `agent_chain.developer` | Uses `--developer-agent` value |
-| **Reviewer** | `agent_chain.reviewer` | Uses `--reviewer-agent` value |
-| **Commit** | `agent_chain.commit` | Uses reviewer chain, then reviewer agent |
+| Runtime Drain | Binding | Fallback If Omitted |
+|--------------|---------|--------------------|
+| **Planning / Development / Analysis** | `agent_drains.* -> agent_chains.<name>` | Analysis inherits the resolved planning/development chain |
+| **Review / Fix** | `agent_drains.* -> agent_chains.<name>` | Fix should usually share the review chain unless you want a dedicated fix chain |
+| **Commit** | `agent_drains.commit -> agent_chains.<name>` | Inherits the resolved review/fix binding |
 
 ### Commit Agent Fallback (Important)
 
 When generating commit messages (`--generate-commit-msg`), Ralph uses this fallback order:
 
-1. **First**: Check `agent_chain.commit` for configured commit agents
-2. **Second**: If empty, use `agent_chain.reviewer` (reviewer chain)
+1. **First**: Check `agent_drains.commit` for a configured commit drain binding
+2. **Second**: If omitted, inherit the resolved `review` / `fix` chain binding
 3. **Third**: If both empty, use the context's reviewer agent
 
 This design reflects that commit message generation is semantically similar to review tasks, so reviewer agents are natural fallbacks.
 
 **Example**: With no commit agents configured:
 ```toml
-[agent_chain]
+[agent_chains]
 developer = ["claude", "codex"]
-reviewer = ["codex", "aider"]  # Will be used for commit if commit is empty
-commit = []
+reviewer = ["codex", "aider"]
+
+[agent_drains]
+planning = "developer"
+development = "developer"
+analysis = "developer"
+review = "reviewer"
+fix = "reviewer"
+# commit omitted: inherits reviewer chain
 ```
 
 Running `ralph --generate-commit-msg` will use: codex -> aider (from reviewer chain).
@@ -374,7 +393,7 @@ The XSD retry prompt includes:
 Ralph applies exponential backoff between retry cycles:
 
 ```toml
-[agent_chain.fallback]
+[agent_chain]
 retry_delay_ms = 1000       # Initial delay (1 second)
 backoff_multiplier = 2.0    # Double each cycle
 max_backoff_ms = 30000      # Cap at 30 seconds

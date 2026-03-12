@@ -29,7 +29,8 @@ impl AgentRegistry {
     ///
     /// This merges (in increasing priority):
     /// 1. Built-in defaults (embedded `examples/agents.toml`)
-    /// 2. Unified config: `[agents]`, `[ccs_aliases]`, and `[agent_chain]` (if present)
+    /// 2. Unified config: `[agents]`, `[ccs_aliases]`, and any resolved
+    ///    `[agent_chains]` / `[agent_drains]` or legacy compatibility metadata
     ///
     /// Returns the number of agents loaded from unified config, including CCS aliases.
     pub fn apply_unified_config(&mut self, unified: &crate::config::UnifiedConfig) -> usize {

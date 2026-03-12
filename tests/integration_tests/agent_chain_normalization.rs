@@ -19,6 +19,14 @@ use ralph_workflow::workspace::MemoryWorkspace;
 use crate::common::with_locked_prompt_permissions;
 use crate::test_timeout::with_default_timeout;
 
+const README_TEXT: &str = include_str!("../../ralph-workflow/README.md");
+const AGENTS_MOD_SOURCE: &str = include_str!("../../ralph-workflow/src/agents/mod.rs");
+const AGENTS_REGISTRY_SOURCE: &str = include_str!("../../ralph-workflow/src/agents/registry.rs");
+const OPENCODE_RESOLVER_SOURCE: &str =
+    include_str!("../../ralph-workflow/src/agents/opencode_resolver.rs");
+const CONFIG_UNIFIED_MOD_SOURCE: &str =
+    include_str!("../../ralph-workflow/src/config/unified/mod.rs");
+
 /// Test that agent chain initializes correctly for each phase.
 #[test]
 fn test_agent_chain_initialization() {
@@ -503,5 +511,84 @@ fn test_registry_new_uses_default_named_drain_bindings() {
             !review.agents.is_empty(),
             "default named schema should populate review drain bindings"
         );
+    });
+}
+
+/// Test that the bundled unified config example teaches the canonical named chain/drain schema.
+#[test]
+fn test_default_unified_config_example_uses_named_chain_and_drain_schema() {
+    with_default_timeout(|| {
+        let uncommented_lines = ralph_workflow::config::unified::DEFAULT_UNIFIED_CONFIG
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<Vec<_>>();
+        let mut current_section = "";
+        let legacy_role_bindings = uncommented_lines
+            .iter()
+            .filter_map(|line| {
+                if line.starts_with('[') && line.ends_with(']') {
+                    current_section = line;
+                    return None;
+                }
+
+                (current_section == "[agent_chain]"
+                    && (line.starts_with("developer =")
+                        || line.starts_with("reviewer =")
+                        || line.starts_with("commit =")
+                        || line.starts_with("analysis =")))
+                .then_some(*line)
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            legacy_role_bindings.is_empty(),
+            "embedded unified config example should not teach legacy role bindings as the primary schema: {legacy_role_bindings:?}"
+        );
+        assert!(
+            uncommented_lines.contains(&"[agent_chains]"),
+            "embedded unified config example should define named reusable chains"
+        );
+        assert!(
+            uncommented_lines.contains(&"[agent_drains]"),
+            "embedded unified config example should bind built-in drains"
+        );
+        assert!(
+            uncommented_lines.contains(&"planning = \"developer\""),
+            "embedded unified config example should bind planning to the shared developer chain"
+        );
+        assert!(
+            uncommented_lines.contains(&"review = \"reviewer\""),
+            "embedded unified config example should bind review to the shared reviewer chain"
+        );
+    });
+}
+
+/// Test that user-facing docs teach named chains and drains as the primary schema.
+#[test]
+fn test_user_facing_examples_teach_named_chain_and_drain_schema() {
+    with_default_timeout(|| {
+        let public_examples = [
+            ("README", README_TEXT),
+            ("agents::mod docs", AGENTS_MOD_SOURCE),
+            ("agents::registry docs", AGENTS_REGISTRY_SOURCE),
+            ("agents::opencode_resolver docs", OPENCODE_RESOLVER_SOURCE),
+            ("config::unified docs", CONFIG_UNIFIED_MOD_SOURCE),
+        ];
+
+        for (label, text) in public_examples {
+            assert!(
+                text.contains("[agent_chains]"),
+                "{label} should teach named reusable chains"
+            );
+            assert!(
+                text.contains("[agent_drains]"),
+                "{label} should teach built-in drain bindings"
+            );
+            assert!(
+                !text.contains("[agent_chain]\ndeveloper ="),
+                "{label} should not present legacy role-keyed [agent_chain] examples as canonical"
+            );
+        }
     });
 }

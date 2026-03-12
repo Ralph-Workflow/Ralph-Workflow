@@ -40,17 +40,31 @@
 //! personal = "ccs personal"
 //! gemini = "ccs gemini"
 //!
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["ccs/work", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
 //! ```
 //!
 //! ## Agent Switching / Fallback
 //!
 //! Configure fallback agents for automatic switching when primary agent fails:
 //! ```toml
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["claude", "codex", "goose"]
 //! reviewer = ["codex", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
+//! review = "reviewer"
+//! fix = "reviewer"
+//! commit = "reviewer"
+//! analysis = "developer"
+//!
+//! [agent_chain]
 //! max_retries = 3
 //! retry_delay_ms = 1000
 //! ```

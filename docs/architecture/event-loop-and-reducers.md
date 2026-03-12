@@ -398,7 +398,7 @@ The orchestrator tracks effect execution patterns in `ContinuationState`:
 - `consecutive_same_effect_count`: counter for repeated identical effects
 - `max_consecutive_same_effect`: threshold before triggering recovery (default: 20)
 
-The effect fingerprint includes: phase, role, iteration, pass, and XSD retry state.
+The effect fingerprint includes: phase, active drain, drain mode, iteration, pass, and XSD retry state.
 
 ### Mandatory Recovery
 
