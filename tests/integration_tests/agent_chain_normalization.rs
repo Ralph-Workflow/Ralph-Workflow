@@ -264,6 +264,50 @@ fn test_same_agent_retry_uses_analysis_drain_even_when_role_is_stale() {
     });
 }
 
+/// Test that XSD retry in Development uses drain identity, not stale role metadata.
+#[test]
+fn test_xsd_retry_uses_analysis_drain_even_when_role_is_stale() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.continuation.xsd_retry_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Analysis;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
+            "analysis drain XSD retry should stay on analysis consumer, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that fix continuation in Review uses drain identity, not stale role metadata.
+#[test]
+fn test_fix_continuation_uses_fix_drain_even_when_role_is_stale() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.continuation.fix_continue_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 0,
+                    prompt_mode: PromptMode::Normal,
+                }
+            ),
+            "fix continuation should stay on fix consumer, got: {effect:?}"
+        );
+    });
+}
+
 /// Test that agent config file loading resolves named chain/drain schema through the workspace API.
 #[test]
 fn test_agents_config_file_loads_named_drain_schema() {
