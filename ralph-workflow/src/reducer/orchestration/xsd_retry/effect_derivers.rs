@@ -221,7 +221,7 @@ fn derive_continuation_effect(state: &PipelineState) -> Effect {
         // Fix continuation: start the fix chain with a fresh session
         PipelinePhase::Review if review_phase_uses_fix_drain(state) => Effect::PrepareFixPrompt {
             pass: state.reviewer_pass,
-            prompt_mode: PromptMode::Normal,
+            prompt_mode: PromptMode::Continuation,
         },
         // Other phases don't support continuation
         _ => Effect::SaveCheckpoint {

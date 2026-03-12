@@ -26,6 +26,8 @@ pub struct AgentsConfigFile {
     /// Legacy agent chain configuration (preferred agents + fallbacks).
     #[serde(default, rename = "agent_chain")]
     pub fallback: Option<FallbackConfig>,
+    #[serde(skip)]
+    raw_toml: Option<String>,
 }
 
 /// Error type for agent configuration loading.
@@ -62,6 +64,14 @@ impl AgentsConfigFile {
     /// Returns error if the named chain/drain schema is internally inconsistent
     /// or mixed with the legacy `[agent_chain]` table.
     pub fn resolve_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, AgentConfigError> {
+        if let Some(raw_toml) = &self.raw_toml {
+            let parsed: crate::config::UnifiedConfig = toml::from_str(raw_toml)?;
+            return crate::config::UnifiedConfig::default()
+                .merge_with_content(raw_toml, &parsed)
+                .resolve_agent_drains_checked()
+                .map_err(AgentConfigError::InvalidDrainConfig);
+        }
+
         crate::config::UnifiedConfig {
             agent_chains: self.agent_chains.clone(),
             agent_drains: self.agent_drains.clone(),
@@ -88,7 +98,8 @@ impl AgentsConfigFile {
         }
 
         let contents = workspace.read(path)?;
-        let config: Self = toml::from_str(&contents)?;
+        let mut config: Self = toml::from_str(&contents)?;
+        config.raw_toml = Some(contents);
         Ok(Some(config))
     }
 
@@ -114,7 +125,8 @@ impl AgentsConfigFile {
         let contents = workspace
             .read(path)
             .map_err(|e| AgentConfigError::Io(io::Error::other(e)))?;
-        let config: Self = toml::from_str(&contents)?;
+        let mut config: Self = toml::from_str(&contents)?;
+        config.raw_toml = Some(contents);
         Ok(Some(config))
     }
 

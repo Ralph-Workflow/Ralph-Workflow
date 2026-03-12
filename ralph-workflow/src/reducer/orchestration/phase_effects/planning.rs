@@ -41,7 +41,9 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
         };
     }
 
-    let planning_chain_ready = state.agent_chain.current_drain == AgentDrain::Planning;
+    let planning_chain_ready = state
+        .agent_chain
+        .matches_runtime_drain(AgentDrain::Planning);
 
     if state.agent_chain.agents.is_empty() || !planning_chain_ready {
         return Effect::InitializeAgentChain {

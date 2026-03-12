@@ -16,13 +16,15 @@ use ralph_workflow::config::validation::{validate_config_file, ConfigValidationE
 use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::reducer::determine_next_effect;
-use ralph_workflow::reducer::effect::Effect;
+use ralph_workflow::reducer::effect::{Effect, EffectHandler};
 use ralph_workflow::reducer::event::PipelinePhase;
-use ralph_workflow::reducer::state::{PipelineState, PromptMode};
+use ralph_workflow::reducer::handler::MainEffectHandler;
+use ralph_workflow::reducer::state::{FixStatus, PipelineState, PromptMode};
 use ralph_workflow::reducer::state_reduction::reduce;
-use ralph_workflow::workspace::MemoryWorkspace;
+use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
+use std::sync::Arc;
 
-use crate::common::with_locked_prompt_permissions;
+use crate::common::{with_locked_prompt_permissions, IntegrationFixture};
 use crate::test_timeout::with_default_timeout;
 
 const README_TEXT: &str = include_str!("../../ralph-workflow/README.md");
@@ -310,6 +312,8 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_same_agent_retry() 
             )
             .with_drain(AgentDrain::Planning);
         state.continuation.same_agent_retry_pending = true;
+        state.agent_chain.retry_cycle = 1;
+        state.agent_chain.backoff_pending_ms = Some(2_000);
 
         let json = serde_json::to_string(&state).expect("state should serialize");
         let legacy_json = json.replace("\"current_drain\":\"Planning\",", "");
@@ -346,6 +350,8 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
                 AgentRole::Developer,
             )
             .with_drain(AgentDrain::Planning);
+        state.agent_chain.retry_cycle = 1;
+        state.agent_chain.backoff_pending_ms = Some(2_000);
 
         let json = serde_json::to_string(&state).expect("state should serialize");
         let legacy_json = json.replace("\"current_drain\":\"Planning\",", "");
@@ -353,13 +359,21 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
         let restored_state: PipelineState =
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
 
+        assert!(
+            restored_state
+                .agent_chain
+                .matches_runtime_drain(AgentDrain::Planning),
+            "legacy planning checkpoint should remain compatible with the planning drain"
+        );
+
         let effect = determine_next_effect(&restored_state);
         assert!(
             matches!(
                 effect,
-                Effect::InitializeAgentChain {
-                    drain: AgentDrain::Planning,
-                    ..
+                Effect::BackoffWait {
+                    role: AgentRole::Developer,
+                    cycle: 1,
+                    duration_ms: 2_000,
                 }
             ),
             "legacy planning checkpoint should resume in planning flow, got: {effect:?}"
@@ -413,12 +427,21 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
             .agent_chain
             .with_agents(vec!["fixer".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(AgentDrain::Fix);
+        state.agent_chain.retry_cycle = 1;
+        state.agent_chain.last_session_id = Some("legacy-fix-session".to_string());
 
         let json = serde_json::to_string(&state).expect("state should serialize");
         let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
 
         let restored_state: PipelineState =
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        assert!(
+            restored_state
+                .agent_chain
+                .matches_runtime_drain(AgentDrain::Fix),
+            "legacy fix checkpoint should remain compatible with the fix drain"
+        );
 
         let effect = determine_next_effect(&restored_state);
         assert!(
@@ -427,9 +450,6 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
                 Effect::PrepareFixPrompt {
                     pass: 1,
                     prompt_mode: PromptMode::Normal,
-                } | Effect::InitializeAgentChain {
-                    drain: AgentDrain::Fix,
-                    ..
                 }
             ),
             "legacy fix checkpoint should resume in the fix drain, got: {effect:?}"
@@ -571,7 +591,7 @@ fn test_fix_continuation_uses_fix_drain_even_when_role_is_stale() {
                 effect,
                 Effect::PrepareFixPrompt {
                     pass: 0,
-                    prompt_mode: PromptMode::Normal,
+                    prompt_mode: PromptMode::Continuation,
                 }
             ),
             "fix continuation should stay on fix consumer, got: {effect:?}"
@@ -624,6 +644,112 @@ fn test_agents_config_file_loads_named_drain_schema() {
         assert_eq!(review.agents, vec!["claude"]);
         assert_eq!(fix.chain_name, "fix_chain");
         assert_eq!(fix.agents, vec!["codex"]);
+    });
+}
+
+#[test]
+fn test_agents_config_file_merges_partial_legacy_agent_chain_with_built_in_defaults() {
+    with_default_timeout(|| {
+        let workspace = MemoryWorkspace::new_test().with_file(
+            ".agent/agents.toml",
+            r#"
+            [agent_chain]
+            developer = ["codex"]
+            "#,
+        );
+
+        let config = AgentsConfigFile::load_from_file_with_workspace(
+            std::path::Path::new(".agent/agents.toml"),
+            &workspace,
+        )
+        .expect("config should parse")
+        .expect("config should exist");
+
+        let resolved = config
+            .resolve_drains_checked()
+            .expect("legacy drain config should resolve")
+            .expect("legacy agent_chain should resolve to built-in drains");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Development)
+                .expect("development drain should resolve")
+                .agents,
+            vec!["codex"]
+        );
+        assert!(
+            !resolved
+                .binding(AgentDrain::Review)
+                .expect("review drain should inherit built-in defaults")
+                .agents
+                .is_empty(),
+            "missing legacy reviewer key should inherit built-in defaults"
+        );
+        assert!(
+            !resolved
+                .binding(AgentDrain::Commit)
+                .expect("commit drain should inherit built-in defaults")
+                .agents
+                .is_empty(),
+            "missing legacy commit key should inherit built-in defaults instead of degrading to an empty drain"
+        );
+    });
+}
+
+#[test]
+fn test_fix_continuation_prompt_uses_stored_fix_context() {
+    with_default_timeout(|| {
+        let workspace = Arc::new(
+            MemoryWorkspace::new_test()
+                .with_file(".agent/PROMPT.md.backup", "# Prompt backup\n")
+                .with_file(".agent/PLAN.md", "# Plan\n")
+                .with_file(".agent/ISSUES.md", "<issues/>\n")
+                .with_dir(".agent/tmp"),
+        );
+        let mut fixture = IntegrationFixture::with_workspace(workspace.clone());
+        let mut handler = MainEffectHandler::new(PipelineState {
+            continuation: ralph_workflow::reducer::state::ContinuationState {
+                fix_status: Some(FixStatus::IssuesRemain),
+                fix_previous_summary: Some(
+                    "Addressed parser bug, one review item remains".to_string(),
+                ),
+                fix_continuation_attempt: 1,
+                fix_continue_pending: true,
+                ..ralph_workflow::reducer::state::ContinuationState::new()
+            },
+            ..PipelineState::initial(0, 1)
+        });
+        let mut ctx = fixture.ctx(None);
+
+        let result = handler
+            .execute(
+                Effect::PrepareFixPrompt {
+                    pass: 0,
+                    prompt_mode: PromptMode::Continuation,
+                },
+                &mut ctx,
+            )
+            .expect("fix continuation prompt effect should execute");
+
+        let prompt = workspace
+            .read(std::path::Path::new(".agent/tmp/fix_prompt.txt"))
+            .expect("fix prompt should be written");
+
+        assert!(
+            prompt.contains("Addressed parser bug, one review item remains"),
+            "continuation prompt should include previous fix summary; got: {prompt}"
+        );
+        assert!(
+            prompt.contains("continuation attempt") || prompt.contains("Continue"),
+            "continuation prompt should explicitly describe continuation mode; got: {prompt}"
+        );
+        assert!(result.ui_events.iter().any(|ev| matches!(
+            ev,
+            ralph_workflow::reducer::ui_event::UIEvent::PromptReplayHit {
+                key,
+                was_replayed: false
+            } if key == "fix_0"
+        )));
     });
 }
 

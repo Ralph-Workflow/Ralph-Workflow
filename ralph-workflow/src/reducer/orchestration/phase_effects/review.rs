@@ -57,7 +57,8 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     let runtime_drain = state.runtime_drain();
 
     if runtime_drain == AgentDrain::Fix {
-        if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Fix
+        if state.agent_chain.agents.is_empty()
+            || !state.agent_chain.matches_runtime_drain(AgentDrain::Fix)
         {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,
@@ -65,9 +66,16 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
         }
 
         if state.fix_prompt_prepared_pass != Some(state.reviewer_pass) {
+            let prompt_mode = if state.continuation.fix_continue_pending
+                || state.agent_chain.current_mode == crate::agents::DrainMode::Continuation
+            {
+                PromptMode::Continuation
+            } else {
+                PromptMode::Normal
+            };
             return Effect::PrepareFixPrompt {
                 pass: state.reviewer_pass,
-                prompt_mode: PromptMode::Normal,
+                prompt_mode,
             };
         }
 
@@ -123,7 +131,8 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
         // Legacy super-effect placeholder. Removed once the fix chain is complete.
     }
 
-    if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Review
+    if state.agent_chain.agents.is_empty()
+        || !state.agent_chain.matches_runtime_drain(AgentDrain::Review)
     {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Review,
