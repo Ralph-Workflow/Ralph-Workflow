@@ -451,17 +451,23 @@ fn make_wrapper_content(
     unset GIT_EXEC_PATH
     subcmd=""
    repo_args=()
+   repo_arg_pending=0
    skip_next=0
-   for arg in "$@"; do
-     if [ "$skip_next" = "1" ]; then
-       skip_next=0
-       continue
-     fi
-     case "$arg" in
-      -C|--git-dir|--work-tree)
+    for arg in "$@"; do
+      if [ "$repo_arg_pending" = "1" ]; then
         repo_args+=("$arg")
-        skip_next=1
-        ;;
+        repo_arg_pending=0
+        continue
+      fi
+      if [ "$skip_next" = "1" ]; then
+        skip_next=0
+        continue
+      fi
+      case "$arg" in
+       -C|--git-dir|--work-tree)
+         repo_args+=("$arg")
+         repo_arg_pending=1
+         ;;
       --git-dir=*|--work-tree=*|-C=*)
         repo_args+=("$arg")
         ;;
@@ -1666,9 +1672,11 @@ fn cleanup_agent_phase_silent_at_internal(
     end_agent_phase_in_repo_at_ralph_dir(repo_root, ralph_dir);
     cleanup_git_wrapper_dir_silent_at(ralph_dir);
 
-    // Prefer the stored hooks dir (set during start_agent_phase_in_repo) and
-    // otherwise resolve the effective scoped hooks dir from the repo context.
-    if let Some(hooks_dir) = resolved_hooks_dir.as_deref() {
+    // Prefer repo-aware cleanup when discovery still works so worktree config
+    // overrides and shared worktreeConfig state are restored alongside hooks.
+    if super::repo::resolve_protection_scope_from(repo_root).is_ok() {
+        super::hooks::uninstall_hooks_silent_at(repo_root);
+    } else if let Some(hooks_dir) = resolved_hooks_dir.as_deref() {
         super::hooks::uninstall_hooks_silent_in_hooks_dir(hooks_dir);
     } else {
         uninstall_hooks_silent_at(repo_root);
@@ -3233,8 +3241,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_agent_phase_silent_at_from_worktree_root() {
-        use crate::git_helpers::hooks;
-
         let tmp = tempfile::tempdir().unwrap();
         let main_repo = git2::Repository::init(tmp.path()).unwrap();
         {
@@ -3251,15 +3257,8 @@ mod tests {
         let _wt = main_repo.worktree("wt-cleanup", &wt_path, None).unwrap();
 
         let worktree_scope = crate::git_helpers::resolve_protection_scope_from(&wt_path).unwrap();
-        let worktree_git_dir = worktree_scope.git_dir.clone();
-        let worktree_hooks_dir = worktree_scope.hooks_dir;
-        fs::create_dir_all(&worktree_hooks_dir).unwrap();
-        let hook_content = format!("#!/bin/bash\n# {}\nexit 0\n", hooks::HOOK_MARKER);
-        for name in hooks::RALPH_HOOK_NAMES {
-            fs::write(worktree_hooks_dir.join(name), &hook_content).unwrap();
-        }
-        let worktree_ralph_dir = worktree_git_dir.join("ralph");
-        fs::create_dir_all(&worktree_ralph_dir).unwrap();
+        let worktree_ralph_dir = worktree_scope.git_dir.join("ralph");
+        crate::git_helpers::hooks::install_hooks_in_repo(&wt_path).unwrap();
         fs::write(worktree_ralph_dir.join(MARKER_FILE_NAME), "").unwrap();
         // Also create a track file pointing to a nonexistent wrapper dir.
         fs::write(
@@ -3267,6 +3266,15 @@ mod tests {
             "/nonexistent/wrapper\n",
         )
         .unwrap();
+
+        assert!(
+            worktree_scope
+                .worktree_config_path
+                .as_ref()
+                .unwrap()
+                .exists(),
+            "precondition: linked worktree cleanup test must start with config.worktree present"
+        );
 
         // Cleanup from the WORKTREE root — must clean only worktree-local artifacts.
         cleanup_agent_phase_silent_at(&wt_path);
@@ -3279,16 +3287,100 @@ mod tests {
             !worktree_ralph_dir.join(WRAPPER_TRACK_FILE_NAME).exists(),
             "track file at worktree git dir should be removed when cleaning from worktree root"
         );
-        for name in hooks::RALPH_HOOK_NAMES {
-            let hook_path = worktree_hooks_dir.join(name);
+        for name in crate::git_helpers::hooks::RALPH_HOOK_NAMES {
+            let hook_path = worktree_scope.hooks_dir.join(name);
             let still_ralph = hook_path.exists()
-                && crate::files::file_contains_marker(&hook_path, hooks::HOOK_MARKER)
-                    .unwrap_or(false);
+                && crate::files::file_contains_marker(
+                    &hook_path,
+                    crate::git_helpers::hooks::HOOK_MARKER,
+                )
+                .unwrap_or(false);
             assert!(
                 !still_ralph,
                 "hook {name} at worktree hooks dir should be removed from worktree root"
             );
         }
+
+        assert!(
+            !worktree_scope
+                .worktree_config_path
+                .as_ref()
+                .unwrap()
+                .exists(),
+            "silent cleanup should remove the worktree-local config override"
+        );
+        let common_config = crate::git_helpers::resolve_protection_scope_from(&wt_path)
+            .unwrap()
+            .common_git_dir
+            .join("config");
+        assert!(
+            common_config.exists(),
+            "common config should remain inspectable after cleanup"
+        );
+        assert_eq!(
+            git2::Config::open(&common_config)
+                .unwrap()
+                .get_string("extensions.worktreeConfig")
+                .ok(),
+            None,
+            "silent cleanup should restore shared worktreeConfig state for a linked worktree run"
+        );
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_silent_at_from_root_repo_restores_root_worktree_scoping() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&main_repo_path).unwrap();
+        let main_repo = git2::Repository::init(&main_repo_path).unwrap();
+        {
+            let mut index = main_repo.index().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = main_repo.find_tree(tree_oid).unwrap();
+            let sig = git2::Signature::now("test", "test@test.com").unwrap();
+            main_repo
+                .commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+
+        let sibling_path = tmp.path().join("wt-sibling");
+        let _sibling = main_repo
+            .worktree("wt-sibling", &sibling_path, None)
+            .unwrap();
+
+        let root_scope =
+            crate::git_helpers::resolve_protection_scope_from(&main_repo_path).unwrap();
+        let common_config = root_scope.common_git_dir.join("config");
+        let root_config = root_scope.worktree_config_path.unwrap();
+
+        crate::git_helpers::hooks::install_hooks_in_repo(&main_repo_path).unwrap();
+        assert!(
+            root_config.exists(),
+            "precondition: root config.worktree must exist"
+        );
+        assert_eq!(
+            git2::Config::open(&common_config)
+                .unwrap()
+                .get_string("extensions.worktreeConfig")
+                .ok(),
+            Some("true".to_string()),
+            "precondition: root worktree install should enable shared worktreeConfig"
+        );
+
+        cleanup_agent_phase_silent_at(&main_repo_path);
+
+        assert!(
+            !root_config.exists(),
+            "silent cleanup should remove the root worktree config override"
+        );
+        assert_eq!(
+            git2::Config::open(&common_config)
+                .unwrap()
+                .get_string("extensions.worktreeConfig")
+                .ok(),
+            None,
+            "silent cleanup should restore shared worktreeConfig state for a root run"
+        );
     }
 
     // =========================================================================

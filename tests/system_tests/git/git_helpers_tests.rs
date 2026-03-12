@@ -41,6 +41,22 @@ fn resolve_real_git_from_path() -> std::path::PathBuf {
         .unwrap()
 }
 
+fn assert_wrapper_blocks(output: &std::process::Output, context: &str) {
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{context} should be blocked; output: {combined}"
+    );
+    assert!(
+        combined.to_lowercase().contains("blocked"),
+        "{context} should report enforcement; got: {combined}"
+    );
+}
+
 fn init_repo_with_commit(path: &std::path::Path) -> git2::Repository {
     let repo = git2::Repository::init(path).unwrap();
     let sig = git2::Signature::now("test", "test@test.com").unwrap();
@@ -444,6 +460,83 @@ fn test_root_start_agent_phase_blocks_absolute_git_commit_when_command_targets_r
     assert!(
         combined.to_lowercase().contains("blocked"),
         "blocked root-target commit should report enforcement; got: {combined}"
+    );
+
+    end_agent_phase_in_repo(&root_repo);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&root_repo, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&root_repo));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_root_start_agent_phase_blocks_wrapper_git_tag_with_dash_c_target() {
+    if !program_exists("git") {
+        return;
+    }
+
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&root_repo, &mut helpers).unwrap();
+
+    let output = Command::new("git")
+        .current_dir(&worktree_one)
+        .args([
+            "-C",
+            root_repo.to_str().unwrap(),
+            "tag",
+            "blocked-via-dash-c",
+        ])
+        .output()
+        .unwrap();
+
+    assert_wrapper_blocks(&output, "git -C <protected-root> tag");
+
+    end_agent_phase_in_repo(&root_repo);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&root_repo, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&root_repo));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
+#[test]
+#[serial]
+fn test_root_start_agent_phase_blocks_wrapper_git_tag_with_git_dir_and_work_tree_targets() {
+    if !program_exists("git") {
+        return;
+    }
+
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&root_repo, &mut helpers).unwrap();
+
+    let output = Command::new("git")
+        .current_dir(&worktree_one)
+        .args([
+            "--git-dir",
+            root_repo.join(".git").to_str().unwrap(),
+            "--work-tree",
+            root_repo.to_str().unwrap(),
+            "tag",
+            "blocked-via-git-dir-work-tree",
+        ])
+        .output()
+        .unwrap();
+
+    assert_wrapper_blocks(
+        &output,
+        "git --git-dir <protected> --work-tree <protected> tag",
     );
 
     end_agent_phase_in_repo(&root_repo);

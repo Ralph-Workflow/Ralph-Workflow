@@ -147,6 +147,30 @@ fn read_config_path(config_path: &Path) -> io::Result<Option<PathBuf>> {
     read_config_string(config_path, "core.hooksPath").map(|value| value.map(PathBuf::from))
 }
 
+fn config_entries(path: &Path) -> io::Result<Vec<(String, Option<String>)>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let config = Config::open(path).map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
+    let mut entries = config
+        .entries(None)
+        .map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
+    let mut values = Vec::new();
+
+    while let Some(entry) = entries.next() {
+        let entry = entry.map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
+        let name = entry
+            .name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "config entry missing name"))?
+            .to_string();
+        let value = entry.value().map(ToString::to_string);
+        values.push((name, value));
+    }
+
+    Ok(values)
+}
+
 fn read_shared_worktree_config_state(
     common_config: &Path,
 ) -> io::Result<Option<StoredSharedWorktreeConfigState>> {
@@ -270,6 +294,44 @@ fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io:
     Ok(false)
 }
 
+fn config_worktree_is_safe_to_activate(
+    scope: &ProtectionScope,
+    config_path: &Path,
+) -> io::Result<bool> {
+    let entries = config_entries(config_path)?;
+    if entries.is_empty() {
+        return Ok(true);
+    }
+
+    let expected_hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "hooks path contains invalid UTF-8 characters",
+        )
+    })?;
+
+    Ok(worktree_config_path(scope) == Some(config_path)
+        && entries.len() == 1
+        && entries[0].0 == "core.hooksPath"
+        && entries[0].1.as_deref() == Some(expected_hooks_path))
+}
+
+fn ensure_worktree_config_extension_activation_is_safe(scope: &ProtectionScope) -> io::Result<()> {
+    for config_path in protected_config_paths(scope) {
+        if !config_worktree_is_safe_to_activate(scope, &config_path)? {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "refusing to enable extensions.worktreeConfig because {} already contains worktree-specific settings outside Ralph's active scope",
+                    config_path.display()
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
     if !scope.uses_worktree_scoped_hooks {
         return Ok(());
@@ -295,6 +357,8 @@ fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
     if current_state.as_deref() == Some("true") {
         return Ok(());
     }
+
+    ensure_worktree_config_extension_activation_is_safe(scope)?;
 
     config
         .set_str("extensions.worktreeConfig", "true")
@@ -1294,6 +1358,48 @@ mod tests {
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn test_install_hooks_refuses_to_enable_shared_worktree_config_when_other_worktree_config_exists(
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_one = tmp.path().join("wt-one");
+        let worktree_two = tmp.path().join("wt-two");
+        let _wt_one = main_repo.worktree("wt-one", &worktree_one, None).unwrap();
+        let _wt_two = main_repo.worktree("wt-two", &worktree_two, None).unwrap();
+
+        let sibling_config = git2::Repository::open(&worktree_two)
+            .unwrap()
+            .path()
+            .join("config.worktree");
+        let mut sibling_cfg = open_config(&sibling_config).unwrap();
+        sibling_cfg.set_str("core.fsmonitor", "true").unwrap();
+
+        let common_config = root_repo_path.join(".git/config");
+        let active_config = git2::Repository::open(&worktree_one)
+            .unwrap()
+            .path()
+            .join("config.worktree");
+
+        let err = install_hooks_in_repo(&worktree_one).expect_err(
+            "install must refuse to enable shared worktreeConfig when another config.worktree would become active",
+        );
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
+            None,
+            "unsafe install must not mutate shared extension state"
+        );
+        assert_eq!(
+            read_config_string(&active_config, "core.hooksPath").unwrap(),
+            None,
+            "unsafe install must not write active hooksPath override"
         );
     }
 }
