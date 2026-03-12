@@ -119,3 +119,32 @@ fn make_dylint_targets_check_cargo_home_before_registry_subdirs() {
         }
     });
 }
+
+#[test]
+fn make_dylint_targets_do_not_force_offline_mode_from_partial_registry_cache() {
+    with_default_timeout(|| {
+        let makefile = include_str!("../../Makefile");
+
+        for target in ["dylint", "dylint-verbose"] {
+            let start = makefile
+                .find(&format!("\n{target}:"))
+                .expect("Makefile should contain dylint target")
+                + 1;
+            let rest = &makefile[start..];
+            let end = rest.find("\n\n").unwrap_or(rest.len());
+            let body = &rest[..end];
+
+            assert!(
+                !body.contains(
+                    "if [ -z \"$${CARGO_NET_OFFLINE:-}\" ] && [ -e \"$$CARGO_HOME/registry/cache\" ] && [ -e \"$$CARGO_HOME/registry/index\" ]; then"
+                ),
+                "{target} should not force offline mode merely because registry cache/index directories exist"
+            );
+            assert!(
+                body.contains("if [ \"$${DYLINT_FORCE_OFFLINE:-0}\" = \"1\" ]; then")
+                    && body.contains("export CARGO_NET_OFFLINE=true;"),
+                "{target} should keep offline mode opt-in via DYLINT_FORCE_OFFLINE"
+            );
+        }
+    });
+}

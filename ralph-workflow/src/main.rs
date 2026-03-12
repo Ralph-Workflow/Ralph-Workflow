@@ -98,7 +98,7 @@ mod tests {
             let mut registry = AgentRegistry::new().unwrap();
             let unified: ralph_workflow::config::UnifiedConfig =
                 toml::from_str(config_toml).unwrap();
-            registry.apply_unified_config(&unified);
+            registry.apply_unified_config(&unified).unwrap();
 
             Self {
                 config: Config::default(),
@@ -161,40 +161,34 @@ mod tests {
         let review_config = r#"
             [agent_chains]
             dev = ["codex"]
-            empty = []
-
-            [agent_drains]
-            planning = "dev"
-            development = "dev"
-            review = "empty"
-            fix = "empty"
-        "#;
-        let commit_config = r#"
-            [agent_chains]
-            dev = ["codex"]
             review_chain = ["claude"]
-            empty = []
 
             [agent_drains]
             planning = "dev"
             development = "dev"
             review = "review_chain"
             fix = "review_chain"
-            commit = "empty"
+        "#;
+        let commit_config = r#"
+            [agent_chains]
+            dev = ["codex"]
+            review_chain = ["claude"]
+            commit_chain = ["opencode"]
+
+            [agent_drains]
+            planning = "dev"
+            development = "dev"
+            review = "review_chain"
+            fix = "review_chain"
+            commit = "commit_chain"
         "#;
 
         let mut review_fixture = TestFixture::new(review_config);
         let review_agents = initialized_agents_for_drain(&mut review_fixture, AgentDrain::Review);
-        assert!(
-            review_agents.is_empty(),
-            "review initialization should use the resolved empty drain binding, got {review_agents:?}"
-        );
+        assert_eq!(review_agents, vec!["claude".to_string()]);
 
         let mut commit_fixture = TestFixture::new(commit_config);
         let commit_agents = initialized_agents_for_drain(&mut commit_fixture, AgentDrain::Commit);
-        assert!(
-            commit_agents.is_empty(),
-            "commit initialization should not fall back to reviewer/context agents when the resolved commit drain is empty, got {commit_agents:?}"
-        );
+        assert_eq!(commit_agents, vec!["opencode".to_string()]);
     }
 }

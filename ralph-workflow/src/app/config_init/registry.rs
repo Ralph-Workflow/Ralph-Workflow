@@ -47,7 +47,9 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
     // are no longer supported. Use --init-global to create a unified config.
 
     if let Some(unified_cfg) = unified {
-        let loaded = registry.apply_unified_config(unified_cfg);
+        let loaded = registry
+            .apply_unified_config(unified_cfg)
+            .map_err(|e| anyhow::anyhow!("Invalid unified agent configuration: {e}"))?;
         let has_agent_chain_config = loaded > 0
             || unified_cfg.agent_chain.is_some()
             || !unified_cfg.agent_chains.is_empty()

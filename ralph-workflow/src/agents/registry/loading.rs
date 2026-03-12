@@ -55,15 +55,28 @@ impl AgentRegistry {
     ///    `[agent_chains]` / `[agent_drains]` or legacy compatibility metadata
     ///
     /// Returns the number of agents loaded from unified config, including CCS aliases.
-    pub fn apply_unified_config(&mut self, unified: &crate::config::UnifiedConfig) -> usize {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the named drain configuration is invalid.
+    pub fn apply_unified_config(
+        &mut self,
+        unified: &crate::config::UnifiedConfig,
+    ) -> Result<usize, AgentConfigError> {
         let mut loaded = self.apply_ccs_aliases(unified);
         loaded += self.apply_agent_overrides(unified);
 
-        self.resolved_drains = unified.resolve_agent_drains().unwrap_or_else(|| {
-            Self::merge_legacy_chain_metadata(&self.resolved_drains, unified.agent_chain.as_ref())
-        });
+        self.resolved_drains = unified
+            .resolve_agent_drains_checked()
+            .map_err(AgentConfigError::InvalidDrainConfig)?
+            .unwrap_or_else(|| {
+                Self::merge_legacy_chain_metadata(
+                    &self.resolved_drains,
+                    unified.agent_chain.as_ref(),
+                )
+            });
 
-        loaded
+        Ok(loaded)
     }
 
     /// Apply CCS aliases from the unified config.

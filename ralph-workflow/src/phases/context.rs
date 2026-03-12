@@ -208,7 +208,7 @@ mod tests {
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified);
+        registry.apply_unified_config(&unified).unwrap();
 
         let mut fixture = TestFixture::new();
         let ctx = PhaseContext {
@@ -252,7 +252,7 @@ mod tests {
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified);
+        registry.apply_unified_config(&unified).unwrap();
 
         let mut fixture = TestFixture::new();
         let ctx = PhaseContext {

@@ -262,7 +262,7 @@ fn test_apply_unified_config_metadata_only_legacy_agent_chain_preserves_existing
         )
         .expect("config should parse");
 
-        registry.apply_unified_config(&unified);
+        registry.apply_unified_config(&unified).unwrap();
 
         assert_eq!(
             registry.available_fallbacks_for_drain(AgentDrain::Development),
@@ -410,6 +410,41 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_resume_with_structur
                 }
             ),
             "legacy fix resume should remain in the fix drain, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_fix_drain_for_legacy_mid_fix_resume_without_current_drain() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
+        state.phase = PipelinePhase::Review;
+        state.reviewer_pass = 1;
+        state.review_issues_found = true;
+        state.fix_prompt_prepared_pass = Some(1);
+        state.fix_required_files_cleaned_pass = Some(1);
+        state.fix_agent_invoked_pass = Some(1);
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(AgentDrain::Fix);
+        state.agent_chain.current_role = AgentRole::Reviewer;
+        state.agent_chain.current_mode = ralph_workflow::agents::DrainMode::Normal;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(effect, Effect::ExtractFixResultXml { pass: 1 }),
+            "legacy mid-fix resume should continue fix work instead of reinitializing the drain, got: {effect:?}"
         );
     });
 }
@@ -1284,6 +1319,53 @@ fn test_fix_continuation_budget_exhausted_clears_fix_drain_state_before_returnin
     });
 }
 
+#[test]
+fn test_fix_outcome_applied_after_continuation_clears_fix_drain_state_before_returning_to_review() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 2));
+        state.phase = PipelinePhase::Review;
+        state.review_issues_found = true;
+        state.fix_prompt_prepared_pass = Some(0);
+        state.fix_required_files_cleaned_pass = Some(0);
+        state.fix_agent_invoked_pass = Some(0);
+        state.fix_result_xml_extracted_pass = Some(0);
+        state.fix_validated_outcome = Some(ralph_workflow::reducer::state::FixValidatedOutcome {
+            pass: 0,
+            status: ralph_workflow::reducer::state::FixStatus::AllIssuesAddressed,
+            summary: Some("done".to_string()),
+        });
+        state.fix_result_xml_archived_pass = Some(0);
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_mode = ralph_workflow::agents::DrainMode::Continuation;
+        state.continuation.fix_continuation_attempt = 1;
+        state.continuation.fix_status =
+            Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
+        state.continuation.fix_previous_summary = Some("continue".to_string());
+        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
+
+        let state = reduce(state, PipelineEvent::fix_outcome_applied(0));
+        let state = reduce(
+            state,
+            PipelineEvent::commit_created("abc".to_string(), "fix".to_string()),
+        );
+
+        assert_eq!(state.phase, PipelinePhase::Review);
+        assert_eq!(state.runtime_drain(), AgentDrain::Review);
+        assert!(!state.review_issues_found);
+        assert!(state.fix_prompt_prepared_pass.is_none());
+        assert!(state.fix_required_files_cleaned_pass.is_none());
+        assert!(state.fix_agent_invoked_pass.is_none());
+        assert!(state.fix_result_xml_extracted_pass.is_none());
+        assert!(state.fix_validated_outcome.is_none());
+        assert!(state.fix_result_xml_archived_pass.is_none());
+        assert!(!state.continuation.fix_continue_pending);
+        assert_eq!(state.continuation.fix_continuation_attempt, 0);
+        assert!(state.continuation.fix_status.is_none());
+        assert!(state.continuation.fix_previous_summary.is_none());
+        assert!(state.continuation.last_fix_xsd_error.is_none());
+    });
+}
+
 /// Test that named drain config can still carry provider fallback and retry metadata.
 #[test]
 fn test_named_schema_accepts_metadata_only_legacy_agent_chain_section() {
@@ -1773,7 +1855,7 @@ fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_d
             ]),
             ..Default::default()
         };
-        registry.apply_unified_config(&unified);
+        registry.apply_unified_config(&unified).unwrap();
 
         let app_config = Config::test_default();
         let workspace = Arc::new(MemoryWorkspace::new_test());

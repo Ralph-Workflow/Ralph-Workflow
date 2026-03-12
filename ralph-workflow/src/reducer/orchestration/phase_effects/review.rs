@@ -53,12 +53,30 @@ pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
 /// fresh output. The fix agent writes to `.agent/tmp/fix_result.xml`.
 pub const REQUIRED_FILES_FIX: &[&str] = &[".agent/tmp/fix_result.xml"];
 
+fn has_legacy_loaded_mid_fix_chain(state: &PipelineState) -> bool {
+    let has_mid_fix_progress = state.fix_prompt_prepared_pass == Some(state.reviewer_pass)
+        || state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
+        || state.fix_agent_invoked_pass == Some(state.reviewer_pass)
+        || state.fix_result_xml_extracted_pass == Some(state.reviewer_pass)
+        || state
+            .fix_validated_outcome
+            .as_ref()
+            .is_some_and(|outcome| outcome.pass == state.reviewer_pass)
+        || state.fix_result_xml_archived_pass == Some(state.reviewer_pass);
+
+    has_mid_fix_progress
+        && !state.agent_chain.agents.is_empty()
+        && state.agent_chain.current_drain != AgentDrain::Fix
+        && state.agent_chain.current_drain.role() == AgentDrain::Fix.role()
+}
+
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     let runtime_drain = state.runtime_drain();
 
     if runtime_drain == AgentDrain::Fix {
         if state.agent_chain.agents.is_empty()
-            || !state.agent_chain.matches_runtime_drain(AgentDrain::Fix)
+            || (!state.agent_chain.matches_runtime_drain(AgentDrain::Fix)
+                && !has_legacy_loaded_mid_fix_chain(state))
         {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,

@@ -253,7 +253,7 @@ fn test_registry_available_fallbacks() {
         developer = ["echo-agent", "nonexistent-agent", "cat-agent"]
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     let fallbacks = registry.available_fallbacks(AgentRole::Developer);
     assert!(
@@ -281,7 +281,7 @@ fn test_validate_agent_chains() {
         reviewer = ["codex"]
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
     assert!(registry.validate_agent_chains(TEST_SOURCES).is_ok());
 }
 
@@ -322,7 +322,7 @@ fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
     assert!(
@@ -356,7 +356,7 @@ fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     assert_eq!(
         registry.fallback_config().developer,
@@ -366,6 +366,29 @@ fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback
     assert_eq!(registry.fallback_config().reviewer, vec!["claude"]);
     assert_eq!(registry.fallback_config().commit, vec!["opencode"]);
     assert_eq!(registry.fallback_config().analysis, vec!["gemini"]);
+}
+
+#[test]
+fn test_apply_unified_config_rejects_invalid_named_drain_config() {
+    let mut registry = AgentRegistry::new().unwrap();
+
+    let toml_str = r#"
+        [agent_chains]
+        shared_dev = ["codex"]
+
+        [agent_drains]
+        planning = "missing_chain"
+    "#;
+    let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
+
+    let error = registry
+        .apply_unified_config(&unified)
+        .expect_err("invalid named drain bindings should fail fast");
+
+    assert!(
+        matches!(error, AgentConfigError::InvalidDrainConfig(ref message) if message.contains("missing_chain")),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -393,7 +416,7 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     let commit = registry
         .resolved_drain(crate::agents::AgentDrain::Commit)
@@ -442,7 +465,7 @@ fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     assert_eq!(
         registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Review),
@@ -460,7 +483,7 @@ fn test_validate_agent_chains_error_mentions_searched_sources() {
     // Override chains with empty values via apply_unified_config
     let toml_str = "\n[agent_chain]\ndeveloper = []\nreviewer = []\n";
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
     assert!(
@@ -486,7 +509,7 @@ fn test_validate_agent_chains_uses_provided_sources_verbatim() {
     let mut registry = AgentRegistry::new().unwrap();
     let toml_str = "\n[agent_chain]\ndeveloper = []\nreviewer = []\n";
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     let err = registry
         .validate_agent_chains("global config (/custom/path.toml), built-in defaults")
@@ -593,7 +616,7 @@ fn test_ccs_in_fallback_chain() {
         reviewer = ["echo-agent"]
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     // ccs/work should be in available fallbacks (since echo is in PATH)
     let fallbacks = registry.available_fallbacks(AgentRole::Developer);
@@ -852,7 +875,7 @@ fn test_apply_unified_config_does_not_inherit_env_vars() {
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
     // Apply the unified config
-    registry.apply_unified_config(&unified);
+    registry.apply_unified_config(&unified).unwrap();
 
     // Verify that the "claude" agent's env_vars are now empty (NOT inherited)
     let claude_config_after = registry.resolve_config("claude").unwrap();

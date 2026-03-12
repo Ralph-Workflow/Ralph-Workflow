@@ -163,9 +163,9 @@ dylint:
 			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
 				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
 			fi; \
-			if [ -z "$${CARGO_NET_OFFLINE:-}" ] && [ -e "$$CARGO_HOME/registry/cache" ] && [ -e "$$CARGO_HOME/registry/index" ]; then \
-				export CARGO_NET_OFFLINE=true; \
-			fi; \
+		fi; \
+		if [ "$${DYLINT_FORCE_OFFLINE:-0}" = "1" ]; then \
+			export CARGO_NET_OFFLINE=true; \
 		fi; \
 		\
 		for dir in "$$DYLINT_DRIVER_PATH"; do \
@@ -383,9 +383,9 @@ dylint-verbose:
 			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
 				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
 			fi; \
-			if [ -z "$${CARGO_NET_OFFLINE:-}" ] && [ -e "$$CARGO_HOME/registry/cache" ] && [ -e "$$CARGO_HOME/registry/index" ]; then \
-				export CARGO_NET_OFFLINE=true; \
-			fi; \
+		fi; \
+		if [ "$${DYLINT_FORCE_OFFLINE:-0}" = "1" ]; then \
+			export CARGO_NET_OFFLINE=true; \
 		fi; \
 		\
 		for dir in "$$DYLINT_DRIVER_PATH"; do \
