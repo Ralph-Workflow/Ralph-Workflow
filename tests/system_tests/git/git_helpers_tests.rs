@@ -505,6 +505,47 @@ fn test_root_start_agent_phase_blocks_wrapper_git_tag_with_dash_c_target() {
     ralph_workflow::git_helpers::clear_agent_phase_global_state();
 }
 
+#[cfg(unix)]
+#[test]
+#[serial]
+fn test_root_start_agent_phase_blocks_wrapper_git_tag_when_repo_is_targeted_via_symlink_alias() {
+    use std::os::unix::fs::symlink;
+
+    if !program_exists("git") {
+        return;
+    }
+
+    let _guard = ralph_workflow::git_helpers::agent_phase_test_lock()
+        .lock()
+        .unwrap();
+    let logger = Logger::new(ralph_workflow::logger::Colors::with_enabled(false));
+    let (_tempdir, root_repo, worktree_one, _worktree_two) = create_linked_worktree_fixture();
+    let root_alias = worktree_one.join("root-alias");
+    symlink(&root_repo, &root_alias).unwrap();
+
+    let mut helpers = GitHelpers::default();
+    start_agent_phase_in_repo(&root_repo, &mut helpers).unwrap();
+
+    let output = Command::new("git")
+        .current_dir(&worktree_one)
+        .args([
+            "-C",
+            root_alias.to_str().unwrap(),
+            "tag",
+            "blocked-via-symlink-alias",
+        ])
+        .output()
+        .unwrap();
+
+    assert_wrapper_blocks(&output, "git -C <protected-root-symlink> tag");
+
+    end_agent_phase_in_repo(&root_repo);
+    disable_git_wrapper(&mut helpers);
+    uninstall_hooks_in_repo(&root_repo, &logger).unwrap();
+    assert!(try_remove_ralph_dir(&root_repo));
+    ralph_workflow::git_helpers::clear_agent_phase_global_state();
+}
+
 #[test]
 #[serial]
 fn test_root_start_agent_phase_blocks_wrapper_git_tag_with_git_dir_and_work_tree_targets() {
@@ -1046,7 +1087,8 @@ fn test_install_hooks_in_repo_quarantines_symlinked_ralph_dir() {
         );
         assert!(
             !outside.path().join("no_agent_commit").exists()
-                && !outside.path().join("git-wrapper-dir.txt").exists(),
+                && !outside.path().join("git-wrapper-dir.txt").exists()
+                && !outside.path().join("hooks").exists(),
             "hook setup must not write enforcement artifacts through a symlinked ralph dir"
         );
     });

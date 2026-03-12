@@ -345,20 +345,20 @@ fn ensure_worktree_config_extension(scope: &ProtectionScope) -> io::Result<()> {
         Err(err) => return Err(crate::git_helpers::git2_to_io_error(&err)),
     };
 
+    if current_state.as_deref() == Some("true") {
+        return Ok(());
+    }
+
+    ensure_worktree_config_extension_activation_is_safe(scope)?;
+
     if read_shared_worktree_config_state(&common_config)?.is_none() {
-        let stored_state = current_state.clone().map_or(
+        let stored_state = current_state.map_or(
             StoredSharedWorktreeConfigState::Missing,
             StoredSharedWorktreeConfigState::Value,
         );
         write_shared_worktree_config_state(&common_config, &stored_state)?;
         config = open_config(&common_config)?;
     }
-
-    if current_state.as_deref() == Some("true") {
-        return Ok(());
-    }
-
-    ensure_worktree_config_extension_activation_is_safe(scope)?;
 
     config
         .set_str("extensions.worktreeConfig", "true")
@@ -655,11 +655,11 @@ pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
 /// Returns error if the operation fails.
 pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
     let scope = resolve_protection_scope_from(repo_root)?;
-    let hooks_dir = scope.hooks_dir.clone();
-    fs::create_dir_all(&hooks_dir)?;
 
     // Resolve the ralph metadata dir (handles worktrees via libgit2).
     let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
+    let hooks_dir = scope.hooks_dir.clone();
+    fs::create_dir_all(&hooks_dir)?;
     ensure_worktree_hook_scoping(&scope)?;
 
     for hook_name in RALPH_HOOK_NAMES {
@@ -1400,6 +1400,36 @@ mod tests {
             read_config_string(&active_config, "core.hooksPath").unwrap(),
             None,
             "unsafe install must not write active hooksPath override"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_install_hooks_in_linked_worktree_quarantines_symlinked_ralph_dir_before_creating_hooks()
+    {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_path = tmp.path().join("wt-one");
+        let _wt = main_repo.worktree("wt-one", &worktree_path, None).unwrap();
+
+        let scope = resolve_protection_scope_from(&worktree_path).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), &scope.ralph_dir).unwrap();
+
+        install_hooks_in_repo(&worktree_path).unwrap();
+
+        let ralph_meta = fs::symlink_metadata(&scope.ralph_dir).unwrap();
+        assert!(
+            ralph_meta.is_dir() && !ralph_meta.file_type().is_symlink(),
+            "install_hooks_in_repo should recreate linked-worktree ralph dir as a real directory"
+        );
+        assert!(
+            !outside.path().join("hooks").exists(),
+            "scoped hook creation must not follow a symlinked linked-worktree ralph dir"
         );
     }
 }

@@ -15,7 +15,7 @@
 //! unexpected exits (Ctrl+C, panics) via [`cleanup_agent_phase_silent`].
 
 use super::hooks::{reinstall_hooks_if_tampered, uninstall_hooks_silent_at};
-use super::repo::get_repo_root;
+use super::repo::{get_repo_root, normalize_protection_scope_path};
 use crate::logger::Logger;
 use crate::workspace::Workspace;
 use std::env;
@@ -441,6 +441,18 @@ fn make_wrapper_content(
     local scope_root="$2"
     [[ "$candidate" == "$scope_root" || "$candidate" == "$scope_root"/* ]]
   }}
+  normalize_scope_dir() {{
+    local candidate="$1"
+    if [ -z "$candidate" ] || [ ! -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return
+    fi
+    if canonical=$(cd "$candidate" 2>/dev/null && pwd -P); then
+      printf '%s\n' "$canonical"
+    else
+      printf '%s\n' "$candidate"
+    fi
+  }}
   # Treat either the marker or the wrapper track file as an active agent-phase signal.
   # This makes the wrapper resilient if an agent deletes the marker mid-run.
   if [ -f "$marker" ] || [ -f "$track_file" ]; then
@@ -498,8 +510,10 @@ fn make_wrapper_content(
       target_git_dir="$active_git_dir"
     fi
     protection_scope_active=0
+    normalized_target_repo_root=$(normalize_scope_dir "$target_repo_root")
+    normalized_target_git_dir=$(normalize_scope_dir "$target_git_dir")
     if [ -n "$target_repo_root" ] && [ -n "$target_git_dir" ] && \
-       [ "$target_repo_root" = "$active_repo_root" ] && [ "$target_git_dir" = "$active_git_dir" ]; then
+       [ "$normalized_target_repo_root" = "$active_repo_root" ] && [ "$normalized_target_git_dir" = "$active_git_dir" ]; then
       protection_scope_active=1
     fi
     if [ "$protection_scope_active" = "1" ]; then
@@ -658,13 +672,15 @@ fn enable_git_wrapper_at(repo_root: &Path, helpers: &mut GitHelpers) -> io::Resu
     let ralph_dir = scope.ralph_dir.clone();
     let marker_path = ralph_dir.join(MARKER_FILE_NAME);
     let track_file_path = ralph_dir.join(WRAPPER_TRACK_FILE_NAME);
-    let repo_root_str = scope.repo_root.to_str().ok_or_else(|| {
+    let normalized_repo_root = normalize_protection_scope_path(&scope.repo_root);
+    let normalized_git_dir = normalize_protection_scope_path(&scope.git_dir);
+    let repo_root_str = normalized_repo_root.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             "repo root contains invalid UTF-8 characters; cannot create wrapper script",
         )
     })?;
-    let git_dir_str = scope.git_dir.to_str().ok_or_else(|| {
+    let git_dir_str = normalized_git_dir.to_str().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             "git dir contains invalid UTF-8 characters; cannot create wrapper script",
@@ -1099,11 +1115,13 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                         logger.warn("Failed to generate safe wrapper script (track file path)");
                         return result;
                     };
-                    let Some(repo_root_str) = repo_root.to_str() else {
+                    let normalized_repo_root = normalize_protection_scope_path(&repo_root);
+                    let normalized_git_dir = normalize_protection_scope_path(&scope.git_dir);
+                    let Some(repo_root_str) = normalized_repo_root.to_str() else {
                         logger.warn("Repo root is not valid UTF-8; cannot restore wrapper");
                         return result;
                     };
-                    let Some(git_dir_str) = scope.git_dir.to_str() else {
+                    let Some(git_dir_str) = normalized_git_dir.to_str() else {
                         logger.warn("Git dir is not valid UTF-8; cannot restore wrapper");
                         return result;
                     };
@@ -1257,11 +1275,13 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
                         escape_shell_single_quoted(marker_str),
                         escape_shell_single_quoted(track_str),
                     ) {
-                        let Some(repo_root_str) = repo_root.to_str() else {
+                        let normalized_repo_root = normalize_protection_scope_path(&repo_root);
+                        let normalized_git_dir = normalize_protection_scope_path(&scope.git_dir);
+                        let Some(repo_root_str) = normalized_repo_root.to_str() else {
                             logger.warn("Repo root is not valid UTF-8; cannot restore wrapper");
                             return result;
                         };
-                        let Some(git_dir_str) = scope.git_dir.to_str() else {
+                        let Some(git_dir_str) = normalized_git_dir.to_str() else {
                             logger.warn("Git dir is not valid UTF-8; cannot restore wrapper");
                             return result;
                         };

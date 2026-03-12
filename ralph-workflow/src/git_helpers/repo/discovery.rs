@@ -85,6 +85,29 @@ pub fn ralph_git_dir(repo_root: &Path) -> PathBuf {
     repo_root.join(".git").join("ralph")
 }
 
+pub fn normalize_protection_scope_path(path: &Path) -> PathBuf {
+    if let Ok(canonical) = fs::canonicalize(path) {
+        return canonical;
+    }
+
+    let mut existing_ancestor = path;
+    while !existing_ancestor.exists() {
+        let Some(parent) = existing_ancestor.parent() else {
+            return path.to_path_buf();
+        };
+        existing_ancestor = parent;
+    }
+
+    let Ok(canonical_ancestor) = fs::canonicalize(existing_ancestor) else {
+        return path.to_path_buf();
+    };
+
+    let suffix = path
+        .strip_prefix(existing_ancestor)
+        .unwrap_or_else(|_| Path::new(""));
+    canonical_ancestor.join(suffix)
+}
+
 pub fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf> {
     let parent = path.parent().ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
@@ -232,31 +255,8 @@ mod tests {
         repo
     }
 
-    /// Canonicalize a path, tolerating non-existent trailing components.
-    ///
-    /// On macOS `/var` is a symlink to `/private/var`, so tempdir paths
-    /// and libgit2-resolved paths may differ. Canonicalize the parent
-    /// (which must exist) and re-append the leaf to get a comparable path.
     fn canon(path: &Path) -> PathBuf {
-        if let Ok(c) = fs::canonicalize(path) {
-            return c;
-        }
-        // Path doesn't exist yet (e.g., .git/ralph/hooks before creation).
-        // Canonicalize the nearest existing ancestor and append the remainder.
-        let mut existing_ancestor = path;
-        while !existing_ancestor.exists() {
-            let Some(parent) = existing_ancestor.parent() else {
-                return path.to_path_buf();
-            };
-            existing_ancestor = parent;
-        }
-        if let Ok(canon_ancestor) = fs::canonicalize(existing_ancestor) {
-            let suffix = path
-                .strip_prefix(existing_ancestor)
-                .unwrap_or_else(|_| Path::new(""));
-            return canon_ancestor.join(suffix);
-        }
-        path.to_path_buf()
+        normalize_protection_scope_path(path)
     }
 
     #[test]
@@ -349,6 +349,35 @@ mod tests {
         assert_eq!(
             scope.worktree_config_path.as_deref().map(canon),
             Some(canon(&tmp.path().join(".git/config.worktree")))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn normalize_protection_scope_path_collapses_symlink_aliases_for_scope_comparison() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_path = tmp.path().join("repo");
+        fs::create_dir_all(&repo_path).unwrap();
+
+        let alias_parent = tmp.path().join("aliases");
+        fs::create_dir_all(&alias_parent).unwrap();
+        let alias_path = alias_parent.join("repo-link");
+        symlink(&repo_path, &alias_path).unwrap();
+
+        assert_eq!(
+            normalize_protection_scope_path(&repo_path),
+            normalize_protection_scope_path(&alias_path),
+            "scope comparison should treat symlink aliases as the same repository path"
+        );
+
+        let real_git_dir = repo_path.join(".git");
+        let alias_git_dir = alias_path.join(".git");
+        assert_eq!(
+            normalize_protection_scope_path(&real_git_dir),
+            normalize_protection_scope_path(&alias_git_dir),
+            "scope comparison should normalize git-dir aliases too"
         );
     }
 }
