@@ -171,6 +171,128 @@ fn test_continuation_development_xml_rejects_files_changed() {
     });
 }
 
+/// Test that continuation XML rejects summaries without a blocker explanation.
+#[test]
+fn test_continuation_development_xml_rejects_summary_without_blocker() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>Updated the continuation prompt and added tests.</ralph-summary>
+<ralph-next-steps>1. Finish the validator updates.
+2. Re-run focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject summaries that do not explain what blocked full-plan completion"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-summary"));
+        assert!(error
+            .suggestion
+            .contains("why the full plan was not completed"));
+    });
+}
+
+/// Test that continuation XML rejects plan-scope summaries that still omit the blocker.
+#[test]
+fn test_continuation_development_xml_rejects_summary_without_specific_blocker() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed.</ralph-summary>
+<ralph-next-steps>1. Implement the missing validator guard.
+2. Re-run the focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject summaries that mention the plan but do not explain the blocker"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-summary"));
+        assert!(error.expected.contains("blocker-focused"));
+    });
+}
+
+/// Test that continuation XML rejects bookkeeping-heavy ordered next steps.
+#[test]
+fn test_continuation_development_xml_rejects_bookkeeping_heavy_next_steps() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>The full plan was not completed because validator changes are still missing.</ralph-summary>
+<ralph-next-steps>1. Files changed: ralph-workflow/src/prompts/developer/tests.rs.
+2. Tests run: cargo test -p ralph-workflow --lib prompts::developer::tests.
+3. Work completed: prompt test updates.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject bookkeeping-heavy ordered next steps"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-next-steps"));
+        assert!(error.suggestion.contains("recovery checklist"));
+    });
+}
+
+/// Test that continuation XML rejects blocker summaries scoped only to a local stuck step.
+#[test]
+fn test_continuation_development_xml_rejects_local_step_summary() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>Could not finish this test because mocks are broken.</ralph-summary>
+<ralph-next-steps>1. Fix the broken mock setup.
+2. Re-run the failing test.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject summaries that explain only a local stuck step instead of the full-plan blocker"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-summary"));
+        assert!(error.expected.contains("full plan"));
+    });
+}
+
+/// Test that continuation XML rejects vague ordered steps that do not recover the remaining plan.
+#[test]
+fn test_continuation_development_xml_rejects_vague_ordered_steps() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because validation logic is still missing.</ralph-summary>
+<ralph-next-steps>1. Keep investigating.
+2. Try another fix.
+3. Continue later.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject vague ordered steps that are not actionable recovery work"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-next-steps"));
+        assert!(error.expected.contains("recovery checklist"));
+    });
+}
+
 /// Test that invalid XML format produces specific XSD validation error.
 ///
 /// This verifies that when the development agent produces XML that fails

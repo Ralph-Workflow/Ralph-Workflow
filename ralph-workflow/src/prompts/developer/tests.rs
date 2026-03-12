@@ -698,45 +698,67 @@ fn test_continuation_prompt_contains_expected_elements() {
         "Prompt should include next steps when provided"
     );
     assert!(
-        prompt.contains("failed to fully complete the plan"),
+        prompt.contains("failed to fully complete the entire plan")
+            || prompt.contains("did not fully complete the entire plan"),
         "Continuation prompt should frame continuation as failure to fully complete the plan"
     );
     assert!(
-        prompt.contains("expected to fully complete the entire plan"),
+        prompt.contains(
+            "Success in this run means finishing the entire remaining plan to completion"
+        ) || prompt.contains("Success means finishing the entire remaining plan to completion"),
         "Continuation prompt should set full plan completion as the default expectation"
     );
     assert!(
-        prompt.contains("acceptable to do more than the minimum remaining plan work"),
+        prompt.contains("Going beyond the plan is acceptable")
+            || prompt.contains("going beyond the plan is acceptable")
+            || prompt.contains("acceptable to do more than the minimum remaining plan work"),
         "Continuation prompt should explicitly allow exceeding the minimum plan when that improves completion"
     );
     assert!(
-        prompt.contains("why the previous run did not fully complete the plan"),
-        "Continuation prompt should require a clear explanation for incomplete completion"
-    );
-    assert!(
-        prompt.contains("ordered, comprehensive checklist"),
+        prompt.contains("ordered, actionable checklist"),
         "Continuation prompt should require an ordered checklist for recovery work"
     );
     assert!(
-        prompt.contains("only recovery-critical information"),
-        "Continuation prompt should explicitly limit context to recovery-critical information"
+        prompt.contains("should resolve the remaining plan when completed"),
+        "Continuation prompt should treat the passed checklist as sufficient to resolve the remaining plan"
+    );
+    assert!(
+        prompt.contains("starting point")
+            || prompt.contains("not the boundary of the remaining work"),
+        "Continuation prompt should treat the passed checklist as a starting point, not a hard boundary"
+    );
+    assert!(
+        prompt
+            .to_lowercase()
+            .contains("the plan is the goal, not the checklist")
+            || prompt
+                .to_lowercase()
+                .contains("success is completing the plan, not finishing the checklist"),
+        "Continuation prompt should explicitly prioritize full-plan completion over checklist completion"
+    );
+    assert!(
+        prompt.contains("do whatever it takes to complete the entire remaining plan")
+            || prompt.contains("complete the entire remaining plan by whatever work is required"),
+        "Continuation prompt should frame continuation as full-plan completion work, not narrow recovery"
     );
     assert!(
         prompt.contains("ordered, actionable checklist") && prompt.contains("remaining plan"),
         "Continuation prompt should require an ordered actionable checklist for the remaining plan"
     );
     assert!(
-        prompt.contains("Do not use the continuation for file lists")
-            || prompt.contains("Do not use the continuation to list files"),
-        "Continuation prompt should explicitly reject file-list bookkeeping"
+        prompt.contains("starting point")
+            || prompt.contains("not the boundary of the remaining work"),
+        "Continuation prompt should treat prior continuation context as a starting point, not a boundary"
     );
     assert!(
-        prompt.contains("Do not use the continuation for activity summaries")
-            || prompt.contains("Do not use the continuation to narrate incidental activity"),
-        "Continuation prompt should explicitly reject activity-summary filler"
+        prompt
+            .to_lowercase()
+            .contains("use the previous summary and checklist as execution context"),
+        "Continuation prompt should frame prior continuation data as execution context, not communication output"
     );
     assert!(
-        prompt.contains("continuation is an exception path"),
+        prompt.contains("Continuation is an exception path")
+            || prompt.contains("continuation is an exception path"),
         "Continuation prompt should explicitly frame continuation as exceptional"
     );
     assert!(
@@ -841,23 +863,59 @@ fn test_continuation_prompt_emphasizes_recovery_over_incidental_activity() {
         prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
 
     assert!(
-        prompt.contains("Focus the continuation on recovery and completion"),
-        "Continuation prompt should center recovery/completion rather than narration"
+        prompt.contains("Focus the continuation on completing the entire remaining plan")
+            || prompt.contains("do whatever it takes to complete the entire remaining plan"),
+        "Continuation prompt should center full-plan completion rather than narrow recovery"
     );
     assert!(
-        prompt.contains("Do not use the continuation to narrate incidental activity"),
-        "Continuation prompt should reject incidental activity summaries"
+        prompt
+            .to_lowercase()
+            .contains("use the previous summary and checklist as execution context"),
+        "Continuation prompt should frame prior continuation data as execution context, not communication output"
+    );
+    assert!(
+        prompt.contains("remaining non-plan follow-up work discovered during verification")
+            || prompt.contains("failed verification commands or checks"),
+        "Continuation prompt should preserve the detailed recovery checklist framing from analysis output"
+    );
+    assert!(
+        prompt.contains("starting point")
+            || prompt.contains("not the boundary of the remaining work"),
+        "Continuation prompt should tell the next run to expand beyond the handed-off checklist when needed"
+    );
+    assert!(
+        prompt
+            .to_lowercase()
+            .contains("the plan is the goal, not the checklist")
+            || prompt
+                .to_lowercase()
+                .contains("success is completing the plan, not finishing the checklist"),
+        "Continuation prompt should explicitly prioritize full-plan completion over checklist completion"
     );
     assert!(
         prompt.contains(
             "actionable and specific enough for the next run to continue without ambiguity"
-        ),
+        ) || (prompt.contains("ordered, actionable checklist")
+            && prompt.contains("specific enough for the next run to continue without ambiguity")),
         "Continuation prompt should require an actionable, ambiguity-free remaining-work checklist"
     );
     assert!(
         prompt.contains("remaining work needed to finish the entire plan")
-            || prompt.contains("finish the entire remaining plan"),
+            || prompt.contains("finish the entire remaining plan")
+            || prompt.contains("finishing the remaining plan"),
         "Continuation prompt should center the whole remaining plan, not a local next step"
+    );
+    assert!(
+        !prompt.contains(
+            "failed to fully complete the plan and failed to fully complete the entire plan"
+        ),
+        "Continuation prompt should avoid duplicated whole-plan failure wording"
+    );
+    assert!(
+        !prompt.contains(
+            "Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan"
+        ),
+        "Continuation prompt should avoid repetitive checklist wording"
     );
 }
 
@@ -939,8 +997,66 @@ fn test_continuation_prompt_includes_original_request_and_plan_sections() {
         "Fallback continuation prompt should preserve plan content"
     );
     assert!(
-        fallback_prompt.contains("Success means finishing the entire remaining plan to completion"),
+        fallback_prompt.contains("Success means finishing the entire remaining plan to completion")
+            || fallback_prompt.contains(
+                "Success in this run means finishing the entire remaining plan to completion"
+            ),
         "Fallback continuation prompt should preserve whole-plan completion framing"
+    );
+    assert!(
+        fallback_prompt.contains("1. Finish the remaining work"),
+        "Fallback continuation prompt should preserve the ordered recovery checklist when provided"
+    );
+    assert!(
+        fallback_prompt.contains("VERIFICATION AND VALIDATION")
+            && fallback_prompt.contains("EXPLORATION AND CONTEXT GATHERING"),
+        "Fallback continuation prompt should preserve shared developer iteration guidance"
+    );
+    assert!(
+        fallback_prompt.contains("Do NOT run ANY git command except read-only lookup commands"),
+        "Fallback continuation prompt should preserve read-only git guidance"
+    );
+    assert!(
+        !fallback_prompt.contains(
+            "failed to fully complete the plan and failed to fully complete the entire plan"
+        ),
+        "Fallback continuation prompt should avoid duplicated whole-plan failure wording"
+    );
+    assert!(
+        !fallback_prompt.contains(
+            "Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan"
+        ),
+        "Fallback continuation prompt should avoid repetitive checklist wording"
+    );
+
+    let true_fallback_prompt = fallback_continuation_prompt(
+        2,
+        "failed",
+        "The full plan was not completed because verification still fails.",
+        Some(
+            "1. Fix the failing verification.\n2. Re-run the focused continuation tests.\n3. Finish the remaining plan and run repository verification.",
+        ),
+        "Original request body",
+        "Implementation plan body",
+    );
+
+    assert!(
+        true_fallback_prompt.contains("UNATTENDED MODE")
+            && true_fallback_prompt
+                .contains("Do NOT run ANY git command except read-only lookup commands"),
+        "True string fallback should preserve unattended and read-only git guidance"
+    );
+    assert!(
+        true_fallback_prompt.contains("VERIFICATION AND VALIDATION")
+            && true_fallback_prompt.contains("EXPLORATION AND CONTEXT GATHERING"),
+        "True string fallback should preserve shared developer iteration guidance"
+    );
+    assert!(
+        true_fallback_prompt.contains("ORIGINAL REQUEST")
+            && true_fallback_prompt.contains("IMPLEMENTATION PLAN")
+            && true_fallback_prompt.contains("Original request body")
+            && true_fallback_prompt.contains("Implementation plan body"),
+        "True string fallback should preserve original request and plan context"
     );
 }
 

@@ -40,17 +40,17 @@ COMMUNICATION BOUNDARY (CRITICAL):
 CONTINUATION CONTEXT
 ═══════════════════════════════════════════════════════════════════════════════
 
-This is {{CONTINUATION_PROGRESS}}. continuation is an exception path because the previous run failed to fully complete the plan and failed to fully complete the entire plan. The previous attempt returned status "{{PREVIOUS_STATUS}}".
+This is {{CONTINUATION_PROGRESS}}. Continuation is an exception path: it exists only because the previous run did not fully complete the entire plan. The previous attempt returned status "{{PREVIOUS_STATUS}}".
 
-The agent was expected to fully complete the entire plan. Success in this run means fully completing the entire remaining plan to completion, not merely advancing one local step or unblocking one area. It is acceptable to do more than the minimum remaining plan work, and going beyond the plan is acceptable when it produces more complete progress.
+Success in this run means finishing the entire remaining plan to completion, not merely advancing one blocked area. Going beyond the plan is acceptable when it produces more complete progress. You must do whatever it takes to complete the entire remaining plan and complete the entire remaining plan by whatever work is required. The plan is the goal, not the checklist. Success is completing the plan, not finishing the checklist. You must verify against the entire plan, not just the checklist, and verify that you completed the entire remaining plan before stopping.
 
-Focus the continuation on recovery and completion. Include only recovery-critical information in the continuation result: why the previous run did not fully complete the plan and an ordered, comprehensive checklist for the remaining plan. Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan. The checklist must be actionable and specific enough for the next run to continue without ambiguity. Do not use the continuation for file lists, activity summaries, filler, or incidental narration. Do not use the continuation to narrate incidental activity.
+Use the previous summary and checklist as execution context only. Focus on completing the entire remaining plan.
 
 Blocker preventing full-plan completion:
 {{PREVIOUS_SUMMARY}}
 
 {% if PREVIOUS_NEXT_STEPS %}
-Ordered recovery checklist for the remaining plan:
+Comprehensive, detailed, ordered, actionable checklist for the remaining plan that should resolve the remaining plan when completed. This is an ordered, actionable checklist for the remaining work needed to finish the entire plan. Treat this checklist as a starting point, not the boundary of the remaining work. It must be actionable and specific enough for the next run to continue without ambiguity. Preserve any remaining non-plan follow-up work discovered during verification and any failed verification commands or checks. The next run must verify completion against the entire plan, not just these checklist items:
 {{PREVIOUS_NEXT_STEPS}}
 {% endif %}
 

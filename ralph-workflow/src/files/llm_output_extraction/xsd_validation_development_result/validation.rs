@@ -19,6 +19,34 @@ const EXAMPLE_DEVELOPMENT_RESULT_XML: &str = r"<ralph-development-result>
 /// Valid status values for development results.
 const VALID_STATUSES: [&str; 3] = ["completed", "partial", "failed"];
 const CONTINUATION_VALID_STATUSES: [&str; 2] = ["partial", "failed"];
+const CONTINUATION_BLOCKER_INDICATORS: [&str; 9] = [
+    "because",
+    "blocked by",
+    "prevented by",
+    "due to",
+    "still failing",
+    "still blocked",
+    "could not",
+    "unable to",
+    "stalled on",
+];
+const CONTINUATION_BOOKKEEPING_PREFIXES: [&str; 6] = [
+    "files changed:",
+    "tests run:",
+    "work completed:",
+    "activity summary:",
+    "commands run:",
+    "summary:",
+];
+const CONTINUATION_PLAN_SCOPE_TERMS: [&str; 3] = ["full plan", "entire plan", "remaining plan"];
+const CONTINUATION_VAGUE_STEP_PREFIXES: [&str; 6] = [
+    "keep investigating",
+    "try another fix",
+    "continue later",
+    "work on it more",
+    "make more progress",
+    "keep going",
+];
 
 /// Validate development result XML content against the XSD schema.
 ///
@@ -312,6 +340,24 @@ pub fn validate_continuation_development_result_xml(
         ));
     };
 
+    if !summary_explains_blocker(&elements.summary) {
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-summary".to_string(),
+            expected: "a blocker-focused explanation of why the full plan was not completed"
+                .to_string(),
+            found: elements.summary.clone(),
+            suggestion:
+                "Rewrite <ralph-summary> to explain why the full plan was not completed, for example by naming the blocker with wording like `because`, `blocked by`, or `due to`."
+                    .to_string(),
+            example: Some(
+                r"<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>"
+                    .to_string()
+                    .into(),
+            ),
+        });
+    }
+
     if !has_ordered_recovery_steps(next_steps) {
         return Err(XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
@@ -326,6 +372,46 @@ pub fn validate_continuation_development_result_xml(
                 r"<ralph-next-steps>1. Fix the blocker.
 2. Re-run the relevant tests.
 3. Finish the remaining plan and run verification.</ralph-next-steps>"
+                    .to_string()
+                    .into(),
+            ),
+        });
+    }
+
+    if continuation_contains_bookkeeping(next_steps) {
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-next-steps".to_string(),
+            expected: "an ordered recovery checklist focused on finishing the remaining plan"
+                .to_string(),
+            found: next_steps.clone(),
+            suggestion:
+                "Rewrite <ralph-next-steps> as a recovery checklist for finishing the remaining plan. Remove bookkeeping such as file lists, tests run, work completed, or other activity summaries."
+                    .to_string(),
+            example: Some(
+                r"<ralph-next-steps>1. Fix the blocker.
+2. Re-run the relevant tests.
+3. Finish the remaining plan and run verification.</ralph-next-steps>"
+                    .to_string()
+                    .into(),
+            ),
+        });
+    }
+
+    if continuation_contains_vague_steps(next_steps) {
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-next-steps".to_string(),
+            expected: "an actionable recovery checklist for finishing the remaining plan"
+                .to_string(),
+            found: next_steps.clone(),
+            suggestion:
+                "Rewrite <ralph-next-steps> so each numbered step is concrete recovery work for finishing the remaining plan. Replace vague lines such as `keep investigating`, `try another fix`, or `continue later` with specific actions."
+                    .to_string(),
+            example: Some(
+                r"<ralph-next-steps>1. Implement the missing validation guard.
+2. Re-run the focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>"
                     .to_string()
                     .into(),
             ),
@@ -356,6 +442,50 @@ fn has_ordered_recovery_steps(next_steps: &str) -> bool {
     }
 
     expected > 2
+}
+
+fn summary_explains_blocker(summary: &str) -> bool {
+    let lowercase = summary.trim().to_ascii_lowercase();
+    !lowercase.is_empty()
+        && CONTINUATION_BLOCKER_INDICATORS
+            .iter()
+            .any(|indicator| lowercase.contains(indicator))
+        && CONTINUATION_PLAN_SCOPE_TERMS
+            .iter()
+            .any(|term| lowercase.contains(term))
+        && !continuation_contains_bookkeeping(summary)
+}
+
+fn continuation_contains_bookkeeping(text: &str) -> bool {
+    text.lines().any(|line| {
+        let trimmed = line.trim();
+        let normalized = trim_ordered_step_prefix(trimmed).to_ascii_lowercase();
+        CONTINUATION_BOOKKEEPING_PREFIXES
+            .iter()
+            .any(|prefix| normalized.starts_with(prefix))
+    })
+}
+
+fn continuation_contains_vague_steps(text: &str) -> bool {
+    text.lines().any(|line| {
+        let trimmed = line.trim();
+        let normalized = trim_ordered_step_prefix(trimmed).to_ascii_lowercase();
+        CONTINUATION_VAGUE_STEP_PREFIXES
+            .iter()
+            .any(|prefix| normalized.starts_with(prefix))
+    })
+}
+
+fn trim_ordered_step_prefix(line: &str) -> &str {
+    let Some((prefix, rest)) = line.split_once('.') else {
+        return line;
+    };
+
+    if prefix.chars().all(|c| c.is_ascii_digit()) {
+        rest.trim_start()
+    } else {
+        line
+    }
 }
 
 fn unwrap_cdata_wrapper(content: &str) -> Cow<'_, str> {

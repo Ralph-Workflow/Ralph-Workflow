@@ -129,6 +129,11 @@ Acceptance criteria:
 - Every acceptance criterion in the PLAN that is verifiable from allowed
   evidence must be satisfied.
 - For any verified requirement, the summary MUST state the evidence used.
+- When you include `<ralph-next-steps>`, make it a comprehensive, detailed,
+  ordered checklist that should resolve the remaining plan when completed.
+  Include not only unfinished plan items, but also any relevant non-plan
+  follow-up work discovered during verification and every failed verification
+  command or check that must be resolved.
 
 ───────────────────────────────────────────────────────────────────────────────
 EMPTY OR MISSING DIFF HANDLING
@@ -150,12 +155,7 @@ REQUIRED OUTPUT
 
 Write your analysis using EXACTLY the following XML structure:
 
-<ralph-development-result>
-  <ralph-status>completed|partial|failed</ralph-status>
-  <ralph-summary>Brief factual summary of what was implemented vs planned</ralph-summary>
-  <ralph-files-changed>Optional list of modified files (from DIFF)</ralph-files-changed>
-  <ralph-next-steps>Remaining work if status is partial (optional)</ralph-next-steps>
-</ralph-development-result>
+{{REQUIRED_OUTPUT_XML}}
 
 Write the XML to:
 `{{DEVELOPMENT_RESULT_XML_PATH}}`

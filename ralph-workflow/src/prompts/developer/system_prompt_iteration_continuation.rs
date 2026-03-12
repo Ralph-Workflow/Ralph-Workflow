@@ -7,18 +7,78 @@ fn fallback_continuation_prompt(
     continuation_attempt: u32,
     status: &str,
     summary: &str,
+    next_steps: Option<&str>,
     prompt_content: &str,
     plan_content: &str,
 ) -> String {
     let mut prompt = String::new();
-    let _ = writeln!(prompt, "CONTINUATION MODE\n");
+    let _ = writeln!(prompt, "You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.\n");
+    prompt.push_str(include_str!("../templates/shared/_unattended_mode.txt"));
+    prompt.push_str("\n\n");
+    prompt.push_str(include_str!("../templates/shared/_no_git_commit.txt"));
+    prompt.push_str("\n\n");
     let _ = writeln!(
         prompt,
-        "continuation is an exception path because the previous run failed to fully complete the plan and failed to fully complete the entire plan."
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+    let _ = writeln!(prompt, "IMPORTANT: EXECUTION CONTEXT");
+    let _ = writeln!(
+        prompt,
+        "═══════════════════════════════════════════════════════════════════════════════\n"
     );
     let _ = writeln!(
         prompt,
-        "This is continuation attempt #{continuation_attempt}. Previous status: {status}\n"
+        "- No assumptions about downstream processing: do not reason about what happens"
+    );
+    let _ = writeln!(prompt, "  next in the pipeline.");
+    let _ = writeln!(
+        prompt,
+        "- Your only job is implementation work in this repository."
+    );
+    let _ = writeln!(
+        prompt,
+        "- What matters is the WORK you do: the files you create/modify and the commands"
+    );
+    let _ = writeln!(prompt, "  you run.");
+    let _ = writeln!(
+        prompt,
+        "- There is NO time limit. Take as long as needed to do the work correctly."
+    );
+    let _ = writeln!(
+        prompt,
+        "- Focus on making COMPLETE progress. Don't stop early or leave work half-done."
+    );
+    let _ = writeln!(
+        prompt,
+        "- You are an agent - keep going until the task is fully resolved.\n"
+    );
+    let _ = writeln!(prompt, "COMMUNICATION BOUNDARY (CRITICAL):");
+    let _ = writeln!(
+        prompt,
+        "- Do NOT write summaries, status reports, or handoff notes in markdown files."
+    );
+    let _ = writeln!(
+        prompt,
+        "- Do NOT create STATUS.md, CURRENT_STATUS.md, CURRENT_IMPLEMENTATION.md, or"
+    );
+    let _ = writeln!(prompt, "  any similarly named context-transfer file.");
+    let _ = writeln!(
+        prompt,
+        "- Do NOT create any file whose purpose is to communicate \"what happened\"."
+    );
+    let _ = writeln!(prompt, "- Keep context in code changes and tests only.\n");
+    let _ = writeln!(
+        prompt,
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+    let _ = writeln!(prompt, "CONTINUATION CONTEXT");
+    let _ = writeln!(
+        prompt,
+        "═══════════════════════════════════════════════════════════════════════════════\n"
+    );
+    let _ = writeln!(
+        prompt,
+        "This is continuation attempt #{continuation_attempt}. Continuation is an exception path: it exists only because the previous run did not fully complete the entire plan. The previous attempt returned status \"{status}\".\n"
     );
     let _ = writeln!(
         prompt,
@@ -26,12 +86,16 @@ fn fallback_continuation_prompt(
     );
     let _ = writeln!(
         prompt,
-        "The agent was expected to fully complete the entire plan. Success means finishing the entire remaining plan to completion, not just advancing one local step. Going beyond the plan is acceptable when it produces more complete progress."
+        "Success means finishing the entire remaining plan to completion, not merely advancing one blocked area. Going beyond the plan is acceptable when it produces more complete progress. You must do whatever it takes to complete the entire remaining plan and complete the entire remaining plan by whatever work is required. The plan is the goal, not the checklist. Success is completing the plan, not finishing the checklist. You must verify against the entire plan, not just the checklist, and verify that you completed the entire remaining plan before stopping."
     );
     let _ = writeln!(
         prompt,
-        "Focus the continuation on recovery and completion. Return only recovery-critical information: why the full plan was not completed and an ordered, comprehensive checklist for the remaining plan. Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan. The checklist must be actionable and specific enough for the next run to continue without ambiguity. Do not include file lists or incidental activity summaries. Do not use the continuation to narrate incidental activity.\n"
+        "Use the previous summary and checklist as execution context only. Focus on completing the entire remaining plan. Then give a comprehensive, detailed, ordered, actionable checklist for finishing the remaining plan. The checklist should resolve the remaining plan when completed, must be specific enough for the next run to continue without ambiguity, and should preserve any remaining non-plan follow-up work discovered during verification plus any failed verification commands or checks.\n"
     );
+    if let Some(next_steps) = next_steps {
+        let _ = writeln!(prompt, "Comprehensive, detailed, ordered, actionable checklist for the remaining plan that should resolve the remaining plan when completed. This is an ordered, actionable checklist for the remaining work needed to finish the entire plan. Treat this checklist as a starting point, not the boundary of the remaining work. It must be actionable and specific enough for the next run to continue without ambiguity. The next run must verify completion against the entire plan, not just these checklist items:");
+        let _ = writeln!(prompt, "{next_steps}\n");
+    }
     let _ = writeln!(prompt, "ORIGINAL REQUEST");
     let _ = writeln!(prompt, "====================\n");
     prompt.push_str(prompt_content);
@@ -39,7 +103,25 @@ fn fallback_continuation_prompt(
     let _ = writeln!(prompt, "IMPLEMENTATION PLAN");
     let _ = writeln!(prompt, "====================\n");
     prompt.push_str(plan_content);
-    prompt.push('\n');
+    prompt.push_str("\n\n");
+    prompt.push_str(include_str!(
+        "../templates/shared/_developer_iteration_guidance.txt"
+    ));
+    prompt.push_str("\n\n");
+    let _ = writeln!(
+        prompt,
+        "═══════════════════════════════════════════════════════════════════════════════"
+    );
+    let _ = writeln!(prompt, "WHAT MATTERS");
+    let _ = writeln!(
+        prompt,
+        "═══════════════════════════════════════════════════════════════════════════════\n"
+    );
+    let _ = writeln!(prompt, "1. Code changes you make");
+    let _ = writeln!(
+        prompt,
+        "2. Meeting ALL requirements from plan and original request"
+    );
     prompt
 }
 
@@ -128,13 +210,22 @@ pub fn prompt_developer_iteration_continuation_xml(
                 .previous_summary
                 .as_ref()
                 .map_or("No summary", |s| s.as_str());
-            fallback_continuation_prompt(
-                continuation_state.continuation_attempt,
-                status,
-                summary,
-                &prompt_content,
-                &plan_content,
-            )
+            let builtin_template = Template::new(include_str!(
+                "../templates/developer_iteration_continuation_xml.txt"
+            ));
+
+            builtin_template
+                .render_with_partials(&variables, &partials)
+                .unwrap_or_else(|_| {
+                    fallback_continuation_prompt(
+                        continuation_state.continuation_attempt,
+                        status,
+                        summary,
+                        continuation_state.previous_next_steps.as_deref(),
+                        &prompt_content,
+                        &plan_content,
+                    )
+                })
         })
 }
 
@@ -225,13 +316,20 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
                 .previous_summary
                 .as_ref()
                 .map_or("No summary", |s| s.as_str());
-            let prompt_content = fallback_continuation_prompt(
-                continuation_state.continuation_attempt,
-                status,
-                summary,
-                &prompt_content,
-                &plan_content,
-            );
+            let prompt_content = Template::new(include_str!(
+                "../templates/developer_iteration_continuation_xml.txt"
+            ))
+            .render_with_partials(&variables, &partials)
+            .unwrap_or_else(|_| {
+                fallback_continuation_prompt(
+                    continuation_state.continuation_attempt,
+                    status,
+                    summary,
+                    continuation_state.previous_next_steps.as_deref(),
+                    &prompt_content,
+                    &plan_content,
+                )
+            });
             RenderedTemplate {
                 content: prompt_content,
                 log: SubstitutionLog {

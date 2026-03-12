@@ -305,17 +305,43 @@ fn test_continuation_prompt_includes_previous_context() {
             "Prompt should include continuation progress label"
         );
         assert!(
-            prompt.contains("failed to fully complete the entire plan"),
+            prompt.contains("failed to fully complete the entire plan")
+                || prompt.contains("did not fully complete the entire plan"),
             "Prompt should frame continuation as incomplete whole-plan completion"
         );
         assert!(
-            prompt.contains("going beyond the plan is acceptable")
+            prompt.contains("Going beyond the plan is acceptable")
+                || prompt.contains("going beyond the plan is acceptable")
                 || prompt.contains("acceptable to do more than the minimum remaining plan work"),
             "Prompt should explicitly allow going beyond the plan for more complete progress"
         );
         assert!(
-            prompt.contains("only recovery-critical information"),
-            "Prompt should explicitly restrict continuation context to recovery-critical information"
+            prompt
+                .to_lowercase()
+                .contains("use the previous summary and checklist as execution context"),
+            "Prompt should frame prior continuation data as execution context for the executor"
+        );
+        assert!(
+            prompt.contains("Treat this checklist as a starting point")
+                || prompt.contains("starting point, not the boundary of the remaining work"),
+            "Prompt should explicitly say the checklist is only a starting point"
+        );
+        assert!(
+            prompt.contains("The plan is the goal, not the checklist")
+                || prompt.contains("Success is completing the plan, not finishing the checklist"),
+            "Prompt should explicitly prioritize plan completion over checklist completion"
+        );
+        assert!(
+            !prompt.contains(
+                "failed to fully complete the plan and failed to fully complete the entire plan"
+            ),
+            "Prompt should avoid duplicated whole-plan failure wording"
+        );
+        assert!(
+            !prompt.contains(
+                "Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan"
+            ),
+            "Prompt should avoid repetitive checklist wording"
         );
         assert!(
             !prompt.contains("src/lib.rs") && !prompt.contains("src/main.rs"),
