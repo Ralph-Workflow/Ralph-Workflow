@@ -8,6 +8,13 @@ use std::io;
 use std::path::Path;
 
 #[cfg(target_os = "macos")]
+fn child_pid_entry_count(bytes_written: i32) -> Option<usize> {
+    let bytes = usize::try_from(bytes_written).ok()?;
+    let pid_width = std::mem::size_of::<libc::pid_t>();
+    Some(bytes / pid_width)
+}
+
+#[cfg(target_os = "macos")]
 fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
     use std::collections::{HashSet, VecDeque};
     use std::ffi::c_void;
@@ -124,7 +131,7 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
                 return Some(Vec::new());
             }
 
-            let count = usize::try_from(bytes_written).ok()?;
+            let count = child_pid_entry_count(bytes_written)?;
             if count < capacity {
                 buffer.truncate(count);
                 let child_pids = buffer
@@ -1288,5 +1295,16 @@ mod tests {
             "fallback without process-state or cpu evidence must not suppress idle timeout"
         );
         assert_eq!(info.cpu_time_ms, 0);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn child_pid_entry_count_converts_libproc_bytes_to_pid_count() {
+        let pid_width = i32::try_from(std::mem::size_of::<libc::pid_t>())
+            .expect("pid_t size should fit in i32");
+
+        assert_eq!(child_pid_entry_count(pid_width * 3), Some(3));
+        assert_eq!(child_pid_entry_count(pid_width), Some(1));
+        assert_eq!(child_pid_entry_count(0), Some(0));
     }
 }

@@ -156,13 +156,17 @@ impl ChildProcessInfo {
         self.has_children() && !self.has_currently_active_children()
     }
 
-    /// Whether the latest snapshot proves fresh current work from the same
-    /// descendant subtree as a previous observation.
+    /// Whether the latest snapshot proves fresh current work relative to a
+    /// previous observation.
+    ///
+    /// Fresh work can show up either as additional CPU time from the same
+    /// descendant set or as a still-active replacement descendant set, which is
+    /// common for shells and build tools that churn worker PIDs between polls.
     #[must_use]
     pub const fn shows_fresh_progress_since(&self, previous: Self) -> bool {
         self.has_currently_active_children()
-            && self.descendant_pid_signature == previous.descendant_pid_signature
-            && self.cpu_time_ms > previous.cpu_time_ms
+            && (self.cpu_time_ms > previous.cpu_time_ms
+                || self.descendant_pid_signature != previous.descendant_pid_signature)
     }
 }
 
@@ -268,9 +272,16 @@ mod tests {
             cpu_time_ms: 400,
             descendant_pid_signature: 8,
         };
+        let replaced_without_current_activity = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 450,
+            descendant_pid_signature: 9,
+        };
 
         assert!(fresh.shows_fresh_progress_since(previous));
         assert!(!stale.shows_fresh_progress_since(previous));
-        assert!(!replaced.shows_fresh_progress_since(previous));
+        assert!(replaced.shows_fresh_progress_since(previous));
+        assert!(!replaced_without_current_activity.shows_fresh_progress_since(previous));
     }
 }

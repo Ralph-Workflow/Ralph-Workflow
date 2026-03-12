@@ -15,7 +15,7 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
-use crate::test_timeout::{with_default_timeout, with_timeout};
+use crate::test_timeout::with_default_timeout;
 use ralph_workflow::config::Verbosity;
 use ralph_workflow::json_parser::codex::CodexParser;
 use ralph_workflow::json_parser::printer::TestPrinter;
@@ -26,78 +26,68 @@ use std::cell::RefCell;
 use std::io::{BufReader, Cursor};
 use std::rc::Rc;
 
-const REAL_LOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-
 #[test]
 fn test_codex_reasoning_no_spam_in_non_tty_basic_mode() {
-    with_timeout(
-        || {
-            // Simulate non-TTY environment (Basic mode: colors but no cursor positioning)
-            let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-            let colors = Colors::new();
-            let verbosity = Verbosity::Normal;
+    with_default_timeout(|| {
+        // Simulate non-TTY environment (Basic mode: colors but no cursor positioning)
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let colors = Colors::new();
+        let verbosity = Verbosity::Normal;
 
-            let parser =
-                CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-                    .with_display_name_for_test("ccs/codex")
-                    .with_terminal_mode(TerminalMode::Basic);
+        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+            .with_display_name_for_test("ccs/codex")
+            .with_terminal_mode(TerminalMode::Basic);
 
-            // Use the captured reproduction log from the acceptance criteria.
-            let log = include_str!("artifacts/example_log.log");
-            let reader = BufReader::new(Cursor::new(log));
-            let workspace = MemoryWorkspace::new_test();
-            parser.parse_stream_for_test(reader, &workspace).unwrap();
+        // Use the captured reproduction log from the acceptance criteria.
+        let log = include_str!("artifacts/example_log.log");
+        let reader = BufReader::new(Cursor::new(log));
+        let workspace = MemoryWorkspace::new_test();
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
 
-            let output = test_printer.borrow().get_output();
+        let output = test_printer.borrow().get_output();
 
-            // In Basic mode, per-delta output is suppressed.
-            // The captured real log should not contain repeated "Thinking:" spam.
-            let thinking_count = output.matches("[ccs/codex] Thinking:").count();
-            assert!(
+        // In Basic mode, per-delta output is suppressed.
+        // The captured real log should not contain repeated "Thinking:" spam.
+        let thinking_count = output.matches("[ccs/codex] Thinking:").count();
+        assert!(
             thinking_count <= 1,
             "Expected <= 1 'Thinking:' line in Basic mode, found {thinking_count}. Output:\n{output}"
         );
 
-            // We don't assert the exact reasoning text here; the key regression is that
-            // the "Thinking:" prefix isn't repeated many times in non-TTY logs.
-            // (Real Codex streams may vary.)
-        },
-        REAL_LOG_TIMEOUT,
-    );
+        // We don't assert the exact reasoning text here; the key regression is that
+        // the "Thinking:" prefix isn't repeated many times in non-TTY logs.
+        // (Real Codex streams may vary.)
+    });
 }
 
 #[test]
 fn test_codex_reasoning_no_spam_in_non_tty_none_mode() {
-    with_timeout(
-        || {
-            // Simulate pure non-TTY environment (None mode: no ANSI sequences at all)
-            let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
-            let colors = Colors::new();
-            let verbosity = Verbosity::Normal;
+    with_default_timeout(|| {
+        // Simulate pure non-TTY environment (None mode: no ANSI sequences at all)
+        let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
+        let colors = Colors::new();
+        let verbosity = Verbosity::Normal;
 
-            let parser =
-                CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
-                    .with_display_name_for_test("ccs/codex")
-                    .with_terminal_mode(TerminalMode::None);
+        let parser = CodexParser::with_printer_for_test(colors, verbosity, test_printer.clone())
+            .with_display_name_for_test("ccs/codex")
+            .with_terminal_mode(TerminalMode::None);
 
-            // Use the captured reproduction log from the acceptance criteria.
-            let log = include_str!("artifacts/example_log.log");
-            let reader = BufReader::new(Cursor::new(log));
-            let workspace = MemoryWorkspace::new_test();
-            parser.parse_stream_for_test(reader, &workspace).unwrap();
+        // Use the captured reproduction log from the acceptance criteria.
+        let log = include_str!("artifacts/example_log.log");
+        let reader = BufReader::new(Cursor::new(log));
+        let workspace = MemoryWorkspace::new_test();
+        parser.parse_stream_for_test(reader, &workspace).unwrap();
 
-            let output = test_printer.borrow().get_output();
+        let output = test_printer.borrow().get_output();
 
-            // In None mode, per-delta output is also suppressed.
-            // The captured log should not contain repeated "Thinking:" spam.
-            let thinking_count = output.matches("[ccs/codex] Thinking:").count();
-            assert!(
+        // In None mode, per-delta output is also suppressed.
+        // The captured log should not contain repeated "Thinking:" spam.
+        let thinking_count = output.matches("[ccs/codex] Thinking:").count();
+        assert!(
             thinking_count <= 1,
             "Expected <= 1 'Thinking:' line in None mode, found {thinking_count}. Output:\n{output}"
         );
-        },
-        REAL_LOG_TIMEOUT,
-    );
+    });
 }
 
 #[test]

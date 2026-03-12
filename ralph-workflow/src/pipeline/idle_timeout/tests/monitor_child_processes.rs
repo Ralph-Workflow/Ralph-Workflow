@@ -646,6 +646,76 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
     );
 }
 
+/// Active replacement descendants that keep working between polls must still
+/// suppress timeout even if the descendant PID set churns.
+#[test]
+fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_work() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 500,
+            descendant_pid_signature: 101,
+        },
+    ));
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(25),
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 1,
+        check_child_processes: true,
+    };
+
+    let handle = thread::spawn(move || {
+        monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            None,
+            &child,
+            &should_stop_clone,
+            &executor,
+            config,
+        )
+    });
+
+    thread::sleep(Duration::from_millis(35));
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 50,
+            descendant_pid_signature: 202,
+        },
+    );
+
+    thread::sleep(Duration::from_millis(35));
+    assert!(
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "freshly active replacement descendants should keep the monitor alive even when their PID signature changes"
+    );
+
+    should_stop.store(true, Ordering::Release);
+    let result = handle.join().expect("monitor thread panicked");
+    assert_eq!(
+        result,
+        MonitorResult::ProcessCompleted,
+        "active replacement descendants should continue suppressing idle timeout"
+    );
+}
+
 /// When timeout fires with stalled children present, `child_status_at_timeout`
 /// must be `Some` with the correct child count and CPU time.
 #[test]

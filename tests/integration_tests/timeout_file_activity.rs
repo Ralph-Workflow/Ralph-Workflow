@@ -36,6 +36,7 @@ fn wait_until_idle_timeout_exceeded(
 struct ReadDirCountingWorkspace {
     inner: MemoryWorkspace,
     read_dir_calls: std::sync::atomic::AtomicUsize,
+    gate: Option<Arc<ReadDirGate>>,
 }
 
 impl ReadDirCountingWorkspace {
@@ -43,12 +44,72 @@ impl ReadDirCountingWorkspace {
         Self {
             inner,
             read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+            gate: None,
+        }
+    }
+
+    const fn with_gate(inner: MemoryWorkspace, gate: Arc<ReadDirGate>) -> Self {
+        Self {
+            inner,
+            read_dir_calls: std::sync::atomic::AtomicUsize::new(0),
+            gate: Some(gate),
         }
     }
 
     fn read_dir_calls(&self) -> usize {
         self.read_dir_calls
             .load(std::sync::atomic::Ordering::Acquire)
+    }
+}
+
+#[derive(Debug)]
+struct ReadDirGate {
+    scan_started: AtomicBool,
+    released: Mutex<bool>,
+    release_condvar: std::sync::Condvar,
+}
+
+impl ReadDirGate {
+    const fn new() -> Self {
+        Self {
+            scan_started: AtomicBool::new(false),
+            released: Mutex::new(false),
+            release_condvar: std::sync::Condvar::new(),
+        }
+    }
+
+    fn wait_for_scan_to_start(&self) {
+        while !self.scan_started.load(Ordering::Acquire) {
+            std::thread::yield_now();
+        }
+    }
+
+    fn release_scan(&self) {
+        {
+            let mut released = self
+                .released
+                .lock()
+                .expect("read_dir gate mutex should not be poisoned");
+            *released = true;
+        }
+        self.release_condvar.notify_all();
+    }
+
+    fn block_until_released(&self) {
+        self.scan_started.store(true, Ordering::Release);
+        {
+            let mut released = self
+                .released
+                .lock()
+                .expect("read_dir gate mutex should not be poisoned");
+            while !*released {
+                released = self
+                    .release_condvar
+                    .wait(released)
+                    .expect("read_dir gate wait should not be poisoned");
+            }
+            drop(released);
+        }
     }
 }
 
@@ -112,6 +173,9 @@ impl Workspace for ReadDirCountingWorkspace {
     fn read_dir(&self, relative: &Path) -> std::io::Result<Vec<DirEntry>> {
         self.read_dir_calls
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        if let Some(gate) = &self.gate {
+            gate.block_until_released();
+        }
         self.inner.read_dir(relative)
     }
 
@@ -862,15 +926,15 @@ fn output_activity_during_file_scan_prevents_kill() {
     with_default_timeout(|| {
         let timeout = Duration::from_millis(80);
 
-        // Empty workspace — file scan always returns false.
-        let workspace: Arc<dyn Workspace> = Arc::new(MemoryWorkspace::new_test());
+        // Empty workspace - file scan always returns false.
+        let gate = Arc::new(ReadDirGate::new());
+        let workspace: Arc<dyn Workspace> = Arc::new(ReadDirCountingWorkspace::with_gate(
+            MemoryWorkspace::new_test(),
+            Arc::clone(&gate),
+        ));
 
         let timestamp = new_activity_timestamp();
         wait_until_idle_timeout_exceeded(&timestamp, timeout);
-
-        // Simulate output activity arriving: reset the timestamp so timeout is no
-        // longer exceeded. The monitor must re-check before proceeding with kill.
-        touch_activity(&timestamp);
 
         let should_stop = Arc::new(AtomicBool::new(false));
         let should_stop_for_monitor = Arc::clone(&should_stop);
@@ -903,7 +967,14 @@ fn output_activity_during_file_scan_prevents_kill() {
             )
         });
 
-        // Give the monitor a moment, then stop cleanly.
+        gate.wait_for_scan_to_start();
+
+        // Simulate output activity arriving after the file scan started but
+        // before the monitor can proceed to the kill path.
+        touch_activity(&timestamp);
+        gate.release_scan();
+
+        // Give the monitor a moment to observe the refreshed timestamp, then stop cleanly.
         std::thread::sleep(Duration::from_millis(20));
         should_stop.store(true, Ordering::Release);
 

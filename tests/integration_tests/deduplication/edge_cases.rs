@@ -12,11 +12,9 @@
 //! defined in **[../../../INTEGRATION_TESTS.md](../../../INTEGRATION_TESTS.md)**.
 
 use super::{create_parser_with_vterm, parse_events};
-use crate::test_timeout::{with_default_timeout, with_timeout};
+use crate::test_timeout::with_default_timeout;
 use ralph_workflow::workspace::MemoryWorkspace;
 use std::io::{BufReader, Cursor};
-
-const REAL_LOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 // =============================================================================
 // Intentional Repetition Tests
@@ -88,61 +86,58 @@ fn test_alternating_pattern_preserved() {
 /// overwrote streamed text output, producing repeated "[ccs/...] Thinking:" lines.
 #[test]
 fn test_example_log_renders_without_thinking_corruption() {
-    with_timeout(
-        || {
-            let log = include_str!("../artifacts/example_log.log");
+    with_default_timeout(|| {
+        let log = include_str!("../artifacts/example_log.log");
 
-            let (parser, vterm) = create_parser_with_vterm();
-            let workspace = MemoryWorkspace::new_test();
+        let (parser, vterm) = create_parser_with_vterm();
+        let workspace = MemoryWorkspace::new_test();
 
-            let cursor = Cursor::new(log);
-            let reader = BufReader::new(cursor);
-            parser
-                .parse_stream(reader, &workspace)
-                .expect("parse_stream should succeed");
+        let cursor = Cursor::new(log);
+        let reader = BufReader::new(cursor);
+        parser
+            .parse_stream(reader, &workspace)
+            .expect("parse_stream should succeed");
 
-            let vterm_ref = vterm.borrow();
-            let visible = vterm_ref.get_visible_output();
+        let vterm_ref = vterm.borrow();
+        let visible = vterm_ref.get_visible_output();
 
-            // Sanity: the log contained expected streamed assistant text.
-            //
-            // NOTE: With append-only streaming, the phrase may be split across multiple writes,
-            // so we assert on *visible* output rather than individual write history entries.
-            assert!(
+        // Sanity: the log contained expected streamed assistant text.
+        //
+        // NOTE: With append-only streaming, the phrase may be split across multiple writes,
+        // so we assert on *visible* output rather than individual write history entries.
+        assert!(
             visible.contains("Need read complete file contents"),
             "Expected streamed assistant text missing from visible output. Visible output: {visible}"
         );
-            assert!(
+        assert!(
             visible.contains("Not allowed to explore beyond direct"),
             "Expected streamed assistant text missing from visible output. Visible output: {visible}"
         );
 
-            // Regression: ensure system status output doesn't corrupt the streamed line.
-            // Check for known corruption artifacts where system status text merges with streamed content.
-            // The specific pattern "statusead" was observed when "[status]" overwrote "Need read" → "statusead".
-            let corruption_patterns = ["statusead", "statused", "statusomplete"];
-            for pattern in &corruption_patterns {
-                assert!(
+        // Regression: ensure system status output doesn't corrupt the streamed line.
+        // Check for known corruption artifacts where system status text merges with streamed content.
+        // The specific pattern "statusead" was observed when "[status]" overwrote "Need read" → "statusead".
+        let corruption_patterns = ["statusead", "statused", "statusomplete"];
+        for pattern in &corruption_patterns {
+            assert!(
                 !visible.contains(pattern),
                 "System output corrupted the streamed line (found '{pattern}'). Output: {visible}"
             );
-            }
+        }
 
-            // Regression: ensure thinking prefix never appears on the same line as critical text.
-            for line in visible.lines() {
-                if line.contains("Need read complete file contents") {
-                    assert!(
-                        !line.contains("Thinking:"),
-                        "Thinking corrupted text line. Line: {line:?}\nOutput: {visible}"
-                    );
-                }
+        // Regression: ensure thinking prefix never appears on the same line as critical text.
+        for line in visible.lines() {
+            if line.contains("Need read complete file contents") {
+                assert!(
+                    !line.contains("Thinking:"),
+                    "Thinking corrupted text line. Line: {line:?}\nOutput: {visible}"
+                );
             }
+        }
 
-            // Note: This real log includes repeated system/user lines (e.g., `status`, `compact_boundary`).
-            // We only assert that streamed content is present and that status output doesn't corrupt it.
-        },
-        REAL_LOG_TIMEOUT,
-    );
+        // Note: This real log includes repeated system/user lines (e.g., `status`, `compact_boundary`).
+        // We only assert that streamed content is present and that status output doesn't corrupt it.
+    });
 }
 
 // =============================================================================
