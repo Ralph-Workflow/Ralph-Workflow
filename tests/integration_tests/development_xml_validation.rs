@@ -171,6 +171,30 @@ fn test_continuation_development_xml_rejects_files_changed() {
     });
 }
 
+/// Test that continuation XML rejects empty file-bookkeeping elements.
+#[test]
+fn test_continuation_development_xml_rejects_empty_files_changed_element() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>The full plan was not completed because clippy still fails.</ralph-summary>
+<ralph-files-changed />
+<ralph-next-steps>1. Fix the clippy failure.
+2. Re-run focused tests.
+3. Complete the remaining plan.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject even empty file bookkeeping elements"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-files-changed"));
+    });
+}
+
 /// Test that continuation XML rejects summaries without a blocker explanation.
 #[test]
 fn test_continuation_development_xml_rejects_summary_without_blocker() {
@@ -290,6 +314,32 @@ fn test_continuation_development_xml_rejects_vague_ordered_steps() {
         let error = result.unwrap_err();
         assert!(error.element_path.contains("ralph-next-steps"));
         assert!(error.expected.contains("recovery checklist"));
+    });
+}
+
+/// Test that continuation XML accepts a single concrete recovery step.
+#[test]
+fn test_continuation_development_xml_accepts_single_recovery_step() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because one focused validation fix still needs to land.</ralph-summary>
+<ralph-next-steps>1. Implement the missing validation guard, then finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation XML should accept a single ordered recovery step when only one concrete step remains"
+        );
+
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.next_steps,
+            Some(
+                "1. Implement the missing validation guard, then finish the remaining plan and run repository verification.".to_string()
+            )
+        );
     });
 }
 

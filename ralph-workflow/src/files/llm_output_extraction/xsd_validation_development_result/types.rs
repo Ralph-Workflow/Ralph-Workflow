@@ -10,8 +10,12 @@ pub struct DevelopmentResultElements {
     pub summary: String,
     /// Optional list of files changed
     pub files_changed: Option<String>,
+    /// Whether the files changed element was present, even if empty.
+    pub files_changed_present: bool,
     /// Optional next steps
     pub next_steps: Option<String>,
+    /// Whether the next steps element was present, even if empty.
+    pub next_steps_present: bool,
 }
 
 impl DevelopmentResultElements {

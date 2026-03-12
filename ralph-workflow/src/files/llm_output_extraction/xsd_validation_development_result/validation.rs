@@ -136,7 +136,9 @@ pub fn validate_development_result_xml(
     let mut status: Option<String> = None;
     let mut summary: Option<String> = None;
     let mut files_changed: Option<String> = None;
+    let mut files_changed_present = false;
     let mut next_steps: Option<String> = None;
+    let mut next_steps_present = false;
 
     loop {
         buf.clear();
@@ -161,25 +163,74 @@ pub fn validate_development_result_xml(
                     summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
                 }
                 b"ralph-files-changed" => {
-                    if files_changed.is_some() {
+                    if files_changed_present {
                         return Err(duplicate_element_error(
                             "ralph-files-changed",
                             "ralph-development-result",
                         ));
                     }
+                    files_changed_present = true;
                     files_changed = Some(read_text_until_end(&mut reader, b"ralph-files-changed")?);
                 }
                 b"ralph-next-steps" => {
-                    if next_steps.is_some() {
+                    if next_steps_present {
                         return Err(duplicate_element_error(
                             "ralph-next-steps",
                             "ralph-development-result",
                         ));
                     }
+                    next_steps_present = true;
                     next_steps = Some(read_text_until_end(&mut reader, b"ralph-next-steps")?);
                 }
                 other => {
                     let _ = skip_to_end(&mut reader, other);
+                    return Err(unexpected_element_error(
+                        other,
+                        &VALID_TAGS,
+                        "ralph-development-result",
+                    ));
+                }
+            },
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"ralph-status" => {
+                    if status.is_some() {
+                        return Err(duplicate_element_error(
+                            "ralph-status",
+                            "ralph-development-result",
+                        ));
+                    }
+                    status = Some(String::new());
+                }
+                b"ralph-summary" => {
+                    if summary.is_some() {
+                        return Err(duplicate_element_error(
+                            "ralph-summary",
+                            "ralph-development-result",
+                        ));
+                    }
+                    summary = Some(String::new());
+                }
+                b"ralph-files-changed" => {
+                    if files_changed_present {
+                        return Err(duplicate_element_error(
+                            "ralph-files-changed",
+                            "ralph-development-result",
+                        ));
+                    }
+                    files_changed_present = true;
+                    files_changed = Some(String::new());
+                }
+                b"ralph-next-steps" => {
+                    if next_steps_present {
+                        return Err(duplicate_element_error(
+                            "ralph-next-steps",
+                            "ralph-development-result",
+                        ));
+                    }
+                    next_steps_present = true;
+                    next_steps = Some(String::new());
+                }
+                other => {
                     return Err(unexpected_element_error(
                         other,
                         &VALID_TAGS,
@@ -275,7 +326,9 @@ pub fn validate_development_result_xml(
         status,
         summary,
         files_changed: files_changed.filter(|s| !s.is_empty()),
+        files_changed_present,
         next_steps: next_steps.filter(|s| !s.is_empty()),
+        next_steps_present,
     })
 }
 
@@ -309,7 +362,7 @@ pub fn validate_continuation_development_result_xml(
         });
     }
 
-    if elements.files_changed.is_some() {
+    if elements.files_changed_present {
         return Err(XsdValidationError {
             error_type: XsdErrorType::UnexpectedElement,
             element_path: "ralph-files-changed".to_string(),
@@ -423,6 +476,7 @@ pub fn validate_continuation_development_result_xml(
 
 fn has_ordered_recovery_steps(next_steps: &str) -> bool {
     let mut expected = 1;
+    let mut saw_step = false;
 
     for line in next_steps.lines() {
         let trimmed = line.trim();
@@ -438,10 +492,11 @@ fn has_ordered_recovery_steps(next_steps: &str) -> bool {
             return false;
         }
 
+        saw_step = true;
         expected += 1;
     }
 
-    expected > 2
+    saw_step
 }
 
 fn summary_explains_blocker(summary: &str) -> bool {

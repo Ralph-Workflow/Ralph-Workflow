@@ -95,12 +95,11 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
 
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
-        return format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
-             Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
-             Output format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
+        return fallback_xsd_retry_prompt(
+            &diagnostic_prefix,
+            xsd_error,
+            schema_relative_path,
+            continuation_mode,
         );
     }
 
@@ -205,12 +204,11 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
 
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {
-        let prompt_content = format!(
-            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
-             Error: {xsd_error}\n\n\
-             The schema and previous output files could not be found. \
-             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
-             Output format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
+        let prompt_content = fallback_xsd_retry_prompt(
+            &diagnostic_prefix,
+            xsd_error,
+            schema_relative_path,
+            continuation_mode,
         );
         return RenderedTemplate {
             content: prompt_content,
@@ -271,5 +269,30 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
                 unsubstituted: vec![],
             },
         }
+    }
+}
+
+fn fallback_xsd_retry_prompt(
+    diagnostic_prefix: &str,
+    xsd_error: &str,
+    schema_relative_path: &str,
+    continuation_mode: bool,
+) -> String {
+    if continuation_mode {
+        format!(
+            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
+             Error: {xsd_error}\n\n\
+             The schema and previous output files could not be found. \
+             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
+             Read {schema_relative_path} when it becomes available. Until then, resend continuation XML that keeps only recovery-critical information: <ralph-development-result><ralph-status>partial|failed</ralph-status><ralph-summary>Why the full plan was not completed</ralph-summary><ralph-next-steps>1. Ordered recovery step for finishing the remaining plan.</ralph-next-steps></ralph-development-result>\n"
+        )
+    } else {
+        format!(
+            "{diagnostic_prefix}XSD VALIDATION FAILED - CONTINUE IMPLEMENTATION\n\n\
+             Error: {xsd_error}\n\n\
+             The schema and previous output files could not be found. \
+             Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
+             Read {schema_relative_path} when it becomes available. Until then, resend development XML in this format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
+        )
     }
 }
