@@ -223,4 +223,23 @@ mod tests {
         assert!(matches!(result, ConfigInitResult::AlreadyExists));
         assert_eq!(workspace.read(path).unwrap(), "# custom config");
     }
+
+    #[test]
+    fn default_template_uses_named_chain_and_drain_schema() {
+        let config: AgentsConfigFile =
+            toml::from_str(DEFAULT_AGENTS_TOML).expect("default template should parse");
+
+        assert!(
+            config.fallback.is_none(),
+            "default template should no longer use legacy [agent_chain] as the primary schema"
+        );
+        assert!(
+            !config.agent_chains.is_empty(),
+            "default template should define reusable named chains"
+        );
+        assert!(
+            !config.agent_drains.is_empty(),
+            "default template should bind built-in drains to named chains"
+        );
+    }
 }

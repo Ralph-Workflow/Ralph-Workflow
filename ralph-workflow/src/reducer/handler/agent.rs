@@ -276,28 +276,18 @@ impl MainEffectHandler {
     /// Normalize agent chain state before agent invocation for determinism.
     ///
     /// This function ensures that:
-    /// 1. The agent chain role matches the expected role for this invocation
-    /// 2. Session ID policy is consistent with the current retry mode
-    /// 3. Agent and model indices are within valid bounds (defensive programming)
-    /// 4. Rate limit continuation prompt role matches the current role
+    /// 1. Session ID policy is consistent with the current retry mode
+    /// 2. Agent and model indices are within valid bounds (defensive programming)
+    /// 3. Rate limit continuation prompt role matches the expected role
     ///
     /// This is critical for checkpoint replay safety: the same pre-invocation state
-    /// must produce the same agent/role/session selection.
+    /// must produce the same agent/session selection.
     pub(super) fn normalize_agent_chain_for_invocation(
         &mut self,
         _ctx: &PhaseContext<'_>,
         expected_drain: AgentDrain,
     ) {
         let expected_role = expected_drain.role();
-
-        if self.state.agent_chain.current_drain != expected_drain {
-            self.state.agent_chain.current_drain = expected_drain;
-        }
-
-        // Keep compatibility role metadata in sync with the authoritative drain.
-        if self.state.agent_chain.current_role != expected_role {
-            self.state.agent_chain.current_role = expected_role;
-        }
 
         // Defensively validate agent chain index bounds for consistency.
         // These should never be out of bounds in normal operation, but if they are

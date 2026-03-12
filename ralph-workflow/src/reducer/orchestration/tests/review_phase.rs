@@ -380,6 +380,34 @@ fn test_same_agent_retry_in_fix_drain_uses_fix_prompt_without_review_flags() {
         matches!(effect, Effect::PrepareFixPrompt { pass: 1, .. }),
         "expected fix retry prompt for fix drain, got {effect:?}"
     );
+
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: 1,
+        total_reviewer_passes: 2,
+        review_issues_found: false,
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Review),
+        continuation: crate::reducer::state::ContinuationState {
+            fix_continue_pending: true,
+            fix_continuation_attempt: 1,
+            ..crate::reducer::state::ContinuationState::default()
+        },
+        ..create_test_state()
+    };
+
+    let effect = determine_next_effect(&state);
+
+    assert!(
+        matches!(effect, Effect::PrepareReviewContext { pass: 1 }),
+        "expected normal review orchestration for review drain, got {effect:?}"
+    );
 }
 
 #[test]
