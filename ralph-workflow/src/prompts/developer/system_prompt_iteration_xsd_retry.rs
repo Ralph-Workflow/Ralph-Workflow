@@ -93,8 +93,8 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
     }
 
-    // If both files are missing, return fallback prompt with diagnostics (per AC #5)
-    if !schema_exists && !last_output_exists {
+    // If any required retry-context file is missing, return the deterministic fallback.
+    if !schema_exists || !last_output_exists {
         return fallback_xsd_retry_prompt(
             &diagnostic_prefix,
             xsd_error,
@@ -103,12 +103,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         );
     }
 
-    // Proceed with normal XSD retry prompt generation if at least schema exists
+    // Proceed with normal XSD retry prompt generation only when all required retry-context files exist.
+    let template_name = if continuation_mode {
+        "developer_iteration_xsd_retry_continuation"
+    } else {
+        "developer_iteration_xsd_retry"
+    };
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xsd_retry")
+        .get_template(template_name)
         .unwrap_or_else(|_| {
-            include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
+            if continuation_mode {
+                include_str!("../templates/developer_iteration_xsd_retry_continuation.txt")
+                    .to_string()
+            } else {
+                include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
+            }
         });
     let variables = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
@@ -129,10 +139,10 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     let rendered_prompt = Template::new(&template_content)
         .render_with_partials(&variables, &partials)
         .unwrap_or_else(|_| {
-            format!(
-                "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
-                 Read {schema_relative_path} for the schema and .agent/tmp/last_output.xml for your previous output.\n\
-                 Please resend your status in valid XML format conforming to the XSD schema.\n"
+            fallback_xsd_retry_render_error_prompt(
+                xsd_error,
+                schema_relative_path,
+                continuation_mode,
             )
         });
 
@@ -202,8 +212,8 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
     }
 
-    // If both files are missing, return fallback prompt with diagnostics (per AC #5)
-    if !schema_exists && !last_output_exists {
+    // If any required retry-context file is missing, return the deterministic fallback.
+    if !schema_exists || !last_output_exists {
         let prompt_content = fallback_xsd_retry_prompt(
             &diagnostic_prefix,
             xsd_error,
@@ -223,12 +233,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
         };
     }
 
-    // Proceed with normal XSD retry prompt generation if at least schema exists
+    // Proceed with normal XSD retry prompt generation only when all required retry-context files exist.
+    let actual_template_name = if continuation_mode {
+        "developer_iteration_xsd_retry_continuation"
+    } else {
+        template_name
+    };
     let template_content = context
         .registry()
-        .get_template("developer_iteration_xsd_retry")
+        .get_template(actual_template_name)
         .unwrap_or_else(|_| {
-            include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
+            if continuation_mode {
+                include_str!("../templates/developer_iteration_xsd_retry_continuation.txt")
+                    .to_string()
+            } else {
+                include_str!("../templates/developer_iteration_xsd_retry.txt").to_string()
+            }
         });
     let variables = HashMap::from([
         ("XSD_ERROR", xsd_error.to_string()),
@@ -247,21 +267,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     ]);
 
     let template = Template::new(&template_content);
-    if let Ok(mut rendered) = template.render_with_log(template_name, &variables, &partials) {
+    if let Ok(mut rendered) = template.render_with_log(actual_template_name, &variables, &partials)
+    {
         if !diagnostic_prefix.is_empty() {
             rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
         }
         rendered
     } else {
-        let prompt_content = format!(
-            "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
-             Read {schema_relative_path} for the schema and .agent/tmp/last_output.xml for your previous output.\n\
-             Please resend your status in valid XML format conforming to the XSD schema.\n"
+        let prompt_content = fallback_xsd_retry_render_error_prompt(
+            xsd_error,
+            schema_relative_path,
+            continuation_mode,
         );
         RenderedTemplate {
             content: prompt_content,
             log: SubstitutionLog {
-                template_name: template_name.to_string(),
+                template_name: actual_template_name.to_string(),
                 substituted: vec![SubstitutionEntry {
                     name: "XSD_ERROR".to_string(),
                     source: SubstitutionSource::Value,
@@ -293,6 +314,24 @@ fn fallback_xsd_retry_prompt(
              The schema and previous output files could not be found. \
              Please continue the implementation based on PROMPT.md and PLAN.md.\n\n\
              Read {schema_relative_path} when it becomes available. Until then, resend development XML in this format: <ralph-development-result><ralph-status>completed|partial|failed</ralph-status><ralph-summary>Summary</ralph-summary></ralph-development-result>\n"
+        )
+    }
+}
+
+fn fallback_xsd_retry_render_error_prompt(
+    xsd_error: &str,
+    schema_relative_path: &str,
+    continuation_mode: bool,
+) -> String {
+    if continuation_mode {
+        format!(
+            "Your continuation XML failed validation.\n\nError: {xsd_error}\n\n\
+             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend valid continuation XML that explains why the full plan was not completed and provides ordered recovery steps for finishing the remaining plan.\n"
+        )
+    } else {
+        format!(
+            "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
+             Read {schema_relative_path} and .agent/tmp/last_output.xml, then resend valid development XML conforming to the XSD schema.\n"
         )
     }
 }

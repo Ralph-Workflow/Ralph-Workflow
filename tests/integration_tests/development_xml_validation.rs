@@ -317,9 +317,9 @@ fn test_continuation_development_xml_rejects_vague_ordered_steps() {
     });
 }
 
-/// Test that continuation XML accepts a single concrete recovery step.
+/// Test that continuation XML rejects a single recovery step, even when concrete.
 #[test]
-fn test_continuation_development_xml_accepts_single_recovery_step() {
+fn test_continuation_development_xml_rejects_single_recovery_step() {
     with_default_timeout(|| {
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
@@ -329,17 +329,13 @@ fn test_continuation_development_xml_accepts_single_recovery_step() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_ok(),
-            "Continuation XML should accept a single ordered recovery step when only one concrete step remains"
+            result.is_err(),
+            "Continuation XML should reject a single ordered recovery step because the continuation contract requires a checklist"
         );
 
-        let elements = result.unwrap();
-        assert_eq!(
-            elements.next_steps,
-            Some(
-                "1. Implement the missing validation guard, then finish the remaining plan and run repository verification.".to_string()
-            )
-        );
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-next-steps"));
+        assert!(error.expected.contains("at least two numbered steps"));
     });
 }
 

@@ -216,4 +216,56 @@ mod tests {
         let result = validate_development_result_xml(xml);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_continuation_validation_rejects_single_recovery_step() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the blocker.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.element_path, "ralph-next-steps");
+        assert!(
+            error.expected.contains("ordered recovery checklist"),
+            "single-step continuation checklist should be rejected as incomplete"
+        );
+    }
+
+    #[test]
+    fn test_continuation_validation_rejects_checklist_without_plan_completion_step() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the failing verification.
+2. Re-run the focused continuation tests.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(error.element_path, "ralph-next-steps");
+        assert!(
+            error.expected.contains("remaining plan")
+                || error.suggestion.contains("remaining plan"),
+            "continuation checklist should explicitly cover finishing the remaining plan"
+        );
+    }
+
+    #[test]
+    fn test_continuation_validation_accepts_full_recovery_checklist() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the failing verification.
+2. Re-run the focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(result.is_ok());
+    }
 }

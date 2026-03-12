@@ -7,7 +7,7 @@ max-struct-bools = 32
 # for large_stack_frames/large_stack_arrays when the function is generated
 # by macro expansion - known clippy limitation).
 # Threshold raised incrementally as test suites grow (more TestDescAndFn entries).
-# Last raised after additional git helper/worktree coverage pushed the
+# Last raised after additional continuation prompt/validation coverage pushed the
 # generated lib-test harness slightly above the previous limit.
-stack-size-threshold = 652000
+stack-size-threshold = 656000
 array-size-threshold = 65536

@@ -39,6 +39,14 @@ const CONTINUATION_BOOKKEEPING_PREFIXES: [&str; 6] = [
     "summary:",
 ];
 const CONTINUATION_PLAN_SCOPE_TERMS: [&str; 3] = ["full plan", "entire plan", "remaining plan"];
+const CONTINUATION_PLAN_COMPLETION_TERMS: [&str; 6] = [
+    "finish",
+    "complete",
+    "verify",
+    "verification",
+    "done",
+    "beyond the plan",
+];
 const CONTINUATION_VAGUE_STEP_PREFIXES: [&str; 6] = [
     "keep investigating",
     "try another fix",
@@ -415,7 +423,7 @@ pub fn validate_continuation_development_result_xml(
         return Err(XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
             element_path: "ralph-next-steps".to_string(),
-            expected: "an ordered recovery checklist such as `1. ...` followed by `2. ...`"
+            expected: "an ordered recovery checklist with at least two numbered steps"
                 .to_string(),
             found: next_steps.clone(),
             suggestion:
@@ -471,12 +479,32 @@ pub fn validate_continuation_development_result_xml(
         });
     }
 
+    if !checklist_finishes_remaining_plan(next_steps) {
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-next-steps".to_string(),
+            expected: "an ordered recovery checklist whose final steps explicitly finish the remaining plan"
+                .to_string(),
+            found: next_steps.clone(),
+            suggestion:
+                "Rewrite <ralph-next-steps> so the checklist ends by finishing or verifying the remaining/full plan, not just by addressing the local blocker."
+                    .to_string(),
+            example: Some(
+                r"<ralph-next-steps>1. Fix the blocker.
+2. Re-run the relevant tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>"
+                    .to_string()
+                    .into(),
+            ),
+        });
+    }
+
     Ok(elements)
 }
 
 fn has_ordered_recovery_steps(next_steps: &str) -> bool {
+    let mut step_count = 0;
     let mut expected = 1;
-    let mut saw_step = false;
 
     for line in next_steps.lines() {
         let trimmed = line.trim();
@@ -492,11 +520,29 @@ fn has_ordered_recovery_steps(next_steps: &str) -> bool {
             return false;
         }
 
-        saw_step = true;
+        step_count += 1;
         expected += 1;
     }
 
-    saw_step
+    step_count >= 2
+}
+
+fn checklist_finishes_remaining_plan(next_steps: &str) -> bool {
+    let Some(last_step) = next_steps
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+    else {
+        return false;
+    };
+
+    let normalized = trim_ordered_step_prefix(last_step).to_ascii_lowercase();
+    CONTINUATION_PLAN_SCOPE_TERMS
+        .iter()
+        .any(|term| normalized.contains(term))
+        && CONTINUATION_PLAN_COMPLETION_TERMS
+            .iter()
+            .any(|term| normalized.contains(term))
 }
 
 fn summary_explains_blocker(summary: &str) -> bool {
