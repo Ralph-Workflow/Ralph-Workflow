@@ -18,7 +18,7 @@ pub fn compute_effect_fingerprint(state: &PipelineState) -> String {
     format!(
         "{}:{}:{}:iter={}:pass={}:xsd_retry={}",
         state.phase,
-        state.agent_chain.current_drain,
+        state.runtime_drain(),
         match state.agent_chain.current_mode {
             crate::agents::DrainMode::Normal => "normal",
             crate::agents::DrainMode::Continuation => "continuation",
@@ -57,7 +57,7 @@ mod xsd_retry_fingerprint_tests {
 }
 
 fn review_phase_uses_fix_drain(state: &PipelineState) -> bool {
-    state.agent_chain.current_drain == crate::agents::AgentDrain::Fix
+    state.runtime_drain() == crate::agents::AgentDrain::Fix
 }
 
 /// Derive the effect for XSD retry based on current phase.

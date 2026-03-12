@@ -75,7 +75,7 @@ impl MockEffectHandler {
                     PipelinePhase::Review => {
                         // Review-phase cleanup follows the active drain so mock execution stays
                         // aligned with reducer-owned fix continuation and retry flows.
-                        if self.state.agent_chain.current_drain == crate::agents::AgentDrain::Fix {
+                        if self.state.runtime_drain() == crate::agents::AgentDrain::Fix {
                             PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
                                 pass: self.state.reviewer_pass,
                             })

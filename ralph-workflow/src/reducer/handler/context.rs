@@ -55,7 +55,7 @@ impl MainEffectHandler {
                 // discovered issues, but explicit fix continuation/retry flows can keep the
                 // fix drain active even after that compatibility flag is cleared.
                 let pass = self.state.reviewer_pass;
-                if self.state.agent_chain.current_drain == AgentDrain::Fix {
+                if self.state.runtime_drain() == AgentDrain::Fix {
                     EffectResult::event(PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
                         pass,
                     }))

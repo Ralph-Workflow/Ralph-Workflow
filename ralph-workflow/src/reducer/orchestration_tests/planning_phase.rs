@@ -65,7 +65,7 @@ fn test_planning_role_mismatch_initializes_developer_chain() {
 }
 
 #[test]
-fn test_planning_drain_mismatch_initializes_planning_chain() {
+fn test_planning_resume_with_legacy_development_drain_keeps_planning_flow() {
     let state = PipelineState {
         phase: PipelinePhase::Planning,
         gitignore_entries_ensured: true,
@@ -81,13 +81,7 @@ fn test_planning_drain_mismatch_initializes_planning_chain() {
     };
 
     let effect = determine_next_effect(&state);
-    assert!(matches!(
-        effect,
-        Effect::InitializeAgentChain {
-            drain: crate::agents::AgentDrain::Planning,
-            ..
-        }
-    ));
+    assert!(matches!(effect, Effect::MaterializePlanningInputs { .. }));
 }
 
 #[test]

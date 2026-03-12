@@ -126,23 +126,35 @@ pub fn validate_config_file(
     // but we've already detected them in Step 2
     match toml::from_str::<crate::config::unified::UnifiedConfig>(content) {
         Ok(config) => {
-            if let Err(message) = config.resolve_agent_drains_checked() {
-                let key = if message.contains("references unknown chain") {
-                    message
-                        .split_whitespace()
-                        .next()
-                        .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
-                } else if message.contains("cannot be combined") {
-                    "agent_chain".to_string()
-                } else {
-                    "agent_drains".to_string()
-                };
+            let has_named_chains = !config.agent_chains.is_empty();
+            let has_named_drains = !config.agent_drains.is_empty();
+            let has_legacy_role_bindings = config
+                .agent_chain
+                .as_ref()
+                .is_some_and(crate::agents::fallback::FallbackConfig::has_role_bindings);
+            let validate_named_schema_now = (!has_named_chains && !has_named_drains)
+                || (has_named_chains && has_named_drains)
+                || has_legacy_role_bindings;
 
-                errors.push(ConfigValidationError::InvalidValue {
-                    file: path.to_path_buf(),
-                    key,
-                    message,
-                });
+            if validate_named_schema_now {
+                if let Err(message) = config.resolve_agent_drains_checked() {
+                    let key = if message.contains("references unknown chain") {
+                        message
+                            .split_whitespace()
+                            .next()
+                            .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
+                    } else if message.contains("cannot be combined") {
+                        "agent_chain".to_string()
+                    } else {
+                        "agent_drains".to_string()
+                    };
+
+                    errors.push(ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key,
+                        message,
+                    });
+                }
             }
         }
         Err(e) => {

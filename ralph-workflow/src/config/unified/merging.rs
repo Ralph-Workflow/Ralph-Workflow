@@ -529,25 +529,16 @@ fn merge_named_schema_legacy_metadata(
         let global = global.unwrap_or(&defaults);
         let local = local.unwrap_or(&defaults);
 
-        let select_chain =
-            |field: &str, local_chain: &[String], global_chain: &[String]| -> Vec<String> {
-                if is_local_field_present(field) {
-                    local_chain.to_vec()
-                } else {
-                    global_chain.to_vec()
-                }
-            };
-
         let mut provider_fallback = global.provider_fallback.clone();
         for (key, value) in &local.provider_fallback {
             provider_fallback.insert(key.clone(), value.clone());
         }
 
         Some(FallbackConfig {
-            developer: select_chain("developer", &local.developer, &global.developer),
-            reviewer: select_chain("reviewer", &local.reviewer, &global.reviewer),
-            commit: select_chain("commit", &local.commit, &global.commit),
-            analysis: select_chain("analysis", &local.analysis, &global.analysis),
+            developer: Vec::new(),
+            reviewer: Vec::new(),
+            commit: Vec::new(),
+            analysis: Vec::new(),
             provider_fallback,
             max_retries: if is_local_field_present("max_retries") {
                 local.max_retries

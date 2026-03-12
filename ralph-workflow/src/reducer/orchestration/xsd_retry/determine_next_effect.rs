@@ -113,7 +113,7 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
     // Continuation is drain-local runtime state. Only the active drain may consume its
     // pending continuation flag; stale compatibility flags for other drains must not hijack
     // orchestration before phase-specific effects re-establish the right drain.
-    let active_drain = state.agent_chain.current_drain;
+    let active_drain = state.runtime_drain();
     if state
         .continuation
         .pending_continuation_for_drain(active_drain)

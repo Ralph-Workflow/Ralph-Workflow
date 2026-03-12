@@ -39,7 +39,7 @@ fn test_determine_effect_planning_with_agents() {
 }
 
 #[test]
-fn test_determine_effect_planning_role_mismatch_reinitializes_chain() {
+fn test_determine_effect_planning_non_developer_chain_reinitializes_chain() {
     // Regression: Planning must use the Developer chain, even if we enter Planning
     // with a previously-initialized non-developer chain from a prior phase.
     let state = PipelineState {

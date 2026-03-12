@@ -54,9 +54,10 @@ pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
 pub const REQUIRED_FILES_FIX: &[&str] = &[".agent/tmp/fix_result.xml"];
 
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
-    if state.agent_chain.current_drain == AgentDrain::Fix {
-        if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Fix
-        {
+    let runtime_drain = state.runtime_drain();
+
+    if runtime_drain == AgentDrain::Fix {
+        if state.agent_chain.agents.is_empty() {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,
             };

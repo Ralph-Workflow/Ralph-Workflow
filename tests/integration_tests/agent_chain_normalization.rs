@@ -9,6 +9,8 @@
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
 use ralph_workflow::agents::{AgentDrain, AgentRole, AgentsConfigFile};
+use ralph_workflow::config::validation::validate_config_file;
+use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
 use ralph_workflow::reducer::event::PipelinePhase;
@@ -252,6 +254,140 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_continuation() {
                 }
             ),
             "legacy fix continuation should resume in the fix drain, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_planning_drain_for_legacy_same_agent_retry() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Planning;
+        state.gitignore_entries_ensured = true;
+        state.context_cleaned = true;
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["planner".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(AgentDrain::Planning);
+        state.continuation.same_agent_retry_pending = true;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Planning\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(
+                effect,
+                Effect::PreparePlanningPrompt {
+                    iteration: 0,
+                    prompt_mode: PromptMode::SameAgentRetry,
+                }
+            ),
+            "legacy planning retry should stay in the planning drain, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Planning;
+        state.gitignore_entries_ensured = true;
+        state.context_cleaned = true;
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(
+                vec!["planner".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(AgentDrain::Planning);
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Planning\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(effect, Effect::MaterializePlanningInputs { iteration: 0 }),
+            "legacy planning checkpoint should resume in planning flow, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_fix_drain_for_legacy_xsd_retry() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
+        state.phase = PipelinePhase::Review;
+        state.reviewer_pass = 1;
+        state.review_issues_found = true;
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(vec!["fixer".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(AgentDrain::Fix)
+            .with_mode(ralph_workflow::agents::DrainMode::XsdRetry);
+        state.continuation.xsd_retry_pending = true;
+        state.continuation.last_fix_xsd_error = Some("fix output missing field".to_string());
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: PromptMode::XsdRetry,
+                }
+            ),
+            "legacy fix XSD retry should resume in the fix drain, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
+        state.phase = PipelinePhase::Review;
+        state.reviewer_pass = 1;
+        state.review_issues_found = true;
+        state.agent_chain = state
+            .agent_chain
+            .with_agents(vec!["fixer".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(AgentDrain::Fix);
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Fix\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: PromptMode::Normal,
+                }
+            ),
+            "legacy fix checkpoint should resume in the fix drain, got: {effect:?}"
         );
     });
 }
@@ -576,6 +712,95 @@ fn test_named_schema_merge_keeps_metadata_only_legacy_bindings_empty() {
         );
         assert_eq!(chain.max_retries, 7);
         assert_eq!(chain.retry_delay_ms, 2_500);
+    });
+}
+
+#[test]
+fn test_named_schema_merge_strips_legacy_role_bindings_from_compatibility_metadata() {
+    with_default_timeout(|| {
+        let global_toml = r#"
+[agent_chain]
+developer = ["codex"]
+reviewer = ["claude"]
+max_retries = 7
+provider_fallback.opencode = ["-m opencode/glm-4.7-free"]
+"#;
+        let local_toml = r#"
+[agent_chains]
+shared_dev = ["opencode"]
+shared_review = ["gemini"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+
+        let global =
+            UnifiedConfig::load_from_content(global_toml).expect("global config should load");
+        let local = UnifiedConfig::load_from_content(local_toml).expect("local config should load");
+        let merged = global.merge_with_content(local_toml, &local);
+
+        assert!(
+            !merged
+                .agent_chain
+                .as_ref()
+                .is_some_and(ralph_workflow::agents::fallback::FallbackConfig::has_role_bindings),
+            "named-schema merges should keep only compatibility metadata"
+        );
+
+        let resolved = merged
+            .resolve_agent_drains_checked()
+            .expect("merged named schema should stay valid")
+            .expect("merged config should resolve named drains");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Planning)
+                .expect("planning drain")
+                .agents,
+            vec!["opencode"]
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Review)
+                .expect("review drain")
+                .agents,
+            vec!["gemini"]
+        );
+        assert_eq!(resolved.max_retries, 7);
+        assert_eq!(
+            resolved.provider_fallback.get("opencode"),
+            Some(&vec!["-m opencode/glm-4.7-free".to_string()])
+        );
+    });
+}
+
+#[test]
+fn test_per_file_validation_accepts_partial_named_chain_and_drain_layers() {
+    with_default_timeout(|| {
+        let chains_only = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+"#;
+        let drains_only = r#"
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+
+        assert!(
+            validate_config_file(std::path::Path::new("global.toml"), chains_only).is_ok(),
+            "named chain layer should validate before merge"
+        );
+        assert!(
+            validate_config_file(std::path::Path::new("local.toml"), drains_only).is_ok(),
+            "named drain layer should validate before merge"
+        );
     });
 }
 

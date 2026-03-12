@@ -437,7 +437,7 @@ fn reset_phase_xml_cleanup_for_retry(state: PipelineState) -> PipelineState {
             ..state
         },
         PipelinePhase::Review => {
-            if state.agent_chain.current_drain == crate::agents::AgentDrain::Fix {
+            if state.runtime_drain() == crate::agents::AgentDrain::Fix {
                 PipelineState {
                     fix_required_files_cleaned_pass: None,
                     ..state
