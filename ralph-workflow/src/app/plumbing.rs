@@ -75,6 +75,14 @@ fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<Str
     vec![config.developer_agent.to_string()]
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn resolve_commit_message_agents_for_testing(
+    config: &CommitGenerationConfig<'_>,
+) -> Vec<String> {
+    resolve_commit_message_agents(config)
+}
+
 /// Handles the `--show-commit-msg` command using workspace abstraction.
 ///
 /// This is a testable version that uses `Workspace` for file I/O,

@@ -8,13 +8,20 @@
 //! **CRITICAL:** All tests in this module MUST follow the integration test style guide
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
-use ralph_workflow::agents::{AgentDrain, AgentRole, AgentsConfigFile};
+use ralph_workflow::agents::{AgentDrain, AgentRegistry, AgentRole, AgentsConfigFile};
+use ralph_workflow::app::plumbing::{
+    resolve_commit_message_agents_for_testing, CommitGenerationConfig,
+};
 use ralph_workflow::config::loader::{
     load_config_from_path_with_env, ConfigLoadWithValidationError,
 };
 use ralph_workflow::config::validation::{validate_config_file, ConfigValidationError};
+use ralph_workflow::config::Config;
 use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
+use ralph_workflow::executor::{MockProcessExecutor, ProcessExecutor};
+use ralph_workflow::logger::{Colors, Logger};
+use ralph_workflow::prompts::template_context::TemplateContext;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::{Effect, EffectHandler};
 use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
@@ -35,7 +42,28 @@ const OPENCODE_RESOLVER_SOURCE: &str =
 const CONFIG_UNIFIED_MOD_SOURCE: &str =
     include_str!("../../ralph-workflow/src/config/unified/mod.rs");
 const AGENT_COMPATIBILITY_DOC: &str = include_str!("../../docs/agent-compatibility.md");
-const APP_PLUMBING_SOURCE: &str = include_str!("../../ralph-workflow/src/app/plumbing.rs");
+
+fn commit_generation_config<'a>(
+    config: &'a Config,
+    registry: &'a AgentRegistry,
+    workspace: &'a Arc<MemoryWorkspace>,
+    logger: &'a Logger,
+    template_context: &'a TemplateContext,
+    executor: Arc<dyn ProcessExecutor>,
+) -> CommitGenerationConfig<'a> {
+    CommitGenerationConfig {
+        config,
+        template_context,
+        workspace: workspace.as_ref(),
+        workspace_arc: Arc::clone(workspace) as Arc<dyn Workspace>,
+        registry,
+        logger,
+        colors: Colors::new(),
+        developer_agent: "developer-default",
+        reviewer_agent: "reviewer-default",
+        executor,
+    }
+}
 
 /// Test that agent chain initializes correctly for each phase.
 #[test]
@@ -575,6 +603,38 @@ fn test_same_agent_retry_uses_analysis_drain_even_when_role_is_stale() {
         assert!(
             matches!(effect, Effect::InvokeAnalysisAgent { iteration: 0 }),
             "analysis drain retry should stay on analysis consumer, got: {effect:?}"
+        );
+    });
+}
+
+/// Test that legacy same-agent retry resumes analysis when development progress proves the retry stage.
+#[test]
+fn test_same_agent_retry_recovers_analysis_stage_from_development_progress_when_drain_is_missing() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Development;
+        state.development_agent_invoked_iteration = Some(0);
+        state.analysis_agent_invoked_iteration = None;
+        state.continuation.same_agent_retry_pending = true;
+        state.agent_chain.current_drain = AgentDrain::Analysis;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+        let legacy_json = json.replace("\"current_drain\":\"Analysis\",", "");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Analysis,
+                }
+            ),
+            "legacy development retry should reinitialize the analysis drain, got: {effect:?}"
         );
     });
 }
@@ -1380,37 +1440,150 @@ fn test_agent_compatibility_named_chain_example_covers_review_and_fix_drains() {
         let example = &AGENT_COMPATIBILITY_DOC[example_start..];
 
         assert!(
-            example.contains("review = \"reviewer\"") || example.contains("fix = \"reviewer\""),
-            "named-chain example must show how review/fix drains are resolved"
+            example.contains("review = \"reviewer\"") && example.contains("fix = \"reviewer\""),
+            "named-chain example must show both review and fix drain bindings"
         );
     });
 }
 
-/// Test that plumbing commit-message generation falls back through the review drain.
 #[test]
-fn test_commit_message_plumbing_consults_review_drain_before_developer_fallback() {
+fn test_named_schema_defaults_missing_siblings_from_explicit_bindings() {
     with_default_timeout(|| {
-        assert!(
-            APP_PLUMBING_SOURCE.contains("resolved_drain(AgentDrain::Review)")
-                || APP_PLUMBING_SOURCE.contains("resolve_commit_message_agents"),
-            "commit-message plumbing should consult the review drain before falling back to the developer agent"
+        let config = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                (
+                    "shared_dev".to_string(),
+                    vec!["codex".to_string(), "claude".to_string()],
+                ),
+                (
+                    "shared_review".to_string(),
+                    vec!["claude".to_string(), "opencode".to_string()],
+                ),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("development".to_string(), "shared_dev".to_string()),
+                ("fix".to_string(), "shared_review".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let resolved = config
+            .resolve_agent_drains_checked()
+            .expect("sibling defaults should resolve from explicit built-in drains")
+            .expect("named drain config should resolve");
+
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Planning)
+                .expect("planning should inherit from development")
+                .chain_name,
+            "shared_dev"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Review)
+                .expect("review should inherit from fix")
+                .chain_name,
+            "shared_review"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Commit)
+                .expect("commit should inherit from review/fix")
+                .chain_name,
+            "shared_review"
+        );
+        assert_eq!(
+            resolved
+                .binding(AgentDrain::Analysis)
+                .expect("analysis should inherit from development/planning")
+                .chain_name,
+            "shared_dev"
         );
     });
 }
 
-/// Test that commit-message plumbing preserves an explicitly empty commit drain binding.
 #[test]
-fn test_commit_message_plumbing_does_not_fall_back_when_commit_drain_is_explicitly_empty() {
+fn test_commit_message_agent_resolution_falls_back_to_review_drain_when_commit_drain_missing() {
     with_default_timeout(|| {
-        assert!(
-            APP_PLUMBING_SOURCE.contains(
-                "if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit)"
-            ),
-            "commit-message plumbing should distinguish an explicit commit drain binding from an absent one"
+        let mut registry = AgentRegistry::new().expect("default registry should build");
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("shared_dev".to_string(), vec!["codex".to_string()]),
+                (
+                    "shared_review".to_string(),
+                    vec!["claude".to_string(), "opencode".to_string()],
+                ),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("planning".to_string(), "shared_dev".to_string()),
+                ("development".to_string(), "shared_dev".to_string()),
+                ("review".to_string(), "shared_review".to_string()),
+                ("fix".to_string(), "shared_review".to_string()),
+            ]),
+            ..Default::default()
+        };
+        registry.apply_unified_config(&unified);
+
+        let app_config = Config::test_default();
+        let workspace = Arc::new(MemoryWorkspace::new_test());
+        let logger = Logger::new(Colors::new());
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new()) as Arc<dyn ProcessExecutor>;
+        let config = commit_generation_config(
+            &app_config,
+            &registry,
+            &workspace,
+            &logger,
+            &template_context,
+            executor,
         );
+
+        assert_eq!(
+            resolve_commit_message_agents_for_testing(&config),
+            vec!["claude".to_string(), "opencode".to_string()]
+        );
+    });
+}
+
+#[test]
+fn test_commit_message_agent_resolution_preserves_explicitly_empty_commit_drain() {
+    with_default_timeout(|| {
+        let mut registry = AgentRegistry::new().expect("default registry should build");
+        let unified = UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("shared_dev".to_string(), vec!["codex".to_string()]),
+                ("shared_review".to_string(), vec!["claude".to_string()]),
+                ("empty_commit".to_string(), Vec::new()),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("planning".to_string(), "shared_dev".to_string()),
+                ("development".to_string(), "shared_dev".to_string()),
+                ("review".to_string(), "shared_review".to_string()),
+                ("fix".to_string(), "shared_review".to_string()),
+                ("commit".to_string(), "empty_commit".to_string()),
+            ]),
+            ..Default::default()
+        };
+        registry.apply_unified_config(&unified);
+
+        let app_config = Config::test_default();
+        let workspace = Arc::new(MemoryWorkspace::new_test());
+        let logger = Logger::new(Colors::new());
+        let template_context = TemplateContext::default();
+        let executor = Arc::new(MockProcessExecutor::new()) as Arc<dyn ProcessExecutor>;
+        let config = commit_generation_config(
+            &app_config,
+            &registry,
+            &workspace,
+            &logger,
+            &template_context,
+            executor,
+        );
+
         assert!(
-            APP_PLUMBING_SOURCE.contains("return commit_binding.agents.clone();"),
-            "commit-message plumbing should preserve an explicitly empty commit drain instead of falling back"
+            resolve_commit_message_agents_for_testing(&config).is_empty(),
+            "explicitly empty commit drain should not fall back to review or developer agents"
         );
     });
 }

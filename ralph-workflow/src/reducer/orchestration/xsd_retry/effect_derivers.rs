@@ -60,13 +60,9 @@ fn review_phase_uses_fix_drain(state: &PipelineState) -> bool {
     state.runtime_drain() == crate::agents::AgentDrain::Fix
 }
 
-fn development_same_agent_retry_uses_analysis_drain(state: &PipelineState) -> bool {
+fn development_retry_uses_analysis_drain(state: &PipelineState) -> bool {
     state.agent_chain.current_drain == crate::agents::AgentDrain::Analysis
         || state.analysis_agent_invoked_iteration == Some(state.iteration)
-}
-
-fn development_xsd_retry_uses_analysis_drain(state: &PipelineState) -> bool {
-    state.agent_chain.current_drain == crate::agents::AgentDrain::Analysis
         || (state.development_agent_invoked_iteration == Some(state.iteration)
             && state.development_xml_extracted_iteration != Some(state.iteration)
             && state
@@ -90,7 +86,7 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
             // When XSD validation fails, retry analysis output generation directly.
             // Legacy checkpoints may resume with stale broad developer role metadata even
             // though the active development-stage retry is for analysis output.
-            if !development_xsd_retry_uses_analysis_drain(state) {
+            if !development_retry_uses_analysis_drain(state) {
                 return Effect::InitializeAgentChain {
                     drain: crate::agents::AgentDrain::Analysis,
                 };
@@ -165,16 +161,21 @@ fn derive_same_agent_retry_effect(state: &PipelineState) -> Effect {
         PipelinePhase::Development => {
             // Development phase runs BOTH developer and analysis agents.
             // Same-agent retries must be drain-aware so analysis failures retry analysis,
-            // not the developer prompt chain, even if role metadata is stale.
-            if development_same_agent_retry_uses_analysis_drain(state) {
-                Effect::InvokeAnalysisAgent {
-                    iteration: state.iteration,
+            // not the developer prompt chain, even if role metadata or drain metadata is stale.
+            if development_retry_uses_analysis_drain(state) {
+                if state.agent_chain.current_drain != crate::agents::AgentDrain::Analysis {
+                    return Effect::InitializeAgentChain {
+                        drain: crate::agents::AgentDrain::Analysis,
+                    };
                 }
-            } else {
-                Effect::PrepareDevelopmentPrompt {
+                return Effect::InvokeAnalysisAgent {
                     iteration: state.iteration,
-                    prompt_mode: PromptMode::SameAgentRetry,
-                }
+                };
+            }
+
+            Effect::PrepareDevelopmentPrompt {
+                iteration: state.iteration,
+                prompt_mode: PromptMode::SameAgentRetry,
             }
         }
         PipelinePhase::Review => {

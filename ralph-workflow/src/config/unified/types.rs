@@ -472,27 +472,36 @@ impl UnifiedConfig {
                 );
             }
 
-            for drain in AgentDrain::all() {
-                if bindings.contains_key(&drain) {
-                    continue;
+            let mut unresolved = AgentDrain::all()
+                .into_iter()
+                .filter(|drain| !bindings.contains_key(drain))
+                .collect::<Vec<_>>();
+
+            while !unresolved.is_empty() {
+                let mut next_unresolved = Vec::new();
+                let mut resolved_any = false;
+
+                for drain in unresolved {
+                    if let Some(binding) = default_chain_binding_for_drain(self, &bindings, drain) {
+                        bindings.insert(drain, binding);
+                        resolved_any = true;
+                    } else {
+                        next_unresolved.push(drain);
+                    }
                 }
 
-                let Some(binding) = default_chain_binding_for_drain(self, &bindings, drain) else {
-                    let missing = AgentDrain::all()
-                        .into_iter()
-                        .filter(|candidate| {
-                            !bindings.contains_key(candidate)
-                                && default_chain_binding_for_drain(self, &bindings, *candidate)
-                                    .is_none()
-                        })
-                        .map(AgentDrain::as_str)
+                if !resolved_any {
+                    let missing = next_unresolved
+                        .iter()
+                        .map(|drain| drain.as_str())
                         .collect::<Vec<_>>()
                         .join(", ");
                     return Err(format!(
                         "agent_drains does not resolve all built-in drains; missing bindings for: {missing}"
                     ));
-                };
-                bindings.insert(drain, binding);
+                }
+
+                unresolved = next_unresolved;
             }
 
             let legacy = self.agent_chain.clone().unwrap_or_default();
