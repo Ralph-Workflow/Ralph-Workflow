@@ -68,7 +68,6 @@ use crate::prompts::template_context::TemplateContext;
 use super::config_init::initialize_config;
 use super::context::PipelineContext;
 use super::detection::detect_project_stack;
-use super::plumbing::handle_generate_commit_msg;
 use super::rebase::{run_rebase_to_default, try_resolve_conflicts_without_phase_ctx};
 use super::resume::{handle_resume_with_validation, offer_resume_if_checkpoint_exists};
 use super::validation::{

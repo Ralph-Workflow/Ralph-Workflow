@@ -1,6 +1,9 @@
 // Helper functions for pipeline execution.
 //
 // This module contains:
+// - command_requires_prompt_setup: Classify commands by PROMPT.md dependency
+// - handle_repo_commands_without_prompt_setup: Early repo commands that bypass PROMPT.md
+// - prepare_agent_phase_for_workspace: Shared agent-phase setup for pipeline and repo commands
 // - validate_prompt_and_setup_backup: Validate PROMPT.md and set up backup/protection
 // - setup_prompt_monitor: Set up PROMPT.md monitoring for deletion detection
 // - print_review_guidelines: Print review guidelines if detected
@@ -9,6 +12,211 @@
 // - save_start_commit_or_warn: Save starting commit or warn if it fails
 // - check_prompt_restoration: Check for PROMPT.md restoration after a phase
 // - handle_rebase_only: Handle --rebase-only flag
+
+const fn command_requires_prompt_setup(args: &Args) -> bool {
+    !args.recovery.dry_run
+        && !args.recovery.inspect_checkpoint
+        && !args.rebase_flags.rebase_only
+        && !args.commit_plumbing.generate_commit_msg
+        && !args.commit_plumbing.apply_commit
+        && !args.commit_display.show_commit_msg
+        && !args.commit_display.reset_start_commit
+        && !args.commit_display.show_baseline
+}
+
+struct CommandExitCleanupGuard<'a> {
+    logger: &'a Logger,
+    workspace: &'a dyn crate::workspace::Workspace,
+    owns_cleanup: bool,
+    restore_prompt_permissions: bool,
+}
+
+impl<'a> CommandExitCleanupGuard<'a> {
+    const fn new(
+        logger: &'a Logger,
+        workspace: &'a dyn crate::workspace::Workspace,
+        restore_prompt_permissions: bool,
+    ) -> Self {
+        Self {
+            logger,
+            workspace,
+            owns_cleanup: false,
+            restore_prompt_permissions,
+        }
+    }
+
+    const fn mark_owned(&mut self) {
+        self.owns_cleanup = true;
+    }
+}
+
+impl Drop for CommandExitCleanupGuard<'_> {
+    fn drop(&mut self) {
+        if !self.owns_cleanup {
+            return;
+        }
+        if self.restore_prompt_permissions {
+            if let Some(warning) = crate::files::make_prompt_writable_with_workspace(self.workspace)
+            {
+                self.logger.warn(&format!(
+                    "PROMPT.md permission restore during command cleanup: {warning}"
+                ));
+            }
+        }
+        crate::git_helpers::cleanup_agent_phase_protections_silent_at(self.workspace.root());
+    }
+}
+
+fn prepare_agent_phase_for_workspace(
+    repo_root: &std::path::Path,
+    workspace: &dyn crate::workspace::Workspace,
+    logger: &Logger,
+    git_helpers: &mut crate::git_helpers::GitHelpers,
+    restore_prompt_permissions: bool,
+) {
+    if let Err(err) = crate::git_helpers::cleanup_orphaned_marker_with_workspace(workspace, logger)
+    {
+        logger.warn(&format!("Failed to cleanup orphaned marker: {err}"));
+    }
+
+    if restore_prompt_permissions {
+        if let Some(warning) = crate::files::make_prompt_writable_with_workspace(workspace) {
+            logger.warn(&format!(
+                "PROMPT.md permission restore on startup: {warning}"
+            ));
+        }
+    }
+
+    if let Err(err) = crate::git_helpers::create_marker_with_workspace(workspace) {
+        logger.warn(&format!("Failed to create agent phase marker: {err}"));
+    }
+
+    if crate::interrupt::is_user_interrupt_requested() {
+        return;
+    }
+
+    crate::git_helpers::cleanup_orphaned_wrapper_at(repo_root);
+
+    let hooks_dir = crate::git_helpers::get_hooks_dir_in_repo(repo_root);
+    let ralph_hook_detected = hooks_dir.ok().is_some_and(|dir| {
+        crate::git_helpers::RALPH_HOOK_NAMES.iter().any(|name| {
+            crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
+                .unwrap_or(false)
+        })
+    });
+
+    if ralph_hook_detected {
+        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, logger) {
+            logger.warn(&format!("Startup hook cleanup warning: {err}"));
+        }
+    }
+
+    if crate::interrupt::is_user_interrupt_requested() {
+        return;
+    }
+
+    if let Err(err) = crate::git_helpers::start_agent_phase_in_repo(repo_root, git_helpers) {
+        logger.warn(&format!("Failed to start agent phase: {err}"));
+    }
+}
+
+#[derive(Copy, Clone)]
+struct RepoCommandParams<'a> {
+    args: &'a Args,
+    config: &'a crate::config::Config,
+    registry: &'a AgentRegistry,
+    developer_agent: &'a str,
+    reviewer_agent: &'a str,
+    logger: &'a Logger,
+    colors: Colors,
+    executor: &'a std::sync::Arc<dyn ProcessExecutor>,
+    repo_root: &'a std::path::Path,
+    workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
+}
+
+fn handle_repo_commands_without_prompt_setup(
+    params: RepoCommandParams<'_>,
+) -> anyhow::Result<bool> {
+    let RepoCommandParams {
+        args,
+        config,
+        registry,
+        developer_agent,
+        reviewer_agent,
+        logger,
+        colors,
+        executor,
+        repo_root,
+        workspace,
+    } = params;
+    let mut cleanup_guard = CommandExitCleanupGuard::new(logger, workspace.as_ref(), false);
+
+    if args.recovery.dry_run {
+        handle_dry_run(
+            logger,
+            colors,
+            config,
+            &registry.display_name(developer_agent),
+            &registry.display_name(reviewer_agent),
+            repo_root,
+            workspace.as_ref(),
+        )?;
+        return Ok(true);
+    }
+
+    if args.rebase_flags.rebase_only {
+        let mut git_helpers = crate::git_helpers::GitHelpers::new();
+        prepare_agent_phase_for_workspace(
+            repo_root,
+            workspace.as_ref(),
+            logger,
+            &mut git_helpers,
+            false,
+        );
+        cleanup_guard.mark_owned();
+        let template_context =
+            TemplateContext::from_user_templates_dir(config.user_templates_dir().cloned());
+        handle_rebase_only(
+            args,
+            config,
+            &template_context,
+            logger,
+            colors,
+            executor,
+            repo_root,
+        )?;
+        return Ok(true);
+    }
+
+    if args.commit_plumbing.generate_commit_msg {
+        let mut git_helpers = crate::git_helpers::GitHelpers::new();
+        prepare_agent_phase_for_workspace(
+            repo_root,
+            workspace.as_ref(),
+            logger,
+            &mut git_helpers,
+            false,
+        );
+        cleanup_guard.mark_owned();
+        let template_context =
+            TemplateContext::from_user_templates_dir(config.user_templates_dir().cloned());
+        plumbing::handle_generate_commit_msg(&plumbing::CommitGenerationConfig {
+            config,
+            template_context: &template_context,
+            workspace: workspace.as_ref(),
+            workspace_arc: std::sync::Arc::clone(workspace),
+            registry,
+            logger,
+            colors,
+            developer_agent,
+            reviewer_agent,
+            executor: std::sync::Arc::clone(executor),
+        })?;
+        return Ok(true);
+    }
+
+    Ok(false)
+}
 
 /// Validate PROMPT.md and set up backup/protection.
 fn validate_prompt_and_setup_backup(ctx: &PipelineContext) -> anyhow::Result<()> {
@@ -110,13 +318,10 @@ fn create_phase_context_with_config<'ctx>(
     let execution_history = resume_checkpoint.map_or_else(
         crate::checkpoint::execution_history::ExecutionHistory::new,
         |checkpoint| {
-            checkpoint
-                .execution_history
-                .as_ref()
-                .map_or_else(
-                    crate::checkpoint::execution_history::ExecutionHistory::new,
-                    |h| h.clone_bounded(config.execution_history_limit),
-                )
+            checkpoint.execution_history.as_ref().map_or_else(
+                crate::checkpoint::execution_history::ExecutionHistory::new,
+                |h| h.clone_bounded(config.execution_history_limit),
+            )
         },
     );
 
@@ -319,14 +524,23 @@ pub fn handle_rebase_only(
     }
 }
 
-const fn should_write_complete_checkpoint(final_phase: crate::reducer::event::PipelinePhase) -> bool {
+const fn should_write_complete_checkpoint(
+    final_phase: crate::reducer::event::PipelinePhase,
+) -> bool {
     matches!(final_phase, crate::reducer::event::PipelinePhase::Complete)
 }
 
 #[cfg(test)]
 mod helpers_tests {
+    use super::command_requires_prompt_setup;
     use super::should_write_complete_checkpoint;
+    use super::CommandExitCleanupGuard;
+    use crate::git_helpers::agent_phase_test_lock;
     use crate::reducer::event::PipelinePhase;
+    use crate::workspace::WorkspaceFs;
+    use clap::Parser;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn test_should_write_complete_checkpoint_only_on_complete_phase() {
@@ -337,5 +551,112 @@ mod helpers_tests {
         assert!(!should_write_complete_checkpoint(
             PipelinePhase::AwaitingDevFix
         ));
+    }
+
+    #[test]
+    fn test_command_requires_prompt_setup_only_for_prompt_dependent_commands() {
+        let default_args = crate::cli::Args::parse_from(["ralph"]);
+        assert!(command_requires_prompt_setup(&default_args));
+
+        let generate_commit_args = crate::cli::Args::parse_from(["ralph", "--generate-commit-msg"]);
+        assert!(!command_requires_prompt_setup(&generate_commit_args));
+
+        let dry_run_args = crate::cli::Args::parse_from(["ralph", "--dry-run"]);
+        assert!(!command_requires_prompt_setup(&dry_run_args));
+
+        let rebase_only_args = crate::cli::Args::parse_from(["ralph", "--rebase-only"]);
+        assert!(!command_requires_prompt_setup(&rebase_only_args));
+
+        let apply_commit_args = crate::cli::Args::parse_from(["ralph", "--apply-commit"]);
+        assert!(!command_requires_prompt_setup(&apply_commit_args));
+
+        let inspect_checkpoint_args =
+            crate::cli::Args::parse_from(["ralph", "--inspect-checkpoint"]);
+        assert!(!command_requires_prompt_setup(&inspect_checkpoint_args));
+    }
+
+    #[test]
+    fn test_command_cleanup_guard_without_ownership_preserves_existing_protections() {
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+
+        let marker_path = repo_root.join(".git/ralph/no_agent_commit");
+        std::fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        {
+            let _guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
+        }
+
+        assert!(
+            marker_path.exists(),
+            "cleanup guard must not remove protections that this command did not create"
+        );
+    }
+
+    #[test]
+    fn test_command_cleanup_guard_with_ownership_removes_protections() {
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+
+        let marker_path = repo_root.join(".git/ralph/no_agent_commit");
+        std::fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        {
+            let mut guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
+            guard.mark_owned();
+        }
+
+        assert!(
+            !marker_path.exists(),
+            "cleanup guard must remove protections owned by this command"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_command_cleanup_guard_for_promptless_command_preserves_prompt_permissions() {
+        let _test_lock = agent_phase_test_lock().lock().unwrap();
+        let tempdir = tempfile::tempdir().unwrap();
+        let repo_root = tempdir.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+        let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
+        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
+
+        let prompt_path = repo_root.join("PROMPT.md");
+        std::fs::write(&prompt_path, "# locked\n").unwrap();
+        std::fs::set_permissions(&prompt_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+        let marker_path = repo_root.join(".git/ralph/no_agent_commit");
+        std::fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
+        std::fs::write(&marker_path, "").unwrap();
+
+        {
+            let mut guard = CommandExitCleanupGuard::new(&logger, &workspace, false);
+            guard.mark_owned();
+        }
+
+        let mode = std::fs::metadata(&prompt_path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o444,
+            "promptless commands must not unlock PROMPT.md permissions"
+        );
+        assert!(
+            !marker_path.exists(),
+            "promptless commands must still remove their owned protections"
+        );
     }
 }

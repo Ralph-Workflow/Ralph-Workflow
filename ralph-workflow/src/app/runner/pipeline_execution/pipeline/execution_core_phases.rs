@@ -4,54 +4,13 @@
 // initial state computation, and event loop invocation.
 
 fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpers::GitHelpers) {
-    if let Err(err) =
-        crate::git_helpers::cleanup_orphaned_marker_with_workspace(&*ctx.workspace, &ctx.logger)
-    {
-        ctx.logger
-            .warn(&format!("Failed to cleanup orphaned marker: {err}"));
-    }
-
-    if let Some(warning) = crate::files::make_prompt_writable_with_workspace(&*ctx.workspace) {
-        ctx.logger.warn(&format!(
-            "PROMPT.md permission restore on startup: {warning}"
-        ));
-    }
-
-    if let Err(err) = crate::git_helpers::create_marker_with_workspace(&*ctx.workspace) {
-        ctx.logger
-            .warn(&format!("Failed to create agent phase marker: {err}"));
-    }
-
-    if crate::interrupt::is_user_interrupt_requested() {
-        return;
-    }
-
-    // Clean up orphaned wrapper temp dir from a prior crashed run (SIGKILL scenario).
-    crate::git_helpers::cleanup_orphaned_wrapper_at(&ctx.repo_root);
-
-    let hooks_dir = crate::git_helpers::get_hooks_dir_in_repo(&ctx.repo_root);
-    let ralph_hook_detected = hooks_dir.ok().is_some_and(|dir| {
-        crate::git_helpers::RALPH_HOOK_NAMES.iter().any(|name| {
-            crate::files::file_contains_marker(&dir.join(name), crate::git_helpers::HOOK_MARKER)
-                .unwrap_or(false)
-        })
-    });
-
-    if ralph_hook_detected {
-        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(&ctx.repo_root, &ctx.logger) {
-            ctx.logger
-                .warn(&format!("Startup hook cleanup warning: {err}"));
-        }
-    }
-
-    if crate::interrupt::is_user_interrupt_requested() {
-        return;
-    }
-
-    if let Err(err) = crate::git_helpers::start_agent_phase_in_repo(&ctx.repo_root, git_helpers) {
-        ctx.logger
-            .warn(&format!("Failed to start agent phase: {err}"));
-    }
+    prepare_agent_phase_for_workspace(
+        &ctx.repo_root,
+        &*ctx.workspace,
+        &ctx.logger,
+        git_helpers,
+        true,
+    );
 }
 
 fn create_cloud_runtime(

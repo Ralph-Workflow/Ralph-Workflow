@@ -1646,6 +1646,14 @@ pub fn cleanup_agent_phase_silent_at(repo_root: &Path) {
     cleanup_agent_phase_silent_at_internal(repo_root, None, None);
 }
 
+/// Best-effort cleanup for command exit paths that should preserve command outputs.
+///
+/// Removes only agent-phase protection artifacts (marker, wrapper, hooks, `.git/ralph`
+/// metadata) and leaves working-tree outputs such as `.agent/commit-message.txt` intact.
+pub fn cleanup_agent_phase_protections_silent_at(repo_root: &Path) {
+    cleanup_agent_phase_protections_silent_at_internal(repo_root, None, None);
+}
+
 #[cfg(any(test, feature = "test-utils"))]
 pub fn set_agent_phase_paths_for_test(
     repo_root: Option<PathBuf>,
@@ -1693,6 +1701,19 @@ fn cleanup_agent_phase_silent_at_internal(
     stored_ralph_dir: Option<&Path>,
     stored_hooks_dir: Option<&Path>,
 ) {
+    cleanup_agent_phase_protections_silent_at_internal(
+        repo_root,
+        stored_ralph_dir,
+        stored_hooks_dir,
+    );
+    cleanup_generated_files_silent_at(repo_root);
+}
+
+fn cleanup_agent_phase_protections_silent_at_internal(
+    repo_root: &Path,
+    stored_ralph_dir: Option<&Path>,
+    stored_hooks_dir: Option<&Path>,
+) {
     let computed_ralph_dir;
     let ralph_dir = if let Some(ralph_dir) = stored_ralph_dir {
         ralph_dir
@@ -1731,7 +1752,6 @@ fn cleanup_agent_phase_silent_at_internal(
     // been cleaned by cleanup_git_wrapper_dir_silent_at, so the dir is empty.
     remove_ralph_dir_best_effort(ralph_dir);
 
-    cleanup_generated_files_silent_at(repo_root);
     cleanup_repo_root_ralph_dir_if_empty(repo_root);
 
     clear_agent_phase_global_state();
@@ -3672,5 +3692,29 @@ mod tests {
         assert!(AGENT_PHASE_REPO_ROOT.lock().unwrap().is_none());
         assert!(AGENT_PHASE_RALPH_DIR.lock().unwrap().is_none());
         assert!(AGENT_PHASE_HOOKS_DIR.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_cleanup_agent_phase_protections_silent_at_preserves_commit_message_output() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path();
+        let _repo = git2::Repository::init(repo_root).unwrap();
+
+        install_all_agent_phase_artifacts(repo_root);
+        let commit_message_path = repo_root.join(".agent/commit-message.txt");
+        fs::create_dir_all(commit_message_path.parent().unwrap()).unwrap();
+        fs::write(&commit_message_path, "feat: keep generated message\n").unwrap();
+
+        cleanup_agent_phase_protections_silent_at(repo_root);
+
+        assert!(
+            commit_message_path.exists(),
+            "command-exit cleanup must preserve generated command output files"
+        );
+        assert!(
+            !repo_root.join(".git/ralph").exists(),
+            "command-exit cleanup must still remove git protection artifacts"
+        );
     }
 }

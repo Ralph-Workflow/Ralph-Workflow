@@ -102,10 +102,9 @@ pub fn run_with_config_and_resolver<
     // CRITICAL: Validate config files before any operations (fail-fast)
     // This ensures tests match production behavior where invalid config prevents startup
     // Per requirements: Ralph refuses to start pipeline if ANY config file has errors
-    if let Err(e) = crate::config::loader::load_config_from_path_with_env(
-        args.config.as_deref(),
-        path_resolver,
-    ) {
+    if let Err(e) =
+        crate::config::loader::load_config_from_path_with_env(args.config.as_deref(), path_resolver)
+    {
         eprintln!("{}", e.format_errors());
         return Err(anyhow::anyhow!("Configuration validation failed"));
     }
@@ -192,15 +191,43 @@ pub fn run_with_config_and_resolver<
         return Ok(());
     }
 
+    let repo_root = workspace
+        .as_ref()
+        .map(|ws| ws.root().to_path_buf())
+        .map_or_else(
+            || discover_repo_root_for_workspace(args.working_dir_override.as_deref(), handler),
+            Ok,
+        )?;
+
+    let workspace = workspace.unwrap_or_else(|| {
+        std::sync::Arc::new(crate::workspace::WorkspaceFs::new(repo_root.clone()))
+    });
+
     // Handle plumbing commands (--reset-start-commit, --show-commit-msg, etc.)
     // Pass workspace reference for testability with MemoryWorkspace
-    if handle_plumbing_commands(
-        &args,
-        &logger,
-        colors,
-        handler,
-        workspace.as_ref().map(std::convert::AsRef::as_ref),
-    )? {
+    if handle_plumbing_commands(&args, &logger, colors, handler, Some(workspace.as_ref()))? {
+        return Ok(());
+    }
+
+    if !command_requires_prompt_setup(&args)
+        && handle_repo_commands_without_prompt_setup(RepoCommandParams {
+            args: &args,
+            config: &config,
+            registry: &registry,
+            developer_agent: &developer_agent,
+            reviewer_agent: &reviewer_agent,
+            logger: &logger,
+            colors,
+            executor: &executor,
+            repo_root: &repo_root,
+            workspace: &workspace,
+        })?
+    {
+        return Ok(());
+    }
+
+    if args.recovery.inspect_checkpoint {
+        crate::app::resume::inspect_checkpoint(workspace.as_ref(), &logger)?;
         return Ok(());
     }
 
@@ -221,11 +248,6 @@ pub fn run_with_config_and_resolver<
     else {
         return Ok(());
     };
-
-    // Create workspace for explicit path resolution, or use injected workspace
-    let workspace = workspace.unwrap_or_else(|| {
-        std::sync::Arc::new(crate::workspace::WorkspaceFs::new(repo_root.clone()))
-    });
 
     // Prepare pipeline context or exit early
     (prepare_pipeline_or_exit(PipelinePreparationParams {
@@ -337,10 +359,9 @@ where
     // CRITICAL: Validate config files before any operations (fail-fast)
     // This ensures tests match production behavior where invalid config prevents startup
     // Per requirements: Ralph refuses to start pipeline if ANY config file has errors
-    if let Err(e) = crate::config::loader::load_config_from_path_with_env(
-        args.config.as_deref(),
-        path_resolver,
-    ) {
+    if let Err(e) =
+        crate::config::loader::load_config_from_path_with_env(args.config.as_deref(), path_resolver)
+    {
         eprintln!("{}", e.format_errors());
         return Err(anyhow::anyhow!("Configuration validation failed"));
     }
@@ -427,6 +448,18 @@ where
         return Ok(());
     }
 
+    let repo_root = workspace
+        .as_ref()
+        .map(|ws| ws.root().to_path_buf())
+        .map_or_else(
+            || discover_repo_root_for_workspace(args.working_dir_override.as_deref(), app_handler),
+            Ok,
+        )?;
+
+    let workspace = workspace.unwrap_or_else(|| {
+        std::sync::Arc::new(crate::workspace::WorkspaceFs::new(repo_root.clone()))
+    });
+
     // Handle plumbing commands with app_handler
     // Pass workspace reference for testability with MemoryWorkspace
     if handle_plumbing_commands(
@@ -434,8 +467,30 @@ where
         &logger,
         colors,
         app_handler,
-        workspace.as_ref().map(std::convert::AsRef::as_ref),
+        Some(workspace.as_ref()),
     )? {
+        return Ok(());
+    }
+
+    if !command_requires_prompt_setup(&args)
+        && handle_repo_commands_without_prompt_setup(RepoCommandParams {
+            args: &args,
+            config: &config,
+            registry: &registry,
+            developer_agent: &developer_agent,
+            reviewer_agent: &reviewer_agent,
+            logger: &logger,
+            colors,
+            executor: &executor,
+            repo_root: &repo_root,
+            workspace: &workspace,
+        })?
+    {
+        return Ok(());
+    }
+
+    if args.recovery.inspect_checkpoint {
+        crate::app::resume::inspect_checkpoint(workspace.as_ref(), &logger)?;
         return Ok(());
     }
 
@@ -456,11 +511,6 @@ where
     else {
         return Ok(());
     };
-
-    // Create workspace for explicit path resolution, or use injected workspace
-    let workspace = workspace.unwrap_or_else(|| {
-        std::sync::Arc::new(crate::workspace::WorkspaceFs::new(repo_root.clone()))
-    });
 
     // Prepare pipeline context or exit early
     let ctx = prepare_pipeline_or_exit(PipelinePreparationParams {

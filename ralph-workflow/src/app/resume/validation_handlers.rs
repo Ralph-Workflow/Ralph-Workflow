@@ -1,6 +1,23 @@
 // Validation and handling for resume from checkpoint.
 // This module handles the --resume flag and validation logic.
 
+/// Loads and prints checkpoint inspection output without requiring pipeline setup.
+///
+/// # Errors
+///
+/// Returns an error if no checkpoint exists or checkpoint loading fails.
+pub fn inspect_checkpoint(workspace: &dyn Workspace, logger: &Logger) -> anyhow::Result<()> {
+    match load_checkpoint_with_workspace(workspace) {
+        Ok(Some(checkpoint)) => {
+            logger.header("CHECKPOINT INSPECTION", crate::logger::Colors::cyan);
+            display_detailed_checkpoint_info(&checkpoint, logger);
+            Ok(())
+        }
+        Ok(None) => anyhow::bail!("No checkpoint found to inspect."),
+        Err(e) => anyhow::bail!("Failed to load checkpoint: {e}"),
+    }
+}
+
 /// Handles the --resume flag and loads checkpoint if applicable.
 ///
 /// This function loads and validates the checkpoint, providing detailed
@@ -36,18 +53,10 @@ pub fn handle_resume_with_validation(
 ) -> anyhow::Result<Option<ResumeResult>> {
     // Handle --inspect-checkpoint flag
     if args.recovery.inspect_checkpoint {
-        match load_checkpoint_with_workspace(workspace) {
-            Ok(Some(checkpoint)) => {
-                logger.header("CHECKPOINT INSPECTION", crate::logger::Colors::cyan);
-                display_detailed_checkpoint_info(&checkpoint, logger);
-                std::process::exit(0);
-            }
-            Ok(None) => {
-                logger.error("No checkpoint found to inspect.");
-                std::process::exit(1);
-            }
-            Err(e) => {
-                logger.error(&format!("Failed to load checkpoint: {e}"));
+        match inspect_checkpoint(workspace, logger) {
+            Ok(()) => std::process::exit(0),
+            Err(err) => {
+                logger.error(&err.to_string());
                 std::process::exit(1);
             }
         }
@@ -106,12 +115,14 @@ pub fn handle_resume_with_validation(
             // Perform file system state validation
             let validation_outcome = checkpoint.file_system_state.as_ref().map_or(
                 ValidationOutcome::Passed,
-                |file_system_state| validate_file_system_state(
-                    file_system_state,
-                    logger,
-                    args.recovery.recovery_strategy.into(),
-                    workspace,
-                )
+                |file_system_state| {
+                    validate_file_system_state(
+                        file_system_state,
+                        logger,
+                        args.recovery.recovery_strategy.into(),
+                        workspace,
+                    )
+                },
             );
 
             if let ValidationOutcome::Failed(reason) = validation_outcome {

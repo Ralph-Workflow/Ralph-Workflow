@@ -21,6 +21,7 @@
 
 use std::path::PathBuf;
 
+use super::resume::{make_checkpoint_json, MOCK_REPO_PATH};
 use ralph_workflow::app::effect::AppEffect;
 use ralph_workflow::app::mock_effect_handler::MockAppEffectHandler;
 
@@ -206,6 +207,82 @@ fn ralph_apply_commit_fails_without_message_file() {
 
         // Should fail
         assert!(result.is_err());
+    });
+}
+
+#[test]
+fn ralph_generate_commit_msg_succeeds_without_prompt_md() {
+    with_default_timeout(|| {
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from("/mock/repo"))
+            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_file(
+                ".agent/tmp/commit_message.xml",
+                "<ralph-commit><ralph-subject>feat: generated without prompt</ralph-subject></ralph-commit>",
+            );
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--generate-commit-msg"], executor, config, &mut handler)
+            .unwrap();
+
+        assert_eq!(
+            handler.get_file(&PathBuf::from(".agent/commit-message.txt")),
+            Some("feat: generated without prompt".to_string())
+        );
+        assert!(
+            !handler.file_exists(&PathBuf::from("PROMPT.md")),
+            "generate-commit-msg should not require or create PROMPT.md"
+        );
+    });
+}
+
+#[test]
+fn ralph_generate_commit_msg_keeps_generated_message_after_command_cleanup() {
+    with_default_timeout(|| {
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from("/mock/repo"))
+            .with_diff("diff --git a/src/lib.rs b/src/lib.rs\n+change\n")
+            .with_file(
+                ".agent/tmp/commit_message.xml",
+                "<ralph-commit><ralph-subject>feat: preserved message</ralph-subject></ralph-commit>",
+            );
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--generate-commit-msg"], executor, config, &mut handler)
+            .unwrap();
+
+        assert!(
+            handler.file_exists(&PathBuf::from(".agent/commit-message.txt")),
+            "generated commit message should survive command cleanup"
+        );
+    });
+}
+
+#[test]
+fn ralph_inspect_checkpoint_succeeds_without_prompt_md() {
+    with_default_timeout(|| {
+        let checkpoint_json = make_checkpoint_json(MOCK_REPO_PATH, "Complete", 1, 1);
+        let mut handler = MockAppEffectHandler::new()
+            .with_head_oid("a".repeat(40))
+            .with_cwd(PathBuf::from(MOCK_REPO_PATH))
+            .with_file(".agent/checkpoint.json", checkpoint_json);
+
+        let config = create_test_config_struct();
+        let executor = mock_executor_with_success();
+
+        run_ralph_cli_with_handler(&["--inspect-checkpoint"], executor, config, &mut handler)
+            .unwrap();
+
+        assert!(
+            !handler.file_exists(&PathBuf::from("PROMPT.md")),
+            "inspect-checkpoint should not require or create PROMPT.md"
+        );
     });
 }
 

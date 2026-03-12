@@ -3,7 +3,7 @@
 // This module handles the initialization phase of the pipeline, including:
 // - Context preparation and configuration
 // - Run log context creation and checkpoint restoration
-// - Early-exit conditions (dry-run, rebase-only, generate-commit-msg)
+// - Run-log creation for prompt-dependent pipeline execution
 // - Template context setup
 //
 // Architecture:
@@ -11,18 +11,9 @@
 // The initialization phase occurs before the main event loop. It:
 // 1. Ensures required files and directories exist via AppEffectHandler
 // 2. Creates or restores RunLogContext for per-run logging
-// 3. Handles special modes (dry-run, rebase-only, commit generation)
+// 3. Prepares prompt-dependent pipeline state after non-prompt commands already exited
 // 4. Builds PipelineContext with all necessary dependencies
 //
-// Early Exit Modes:
-//
-// Several CLI flags cause early exit after preparation:
-// - `--dry-run`: Displays pipeline configuration without executing
-// - `--rebase-only`: Runs rebase operation without full pipeline
-// - `--generate-commit-msg`: Generates commit message without pipeline
-//
-// These modes return `Ok(None)` to signal early exit to the caller.
-
 /// Parameters for preparing the pipeline context.
 ///
 /// Groups related parameters to avoid too many function arguments.
@@ -58,7 +49,11 @@ struct PipelinePreparationState {
 }
 
 impl PipelinePreparationState {
-    fn build_pipeline_context(self, template_context: TemplateContext, run_log_context: crate::logging::RunLogContext) -> PipelineContext {
+    fn build_pipeline_context(
+        self,
+        template_context: TemplateContext,
+        run_log_context: crate::logging::RunLogContext,
+    ) -> PipelineContext {
         let developer_display = self.registry.display_name(&self.developer_agent);
         let reviewer_display = self.registry.display_name(&self.reviewer_agent);
 
@@ -156,67 +151,9 @@ fn write_run_metadata_best_effort(
     }
 }
 
-fn handle_early_exit_modes(
-    state: &PipelinePreparationState,
-    template_context: &TemplateContext,
-) -> anyhow::Result<bool> {
-    if state.args.recovery.dry_run {
-        let developer_display = state.registry.display_name(&state.developer_agent);
-        let reviewer_display = state.registry.display_name(&state.reviewer_agent);
-        handle_dry_run(
-            &state.logger,
-            state.colors,
-            &state.config,
-            &developer_display,
-            &reviewer_display,
-            &state.repo_root,
-            &*state.workspace,
-        )?;
-        return Ok(true);
-    }
-
-    if state.args.rebase_flags.rebase_only {
-        handle_rebase_only(
-            &state.args,
-            &state.config,
-            template_context,
-            &state.logger,
-            state.colors,
-            &state.executor,
-            &state.repo_root,
-        )?;
-        return Ok(true);
-    }
-
-    if state.args.commit_plumbing.generate_commit_msg {
-        handle_generate_commit_msg(&plumbing::CommitGenerationConfig {
-            config: &state.config,
-            template_context,
-            workspace: &*state.workspace,
-            workspace_arc: std::sync::Arc::clone(&state.workspace),
-            registry: &state.registry,
-            logger: &state.logger,
-            colors: state.colors,
-            developer_agent: &state.developer_agent,
-            reviewer_agent: &state.reviewer_agent,
-            executor: std::sync::Arc::clone(&state.executor),
-        })?;
-        return Ok(true);
-    }
-
-    Ok(false)
-}
-
 /// Prepares the pipeline context after agent validation.
 ///
-/// Returns `Some(ctx)` if pipeline should run, or `None` if we should exit early.
-///
-/// # Early Exit Conditions
-///
-/// Returns `None` (early exit) for:
-/// - `--dry-run`: Displays configuration without executing
-/// - `--rebase-only`: Runs rebase operation only
-/// - `--generate-commit-msg`: Generates commit message only
+/// Returns `Some(ctx)` if the prompt-dependent pipeline should run.
 ///
 /// # Run Log Context
 ///
@@ -275,10 +212,6 @@ pub(super) fn prepare_pipeline_or_exit<H: effect::AppEffectHandler>(
 
     let template_context =
         TemplateContext::from_user_templates_dir(state.config.user_templates_dir().cloned());
-
-    if handle_early_exit_modes(&state, &template_context)? {
-        return Ok(None);
-    }
 
     Ok(Some(
         state.build_pipeline_context(template_context, run_log_context),

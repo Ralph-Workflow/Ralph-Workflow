@@ -106,6 +106,28 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
         return Ok(());
     }
 
+    if !command_requires_prompt_setup(&args)
+        && handle_repo_commands_without_prompt_setup(RepoCommandParams {
+            args: &args,
+            config: &config,
+            registry: &registry,
+            developer_agent: &developer_agent,
+            reviewer_agent: &reviewer_agent,
+            logger: &logger,
+            colors,
+            executor: &executor,
+            repo_root: workspace.root(),
+            workspace: &workspace,
+        })?
+    {
+        return Ok(());
+    }
+
+    if args.recovery.inspect_checkpoint {
+        crate::app::resume::inspect_checkpoint(workspace.as_ref(), &logger)?;
+        return Ok(());
+    }
+
     // Validate agents and set up git repo and PROMPT.md
     // Note: repo_root is discovered again here (same as early_repo_root) but also
     // does additional setup like PROMPT.md creation that plumbing commands don't need
@@ -143,4 +165,3 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     })?)
     .map_or_else(|| Ok(()), |ctx| run_pipeline(&ctx))
 }
-
