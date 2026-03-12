@@ -15,9 +15,17 @@ For major changes, create a RFC.
 
 # Ralph Workflow
 
-Ralph Workflow is an external (lives outside of the AI Agent) agent orchestrator meant mostly for unattended sessions over a long period of time.
+Ralph Workflow is a CLI orchestrator for AI coding agents that enables long-running, unattended development workflows.
+You describe a feature in `PROMPT.md`, run `ralph`, and the system:
+
+1. Plans the implementation
+2. Writes the code
+3. Reviews the changes
+4. Commits the results
+5. Repeat the cycle with the same `PROMPT.md` as needed with cleared context, which will start planning again
+
 It is not meant to be babysat as long as you can write a detailed spec file, unlike most active agent orchestrator. Due to it's unattended nature, ralph will not
-ask you for clarification if there is any ambiguity like a lot of active interactive AI agents. You will have to provide enough context in your PROMPT.md to ensure
+ask you for clarification if there is any ambiguity like a lot of active interactive AI agents. You will have to provide enough context in your `PROMPT.md` to ensure
 that ralph can fully complete the work without additional input or it will be forced to make assumptions that you may or may not agree with.
 It is inspired by the idea of Ralph by [Geoffrey Huntley](https://ghuntley.com/ralph/).
 
@@ -26,6 +34,32 @@ I started this project as a side project with a bunch of shell scripts while wor
 If you are looking for an interactive orchestrator, you are probably looking for something else.
 
 Ralph Workflow works best if you think like a Product Manager and can scope out every detail about the feature you need. The more details you can add, the better Ralph Workflow will perform. It is meant to run long-running tasks that are very deterministic and need a lot of commits and a non-trivial amount of manual work.
+
+## Quick Start
+
+To install, ensure you have a rust installation up and running, I suggest [rustup](https://rustup.rs/).
+
+```bash
+cargo install ralph-workflow
+```
+
+Then in your prompt, simply add a `PROMPT.md` file, with something like
+
+```
+== Goal
+
+* Find all tests that reimplement production code and replace it with tests that test black box behavior, refactor if the code is untestable
+```
+
+Then run:
+```bash
+ralph
+```
+and watch the AI agent plan out, work through the refactor.
+
+By default ralph-workflow will use `claude` and `codex` as the default dev and review agent. To change them, edit your config in `$HOME/.config/ralph-workflow.toml`
+
+You can see a sample config file [here](ralph-workflow/examples/ralph-workflow.toml)
 
 ## Currently Supported Clients
 
