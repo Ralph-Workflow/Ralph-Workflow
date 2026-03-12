@@ -196,6 +196,7 @@ impl ResolvedDrainConfig {
             backoff_multiplier: self.backoff_multiplier,
             max_backoff_ms: self.max_backoff_ms,
             max_cycles: self.max_cycles,
+            legacy_role_keys_present: false,
         }
     }
 }
@@ -241,7 +242,7 @@ impl std::fmt::Display for AgentRole {
 /// - Each cycle multiplies by `backoff_multiplier` (default: 2.0)
 /// - Capped at `max_backoff_ms` (default: 60000ms = 1 minute)
 /// - Maximum cycles controlled by `max_cycles` (default: 3)
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FallbackConfig {
     /// Ordered list of agents for developer role (first = preferred, rest = fallbacks).
     #[serde(default)]
@@ -276,6 +277,59 @@ pub struct FallbackConfig {
     /// Maximum number of cycles through all agents before giving up (default: 3).
     #[serde(default = "default_max_cycles")]
     pub max_cycles: u32,
+    #[serde(skip)]
+    pub(crate) legacy_role_keys_present: bool,
+}
+
+impl<'de> Deserialize<'de> for FallbackConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct FallbackConfigSerde {
+            #[serde(default)]
+            developer: Option<Vec<String>>,
+            #[serde(default)]
+            reviewer: Option<Vec<String>>,
+            #[serde(default)]
+            commit: Option<Vec<String>>,
+            #[serde(default)]
+            analysis: Option<Vec<String>>,
+            #[serde(default)]
+            provider_fallback: HashMap<String, Vec<String>>,
+            #[serde(default = "default_max_retries")]
+            max_retries: u32,
+            #[serde(default = "default_retry_delay_ms")]
+            retry_delay_ms: u64,
+            #[serde(default = "default_backoff_multiplier")]
+            backoff_multiplier: f64,
+            #[serde(default = "default_max_backoff_ms")]
+            max_backoff_ms: u64,
+            #[serde(default = "default_max_cycles")]
+            max_cycles: u32,
+        }
+
+        let raw = FallbackConfigSerde::deserialize(deserializer)?;
+        let legacy_role_keys_present = raw.developer.is_some()
+            || raw.reviewer.is_some()
+            || raw.commit.is_some()
+            || raw.analysis.is_some();
+
+        Ok(Self {
+            developer: raw.developer.unwrap_or_default(),
+            reviewer: raw.reviewer.unwrap_or_default(),
+            commit: raw.commit.unwrap_or_default(),
+            analysis: raw.analysis.unwrap_or_default(),
+            provider_fallback: raw.provider_fallback,
+            max_retries: raw.max_retries,
+            retry_delay_ms: raw.retry_delay_ms,
+            backoff_multiplier: raw.backoff_multiplier,
+            max_backoff_ms: raw.max_backoff_ms,
+            max_cycles: raw.max_cycles,
+            legacy_role_keys_present,
+        })
+    }
 }
 
 const fn default_max_retries() -> u32 {
@@ -373,6 +427,7 @@ impl Default for FallbackConfig {
             backoff_multiplier: default_backoff_multiplier(),
             max_backoff_ms: default_max_backoff_ms(),
             max_cycles: default_max_cycles(),
+            legacy_role_keys_present: false,
         }
     }
 }
@@ -389,6 +444,18 @@ impl FallbackConfig {
         ]
         .into_iter()
         .any(|chain| !chain.is_empty())
+    }
+
+    /// Return whether any legacy role key was explicitly present in the source config.
+    #[must_use]
+    pub const fn has_legacy_role_key_presence(&self) -> bool {
+        self.legacy_role_keys_present
+    }
+
+    /// Return whether the legacy role-keyed schema is in use.
+    #[must_use]
+    pub fn uses_legacy_role_schema(&self) -> bool {
+        self.legacy_role_keys_present || self.has_role_bindings()
     }
 
     const fn effective_chain_name_for_role(&self, role: AgentRole) -> &'static str {

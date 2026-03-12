@@ -57,7 +57,8 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     let runtime_drain = state.runtime_drain();
 
     if runtime_drain == AgentDrain::Fix {
-        if state.agent_chain.agents.is_empty() {
+        if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Fix
+        {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,
             };

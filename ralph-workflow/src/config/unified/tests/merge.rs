@@ -113,6 +113,7 @@ fn test_merge_with_agent_chain_local_replaces_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -129,6 +130,7 @@ fn test_merge_with_agent_chain_local_replaces_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -156,6 +158,7 @@ fn test_merge_with_local_none_agent_chain_preserves_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };

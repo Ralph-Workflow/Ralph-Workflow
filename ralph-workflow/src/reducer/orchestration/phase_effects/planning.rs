@@ -17,7 +17,7 @@
 //! 12. Archive planning XML
 //! 13. Apply planning outcome (transition to Development)
 
-use crate::agents::{AgentDrain, AgentRole};
+use crate::agents::AgentDrain;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{PipelineState, PromptMode, RebaseState};
@@ -41,9 +41,7 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
         };
     }
 
-    let planning_chain_ready = state.agent_chain.current_drain == AgentDrain::Planning
-        || (state.agent_chain.current_drain == AgentDrain::Development
-            && state.agent_chain.current_role == AgentRole::Developer);
+    let planning_chain_ready = state.agent_chain.current_drain == AgentDrain::Planning;
 
     if state.agent_chain.agents.is_empty() || !planning_chain_ready {
         return Effect::InitializeAgentChain {

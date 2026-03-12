@@ -131,7 +131,7 @@ pub fn validate_config_file(
             let has_legacy_role_bindings = config
                 .agent_chain
                 .as_ref()
-                .is_some_and(crate::agents::fallback::FallbackConfig::has_role_bindings);
+                .is_some_and(crate::agents::fallback::FallbackConfig::uses_legacy_role_schema);
             let validate_named_schema_now = (!has_named_chains && !has_named_drains)
                 || (has_named_chains && has_named_drains)
                 || has_legacy_role_bindings;

@@ -112,6 +112,8 @@ pub(super) fn merge_fallback_configs(
                 } else {
                     g.max_cycles
                 },
+                legacy_role_keys_present: g.has_legacy_role_key_presence()
+                    || l.has_legacy_role_key_presence(),
             })
         }
         (None, Some(l)) => {
@@ -164,6 +166,7 @@ pub(super) fn merge_fallback_configs(
                     } else {
                         defaults.max_cycles
                     },
+                    legacy_role_keys_present: l.has_legacy_role_key_presence(),
                 })
             } else {
                 Some(l.clone())

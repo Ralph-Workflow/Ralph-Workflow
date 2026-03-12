@@ -9,7 +9,11 @@
 //! defined in **[../../INTEGRATION_TESTS.md](../../INTEGRATION_TESTS.md)**.
 
 use ralph_workflow::agents::{AgentDrain, AgentRole, AgentsConfigFile};
-use ralph_workflow::config::validation::validate_config_file;
+use ralph_workflow::config::loader::{
+    load_config_from_path_with_env, ConfigLoadWithValidationError,
+};
+use ralph_workflow::config::validation::{validate_config_file, ConfigValidationError};
+use ralph_workflow::config::MemoryConfigEnvironment;
 use ralph_workflow::config::UnifiedConfig;
 use ralph_workflow::reducer::determine_next_effect;
 use ralph_workflow::reducer::effect::Effect;
@@ -319,7 +323,13 @@ fn test_checkpoint_replay_recovers_planning_drain_for_legacy_normal_mode() {
 
         let effect = determine_next_effect(&restored_state);
         assert!(
-            matches!(effect, Effect::MaterializePlanningInputs { iteration: 0 }),
+            matches!(
+                effect,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Planning,
+                    ..
+                }
+            ),
             "legacy planning checkpoint should resume in planning flow, got: {effect:?}"
         );
     });
@@ -382,9 +392,9 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
         assert!(
             matches!(
                 effect,
-                Effect::PrepareFixPrompt {
-                    pass: 1,
-                    prompt_mode: PromptMode::Normal,
+                Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
+                    ..
                 }
             ),
             "legacy fix checkpoint should resume in the fix drain, got: {effect:?}"
@@ -716,7 +726,140 @@ fn test_named_schema_merge_keeps_metadata_only_legacy_bindings_empty() {
 }
 
 #[test]
-fn test_named_schema_merge_strips_legacy_role_bindings_from_compatibility_metadata() {
+fn test_validate_config_file_rejects_mixed_schema_when_legacy_role_key_is_empty() {
+    with_default_timeout(|| {
+        let content = r#"
+[agent_chain]
+reviewer = []
+
+[agent_chains]
+shared_review = ["claude"]
+
+[agent_drains]
+review = "shared_review"
+fix = "shared_review"
+planning = "shared_review"
+development = "shared_review"
+commit = "shared_review"
+analysis = "shared_review"
+"#;
+
+        let result = validate_config_file(std::path::Path::new("test.toml"), content);
+        let errors = result.expect_err("empty legacy role keys must still reject mixed schemas");
+
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key == "agent_chain"
+                        && message.contains("agent_chains")
+                        && message.contains("agent_drains")
+            )),
+            "expected mixed schema error, got: {errors:?}"
+        );
+
+        let unified = UnifiedConfig::load_from_content(content).expect("config should parse");
+        let error = unified
+            .resolve_agent_drains_checked()
+            .expect_err("mixed schema should be rejected after parsing");
+        assert!(error.contains("agent_chain"));
+    });
+}
+
+#[test]
+fn test_planning_reinitializes_when_resume_kept_development_drain() {
+    with_default_timeout(|| {
+        let state = with_locked_prompt_permissions(PipelineState {
+            phase: PipelinePhase::Planning,
+            gitignore_entries_ensured: true,
+            context_cleaned: true,
+            agent_chain: PipelineState::initial(5, 2)
+                .agent_chain
+                .with_agents(
+                    vec!["claude".to_string()],
+                    vec![vec![]],
+                    AgentRole::Developer,
+                )
+                .with_drain(AgentDrain::Development),
+            ..PipelineState::initial(5, 2)
+        });
+
+        assert!(matches!(
+            determine_next_effect(&state),
+            Effect::InitializeAgentChain {
+                drain: AgentDrain::Planning,
+                ..
+            }
+        ));
+    });
+}
+
+#[test]
+fn test_fix_chain_reinitializes_when_runtime_fix_uses_review_drain_chain() {
+    with_default_timeout(|| {
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 1,
+            review_issues_found: true,
+            agent_chain: PipelineState::initial(1, 1)
+                .agent_chain
+                .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(AgentDrain::Review),
+            ..with_locked_prompt_permissions(PipelineState::initial(1, 1))
+        };
+
+        assert!(matches!(
+            determine_next_effect(&state),
+            Effect::InitializeAgentChain {
+                drain: AgentDrain::Fix,
+                ..
+            }
+        ));
+    });
+}
+
+#[test]
+fn test_load_config_revalidates_merged_named_schema() {
+    with_default_timeout(|| {
+        let global_toml = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+"#;
+
+        let local_toml = r#"
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+"#;
+
+        let env = MemoryConfigEnvironment::new()
+            .with_unified_config_path("/test/config/ralph-workflow.toml")
+            .with_local_config_path("/test/project/.agent/ralph-workflow.toml")
+            .with_file("/test/config/ralph-workflow.toml", global_toml)
+            .with_file("/test/project/.agent/ralph-workflow.toml", local_toml);
+
+        let result = load_config_from_path_with_env(None, &env);
+        let Err(ConfigLoadWithValidationError::ValidationErrors(errors)) = result else {
+            panic!("expected merged named schema validation failure");
+        };
+
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key == "agent_drains"
+                        && message.contains("review")
+                        && message.contains("fix")
+            )),
+            "expected merged named schema resolution error, got: {errors:?}"
+        );
+    });
+}
+
+#[test]
+fn test_named_schema_merge_rejects_legacy_role_bindings_even_when_compatibility_view_is_empty() {
     with_default_timeout(|| {
         let global_toml = r#"
 [agent_chain]
@@ -750,30 +893,12 @@ fix = "shared_review"
             "named-schema merges should keep only compatibility metadata"
         );
 
-        let resolved = merged
+        let error = merged
             .resolve_agent_drains_checked()
-            .expect("merged named schema should stay valid")
-            .expect("merged config should resolve named drains");
+            .expect_err("merged config should reject mixed legacy and named schemas");
 
-        assert_eq!(
-            resolved
-                .binding(AgentDrain::Planning)
-                .expect("planning drain")
-                .agents,
-            vec!["opencode"]
-        );
-        assert_eq!(
-            resolved
-                .binding(AgentDrain::Review)
-                .expect("review drain")
-                .agents,
-            vec!["gemini"]
-        );
-        assert_eq!(resolved.max_retries, 7);
-        assert_eq!(
-            resolved.provider_fallback.get("opencode"),
-            Some(&vec!["-m opencode/glm-4.7-free".to_string()])
-        );
+        assert!(error.contains("agent_chain"));
+        assert!(error.contains("agent_chains/agent_drains"));
     });
 }
 

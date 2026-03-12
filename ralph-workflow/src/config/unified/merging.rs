@@ -565,6 +565,8 @@ fn merge_named_schema_legacy_metadata(
             } else {
                 global.max_cycles
             },
+            legacy_role_keys_present: global.has_legacy_role_key_presence()
+                || local.has_legacy_role_key_presence(),
         })
     }
 }

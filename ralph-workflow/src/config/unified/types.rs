@@ -447,7 +447,7 @@ impl UnifiedConfig {
             if self
                 .agent_chain
                 .as_ref()
-                .is_some_and(crate::agents::fallback::FallbackConfig::has_role_bindings)
+                .is_some_and(crate::agents::fallback::FallbackConfig::uses_legacy_role_schema)
             {
                 return Err(
                     "agent_chain cannot be combined with agent_chains/agent_drains; use either the legacy role-keyed schema or the named chain + drain schema"
