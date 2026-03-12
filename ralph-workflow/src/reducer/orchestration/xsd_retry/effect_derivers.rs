@@ -6,7 +6,7 @@
 ///
 /// The fingerprint includes:
 /// - Current phase
-/// - Current agent role
+/// - Current runtime drain
 /// - Current iteration
 /// - Current reviewer pass
 /// - XSD retry pending flag

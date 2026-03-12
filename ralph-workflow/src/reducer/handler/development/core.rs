@@ -83,7 +83,14 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Developer, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Development,
+            AgentRole::Developer,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

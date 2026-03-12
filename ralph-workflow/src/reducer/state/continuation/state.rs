@@ -303,7 +303,7 @@ impl ContinuationState {
         self.continuation_attempt > 0
     }
 
-    /// Whether the active drain has a pending continuation.
+    /// Whether the active runtime drain has a pending continuation.
     #[must_use]
     pub const fn pending_continuation_for_drain(&self, drain: AgentDrain) -> bool {
         match drain {
@@ -316,7 +316,7 @@ impl ContinuationState {
         }
     }
 
-    /// Whether the active drain has exhausted its continuation budget.
+    /// Whether the active runtime drain has exhausted its continuation budget.
     #[must_use]
     pub const fn continuation_exhausted_for_drain(&self, drain: AgentDrain) -> bool {
         match drain {

@@ -102,6 +102,10 @@ cargo test -p ralph-workflow agents::registry::tests
 cargo test -p ralph-workflow agents::validation::tests
 cargo test -p ralph-workflow-tests --test integration_tests agent_chain_normalization
 
+# Default config template / registry wiring regressions
+# Keep the built-in `examples/agents.toml` template on the named chain + drain schema
+# and ensure `AgentRegistry::new()` consumes the same resolved drain bindings.
+
 # Integration tests
 cargo test -p ralph-workflow-tests --test integration_tests
 

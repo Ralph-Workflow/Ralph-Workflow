@@ -513,22 +513,27 @@ fn default_chain_binding_for_drain(
     bindings: &HashMap<AgentDrain, ResolvedDrainBinding>,
     drain: AgentDrain,
 ) -> Option<ResolvedDrainBinding> {
-    preferred_chain_names_for_drain(drain)
+    let sibling_binding = fallback_source_drains_for_drain(drain)
         .iter()
-        .find_map(|&chain_name| {
-            config
-                .agent_chains
-                .get(chain_name)
-                .map(|agents| ResolvedDrainBinding {
-                    chain_name: chain_name.to_string(),
-                    agents: agents.clone(),
-                })
-        })
-        .or_else(|| {
-            fallback_source_drains_for_drain(drain)
-                .iter()
-                .find_map(|source| bindings.get(source).cloned())
-        })
+        .find_map(|source| bindings.get(source).cloned());
+
+    let compatibility_binding =
+        preferred_chain_names_for_drain(drain)
+            .iter()
+            .find_map(|&chain_name| {
+                config
+                    .agent_chains
+                    .get(chain_name)
+                    .map(|agents| ResolvedDrainBinding {
+                        chain_name: chain_name.to_string(),
+                        agents: agents.clone(),
+                    })
+            });
+
+    match drain {
+        AgentDrain::Commit | AgentDrain::Analysis => sibling_binding.or(compatibility_binding),
+        _ => compatibility_binding.or(sibling_binding),
+    }
 }
 
 const fn preferred_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {

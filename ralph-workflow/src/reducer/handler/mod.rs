@@ -220,7 +220,14 @@ impl MainEffectHandler {
                 agent,
                 model,
                 prompt,
-            } => self.invoke_agent(ctx, role, &agent, model.as_deref(), prompt),
+            } => self.invoke_agent(
+                ctx,
+                crate::agents::AgentDrain::from(role),
+                role,
+                &agent,
+                model.as_deref(),
+                prompt,
+            ),
 
             Effect::InitializeAgentChain { drain, .. } => {
                 Ok(self.initialize_agent_chain(ctx, drain))

@@ -73,7 +73,14 @@ impl MainEffectHandler {
             .cloned()
             .ok_or(ErrorEvent::CommitAgentNotInitialized { attempt })?;
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Commit, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Commit,
+            AgentRole::Commit,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

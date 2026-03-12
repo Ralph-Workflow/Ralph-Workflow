@@ -5,7 +5,7 @@
 //! Review phase has two drain-owned modes:
 //!
 //! 1. Fix drain (`current_drain == Fix`):
-//!    a. Initialize agent chain (Reviewer role)
+//!    a. Initialize the fix drain chain
 //!    b. Prepare fix prompt
 //!    c. Cleanup fix result XML
 //!    d. Invoke fix agent
@@ -16,7 +16,7 @@
 //!
 //! 2. Review drain (`current_drain == Review`):
 //!    For each review pass (up to `total_reviewer_passes)`:
-//!    a. Initialize agent chain (Reviewer role)
+//!    a. Initialize the review drain chain
 //!    b. Prepare review context
 //!    c. Materialize review inputs (plan + diff)
 //!    d. Prepare review prompt

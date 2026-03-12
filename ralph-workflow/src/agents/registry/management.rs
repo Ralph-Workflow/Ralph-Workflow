@@ -27,16 +27,16 @@ impl AgentRegistry {
     ///
     /// Returns error if the operation fails.
     pub fn new() -> Result<Self, AgentConfigError> {
-        let AgentsConfigFile {
-            agents, fallback, ..
-        } =
+        let config: AgentsConfigFile =
             toml::from_str(DEFAULT_AGENTS_TOML).map_err(AgentConfigError::DefaultTemplateToml)?;
+        let resolved_drains = config.resolve_drains_checked()?.unwrap_or_else(|| {
+            crate::agents::fallback::ResolvedDrainConfig::from_legacy(&FallbackConfig::default())
+        });
+        let agents = config.agents;
 
         let mut registry = Self {
             agents: HashMap::new(),
-            resolved_drains: crate::agents::fallback::ResolvedDrainConfig::from_legacy(
-                &fallback.unwrap_or_default(),
-            ),
+            resolved_drains,
             ccs_resolver: CcsAliasResolver::empty(),
             opencode_resolver: None,
             retry_timer: production_timer(),
@@ -387,10 +387,7 @@ impl AgentRegistry {
 
     /// Get all fallback agents for a drain that are registered in this registry.
     #[must_use]
-    pub fn available_fallbacks_for_drain(
-        &self,
-        drain: crate::agents::AgentDrain,
-    ) -> Vec<&str> {
+    pub fn available_fallbacks_for_drain(&self, drain: crate::agents::AgentDrain) -> Vec<&str> {
         self.resolved_drain(drain)
             .map_or(&[][..], |binding| binding.agents.as_slice())
             .iter()

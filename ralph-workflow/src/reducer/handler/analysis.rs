@@ -122,7 +122,14 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
         // Invoke agent with analysis role
-        let mut result = self.invoke_agent(ctx, AgentRole::Analysis, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Analysis,
+            AgentRole::Analysis,
+            &agent,
+            None,
+            prompt,
+        )?;
 
         // Emit AnalysisAgentInvoked event if agent invocation succeeded
         if result.additional_events.iter().any(|e| {

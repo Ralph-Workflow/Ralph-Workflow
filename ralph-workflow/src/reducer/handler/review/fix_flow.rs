@@ -403,7 +403,14 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Reviewer, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Fix,
+            AgentRole::Reviewer,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

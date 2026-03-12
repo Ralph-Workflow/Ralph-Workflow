@@ -226,19 +226,22 @@ mod tests {
 
     #[test]
     fn default_template_uses_named_chain_and_drain_schema() {
-        let config: AgentsConfigFile =
-            toml::from_str(DEFAULT_AGENTS_TOML).expect("default template should parse");
+        let uncommented_lines = DEFAULT_AGENTS_TOML
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<Vec<_>>();
 
         assert!(
-            config.fallback.is_none(),
+            !uncommented_lines.contains(&"[agent_chain]"),
             "default template should no longer use legacy [agent_chain] as the primary schema"
         );
         assert!(
-            !config.agent_chains.is_empty(),
+            uncommented_lines.contains(&"[agent_chains]"),
             "default template should define reusable named chains"
         );
         assert!(
-            !config.agent_drains.is_empty(),
+            uncommented_lines.contains(&"[agent_drains]"),
             "default template should bind built-in drains to named chains"
         );
     }

@@ -17,6 +17,7 @@ impl MainEffectHandler {
     pub(super) fn invoke_agent(
         &self,
         ctx: &mut PhaseContext<'_>,
+        drain: AgentDrain,
         role: AgentRole,
         agent: &str,
         model: Option<&str>,
@@ -57,7 +58,8 @@ impl MainEffectHandler {
         } else {
             match &self.state.agent_chain.rate_limit_continuation_prompt {
                 Some(saved)
-                    if saved.role == role
+                    if saved.drain == drain
+                        && saved.role == role
                         && role != AgentRole::Analysis
                         && !self.state.continuation.xsd_retry_session_reuse_pending
                         && !super::retry_guidance::is_same_agent_retry_prompt(&prompt) =>
@@ -320,11 +322,11 @@ impl MainEffectHandler {
             }
         }
 
-        // Ensure rate_limit_continuation_prompt role matches current role.
-        // If they don't match, clear the continuation prompt to prevent cross-task
-        // contamination (e.g., a developer continuation prompt overriding an analysis prompt).
+        // Ensure rate_limit_continuation_prompt matches the active runtime drain.
+        // If it doesn't, clear the continuation prompt to prevent cross-task
+        // contamination (e.g., a review continuation prompt overriding a fix prompt).
         if let Some(ref continuation) = self.state.agent_chain.rate_limit_continuation_prompt {
-            if continuation.role != expected_role {
+            if continuation.drain != expected_drain || continuation.role != expected_role {
                 self.state.agent_chain.rate_limit_continuation_prompt = None;
             }
         }

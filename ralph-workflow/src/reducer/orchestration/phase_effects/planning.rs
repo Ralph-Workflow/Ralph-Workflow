@@ -4,7 +4,7 @@
 //!
 //! Planning phase workflow:
 //! 1. Save checkpoint at iteration 0 (after rebase completes)
-//! 2. Initialize agent chain (Developer role)
+//! 2. Initialize the planning drain chain
 //! 3. Ensure gitignore entries (.agent/, PROMPT*)
 //! 4. Cleanup context (remove old PLAN.md from previous iteration)
 //! 5. Materialize planning inputs (prompt template)

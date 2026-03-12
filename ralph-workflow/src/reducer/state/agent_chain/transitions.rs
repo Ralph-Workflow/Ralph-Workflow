@@ -242,6 +242,7 @@ impl AgentChainState {
             current_drain: base.current_drain,
             current_mode: base.current_mode,
             rate_limit_continuation_prompt: prompt.map(|p| RateLimitContinuationPrompt {
+                drain: base.current_drain,
                 role: base.current_role,
                 prompt: p,
             }),
@@ -271,8 +272,11 @@ impl AgentChainState {
             current_role: base.current_role,
             current_drain: base.current_drain,
             current_mode: base.current_mode,
-            rate_limit_continuation_prompt: prompt
-                .map(|p| RateLimitContinuationPrompt { role, prompt: p }),
+            rate_limit_continuation_prompt: prompt.map(|p| RateLimitContinuationPrompt {
+                drain: base.current_drain,
+                role,
+                prompt: p,
+            }),
             last_session_id: base.last_session_id,
         }
     }

@@ -353,6 +353,7 @@ fn test_rate_limit_fallback_preserves_prompt() {
             new_state.agent_chain.rate_limit_continuation_prompt,
             Some(
                 ralph_workflow::reducer::state::RateLimitContinuationPrompt {
+                    drain: ralph_workflow::agents::AgentDrain::Development,
                     role: AgentRole::Developer,
                     prompt: "continue this work".to_string(),
                 }

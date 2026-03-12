@@ -35,15 +35,16 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         },
         // Rate limit (429): immediate agent switch, preserve prompt context.
         AgentEvent::RateLimited {
-            role,
+            role: _,
             prompt_context,
             ..
         } => {
             let state = reset_phase_xml_cleanup_for_retry(state);
+            let active_role = state.agent_chain.current_drain.role();
             PipelineState {
                 agent_chain: state
                     .agent_chain
-                    .switch_to_next_agent_with_prompt_for_role(role, prompt_context)
+                    .switch_to_next_agent_with_prompt_for_role(active_role, prompt_context)
                     .clear_session_id()
                     .with_mode(DrainMode::Normal),
                 continuation: ContinuationState {
@@ -146,11 +147,12 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
         }
         AgentEvent::InvocationFailed {
             retriable: false,
-            role,
+            role: _,
             error_kind,
             ..
         } => {
             let state = reset_phase_xml_cleanup_for_retry(state);
+            let active_role = state.agent_chain.current_drain.role();
             match error_kind {
                 // Authentication and rate limit failures: immediate agent switch.
                 // These may arrive as InvocationFailed for legacy callers; prefer AuthFailed/RateLimited.
@@ -178,7 +180,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     // reusing stale prompt context on the next invocation.
                     agent_chain: state
                         .agent_chain
-                        .switch_to_next_agent_with_prompt_for_role(role, None)
+                        .switch_to_next_agent_with_prompt_for_role(active_role, None)
                         .clear_session_id()
                         .with_mode(DrainMode::Normal),
                     continuation: ContinuationState {

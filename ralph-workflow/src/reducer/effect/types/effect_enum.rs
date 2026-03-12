@@ -26,6 +26,10 @@ pub enum Effect {
         prompt: String,
     },
 
+    /// Resolve and materialize the concrete chain bound to a built-in runtime drain.
+    ///
+    /// The reducer/orchestrator addresses drains directly so handlers never need to
+    /// reconstruct chain selection from compatibility role metadata at invocation time.
     InitializeAgentChain {
         drain: AgentDrain,
     },

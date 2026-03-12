@@ -21,6 +21,7 @@ fn test_agent_invocation_started_preserves_agent_chain_indices() {
     agent_chain.retry_cycle = 2;
     agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         });
@@ -53,6 +54,7 @@ fn test_agent_invocation_started_preserves_agent_chain_indices() {
     assert_eq!(
         new_state.agent_chain.rate_limit_continuation_prompt,
         Some(crate::reducer::state::RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         })

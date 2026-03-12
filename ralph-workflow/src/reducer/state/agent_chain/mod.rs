@@ -89,6 +89,7 @@ pub struct AgentChainState {
 /// Role-scoped continuation prompt captured from a rate limit (429).
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct RateLimitContinuationPrompt {
+    pub drain: AgentDrain,
     pub role: AgentRole,
     pub prompt: String,
 }
@@ -97,7 +98,12 @@ pub struct RateLimitContinuationPrompt {
 #[serde(untagged)]
 enum RateLimitContinuationPromptRepr {
     LegacyString(String),
-    Structured { role: AgentRole, prompt: String },
+    Structured {
+        role: AgentRole,
+        #[serde(default)]
+        drain: Option<AgentDrain>,
+        prompt: String,
+    },
 }
 
 impl<'de> Deserialize<'de> for AgentChainState {
@@ -138,7 +144,7 @@ impl<'de> Deserialize<'de> for AgentChainState {
             raw.current_role
                 .map_or(default_current_drain(), AgentDrain::from)
         });
-        let current_role = raw.current_role.unwrap_or_else(|| current_drain.role());
+        let current_role = current_drain.role();
 
         let rate_limit_continuation_prompt = raw.rate_limit_continuation_prompt.map(|repr| {
             match repr {
@@ -146,13 +152,20 @@ impl<'de> Deserialize<'de> for AgentChainState {
                     // Legacy checkpoints stored only the prompt string. Scope it to the
                     // resolved drain role so resume can't cross-contaminate drains.
                     RateLimitContinuationPrompt {
+                        drain: current_drain,
                         role: current_role,
                         prompt,
                     }
                 }
-                RateLimitContinuationPromptRepr::Structured { role, prompt } => {
-                    RateLimitContinuationPrompt { role, prompt }
-                }
+                RateLimitContinuationPromptRepr::Structured {
+                    role,
+                    drain,
+                    prompt,
+                } => RateLimitContinuationPrompt {
+                    drain: drain.unwrap_or(current_drain),
+                    role,
+                    prompt,
+                },
             }
         });
 
@@ -494,6 +507,7 @@ mod legacy_rate_limit_prompt_tests {
         let prompt = decoded
             .rate_limit_continuation_prompt
             .expect("expected legacy prompt to deserialize");
+        assert_eq!(prompt.drain, AgentDrain::Review);
         assert_eq!(prompt.role, AgentRole::Reviewer);
         assert_eq!(prompt.prompt, "legacy prompt");
     }

@@ -147,6 +147,25 @@ fn test_checkpoint_replay_uses_current_role_when_current_drain_is_missing() {
     });
 }
 
+/// Test that stale compatibility role metadata is ignored when drain metadata is present.
+#[test]
+fn test_checkpoint_replay_derives_role_from_authoritative_drain_when_metadata_conflicts() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
+        state.phase = PipelinePhase::Review;
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Developer;
+
+        let json = serde_json::to_string(&state).expect("state should serialize");
+
+        let restored_state: PipelineState =
+            serde_json::from_str(&json).expect("checkpoint should deserialize");
+
+        assert_eq!(restored_state.agent_chain.current_drain, AgentDrain::Fix);
+        assert_eq!(restored_state.agent_chain.current_role, AgentRole::Reviewer);
+    });
+}
+
 /// Test that review completion with issues hands runtime ownership to the fix drain.
 #[test]
 fn test_review_completion_with_issues_switches_runtime_to_fix_drain() {
@@ -290,5 +309,75 @@ fn test_agents_config_file_loads_named_drain_schema() {
         assert_eq!(review.agents, vec!["claude"]);
         assert_eq!(fix.chain_name, "fix_chain");
         assert_eq!(fix.agents, vec!["codex"]);
+    });
+}
+
+/// Test that named-schema defaults prefer sibling drain bindings before compatibility names.
+#[test]
+fn test_named_schema_prefers_sibling_drains_for_commit_and_analysis_defaults() {
+    with_default_timeout(|| {
+        let config = ralph_workflow::config::UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("shared_dev".to_string(), vec!["codex".to_string()]),
+                ("shared_review".to_string(), vec!["claude".to_string()]),
+                (
+                    "developer".to_string(),
+                    vec!["legacy-dev".to_string(), "legacy-dev-2".to_string()],
+                ),
+                (
+                    "reviewer".to_string(),
+                    vec!["legacy-review".to_string(), "legacy-review-2".to_string()],
+                ),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("planning".to_string(), "shared_dev".to_string()),
+                ("development".to_string(), "shared_dev".to_string()),
+                ("review".to_string(), "shared_review".to_string()),
+                ("fix".to_string(), "shared_review".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let resolved = config
+            .resolve_agent_drains_checked()
+            .expect("drain defaults should resolve")
+            .expect("named drain config should resolve");
+
+        let commit = resolved
+            .binding(AgentDrain::Commit)
+            .expect("commit drain should resolve");
+        let analysis = resolved
+            .binding(AgentDrain::Analysis)
+            .expect("analysis drain should resolve");
+
+        assert_eq!(commit.chain_name, "shared_review");
+        assert_eq!(commit.agents, vec!["claude"]);
+        assert_eq!(analysis.chain_name, "shared_dev");
+        assert_eq!(analysis.agents, vec!["codex"]);
+    });
+}
+
+/// Test that the built-in default registry consumes the named chain + drain schema.
+#[test]
+fn test_registry_new_uses_default_named_drain_bindings() {
+    with_default_timeout(|| {
+        let registry = ralph_workflow::agents::AgentRegistry::new()
+            .expect("default registry should build from the embedded template");
+
+        let development = registry
+            .resolved_drain(AgentDrain::Development)
+            .expect("default development drain should resolve");
+        let review = registry
+            .resolved_drain(AgentDrain::Review)
+            .expect("default review drain should resolve");
+
+        assert!(
+            !development.agents.is_empty(),
+            "default named schema should populate development drain bindings"
+        );
+        assert!(
+            !review.agents.is_empty(),
+            "default named schema should populate review drain bindings"
+        );
     });
 }
