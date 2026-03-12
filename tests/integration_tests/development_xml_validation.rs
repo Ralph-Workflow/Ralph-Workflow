@@ -117,6 +117,60 @@ fn test_development_xml_valid_failed_status() {
     });
 }
 
+/// Test that continuation XML requires a blocker summary plus ordered recovery steps.
+#[test]
+fn test_continuation_development_xml_requires_recovery_only_contract() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan is not complete because the continuation prompt still allows file-bookkeeping sections.</ralph-summary>
+<ralph-next-steps>1. Remove file-bookkeeping from the continuation prompt.
+2. Re-run prompt and XML validation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Valid continuation XML should pass validation"
+        );
+
+        let elements = result.unwrap();
+        assert!(elements.is_partial());
+        assert!(elements.files_changed.is_none());
+        assert_eq!(
+            elements.next_steps,
+            Some(
+                "1. Remove file-bookkeeping from the continuation prompt.\n2. Re-run prompt and XML validation tests.\n3. Finish the remaining plan and run repository verification.".to_string()
+            )
+        );
+    });
+}
+
+/// Test that continuation XML rejects bookkeeping-heavy payloads.
+#[test]
+fn test_continuation_development_xml_rejects_files_changed() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>The full plan is not complete because clippy still fails.</ralph-summary>
+<ralph-files-changed>- src/main.rs</ralph-files-changed>
+<ralph-next-steps>1. Fix the clippy failure.
+2. Re-run focused tests.
+3. Complete the remaining plan.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject file bookkeeping"
+        );
+
+        let error = result.unwrap_err();
+        assert!(error.element_path.contains("ralph-files-changed"));
+    });
+}
+
 /// Test that invalid XML format produces specific XSD validation error.
 ///
 /// This verifies that when the development agent produces XML that fails

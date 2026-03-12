@@ -34,6 +34,8 @@ use std::path::PathBuf;
 const PLAN_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/plan.xsd");
 const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
     include_str!("../files/llm_output_extraction/development_result.xsd");
+const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
+    include_str!("../files/llm_output_extraction/development_continuation_result.xsd");
 const ISSUES_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/issues.xsd");
 const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../files/llm_output_extraction/fix_result.xsd");
 const COMMIT_MESSAGE_XSD_SCHEMA: &str =
@@ -258,6 +260,10 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
         (
             ".agent/tmp/development_result.xsd",
             DEVELOPMENT_RESULT_XSD_SCHEMA,
+        ),
+        (
+            ".agent/tmp/development_continuation_result.xsd",
+            DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA,
         ),
         (".agent/tmp/issues.xsd", ISSUES_XSD_SCHEMA),
         (".agent/tmp/fix_result.xsd", FIX_RESULT_XSD_SCHEMA),

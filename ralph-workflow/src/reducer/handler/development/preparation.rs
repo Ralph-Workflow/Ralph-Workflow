@@ -376,6 +376,7 @@ impl MainEffectHandler {
                     "XML output failed validation. Provide valid XML output.",
                     ctx.workspace,
                     "developer_iteration_xsd_retry",
+                    self.state.continuation.is_continuation(),
                 )
                 .content
             },
@@ -389,6 +390,7 @@ impl MainEffectHandler {
                 "XML output failed validation. Provide valid XML output.",
                 ctx.workspace,
                 "developer_iteration_xsd_retry",
+                self.state.continuation.is_continuation(),
             );
             if !rendered.log.is_complete() {
                 let missing = rendered.log.unsubstituted.clone();

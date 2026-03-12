@@ -301,12 +301,29 @@ fn test_continuation_prompt_includes_previous_context() {
             "Prompt should include previous summary"
         );
         assert!(
-            prompt.contains("src/lib.rs") && prompt.contains("src/main.rs"),
-            "Prompt should include changed files when provided"
-        );
-        assert!(
             prompt.contains("continuation 1 of"),
             "Prompt should include continuation progress label"
+        );
+        assert!(
+            prompt.contains("failed to fully complete the entire plan"),
+            "Prompt should frame continuation as incomplete whole-plan completion"
+        );
+        assert!(
+            prompt.contains("going beyond the plan is acceptable")
+                || prompt.contains("acceptable to do more than the minimum remaining plan work"),
+            "Prompt should explicitly allow going beyond the plan for more complete progress"
+        );
+        assert!(
+            prompt.contains("only recovery-critical information"),
+            "Prompt should explicitly restrict continuation context to recovery-critical information"
+        );
+        assert!(
+            !prompt.contains("src/lib.rs") && !prompt.contains("src/main.rs"),
+            "Prompt should avoid inlining previous file bookkeeping"
+        );
+        assert!(
+            !prompt.contains("Files changed in previous attempt:"),
+            "Prompt should avoid file-list sections in continuation context"
         );
     });
 }

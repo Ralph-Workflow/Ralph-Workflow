@@ -84,6 +84,7 @@ pub use xsd_validation_fix_result::FixResultElements;
 
 // Public exports for development result XML extraction and validation
 pub use xml_extraction_development_result::extract_development_result_xml;
+pub use xsd_validation_development_result::validate_continuation_development_result_xml;
 pub use xsd_validation_development_result::validate_development_result_xml;
 #[cfg(test)]
 pub use xsd_validation_development_result::DevelopmentResultElements;

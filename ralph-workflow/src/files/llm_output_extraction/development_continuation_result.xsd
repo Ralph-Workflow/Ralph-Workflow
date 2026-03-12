@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="TextWithCodeType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="code" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <xs:element name="ralph-development-result">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="ralph-status">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:enumeration value="partial"/>
+              <xs:enumeration value="failed"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="ralph-summary" type="TextWithCodeType"/>
+        <xs:element name="ralph-next-steps" type="TextWithCodeType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

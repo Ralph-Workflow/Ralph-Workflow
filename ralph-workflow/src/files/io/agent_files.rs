@@ -19,6 +19,8 @@ use super::{
 const PLAN_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/plan.xsd");
 const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
     include_str!("../llm_output_extraction/development_result.xsd");
+const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
+    include_str!("../llm_output_extraction/development_continuation_result.xsd");
 const ISSUES_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/issues.xsd");
 const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/fix_result.xsd");
 const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/commit_message.xsd");
@@ -272,6 +274,10 @@ pub fn setup_xsd_schemas_with_workspace(workspace: &dyn Workspace) -> io::Result
     workspace.write(
         &tmp_dir.join("development_result.xsd"),
         DEVELOPMENT_RESULT_XSD_SCHEMA,
+    )?;
+    workspace.write(
+        &tmp_dir.join("development_continuation_result.xsd"),
+        DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA,
     )?;
     workspace.write(&tmp_dir.join("issues.xsd"), ISSUES_XSD_SCHEMA)?;
     workspace.write(&tmp_dir.join("fix_result.xsd"), FIX_RESULT_XSD_SCHEMA)?;

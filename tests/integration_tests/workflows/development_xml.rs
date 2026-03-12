@@ -13,7 +13,8 @@
 //! - Tests behavior, not implementation details
 
 use ralph_workflow::files::llm_output_extraction::{
-    extract_development_result_xml, validate_development_result_xml,
+    extract_development_result_xml, validate_continuation_development_result_xml,
+    validate_development_result_xml,
 };
 
 use crate::test_timeout::with_default_timeout;
@@ -84,6 +85,34 @@ fn test_development_xml_valid_partial_status() {
             elements.next_steps,
             Some("Complete the remaining implementation tasks".to_string())
         );
+    });
+}
+
+/// Test that continuation extraction/validation keeps ordered recovery steps.
+#[test]
+fn test_continuation_development_xml_valid_partial_status() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan is not complete because continuation prompt tests still fail.</ralph-summary>
+<ralph-next-steps>1. Update the continuation prompt.
+2. Re-run prompt and XML tests.
+3. Finish the remaining plan and verify the repository.</ralph-next-steps>
+</ralph-development-result>";
+
+        let extracted = extract_development_result_xml(xml);
+        assert!(extracted.is_some(), "Should extract valid continuation XML");
+
+        let validated = validate_continuation_development_result_xml(&extracted.unwrap());
+        assert!(validated.is_ok(), "Should validate continuation XML");
+
+        let elements = validated.unwrap();
+        assert!(elements.is_partial());
+        assert!(elements.files_changed.is_none());
+        assert!(elements
+            .next_steps
+            .as_ref()
+            .is_some_and(|steps| steps.contains("1. Update the continuation prompt.")));
     });
 }
 
@@ -388,6 +417,31 @@ fn test_development_xml_with_all_optional_fields() {
         assert_eq!(
             elements.next_steps,
             Some("Run integration tests and deploy".to_string())
+        );
+    });
+}
+
+/// Test that continuation XML rejects bookkeeping-heavy optional fields.
+#[test]
+fn test_continuation_development_xml_rejects_bookkeeping_fields() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>The full plan is not complete because formatting still fails.</ralph-summary>
+<ralph-files-changed>- src/main.rs
+- src/lib.rs</ralph-files-changed>
+<ralph-next-steps>1. Fix formatting.
+2. Re-run focused validation tests.
+3. Finish the remaining plan.</ralph-next-steps>
+</ralph-development-result>";
+
+        let extracted = extract_development_result_xml(xml);
+        assert!(extracted.is_some(), "Should extract continuation XML");
+
+        let validated = validate_continuation_development_result_xml(&extracted.unwrap());
+        assert!(
+            validated.is_err(),
+            "Continuation validation should reject file bookkeeping"
         );
     });
 }

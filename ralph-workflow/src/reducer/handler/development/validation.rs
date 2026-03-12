@@ -102,7 +102,9 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
-        use crate::files::llm_output_extraction::validate_development_result_xml;
+        use crate::files::llm_output_extraction::{
+            validate_continuation_development_result_xml, validate_development_result_xml,
+        };
 
         let Ok(xml) = ctx
             .workspace
@@ -114,7 +116,13 @@ impl MainEffectHandler {
             ));
         };
 
-        match validate_development_result_xml(&xml) {
+        let validation_result = if self.state.continuation.is_continuation() {
+            validate_continuation_development_result_xml(&xml)
+        } else {
+            validate_development_result_xml(&xml)
+        };
+
+        match validation_result {
             Ok(elements) => {
                 let _ = ctx
                     .workspace

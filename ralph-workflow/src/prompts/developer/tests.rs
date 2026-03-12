@@ -351,6 +351,25 @@ fn test_context_based_uses_workspace_rooted_paths() {
         "plan",
     );
 
+    let xsd_retry_workspace = MemoryWorkspace::new_test().with_file(
+        ".agent/tmp/last_output.xml",
+        "<ralph-development-result><ralph-status>partial</ralph-status></ralph-development-result>",
+    );
+    let continuation_xsd_retry = prompt_developer_iteration_xsd_retry_with_context_files(
+        &context,
+        "Test error",
+        &xsd_retry_workspace,
+        true,
+    );
+    assert!(
+        continuation_xsd_retry.contains("development_continuation_result.xsd"),
+        "Continuation-mode XSD retry should point at the continuation schema"
+    );
+    assert!(
+        !continuation_xsd_retry.contains("Read .agent/tmp/development_result.xsd"),
+        "Continuation-mode XSD retry should not point at the generic development schema"
+    );
+
     // Both should contain the core content (PROMPT and PLAN)
     // The context-based version is designed to be the production API
     assert!(with_context_plan.contains("PLANNING MODE"));
@@ -675,12 +694,50 @@ fn test_continuation_prompt_contains_expected_elements() {
         "Prompt should include previous summary"
     );
     assert!(
-        prompt.contains("src/lib.rs") && prompt.contains("src/main.rs"),
-        "Prompt should include changed files when provided"
-    );
-    assert!(
         prompt.contains("Add tests for the new functionality"),
         "Prompt should include next steps when provided"
+    );
+    assert!(
+        prompt.contains("failed to fully complete the plan"),
+        "Continuation prompt should frame continuation as failure to fully complete the plan"
+    );
+    assert!(
+        prompt.contains("expected to fully complete the entire plan"),
+        "Continuation prompt should set full plan completion as the default expectation"
+    );
+    assert!(
+        prompt.contains("acceptable to do more than the minimum remaining plan work"),
+        "Continuation prompt should explicitly allow exceeding the minimum plan when that improves completion"
+    );
+    assert!(
+        prompt.contains("why the previous run did not fully complete the plan"),
+        "Continuation prompt should require a clear explanation for incomplete completion"
+    );
+    assert!(
+        prompt.contains("ordered, comprehensive checklist"),
+        "Continuation prompt should require an ordered checklist for recovery work"
+    );
+    assert!(
+        prompt.contains("only recovery-critical information"),
+        "Continuation prompt should explicitly limit context to recovery-critical information"
+    );
+    assert!(
+        prompt.contains("ordered, actionable checklist") && prompt.contains("remaining plan"),
+        "Continuation prompt should require an ordered actionable checklist for the remaining plan"
+    );
+    assert!(
+        prompt.contains("Do not use the continuation for file lists")
+            || prompt.contains("Do not use the continuation to list files"),
+        "Continuation prompt should explicitly reject file-list bookkeeping"
+    );
+    assert!(
+        prompt.contains("Do not use the continuation for activity summaries")
+            || prompt.contains("Do not use the continuation to narrate incidental activity"),
+        "Continuation prompt should explicitly reject activity-summary filler"
+    );
+    assert!(
+        prompt.contains("continuation is an exception path"),
+        "Continuation prompt should explicitly frame continuation as exceptional"
     );
     assert!(
         prompt.contains("continuation 1 of"),
@@ -700,6 +757,14 @@ fn test_continuation_prompt_contains_expected_elements() {
         prompt.contains("Do NOT write summaries")
             || prompt.contains("Do NOT attempt to communicate"),
         "Prompt should ban summary-style communication"
+    );
+    assert!(
+        !prompt.contains("Files changed in previous attempt:"),
+        "Continuation prompt should avoid centering file-list bookkeeping"
+    );
+    assert!(
+        !prompt.contains("src/lib.rs") && !prompt.contains("src/main.rs"),
+        "Continuation prompt should not inline previous file lists"
     );
 }
 
@@ -756,9 +821,52 @@ fn test_continuation_prompt_includes_verification_guidance() {
 }
 
 #[test]
+fn test_continuation_prompt_emphasizes_recovery_over_incidental_activity() {
+    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::workspace::MemoryWorkspace;
+
+    let workspace = MemoryWorkspace::new_test();
+    let context = TemplateContext::default();
+    let continuation_state = ContinuationState::new().trigger_continuation(
+        DevelopmentStatus::Failed,
+        "Compilation failed after only partially implementing the plan".to_string(),
+        Some(vec!["src/lib.rs".to_string(), "src/main.rs".to_string()]),
+        Some(
+            "1. Fix the compile errors\n2. Finish the remaining tests\n3. Re-run verification"
+                .to_string(),
+        ),
+    );
+
+    let prompt =
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+
+    assert!(
+        prompt.contains("Focus the continuation on recovery and completion"),
+        "Continuation prompt should center recovery/completion rather than narration"
+    );
+    assert!(
+        prompt.contains("Do not use the continuation to narrate incidental activity"),
+        "Continuation prompt should reject incidental activity summaries"
+    );
+    assert!(
+        prompt.contains(
+            "actionable and specific enough for the next run to continue without ambiguity"
+        ),
+        "Continuation prompt should require an actionable, ambiguity-free remaining-work checklist"
+    );
+    assert!(
+        prompt.contains("remaining work needed to finish the entire plan")
+            || prompt.contains("finish the entire remaining plan"),
+        "Continuation prompt should center the whole remaining plan, not a local next step"
+    );
+}
+
+#[test]
 fn test_continuation_prompt_includes_original_request_and_plan_sections() {
     use crate::reducer::state::{ContinuationState, DevelopmentStatus};
     use crate::workspace::MemoryWorkspace;
+    use std::fs;
+    use tempfile::tempdir;
 
     let workspace = MemoryWorkspace::new_test()
         .with_file("PROMPT.md", "Original request body")
@@ -789,6 +897,50 @@ fn test_continuation_prompt_includes_original_request_and_plan_sections() {
     assert!(
         prompt.contains("Implementation plan body"),
         "Continuation prompt should include plan content"
+    );
+
+    let template_dir = tempdir().expect("create temp template dir");
+    fs::write(
+        template_dir
+            .path()
+            .join("developer_iteration_continuation_xml.txt"),
+        "broken {{MISSING_VARIABLE}} template",
+    )
+    .expect("write broken continuation template");
+
+    let context = TemplateContext::from_user_templates_dir(Some(template_dir.path().to_path_buf()));
+    let continuation_state = ContinuationState::new().trigger_continuation(
+        DevelopmentStatus::Partial,
+        "Previous work summary".to_string(),
+        None,
+        Some("1. Finish the remaining work".to_string()),
+    );
+    let workspace = MemoryWorkspace::new_test()
+        .with_file("PROMPT.md", "Original request body")
+        .with_file(".agent/PLAN.md", "Implementation plan body");
+
+    let fallback_prompt =
+        prompt_developer_iteration_continuation_xml(&context, &continuation_state, &workspace);
+
+    assert!(
+        fallback_prompt.contains("ORIGINAL REQUEST"),
+        "Fallback continuation prompt should include ORIGINAL REQUEST section"
+    );
+    assert!(
+        fallback_prompt.contains("IMPLEMENTATION PLAN"),
+        "Fallback continuation prompt should include IMPLEMENTATION PLAN section"
+    );
+    assert!(
+        fallback_prompt.contains("Original request body"),
+        "Fallback continuation prompt should preserve prompt content"
+    );
+    assert!(
+        fallback_prompt.contains("Implementation plan body"),
+        "Fallback continuation prompt should preserve plan content"
+    );
+    assert!(
+        fallback_prompt.contains("Success means finishing the entire remaining plan to completion"),
+        "Fallback continuation prompt should preserve whole-plan completion framing"
     );
 }
 

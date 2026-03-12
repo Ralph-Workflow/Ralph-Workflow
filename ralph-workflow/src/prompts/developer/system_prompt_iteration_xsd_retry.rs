@@ -23,10 +23,16 @@ pub fn prompt_developer_iteration_xsd_retry_with_context(
     xsd_error: &str,
     last_output: &str,
     workspace: &dyn Workspace,
+    continuation_mode: bool,
 ) -> String {
     // Write context files to .agent/tmp/ for the agent to read
     write_dev_iteration_xsd_retry_files(workspace, last_output);
-    prompt_developer_iteration_xsd_retry_with_context_files(context, xsd_error, workspace)
+    prompt_developer_iteration_xsd_retry_with_context_files(
+        context,
+        xsd_error,
+        workspace,
+        continuation_mode,
+    )
 }
 
 /// Generate XSD validation retry prompt for developer iteration with error feedback.
@@ -40,6 +46,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     context: &TemplateContext,
     xsd_error: &str,
     workspace: &dyn Workspace,
+    continuation_mode: bool,
 ) -> String {
     use std::path::Path;
 
@@ -47,8 +54,14 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     // Ensure schema file exists; last_output.xml is expected to already be present.
     write_dev_iteration_xsd_retry_schema_files(workspace);
 
+    let schema_relative_path = if continuation_mode {
+        ".agent/tmp/development_continuation_result.xsd"
+    } else {
+        ".agent/tmp/development_result.xsd"
+    };
+
     // Check that required files exist
-    let schema_path = Path::new(".agent/tmp/development_result.xsd");
+    let schema_path = Path::new(schema_relative_path);
     let last_output_path = Path::new(".agent/tmp/last_output.xml");
 
     let schema_exists = workspace.exists(schema_path);
@@ -59,14 +72,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     if !schema_exists || !last_output_exists {
         diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
-            writeln!(diagnostic_prefix, "  - Schema file: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/development_result.xsd"),
-                workspace.root().display()).unwrap();
+            writeln!(
+                diagnostic_prefix,
+                "  - Schema file: {} (workspace.root() = {})",
+                workspace.absolute_str(schema_relative_path),
+                workspace.root().display()
+            )
+            .unwrap();
         }
         if !last_output_exists {
-            writeln!(diagnostic_prefix, "  - Last output: {} (workspace.root() = {})",
+            writeln!(
+                diagnostic_prefix,
+                "  - Last output: {} (workspace.root() = {})",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()).unwrap();
+                workspace.root().display()
+            )
+            .unwrap();
         }
         diagnostic_prefix
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
@@ -98,7 +119,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         ),
         (
             "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(".agent/tmp/development_result.xsd"),
+            workspace.absolute_str(schema_relative_path),
         ),
         (
             "LAST_OUTPUT_XML_PATH",
@@ -111,7 +132,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
         .unwrap_or_else(|_| {
             format!(
                 "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
-                 Read .agent/tmp/development_result.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
+                 Read {schema_relative_path} for the schema and .agent/tmp/last_output.xml for your previous output.\n\
                  Please resend your status in valid XML format conforming to the XSD schema.\n"
             )
         });
@@ -132,6 +153,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     xsd_error: &str,
     workspace: &dyn Workspace,
     template_name: &str,
+    continuation_mode: bool,
 ) -> crate::prompts::RenderedTemplate {
     use crate::prompts::{
         RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
@@ -142,8 +164,14 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     // Ensure schema file exists; last_output.xml is expected to already be present.
     write_dev_iteration_xsd_retry_schema_files(workspace);
 
+    let schema_relative_path = if continuation_mode {
+        ".agent/tmp/development_continuation_result.xsd"
+    } else {
+        ".agent/tmp/development_result.xsd"
+    };
+
     // Check that required files exist
-    let schema_path = Path::new(".agent/tmp/development_result.xsd");
+    let schema_path = Path::new(schema_relative_path);
     let last_output_path = Path::new(".agent/tmp/last_output.xml");
 
     let schema_exists = workspace.exists(schema_path);
@@ -154,14 +182,22 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     if !schema_exists || !last_output_exists {
         diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
-            writeln!(diagnostic_prefix, "  - Schema file: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/development_result.xsd"),
-                workspace.root().display()).unwrap();
+            writeln!(
+                diagnostic_prefix,
+                "  - Schema file: {} (workspace.root() = {})",
+                workspace.absolute_str(schema_relative_path),
+                workspace.root().display()
+            )
+            .unwrap();
         }
         if !last_output_exists {
-            writeln!(diagnostic_prefix, "  - Last output: {} (workspace.root() = {})",
+            writeln!(
+                diagnostic_prefix,
+                "  - Last output: {} (workspace.root() = {})",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()).unwrap();
+                workspace.root().display()
+            )
+            .unwrap();
         }
         diagnostic_prefix
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
@@ -204,7 +240,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
         ),
         (
             "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(".agent/tmp/development_result.xsd"),
+            workspace.absolute_str(schema_relative_path),
         ),
         (
             "LAST_OUTPUT_XML_PATH",
@@ -221,7 +257,7 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     } else {
         let prompt_content = format!(
             "Your previous development status failed XSD validation.\n\nError: {xsd_error}\n\n\
-             Read .agent/tmp/development_result.xsd for the schema and .agent/tmp/last_output.xml for your previous output.\n\
+             Read {schema_relative_path} for the schema and .agent/tmp/last_output.xml for your previous output.\n\
              Please resend your status in valid XML format conforming to the XSD schema.\n"
         );
         RenderedTemplate {

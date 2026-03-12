@@ -76,12 +76,14 @@ fn test_development_xsd_retry_detects_missing_files() {
             &template_context,
             "Test error",
             &workspace,
+            true,
         );
 
         // Verify: prompt indicates missing file AND includes workspace root
         assert!(
             prompt.contains("WARNING: Required XSD retry files are missing")
-                && prompt.contains("workspace.root()"),
+                && prompt.contains("workspace.root()")
+                && prompt.contains("development_continuation_result.xsd"),
             "Should detect missing schema AND include workspace root diagnostics. Got prompt: \n{prompt}"
         );
     });

@@ -10,7 +10,7 @@
 {#   DEVELOPMENT_RESULT_XSD_PATH   - Path to XSD schema                        #}
 {# ============================================================================ #}
 
-You are in IMPLEMENTATION MODE. Execute the plan and make progress.
+You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.
 
 {{> shared/_unattended_mode}}
 
@@ -40,18 +40,17 @@ COMMUNICATION BOUNDARY (CRITICAL):
 CONTINUATION CONTEXT
 ═══════════════════════════════════════════════════════════════════════════════
 
-This is {{CONTINUATION_PROGRESS}}. The previous attempt returned status "{{PREVIOUS_STATUS}}".
+This is {{CONTINUATION_PROGRESS}}. continuation is an exception path because the previous run failed to fully complete the plan and failed to fully complete the entire plan. The previous attempt returned status "{{PREVIOUS_STATUS}}".
 
-Previous attempt summary:
+The agent was expected to fully complete the entire plan. Success in this run means fully completing the entire remaining plan to completion, not merely advancing one local step or unblocking one area. It is acceptable to do more than the minimum remaining plan work, and going beyond the plan is acceptable when it produces more complete progress.
+
+Focus the continuation on recovery and completion. Include only recovery-critical information in the continuation result: why the previous run did not fully complete the plan and an ordered, comprehensive checklist for the remaining plan. Provide an ordered, actionable checklist for the remaining plan and the remaining work needed to finish the entire plan. The checklist must be actionable and specific enough for the next run to continue without ambiguity. Do not use the continuation for file lists, activity summaries, filler, or incidental narration. Do not use the continuation to narrate incidental activity.
+
+Blocker preventing full-plan completion:
 {{PREVIOUS_SUMMARY}}
 
-{% if PREVIOUS_FILES_CHANGED %}
-Files changed in previous attempt:
-{{PREVIOUS_FILES_CHANGED}}
-{% endif %}
-
 {% if PREVIOUS_NEXT_STEPS %}
-Recommended next steps from previous attempt:
+Ordered recovery checklist for the remaining plan:
 {{PREVIOUS_NEXT_STEPS}}
 {% endif %}
 
