@@ -340,7 +340,7 @@ fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
 
 #[test]
 fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
-    let config = UnifiedConfig {
+    let inherited_config = UnifiedConfig {
         agent_chain: Some(crate::agents::fallback::FallbackConfig {
             provider_fallback: std::collections::HashMap::from([(
                 "opencode".to_string(),
@@ -372,7 +372,7 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
         ..Default::default()
     };
 
-    let resolved = config
+    let resolved = inherited_config
         .resolve_agent_drains_checked()
         .expect("drain defaults should derive from existing bound drains")
         .expect("named drain config should resolve");
@@ -397,6 +397,88 @@ fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drai
         resolved.provider_fallback.get("opencode"),
         Some(&vec!["-m opencode/glm-4.7-free".to_string()])
     );
+
+    let preferred_named_config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+            ("commit".to_string(), vec!["aider".to_string()]),
+            ("analysis".to_string(), vec!["gemini".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("development".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = preferred_named_config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should resolve")
+        .expect("named drain config should resolve");
+
+    let analysis = resolved
+        .binding(crate::agents::AgentDrain::Analysis)
+        .expect("analysis drain should resolve");
+    let commit = resolved
+        .binding(crate::agents::AgentDrain::Commit)
+        .expect("commit drain should resolve");
+
+    assert_eq!(analysis.chain_name, "analysis");
+    assert_eq!(analysis.agents, vec!["gemini"]);
+    assert_eq!(commit.chain_name, "commit");
+    assert_eq!(commit.agents, vec!["aider"]);
+
+    let sibling_preferred_over_legacy_role_config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+            (
+                "developer".to_string(),
+                vec!["legacy-dev".to_string(), "legacy-dev-2".to_string()],
+            ),
+            (
+                "reviewer".to_string(),
+                vec!["legacy-review".to_string(), "legacy-review-2".to_string()],
+            ),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = sibling_preferred_over_legacy_role_config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should resolve")
+        .expect("named drain config should resolve");
+
+    let development = resolved
+        .binding(crate::agents::AgentDrain::Development)
+        .expect("development drain should resolve");
+    let fix = resolved
+        .binding(crate::agents::AgentDrain::Fix)
+        .expect("fix drain should resolve");
+
+    assert_eq!(development.chain_name, "shared_dev");
+    assert_eq!(development.agents, vec!["codex", "claude"]);
+    assert_eq!(fix.chain_name, "shared_review");
+    assert_eq!(fix.agents, vec!["claude", "opencode"]);
 }
 
 #[test]

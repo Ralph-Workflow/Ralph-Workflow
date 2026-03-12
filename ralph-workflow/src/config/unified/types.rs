@@ -529,34 +529,51 @@ fn default_chain_binding_for_drain(
     bindings: &HashMap<AgentDrain, ResolvedDrainBinding>,
     drain: AgentDrain,
 ) -> Option<ResolvedDrainBinding> {
+    let explicit_drain_binding = drain_specific_chain_names_for_drain(drain)
+        .iter()
+        .find_map(|&chain_name| resolve_named_chain_binding(config, chain_name));
+
     let sibling_binding = fallback_source_drains_for_drain(drain)
         .iter()
         .find_map(|source| bindings.get(source).cloned());
 
-    let compatibility_binding =
-        preferred_chain_names_for_drain(drain)
-            .iter()
-            .find_map(|&chain_name| {
-                config
-                    .agent_chains
-                    .get(chain_name)
-                    .map(|agents| ResolvedDrainBinding {
-                        chain_name: chain_name.to_string(),
-                        agents: agents.clone(),
-                    })
-            });
+    let legacy_role_binding = legacy_role_chain_names_for_drain(drain)
+        .iter()
+        .find_map(|&chain_name| resolve_named_chain_binding(config, chain_name));
 
-    sibling_binding.or(compatibility_binding)
+    explicit_drain_binding
+        .or(sibling_binding)
+        .or(legacy_role_binding)
 }
 
-const fn preferred_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {
+fn resolve_named_chain_binding(
+    config: &UnifiedConfig,
+    chain_name: &str,
+) -> Option<ResolvedDrainBinding> {
+    config
+        .agent_chains
+        .get(chain_name)
+        .map(|agents| ResolvedDrainBinding {
+            chain_name: chain_name.to_string(),
+            agents: agents.clone(),
+        })
+}
+
+const fn drain_specific_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {
     match drain {
-        AgentDrain::Planning => &["planning", "developer"],
-        AgentDrain::Development => &["development", "developer"],
-        AgentDrain::Review => &["review", "reviewer"],
-        AgentDrain::Fix => &["fix", "reviewer"],
-        AgentDrain::Commit => &["commit", "reviewer"],
-        AgentDrain::Analysis => &["analysis", "developer"],
+        AgentDrain::Planning => &["planning"],
+        AgentDrain::Development => &["development"],
+        AgentDrain::Review => &["review"],
+        AgentDrain::Fix => &["fix"],
+        AgentDrain::Commit => &["commit"],
+        AgentDrain::Analysis => &["analysis"],
+    }
+}
+
+const fn legacy_role_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {
+    match drain {
+        AgentDrain::Planning | AgentDrain::Development | AgentDrain::Analysis => &["developer"],
+        AgentDrain::Review | AgentDrain::Fix | AgentDrain::Commit => &["reviewer"],
     }
 }
 
