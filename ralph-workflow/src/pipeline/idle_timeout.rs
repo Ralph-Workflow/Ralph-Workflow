@@ -28,6 +28,16 @@
 //! output but are actively writing files, which is common during planning,
 //! commit message generation, and other file-intensive phases.
 //!
+//! 3. **Child-Process Activity**: Descendant processes only suppress an idle
+//!    timeout when the current idle spell contains fresh cross-poll evidence of
+//!    relevant child work. A first active snapshot earns a one-poll startup
+//!    grace so new subprocess work can be confirmed, but continued suppression
+//!    requires the same descendant subtree to keep advancing. Mere descendant
+//!    existence, historical CPU usage, or an "active-looking" snapshot that no
+//!    longer changes is not enough. If child work goes stale, exits, detaches,
+//!    or is replaced without showing fresh current activity, the monitor resumes
+//!    normal idle-timeout enforcement.
+//!
 //! # Timeout Value
 //!
 //! The default timeout is 5 minutes (300 seconds), which is:
@@ -62,6 +72,9 @@
 //! output activity, file activity, or both. This helps users understand
 //! whether the agent was truly stuck or if the timeout threshold needs
 //! adjustment.
+//! When child processes keep a run alive, observability also distinguishes
+//! currently active child work from timeouts that happened while stalled
+//! children were still present.
 
 mod clock;
 mod file_activity;

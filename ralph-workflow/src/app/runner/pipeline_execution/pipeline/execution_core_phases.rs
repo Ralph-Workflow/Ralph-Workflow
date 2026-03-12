@@ -22,6 +22,10 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
             .warn(&format!("Failed to create agent phase marker: {err}"));
     }
 
+    if crate::interrupt::is_user_interrupt_requested() {
+        return;
+    }
+
     // Clean up orphaned wrapper temp dir from a prior crashed run (SIGKILL scenario).
     crate::git_helpers::cleanup_orphaned_wrapper_at(&ctx.repo_root);
 
@@ -38,6 +42,10 @@ fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpe
             ctx.logger
                 .warn(&format!("Startup hook cleanup warning: {err}"));
         }
+    }
+
+    if crate::interrupt::is_user_interrupt_requested() {
+        return;
     }
 
     if let Err(err) = crate::git_helpers::start_agent_phase_in_repo(&ctx.repo_root, git_helpers) {

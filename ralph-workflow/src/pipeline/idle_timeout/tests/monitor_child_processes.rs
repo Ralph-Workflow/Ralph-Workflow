@@ -12,7 +12,7 @@ use crate::executor::{AgentChild, ChildProcessInfo, MockAgentChild, MockProcessE
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn wait_until_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout: Duration) {
     timestamp.store(0, Ordering::Release);
@@ -30,6 +30,17 @@ fn fast_kill_config() -> KillConfig {
         Duration::from_millis(50),
         Duration::from_millis(10),
     )
+}
+
+fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if predicate() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    predicate()
 }
 
 /// When the agent has active child processes with advancing CPU time,
@@ -196,6 +207,7 @@ fn child_processes_that_finish_eventually_allow_kill() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 1,
             cpu_time_ms: 100,
             descendant_pid_signature: 11,
         },
@@ -284,6 +296,7 @@ fn stalled_children_allow_idle_kill() {
             child_pid,
             ChildProcessInfo {
                 child_count: 2,
+                active_child_count: 0,
                 cpu_time_ms: 5000,
                 descendant_pid_signature: 22,
             },
@@ -329,19 +342,26 @@ fn children_transition_active_to_stalled_allows_kill() {
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 0,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     // Advance CPU time for a short period, then stop.
+    let cpu_advancer_executor = executor_impl.clone();
     let cpu_advancer = thread::spawn(move || {
-        let cpu_advancer_executor = executor_impl;
         let mut cpu_ms = 0u64;
         for _ in 0..10 {
             cpu_ms += 100;
             cpu_advancer_executor.set_child_cpu_time(child_pid, cpu_ms);
             thread::sleep(Duration::from_millis(2));
         }
-        // Stop advancing — children are now stalled.
     });
 
     let config = MonitorConfig {
@@ -364,6 +384,15 @@ fn children_transition_active_to_stalled_allows_kill() {
     });
 
     cpu_advancer.join().expect("cpu advancer panicked");
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 1000,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    );
 
     // After CPU stops advancing, the monitor should eventually kill.
     let result = handle.join().expect("monitor thread panicked");
@@ -373,27 +402,80 @@ fn children_transition_active_to_stalled_allows_kill() {
     );
 }
 
-/// Even if CPU time is 0, the first observation of children should grant
-/// grace (not count as stalled) because the process may have just started.
+/// A child that keeps reporting itself as currently active without any new CPU
+/// progress must not suppress idle timeout forever.
 #[test]
-fn first_child_observation_grants_grace() {
+fn repeated_active_snapshot_without_fresh_progress_allows_kill() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> =
+        Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 1,
+                cpu_time_ms: 4_200,
+                descendant_pid_signature: 91,
+            },
+        ));
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::ZERO,
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 2,
+        check_child_processes: true,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop,
+        &executor,
+        config,
+    );
+
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "repeated active snapshots without fresh child progress must not suppress idle timeout"
+    );
+}
+
+/// Mere descendant existence must not earn startup grace.
+#[test]
+fn first_child_observation_without_current_activity_times_out_immediately() {
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let (mock_child, controller) = MockAgentChild::new_running(0);
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    // Children with 0 CPU time (just spawned).
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    // Children with 0 CPU time (just spawned, no current activity evidence yet).
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 0,
+            descendant_pid_signature: u64::from(child_pid),
+        },
+    ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        // Use a longer check interval so we can verify the first check grants grace.
         check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
@@ -411,48 +493,51 @@ fn first_child_observation_grants_grace() {
         )
     });
 
-    // After the first check (which should grant grace), verify no kill yet.
-    // The check_interval is 20ms, so after 25ms we should have had the first
-    // check pass (grace) and possibly be in the second check.
-    thread::sleep(Duration::from_millis(25));
+    thread::sleep(Duration::from_millis(30));
     assert!(
-        executor_impl.execute_calls_for("kill").is_empty(),
-        "first observation of children should grant grace even with 0 CPU time"
+        !executor_impl.execute_calls_for("kill").is_empty(),
+        "timeout enforcement should start on the first idle check when descendants are not currently active"
     );
+    controller.store(false, Ordering::Release);
+    should_stop.store(true, Ordering::Release);
 
-    // The second check will see unchanged CPU time (still 0) and treat as idle.
-    // With required_idle_confirmations=1, it will kill after one stalled observation.
-    // Wait for the monitor to finish (it should kill on the second check).
     let result = handle.join().expect("monitor thread panicked");
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
-        "second observation with unchanged CPU should allow kill"
+        "non-active descendants should not delay timeout on their first observation"
     );
 }
 
-/// When children disappear and reappear, the CPU time tracking resets.
-/// The reappearing children get the first-observation grace again.
+/// A child-free gap creates a brand-new idle-timeout child spell. The first
+/// active child observed after that gap must get one startup-confirmation poll.
 #[test]
-fn children_disappearing_and_reappearing_resets_tracking() {
+fn active_children_after_child_free_gap_get_startup_grace_again() {
     let timestamp = new_activity_timestamp();
     wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
 
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let (mock_child, controller) = MockAgentChild::new_running(0);
     let child_pid = mock_child.id();
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
-    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_for(child_pid));
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 100,
+            descendant_pid_signature: 11,
+        },
+    ));
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(5),
+        check_interval: Duration::from_millis(1),
         kill_config: fast_kill_config(),
-        // Require 3 confirmations so we have time for the remove/re-add cycle.
-        required_idle_confirmations: 3,
+        required_idle_confirmations: 2,
         check_child_processes: true,
     };
 
@@ -467,32 +552,56 @@ fn children_disappearing_and_reappearing_resets_tracking() {
         )
     });
 
-    // Let the first observation grant grace, then children stall for one check.
-    thread::sleep(Duration::from_millis(15));
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 1
+        }),
+        "monitor should observe the initial active child"
+    );
 
-    // Remove children (simulates subprocess completing).
-    // This resets the last child observation in the monitor.
     executor_impl.remove_active_children_for(child_pid);
-    thread::sleep(Duration::from_millis(10));
 
-    // Re-add children (simulates a new subprocess spawning). The monitor's
-    // there is no previous child observation, so the first observation of the new
-    // children grants grace again (idle counter resets).
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 2
+        }),
+        "monitor should observe the child-free gap before children reappear"
+    );
+
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 1,
             cpu_time_ms: 0,
-            descendant_pid_signature: 33,
+            descendant_pid_signature: 22,
         },
     );
-    // Grace observation happens on next check. After that, CPU stays at 0
-    // (stalled), so idle confirmations accumulate → eventually kill.
+
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 3
+                || !executor_impl.execute_calls_for("kill").is_empty()
+        }),
+        "monitor should observe the reappeared child or attempt a kill"
+    );
+    assert!(
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "a newly active child after a child-free gap should get a fresh startup grace instead of timing out immediately"
+    );
+
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            !executor_impl.execute_calls_for("kill").is_empty()
+        }),
+        "after the replacement grace poll expires without fresh progress, timeout enforcement should resume"
+    );
+    controller.store(false, Ordering::Release);
 
     let result = handle.join().expect("monitor thread panicked");
     assert!(
         matches!(result, MonitorResult::TimedOut { .. }),
-        "monitor should kill after re-appeared children stall"
+        "monitor should time out after the replacement child also goes stale"
     );
 }
 
@@ -515,6 +624,7 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
         child_pid,
         ChildProcessInfo {
             child_count: 1,
+            active_child_count: 0,
             cpu_time_ms: 5_000,
             descendant_pid_signature: 101,
         },
@@ -523,7 +633,90 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(40),
+        check_interval: Duration::from_millis(1),
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 2,
+        check_child_processes: true,
+    };
+
+    let handle = thread::spawn(move || {
+        monitor_idle_timeout_with_interval_and_kill_config(
+            &timestamp,
+            None,
+            &child,
+            &should_stop_clone,
+            &executor,
+            config,
+        )
+    });
+
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            executor_impl.child_info_query_count_for(child_pid) >= 1
+        }),
+        "monitor should record the initial stalled child observation"
+    );
+    assert!(
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "one stalled observation should only consume the first idle confirmation"
+    );
+
+    executor_impl.add_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 100,
+            descendant_pid_signature: 202,
+        },
+    );
+
+    assert!(
+        wait_until(Duration::from_millis(200), || {
+            !executor_impl.execute_calls_for("kill").is_empty()
+        }),
+        "replacement child subtree should reach timeout enforcement on the next idle check"
+    );
+    assert!(
+        !executor_impl.execute_calls_for("kill").is_empty(),
+        "replacement child subtree should not suppress timeout until it shows CPU advancement"
+    );
+
+    let result = handle.join().expect("monitor thread panicked");
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "monitor should time out when replacement children never advance CPU"
+    );
+}
+
+/// Active replacement descendants that keep working between polls must still
+/// suppress timeout even if the descendant PID set churns.
+#[test]
+fn active_replacement_child_subtree_with_new_signature_still_counts_as_fresh_work() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let should_stop_clone = Arc::clone(&should_stop);
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+        child_pid,
+        ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 500,
+            descendant_pid_signature: 101,
+        },
+    ));
+    let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::from_millis(25),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 1,
         check_child_processes: true,
@@ -540,30 +733,29 @@ fn replacement_child_subtree_must_advance_cpu_before_suppressing_timeout() {
         )
     });
 
-    // First poll sees the original subtree and grants the initial observation grace.
-    thread::sleep(Duration::from_millis(50));
-
+    thread::sleep(Duration::from_millis(35));
     executor_impl.add_active_children_info(
         child_pid,
         ChildProcessInfo {
             child_count: 1,
-            cpu_time_ms: 100,
+            active_child_count: 1,
+            cpu_time_ms: 50,
             descendant_pid_signature: 202,
         },
     );
 
-    // The replacement subtree has never shown CPU advancement, so the second poll
-    // should still proceed to timeout enforcement instead of resetting idle state.
-    thread::sleep(Duration::from_millis(55));
+    thread::sleep(Duration::from_millis(35));
     assert!(
-        !executor_impl.execute_calls_for("kill").is_empty(),
-        "replacement child subtree should not suppress timeout until it shows CPU advancement"
+        executor_impl.execute_calls_for("kill").is_empty(),
+        "freshly active replacement descendants should keep the monitor alive even when their PID signature changes"
     );
 
+    should_stop.store(true, Ordering::Release);
     let result = handle.join().expect("monitor thread panicked");
-    assert!(
-        matches!(result, MonitorResult::TimedOut { .. }),
-        "monitor should time out when replacement children never advance CPU"
+    assert_eq!(
+        result,
+        MonitorResult::ProcessCompleted,
+        "active replacement descendants should continue suppressing idle timeout"
     );
 }
 
@@ -585,6 +777,7 @@ fn timeout_with_stalled_children_reports_child_status() {
             child_pid,
             ChildProcessInfo {
                 child_count: 3,
+                active_child_count: 0,
                 cpu_time_ms: 7500,
                 descendant_pid_signature: 44,
             },

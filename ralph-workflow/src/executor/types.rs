@@ -103,17 +103,22 @@ impl AgentChild for RealAgentChild {
 /// Information about child processes of a given parent.
 ///
 /// Used by the idle-timeout monitor to determine whether child processes
-/// are actively working (CPU time advancing) versus merely existing
-/// (stalled, zombie, or idle daemon).
+/// are currently active versus merely present but stalled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChildProcessInfo {
     /// Number of live child processes found.
     pub child_count: u32,
+    /// Number of descendants that are currently in an active process state.
+    ///
+    /// This counts descendants that are actively running or blocked in a
+    /// state that still indicates current work, rather than merely sleeping
+    /// with historical CPU usage.
+    #[serde(default)]
+    pub active_child_count: u32,
     /// Cumulative CPU time in milliseconds across all child processes.
     ///
-    /// The monitor compares this value across consecutive checks:
-    /// - If `cpu_time_ms` advances between checks, children are actively working.
-    /// - If `cpu_time_ms` is unchanged, children exist but are idle/stalled.
+    /// This remains useful for observability when child work is present but no
+    /// longer current enough to suppress the idle timeout.
     pub cpu_time_ms: u64,
     /// Deterministic signature of the current descendant PID set.
     ///
@@ -128,6 +133,7 @@ impl ChildProcessInfo {
     /// No child processes found.
     pub const NONE: Self = Self {
         child_count: 0,
+        active_child_count: 0,
         cpu_time_ms: 0,
         descendant_pid_signature: 0,
     };
@@ -136,6 +142,31 @@ impl ChildProcessInfo {
     #[must_use]
     pub const fn has_children(&self) -> bool {
         self.child_count > 0
+    }
+
+    /// Whether any child processes are currently active enough to suppress timeout.
+    #[must_use]
+    pub const fn has_currently_active_children(&self) -> bool {
+        self.active_child_count > 0
+    }
+
+    /// Whether descendants are still observable but no longer show current work.
+    #[must_use]
+    pub const fn has_stalled_children(&self) -> bool {
+        self.has_children() && !self.has_currently_active_children()
+    }
+
+    /// Whether the latest snapshot proves fresh current work relative to a
+    /// previous observation.
+    ///
+    /// Fresh work can show up either as additional CPU time from the same
+    /// descendant set or as a still-active replacement descendant set, which is
+    /// common for shells and build tools that churn worker PIDs between polls.
+    #[must_use]
+    pub const fn shows_fresh_progress_since(&self, previous: Self) -> bool {
+        self.has_currently_active_children()
+            && (self.cpu_time_ms > previous.cpu_time_ms
+                || self.descendant_pid_signature != previous.descendant_pid_signature)
     }
 }
 
@@ -178,6 +209,7 @@ mod tests {
     fn child_process_info_serde_round_trip() {
         let info = ChildProcessInfo {
             child_count: 3,
+            active_child_count: 2,
             cpu_time_ms: 42000,
             descendant_pid_signature: 12345,
         };
@@ -192,5 +224,64 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         let restored: ChildProcessInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(info, restored);
+    }
+
+    #[test]
+    fn child_process_info_distinguishes_stalled_children_from_current_work() {
+        let stalled = ChildProcessInfo {
+            child_count: 2,
+            active_child_count: 0,
+            cpu_time_ms: 4200,
+            descendant_pid_signature: 99,
+        };
+        let active = ChildProcessInfo {
+            child_count: 2,
+            active_child_count: 1,
+            cpu_time_ms: 4200,
+            descendant_pid_signature: 99,
+        };
+
+        assert!(stalled.has_stalled_children());
+        assert!(!active.has_stalled_children());
+        assert!(!ChildProcessInfo::NONE.has_stalled_children());
+    }
+
+    #[test]
+    fn child_process_info_requires_same_subtree_and_cpu_growth_for_fresh_progress() {
+        let previous = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 200,
+            descendant_pid_signature: 7,
+        };
+        let fresh = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 300,
+            descendant_pid_signature: 7,
+        };
+        let stale = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 200,
+            descendant_pid_signature: 7,
+        };
+        let replaced = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 400,
+            descendant_pid_signature: 8,
+        };
+        let replaced_without_current_activity = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 0,
+            cpu_time_ms: 450,
+            descendant_pid_signature: 9,
+        };
+
+        assert!(fresh.shows_fresh_progress_since(previous));
+        assert!(!stale.shows_fresh_progress_since(previous));
+        assert!(replaced.shows_fresh_progress_since(previous));
+        assert!(!replaced_without_current_activity.shows_fresh_progress_since(previous));
     }
 }

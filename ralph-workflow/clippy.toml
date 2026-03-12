@@ -3,11 +3,12 @@
 
 too-many-lines-threshold = 500
 max-struct-bools = 32
-# ~644KB stack frame detected in test code (clippy emits no source location
+# ~652KB stack frame detected in test code (clippy emits no source location
 # for large_stack_frames/large_stack_arrays when the function is generated
 # by macro expansion - known clippy limitation).
 # Threshold raised incrementally as test suites grow (more TestDescAndFn entries).
-# Last raised after adding drain-architecture regression coverage, which pushed
-# the generated lib-test harness just over the previous threshold.
-stack-size-threshold = 651000
+# Last raised after additional git helper/worktree coverage pushed the
+# generated lib-test harness slightly above the previous limit, and the
+# current lib-test frame now measures 655992 bytes during verification.
+stack-size-threshold = 656000
 array-size-threshold = 65536

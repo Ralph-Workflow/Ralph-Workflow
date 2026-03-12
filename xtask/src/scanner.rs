@@ -17,6 +17,8 @@ use std::sync::{
     OnceLock,
 };
 
+const TRANSIENT_FRONTEND_EXCLUDE_GLOBS: &[&str] = &["**/node_modules/**", "**/dist/**"];
+
 /// Matching strategy for a native scan check.
 ///
 /// This is a `const`-constructible enum so `NativeScanCheck` instances can
@@ -416,9 +418,10 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             "tests",
             "xtask/src",
             "test-helpers/src",
+            "ralph-gui",
         ],
         include_glob: "*.rs",
-        exclude_globs: &[],
+        exclude_globs: TRANSIENT_FRONTEND_EXCLUDE_GLOBS,
         mode: MatchMode::AnyLiteralAtLineStart {
             skip_comment_lines: true,
         },
@@ -615,7 +618,12 @@ fn collect_scan_groups(repo_root: &Path, checks: &[NativeScanCheck]) -> ScanGrou
         for dir in check.directories {
             let full_dir = repo_root.join(dir);
             if full_dir.exists() {
-                match collect_files_with_glob(&full_dir, check.include_glob, &mut files) {
+                match collect_files_with_glob_excluding(
+                    &full_dir,
+                    check.include_glob,
+                    check.exclude_globs,
+                    &mut files,
+                ) {
                     Ok(()) => {}
                     Err(e) => {
                         let msg = format!("read_dir error for {}: {e}", full_dir.display());
@@ -692,7 +700,14 @@ fn scan_read_worker_count(len: usize) -> usize {
 fn directory_group_key(check: &NativeScanCheck) -> String {
     let mut dirs: Vec<&str> = check.directories.to_vec();
     dirs.sort_unstable();
-    format!("{}:{}", dirs.join(","), check.include_glob)
+    let mut excludes: Vec<&str> = check.exclude_globs.to_vec();
+    excludes.sort_unstable();
+    format!(
+        "{}:{}:{}",
+        dirs.join(","),
+        check.include_glob,
+        excludes.join(",")
+    )
 }
 
 /// Scan one directory group: search all pre-collected files, demultiplex matches.
@@ -893,12 +908,24 @@ pub(crate) fn collect_files_with_glob(
     include_glob: &str,
     files: &mut Vec<PathBuf>,
 ) -> std::io::Result<()> {
+    collect_files_with_glob_excluding(dir, include_glob, &[], files)
+}
+
+pub(crate) fn collect_files_with_glob_excluding(
+    dir: &Path,
+    include_glob: &str,
+    exclude_globs: &[&str],
+    files: &mut Vec<PathBuf>,
+) -> std::io::Result<()> {
     let entries = std::fs::read_dir(dir)?;
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
+        if file_is_excluded(&path, exclude_globs) {
+            continue;
+        }
         if path.is_dir() {
-            collect_files_with_glob(&path, include_glob, files)?;
+            collect_files_with_glob_excluding(&path, include_glob, exclude_globs, files)?;
         } else if file_matches_include_glob(&path, include_glob) {
             files.push(path);
         }
@@ -908,6 +935,9 @@ pub(crate) fn collect_files_with_glob(
 }
 
 fn file_matches_include_glob(path: &Path, glob: &str) -> bool {
+    if glob == "*" {
+        return path.is_file();
+    }
     if let Some(ext_pattern) = glob.strip_prefix("*.") {
         return path.extension().and_then(|e| e.to_str()) == Some(ext_pattern);
     }
@@ -2640,6 +2670,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_forbidden_allow_expect_scan_covers_gui_rust() {
+        let check = NATIVE_SCAN_CHECKS
+            .iter()
+            .find(|check| check.name == "forbidden-allow-expect-scan")
+            .expect("forbidden-allow-expect-scan must be present");
+
+        assert!(
+            check.directories.contains(&"test-helpers/src"),
+            "forbidden-allow-expect-scan must cover test-helpers/src"
+        );
+        assert!(
+            check.directories.contains(&"ralph-gui"),
+            "forbidden-allow-expect-scan must cover ralph-gui so GUI Rust files are scanned"
+        );
+        assert!(
+            check.exclude_globs.contains(&"**/node_modules/**"),
+            "forbidden-allow-expect-scan must exclude transient node_modules trees"
+        );
+        assert!(
+            check.exclude_globs.contains(&"**/dist/**"),
+            "forbidden-allow-expect-scan must exclude transient frontend build outputs"
+        );
+    }
+
     // ── NATIVE_SCAN_CHECKS sanity ─────────────────────────────────────────────
 
     #[test]
@@ -3554,6 +3609,65 @@ mod tests {
             groups.len(),
             2,
             "two checks with different directories must produce two groups"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_collect_scan_groups_skips_excluded_transient_frontend_directories() {
+        let dir = make_temp_dir("collect-groups-skip-transient-frontend");
+        write_file(&dir, "ralph-gui/build.rs", "fn main() {}\n");
+        write_file(&dir, "ralph-gui/src/lib.rs", "pub fn gui() {}\n");
+        write_file(
+            &dir,
+            "ralph-gui/ui/node_modules/pkg/index.rs",
+            "#[allow(clippy::all)]\n",
+        );
+        write_file(
+            &dir,
+            "ralph-gui/ui/dist/generated.rs",
+            "#[allow(clippy::all)]\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow("],
+            directories: &["ralph-gui"],
+            include_glob: "*.rs",
+            exclude_globs: &["**/node_modules/**", "**/dist/**"],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let groups = collect_scan_groups(&dir, &[check]);
+        let (_, (_, result)) = groups.into_iter().next().unwrap();
+        let files = result.expect("traversal must succeed");
+
+        assert!(
+            files
+                .iter()
+                .all(|path| !path.to_string_lossy().contains("node_modules")),
+            "excluded node_modules files must not be traversed: {files:?}"
+        );
+        assert!(
+            files
+                .iter()
+                .all(|path| !path.to_string_lossy().contains("/dist/")),
+            "excluded dist files must not be traversed: {files:?}"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|path| path.ends_with(Path::new("ralph-gui/build.rs"))),
+            "stable Rust-owned build.rs must still be scanned"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|path| path.ends_with(Path::new("ralph-gui/src/lib.rs"))),
+            "stable GUI Rust sources must still be scanned"
         );
 
         let _ = fs::remove_dir_all(&dir);

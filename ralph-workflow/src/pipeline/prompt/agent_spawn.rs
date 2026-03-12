@@ -7,7 +7,7 @@ use crate::pipeline::idle_timeout::{
     new_file_activity_tracker, time_since_activity, FileActivityConfig, MonitorConfig,
     MonitorResult, StderrActivityTracker, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
 };
-use crate::pipeline::types::CommandResult;
+use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
 use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
@@ -348,15 +348,31 @@ pub(super) fn run_with_agent_spawn(
             } else {
                 ""
             };
-            let child_msg = child_status_at_timeout.map_or_else(
-                || ", no active child processes".to_string(),
-                |info| {
+            let idle_timeout_cause =
+                child_status_at_timeout.map_or(IdleTimeoutCause::NoQualifying, |info| {
+                    if info.has_stalled_children() {
+                        IdleTimeoutCause::Stalled(info)
+                    } else if info.has_currently_active_children() {
+                        IdleTimeoutCause::StaleActive(info)
+                    } else {
+                        IdleTimeoutCause::NoQualifying
+                    }
+                });
+            let child_msg = match idle_timeout_cause {
+                IdleTimeoutCause::NoQualifying => ", no active child processes".to_string(),
+                IdleTimeoutCause::Stalled(info) => {
                     format!(
-                        ", child processes present ({} children, CPU stalled at {}ms)",
+                        ", child processes present but not currently active (0 active of {} total, CPU at {}ms)",
                         info.child_count, info.cpu_time_ms
                     )
-                },
-            );
+                }
+                IdleTimeoutCause::StaleActive(info) => {
+                    format!(
+                        ", child processes still looked active but showed no fresh progress ({} active of {} total, CPU stalled at {}ms)",
+                        info.active_child_count, info.child_count, info.cpu_time_ms
+                    )
+                }
+            };
             runtime.logger.warn(&format!(
                 "Agent killed due to idle timeout (no stdout/stderr and no AI file updates for {} seconds, \
                  last activity {:.1}s ago, process exit code was {}{}{}, \
@@ -372,9 +388,12 @@ pub(super) fn run_with_agent_spawn(
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
                 runtime.logger.info(&format!(
-                    "idle timeout suppression: child processes remained active \
-                     ({} children, CPU advanced to {}ms, signature {})",
-                    info.child_count, info.cpu_time_ms, info.descendant_pid_signature
+                    "idle timeout suppression: child processes showed fresh progress and remained relevant \
+                     ({} active of {} total, CPU at {}ms, signature {})",
+                    info.active_child_count,
+                    info.child_count,
+                    info.cpu_time_ms,
+                    info.descendant_pid_signature
                 ));
             }
             (exit_code, None)

@@ -84,14 +84,15 @@ fmt-check:
 	$(CARGO) fmt -- --check
 	echo "Format check passed"
 
-# Run clippy lints (per-package, matching verification.md)
-# Enforces clippy::all, clippy::pedantic, clippy::nursery via #![deny(...)] in crate roots
+# Run clippy lints only (NOT the full required verification contract).
+# For the canonical pre-PR gate, use `cargo xtask verify` or `make ci`.
 # NOTE: When adding a new workspace member, add its clippy check here AND in docs/agents/verification.md
 lint:
 	$(CARGO) clippy -p ralph-workflow $(CARGO_FLAGS) --all-targets --all-features -- -D warnings
 	$(CARGO) clippy -p ralph-workflow-tests $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p test-helpers $(CARGO_FLAGS) --all-targets -- -D warnings
 	$(CARGO) clippy -p xtask $(CARGO_FLAGS) --all-targets -- -D warnings
+	$(CARGO) clippy -p ralph-gui $(CARGO_FLAGS) --all-targets -- -D warnings
 	echo "Lint check passed"
 
 # Run custom dylint lints (safe default: lib only)
@@ -148,20 +149,64 @@ dylint:
 			fi; \
 		fi; \
 		\
-		for dir in "$$CARGO_HOME" "$$RUSTUP_HOME" "$$DYLINT_DRIVER_PATH"; do \
+		for dir in "$$DYLINT_DRIVER_PATH"; do \
 			if ! mkdir -p "$$dir" 2>/dev/null; then \
 				echo "error: cannot create required directory: $$dir" >&2; \
-				echo "Set CARGO_HOME/RUSTUP_HOME/DYLINT_DRIVER_PATH to writable locations." >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
 				exit 1; \
 			fi; \
 			if [ ! -w "$$dir" ]; then \
 				echo "error: required directory is not writable: $$dir" >&2; \
-				echo "Set CARGO_HOME/RUSTUP_HOME/DYLINT_DRIVER_PATH to writable locations." >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
 				exit 1; \
 			fi; \
 		done; \
+		CARGO_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
+			if [ ! -d "$$CARGO_HOME" ]; then \
+				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$CARGO_HOME" ]; then \
+			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
+			echo "Set CARGO_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$CARGO_HOME" ]; then \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		RUSTUP_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
+			if [ ! -d "$$RUSTUP_HOME" ]; then \
+				echo "error: cannot access rustup home: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			RUSTUP_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$RUSTUP_HOME" ]; then \
+			echo "error: rustup home is not readable: $$RUSTUP_HOME" >&2; \
+			echo "Set RUSTUP_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$RUSTUP_HOME" ]; then \
+			RUSTUP_HOME_WRITABLE=0; \
+		fi; \
 		\
 		if ! command -v rustup >/dev/null 2>&1; then \
+			if [ "$$CARGO_HOME_WRITABLE" != "1" ]; then \
+				echo "error: rustup is not installed and CARGO_HOME is not writable: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to a writable location or preinstall rustup." >&2; \
+				exit 1; \
+			fi; \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: rustup is not installed and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall rustup." >&2; \
+				exit 1; \
+			fi; \
 			echo "rustup not found; installing rustup (required for nightly + rustc-dev)." >&2; \
 			if command -v curl >/dev/null 2>&1; then \
 				curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path; \
@@ -196,6 +241,11 @@ dylint:
 		fi; \
 		\
 		if ! rustup toolchain list | grep -qE "^nightly"; then \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: nightly toolchain is missing and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall nightly." >&2; \
+				exit 1; \
+			fi; \
 			if [ "$$DYLINT_QUIET" = "0" ]; then echo "Installing Rust nightly toolchain (required for dylint driver builds)..." >&2; fi; \
 			if ! "$$RUSTUP_BIN" toolchain install nightly --profile minimal; then \
 				echo "error: failed to install nightly toolchain." >&2; \
@@ -210,12 +260,17 @@ dylint:
 		\
 		INSTALLED_COMPONENTS="$$(rustup component list --toolchain "$$NIGHTLY_TOOLCHAIN" --installed 2>/dev/null || true)"; \
 		MISSING=""; \
-		echo "$$INSTALLED_COMPONENTS" | grep -q "^rustc-dev " || MISSING="$$MISSING rustc-dev"; \
-		if ! echo "$$INSTALLED_COMPONENTS" | grep -q "^llvm-tools-preview " \
-			&& ! echo "$$INSTALLED_COMPONENTS" | grep -q "^llvm-tools "; then \
+		echo "$$INSTALLED_COMPONENTS" | grep -Eq "^rustc-dev([ -]|$$)" || MISSING="$$MISSING rustc-dev"; \
+		if ! echo "$$INSTALLED_COMPONENTS" | grep -Eq "^llvm-tools-preview([ -]|$$)" \
+			&& ! echo "$$INSTALLED_COMPONENTS" | grep -Eq "^llvm-tools([ -]|$$)"; then \
 			MISSING="$$MISSING llvm-tools-preview"; \
 		fi; \
 		if [ -n "$$MISSING" ]; then \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: required nightly component(s) missing ($$MISSING) and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall the missing components." >&2; \
+				exit 1; \
+			fi; \
 			if [ "$$DYLINT_QUIET" = "0" ]; then echo "Installing required nightly components:$$MISSING" >&2; fi; \
 			if ! RUSTUP_TERM_QUIET=true rustup component add rustc-dev llvm-tools-preview --toolchain "$$NIGHTLY_TOOLCHAIN" >/dev/null 2>&1; then \
 				echo "error: failed to install required nightly component(s):$$MISSING" >&2; \
@@ -241,6 +296,11 @@ dylint:
 		export RUSTC="$$NIGHTLY_RUSTC"; \
 		\
 		if ! cargo dylint --version >/dev/null 2>&1; then \
+			if [ "$$CARGO_HOME_WRITABLE" != "1" ]; then \
+				echo "error: cargo-dylint is not installed and CARGO_HOME is not writable: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to a writable location or preinstall cargo-dylint." >&2; \
+				exit 1; \
+			fi; \
 			echo "Installing cargo-dylint (and dylint-link)..." >&2; \
 			if ! cargo install cargo-dylint dylint-link; then \
 				echo "error: failed to install cargo-dylint." >&2; \
@@ -307,20 +367,64 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		for dir in "$$CARGO_HOME" "$$RUSTUP_HOME" "$$DYLINT_DRIVER_PATH"; do \
+		for dir in "$$DYLINT_DRIVER_PATH"; do \
 			if ! mkdir -p "$$dir" 2>/dev/null; then \
 				echo "error: cannot create required directory: $$dir" >&2; \
-				echo "Set CARGO_HOME/RUSTUP_HOME/DYLINT_DRIVER_PATH to writable locations." >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
 				exit 1; \
 			fi; \
 			if [ ! -w "$$dir" ]; then \
 				echo "error: required directory is not writable: $$dir" >&2; \
-				echo "Set CARGO_HOME/RUSTUP_HOME/DYLINT_DRIVER_PATH to writable locations." >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
 				exit 1; \
 			fi; \
 		done; \
+		CARGO_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
+			if [ ! -d "$$CARGO_HOME" ]; then \
+				echo "error: cannot access cargo home: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$CARGO_HOME" ]; then \
+			echo "error: cargo home is not readable: $$CARGO_HOME" >&2; \
+			echo "Set CARGO_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$CARGO_HOME" ]; then \
+			CARGO_HOME_WRITABLE=0; \
+		fi; \
+		RUSTUP_HOME_WRITABLE=1; \
+		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
+			if [ ! -d "$$RUSTUP_HOME" ]; then \
+				echo "error: cannot access rustup home: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to an existing readable location." >&2; \
+				exit 1; \
+			fi; \
+			RUSTUP_HOME_WRITABLE=0; \
+		fi; \
+		if [ ! -r "$$RUSTUP_HOME" ]; then \
+			echo "error: rustup home is not readable: $$RUSTUP_HOME" >&2; \
+			echo "Set RUSTUP_HOME to an existing readable location." >&2; \
+			exit 1; \
+		fi; \
+		if [ ! -w "$$RUSTUP_HOME" ]; then \
+			RUSTUP_HOME_WRITABLE=0; \
+		fi; \
 		\
 		if ! command -v rustup >/dev/null 2>&1; then \
+			if [ "$$CARGO_HOME_WRITABLE" != "1" ]; then \
+				echo "error: rustup is not installed and CARGO_HOME is not writable: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to a writable location or preinstall rustup." >&2; \
+				exit 1; \
+			fi; \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: rustup is not installed and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall rustup." >&2; \
+				exit 1; \
+			fi; \
 			echo "rustup not found; installing rustup (required for nightly + rustc-dev)." >&2; \
 			if command -v curl >/dev/null 2>&1; then \
 				curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path; \
@@ -355,6 +459,11 @@ dylint-verbose:
 		fi; \
 		\
 		if ! rustup toolchain list | grep -qE "^nightly"; then \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: nightly toolchain is missing and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall nightly." >&2; \
+				exit 1; \
+			fi; \
 			if [ "$$DYLINT_QUIET" = "0" ]; then echo "Installing Rust nightly toolchain (required for dylint driver builds)..." >&2; fi; \
 			if ! "$$RUSTUP_BIN" toolchain install nightly --profile minimal; then \
 				echo "error: failed to install nightly toolchain." >&2; \
@@ -366,12 +475,17 @@ dylint-verbose:
 		\
 		INSTALLED_COMPONENTS="$$(rustup component list --toolchain "$$NIGHTLY_TOOLCHAIN" --installed 2>/dev/null || true)"; \
 		MISSING=""; \
-		echo "$$INSTALLED_COMPONENTS" | grep -q "^rustc-dev " || MISSING="$$MISSING rustc-dev"; \
-		if ! echo "$$INSTALLED_COMPONENTS" | grep -q "^llvm-tools-preview " \
-			&& ! echo "$$INSTALLED_COMPONENTS" | grep -q "^llvm-tools "; then \
+		echo "$$INSTALLED_COMPONENTS" | grep -Eq "^rustc-dev([ -]|$$)" || MISSING="$$MISSING rustc-dev"; \
+		if ! echo "$$INSTALLED_COMPONENTS" | grep -Eq "^llvm-tools-preview([ -]|$$)" \
+			&& ! echo "$$INSTALLED_COMPONENTS" | grep -Eq "^llvm-tools([ -]|$$)"; then \
 			MISSING="$$MISSING llvm-tools-preview"; \
 		fi; \
 		if [ -n "$$MISSING" ]; then \
+			if [ "$$RUSTUP_HOME_WRITABLE" != "1" ]; then \
+				echo "error: required nightly component(s) missing ($$MISSING) and RUSTUP_HOME is not writable: $$RUSTUP_HOME" >&2; \
+				echo "Set RUSTUP_HOME to a writable location or preinstall the missing components." >&2; \
+				exit 1; \
+			fi; \
 			if [ "$$DYLINT_QUIET" = "0" ]; then echo "Installing required nightly components:$$MISSING" >&2; fi; \
 			if ! RUSTUP_TERM_QUIET=true rustup component add rustc-dev llvm-tools-preview --toolchain "$$NIGHTLY_TOOLCHAIN" >/dev/null 2>&1; then \
 				echo "error: failed to install required nightly component(s):$$MISSING" >&2; \
@@ -411,6 +525,11 @@ dylint-verbose:
 		echo "===================================" >&2; \
 		\
 		if ! cargo dylint --version >/dev/null 2>&1; then \
+			if [ "$$CARGO_HOME_WRITABLE" != "1" ]; then \
+				echo "error: cargo-dylint is not installed and CARGO_HOME is not writable: $$CARGO_HOME" >&2; \
+				echo "Set CARGO_HOME to a writable location or preinstall cargo-dylint." >&2; \
+				exit 1; \
+			fi; \
 			echo "Installing cargo-dylint (and dylint-link)..." >&2; \
 			if ! cargo install cargo-dylint dylint-link; then \
 				echo "error: failed to install cargo-dylint." >&2; \
@@ -423,8 +542,9 @@ dylint-verbose:
 		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --quiet >/dev/null 2>&1; \
 '
 
-# Run all checks (format, lint, test)
-ci: fmt-check lint test
+# Run the canonical verification contract.
+ci:
+	$(CARGO) xtask verify
 	echo "All CI checks passed"
 
 # Build documentation

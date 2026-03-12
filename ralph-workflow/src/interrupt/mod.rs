@@ -112,6 +112,19 @@ fn restore_prompt_md_writable_via_std_fs() {
     let _ = make_writable(&prompt_path);
 }
 
+fn remove_repo_root_ralph_dir_via_std_fs() {
+    let repo_root = INTERRUPT_CONTEXT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .map(|context| context.workspace.root().to_path_buf())
+        .or_else(|| crate::git_helpers::get_repo_root().ok());
+
+    if let Some(repo_root) = repo_root {
+        let _ = std::fs::remove_dir_all(repo_root.join(".git/ralph"));
+    }
+}
+
 #[cfg(not(unix))]
 fn restore_prompt_md_writable_via_std_fs() {}
 
@@ -274,6 +287,7 @@ pub fn setup_interrupt_handler() {
                 restore_prompt_md_writable_via_std_fs();
                 eprintln!("Cleaning up...");
                 crate::git_helpers::cleanup_agent_phase_silent();
+                remove_repo_root_ralph_dir_via_std_fs();
                 std::process::exit(130);
             }
 
@@ -317,6 +331,7 @@ pub fn setup_interrupt_handler() {
 
         eprintln!("Cleaning up...");
         crate::git_helpers::cleanup_agent_phase_silent();
+        remove_repo_root_ralph_dir_via_std_fs();
         std::process::exit(130); // Standard exit code for SIGINT
     });
 

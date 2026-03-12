@@ -152,7 +152,7 @@ fn test_agent_chain_reset_clears_rate_limit_continuation_prompt() {
         AgentRole::Developer,
     );
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
+        role: AgentRole::Developer,
         prompt: "saved".to_string(),
     });
 
@@ -171,7 +171,7 @@ fn test_agent_chain_reset_for_role_clears_rate_limit_continuation_prompt() {
         AgentRole::Developer,
     );
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
+        role: AgentRole::Developer,
         prompt: "saved".to_string(),
     });
 

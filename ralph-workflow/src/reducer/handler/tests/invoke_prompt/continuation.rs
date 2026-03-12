@@ -6,7 +6,7 @@
 //! - Analysis agent does not use continuation prompts
 
 use super::super::common::TestFixture;
-use crate::agents::AgentDrain;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::executor::MockProcessExecutor;
 use crate::reducer::event::{AgentEvent, PipelineEvent};
 use crate::reducer::handler::MainEffectHandler;
@@ -36,7 +36,7 @@ fn test_invoke_agent_uses_rate_limit_continuation_prompt() {
     // Simulate that a previous agent hit rate limit and saved the prompt
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
-            drain: AgentDrain::Planning,
+            role: AgentRole::Developer,
             prompt: "saved prompt from rate limit".to_string(),
         });
 
@@ -138,7 +138,7 @@ fn test_invoke_fix_agent_does_not_use_review_drain_continuation_prompt() {
         .with_drain(AgentDrain::Fix);
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
-            drain: AgentDrain::Review,
+            role: AgentRole::Reviewer,
             prompt: "stale review continuation prompt".to_string(),
         });
 

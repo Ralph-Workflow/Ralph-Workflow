@@ -47,15 +47,14 @@ FORBIDDEN MCP/TOOL USAGE — THESE ARE EQUIVALENT TO CLI COMMANDS:
 The prohibition applies to ALL mechanisms: CLI commands, MCP tools, direct library calls, subprocess spawning.
 
 FORBIDDEN BYPASS ATTEMPTS — NEVER DO ANY OF THESE:
-- Delete or modify files in `.git/hooks/` — hooks are reinstalled and recreated before EVERY agent run
-- Delete or modify files in `.git/ralph/` — enforcement state is recreated before EVERY agent run
+- Delete or modify active protection files under `.git/hooks/` or `.git/ralph/` — Ralph recreates them before EVERY agent run in the current repo/worktree context
 - Use absolute paths like `/usr/bin/git` to bypass the PATH wrapper
 - Use `--no-verify` flag — the PATH wrapper blocks commands before hooks run
 - Modify the PATH environment variable to remove or reorder Ralph's git wrapper directory
-- Use `chmod` on any `.git/hooks/` file or `.git/ralph/` file
-- Use `rm`, `unlink`, or any file deletion command on `.git/hooks/` files or `.git/ralph/` files
+- Use `chmod` on any active protection file under `.git/hooks/` or `.git/ralph/`
+- Use `rm`, `unlink`, or any file deletion command on active protection files under `.git/hooks/` or `.git/ralph/`
 - Invoke `git init` to reinitialize the repository or create a new git structure
-- Write directly to `.git/hooks/pre-commit`, `.git/hooks/pre-push`, or `.git/hooks/pre-merge-commit` to replace hook content
+- Write directly to an active Ralph-managed hook path to replace hook content
 - Use `exec`, `env`, `command`, or other shell builtins to invoke git bypassing the PATH wrapper
 - Set GIT_DIR, GIT_WORK_TREE, or GIT_EXEC_PATH environment variables — the wrapper unsets these automatically
 
