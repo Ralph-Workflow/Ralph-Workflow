@@ -113,6 +113,7 @@ fn test_merge_with_agent_chain_local_replaces_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -129,6 +130,7 @@ fn test_merge_with_agent_chain_local_replaces_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -156,6 +158,7 @@ fn test_merge_with_local_none_agent_chain_preserves_global() {
             backoff_multiplier: 2.0,
             max_backoff_ms: 60000,
             max_cycles: 3,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -288,6 +291,224 @@ fn test_merge_with_ccs_empty_string_preserves_global() {
     assert_eq!(merged.ccs.session_flag, "--resume {}");
     // Boolean overrides normally
     assert!(!merged.ccs.can_commit);
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_mixed_legacy_and_named_schema() {
+    let config = UnifiedConfig {
+        agent_chain: Some(crate::agents::fallback::FallbackConfig {
+            developer: vec!["codex".to_string()],
+            ..Default::default()
+        }),
+        agent_chains: std::collections::HashMap::from([(
+            "shared_dev".to_string(),
+            vec!["claude".to_string()],
+        )]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("mixed schemas should fail");
+
+    assert!(error.contains("agent_chain"));
+    assert!(error.contains("agent_chains/agent_drains"));
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_missing_builtin_coverage() {
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([(
+            "shared_review".to_string(),
+            vec!["claude".to_string()],
+        )]),
+        agent_drains: std::collections::HashMap::from([
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("missing built-in drains should fail");
+
+    assert!(error.contains("planning"));
+    assert!(error.contains("development"));
+    assert!(error.contains("analysis"));
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_rejects_empty_named_drain_binding() {
+    let config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            ("empty_dev".to_string(), Vec::new()),
+            ("shared_review".to_string(), vec!["claude".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "empty_dev".to_string()),
+            ("development".to_string(), "empty_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let error = config
+        .resolve_agent_drains_checked()
+        .expect_err("empty built-in drain bindings should fail");
+
+    assert!(
+        error.contains("agent_drains.planning"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        error.contains("must not resolve to an empty chain"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn test_resolve_agent_drains_checked_derives_commit_and_analysis_from_bound_drains() {
+    let inherited_config = UnifiedConfig {
+        agent_chain: Some(crate::agents::fallback::FallbackConfig {
+            provider_fallback: std::collections::HashMap::from([(
+                "opencode".to_string(),
+                vec!["-m opencode/glm-4.7-free".to_string()],
+            )]),
+            max_retries: 7,
+            retry_delay_ms: 2_500,
+            backoff_multiplier: 3.0,
+            max_backoff_ms: 90_000,
+            max_cycles: 5,
+            ..Default::default()
+        }),
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("development".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = inherited_config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should derive from existing bound drains")
+        .expect("named drain config should resolve");
+
+    let commit = resolved
+        .binding(crate::agents::AgentDrain::Commit)
+        .expect("commit drain should be derived from review/fix binding");
+    let analysis = resolved
+        .binding(crate::agents::AgentDrain::Analysis)
+        .expect("analysis drain should be derived from planning/development binding");
+
+    assert_eq!(commit.chain_name, "shared_review");
+    assert_eq!(commit.agents, vec!["claude", "opencode"]);
+    assert_eq!(analysis.chain_name, "shared_dev");
+    assert_eq!(analysis.agents, vec!["codex", "claude"]);
+    assert_eq!(resolved.max_retries, 7);
+    assert_eq!(resolved.retry_delay_ms, 2_500);
+    assert!((resolved.backoff_multiplier - 3.0).abs() < f64::EPSILON);
+    assert_eq!(resolved.max_backoff_ms, 90_000);
+    assert_eq!(resolved.max_cycles, 5);
+    assert_eq!(
+        resolved.provider_fallback.get("opencode"),
+        Some(&vec!["-m opencode/glm-4.7-free".to_string()])
+    );
+
+    let preferred_named_config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+            ("commit".to_string(), vec!["aider".to_string()]),
+            ("analysis".to_string(), vec!["gemini".to_string()]),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("development".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+            ("fix".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = preferred_named_config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should resolve")
+        .expect("named drain config should resolve");
+
+    let analysis = resolved
+        .binding(crate::agents::AgentDrain::Analysis)
+        .expect("analysis drain should resolve");
+    let commit = resolved
+        .binding(crate::agents::AgentDrain::Commit)
+        .expect("commit drain should resolve");
+
+    assert_eq!(analysis.chain_name, "analysis");
+    assert_eq!(analysis.agents, vec!["gemini"]);
+    assert_eq!(commit.chain_name, "commit");
+    assert_eq!(commit.agents, vec!["aider"]);
+
+    let sibling_preferred_over_legacy_role_config = UnifiedConfig {
+        agent_chains: std::collections::HashMap::from([
+            (
+                "shared_dev".to_string(),
+                vec!["codex".to_string(), "claude".to_string()],
+            ),
+            (
+                "shared_review".to_string(),
+                vec!["claude".to_string(), "opencode".to_string()],
+            ),
+            (
+                "developer".to_string(),
+                vec!["legacy-dev".to_string(), "legacy-dev-2".to_string()],
+            ),
+            (
+                "reviewer".to_string(),
+                vec!["legacy-review".to_string(), "legacy-review-2".to_string()],
+            ),
+        ]),
+        agent_drains: std::collections::HashMap::from([
+            ("planning".to_string(), "shared_dev".to_string()),
+            ("review".to_string(), "shared_review".to_string()),
+        ]),
+        ..Default::default()
+    };
+
+    let resolved = sibling_preferred_over_legacy_role_config
+        .resolve_agent_drains_checked()
+        .expect("drain defaults should resolve")
+        .expect("named drain config should resolve");
+
+    let development = resolved
+        .binding(crate::agents::AgentDrain::Development)
+        .expect("development drain should resolve");
+    let fix = resolved
+        .binding(crate::agents::AgentDrain::Fix)
+        .expect("fix drain should resolve");
+
+    assert_eq!(development.chain_name, "shared_dev");
+    assert_eq!(development.agents, vec!["codex", "claude"]);
+    assert_eq!(fix.chain_name, "shared_review");
+    assert_eq!(fix.agents, vec!["claude", "opencode"]);
 }
 
 #[test]

@@ -32,7 +32,8 @@ fn test_review_phase_started_clears_agent_chain_for_reviewer_role() {
     assert!(matches!(
         effect,
         crate::reducer::effect::Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            drain: crate::agents::AgentDrain::Review,
+            ..
         }
     ));
 }

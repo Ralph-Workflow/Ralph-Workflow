@@ -320,6 +320,30 @@ Reducers must be deterministic and side-effect free.
 - No mutation of shared global state
 - No hidden coupling to config: decisions should be driven by values already present in `PipelineState` or carried in events
 
+### Agent-chain architecture must keep chain definitions, drains, and modes separate
+
+For agent execution architecture, Ralph should treat these as distinct concepts:
+
+- **chain definition**: reusable configured ordered list of concrete agents
+- **drain**: runtime consumer attached to a chain definition (for example planning, development, review, fix, commit, analysis)
+- **drain mode**: retry/continuation sub-state inside a drain (for example continuation, same-agent retry, XSD retry)
+
+This separation is required for reducer clarity and consistency.
+
+Rules:
+
+- Runtime state should not collapse reusable chain definition and active consumer into the same concept.
+- Retry modes that continue the same logical work and session, such as XSD retry, should remain drain-local mode rather than becoming separate drains.
+- Reducer state and pipeline events must stay concrete; they must not carry unresolved config aliases or config-only indirection.
+- Legacy `[agent_chain]` config is acceptable only as an input format; normalize it into the same built-in drain bindings as `[agent_chains]` + `[agent_drains]` before runtime execution.
+- When a built-in drain is omitted from `[agent_drains]`, default it from already-resolved sibling drains first (for example commit from review/fix, analysis from planning/development) before consulting legacy compatibility names.
+- Drain-selection effects and events should address the concrete drain directly (for example `InitializeAgentChain { drain }` and `agent_chain_initialized(drain, ...)`) rather than carrying redundant role-shaped selectors.
+- Effect handlers should consume already-resolved concrete drain-to-chain mappings, not re-derive chain semantics from scattered defaults.
+- Runtime effects that still need a broad role label for accounting or diagnostics should derive it from the active drain at emission time, so stale `current_role` metadata cannot misroute retry/exhaustion behavior.
+- Checkpoint compatibility should treat any stored role label as derived metadata. Resume logic must be able to reconstruct the effective role from the persisted drain when older/newer checkpoints omit or disagree on `current_role`.
+
+When changing agent architecture, apply this model consistently across config, runtime state, effects, handlers, and documentation. Do not introduce a new abstraction in one layer while leaving the other layers role-shaped and ambiguous.
+
 ### Prefer typed error-events over `Err` when recoverable
 
 When a failure should be handled by the state machine, represent it as a typed reducer event (often via `ErrorEvent` or a category event like `PlanningEvent::OutputValidationFailed`).
@@ -374,7 +398,7 @@ The orchestrator tracks effect execution patterns in `ContinuationState`:
 - `consecutive_same_effect_count`: counter for repeated identical effects
 - `max_consecutive_same_effect`: threshold before triggering recovery (default: 20)
 
-The effect fingerprint includes: phase, role, iteration, pass, and XSD retry state.
+The effect fingerprint includes: phase, active drain, drain mode, iteration, pass, and XSD retry state.
 
 ### Mandatory Recovery
 

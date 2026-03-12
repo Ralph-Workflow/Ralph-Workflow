@@ -46,6 +46,11 @@ fn test_fix_continuation_triggered_sets_pending() {
         new_state.continuation.invalid_output_attempts, 0,
         "Invalid output attempts should be reset for new continuation"
     );
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Continuation,
+        "Fix continuation should be tracked as a drain-local continuation mode"
+    );
 }
 
 #[test]
@@ -88,6 +93,10 @@ fn test_fix_continuation_succeeded_transitions_to_commit() {
     assert!(
         new_state.commit_diff_content_id_sha256.is_none(),
         "Entering commit phase should reset commit diff tracking"
+    );
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Normal
     );
 }
 

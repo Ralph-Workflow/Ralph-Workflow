@@ -5,6 +5,7 @@
 
 use super::fallback_merge::{built_in_fallback_defaults, merge_fallback_configs};
 use super::types::UnifiedConfig;
+use crate::agents::fallback::FallbackConfig;
 
 impl UnifiedConfig {
     /// Merge local config into self (global), returning merged config.
@@ -216,6 +217,16 @@ impl UnifiedConfig {
             ccs_aliases.insert(key.clone(), value.clone());
         }
 
+        let mut agent_chains = self.agent_chains.clone();
+        for (key, value) in &local.agent_chains {
+            agent_chains.insert(key.clone(), value.clone());
+        }
+
+        let mut agent_drains = self.agent_drains.clone();
+        for (key, value) in &local.agent_drains {
+            agent_drains.insert(key.clone(), value.clone());
+        }
+
         // Agent chain: merge per-key (local non-empty chains override global)
         let agent_chain = merge_fallback_configs(
             self.agent_chain.as_ref(),
@@ -229,6 +240,8 @@ impl UnifiedConfig {
             ccs,
             agents,
             ccs_aliases,
+            agent_chains,
+            agent_drains,
             agent_chain,
         }
     }
@@ -455,22 +468,105 @@ impl UnifiedConfig {
             ccs_aliases.insert(key.clone(), value.clone());
         }
 
-        // Agent chain: merge per-key (local chain entries override global/defaults)
+        let mut agent_chains = self.agent_chains.clone();
+        for (key, value) in &local_parsed.agent_chains {
+            agent_chains.insert(key.clone(), value.clone());
+        }
+
+        let mut agent_drains = self.agent_drains.clone();
+        for (key, value) in &local_parsed.agent_drains {
+            agent_drains.insert(key.clone(), value.clone());
+        }
+
         let chain_table = local_toml.get("agent_chain");
-        let built_in_chain = built_in_fallback_defaults();
-        let agent_chain = merge_fallback_configs(
-            Some(self.agent_chain.as_ref().unwrap_or(&built_in_chain)),
-            local_parsed.agent_chain.as_ref(),
-            |field| chain_table.and_then(|c| c.get(field)).is_some(),
-            true,
-        );
+        let named_schema_present = !agent_chains.is_empty() || !agent_drains.is_empty();
+        // Agent chain: merge per-key (local chain entries override global/defaults).
+        // Named chains/drains must not implicitly materialize the legacy schema.
+        let agent_chain = if chain_table.is_some()
+            || self.agent_chain.is_some()
+            || local_parsed.agent_chain.is_some()
+        {
+            if named_schema_present {
+                merge_named_schema_legacy_metadata(
+                    self.agent_chain.as_ref(),
+                    local_parsed.agent_chain.as_ref(),
+                    |field| chain_table.and_then(|c| c.get(field)).is_some(),
+                )
+            } else {
+                let built_in_chain = built_in_fallback_defaults();
+                merge_fallback_configs(
+                    Some(self.agent_chain.as_ref().unwrap_or(&built_in_chain)),
+                    local_parsed.agent_chain.as_ref(),
+                    |field| chain_table.and_then(|c| c.get(field)).is_some(),
+                    true,
+                )
+            }
+        } else {
+            None
+        };
 
         Self {
             general,
             ccs,
             agents,
             ccs_aliases,
+            agent_chains,
+            agent_drains,
             agent_chain,
         }
+    }
+}
+
+fn merge_named_schema_legacy_metadata(
+    global: Option<&FallbackConfig>,
+    local: Option<&FallbackConfig>,
+    is_local_field_present: impl Fn(&str) -> bool,
+) -> Option<FallbackConfig> {
+    if matches!((global, local), (None, None)) {
+        None
+    } else {
+        let defaults = FallbackConfig::default();
+        let global = global.unwrap_or(&defaults);
+        let local = local.unwrap_or(&defaults);
+
+        let mut provider_fallback = global.provider_fallback.clone();
+        for (key, value) in &local.provider_fallback {
+            provider_fallback.insert(key.clone(), value.clone());
+        }
+
+        Some(FallbackConfig {
+            developer: Vec::new(),
+            reviewer: Vec::new(),
+            commit: Vec::new(),
+            analysis: Vec::new(),
+            provider_fallback,
+            max_retries: if is_local_field_present("max_retries") {
+                local.max_retries
+            } else {
+                global.max_retries
+            },
+            retry_delay_ms: if is_local_field_present("retry_delay_ms") {
+                local.retry_delay_ms
+            } else {
+                global.retry_delay_ms
+            },
+            backoff_multiplier: if is_local_field_present("backoff_multiplier") {
+                local.backoff_multiplier
+            } else {
+                global.backoff_multiplier
+            },
+            max_backoff_ms: if is_local_field_present("max_backoff_ms") {
+                local.max_backoff_ms
+            } else {
+                global.max_backoff_ms
+            },
+            max_cycles: if is_local_field_present("max_cycles") {
+                local.max_cycles
+            } else {
+                global.max_cycles
+            },
+            legacy_role_keys_present: global.has_legacy_role_key_presence()
+                || local.has_legacy_role_key_presence(),
+        })
     }
 }

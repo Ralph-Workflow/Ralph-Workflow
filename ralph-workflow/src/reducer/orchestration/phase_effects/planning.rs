@@ -4,7 +4,7 @@
 //!
 //! Planning phase workflow:
 //! 1. Save checkpoint at iteration 0 (after rebase completes)
-//! 2. Initialize agent chain (Developer role)
+//! 2. Initialize the planning drain chain
 //! 3. Ensure gitignore entries (.agent/, PROMPT*)
 //! 4. Cleanup context (remove old PLAN.md from previous iteration)
 //! 5. Materialize planning inputs (prompt template)
@@ -17,7 +17,7 @@
 //! 12. Archive planning XML
 //! 13. Apply planning outcome (transition to Development)
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{PipelineState, PromptMode, RebaseState};
@@ -41,10 +41,13 @@ pub(super) fn determine_planning_effect(state: &PipelineState) -> Effect {
         };
     }
 
-    if state.agent_chain.agents.is_empty() || state.agent_chain.current_role != AgentRole::Developer
-    {
+    let planning_chain_ready = state
+        .agent_chain
+        .matches_runtime_drain(AgentDrain::Planning);
+
+    if state.agent_chain.agents.is_empty() || !planning_chain_ready {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: AgentDrain::Planning,
         };
     }
 

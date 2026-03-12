@@ -4,6 +4,7 @@
 //! across development and fix iterations.
 
 use super::super::{ArtifactType, DevelopmentStatus, FixStatus, SameAgentRetryReason};
+use crate::agents::AgentDrain;
 use serde::{Deserialize, Serialize};
 
 /// Continuation state for development iterations.
@@ -300,6 +301,32 @@ impl ContinuationState {
     #[must_use]
     pub const fn is_continuation(&self) -> bool {
         self.continuation_attempt > 0
+    }
+
+    /// Whether the active runtime drain has a pending continuation.
+    #[must_use]
+    pub const fn pending_continuation_for_drain(&self, drain: AgentDrain) -> bool {
+        match drain {
+            AgentDrain::Development => self.continue_pending,
+            AgentDrain::Fix => self.fix_continue_pending,
+            AgentDrain::Planning
+            | AgentDrain::Review
+            | AgentDrain::Commit
+            | AgentDrain::Analysis => false,
+        }
+    }
+
+    /// Whether the active runtime drain has exhausted its continuation budget.
+    #[must_use]
+    pub const fn continuation_exhausted_for_drain(&self, drain: AgentDrain) -> bool {
+        match drain {
+            AgentDrain::Development => self.continuation_attempt >= self.max_continue_count,
+            AgentDrain::Fix => self.fix_continuation_attempt >= self.max_fix_continue_count,
+            AgentDrain::Planning
+            | AgentDrain::Review
+            | AgentDrain::Commit
+            | AgentDrain::Analysis => false,
+        }
     }
 
     /// Reset the continuation state for a new iteration or phase transition.

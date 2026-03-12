@@ -81,6 +81,7 @@ fn test_invoke_agent_prefers_same_agent_retry_prompt_over_rate_limit_continuatio
     let saved_prompt = "CONTINUATION PROMPT (stale)".to_string();
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: saved_prompt,
         });
@@ -98,7 +99,14 @@ fn test_invoke_agent_prefers_same_agent_retry_prompt_over_rate_limit_continuatio
     );
 
     let _ = handler
-        .invoke_agent(&mut ctx, AgentRole::Developer, "claude", None, retry_prompt)
+        .invoke_agent(
+            &mut ctx,
+            crate::agents::AgentDrain::Development,
+            AgentRole::Developer,
+            "claude",
+            None,
+            retry_prompt,
+        )
         .expect("invoke_agent should succeed");
 
     let calls = fixture.executor.agent_calls();
@@ -136,6 +144,7 @@ fn test_invoke_agent_prefers_xsd_retry_prompt_over_rate_limit_continuation_promp
     );
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "CONTINUATION PROMPT (stale)".to_string(),
         });
@@ -145,6 +154,7 @@ fn test_invoke_agent_prefers_xsd_retry_prompt_over_rate_limit_continuation_promp
     let _ = handler
         .invoke_agent(
             &mut ctx,
+            crate::agents::AgentDrain::Development,
             AgentRole::Developer,
             "claude",
             None,
@@ -184,6 +194,7 @@ fn test_invoke_analysis_agent_does_not_use_rate_limit_continuation_prompt() {
     let saved_prompt = "CONTINUATION PROMPT (stale)".to_string();
     handler.state.agent_chain.rate_limit_continuation_prompt =
         Some(crate::reducer::state::RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: saved_prompt.clone(),
         });

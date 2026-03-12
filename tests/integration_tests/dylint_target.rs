@@ -57,6 +57,13 @@ fn make_dylint_target_forces_nightly_cargo_resolution() {
             "dylint target should export RUSTUP_TOOLCHAIN to nightly toolchain variable"
         );
 
+        assert!(
+            dylint_body.contains(
+                "cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet"
+            ),
+            "dylint target should lint the ralph-workflow library target only"
+        );
+
         // We should not suppress rustup component installation failures.
         assert!(
             !dylint_body.contains(
@@ -81,5 +88,63 @@ fn make_dylint_target_forces_nightly_cargo_resolution() {
             dylint_body.contains(guarded_home_pattern),
             "dylint target should guard access to HOME under bash -u"
         );
+    });
+}
+
+#[test]
+fn make_dylint_targets_check_cargo_home_before_registry_subdirs() {
+    with_default_timeout(|| {
+        let makefile = include_str!("../../Makefile");
+
+        for target in ["dylint", "dylint-verbose"] {
+            let start = makefile
+                .find(&format!("\n{target}:"))
+                .expect("Makefile should contain dylint target")
+                + 1;
+            let rest = &makefile[start..];
+            let end = rest.find("\n\n").unwrap_or(rest.len());
+            let body = &rest[..end];
+
+            let cargo_home_check = body
+                .find("if ! mkdir -p \"$$CARGO_HOME\" 2>/dev/null; then")
+                .expect("target should check CARGO_HOME access");
+            let registry_mkdir = body
+                .find("mkdir -p \"$$CARGO_HOME/registry\" \"$$CARGO_HOME/registry/src\" \"$$CARGO_HOME/bin\";")
+                .expect("target should prepare cargo home subdirectories");
+
+            assert!(
+                cargo_home_check < registry_mkdir,
+                "{target} should validate CARGO_HOME before creating registry/bin subdirectories"
+            );
+        }
+    });
+}
+
+#[test]
+fn make_dylint_targets_do_not_force_offline_mode_from_partial_registry_cache() {
+    with_default_timeout(|| {
+        let makefile = include_str!("../../Makefile");
+
+        for target in ["dylint", "dylint-verbose"] {
+            let start = makefile
+                .find(&format!("\n{target}:"))
+                .expect("Makefile should contain dylint target")
+                + 1;
+            let rest = &makefile[start..];
+            let end = rest.find("\n\n").unwrap_or(rest.len());
+            let body = &rest[..end];
+
+            assert!(
+                !body.contains(
+                    "if [ -z \"$${CARGO_NET_OFFLINE:-}\" ] && [ -e \"$$CARGO_HOME/registry/cache\" ] && [ -e \"$$CARGO_HOME/registry/index\" ]; then"
+                ),
+                "{target} should not force offline mode merely because registry cache/index directories exist"
+            );
+            assert!(
+                body.contains("if [ \"$${DYLINT_FORCE_OFFLINE:-0}\" = \"1\" ]; then")
+                    && body.contains("export CARGO_NET_OFFLINE=true;"),
+                "{target} should keep offline mode opt-in via DYLINT_FORCE_OFFLINE"
+            );
+        }
     });
 }

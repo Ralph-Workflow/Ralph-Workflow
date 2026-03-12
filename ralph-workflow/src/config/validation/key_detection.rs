@@ -5,7 +5,7 @@
 
 use super::keys::{
     DEPRECATED_GENERAL_KEYS, VALID_AGENT_CHAIN_KEYS, VALID_AGENT_CONFIG_KEYS,
-    VALID_CCS_ALIAS_CONFIG_KEYS, VALID_CCS_KEYS, VALID_GENERAL_KEYS,
+    VALID_AGENT_DRAIN_KEYS, VALID_CCS_ALIAS_CONFIG_KEYS, VALID_CCS_KEYS, VALID_GENERAL_KEYS,
 };
 
 /// Type alias for a list of (`key_name`, location) pairs.
@@ -30,7 +30,8 @@ pub fn detect_unknown_and_deprecated_keys(
         for (key, value) in table {
             match key.as_str() {
                 // Valid top-level sections
-                "general" | "ccs" | "agents" | "ccs_aliases" | "agent_chain" => {
+                "general" | "ccs" | "agents" | "ccs_aliases" | "agent_chain" | "agent_chains"
+                | "agent_drains" => {
                     // Recursively check subsections
                     let (section_unknown, section_deprecated) =
                         check_section(key.as_str(), value, &format!("{key}."));
@@ -121,6 +122,15 @@ fn check_section(
             if let Some(table) = value.as_table() {
                 for key in table.keys() {
                     if !VALID_AGENT_CHAIN_KEYS.contains(&key.as_str()) {
+                        unknown.push((key.clone(), prefix.to_string()));
+                    }
+                }
+            }
+        }
+        "agent_drains" => {
+            if let Some(table) = value.as_table() {
+                for key in table.keys() {
+                    if !VALID_AGENT_DRAIN_KEYS.contains(&key.as_str()) {
                         unknown.push((key.clone(), prefix.to_string()));
                     }
                 }

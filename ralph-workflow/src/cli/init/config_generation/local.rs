@@ -11,6 +11,8 @@ use crate::agents::AgentRegistry;
 use crate::config::unified::UnifiedConfig;
 use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
+use std::collections::BTreeMap;
+use std::fmt::Write;
 
 /// Generate a local config template populated with effective values.
 ///
@@ -18,58 +20,156 @@ use crate::logger::Colors;
 /// for any missing values. All values are shown as commented-out entries so
 /// users can selectively uncomment and override only what they need.
 fn generate_local_config_template<R: ConfigEnvironment>(env: &R) -> anyhow::Result<String> {
-    generate_local_config_template_with(env, built_in_default_chain)
+    generate_local_config_template_with(env, built_in_default_drains)
 }
 
 fn generate_local_config_template_with<R, F>(
     env: &R,
-    default_chain_loader: F,
+    default_drain_loader: F,
 ) -> anyhow::Result<String>
 where
     R: ConfigEnvironment,
-    F: FnOnce() -> anyhow::Result<crate::agents::fallback::FallbackConfig>,
+    F: FnOnce() -> anyhow::Result<crate::agents::fallback::ResolvedDrainConfig>,
 {
     let effective = resolve_effective_init_template_config(env)?;
-    let default_chain = default_chain_loader()?;
+    let default_drains = default_drain_loader()?;
 
     let general = &effective.general;
-    let chain = effective.agent_chain.as_ref();
+    let resolved_drains = resolve_template_drains(&effective, &default_drains)?;
+    let chain_definitions = collect_named_chain_definitions(&effective, &resolved_drains);
+    let rendered_chain_definitions = chain_definitions
+        .iter()
+        .map(|(name, agents)| format!("# {name} = {}", format_toml_string_array(agents)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let rendered_drain_bindings = crate::agents::AgentDrain::all()
+        .into_iter()
+        .map(|drain| {
+            let binding = resolved_drains
+                .binding(drain)
+                .expect("built-in drain bindings should be fully resolved");
+            format!("# {} = \"{}\"", drain.as_str(), binding.chain_name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    let dev_chain = chain.map_or_else(
-        || format_toml_string_array(&default_chain.developer),
-        |c| format_toml_string_array(&c.developer),
-    );
-    let rev_chain = chain.map_or_else(
-        || format_toml_string_array(&default_chain.reviewer),
-        |c| format_toml_string_array(&c.reviewer),
-    );
+    let mut template = String::new();
+    writeln!(
+        template,
+        "# Local Ralph configuration (.agent/ralph-workflow.toml)"
+    )?;
+    writeln!(
+        template,
+        "# Overrides ~/.config/ralph-workflow.toml for this project."
+    )?;
+    writeln!(template, "# Only uncomment settings you want to override.")?;
+    writeln!(
+        template,
+        "# Run `ralph --check-config` to validate and see effective settings."
+    )?;
+    writeln!(template)?;
+    writeln!(template, "[general]")?;
+    writeln!(template, "# Project-specific iteration limits")?;
+    writeln!(template, "# developer_iters = {}", general.developer_iters)?;
+    writeln!(
+        template,
+        "# reviewer_reviews = {}",
+        general.reviewer_reviews
+    )?;
+    writeln!(template)?;
+    writeln!(template, "# Project-specific context levels")?;
+    writeln!(
+        template,
+        "# developer_context = {}",
+        general.developer_context
+    )?;
+    writeln!(
+        template,
+        "# reviewer_context = {}",
+        general.reviewer_context
+    )?;
+    writeln!(template)?;
+    write!(
+        template,
+        "{}",
+        render_agent_chain_metadata_comments(&resolved_drains)
+    )?;
+    writeln!(template)?;
+    writeln!(template, "# [agent_chains]")?;
+    writeln!(template, "# Reusable named chain definitions")?;
+    writeln!(template, "{rendered_chain_definitions}")?;
+    writeln!(template)?;
+    writeln!(template, "# [agent_drains]")?;
+    writeln!(template, "# Built-in drains attached to those chains")?;
+    writeln!(template, "{rendered_drain_bindings}")?;
 
-    Ok(format!(
-        "# Local Ralph configuration (.agent/ralph-workflow.toml)\n\
-         # Overrides ~/.config/ralph-workflow.toml for this project.\n\
-         # Only uncomment settings you want to override.\n\
-         # Run `ralph --check-config` to validate and see effective settings.\n\
-         \n\
-         [general]\n\
-         # Project-specific iteration limits\n\
-         # developer_iters = {dev_iters}\n\
-         # reviewer_reviews = {rev_reviews}\n\
-         \n\
-         # Project-specific context levels\n\
-         # developer_context = {dev_ctx}\n\
-         # reviewer_context = {rev_ctx}\n\
-         \n\
-         # [agent_chain]\n\
-         # Project-specific agent chains\n\
-         # developer = {dev_chain}\n\
-         # reviewer = {rev_chain}\n",
-        dev_iters = general.developer_iters,
-        rev_reviews = general.reviewer_reviews,
-        dev_ctx = general.developer_context,
-        rev_ctx = general.reviewer_context,
-        dev_chain = dev_chain,
-        rev_chain = rev_chain,
-    ))
+    Ok(template)
+}
+
+fn render_agent_chain_metadata_comments(
+    resolved_drains: &crate::agents::fallback::ResolvedDrainConfig,
+) -> String {
+    let mut rendered = String::new();
+    let _ = writeln!(rendered, "# [agent_chain]");
+    let _ = writeln!(
+        rendered,
+        "# Effective retry/backoff metadata you can override locally"
+    );
+    let _ = writeln!(rendered, "# max_retries = {}", resolved_drains.max_retries);
+    let _ = writeln!(
+        rendered,
+        "# retry_delay_ms = {}",
+        resolved_drains.retry_delay_ms
+    );
+    let _ = writeln!(
+        rendered,
+        "# backoff_multiplier = {}",
+        resolved_drains.backoff_multiplier
+    );
+    let _ = writeln!(
+        rendered,
+        "# max_backoff_ms = {}",
+        resolved_drains.max_backoff_ms
+    );
+    let _ = writeln!(rendered, "# max_cycles = {}", resolved_drains.max_cycles);
+
+    let mut provider_fallback_entries =
+        resolved_drains.provider_fallback.iter().collect::<Vec<_>>();
+    provider_fallback_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for (provider, models) in provider_fallback_entries {
+        let _ = writeln!(
+            rendered,
+            "# provider_fallback.{provider} = {}",
+            format_toml_string_array(models)
+        );
+    }
+
+    rendered
+}
+
+fn resolve_template_drains(
+    effective: &UnifiedConfig,
+    default_drains: &crate::agents::fallback::ResolvedDrainConfig,
+) -> anyhow::Result<crate::agents::fallback::ResolvedDrainConfig> {
+    match effective.resolve_agent_drains_checked() {
+        Ok(Some(resolved)) => Ok(resolved),
+        Ok(None) => Ok(default_drains.clone()),
+        Err(message)
+            if named_chain_template_can_fall_back_to_defaults(effective, message.as_str()) =>
+        {
+            Ok(default_drains.clone())
+        }
+        Err(message) => Err(anyhow::Error::msg(message)),
+    }
+}
+
+fn named_chain_template_can_fall_back_to_defaults(
+    effective: &UnifiedConfig,
+    message: &str,
+) -> bool {
+    !effective.agent_chains.is_empty()
+        && effective.agent_drains.is_empty()
+        && message.contains("agent_drains does not resolve all built-in drains")
 }
 
 fn resolve_effective_init_template_config<R: ConfigEnvironment>(
@@ -100,9 +200,9 @@ fn resolve_effective_init_template_config<R: ConfigEnvironment>(
     Ok(UnifiedConfig::default().merge_with_content(&global_content, &global))
 }
 
-fn built_in_default_chain() -> anyhow::Result<crate::agents::fallback::FallbackConfig> {
+fn built_in_default_drains() -> anyhow::Result<crate::agents::fallback::ResolvedDrainConfig> {
     AgentRegistry::new()
-        .map(|registry| registry.fallback_config().clone())
+        .map(|registry| registry.resolved_drains().clone())
         .map_err(map_registry_init_error)
 }
 
@@ -114,6 +214,25 @@ fn map_registry_init_error(error: impl std::fmt::Display) -> anyhow::Error {
 fn format_toml_string_array(items: &[String]) -> String {
     let inner: Vec<String> = items.iter().map(|s| format!(r#""{s}""#)).collect();
     format!("[{}]", inner.join(", "))
+}
+
+fn collect_named_chain_definitions(
+    effective: &UnifiedConfig,
+    resolved: &crate::agents::fallback::ResolvedDrainConfig,
+) -> BTreeMap<String, Vec<String>> {
+    let mut chain_definitions: BTreeMap<String, Vec<String>> =
+        effective.agent_chains.clone().into_iter().collect();
+
+    for drain in crate::agents::AgentDrain::all() {
+        let binding = resolved
+            .binding(drain)
+            .expect("built-in drain bindings should be fully resolved");
+        chain_definitions
+            .entry(binding.chain_name.clone())
+            .or_insert_with(|| binding.agents.clone());
+    }
+
+    chain_definitions
 }
 
 /// Handle the `--init-local-config` flag with a custom path resolver.
@@ -218,7 +337,10 @@ mod tests {
             .with_file(
                 "/test/config/ralph-workflow.toml",
                 "\n[general]\ndeveloper_iters = 8\nreviewer_reviews = 3\n\
-                 developer_context = 2\nreviewer_context = 1\n",
+                 developer_context = 2\nreviewer_context = 1\n\
+                 \n[agent_chain]\nmax_retries = 9\nretry_delay_ms = 2500\n\
+                 backoff_multiplier = 3.0\nmax_backoff_ms = 90000\n\
+                 provider_fallback.opencode = [\"-m opencode/glm-4.7-free\"]\n",
             );
 
         handle_init_local_config_with(Colors::new(), &env, false).unwrap();
@@ -243,6 +365,30 @@ mod tests {
         assert!(
             content.contains("reviewer_context = 1"),
             "should show global reviewer_context=1, got:\n{content}"
+        );
+        assert!(
+            content.contains("# [agent_chain]"),
+            "should include the effective agent_chain metadata section, got:\n{content}"
+        );
+        assert!(
+            content.contains("# max_retries = 9"),
+            "should show global max_retries=9, got:\n{content}"
+        );
+        assert!(
+            content.contains("# retry_delay_ms = 2500"),
+            "should show global retry_delay_ms=2500, got:\n{content}"
+        );
+        assert!(
+            content.contains("# backoff_multiplier = 3"),
+            "should show global backoff_multiplier=3.0, got:\n{content}"
+        );
+        assert!(
+            content.contains("# max_backoff_ms = 90000"),
+            "should show global max_backoff_ms=90000, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# provider_fallback.opencode = ["-m opencode/glm-4.7-free"]"#),
+            "should show global provider fallback metadata, got:\n{content}"
         );
     }
 
@@ -305,9 +451,19 @@ mod tests {
             .expect("local config should be written");
 
         let registry = crate::agents::AgentRegistry::new().expect("built-in registry should load");
-        let builtins = registry.fallback_config();
-        let expected_developer = format_toml_string_array(&builtins.developer);
-        let expected_reviewer = format_toml_string_array(&builtins.reviewer);
+        let builtins = registry.resolved_drains();
+        let expected_developer = format_toml_string_array(
+            &builtins
+                .binding(crate::agents::AgentDrain::Development)
+                .expect("development drain")
+                .agents,
+        );
+        let expected_reviewer = format_toml_string_array(
+            &builtins
+                .binding(crate::agents::AgentDrain::Review)
+                .expect("review drain")
+                .agents,
+        );
 
         assert!(
             content.contains(&format!("developer = {expected_developer}")),
@@ -316,6 +472,14 @@ mod tests {
         assert!(
             content.contains(&format!("reviewer = {expected_reviewer}")),
             "should use built-in reviewer chain defaults, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# planning = "developer""#),
+            "should include the planning drain binding, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# review = "reviewer""#),
+            "should include the review drain binding, got:\n{content}"
         );
     }
 
@@ -347,6 +511,57 @@ reviewer = ["claude"]
             content.contains(r#"reviewer = ["claude"]"#),
             "should show global reviewer chain, got:\n{content}"
         );
+        assert!(
+            content.contains(r#"# development = "developer""#),
+            "should show the development drain binding, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# review = "reviewer""#),
+            "should show the review drain binding, got:\n{content}"
+        );
+
+        let named_env = MemoryConfigEnvironment::new()
+            .with_unified_config_path("/test/config/ralph-workflow.toml")
+            .with_local_config_path("/test/repo/.agent/ralph-workflow.toml")
+            .with_file(
+                "/test/config/ralph-workflow.toml",
+                r#"
+[agent_chains]
+shared_dev = ["codex", "claude"]
+shared_review = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+commit = "shared_review"
+analysis = "shared_dev"
+"#,
+            );
+
+        handle_init_local_config_with(Colors::new(), &named_env, true).unwrap();
+
+        let content = named_env
+            .get_file(Path::new("/test/repo/.agent/ralph-workflow.toml"))
+            .expect("local config should be written");
+
+        assert!(
+            content.contains(r#"shared_dev = ["codex", "claude"]"#),
+            "should show the named shared_dev chain, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"shared_review = ["claude"]"#),
+            "should show the named shared_review chain, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# planning = "shared_dev""#),
+            "should preserve planning drain binding, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# commit = "shared_review""#),
+            "should preserve commit drain binding, got:\n{content}"
+        );
     }
 
     #[test]
@@ -369,8 +584,13 @@ developer = ["codex"]
             .expect("local config should be written");
 
         let registry = crate::agents::AgentRegistry::new().expect("built-in registry should load");
-        let builtins = registry.fallback_config();
-        let expected_reviewer = format_toml_string_array(&builtins.reviewer);
+        let builtins = registry.resolved_drains();
+        let expected_reviewer = format_toml_string_array(
+            &builtins
+                .binding(crate::agents::AgentDrain::Review)
+                .expect("review drain")
+                .agents,
+        );
 
         assert!(
             content.contains(r#"developer = ["codex"]"#),
@@ -379,6 +599,14 @@ developer = ["codex"]
         assert!(
             content.contains(&format!("reviewer = {expected_reviewer}")),
             "missing global reviewer should fall back to built-in defaults, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# development = "developer""#),
+            "should bind development to the developer chain, got:\n{content}"
+        );
+        assert!(
+            content.contains(r#"# review = "reviewer""#),
+            "should bind review to the reviewer chain, got:\n{content}"
         );
     }
 

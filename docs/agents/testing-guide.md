@@ -357,6 +357,12 @@ Tests are first-class architecture components. When a test is hard to write, sim
 | Effect handlers (`app/`, `effects/`) | I/O, process spawning, filesystem writes | Integration-test with `MemoryWorkspace` + `MockProcessExecutor` |
 | OS / libgit2 | Real git operations | System-test only (serial binary) |
 
+When testing agent orchestration, seed the correct runtime `drain` in state fixtures. A populated agent chain alone is no longer enough to represent "already initialized" work, because planning, development, review, fix, commit, and analysis are distinct runtime consumers even when they share the same underlying chain definition.
+
+When testing config behavior, assert on resolved drain bindings or drain-addressed runtime effects rather than legacy role-shaped fallback tables. Legacy `[agent_chain]` tests are still useful, but only to prove they normalize into the same resolved built-in drains as the named schema.
+
+For checkpoint compatibility around agent execution state, include degraded or conflicting metadata cases in addition to round-trips: missing `current_role`, missing `current_drain`, and stale `current_role` that disagrees with the persisted drain should all restore deterministically with the drain as the authoritative runtime identity.
+
 ### Principles
 
 - **Separate decision from I/O.** Keep reducers pure; keep side effects in handlers.

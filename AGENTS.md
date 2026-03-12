@@ -247,12 +247,12 @@ When changing iteration/retry/continuation/fallback logic, run the metrics tests
 
 ```bash
 # Metrics unit tests
-cargo test --lib reducer::state_reduction::tests::metrics
+cargo test -p ralph-workflow --lib reducer::state_reduction::tests::metrics
 
 # Metrics integration tests
-cargo test --test '*' iteration_counter
-cargo test --test '*' continuation_budget
-cargo test --test '*' summary_consistency
+cargo test -p ralph-workflow-tests --test integration_tests iteration_counter
+cargo test -p ralph-workflow-tests --test integration_tests continuation_budget
+cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
 ```
 
 All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).
@@ -263,10 +263,10 @@ When changing per-run logging infrastructure, event loop logging, or log file pa
 
 ```bash
 # Per-run logging infrastructure tests
-cargo test --test '*' logging_per_run
+cargo test -p ralph-workflow-tests --test integration_tests logging_per_run
 
 # Event loop trace dump tests
-cargo test --test '*' event_loop_trace_dump
+cargo test -p ralph-workflow-tests --test integration_tests event_loop_trace_dump
 ```
 
 All tests must pass with no ERROR/WARNING diagnostics (informational output is acceptable).

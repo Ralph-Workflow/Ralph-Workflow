@@ -255,11 +255,11 @@ fn test_development_runs_exactly_n_iterations() {
                 );
             }
             Effect::SaveCheckpoint { .. } => break,
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,
@@ -423,6 +423,34 @@ fn test_same_agent_retry_in_development_retries_analysis_when_chain_role_is_anal
         effect,
         Effect::InvokeAnalysisAgent { iteration: 0 }
     ));
+
+    let mut stale_continuation_state = super::initial_with_locked_permissions(1, 0);
+    stale_continuation_state.phase = PipelinePhase::Development;
+    stale_continuation_state.iteration = 0;
+    stale_continuation_state.total_iterations = 1;
+    stale_continuation_state.development_context_prepared_iteration = Some(0);
+    stale_continuation_state.development_prompt_prepared_iteration = Some(0);
+    stale_continuation_state.development_required_files_cleaned_iteration = Some(0);
+    stale_continuation_state.development_agent_invoked_iteration = Some(0);
+    stale_continuation_state.analysis_agent_invoked_iteration = None;
+    stale_continuation_state.agent_chain = crate::reducer::state::AgentChainState::initial()
+        .with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Analysis,
+        )
+        .with_drain(crate::agents::AgentDrain::Analysis);
+    stale_continuation_state.continuation = crate::reducer::state::ContinuationState {
+        continue_pending: true,
+        continuation_attempt: 1,
+        ..crate::reducer::state::ContinuationState::default()
+    };
+
+    let effect = determine_next_effect(&stale_continuation_state);
+    assert!(matches!(
+        effect,
+        Effect::InvokeAnalysisAgent { iteration: 0 }
+    ));
 }
 
 #[test]
@@ -451,7 +479,7 @@ fn test_development_initializes_analysis_chain_before_invoking_analysis() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Analysis
+            drain: crate::agents::AgentDrain::Analysis
         }
     ));
 }

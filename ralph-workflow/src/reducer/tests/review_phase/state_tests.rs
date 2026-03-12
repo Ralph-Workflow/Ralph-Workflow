@@ -76,7 +76,8 @@ fn test_commit_created_clears_agent_chain_when_transitioning_to_review() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                drain: crate::agents::AgentDrain::Review,
+                ..
             }
         ),
         "Orchestration should emit InitializeAgentChain for Reviewer, got {effect:?}"
@@ -139,8 +140,9 @@ fn test_review_uses_agent_from_state_chain_not_context() {
 fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
     use crate::reducer::orchestration::determine_next_effect;
 
-    // Simulate the bug/regression scenario: the chain is populated, but for the wrong role.
-    // Fix attempts must use the Reviewer role (not Developer).
+    // Simulate the regression scenario: a stale development chain is present, but reducer-owned
+    // drain state says review is entering fix flow. Orchestration must honor the explicit fix
+    // drain and reinitialize that consumer instead of inferring from the stale chain contents.
     let developer_chain = crate::reducer::state::AgentChainState::initial().with_agents(
         vec!["dev-1".to_string(), "dev-2".to_string()],
         vec![vec![], vec![]],
@@ -152,7 +154,7 @@ fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
         reviewer_pass: 0,
         total_reviewer_passes: 1,
         review_issues_found: true,
-        agent_chain: developer_chain,
+        agent_chain: developer_chain.with_drain(crate::agents::AgentDrain::Fix),
         ..create_test_state()
     };
 
@@ -160,11 +162,12 @@ fn test_fix_attempt_reinitializes_chain_for_reviewer_role() {
     assert!(
         matches!(
             effect,
-            crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+            crate::reducer::effect::Effect::PrepareFixPrompt {
+                pass: 0,
+                prompt_mode: crate::reducer::state::PromptMode::Normal,
             }
         ),
-        "Expected InitializeAgentChain for Reviewer before fix attempt, got {effect:?}"
+        "Expected fix prompt preparation for explicit Fix drain, got {effect:?}"
     );
 }
 
@@ -257,7 +260,7 @@ fn test_handler_reads_correct_agent_from_state_after_chain_initialized() {
             ..create_test_state()
         },
         PipelineEvent::agent_chain_initialized(
-            crate::agents::AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec![
                 "codex".to_string(),
                 "opencode".to_string(),
@@ -332,7 +335,8 @@ fn test_full_pipeline_flow_uses_correct_reviewer_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                drain: crate::agents::AgentDrain::Review,
+                ..
             }
         ),
         "Should request reviewer chain initialization, got {effect:?}"
@@ -342,7 +346,7 @@ fn test_full_pipeline_flow_uses_correct_reviewer_agent() {
     state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            crate::agents::AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec![
                 "codex".to_string(),
                 "opencode".to_string(),
@@ -410,7 +414,8 @@ fn test_event_loop_state_consistency_for_review_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                drain: crate::agents::AgentDrain::Review,
+                ..
             }
         ),
         "Expected InitializeAgentChain, got {effect:?}"
@@ -419,7 +424,7 @@ fn test_event_loop_state_consistency_for_review_agent() {
     // Handler executes InitializeAgentChain, emits ChainInitialized event
     // (simulating what handler.initialize_agent_chain does)
     let event = PipelineEvent::agent_chain_initialized(
-        crate::agents::AgentRole::Reviewer,
+        crate::agents::AgentDrain::Review,
         vec![
             "codex".to_string(),
             "opencode".to_string(),
@@ -647,7 +652,8 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: crate::agents::AgentRole::Reviewer
+                drain: crate::agents::AgentDrain::Review,
+                ..
             }
         ),
         "Orchestration should request reviewer chain initialization, got {effect:?}"
@@ -657,7 +663,7 @@ fn test_complete_flow_dev_commit_review_uses_correct_reviewer_agent() {
     state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            crate::agents::AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec![
                 "codex".to_string(),
                 "opencode".to_string(),

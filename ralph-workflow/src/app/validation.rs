@@ -24,7 +24,9 @@ pub struct ValidatedAgents {
 /// Resolves and validates the required agent names from configuration.
 ///
 /// Both developer and reviewer agents must be configured at this point,
-/// either via CLI args, environment variables, or `agent_chain` defaults.
+/// either via CLI args, environment variables, or the resolved built-in drains
+/// from `[agent_chains]` / `[agent_drains]` (with legacy `[agent_chain]`
+/// accepted as a compatibility input).
 ///
 /// # Arguments
 ///
@@ -47,13 +49,15 @@ pub fn resolve_required_agents(
     let developer_agent = config.developer_agent.clone().ok_or_else(|| {
         anyhow::anyhow!(
             "No developer agent configured. Searched: {searched}.\n\
-            Set via --developer-agent, RALPH_DEVELOPER_AGENT env, or [agent_chain] in config."
+            Set via --developer-agent, RALPH_DEVELOPER_AGENT env, or [agent_chains]/[agent_drains] in config.\n\
+            Legacy [agent_chain] input is still accepted for compatibility."
         )
     })?;
     let reviewer_agent = config.reviewer_agent.clone().ok_or_else(|| {
         anyhow::anyhow!(
             "No reviewer agent configured. Searched: {searched}.\n\
-            Set via --reviewer-agent, RALPH_REVIEWER_AGENT env, or [agent_chain] in config."
+            Set via --reviewer-agent, RALPH_REVIEWER_AGENT env, or [agent_chains]/[agent_drains] in config.\n\
+            Legacy [agent_chain] input is still accepted for compatibility."
         )
     })?;
 
@@ -326,6 +330,10 @@ mod tests {
             msg.contains("built-in defaults"),
             "error should mention built-in defaults: {msg}"
         );
+        assert!(
+            msg.contains("[agent_chains]/[agent_drains]"),
+            "error should guide users to the canonical named chain/drain schema: {msg}"
+        );
     }
 
     #[test]
@@ -353,6 +361,10 @@ mod tests {
         assert!(
             msg.contains("local config"),
             "error should mention local config: {msg}"
+        );
+        assert!(
+            msg.contains("[agent_chains]/[agent_drains]"),
+            "error should guide users to the canonical named chain/drain schema: {msg}"
         );
     }
 

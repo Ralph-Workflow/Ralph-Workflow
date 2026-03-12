@@ -4,7 +4,7 @@
 //! review passes and phase state changes. All functions are deterministic state
 //! transformations with no side effects.
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::event::PipelinePhase;
 use crate::reducer::state::{
     AgentChainState, ContinuationState, PipelineState, PromptInputsState, ReviewValidatedOutcome,
@@ -34,7 +34,7 @@ pub(in crate::reducer::state_reduction::review) fn reduce_phase_started(
                     state.agent_chain.backoff_multiplier,
                     state.agent_chain.max_backoff_ms,
                 )
-                .reset_for_role(AgentRole::Reviewer)
+                .reset_for_drain(AgentDrain::Review)
         },
         // Entering Review must reset continuation state to avoid leaking
         // development continuation context into review/fix/rebase logic.
@@ -145,6 +145,7 @@ pub(in crate::reducer::state_reduction::review) fn reduce_context_prepared(
         },
         // Also force prompt re-preparation for this pass if it had already been prepared.
         review_prompt_prepared_pass: None,
+        agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
         ..state
     }
 }
@@ -159,6 +160,7 @@ pub(in crate::reducer::state_reduction::review) fn reduce_prompt_prepared(
 ) -> PipelineState {
     PipelineState {
         review_prompt_prepared_pass: Some(pass),
+        agent_chain: state.agent_chain,
         continuation: ContinuationState {
             xsd_retry_pending: false,
             xsd_retry_session_reuse_pending: state.continuation.xsd_retry_session_reuse_pending,

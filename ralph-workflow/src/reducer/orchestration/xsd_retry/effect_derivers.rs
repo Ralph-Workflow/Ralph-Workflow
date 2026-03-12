@@ -6,7 +6,7 @@
 ///
 /// The fingerprint includes:
 /// - Current phase
-/// - Current agent role
+/// - Current runtime drain
 /// - Current iteration
 /// - Current reviewer pass
 /// - XSD retry pending flag
@@ -16,9 +16,15 @@
 #[must_use]
 pub fn compute_effect_fingerprint(state: &PipelineState) -> String {
     format!(
-        "{}:{}:iter={}:pass={}:xsd_retry={}",
+        "{}:{}:{}:iter={}:pass={}:xsd_retry={}",
         state.phase,
-        state.agent_chain.current_role,
+        state.runtime_drain(),
+        match state.agent_chain.current_mode {
+            crate::agents::DrainMode::Normal => "normal",
+            crate::agents::DrainMode::Continuation => "continuation",
+            crate::agents::DrainMode::SameAgentRetry => "same-agent-retry",
+            crate::agents::DrainMode::XsdRetry => "xsd-retry",
+        },
         state.iteration,
         state.reviewer_pass,
         state.continuation.xsd_retry_pending
@@ -50,6 +56,29 @@ mod xsd_retry_fingerprint_tests {
     }
 }
 
+fn review_phase_uses_fix_drain(state: &PipelineState) -> bool {
+    state.runtime_drain() == crate::agents::AgentDrain::Fix
+}
+
+fn fix_drain_is_loaded(state: &PipelineState) -> bool {
+    state.agent_chain.current_drain == crate::agents::AgentDrain::Fix
+}
+
+fn development_retry_uses_analysis_drain(state: &PipelineState) -> bool {
+    analysis_drain_is_loaded(state)
+        || state.analysis_agent_invoked_iteration == Some(state.iteration)
+        || (state.development_agent_invoked_iteration == Some(state.iteration)
+            && state.development_xml_extracted_iteration != Some(state.iteration)
+            && state
+                .development_validated_outcome
+                .as_ref()
+                .is_none_or(|outcome| outcome.iteration != state.iteration))
+}
+
+fn analysis_drain_is_loaded(state: &PipelineState) -> bool {
+    state.agent_chain.current_drain == crate::agents::AgentDrain::Analysis
+}
+
 /// Derive the effect for XSD retry based on current phase.
 ///
 /// XSD retry reuses the same agent and session if available.
@@ -63,10 +92,11 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
         PipelinePhase::Development => {
             // development_result.xml is produced by the analysis agent.
             // When XSD validation fails, retry analysis output generation directly.
-            // Ensure the analysis agent chain role is initialized (resume safety).
-            if state.agent_chain.current_role != AgentRole::Analysis {
+            // Legacy checkpoints may resume with stale broad developer role metadata even
+            // though the active development-stage retry is for analysis output.
+            if !development_retry_uses_analysis_drain(state) || !analysis_drain_is_loaded(state) {
                 return Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis,
+                    drain: crate::agents::AgentDrain::Analysis,
                 };
             }
             Effect::InvokeAnalysisAgent {
@@ -74,7 +104,12 @@ fn derive_xsd_retry_effect(state: &PipelineState) -> Effect {
             }
         }
         PipelinePhase::Review => {
-            if state.review_issues_found || state.continuation.fix_continue_pending {
+            if review_phase_uses_fix_drain(state) {
+                if !fix_drain_is_loaded(state) {
+                    return Effect::InitializeAgentChain {
+                        drain: crate::agents::AgentDrain::Fix,
+                    };
+                }
                 Effect::PrepareFixPrompt {
                     pass: state.reviewer_pass,
                     prompt_mode: PromptMode::XsdRetry,
@@ -120,7 +155,7 @@ fn derive_timeout_context_write_effect(state: &PipelineState) -> Effect {
     );
 
     Effect::WriteTimeoutContext {
-        role: state.agent_chain.current_role,
+        role: state.agent_chain.current_drain.role(),
         logfile_path,
         context_path,
     }
@@ -138,21 +173,31 @@ fn derive_same_agent_retry_effect(state: &PipelineState) -> Effect {
         },
         PipelinePhase::Development => {
             // Development phase runs BOTH developer and analysis agents.
-            // Same-agent retries must be role-aware so analysis failures retry analysis,
-            // not the developer prompt chain.
-            if state.agent_chain.current_role == AgentRole::Analysis {
-                Effect::InvokeAnalysisAgent {
-                    iteration: state.iteration,
+            // Same-agent retries must be drain-aware so analysis failures retry analysis,
+            // not the developer prompt chain, even if role metadata or drain metadata is stale.
+            if development_retry_uses_analysis_drain(state) {
+                if !analysis_drain_is_loaded(state) {
+                    return Effect::InitializeAgentChain {
+                        drain: crate::agents::AgentDrain::Analysis,
+                    };
                 }
-            } else {
-                Effect::PrepareDevelopmentPrompt {
+                return Effect::InvokeAnalysisAgent {
                     iteration: state.iteration,
-                    prompt_mode: PromptMode::SameAgentRetry,
-                }
+                };
+            }
+
+            Effect::PrepareDevelopmentPrompt {
+                iteration: state.iteration,
+                prompt_mode: PromptMode::SameAgentRetry,
             }
         }
         PipelinePhase::Review => {
-            if state.review_issues_found || state.continuation.fix_continue_pending {
+            if review_phase_uses_fix_drain(state) {
+                if !fix_drain_is_loaded(state) {
+                    return Effect::InitializeAgentChain {
+                        drain: crate::agents::AgentDrain::Fix,
+                    };
+                }
                 Effect::PrepareFixPrompt {
                     pass: state.reviewer_pass,
                     prompt_mode: PromptMode::SameAgentRetry,
@@ -209,12 +254,16 @@ fn derive_continuation_effect(state: &PipelineState) -> Effect {
             }
         }
         // Fix continuation: start the fix chain with a fresh session
-        PipelinePhase::Review
-            if state.continuation.fix_continue_pending || state.review_issues_found =>
-        {
-            Effect::PrepareFixPrompt {
-                pass: state.reviewer_pass,
-                prompt_mode: PromptMode::Normal,
+        PipelinePhase::Review if review_phase_uses_fix_drain(state) => {
+            if fix_drain_is_loaded(state) {
+                Effect::PrepareFixPrompt {
+                    pass: state.reviewer_pass,
+                    prompt_mode: PromptMode::Continuation,
+                }
+            } else {
+                Effect::InitializeAgentChain {
+                    drain: crate::agents::AgentDrain::Fix,
+                }
             }
         }
         // Other phases don't support continuation

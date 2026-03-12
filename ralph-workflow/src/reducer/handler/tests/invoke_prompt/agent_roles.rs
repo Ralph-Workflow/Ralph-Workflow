@@ -43,6 +43,14 @@ fn test_invoke_review_agent_returns_error_when_prompt_missing() {
     ctx.reviewer_agent = "codex";
 
     let mut handler = MainEffectHandler::new(PipelineState::initial(1, 1));
+    handler.state.agent_chain = AgentChainState::initial()
+        .with_agents(
+            vec!["codex".to_string()],
+            vec![vec![]],
+            AgentRole::Developer,
+        )
+        .with_drain(crate::agents::AgentDrain::Development);
+
     let err = handler
         .invoke_review_agent(&mut ctx, 0)
         .expect_err("invoke_review_agent should return error when prompt missing");
@@ -50,6 +58,12 @@ fn test_invoke_review_agent_returns_error_when_prompt_missing() {
     assert!(
         err.to_string().contains("review prompt"),
         "Expected error about missing review prompt, got: {err}"
+    );
+
+    assert_eq!(
+        handler.state.agent_chain.current_drain,
+        crate::agents::AgentDrain::Development,
+        "handler invocation must not repair routing by rewriting the active drain"
     );
 }
 

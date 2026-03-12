@@ -326,6 +326,87 @@ fn test_fix_xsd_retry_triggers_reinvocation() {
     });
 }
 
+/// Test that fix XSD retry stays on the explicit fix drain even when review flags are clear.
+#[test]
+fn test_fix_xsd_retry_uses_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            review_issues_found: false,
+            fix_prompt_prepared_pass: Some(0),
+            fix_required_files_cleaned_pass: Some(0),
+            fix_agent_invoked_pass: Some(0),
+            agent_chain: AgentChainState::initial()
+                .with_agents(vec!["fixer".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(ralph_workflow::agents::AgentDrain::Fix)
+                .with_session_id(Some("fix-session".to_string())),
+            ..with_locked_prompt_permissions(with_locked_prompt_permissions(
+                PipelineState::initial(5, 2),
+            ))
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::fix_output_validation_failed(0, 0, None),
+        );
+
+        assert!(new_state.fix_prompt_prepared_pass.is_none());
+        assert!(new_state.fix_agent_invoked_pass.is_none());
+        assert!(new_state.continuation.xsd_retry_session_reuse_pending);
+
+        let effect = determine_next_effect(&new_state);
+        assert!(
+            matches!(effect, Effect::PrepareFixPrompt { .. }),
+            "explicit fix drain should own XSD retry routing, got {effect:?}"
+        );
+    });
+}
+
+/// Test that same-agent timeout retry clears fix cleanup state from the explicit fix drain.
+#[test]
+fn test_fix_timeout_retry_recleans_fix_xml_from_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let pass = 0;
+        let mut agent_chain = AgentChainState::initial()
+            .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(ralph_workflow::agents::AgentDrain::Fix);
+        agent_chain.last_session_id = Some("session-123".to_string());
+
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: pass,
+            total_reviewer_passes: 1,
+            review_issues_found: false,
+            review_required_files_cleaned_pass: Some(pass),
+            fix_prompt_prepared_pass: Some(pass),
+            fix_required_files_cleaned_pass: Some(pass),
+            agent_chain,
+            ..with_locked_prompt_permissions(with_locked_prompt_permissions(
+                PipelineState::initial(5, 2),
+            ))
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::agent_timed_out(
+                AgentRole::Reviewer,
+                "codex".to_string(),
+                ralph_workflow::reducer::event::TimeoutOutputKind::PartialOutput,
+                Some(".agent/logs/reviewer_0.log".to_string()),
+                None,
+            ),
+        );
+
+        assert!(new_state.fix_required_files_cleaned_pass.is_none());
+        assert_eq!(new_state.review_required_files_cleaned_pass, Some(pass));
+        assert!(matches!(
+            determine_next_effect(&new_state),
+            Effect::PrepareFixPrompt { .. }
+        ));
+    });
+}
+
 /// Test that fix XSD exhaustion triggers agent fallback.
 #[test]
 fn test_fix_xsd_exhausted_triggers_fallback() {

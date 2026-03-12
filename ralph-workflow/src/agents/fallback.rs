@@ -24,6 +24,183 @@ pub enum AgentRole {
     Analysis,
 }
 
+/// Runtime consumer of an agent chain.
+///
+/// Drains represent distinct runtime contexts that consume a concrete chain,
+/// even when multiple drains share the same underlying ordered agent list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AgentDrain {
+    Planning,
+    Development,
+    Review,
+    Fix,
+    Commit,
+    Analysis,
+}
+
+impl AgentDrain {
+    /// Return the broad capability role associated with this drain.
+    #[must_use]
+    pub const fn role(self) -> AgentRole {
+        match self {
+            Self::Planning | Self::Development => AgentRole::Developer,
+            Self::Review | Self::Fix => AgentRole::Reviewer,
+            Self::Commit => AgentRole::Commit,
+            Self::Analysis => AgentRole::Analysis,
+        }
+    }
+
+    /// Return the built-in drain key used by TOML and diagnostics.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Planning => "planning",
+            Self::Development => "development",
+            Self::Review => "review",
+            Self::Fix => "fix",
+            Self::Commit => "commit",
+            Self::Analysis => "analysis",
+        }
+    }
+
+    /// Parse a drain name from config.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "planning" => Some(Self::Planning),
+            "development" => Some(Self::Development),
+            "review" => Some(Self::Review),
+            "fix" => Some(Self::Fix),
+            "commit" => Some(Self::Commit),
+            "analysis" => Some(Self::Analysis),
+            _ => None,
+        }
+    }
+
+    /// Built-in drains in deterministic order.
+    #[must_use]
+    pub const fn all() -> [Self; 6] {
+        [
+            Self::Planning,
+            Self::Development,
+            Self::Review,
+            Self::Fix,
+            Self::Commit,
+            Self::Analysis,
+        ]
+    }
+}
+
+impl From<AgentRole> for AgentDrain {
+    fn from(value: AgentRole) -> Self {
+        match value {
+            AgentRole::Developer => Self::Development,
+            AgentRole::Reviewer => Self::Review,
+            AgentRole::Commit => Self::Commit,
+            AgentRole::Analysis => Self::Analysis,
+        }
+    }
+}
+
+impl std::fmt::Display for AgentDrain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Drain-local execution mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum DrainMode {
+    #[default]
+    Normal,
+    Continuation,
+    SameAgentRetry,
+    XsdRetry,
+}
+
+/// Concrete runtime chain binding for one drain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvedDrainBinding {
+    pub chain_name: String,
+    pub agents: Vec<String>,
+}
+
+/// Fully resolved drain configuration consumed by the runtime.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResolvedDrainConfig {
+    pub bindings: HashMap<AgentDrain, ResolvedDrainBinding>,
+    pub provider_fallback: HashMap<String, Vec<String>>,
+    pub max_retries: u32,
+    pub retry_delay_ms: u64,
+    pub backoff_multiplier: f64,
+    pub max_backoff_ms: u64,
+    pub max_cycles: u32,
+}
+
+impl ResolvedDrainConfig {
+    /// Return the binding for a specific drain.
+    #[must_use]
+    pub fn binding(&self, drain: AgentDrain) -> Option<&ResolvedDrainBinding> {
+        self.bindings.get(&drain)
+    }
+
+    /// Build a resolved drain config from the legacy role-shaped fallback config.
+    #[must_use]
+    pub fn from_legacy(fallback: &FallbackConfig) -> Self {
+        let mut bindings = HashMap::new();
+        for drain in AgentDrain::all() {
+            let role = drain.role();
+            let chain_name = fallback.effective_chain_name_for_role(role).to_string();
+            bindings.insert(
+                drain,
+                ResolvedDrainBinding {
+                    chain_name,
+                    agents: fallback.get_fallbacks(role).to_vec(),
+                },
+            );
+        }
+
+        Self {
+            bindings,
+            provider_fallback: fallback.provider_fallback.clone(),
+            max_retries: fallback.max_retries,
+            retry_delay_ms: fallback.retry_delay_ms,
+            backoff_multiplier: fallback.backoff_multiplier,
+            max_backoff_ms: fallback.max_backoff_ms,
+            max_cycles: fallback.max_cycles,
+        }
+    }
+
+    /// Project resolved drain bindings back into the legacy role-shaped config.
+    ///
+    /// This is a compatibility view for config/error reporting. Runtime code
+    /// should consume resolved drain bindings directly.
+    #[must_use]
+    pub fn to_legacy_fallback(&self) -> FallbackConfig {
+        FallbackConfig {
+            developer: self
+                .binding(AgentDrain::Development)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            reviewer: self
+                .binding(AgentDrain::Review)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            commit: self
+                .binding(AgentDrain::Commit)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            analysis: self
+                .binding(AgentDrain::Analysis)
+                .map_or_else(Vec::new, |binding| binding.agents.clone()),
+            provider_fallback: self.provider_fallback.clone(),
+            max_retries: self.max_retries,
+            retry_delay_ms: self.retry_delay_ms,
+            backoff_multiplier: self.backoff_multiplier,
+            max_backoff_ms: self.max_backoff_ms,
+            max_cycles: self.max_cycles,
+            legacy_role_keys_present: false,
+        }
+    }
+}
+
 impl std::fmt::Display for AgentRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -65,7 +242,7 @@ impl std::fmt::Display for AgentRole {
 /// - Each cycle multiplies by `backoff_multiplier` (default: 2.0)
 /// - Capped at `max_backoff_ms` (default: 60000ms = 1 minute)
 /// - Maximum cycles controlled by `max_cycles` (default: 3)
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FallbackConfig {
     /// Ordered list of agents for developer role (first = preferred, rest = fallbacks).
     #[serde(default)]
@@ -100,6 +277,59 @@ pub struct FallbackConfig {
     /// Maximum number of cycles through all agents before giving up (default: 3).
     #[serde(default = "default_max_cycles")]
     pub max_cycles: u32,
+    #[serde(skip)]
+    pub(crate) legacy_role_keys_present: bool,
+}
+
+impl<'de> Deserialize<'de> for FallbackConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct FallbackConfigSerde {
+            #[serde(default)]
+            developer: Option<Vec<String>>,
+            #[serde(default)]
+            reviewer: Option<Vec<String>>,
+            #[serde(default)]
+            commit: Option<Vec<String>>,
+            #[serde(default)]
+            analysis: Option<Vec<String>>,
+            #[serde(default)]
+            provider_fallback: HashMap<String, Vec<String>>,
+            #[serde(default = "default_max_retries")]
+            max_retries: u32,
+            #[serde(default = "default_retry_delay_ms")]
+            retry_delay_ms: u64,
+            #[serde(default = "default_backoff_multiplier")]
+            backoff_multiplier: f64,
+            #[serde(default = "default_max_backoff_ms")]
+            max_backoff_ms: u64,
+            #[serde(default = "default_max_cycles")]
+            max_cycles: u32,
+        }
+
+        let raw = FallbackConfigSerde::deserialize(deserializer)?;
+        let legacy_role_keys_present = raw.developer.is_some()
+            || raw.reviewer.is_some()
+            || raw.commit.is_some()
+            || raw.analysis.is_some();
+
+        Ok(Self {
+            developer: raw.developer.unwrap_or_default(),
+            reviewer: raw.reviewer.unwrap_or_default(),
+            commit: raw.commit.unwrap_or_default(),
+            analysis: raw.analysis.unwrap_or_default(),
+            provider_fallback: raw.provider_fallback,
+            max_retries: raw.max_retries,
+            retry_delay_ms: raw.retry_delay_ms,
+            backoff_multiplier: raw.backoff_multiplier,
+            max_backoff_ms: raw.max_backoff_ms,
+            max_cycles: raw.max_cycles,
+            legacy_role_keys_present,
+        })
+    }
 }
 
 const fn default_max_retries() -> u32 {
@@ -197,11 +427,58 @@ impl Default for FallbackConfig {
             backoff_multiplier: default_backoff_multiplier(),
             max_backoff_ms: default_max_backoff_ms(),
             max_cycles: default_max_cycles(),
+            legacy_role_keys_present: false,
         }
     }
 }
 
 impl FallbackConfig {
+    /// Return whether this legacy config carries any role-keyed chain bindings.
+    #[must_use]
+    pub fn has_role_bindings(&self) -> bool {
+        [
+            self.developer.as_slice(),
+            self.reviewer.as_slice(),
+            self.commit.as_slice(),
+            self.analysis.as_slice(),
+        ]
+        .into_iter()
+        .any(|chain| !chain.is_empty())
+    }
+
+    /// Return whether any legacy role key was explicitly present in the source config.
+    #[must_use]
+    pub const fn has_legacy_role_key_presence(&self) -> bool {
+        self.legacy_role_keys_present
+    }
+
+    /// Return whether the legacy role-keyed schema is in use.
+    #[must_use]
+    pub fn uses_legacy_role_schema(&self) -> bool {
+        self.legacy_role_keys_present || self.has_role_bindings()
+    }
+
+    const fn effective_chain_name_for_role(&self, role: AgentRole) -> &'static str {
+        match role {
+            AgentRole::Developer => "developer",
+            AgentRole::Reviewer => "reviewer",
+            AgentRole::Commit => {
+                if self.commit.is_empty() {
+                    "reviewer"
+                } else {
+                    "commit"
+                }
+            }
+            AgentRole::Analysis => {
+                if self.analysis.is_empty() {
+                    "developer"
+                } else {
+                    "analysis"
+                }
+            }
+        }
+    }
+
     /// Calculate exponential backoff delay for a given cycle.
     ///
     /// Uses the formula: min(base * multiplier^cycle, `max_backoff`)
@@ -323,6 +600,12 @@ impl FallbackConfig {
             .get(agent_name)
             .is_some_and(|v| !v.is_empty())
     }
+
+    /// Resolve this legacy fallback config into explicit built-in drains.
+    #[must_use]
+    pub fn resolve_drains(&self) -> ResolvedDrainConfig {
+        ResolvedDrainConfig::from_legacy(self)
+    }
 }
 
 #[cfg(test)]
@@ -335,6 +618,16 @@ mod tests {
         assert_eq!(format!("{}", AgentRole::Reviewer), "reviewer");
         assert_eq!(format!("{}", AgentRole::Commit), "commit");
         assert_eq!(format!("{}", AgentRole::Analysis), "analysis");
+    }
+
+    #[test]
+    fn test_agent_drain_role_mapping() {
+        assert_eq!(AgentDrain::Planning.role(), AgentRole::Developer);
+        assert_eq!(AgentDrain::Development.role(), AgentRole::Developer);
+        assert_eq!(AgentDrain::Review.role(), AgentRole::Reviewer);
+        assert_eq!(AgentDrain::Fix.role(), AgentRole::Reviewer);
+        assert_eq!(AgentDrain::Commit.role(), AgentRole::Commit);
+        assert_eq!(AgentDrain::Analysis.role(), AgentRole::Analysis);
     }
 
     #[test]

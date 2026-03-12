@@ -76,7 +76,7 @@ fn test_analysis_runs_after_first_iteration_when_multiple_iterations() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 vec!["claude".to_string()],
                 3,
                 1_000,
@@ -102,7 +102,8 @@ fn test_analysis_runs_after_first_iteration_when_multiple_iterations() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis
+                    drain: ralph_workflow::agents::AgentDrain::Analysis,
+                    ..
                 }
             ),
             "Expected InitializeAgentChain(Analysis) before invoking analysis agent, got {effect:?}"
@@ -127,7 +128,7 @@ fn test_analysis_runs_after_every_iteration() {
             state = reduce(
                 state,
                 PipelineEvent::agent_chain_initialized(
-                    AgentRole::Developer,
+                    AgentRole::Developer.into(),
                     vec!["claude".to_string()],
                     3,
                     1_000,
@@ -153,7 +154,8 @@ fn test_analysis_runs_after_every_iteration() {
                 matches!(
                     effect,
                     Effect::InitializeAgentChain {
-                        role: AgentRole::Analysis
+                        drain: ralph_workflow::agents::AgentDrain::Analysis,
+                        ..
                     }
                 ),
                 "Expected InitializeAgentChain(Analysis) after iteration {iter}, got {effect:?}"
@@ -341,8 +343,6 @@ fn test_continuation_triggered_resets_analysis_invoked_tracking() {
 #[test]
 fn test_development_xsd_retry_reinvokes_analysis_agent() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
-
         // Given: Development phase with an XSD retry pending (driven by reducer events).
         let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 0));
         state = reduce(state, PipelineEvent::planning_phase_completed());
@@ -374,7 +374,8 @@ fn test_development_xsd_retry_reinvokes_analysis_agent() {
                 || matches!(
                     effect,
                     Effect::InitializeAgentChain {
-                        role: AgentRole::Analysis
+                        drain: ralph_workflow::agents::AgentDrain::Analysis,
+                        ..
                     }
                 ),
             "expected XSD retry to initialize analysis chain or invoke analysis agent, got {effect:?}"
@@ -469,7 +470,7 @@ fn test_analysis_xsd_invalid_triggers_retry() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Analysis,
+                AgentRole::Analysis.into(),
                 vec!["claude".to_string()],
                 3,
                 1_000,
@@ -523,7 +524,7 @@ fn test_analysis_uses_agent_chain_fallback() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 vec!["agent1".to_string(), "agent2".to_string()],
                 3,
                 1000,
@@ -583,7 +584,7 @@ fn test_complete_pipeline_with_analysis_verification() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Developer,
+                AgentRole::Developer.into(),
                 vec!["claude".to_string()],
                 3,
                 1000,
@@ -609,7 +610,8 @@ fn test_complete_pipeline_with_analysis_verification() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis
+                    drain: ralph_workflow::agents::AgentDrain::Analysis,
+                    ..
                 }
             ),
             "After dev agent, should initialize analysis chain, got {effect:?}"
@@ -619,7 +621,7 @@ fn test_complete_pipeline_with_analysis_verification() {
         state = reduce(
             state,
             PipelineEvent::agent_chain_initialized(
-                AgentRole::Analysis,
+                AgentRole::Analysis.into(),
                 vec!["claude".to_string()],
                 3,
                 1000,

@@ -5,6 +5,7 @@
 //! - XSD retry logic (`OutputValidationFailed`, `XmlMissing`)
 //! - Context management (`ContinuationContextWritten`, `ContinuationContextCleaned`)
 
+use crate::agents::DrainMode;
 use crate::reducer::event::DevelopmentEvent;
 use crate::reducer::state::{ContinuationState, DevelopmentStatus, PipelineState};
 
@@ -41,6 +42,7 @@ pub(super) fn reduce_continuation_event(
 
             PipelineState {
                 iteration,
+                agent_chain: state.agent_chain.with_mode(DrainMode::Continuation),
                 continuation: new_continuation,
                 development_context_prepared_iteration: None,
                 development_prompt_prepared_iteration: None,
@@ -80,6 +82,7 @@ pub(super) fn reduce_continuation_event(
                     context_cleanup_pending: true,
                     ..state.continuation.reset()
                 },
+                agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
                 development_context_prepared_iteration: None,
                 development_prompt_prepared_iteration: None,
                 development_required_files_cleaned_iteration: None,
@@ -106,7 +109,7 @@ pub(super) fn reduce_continuation_event(
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
                     iteration,
-                    agent_chain: new_agent_chain,
+                    agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
                     continuation: ContinuationState {
                         invalid_output_attempts: 0,
                         xsd_retry_count: 0,
@@ -142,6 +145,7 @@ pub(super) fn reduce_continuation_event(
                 PipelineState {
                     phase: crate::reducer::event::PipelinePhase::Development,
                     iteration,
+                    agent_chain: state.agent_chain.with_mode(DrainMode::XsdRetry),
                     continuation: ContinuationState {
                         invalid_output_attempts: attempt + 1,
                         xsd_retry_count: new_xsd_count,
@@ -203,7 +207,7 @@ pub(super) fn reduce_continuation_event(
                     phase: crate::reducer::event::PipelinePhase::AwaitingDevFix,
                     previous_phase: Some(crate::reducer::event::PipelinePhase::Development),
                     iteration,
-                    agent_chain: new_agent_chain,
+                    agent_chain: new_agent_chain.with_mode(DrainMode::Normal),
                     dev_fix_triggered: false,
                     continuation: ContinuationState {
                         continuation_attempt: 0,
@@ -256,7 +260,7 @@ pub(super) fn reduce_continuation_event(
                         context_cleanup_pending: true,
                         ..state.continuation
                     },
-                    agent_chain: new_agent_chain.reset(),
+                    agent_chain: new_agent_chain.reset().with_mode(DrainMode::Normal),
                     ..state
                 };
 

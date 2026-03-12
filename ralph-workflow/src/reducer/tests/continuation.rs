@@ -26,11 +26,13 @@ fn test_context_prepared_clears_continue_pending_to_prevent_infinite_loop() {
         phase: PipelinePhase::Development,
         iteration: 1,
         total_iterations: 5,
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Development),
         continuation: ContinuationState {
             continue_pending: true,
             context_write_pending: false,
@@ -127,11 +129,13 @@ fn test_fix_prompt_prepared_clears_fix_continue_pending_to_prevent_infinite_loop
     state.reviewer_pass = 0;
     state.total_reviewer_passes = 2;
     state.review_issues_found = true;
-    state.agent_chain = AgentChainState::initial().with_agents(
-        vec!["claude".to_string()],
-        vec![vec![]],
-        AgentRole::Reviewer,
-    );
+    state.agent_chain = AgentChainState::initial()
+        .with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        )
+        .with_drain(crate::agents::AgentDrain::Fix);
     state.continuation = ContinuationState {
         fix_continue_pending: true,
         fix_continuation_attempt: 1,
@@ -217,11 +221,13 @@ fn test_continuation_does_not_cause_infinite_loop_in_event_loop_simulation() {
         phase: PipelinePhase::Development,
         iteration: 0,
         total_iterations: 1,
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Development),
         continuation: ContinuationState {
             continue_pending: true,
             context_write_pending: false,
@@ -351,11 +357,13 @@ fn test_fix_continuation_does_not_cause_infinite_loop_in_event_loop_simulation()
         reviewer_pass: 0,
         total_reviewer_passes: 2,
         review_issues_found: true,
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(crate::agents::AgentDrain::Fix),
         continuation: ContinuationState {
             fix_continue_pending: true,
             fix_continuation_attempt: 1,

@@ -1,6 +1,6 @@
 // NOTE: split from reducer/event.rs to keep the main file under line limits.
 use super::types::{default_timeout_output_kind, AgentErrorKind, TimeoutOutputKind};
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::executor::ChildProcessInfo;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,10 @@ use serde::{Deserialize, Serialize};
 pub enum AgentEvent {
     /// Agent invocation started.
     InvocationStarted {
-        /// The role this agent is fulfilling.
+        /// Compatibility role metadata for the active drain.
+        ///
+        /// Runtime routing is drain-owned; reducers use explicit drain state as the
+        /// authoritative consumer identity.
         role: AgentRole,
         /// The agent being invoked.
         agent: String,
@@ -34,14 +37,14 @@ pub enum AgentEvent {
     },
     /// Agent invocation succeeded.
     InvocationSucceeded {
-        /// The role this agent fulfilled.
+        /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that succeeded.
         agent: String,
     },
     /// Agent invocation failed.
     InvocationFailed {
-        /// The role this agent was fulfilling.
+        /// Compatibility role metadata for the active drain.
         role: AgentRole,
         /// The agent that failed.
         agent: String,
@@ -86,8 +89,8 @@ pub enum AgentEvent {
     },
     /// Agent chain initialized with available agents.
     ChainInitialized {
-        /// The role this chain is for.
-        role: AgentRole,
+        /// The explicit runtime drain this chain is for.
+        drain: AgentDrain,
         /// The agents available in this chain.
         agents: Vec<String>,
         /// Maximum number of retry cycles allowed for this chain.

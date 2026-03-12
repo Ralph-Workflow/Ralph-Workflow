@@ -195,16 +195,26 @@ ralph --list-work-guides  # Show all available Work Guides
 ralph --extended-help     # Show comprehensive help
 ```
 
-Configure agent chains and defaults:
+Configure reusable agent chains and bind drains to them:
 
 ```toml
 [general]
 developer_iters = 5
 reviewer_reviews = 2
 
-[agent_chain]
+[agent_chains]
 developer = ["claude", "codex", "opencode"]
 reviewer = ["codex", "claude"]
+
+[agent_drains]
+planning = "developer"
+development = "developer"
+review = "reviewer"
+fix = "reviewer"
+commit = "reviewer"
+analysis = "developer"
+
+[agent_chain]
 max_retries = 3
 ```
 

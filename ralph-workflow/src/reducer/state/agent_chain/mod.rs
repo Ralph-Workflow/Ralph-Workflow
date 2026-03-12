@@ -16,7 +16,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub use crate::agents::AgentRole;
+pub use crate::agents::{AgentDrain, AgentRole, DrainMode};
 
 mod backoff;
 mod transitions;
@@ -58,7 +58,16 @@ pub struct AgentChainState {
     /// Pending backoff delay (milliseconds) that must be waited before continuing.
     #[serde(default)]
     pub backoff_pending_ms: Option<u64>,
+    /// Compatibility copy of the broad capability role.
+    ///
+    /// Runtime code should treat `current_drain` as authoritative and derive the
+    /// active role from it. This field is retained for checkpoint compatibility
+    /// and diagnostics only.
     pub current_role: AgentRole,
+    #[serde(default = "default_current_drain")]
+    pub current_drain: AgentDrain,
+    #[serde(default)]
+    pub current_mode: DrainMode,
     /// Prompt context preserved from a rate-limited agent for continuation.
     ///
     /// When an agent hits 429, we save the prompt here so the next agent can
@@ -80,6 +89,7 @@ pub struct AgentChainState {
 /// Role-scoped continuation prompt captured from a rate limit (429).
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct RateLimitContinuationPrompt {
+    pub drain: AgentDrain,
     pub role: AgentRole,
     pub prompt: String,
 }
@@ -88,7 +98,38 @@ pub struct RateLimitContinuationPrompt {
 #[serde(untagged)]
 enum RateLimitContinuationPromptRepr {
     LegacyString(String),
-    Structured { role: AgentRole, prompt: String },
+    Structured {
+        #[serde(rename = "role")]
+        _role: AgentRole,
+        #[serde(default)]
+        drain: Option<AgentDrain>,
+        prompt: String,
+    },
+}
+
+fn infer_legacy_current_drain(
+    current_drain: Option<AgentDrain>,
+    current_role: Option<AgentRole>,
+    current_mode: DrainMode,
+    continuation_prompt: Option<&RateLimitContinuationPromptRepr>,
+) -> AgentDrain {
+    if let Some(current_drain) = current_drain {
+        return current_drain;
+    }
+
+    if let Some(prompt_drain) = continuation_prompt.and_then(|prompt| match prompt {
+        RateLimitContinuationPromptRepr::LegacyString(_) => None,
+        RateLimitContinuationPromptRepr::Structured { drain, .. } => *drain,
+    }) {
+        return prompt_drain;
+    }
+
+    match (current_role, current_mode) {
+        (Some(AgentRole::Reviewer), DrainMode::Continuation) => AgentDrain::Fix,
+        (Some(AgentRole::Developer), DrainMode::Continuation) => AgentDrain::Development,
+        (Some(current_role), _) => AgentDrain::from(current_role),
+        (None, _) => default_current_drain(),
+    }
 }
 
 impl<'de> Deserialize<'de> for AgentChainState {
@@ -112,7 +153,12 @@ impl<'de> Deserialize<'de> for AgentChainState {
             max_backoff_ms: u64,
             #[serde(default)]
             backoff_pending_ms: Option<u64>,
-            current_role: AgentRole,
+            #[serde(default)]
+            current_drain: Option<AgentDrain>,
+            #[serde(default)]
+            current_role: Option<AgentRole>,
+            #[serde(default)]
+            current_mode: DrainMode,
             #[serde(default)]
             rate_limit_continuation_prompt: Option<RateLimitContinuationPromptRepr>,
             #[serde(default)]
@@ -120,19 +166,36 @@ impl<'de> Deserialize<'de> for AgentChainState {
         }
 
         let raw = AgentChainStateSerde::deserialize(deserializer)?;
+        let current_drain = infer_legacy_current_drain(
+            raw.current_drain,
+            raw.current_role,
+            raw.current_mode,
+            raw.rate_limit_continuation_prompt.as_ref(),
+        );
+        let current_role = current_drain.role();
 
         let rate_limit_continuation_prompt = raw.rate_limit_continuation_prompt.map(|repr| {
             match repr {
                 RateLimitContinuationPromptRepr::LegacyString(prompt) => {
                     // Legacy checkpoints stored only the prompt string. Scope it to the
-                    // chain's current role so resume can't cross-contaminate roles.
+                    // resolved drain role so resume can't cross-contaminate drains.
                     RateLimitContinuationPrompt {
-                        role: raw.current_role,
+                        drain: current_drain,
+                        role: current_role,
                         prompt,
                     }
                 }
-                RateLimitContinuationPromptRepr::Structured { role, prompt } => {
-                    RateLimitContinuationPrompt { role, prompt }
+                RateLimitContinuationPromptRepr::Structured {
+                    _role: _,
+                    drain,
+                    prompt,
+                } => {
+                    let prompt_drain = drain.unwrap_or(current_drain);
+                    RateLimitContinuationPrompt {
+                        drain: prompt_drain,
+                        role: prompt_drain.role(),
+                        prompt,
+                    }
                 }
             }
         });
@@ -148,7 +211,9 @@ impl<'de> Deserialize<'de> for AgentChainState {
             backoff_multiplier: raw.backoff_multiplier,
             max_backoff_ms: raw.max_backoff_ms,
             backoff_pending_ms: raw.backoff_pending_ms,
-            current_role: raw.current_role,
+            current_role,
+            current_drain,
+            current_mode: raw.current_mode,
             rate_limit_continuation_prompt,
             last_session_id: raw.last_session_id,
         })
@@ -167,12 +232,18 @@ const fn default_max_backoff_ms() -> u64 {
     60000
 }
 
-const fn agent_role_signature_tag(role: AgentRole) -> &'static [u8] {
-    match role {
-        AgentRole::Developer => b"developer\n",
-        AgentRole::Reviewer => b"reviewer\n",
-        AgentRole::Commit => b"commit\n",
-        AgentRole::Analysis => b"analysis\n",
+const fn default_current_drain() -> AgentDrain {
+    AgentDrain::Planning
+}
+
+const fn agent_drain_signature_tag(drain: AgentDrain) -> &'static [u8] {
+    match drain {
+        AgentDrain::Planning => b"planning\n",
+        AgentDrain::Development => b"development\n",
+        AgentDrain::Review => b"review\n",
+        AgentDrain::Fix => b"fix\n",
+        AgentDrain::Commit => b"commit\n",
+        AgentDrain::Analysis => b"analysis\n",
     }
 }
 
@@ -191,9 +262,16 @@ impl AgentChainState {
             max_backoff_ms: default_max_backoff_ms(),
             backoff_pending_ms: None,
             current_role: AgentRole::Developer,
+            current_drain: default_current_drain(),
+            current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
         }
+    }
+
+    #[must_use]
+    pub fn matches_runtime_drain(&self, runtime_drain: AgentDrain) -> bool {
+        self.current_drain == runtime_drain
     }
 
     #[must_use]
@@ -206,7 +284,32 @@ impl AgentChainState {
         self.agents = Arc::from(agents);
         self.models_per_agent = Arc::from(models_per_agent);
         self.current_role = role;
+        self.current_drain = match role {
+            AgentRole::Developer => AgentDrain::Development,
+            AgentRole::Reviewer => AgentDrain::Review,
+            AgentRole::Commit => AgentDrain::Commit,
+            AgentRole::Analysis => AgentDrain::Analysis,
+        };
+        self.current_mode = DrainMode::Normal;
         self
+    }
+
+    #[must_use]
+    pub const fn with_drain(mut self, drain: AgentDrain) -> Self {
+        self.current_drain = drain;
+        self.current_role = drain.role();
+        self
+    }
+
+    #[must_use]
+    pub const fn with_mode(mut self, mode: DrainMode) -> Self {
+        self.current_mode = mode;
+        self
+    }
+
+    #[must_use]
+    pub const fn active_role(&self) -> AgentRole {
+        self.current_drain.role()
     }
 
     /// Builder method to set the maximum number of retry cycles.
@@ -237,7 +340,7 @@ impl AgentChainState {
         self.agents.get(self.current_agent_index)
     }
 
-    /// Stable signature of the current consumer set (agents + configured models + role).
+    /// Stable signature of the current consumer set (agents + configured models + drain).
     ///
     /// This is used to dedupe oversize materialization decisions across reducer retries.
     /// The signature is stable under:
@@ -281,7 +384,7 @@ impl AgentChainState {
         });
 
         let mut hasher = Sha256::new();
-        hasher.update(agent_role_signature_tag(self.current_role));
+        hasher.update(agent_drain_signature_tag(self.current_drain));
         for (agent, models) in pairs {
             hasher.update(agent.as_bytes());
             hasher.update(b"|");
@@ -319,7 +422,7 @@ impl AgentChainState {
         rendered.sort();
 
         let mut hasher = Sha256::new();
-        hasher.update(agent_role_signature_tag(self.current_role));
+        hasher.update(agent_drain_signature_tag(self.current_drain));
         for line in rendered {
             hasher.update(line.as_bytes());
             hasher.update(b"\n");
@@ -381,18 +484,20 @@ mod consumer_signature_tests {
     }
 
     #[test]
-    fn test_consumer_signature_uses_stable_role_encoding() {
+    fn test_consumer_signature_uses_stable_drain_encoding() {
         // The consumer signature is persisted in reducer state and used for dedupe.
         // It must not depend on Debug formatting (variant renames would change the hash).
         // Instead, it should use a stable, explicit role tag.
-        let state = AgentChainState::initial().with_agents(
-            vec!["agent-a".to_string()],
-            vec![vec!["m1".to_string(), "m2".to_string()]],
-            AgentRole::Reviewer,
-        );
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["agent-a".to_string()],
+                vec![vec!["m1".to_string(), "m2".to_string()]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(AgentDrain::Fix);
 
         let mut hasher = Sha256::new();
-        hasher.update(b"reviewer\n");
+        hasher.update(b"fix\n");
         hasher.update(b"agent-a");
         hasher.update(b"|");
         hasher.update(b"m1");
@@ -438,6 +543,7 @@ mod legacy_rate_limit_prompt_tests {
         let prompt = decoded
             .rate_limit_continuation_prompt
             .expect("expected legacy prompt to deserialize");
+        assert_eq!(prompt.drain, AgentDrain::Review);
         assert_eq!(prompt.role, AgentRole::Reviewer);
         assert_eq!(prompt.prompt, "legacy prompt");
     }

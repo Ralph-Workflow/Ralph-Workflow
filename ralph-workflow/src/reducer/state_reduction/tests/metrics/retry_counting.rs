@@ -7,7 +7,6 @@
 //! - Agent fallback counters
 
 use super::*;
-
 #[test]
 fn test_phase_specific_xsd_retry_increments_review_metrics() {
     let mut state = PipelineState::initial(0, 3);

@@ -135,11 +135,13 @@ fn test_planning_phase_emits_prepare_prompt() {
             gitignore_entries_ensured: true,
             iteration: 0,
             total_iterations: 5,
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["claude".to_string()],
-                vec![vec![]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["claude".to_string()],
+                    vec![vec![]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
         };
 
@@ -241,6 +243,82 @@ fn test_exhausted_agent_chain_emits_abort_effect() {
     });
 }
 
+/// Exhaustion reporting must derive the role from the active drain, not stale role metadata.
+#[test]
+fn test_exhausted_analysis_drain_reports_analysis_role_when_role_metadata_is_stale() {
+    with_default_timeout(|| {
+        let mut chain = AgentChainState::initial()
+            .with_agents(
+                vec!["analysis-agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Analysis)
+            .with_max_cycles(1);
+        chain.current_role = AgentRole::Developer;
+        chain = chain.start_retry_cycle();
+
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 0,
+            total_iterations: 1,
+            agent_chain: chain,
+            ..with_locked_prompt_permissions(PipelineState::initial(1, 0))
+        };
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::ReportAgentChainExhausted {
+                    role: AgentRole::Analysis,
+                    ..
+                }
+            ),
+            "Exhausted analysis drain should report analysis role, got {effect:?}"
+        );
+    });
+}
+
+/// Backoff waiting must derive the role from the active drain, not stale role metadata.
+#[test]
+fn test_backoff_wait_uses_active_drain_role_when_role_metadata_is_stale() {
+    with_default_timeout(|| {
+        let mut chain = AgentChainState::initial()
+            .with_agents(
+                vec!["analysis-agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Analysis);
+        chain.current_role = AgentRole::Developer;
+        chain.backoff_pending_ms = Some(2_500);
+
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 0,
+            total_iterations: 1,
+            agent_chain: chain,
+            ..with_locked_prompt_permissions(PipelineState::initial(1, 0))
+        };
+
+        let effect = determine_next_effect(&state);
+
+        assert!(
+            matches!(
+                effect,
+                Effect::BackoffWait {
+                    role: AgentRole::Analysis,
+                    cycle: 0,
+                    duration_ms: 2_500
+                }
+            ),
+            "Backoff wait should report the active drain role, got {effect:?}"
+        );
+    });
+}
+
 /// Test that Interrupted phase drives a checkpoint save before termination.
 ///
 /// Regression: an Interrupted state combined with an exhausted agent chain must not
@@ -292,21 +370,27 @@ fn test_interrupted_phase_emits_interrupt_checkpoint_save() {
 #[test]
 fn test_each_phase_emits_single_focused_effect() {
     with_default_timeout(|| {
-        let dev_chain = AgentChainState::initial().with_agents(
-            vec!["agent".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
-        let reviewer_chain = AgentChainState::initial().with_agents(
-            vec!["reviewer".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        );
-        let commit_chain = AgentChainState::initial().with_agents(
-            vec!["committer".to_string()],
-            vec![vec![]],
-            AgentRole::Commit,
-        );
+        let dev_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
+        let reviewer_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["reviewer".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Review);
+        let commit_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["committer".to_string()],
+                vec![vec![]],
+                AgentRole::Commit,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Commit);
 
         // Planning emits MaterializePlanningInputs (not bundled with cleanup or agent init)
         let state = PipelineState {
@@ -325,7 +409,7 @@ fn test_each_phase_emits_single_focused_effect() {
         // Development emits PrepareDevelopmentContext (not bundled with cleanup)
         let state = PipelineState {
             phase: PipelinePhase::Development,
-            agent_chain: dev_chain,
+            agent_chain: dev_chain.with_drain(ralph_workflow::agents::AgentDrain::Development),
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
         };
         let effect = determine_next_effect(&state);
@@ -395,7 +479,8 @@ fn test_commit_phase_requires_agent_chain() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Commit
+                    drain: ralph_workflow::agents::AgentDrain::Commit,
+                    ..
                 }
             ),
             "Empty chain should emit InitializeAgentChain for Commit, got {effect:?}"
@@ -490,11 +575,13 @@ fn test_context_cleaned_before_planning() {
             phase: PipelinePhase::Planning,
             context_cleaned: false,
             gitignore_entries_ensured: false,
-            agent_chain: AgentChainState::initial().with_agents(
-                vec!["claude".to_string()],
-                vec![vec![]],
-                AgentRole::Developer,
-            ),
+            agent_chain: AgentChainState::initial()
+                .with_agents(
+                    vec!["claude".to_string()],
+                    vec![vec![]],
+                    AgentRole::Developer,
+                )
+                .with_drain(ralph_workflow::agents::AgentDrain::Planning),
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
         };
 
@@ -536,16 +623,20 @@ fn test_context_cleaned_before_planning() {
 #[test]
 fn test_phases_emit_expected_effects_when_initialized() {
     with_default_timeout(|| {
-        let base_chain = AgentChainState::initial().with_agents(
-            vec!["agent".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
-        let reviewer_chain = AgentChainState::initial().with_agents(
-            vec!["reviewer".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        );
+        let base_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
+        let reviewer_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["reviewer".to_string()],
+                vec![vec![]],
+                AgentRole::Reviewer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Review);
 
         // Planning -> PreparePlanningPrompt
         let state = PipelineState {
@@ -565,7 +656,7 @@ fn test_phases_emit_expected_effects_when_initialized() {
             phase: PipelinePhase::Development,
             iteration: 0,
             total_iterations: 5,
-            agent_chain: base_chain,
+            agent_chain: base_chain.with_drain(ralph_workflow::agents::AgentDrain::Development),
             ..with_locked_prompt_permissions(PipelineState::initial(5, 2))
         };
         assert!(matches!(
@@ -676,11 +767,13 @@ fn test_development_outcome_does_not_bundle_context_writing() {
 #[test]
 fn test_phase_effects_do_not_bundle_cleanup() {
     with_default_timeout(|| {
-        let dev_chain = AgentChainState::initial().with_agents(
-            vec!["agent".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        );
+        let dev_chain = AgentChainState::initial()
+            .with_agents(
+                vec!["agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning);
 
         // Without cleanup done: should emit CleanupContext, NOT phase effect
         let state_needs_cleanup = PipelineState {

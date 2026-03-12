@@ -1,5 +1,4 @@
 use super::*;
-use crate::agents::config::file::AgentsConfigFile;
 
 #[test]
 fn build_cmd_includes_expected_flags() {
@@ -132,9 +131,9 @@ fn requires_verbose_for_json_handles_space_separated_stream_json() {
 
 #[test]
 fn default_agents_toml_is_valid() {
-    let config: AgentsConfigFile = toml::from_str(DEFAULT_AGENTS_TOML).unwrap();
-    assert!(config.agents.contains_key("claude"));
-    assert!(config.agents.contains_key("codex"));
+    let registry = crate::agents::AgentRegistry::new().expect("default template should parse");
+    assert!(registry.resolve_config("claude").is_some());
+    assert!(registry.resolve_config("codex").is_some());
 }
 
 #[test]

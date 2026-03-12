@@ -136,19 +136,6 @@ dylint:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
-		\
-		for dir in "$$DYLINT_DRIVER_PATH"; do \
-			if ! mkdir -p "$$dir" 2>/dev/null; then \
-				echo "error: cannot create required directory: $$dir" >&2; \
-				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
-				exit 1; \
-			fi; \
-			if [ ! -w "$$dir" ]; then \
-				echo "error: required directory is not writable: $$dir" >&2; \
-				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
-				exit 1; \
-			fi; \
-		done; \
 		CARGO_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
 			if [ ! -d "$$CARGO_HOME" ]; then \
@@ -166,6 +153,33 @@ dylint:
 		if [ ! -w "$$CARGO_HOME" ]; then \
 			CARGO_HOME_WRITABLE=0; \
 		fi; \
+		if [ "$$CARGO_HOME_WRITABLE" = "1" ]; then \
+			mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		fi; \
+		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
+			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
+			fi; \
+			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
+			fi; \
+		fi; \
+		if [ "$${DYLINT_FORCE_OFFLINE:-0}" = "1" ]; then \
+			export CARGO_NET_OFFLINE=true; \
+		fi; \
+		\
+		for dir in "$$DYLINT_DRIVER_PATH"; do \
+			if ! mkdir -p "$$dir" 2>/dev/null; then \
+				echo "error: cannot create required directory: $$dir" >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
+				exit 1; \
+			fi; \
+			if [ ! -w "$$dir" ]; then \
+				echo "error: required directory is not writable: $$dir" >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
+				exit 1; \
+			fi; \
+		done; \
 		RUSTUP_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
 			if [ ! -d "$$RUSTUP_HOME" ]; then \
@@ -298,12 +312,13 @@ dylint:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q -p ralph-workflow --lib file_too_long -- --lib --quiet >/dev/null 2>&1; \
-'
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+	'
 
 # Run custom dylint lints with verbose debugging output
 dylint-verbose:
 	@bash -euo pipefail -c '\
+		DYLINT_QUIET="$${DYLINT_QUIET:-0}"; \
 		HOME_DIR="$${HOME:-}"; \
 		CARGO_HOME_DIR="$${CARGO_HOME:-}"; \
 		RUSTUP_HOME_DIR="$${RUSTUP_HOME:-}"; \
@@ -341,19 +356,6 @@ dylint-verbose:
 		export RUSTUP_HOME="$$RUSTUP_HOME_DIR"; \
 		export DYLINT_DRIVER_PATH="$$DYLINT_DRIVER_DIR"; \
 		export PATH="$$CARGO_HOME/bin:$$PATH"; \
-		\
-		for dir in "$$DYLINT_DRIVER_PATH"; do \
-			if ! mkdir -p "$$dir" 2>/dev/null; then \
-				echo "error: cannot create required directory: $$dir" >&2; \
-				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
-				exit 1; \
-			fi; \
-			if [ ! -w "$$dir" ]; then \
-				echo "error: required directory is not writable: $$dir" >&2; \
-				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
-				exit 1; \
-			fi; \
-		done; \
 		CARGO_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$CARGO_HOME" 2>/dev/null; then \
 			if [ ! -d "$$CARGO_HOME" ]; then \
@@ -371,6 +373,33 @@ dylint-verbose:
 		if [ ! -w "$$CARGO_HOME" ]; then \
 			CARGO_HOME_WRITABLE=0; \
 		fi; \
+		if [ "$$CARGO_HOME_WRITABLE" = "1" ]; then \
+			mkdir -p "$$CARGO_HOME/registry" "$$CARGO_HOME/registry/src" "$$CARGO_HOME/bin"; \
+		fi; \
+		if [ -n "$$HOME_DIR" ] && [ "$$CARGO_HOME" != "$$HOME_DIR/.cargo" ]; then \
+			if [ -d "$$HOME_DIR/.cargo/registry/cache" ] && [ ! -e "$$CARGO_HOME/registry/cache" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/cache" "$$CARGO_HOME/registry/cache" 2>/dev/null || true; \
+			fi; \
+			if [ -d "$$HOME_DIR/.cargo/registry/index" ] && [ ! -e "$$CARGO_HOME/registry/index" ]; then \
+				ln -s "$$HOME_DIR/.cargo/registry/index" "$$CARGO_HOME/registry/index" 2>/dev/null || true; \
+			fi; \
+		fi; \
+		if [ "$${DYLINT_FORCE_OFFLINE:-0}" = "1" ]; then \
+			export CARGO_NET_OFFLINE=true; \
+		fi; \
+		\
+		for dir in "$$DYLINT_DRIVER_PATH"; do \
+			if ! mkdir -p "$$dir" 2>/dev/null; then \
+				echo "error: cannot create required directory: $$dir" >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
+				exit 1; \
+			fi; \
+			if [ ! -w "$$dir" ]; then \
+				echo "error: required directory is not writable: $$dir" >&2; \
+				echo "Set DYLINT_DRIVER_PATH to a writable location." >&2; \
+				exit 1; \
+			fi; \
+		done; \
 		RUSTUP_HOME_WRITABLE=1; \
 		if ! mkdir -p "$$RUSTUP_HOME" 2>/dev/null; then \
 			if [ ! -d "$$RUSTUP_HOME" ]; then \
@@ -514,8 +543,8 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q -p ralph-workflow --lib file_too_long -- --lib --quiet >/dev/null 2>&1; \
-'
+		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+	'
 
 # Run the canonical verification contract.
 ci:

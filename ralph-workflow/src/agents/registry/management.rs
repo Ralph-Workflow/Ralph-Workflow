@@ -11,7 +11,7 @@
 /// the `opencode/` prefix.
 pub struct AgentRegistry {
     agents: HashMap<String, AgentConfig>,
-    fallback: FallbackConfig,
+    resolved_drains: crate::agents::fallback::ResolvedDrainConfig,
     /// CCS alias resolver for `ccs/alias` syntax.
     ccs_resolver: CcsAliasResolver,
     /// `OpenCode` resolver for `opencode/provider/model` syntax.
@@ -27,12 +27,16 @@ impl AgentRegistry {
     ///
     /// Returns error if the operation fails.
     pub fn new() -> Result<Self, AgentConfigError> {
-        let AgentsConfigFile { agents, fallback } =
+        let config: AgentsConfigFile =
             toml::from_str(DEFAULT_AGENTS_TOML).map_err(AgentConfigError::DefaultTemplateToml)?;
+        let resolved_drains = config.resolve_drains_checked()?.unwrap_or_else(|| {
+            crate::agents::fallback::ResolvedDrainConfig::from_legacy(&FallbackConfig::default())
+        });
+        let agents = config.agents;
 
         let mut registry = Self {
             agents: HashMap::new(),
-            fallback,
+            resolved_drains,
             ccs_resolver: CcsAliasResolver::empty(),
             opencode_resolver: None,
             retry_timer: production_timer(),
@@ -101,7 +105,7 @@ impl AgentRegistry {
     ///
     /// `OpenCode` supports dynamic provider/model via `opencode/provider/model` syntax;
     /// those are validated against the API catalog and resolved lazily here.
-    #[must_use] 
+    #[must_use]
     pub fn resolve_config(&self, name: &str) -> Option<AgentConfig> {
         self.agents
             .get(name)
@@ -129,7 +133,7 @@ impl AgentRegistry {
     /// assert_eq!(registry.display_name("ccs/glm"), "ccs-glm");
     /// assert_eq!(registry.display_name("claude"), "claude");
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn display_name(&self, name: &str) -> String {
         self.resolve_config(name)
             .and_then(|config| config.display_name)
@@ -169,7 +173,7 @@ impl AgentRegistry {
     /// assert_eq!(registry.resolve_from_logfile_name("opencode-anthropic-claude-sonnet-4"),
     ///            Some("opencode/anthropic/claude-sonnet-4".to_string()));
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn resolve_from_logfile_name(&self, logfile_name: &str) -> Option<String> {
         // First check if the name is exactly a registry name (no sanitization was needed)
         if self.agents.contains_key(logfile_name) {
@@ -220,7 +224,7 @@ impl AgentRegistry {
     /// - Exact matches: Returns the name as-is
     ///
     /// Returns `None` if the name cannot be resolved to any known agent.
-    #[must_use] 
+    #[must_use]
     pub fn resolve_fuzzy(&self, name: &str) -> Option<String> {
         // First check if it's an exact match
         if self.agents.contains_key(name) {
@@ -320,33 +324,48 @@ impl AgentRegistry {
     }
 
     /// List all registered agents.
-    #[must_use] 
+    #[must_use]
     pub fn list(&self) -> Vec<(&str, &AgentConfig)> {
         self.agents.iter().map(|(k, v)| (k.as_str(), v)).collect()
     }
 
     /// Get command for developer role.
-    #[must_use] 
+    #[must_use]
     pub fn developer_cmd(&self, agent_name: &str) -> Option<String> {
         self.resolve_config(agent_name)
             .map(|c| c.build_cmd(true, true, true))
     }
 
     /// Get command for reviewer role.
-    #[must_use] 
+    #[must_use]
     pub fn reviewer_cmd(&self, agent_name: &str) -> Option<String> {
         self.resolve_config(agent_name)
             .map(|c| c.build_cmd(true, true, false))
     }
 
-    /// Get the fallback configuration.
-    #[must_use] 
-    pub const fn fallback_config(&self) -> &FallbackConfig {
-        &self.fallback
+    #[must_use]
+    pub fn resolved_drain(
+        &self,
+        drain: crate::agents::AgentDrain,
+    ) -> Option<&crate::agents::fallback::ResolvedDrainBinding> {
+        self.resolved_drains.binding(drain)
+    }
+
+    #[must_use]
+    pub const fn resolved_drains(&self) -> &crate::agents::fallback::ResolvedDrainConfig {
+        &self.resolved_drains
+    }
+
+    /// Get a compatibility projection of the resolved drain bindings.
+    ///
+    /// Runtime code should prefer `resolved_drains()` / `resolved_drain()`.
+    #[must_use]
+    pub fn fallback_config(&self) -> FallbackConfig {
+        self.resolved_drains.to_legacy_fallback()
     }
 
     /// Get the retry timer provider.
-    #[must_use] 
+    #[must_use]
     pub fn retry_timer(&self) -> Arc<dyn RetryTimerProvider> {
         Arc::clone(&self.retry_timer)
     }
@@ -361,9 +380,16 @@ impl AgentRegistry {
     }
 
     /// Get all fallback agents for a role that are registered in this registry.
+    #[must_use]
     pub fn available_fallbacks(&self, role: AgentRole) -> Vec<&str> {
-        self.fallback
-            .get_fallbacks(role)
+        self.available_fallbacks_for_drain(crate::agents::AgentDrain::from(role))
+    }
+
+    /// Get all fallback agents for a drain that are registered in this registry.
+    #[must_use]
+    pub fn available_fallbacks_for_drain(&self, drain: crate::agents::AgentDrain) -> Vec<&str> {
+        self.resolved_drain(drain)
+            .map_or(&[][..], |binding| binding.agents.as_slice())
             .iter()
             .filter(|name| self.is_agent_available(name))
             // Agents with can_commit=false are chat-only / non-tool agents and will stall Ralph.
@@ -375,53 +401,58 @@ impl AgentRegistry {
             .collect()
     }
 
-    /// Validate that agent chains are configured for both roles.
+    /// Validate that every built-in runtime drain has workflow-capable coverage.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
     pub fn validate_agent_chains(&self, searched_sources: &str) -> Result<(), String> {
-        let has_developer = self.fallback.has_fallbacks(AgentRole::Developer);
-        let has_reviewer = self.fallback.has_fallbacks(AgentRole::Reviewer);
+        let drain_bindings = crate::agents::AgentDrain::all()
+            .into_iter()
+            .map(|drain| (drain, self.resolved_drain(drain)))
+            .collect::<Vec<_>>();
+        let has_any_binding = drain_bindings
+            .iter()
+            .any(|(_, binding)| binding.is_some_and(|binding| !binding.agents.is_empty()));
 
-        if !has_developer && !has_reviewer {
+        if !has_any_binding {
             return Err(format!(
                 "No agent chain configured. \
                 Searched: {searched_sources}.\n\
-                Please add an [agent_chain] section to your config.\n\
+                Please add [agent_chains] and [agent_drains] sections to your config.\n\
+                Legacy [agent_chain] input is still accepted for compatibility.\n\
                 Run 'ralph --init-global' to create a default configuration."
             ));
         }
 
-        if !has_developer {
-            return Err(format!(
-                "No developer agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Add 'developer = [\"your-agent\", ...]' to your [agent_chain] section.\n\
-                Use --list-agents to see available agents."
-            ));
-        }
+        for (drain, binding) in drain_bindings {
+            let binding = binding.ok_or_else(|| {
+                format!(
+                    "No {drain} agent chain configured. \
+                    Searched: {searched_sources}.\n\
+                    Bind the {drain} drain in [agent_drains] to a chain from [agent_chains].\n\
+                    Use --list-agents to see available agents."
+                )
+            })?;
 
-        if !has_reviewer {
-            return Err(format!(
-                "No reviewer agent chain configured. \
-                Searched: {searched_sources}.\n\
-                Add 'reviewer = [\"your-agent\", ...]' to your [agent_chain] section.\n\
-                Use --list-agents to see available agents."
-            ));
-        }
+            if binding.agents.is_empty() {
+                return Err(format!(
+                    "No {drain} agent chain configured. \
+                    Searched: {searched_sources}.\n\
+                    Bind the {drain} drain in [agent_drains] to a non-empty chain from [agent_chains].\n\
+                    Use --list-agents to see available agents."
+                ));
+            }
 
-        // Sanity check: ensure there is at least one workflow-capable agent per role.
-        for role in [AgentRole::Developer, AgentRole::Reviewer] {
-            let chain = self.fallback.get_fallbacks(role);
-            let has_capable = chain
+            let has_capable = binding
+                .agents
                 .iter()
                 .any(|name| self.resolve_config(name).is_some_and(|cfg| cfg.can_commit));
             if !has_capable {
                 return Err(format!(
-                    "No workflow-capable agents found for {role}.\n\
-                    All agents in the {role} chain have can_commit=false.\n\
-                    Fix: set can_commit=true for at least one agent or update [agent_chain]."
+                    "No workflow-capable agents found for {drain}.\n\
+                    All agents in the {drain} drain binding have can_commit=false.\n\
+                    Fix: set can_commit=true for at least one agent or update [agent_chains]/[agent_drains]."
                 ));
             }
         }
@@ -430,7 +461,7 @@ impl AgentRegistry {
     }
 
     /// Check if an agent is available (command exists and is executable).
-    #[must_use] 
+    #[must_use]
     pub fn is_agent_available(&self, name: &str) -> bool {
         if let Some(config) = self.resolve_config(name) {
             let Ok(parts) = crate::common::split_command(&config.cmd) else {

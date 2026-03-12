@@ -4,14 +4,14 @@
 //!
 //! Development phase workflow:
 //! 1. Write continuation context (if pending from previous attempt)
-//! 2. Initialize agent chain (Developer role)
+//! 2. Initialize the development drain chain
 //! 3. For each iteration (up to `total_iterations)`:
 //!    a. Prepare development context
 //!    b. Materialize development inputs (prompt + plan)
 //!    c. Prepare development prompt (Normal or Continuation mode)
 //!    d. Cleanup development XML
 //!    e. Invoke development agent
-//!    f. Initialize Analysis agent chain
+//!    f. Initialize the analysis drain chain
 //!    g. Invoke analysis agent (verifies git diff vs PLAN.md)
 //!    h. Extract development XML
 //!    i. Validate development XML
@@ -26,7 +26,7 @@
 //!   - iteration > `total_iterations` (abnormal: exceeds configured iterations)
 //!   - `total_iterations` == 0 (no iterations configured)
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::{ContinuationContextData, Effect};
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{DevelopmentStatus, PipelineState, PromptMode};
@@ -63,17 +63,17 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
 
     if state.agent_chain.agents.is_empty() {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: AgentDrain::Development,
         };
     }
 
-    // Development phase runs two distinct roles (Developer then Analysis). Ensure
-    // we are on the developer chain before preparing/invoking the developer agent.
+    // Development phase runs two runtime drains (Development then Analysis). Ensure
+    // we are on the development drain before preparing/invoking the developer agent.
     if state.development_agent_invoked_iteration != Some(state.iteration)
-        && state.agent_chain.current_role != AgentRole::Developer
+        && state.agent_chain.current_drain != AgentDrain::Development
     {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Developer,
+            drain: AgentDrain::Development,
         };
     }
 
@@ -138,9 +138,9 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
         if state.development_agent_invoked_iteration == Some(state.iteration)
             && state.analysis_agent_invoked_iteration != Some(state.iteration)
         {
-            if state.agent_chain.current_role != AgentRole::Analysis {
+            if state.agent_chain.current_drain != AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
-                    role: AgentRole::Analysis,
+                    drain: AgentDrain::Analysis,
                 };
             }
             return Effect::InvokeAnalysisAgent {

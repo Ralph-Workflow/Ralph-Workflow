@@ -110,27 +110,21 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
         }
     }
 
-    // Development continuation pending: output valid but work incomplete, start new session
-    // Only check continue_pending in Development phase to avoid confusion with fix_continue_pending
-    if state.phase == PipelinePhase::Development && state.continuation.continue_pending {
-        if state.continuation.continuations_exhausted() {
-            // Exhausted continuation budget - accept current state as complete
-            // The budget exhaustion is handled by state reduction, so we proceed
-            // to normal phase-specific effects
+    // Continuation is drain-local runtime state. Only the active drain may consume its
+    // pending continuation flag; stale compatibility flags for other drains must not hijack
+    // orchestration before phase-specific effects re-establish the right drain.
+    let active_drain = state.runtime_drain();
+    if state
+        .continuation
+        .pending_continuation_for_drain(active_drain)
+    {
+        if state
+            .continuation
+            .continuation_exhausted_for_drain(active_drain)
+        {
+            // Exhausted continuation budget - proceed to normal phase-specific effects.
+            // Budget exhaustion is handled in state reduction.
         } else {
-            // Trigger continuation with new session
-            return derive_continuation_effect(state);
-        }
-    }
-
-    // Fix continuation pending: fix output valid but issues remain, start new session
-    // Only check fix_continue_pending in Review phase to be explicit about phase context
-    if state.phase == PipelinePhase::Review && state.continuation.fix_continue_pending {
-        if state.continuation.fix_continuations_exhausted() {
-            // Exhausted fix continuation budget - proceed to commit
-            // The budget exhaustion is handled by state reduction
-        } else {
-            // Trigger fix continuation with new session
             return derive_continuation_effect(state);
         }
     }
@@ -194,7 +188,7 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
             // Fall through to determine_next_effect_for_phase
         } else {
             return Effect::ReportAgentChainExhausted {
-                role: state.agent_chain.current_role,
+                role: state.agent_chain.current_drain.role(),
                 phase: state.phase,
                 cycle: state.agent_chain.retry_cycle,
             };
@@ -203,7 +197,7 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
 
     if let Some(duration_ms) = state.agent_chain.backoff_pending_ms {
         return Effect::BackoffWait {
-            role: state.agent_chain.current_role,
+            role: state.agent_chain.current_drain.role(),
             cycle: state.agent_chain.retry_cycle,
             duration_ms,
         };
@@ -221,7 +215,8 @@ pub fn determine_next_effect(state: &PipelineState) -> Effect {
                 // Format auth method for the effect
                 let auth_method = match &state.cloud.git_remote.auth_method {
                     crate::config::GitAuthStateMethod::SshKey { key_path } => key_path
-                        .as_ref().map_or_else(|| "ssh-key:default".to_string(), |p| format!("ssh-key:{p}")),
+                        .as_ref()
+                        .map_or_else(|| "ssh-key:default".to_string(), |p| format!("ssh-key:{p}")),
                     crate::config::GitAuthStateMethod::Token { username } => {
                         format!("token:{username}")
                     }

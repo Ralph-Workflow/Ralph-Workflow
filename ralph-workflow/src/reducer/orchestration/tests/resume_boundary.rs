@@ -13,10 +13,13 @@ fn create_resume_state(
     total_iterations: u32,
     reviewer_pass: u32,
     total_reviewer_passes: u32,
-) -> PipelineState {
+) -> Box<PipelineState> {
     // Use initial() to avoid constructing the full struct literal on the stack
     // (which would exceed the large_stack_frames threshold).
-    let mut state = PipelineState::initial(total_iterations, total_reviewer_passes);
+    let mut state = Box::new(PipelineState::initial(
+        total_iterations,
+        total_reviewer_passes,
+    ));
     state.phase = phase;
     state.iteration = iteration;
     state.reviewer_pass = reviewer_pass;
@@ -52,7 +55,8 @@ fn test_resume_at_final_iteration_runs_development_work() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            drain: crate::agents::AgentDrain::Development,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(
@@ -81,7 +85,8 @@ fn test_resume_at_final_review_pass_runs_review_work() {
     let is_review_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            drain: crate::agents::AgentDrain::Review,
+            ..
         } | Effect::PrepareReviewContext { .. }
     );
     assert!(
@@ -102,7 +107,8 @@ fn test_resume_with_zero_indexed_iteration() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            drain: crate::agents::AgentDrain::Development,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(
@@ -123,7 +129,8 @@ fn test_resume_mid_pipeline_continues_normally() {
     let is_dev_effect = matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            drain: crate::agents::AgentDrain::Development,
+            ..
         } | Effect::PrepareDevelopmentContext { .. }
     );
     assert!(

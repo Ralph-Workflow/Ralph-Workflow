@@ -14,7 +14,7 @@
 //!
 //! Tests should use the workspace-aware variants with `MemoryWorkspace` for isolation.
 
-use crate::agents::{AgentRegistry, AgentRole};
+use crate::agents::{AgentDrain, AgentRegistry};
 use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
 use crate::config::Config;
 use crate::executor::ProcessExecutor;
@@ -57,6 +57,30 @@ pub struct CommitGenerationConfig<'a> {
     pub reviewer_agent: &'a str,
     /// Process executor for external command execution.
     pub executor: Arc<dyn ProcessExecutor>,
+}
+
+fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
+    if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
+        return commit_binding.agents.clone();
+    }
+
+    let review_chain = config
+        .registry
+        .resolved_drain(AgentDrain::Review)
+        .map_or(&[] as &[String], |binding| binding.agents.as_slice());
+    if !review_chain.is_empty() {
+        return review_chain.to_vec();
+    }
+
+    vec![config.reviewer_agent.to_string()]
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+#[must_use]
+pub fn resolve_commit_message_agents_for_testing(
+    config: &CommitGenerationConfig<'_>,
+) -> Vec<String> {
+    resolve_commit_message_agents(config)
 }
 
 /// Handles the `--show-commit-msg` command using workspace abstraction.
@@ -213,16 +237,7 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         workspace_arc: Arc::clone(&config.workspace_arc),
     };
 
-    // Get the commit agent chain from the fallback config.
-    // If no commit chain is configured, fall back to using the developer agent.
-    let fallback_config = config.registry.fallback_config();
-    let commit_chain = fallback_config.get_fallbacks(AgentRole::Commit);
-    let agents: Vec<String> = if commit_chain.is_empty() {
-        // No commit chain configured, use developer agent as fallback
-        vec![config.developer_agent.to_string()]
-    } else {
-        commit_chain.to_vec()
-    };
+    let agents = resolve_commit_message_agents(config);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = generate_commit_message_with_chain(

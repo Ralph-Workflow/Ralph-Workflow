@@ -87,6 +87,11 @@ fn test_commit_skipped_clears_agent_chain_when_dev_to_review() {
         "Agent chain should be cleared when transitioning from Dev to Review via skip"
     );
     assert_eq!(new_state.agent_chain.current_role, AgentRole::Reviewer);
+    assert_eq!(
+        new_state.agent_chain.current_drain,
+        crate::agents::AgentDrain::Review,
+        "Agent chain drain should be reset to Review"
+    );
 }
 
 /// Verify that after `ChainInitialized` for Reviewer, the reducer correctly populates
@@ -100,7 +105,7 @@ fn test_chain_initialized_populates_reviewer_chain() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec![
                 "codex".to_string(),
                 "opencode".to_string(),
@@ -129,6 +134,11 @@ fn test_chain_initialized_populates_reviewer_chain() {
     );
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
     assert_eq!(new_state.agent_chain.current_role, AgentRole::Reviewer);
+    assert_eq!(
+        new_state.agent_chain.current_drain,
+        crate::agents::AgentDrain::Review,
+        "Agent chain drain should be reset to Review"
+    );
 }
 
 /// Auth failure during review should advance the reducer's agent chain,
@@ -196,7 +206,8 @@ fn test_orchestration_emits_init_chain_for_reviewer_after_dev_review_transition(
         matches!(
             effect,
             crate::reducer::effect::Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer
+                drain: crate::agents::AgentDrain::Review,
+                ..
             }
         ),
         "Orchestration should emit InitializeAgentChain for Reviewer when chain is empty, got {effect:?}"

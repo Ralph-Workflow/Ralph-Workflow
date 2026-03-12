@@ -1,6 +1,7 @@
 use super::types::{AgentConfigToml, DEFAULT_AGENTS_TOML};
 use crate::agents::ccs_env::CcsEnvVarsError;
 use crate::agents::fallback::FallbackConfig;
+use crate::agents::fallback::ResolvedDrainConfig;
 use crate::workspace::{Workspace, WorkspaceFs};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,9 +17,17 @@ pub struct AgentsConfigFile {
     /// Map of agent name to configuration.
     #[serde(default)]
     pub agents: HashMap<String, AgentConfigToml>,
-    /// Agent chain configuration (preferred agents + fallbacks).
+    /// Named reusable agent chains.
+    #[serde(default)]
+    pub agent_chains: HashMap<String, Vec<String>>,
+    /// Built-in drain bindings to named chains.
+    #[serde(default)]
+    pub agent_drains: HashMap<String, String>,
+    /// Legacy agent chain configuration (preferred agents + fallbacks).
     #[serde(default, rename = "agent_chain")]
-    pub fallback: FallbackConfig,
+    pub fallback: Option<FallbackConfig>,
+    #[serde(skip)]
+    raw_toml: Option<String>,
 }
 
 /// Error type for agent configuration loading.
@@ -30,6 +39,8 @@ pub enum AgentConfigError {
     Toml(#[from] toml::de::Error),
     #[error("Built-in agents.toml template is invalid TOML: {0}")]
     DefaultTemplateToml(toml::de::Error),
+    #[error("Invalid agent drain configuration: {0}")]
+    InvalidDrainConfig(String),
     #[error("{0}")]
     CcsEnvVars(#[from] CcsEnvVarsError),
 }
@@ -44,6 +55,33 @@ pub enum ConfigInitResult {
 }
 
 impl AgentsConfigFile {
+    /// Resolve the configured agent chains into explicit built-in drains.
+    ///
+    /// Returns `None` when the file defines no chain configuration at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the named chain/drain schema is internally inconsistent
+    /// or mixed with the legacy `[agent_chain]` table.
+    pub fn resolve_drains_checked(&self) -> Result<Option<ResolvedDrainConfig>, AgentConfigError> {
+        if let Some(raw_toml) = &self.raw_toml {
+            let parsed: crate::config::UnifiedConfig = toml::from_str(raw_toml)?;
+            return crate::config::UnifiedConfig::default()
+                .merge_with_content(raw_toml, &parsed)
+                .resolve_agent_drains_checked()
+                .map_err(AgentConfigError::InvalidDrainConfig);
+        }
+
+        crate::config::UnifiedConfig {
+            agent_chains: self.agent_chains.clone(),
+            agent_drains: self.agent_drains.clone(),
+            agent_chain: self.fallback.clone(),
+            ..crate::config::UnifiedConfig::default()
+        }
+        .resolve_agent_drains_checked()
+        .map_err(AgentConfigError::InvalidDrainConfig)
+    }
+
     /// Load agents config from a file, returning None if file doesn't exist.
     ///
     /// # Errors
@@ -60,7 +98,8 @@ impl AgentsConfigFile {
         }
 
         let contents = workspace.read(path)?;
-        let config: Self = toml::from_str(&contents)?;
+        let mut config: Self = toml::from_str(&contents)?;
+        config.raw_toml = Some(contents);
         Ok(Some(config))
     }
 
@@ -86,7 +125,8 @@ impl AgentsConfigFile {
         let contents = workspace
             .read(path)
             .map_err(|e| AgentConfigError::Io(io::Error::other(e)))?;
-        let config: Self = toml::from_str(&contents)?;
+        let mut config: Self = toml::from_str(&contents)?;
+        config.raw_toml = Some(contents);
         Ok(Some(config))
     }
 
@@ -194,5 +234,27 @@ mod tests {
             AgentsConfigFile::ensure_config_exists_with_workspace(path, &workspace).unwrap();
         assert!(matches!(result, ConfigInitResult::AlreadyExists));
         assert_eq!(workspace.read(path).unwrap(), "# custom config");
+    }
+
+    #[test]
+    fn default_template_uses_named_chain_and_drain_schema() {
+        let uncommented_lines = DEFAULT_AGENTS_TOML
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<Vec<_>>();
+
+        assert!(
+            !uncommented_lines.contains(&"[agent_chain]"),
+            "default template should no longer use legacy [agent_chain] as the primary schema"
+        );
+        assert!(
+            uncommented_lines.contains(&"[agent_chains]"),
+            "default template should define reusable named chains"
+        );
+        assert!(
+            uncommented_lines.contains(&"[agent_drains]"),
+            "default template should bind built-in drains to named chains"
+        );
     }
 }

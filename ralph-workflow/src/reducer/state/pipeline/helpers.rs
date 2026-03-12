@@ -55,7 +55,7 @@ impl PipelineState {
     /// - `Complete`: Normal successful completion
     /// - `Interrupted` with checkpoint saved: Resumable state
     /// - `Interrupted` from `AwaitingDevFix`: Completion marker written, failure signaled
-    #[must_use] 
+    #[must_use]
     pub const fn is_complete(&self) -> bool {
         matches!(self.phase, PipelinePhase::Complete)
             || (matches!(self.phase, PipelinePhase::Interrupted)
@@ -67,11 +67,51 @@ impl PipelineState {
                     || matches!(self.previous_phase, Some(PipelinePhase::AwaitingDevFix))))
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn current_head(&self) -> String {
         self.rebase
             .current_head()
             .unwrap_or_else(|| "HEAD".to_string())
+    }
+
+    #[must_use]
+    pub fn fix_drain_active(&self) -> bool {
+        self.agent_chain.current_drain == crate::agents::AgentDrain::Fix
+            || self.review_issues_found
+            || self.fix_prompt_prepared_pass.is_some()
+            || self.fix_required_files_cleaned_pass.is_some()
+            || self.fix_agent_invoked_pass.is_some()
+            || self.fix_result_xml_extracted_pass.is_some()
+            || self.fix_validated_outcome.is_some()
+            || self.fix_result_xml_archived_pass.is_some()
+            || self.continuation.fix_continue_pending
+            || self.continuation.fix_continuation_attempt > 0
+            || self.continuation.fix_status.is_some()
+            || self.continuation.fix_previous_summary.is_some()
+            || self.continuation.last_fix_xsd_error.is_some()
+    }
+
+    #[must_use]
+    pub fn runtime_drain(&self) -> crate::agents::AgentDrain {
+        match self.phase {
+            PipelinePhase::Planning => crate::agents::AgentDrain::Planning,
+            PipelinePhase::Development => {
+                if self.agent_chain.current_drain == crate::agents::AgentDrain::Analysis {
+                    crate::agents::AgentDrain::Analysis
+                } else {
+                    crate::agents::AgentDrain::Development
+                }
+            }
+            PipelinePhase::Review => {
+                if self.fix_drain_active() {
+                    crate::agents::AgentDrain::Fix
+                } else {
+                    crate::agents::AgentDrain::Review
+                }
+            }
+            PipelinePhase::CommitMessage => crate::agents::AgentDrain::Commit,
+            _ => self.agent_chain.current_drain,
+        }
     }
 
     /// Clear phase-specific progress flags for the given phase.

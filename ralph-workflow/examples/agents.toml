@@ -6,9 +6,11 @@
 # - json_parser: claude | codex | gemini | opencode | generic
 # - model_flag, display_name, session_flag, print_flag, streaming_flag
 #
-# Optional fallback configuration:
-# - [agent_chain] developer/reviewer ordering, retries
-# - [provider_fallback] model-level fallback for multi-provider agents
+# Optional chain configuration:
+# - [agent_chains] reusable ordered agent lists
+# - [agent_drains] built-in runtime drain bindings
+# Legacy [agent_chain] input is still accepted for compatibility, but the
+# named chain + drain schema is the canonical model.
 # Claude Code - Anthropic's AI coding assistant
 # https://claude.ai/code
 [agents.claude]
@@ -259,13 +261,13 @@ display_name = "Ollama"
 # =============================================================================
 # AGENT CHAIN CONFIGURATION (required)
 # =============================================================================
-# The agent chain defines the preferred agent (first in list) and fallback
-# agents (rest of the list). This section is required for Ralph to run.
+# Define reusable ordered chains, then bind Ralph's built-in drains to them.
+# The first agent in each chain is preferred; the rest are fallbacks.
 #
 # Ralph automatically switches to fallback agents on certain failures
 # (rate limits, auth issues, token exhaustion, command not found).
 
-[agent_chain]
+[agent_chains]
 developer = [
   "claude",
   "codex",
@@ -311,12 +313,18 @@ commit = [
   "amazon-q",
   "gemini",
 ]
-max_retries = 3
-retry_delay_ms = 1000
 
-# Provider-level fallback: try different models within the same agent
-# before switching to the next agent. Useful for opencode with multiple providers.
-# provider_fallback.opencode = ["-m opencode/glm-4.7-free", "-m opencode/claude-sonnet-4"]
+[agent_drains]
+planning = "developer"
+development = "developer"
+review = "reviewer"
+fix = "reviewer"
+commit = "commit"
+analysis = "developer"
+
+# Note: shared retry/backoff metadata still comes from the legacy compatibility
+# input path today. Keep the named schema focused on reusable chains + drain
+# bindings; runtime code normalizes everything into resolved built-in drains.
 
 # =============================================================================
 # OPENCODE PROVIDER TYPES EXPLAINED
@@ -391,9 +399,17 @@ retry_delay_ms = 1000
 # -----
 # Use the "opencode/provider/model" syntax in your agent chain configuration:
 #
-#   [agent_chain]
+#   [agent_chains]
 #   developer = ["opencode/opencode/glm-4.7-free", "opencode/anthropic/claude-sonnet-4-5", "claude"]
 #   reviewer = ["opencode/anthropic/claude-sonnet-4-5", "claude"]
+#
+#   [agent_drains]
+#   planning = "developer"
+#   development = "developer"
+#   review = "reviewer"
+#   fix = "reviewer"
+#   commit = "reviewer"
+#   analysis = "developer"
 #
 # DYNAMIC VALIDATION
 # ------------------
@@ -428,14 +444,12 @@ retry_delay_ms = 1000
 # developer = ["opencode/zai/glm-4.7", "opencode/anthropic/claude-sonnet-4-5"]
 # reviewer = ["opencode/opencode/glm-4.7-free"]
 #
-# PROVIDER-LEVEL FALLBACK (Legacy - Still Supported)
-# --------------------------------------------------
-# For backward compatibility, you can still use provider_fallback:
-#
-#   provider_fallback.opencode = ["-m opencode/glm-4.7-free", "-m opencode/claude-sonnet-4"]
-#
-# This tries different models within a single opencode run before switching
-# to the next agent in the chain.
+# PROVIDER-LEVEL FALLBACK (Legacy Compatibility Input)
+# ----------------------------------------------------
+# For backward compatibility, a metadata-only legacy [agent_chain] section can
+# still configure provider_fallback and shared retry metadata alongside the
+# canonical named [agent_chains] / [agent_drains] schema. Named drain bindings
+# remain the authoritative runtime model after normalization.
 #
 # FINDING AVAILABLE MODELS
 # -------------------------
@@ -461,29 +475,64 @@ retry_delay_ms = 1000
 # EXAMPLE AGENT CHAINS
 # -------------------------------------------------------------------------
 # Example 1: OpenCode Zen only (all requests go through OpenCode billing)
-# [agent_chain]
+# [agent_chains]
 # developer = ["opencode/opencode/glm-4.7-free", "opencode/opencode/claude-sonnet-4", "claude"]
 # reviewer = ["opencode/opencode/claude-sonnet-4", "claude"]
+# [agent_drains]
+# planning = "developer"
+# development = "developer"
+# review = "reviewer"
+# fix = "reviewer"
+# commit = "reviewer"
+# analysis = "developer"
 #
 # Example 2: Direct API only (use your own Anthropic/OpenAI keys)
-# [agent_chain]
+# [agent_chains]
 # developer = ["opencode/anthropic/claude-sonnet-4", "opencode/openai/gpt-4o", "claude"]
 # reviewer = ["opencode/anthropic/claude-sonnet-4", "claude"]
+# [agent_drains]
+# planning = "developer"
+# development = "developer"
+# review = "reviewer"
+# fix = "reviewer"
+# commit = "reviewer"
+# analysis = "developer"
 #
 # Example 3: Mixed fallback (try free Zen first, then direct API)
-# [agent_chain]
+# [agent_chains]
 # developer = ["opencode/opencode/glm-4.7-free", "opencode/anthropic/claude-sonnet-4", "claude"]
 # reviewer = ["opencode/opencode/claude-sonnet-4", "opencode/anthropic/claude-sonnet-4"]
+# [agent_drains]
+# planning = "developer"
+# development = "developer"
+# review = "reviewer"
+# fix = "reviewer"
+# commit = "reviewer"
+# analysis = "developer"
 #
 # Example 4: Z.AI Direct only (all requests go directly to Z.AI)
-# [agent_chain]
+# [agent_chains]
 # developer = ["opencode/zai/glm-4.7", "opencode/opencode/glm-4.7-free", "claude"]
 # reviewer = ["opencode/zai/glm-4.7", "claude"]
+# [agent_drains]
+# planning = "developer"
+# development = "developer"
+# review = "reviewer"
+# fix = "reviewer"
+# commit = "reviewer"
+# analysis = "developer"
 #
 # Example 5: Full fallback chain (Z.AI Direct -> Zen -> Direct API)
-# [agent_chain]
+# [agent_chains]
 # developer = ["opencode/zai/glm-4.7", "opencode/opencode/glm-4.7-free", "opencode/anthropic/claude-sonnet-4"]
 # reviewer = ["opencode/zai/glm-4.7", "opencode/opencode/claude-sonnet-4", "opencode/anthropic/claude-sonnet-4"]
+# [agent_drains]
+# planning = "developer"
+# development = "developer"
+# review = "reviewer"
+# fix = "reviewer"
+# commit = "reviewer"
+# analysis = "developer"
 
 # =============================================================================
 # CUSTOM AGENT EXAMPLE

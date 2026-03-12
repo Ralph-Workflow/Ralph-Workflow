@@ -535,7 +535,10 @@ fn active_children_after_child_free_gap_get_startup_grace_again() {
 
     let config = MonitorConfig {
         timeout: Duration::ZERO,
-        check_interval: Duration::from_millis(5),
+        // Keep the poll interval comfortably above scheduler jitter so the test can
+        // observe the replacement child's one-poll startup grace before timeout
+        // enforcement resumes on the following poll.
+        check_interval: Duration::from_millis(20),
         kill_config: fast_kill_config(),
         required_idle_confirmations: 3,
         check_child_processes: true,

@@ -1,4 +1,5 @@
 use super::MainEffectHandler;
+use crate::agents::AgentDrain;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::{
@@ -50,10 +51,11 @@ impl MainEffectHandler {
                 }))
             }
             PipelinePhase::Review => {
-                // Distinguish between issues XML and fix result XML based on
-                // whether we're in fix mode (review_issues_found = true)
+                // Cleanup routing in review phase is drain-owned. The review flag tracks
+                // discovered issues, but explicit fix continuation/retry flows can keep the
+                // fix drain active even after that compatibility flag is cleared.
                 let pass = self.state.reviewer_pass;
-                if self.state.review_issues_found {
+                if self.state.runtime_drain() == AgentDrain::Fix {
                     EffectResult::event(PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
                         pass,
                     }))

@@ -75,6 +75,16 @@ All pipeline control-flow decisions (iteration advancement, retry/continuation/f
 
 **Metrics are a view, not a driver:** The `RunMetrics` struct in `PipelineState.metrics` provides observability into pipeline execution, but metrics do not drive control-flow. Control-flow is driven by the reducer's state machine (phase, iteration, continuation state, agent chain state, etc.), and metrics simply track the transitions.
 
+**Agent execution state is two-dimensional:** When agent work is active, reducer state should track both the active runtime consumer (`drain`, such as planning or fix) and the drain-local mode (`normal`, continuation, same-agent retry, XSD retry). Capability labels like `AgentRole` can still exist, but they must not replace explicit runtime drain identity.
+
+**Chain config is separate from runtime drain identity:** Config may define reusable named chains and bind built-in drains to those chains, but runtime effects/events/state should operate on resolved concrete drain bindings rather than re-deriving role-shaped defaults during execution.
+
+**Registry/runtime boundaries stay drain-first:** `AgentRegistry` and effect handlers should treat resolved drain bindings as the authoritative runtime chain source. Any legacy role-shaped compatibility view must be derived from those bindings on demand, not stored as parallel mutable runtime state.
+
+**Drain defaults come from resolved drain bindings first:** When commit or analysis are not bound explicitly, normalization should inherit from already-bound review/fix and planning/development drains before falling back to legacy compatibility names like `reviewer` or `developer`.
+
+**Legacy compatibility is config-only:** Legacy `[agent_chain]` input may still be accepted, but it must be normalized into the same built-in resolved drain bindings before runtime code, handlers, or tests consume it.
+
 **Invariants:**
 
 - **Single source of truth:** Any advance/retry/continue decision is derived from reducer state plus the latest event

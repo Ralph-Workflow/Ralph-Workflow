@@ -252,6 +252,29 @@ pub fn load_config_from_path_with_env(
         }
     };
 
+    if let Some(unified_cfg) = merged_unified.as_ref() {
+        if let Err(message) = unified_cfg.resolve_agent_drains_checked() {
+            let key = if message.contains("references unknown chain") {
+                message
+                    .split_whitespace()
+                    .next()
+                    .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
+            } else if message.contains("cannot be combined") {
+                "agent_chain".to_string()
+            } else {
+                "agent_drains".to_string()
+            };
+
+            return Err(ConfigLoadWithValidationError::ValidationErrors(vec![
+                ConfigValidationError::InvalidValue {
+                    file: PathBuf::from("<merged-config>"),
+                    key,
+                    message,
+                },
+            ]));
+        }
+    }
+
     // Step 4: Convert to Config
     // Build cloud config from the injected env (not the real process env) so that
     // callers using MemoryConfigEnvironment get a deterministic, isolated cloud config.

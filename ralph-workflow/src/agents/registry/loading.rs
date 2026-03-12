@@ -2,6 +2,25 @@
 // Includes loading from config files, applying unified config, and creating/merging agent configs.
 
 impl AgentRegistry {
+    fn merge_legacy_chain_metadata(
+        base: &crate::agents::fallback::ResolvedDrainConfig,
+        fallback: Option<&crate::agents::fallback::FallbackConfig>,
+    ) -> crate::agents::fallback::ResolvedDrainConfig {
+        let Some(fallback) = fallback else {
+            return base.clone();
+        };
+
+        crate::agents::fallback::ResolvedDrainConfig {
+            bindings: base.bindings.clone(),
+            provider_fallback: fallback.provider_fallback.clone(),
+            max_retries: fallback.max_retries,
+            retry_delay_ms: fallback.retry_delay_ms,
+            backoff_multiplier: fallback.backoff_multiplier,
+            max_backoff_ms: fallback.max_backoff_ms,
+            max_cycles: fallback.max_cycles,
+        }
+    }
+
     /// Load custom agents from a TOML configuration file.
     ///
     /// # Errors
@@ -11,11 +30,17 @@ impl AgentRegistry {
         match AgentsConfigFile::load_from_file(path)? {
             Some(config) => {
                 let count = config.agents.len();
+                let resolved_drains = config.resolve_drains_checked()?;
+
                 for (name, agent_toml) in config.agents {
                     self.register(&name, AgentConfig::from(agent_toml));
                 }
-                // Load fallback configuration
-                self.fallback = config.fallback;
+                self.resolved_drains = resolved_drains.unwrap_or_else(|| {
+                    Self::merge_legacy_chain_metadata(
+                        &self.resolved_drains,
+                        config.fallback.as_ref(),
+                    )
+                });
                 Ok(count)
             }
             None => Ok(0),
@@ -26,18 +51,32 @@ impl AgentRegistry {
     ///
     /// This merges (in increasing priority):
     /// 1. Built-in defaults (embedded `examples/agents.toml`)
-    /// 2. Unified config: `[agents]`, `[ccs_aliases]`, and `[agent_chain]` (if present)
+    /// 2. Unified config: `[agents]`, `[ccs_aliases]`, and any resolved
+    ///    `[agent_chains]` / `[agent_drains]` or legacy compatibility metadata
     ///
     /// Returns the number of agents loaded from unified config, including CCS aliases.
-    pub fn apply_unified_config(&mut self, unified: &crate::config::UnifiedConfig) -> usize {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the named drain configuration is invalid.
+    pub fn apply_unified_config(
+        &mut self,
+        unified: &crate::config::UnifiedConfig,
+    ) -> Result<usize, AgentConfigError> {
         let mut loaded = self.apply_ccs_aliases(unified);
         loaded += self.apply_agent_overrides(unified);
 
-        if let Some(chain) = &unified.agent_chain {
-            self.fallback = chain.clone();
-        }
+        self.resolved_drains = unified
+            .resolve_agent_drains_checked()
+            .map_err(AgentConfigError::InvalidDrainConfig)?
+            .unwrap_or_else(|| {
+                Self::merge_legacy_chain_metadata(
+                    &self.resolved_drains,
+                    unified.agent_chain.as_ref(),
+                )
+            });
 
-        loaded
+        Ok(loaded)
     }
 
     /// Apply CCS aliases from the unified config.

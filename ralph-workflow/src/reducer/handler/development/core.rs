@@ -69,7 +69,7 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> Result<EffectResult> {
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Developer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Development);
 
         let prompt = ctx
             .workspace
@@ -83,7 +83,14 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Developer, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Development,
+            AgentRole::Developer,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

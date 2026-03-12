@@ -31,7 +31,7 @@ fn test_effects_are_single_task() {
                 prompt: "test".to_string(),
             },
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer,
+                drain: ralph_workflow::agents::AgentDrain::Development,
             },
             Effect::PreparePlanningPrompt {
                 iteration: 0,

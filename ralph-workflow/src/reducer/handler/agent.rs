@@ -1,5 +1,5 @@
 use super::MainEffectHandler;
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
@@ -17,6 +17,7 @@ impl MainEffectHandler {
     pub(super) fn invoke_agent(
         &self,
         ctx: &mut PhaseContext<'_>,
+        drain: AgentDrain,
         role: AgentRole,
         agent: &str,
         model: Option<&str>,
@@ -57,7 +58,8 @@ impl MainEffectHandler {
         } else {
             match &self.state.agent_chain.rate_limit_continuation_prompt {
                 Some(saved)
-                    if saved.role == role
+                    if saved.drain == drain
+                        && saved.role == role
                         && role != AgentRole::Analysis
                         && !self.state.continuation.xsd_retry_session_reuse_pending
                         && !super::retry_guidance::is_same_agent_retry_prompt(&prompt) =>
@@ -276,23 +278,38 @@ impl MainEffectHandler {
     /// Normalize agent chain state before agent invocation for determinism.
     ///
     /// This function ensures that:
-    /// 1. The agent chain role matches the expected role for this invocation
-    /// 2. Session ID policy is consistent with the current retry mode
-    /// 3. Agent and model indices are within valid bounds (defensive programming)
-    /// 4. Rate limit continuation prompt role matches the current role
+    /// 1. Session ID policy is consistent with the current retry mode
+    /// 2. Agent and model indices are within valid bounds (defensive programming)
+    /// 3. Rate limit continuation prompt role matches the expected role
     ///
     /// This is critical for checkpoint replay safety: the same pre-invocation state
-    /// must produce the same agent/role/session selection.
+    /// must produce the same agent/session selection.
     pub(super) fn normalize_agent_chain_for_invocation(
         &mut self,
         _ctx: &PhaseContext<'_>,
-        expected_role: AgentRole,
+        expected_drain: AgentDrain,
     ) {
-        // Ensure agent chain role matches expected role
-        // The agent chain should already be initialized with the correct role from
-        // the reducer, but we defensively ensure consistency here.
-        if self.state.agent_chain.current_role != expected_role {
+        let expected_role = expected_drain.role();
+        let legacy_compatible_drain = self.state.agent_chain.current_drain != expected_drain
+            && self.state.agent_chain.current_drain.role() == expected_role;
+        let previous_drain = self.state.agent_chain.current_drain;
+        let previous_role = self.state.agent_chain.current_role;
+
+        if legacy_compatible_drain {
+            self.state.agent_chain.current_drain = expected_drain;
             self.state.agent_chain.current_role = expected_role;
+
+            if let Some(prompt) = self
+                .state
+                .agent_chain
+                .rate_limit_continuation_prompt
+                .as_mut()
+            {
+                if prompt.drain == previous_drain && prompt.role == previous_role {
+                    prompt.drain = expected_drain;
+                    prompt.role = expected_role;
+                }
+            }
         }
 
         // Defensively validate agent chain index bounds for consistency.
@@ -326,11 +343,11 @@ impl MainEffectHandler {
             }
         }
 
-        // Ensure rate_limit_continuation_prompt role matches current role.
-        // If they don't match, clear the continuation prompt to prevent cross-task
-        // contamination (e.g., a developer continuation prompt overriding an analysis prompt).
+        // Ensure rate_limit_continuation_prompt matches the active runtime drain.
+        // If it doesn't, clear the continuation prompt to prevent cross-task
+        // contamination (e.g., a review continuation prompt overriding a fix prompt).
         if let Some(ref continuation) = self.state.agent_chain.rate_limit_continuation_prompt {
-            if continuation.role != expected_role {
+            if continuation.drain != expected_drain || continuation.role != expected_role {
                 self.state.agent_chain.rate_limit_continuation_prompt = None;
             }
         }

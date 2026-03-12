@@ -1,5 +1,6 @@
 //! Unit tests for `AwaitingDevFix` recovery escalation logic.
 
+use crate::agents::{AgentDrain, AgentRole};
 use crate::reducer::event::{AwaitingDevFixEvent, PipelineEvent, PipelinePhase};
 use crate::reducer::state::PipelineState;
 use crate::reducer::state_reduction::reduce;
@@ -124,21 +125,35 @@ fn test_recovery_exhaustion_does_not_directly_interrupt() {
 fn test_recovery_attempted_transitions_to_failed_phase() {
     let mut state = PipelineState::initial(1, 0);
     state.phase = PipelinePhase::AwaitingDevFix;
-    state.failed_phase_for_recovery = Some(PipelinePhase::Planning);
-    state.recovery_escalation_level = 1;
+    state.failed_phase_for_recovery = Some(PipelinePhase::Review);
+    state.recovery_escalation_level = 2;
+    state.agent_chain = state
+        .agent_chain
+        .with_agents(
+            vec!["reviewer-a".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        )
+        .with_drain(AgentDrain::Fix);
+    state.agent_chain.current_agent_index = 1;
+    state.agent_chain.retry_cycle = 2;
 
     let event = PipelineEvent::AwaitingDevFix(AwaitingDevFixEvent::RecoveryAttempted {
-        level: 1,
-        attempt_count: 1,
-        target_phase: PipelinePhase::Planning,
+        level: 2,
+        attempt_count: 4,
+        target_phase: PipelinePhase::Review,
     });
 
     let new_state = reduce(state, event);
-    assert_eq!(new_state.phase, PipelinePhase::Planning);
+    assert_eq!(new_state.phase, PipelinePhase::Review);
     assert_eq!(
         new_state.previous_phase,
         Some(PipelinePhase::AwaitingDevFix)
     );
+    assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Fix);
+    assert_eq!(new_state.agent_chain.current_role, AgentRole::Reviewer);
+    assert_eq!(new_state.agent_chain.current_agent_index, 0);
+    assert_eq!(new_state.agent_chain.retry_cycle, 0);
 }
 
 #[test]

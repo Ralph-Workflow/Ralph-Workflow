@@ -12,7 +12,7 @@ impl MainEffectHandler {
         use std::path::Path;
 
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Reviewer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Review);
 
         let prompt = match ctx
             .workspace
@@ -38,7 +38,14 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Reviewer, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Review,
+            AgentRole::Reviewer,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

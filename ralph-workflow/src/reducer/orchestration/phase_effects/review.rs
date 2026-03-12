@@ -2,10 +2,10 @@
 //!
 //! Pure orchestration: State → Effect, no I/O.
 //!
-//! Review phase has two modes:
+//! Review phase has two drain-owned modes:
 //!
-//! 1. Fix mode (when `review_issues_found` = true):
-//!    a. Initialize agent chain (Reviewer role)
+//! 1. Fix drain (`current_drain == Fix`):
+//!    a. Initialize the fix drain chain
 //!    b. Prepare fix prompt
 //!    c. Cleanup fix result XML
 //!    d. Invoke fix agent
@@ -14,9 +14,9 @@
 //!    g. Archive fix result XML
 //!    h. Apply fix outcome
 //!
-//! 2. Review mode (normal flow):
+//! 2. Review drain (`current_drain == Review`):
 //!    For each review pass (up to `total_reviewer_passes)`:
-//!    a. Initialize agent chain (Reviewer role)
+//!    a. Initialize the review drain chain
 //!    b. Prepare review context
 //!    c. Materialize review inputs (plan + diff)
 //!    d. Prepare review prompt
@@ -36,7 +36,7 @@
 //!   - `reviewer_pass` > `total_reviewer_passes` (should not happen in normal flow)
 //!   - `total_reviewer_passes` == 0 (no review passes configured)
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{PipelineState, PromptMode};
@@ -53,21 +53,47 @@ pub const REQUIRED_FILES_ISSUES: &[&str] = &[".agent/tmp/issues.xml"];
 /// fresh output. The fix agent writes to `.agent/tmp/fix_result.xml`.
 pub const REQUIRED_FILES_FIX: &[&str] = &[".agent/tmp/fix_result.xml"];
 
+fn has_legacy_loaded_mid_fix_chain(state: &PipelineState) -> bool {
+    let has_mid_fix_progress = state.fix_prompt_prepared_pass == Some(state.reviewer_pass)
+        || state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
+        || state.fix_agent_invoked_pass == Some(state.reviewer_pass)
+        || state.fix_result_xml_extracted_pass == Some(state.reviewer_pass)
+        || state
+            .fix_validated_outcome
+            .as_ref()
+            .is_some_and(|outcome| outcome.pass == state.reviewer_pass)
+        || state.fix_result_xml_archived_pass == Some(state.reviewer_pass);
+
+    has_mid_fix_progress
+        && !state.agent_chain.agents.is_empty()
+        && state.agent_chain.current_drain != AgentDrain::Fix
+        && state.agent_chain.current_drain.role() == AgentDrain::Fix.role()
+}
+
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
-    // If review found issues, run fix attempt
-    if state.review_issues_found {
+    let runtime_drain = state.runtime_drain();
+
+    if runtime_drain == AgentDrain::Fix {
         if state.agent_chain.agents.is_empty()
-            || state.agent_chain.current_role != AgentRole::Reviewer
+            || (!state.agent_chain.matches_runtime_drain(AgentDrain::Fix)
+                && !has_legacy_loaded_mid_fix_chain(state))
         {
             return Effect::InitializeAgentChain {
-                role: AgentRole::Reviewer,
+                drain: AgentDrain::Fix,
             };
         }
 
         if state.fix_prompt_prepared_pass != Some(state.reviewer_pass) {
+            let prompt_mode = if state.continuation.fix_continue_pending
+                || state.agent_chain.current_mode == crate::agents::DrainMode::Continuation
+            {
+                PromptMode::Continuation
+            } else {
+                PromptMode::Normal
+            };
             return Effect::PrepareFixPrompt {
                 pass: state.reviewer_pass,
-                prompt_mode: PromptMode::Normal,
+                prompt_mode,
             };
         }
 
@@ -123,10 +149,11 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
         // Legacy super-effect placeholder. Removed once the fix chain is complete.
     }
 
-    if state.agent_chain.agents.is_empty() || state.agent_chain.current_role != AgentRole::Reviewer
+    if state.agent_chain.agents.is_empty()
+        || !state.agent_chain.matches_runtime_drain(AgentDrain::Review)
     {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer,
+            drain: AgentDrain::Review,
         };
     }
 

@@ -11,8 +11,12 @@
 //!
 //! ```ignore
 //! // In agent chain configuration:
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["opencode/anthropic/claude-sonnet-4-5", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
 //! ```
 //!
 //! # Supported Patterns

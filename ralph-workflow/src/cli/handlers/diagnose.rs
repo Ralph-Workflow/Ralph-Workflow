@@ -9,7 +9,7 @@
 //! abstraction for diagnostic file reads. This keeps diagnostics testable and
 //! consistent with the pipeline's filesystem access rules.
 
-use crate::agents::{AgentRegistry, AgentRole, ConfigSource};
+use crate::agents::{AgentRegistry, ConfigSource};
 use crate::checkpoint::load_checkpoint_with_workspace;
 use crate::config::Config;
 use crate::diagnostics::run_diagnostics;
@@ -187,14 +187,20 @@ fn print_config_info(
 
 /// Print agent chain configuration section.
 fn print_agent_chain_info(colors: Colors, registry: &AgentRegistry) {
-    println!("{}Agent Chain:{}", colors.bold(), colors.reset());
-    let fallback = registry.fallback_config();
-    let dev_chain = fallback.get_fallbacks(AgentRole::Developer);
-    let rev_chain = fallback.get_fallbacks(AgentRole::Reviewer);
-    println!("  Developer chain: {dev_chain:?}");
-    println!("  Reviewer chain: {rev_chain:?}");
-    println!("  Max retries: {}", fallback.max_retries);
-    println!("  Retry delay: {}ms", fallback.retry_delay_ms);
+    println!("{}Agent Drains:{}", colors.bold(), colors.reset());
+    let resolved = registry.resolved_drains();
+    for drain in crate::agents::AgentDrain::all() {
+        if let Some(binding) = resolved.binding(drain) {
+            println!(
+                "  {} -> {} {:?}",
+                drain.as_str(),
+                binding.chain_name,
+                binding.agents
+            );
+        }
+    }
+    println!("  Max retries: {}", resolved.max_retries);
+    println!("  Retry delay: {}ms", resolved.retry_delay_ms);
     println!();
 }
 

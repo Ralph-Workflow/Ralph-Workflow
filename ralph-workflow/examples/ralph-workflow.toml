@@ -71,10 +71,15 @@ strict_validation = false
 # CCS allows you to manage multiple Claude profiles and providers.
 # Define aliases here and use them as agents with "ccs/alias-name" syntax.
 #
-# Example usage in agent_chain:
+# Example usage in named chains:
+#   [agent_chains]
 #   developer = ["ccs/work", "claude", "codex"]
 #
-# This uses your "work" CCS profile as the primary developer agent,
+#   [agent_drains]
+#   planning = "developer"
+#   development = "developer"
+#
+# This uses your "work" CCS profile as the shared planning/development chain,
 # falling back to Claude Code and then Codex if needed.
 #
 # Install CCS: https://github.com/kaitranntt/ccs
@@ -179,8 +184,8 @@ can_commit = true
 # AGENT CHAIN CONFIGURATION
 # =============================================================================
 #
-# The agent chain defines which agents to use and the fallback order.
-# The first agent in each list is the primary; others are tried if it fails.
+# Define reusable named chains in [agent_chains], then bind the built-in runtime
+# drains in [agent_drains]. Multiple drains can share the same named chain.
 #
 # Fallback triggers:
 # - Rate limits (429 errors)
@@ -189,30 +194,34 @@ can_commit = true
 # - Command not found
 #
 # You can use CCS aliases with "ccs/alias-name" syntax.
+# Legacy [agent_chain] input is still accepted for compatibility, but the named
+# chain + drain schema below is the canonical model.
 
-[agent_chain]
-# Developer agents - for code implementation
-# Use your preferred agent first, with fallbacks for reliability
+[agent_chains]
+# Shared development chain used by planning, development, and analysis drains.
 developer = [
   "claude",      # Primary: Claude Code
   "codex",       # Fallback: OpenAI Codex
   "opencode",    # Fallback: OpenCode
 ]
 
-# Reviewer agents - for code review
-# Often good to use a different agent than the developer for diverse perspectives
+# Shared review chain used by review, fix, and commit drains.
 reviewer = [
   "codex",       # Primary: OpenAI Codex (different perspective)
   "claude",      # Fallback: Claude Code
 ]
 
-# Commit agents - for generating commit messages
-# Uses the same fallback pattern as other roles
-commit = [
-  "claude",      # Primary: Claude Code
-  "codex",       # Fallback: OpenAI Codex
-  "opencode",    # Fallback: OpenCode
-]
+[agent_drains]
+planning = "developer"
+development = "developer"
+analysis = "developer"
+review = "reviewer"
+fix = "reviewer"
+commit = "reviewer"
+
+[agent_chain]
+# Metadata-only compatibility section.
+# Keep retry/backoff/provider fallback settings here when needed.
 
 # Maximum retries per agent before trying the next one
 max_retries = 3

@@ -16,9 +16,11 @@
 
 use std::path::Path;
 
-use ralph_workflow::agents::AgentRole;
-use ralph_workflow::reducer::effect::Effect;
-use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase};
+use ralph_workflow::agents::{AgentDrain, AgentRole};
+use ralph_workflow::reducer::effect::{Effect, EffectHandler};
+use ralph_workflow::reducer::event::{PipelineEvent, PipelinePhase, ReviewEvent};
+use ralph_workflow::reducer::handler::MainEffectHandler;
+use ralph_workflow::reducer::mock_effect_handler::MockEffectHandler;
 use ralph_workflow::reducer::orchestration::determine_next_effect;
 use ralph_workflow::reducer::reduce;
 use ralph_workflow::reducer::state::{
@@ -26,6 +28,7 @@ use ralph_workflow::reducer::state::{
 };
 use ralph_workflow::workspace::{MemoryWorkspace, Workspace};
 
+use crate::common::IntegrationFixture;
 use crate::test_timeout::with_default_timeout;
 
 /// Helper to create a base test state with prompt permissions locked.
@@ -52,11 +55,14 @@ fn create_planning_state_ready_for_cleanup(iteration: u32) -> PipelineState {
         planning_prompt_prepared_iteration: Some(iteration),
         rebase: RebaseState::Skipped,
         checkpoint_saved_count: 1, // Skip initial checkpoint
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Planning),
         ..create_test_state()
     }
 }
@@ -71,11 +77,14 @@ fn create_development_state_ready_for_cleanup(iteration: u32) -> PipelineState {
         context_cleaned: true,
         development_context_prepared_iteration: Some(iteration),
         development_prompt_prepared_iteration: Some(iteration),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(ralph_workflow::agents::AgentDrain::Development),
         ..create_test_state()
     }
 }
@@ -88,11 +97,10 @@ fn create_review_state_ready_for_cleanup(pass: u32) -> PipelineState {
         total_reviewer_passes: 2,
         review_context_prepared_pass: Some(pass),
         review_prompt_prepared_pass: Some(pass),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["codex".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(ralph_workflow::agents::AgentDrain::Review),
         ..create_test_state()
     }
 }
@@ -105,11 +113,10 @@ fn create_fix_state_ready_for_cleanup(pass: u32) -> PipelineState {
         total_reviewer_passes: 2,
         review_issues_found: true,
         fix_prompt_prepared_pass: Some(pass),
-        agent_chain: create_test_state().agent_chain.with_agents(
-            vec!["codex".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain: create_test_state()
+            .agent_chain
+            .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+            .with_drain(ralph_workflow::agents::AgentDrain::Fix),
         ..create_test_state()
     }
 }
@@ -230,6 +237,63 @@ fn test_fix_cleanup_before_invoke() {
             ),
             "Expected CleanupRequiredFiles for fix_result.xml, got {effect:?}"
         );
+    });
+}
+
+/// Test that production cleanup emits the fix cleanup event from the explicit fix drain.
+#[test]
+fn test_fix_cleanup_handler_uses_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let mut fixture = IntegrationFixture::new();
+        let files: Box<[String]> = vec![".agent/tmp/fix_result.xml".to_string()].into();
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 1,
+            review_issues_found: false,
+            agent_chain: create_test_state()
+                .agent_chain
+                .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(AgentDrain::Fix),
+            ..create_test_state()
+        };
+        let mut handler = MainEffectHandler::new(state);
+        let mut ctx = fixture.ctx(None);
+
+        let result = handler
+            .execute(Effect::CleanupRequiredFiles { files }, &mut ctx)
+            .expect("cleanup effect should execute successfully");
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned { pass: 1 })
+        ));
+    });
+}
+
+/// Test that mock cleanup emits the fix cleanup event from the explicit fix drain.
+#[test]
+fn test_fix_cleanup_mock_uses_fix_drain_without_review_issue_flag() {
+    with_default_timeout(|| {
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 1,
+            review_issues_found: false,
+            agent_chain: create_test_state()
+                .agent_chain
+                .with_agents(vec!["codex".to_string()], vec![vec![]], AgentRole::Reviewer)
+                .with_drain(AgentDrain::Fix),
+            ..create_test_state()
+        };
+        let mut handler = MockEffectHandler::new(state);
+
+        let result = handler.execute_mock(&Effect::CleanupRequiredFiles {
+            files: vec![".agent/tmp/fix_result.xml".to_string()].into(),
+        });
+
+        assert!(matches!(
+            result.event,
+            PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned { pass: 1 })
+        ));
     });
 }
 

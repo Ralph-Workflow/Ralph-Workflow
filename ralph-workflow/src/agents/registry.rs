@@ -15,8 +15,12 @@
 //! work = "ccs work"
 //! personal = "ccs personal"
 //!
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["ccs/work", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
 //! ```
 //!
 //! # `OpenCode` Dynamic Provider/Model Support
@@ -26,9 +30,15 @@
 //!
 //! ```ignore
 //! // Using OpenCode dynamic provider/model in agent chains
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["opencode/anthropic/claude-sonnet-4-5", "claude"]
 //! reviewer = ["opencode/openai/gpt-4", "codex"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
+//! review = "reviewer"
+//! fix = "reviewer"
 //! ```
 use super::ccs::CcsAliasResolver;
 use super::config::{AgentConfig, AgentConfigError, AgentsConfigFile, DEFAULT_AGENTS_TOML};

@@ -12,7 +12,8 @@ fn test_planning_initializes_agent_chain_when_empty() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            drain: crate::agents::AgentDrain::Planning,
+            ..
         }
     ));
 }
@@ -23,11 +24,14 @@ fn test_planning_prepares_prompt_when_agents_ready() {
         phase: PipelinePhase::Planning,
         gitignore_entries_ensured: true,
         context_cleaned: true, // Context must be cleaned before planning
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..create_test_state()
     };
     let effect = determine_next_effect(&state);
@@ -54,7 +58,34 @@ fn test_planning_role_mismatch_initializes_developer_chain() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Developer
+            drain: crate::agents::AgentDrain::Planning,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn test_planning_resume_with_legacy_development_drain_reinitializes_planning_flow() {
+    let state = PipelineState {
+        phase: PipelinePhase::Planning,
+        gitignore_entries_ensured: true,
+        context_cleaned: true,
+        agent_chain: crate::reducer::state::AgentChainState::initial()
+            .with_agents(
+                vec!["dev-agent".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Development),
+        ..create_test_state()
+    };
+
+    let effect = determine_next_effect(&state);
+    assert!(matches!(
+        effect,
+        Effect::InitializeAgentChain {
+            drain: crate::agents::AgentDrain::Planning,
+            ..
         }
     ));
 }
@@ -97,11 +128,14 @@ fn test_planning_emits_prepare_prompt_effect() {
         context_cleaned: true,
         iteration: 0,
         total_iterations: 5,
-        agent_chain: PipelineState::initial(5, 2).agent_chain.with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Developer,
-        ),
+        agent_chain: PipelineState::initial(5, 2)
+            .agent_chain
+            .with_agents(
+                vec!["claude".to_string()],
+                vec![vec![]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..create_test_state()
     };
 

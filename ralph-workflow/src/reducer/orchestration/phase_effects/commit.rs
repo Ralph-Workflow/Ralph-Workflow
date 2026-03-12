@@ -27,7 +27,7 @@
 //! - Re-run `CheckCommitDiff` if `content_id` is missing (backward compatibility)
 //! - Invalidate materialized inputs if `content_id` changes
 
-use crate::agents::AgentRole;
+use crate::agents::AgentDrain;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{CommitState, PipelineState, PromptMode};
@@ -42,9 +42,10 @@ pub const REQUIRED_FILES: &[&str] = &[".agent/tmp/commit_message.xml"];
 
 pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
     // Commit phase requires explicit agent chain initialization like other phases
-    if state.agent_chain.agents.is_empty() || state.agent_chain.current_role != AgentRole::Commit {
+    if state.agent_chain.agents.is_empty() || state.agent_chain.current_drain != AgentDrain::Commit
+    {
         return Effect::InitializeAgentChain {
-            role: AgentRole::Commit,
+            drain: AgentDrain::Commit,
         };
     }
     match state.commit {

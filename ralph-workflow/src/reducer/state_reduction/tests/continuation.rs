@@ -40,6 +40,10 @@ fn test_continuation_triggered_updates_state() {
         Some("Continue".to_string())
     );
     assert_eq!(new_state.continuation.continuation_attempt, 1);
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Continuation
+    );
 }
 
 #[test]
@@ -114,6 +118,10 @@ fn test_continuation_succeeded_resets_state() {
     assert!(!new_state.continuation.is_continuation());
     assert_eq!(new_state.continuation.continuation_attempt, 0);
     assert!(new_state.continuation.previous_status.is_none());
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Normal
+    );
 }
 
 #[test]
@@ -198,6 +206,78 @@ fn test_development_phase_completed_resets_continuation() {
 
     assert!(!new_state.continuation.is_continuation());
     assert_eq!(new_state.phase, PipelinePhase::Review);
+    assert_eq!(
+        new_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Normal
+    );
+}
+
+#[test]
+fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
+    let mut state = create_test_state();
+    state.phase = PipelinePhase::Development;
+
+    let retrying_state = reduce(
+        state,
+        PipelineEvent::agent_invocation_failed(
+            AgentRole::Developer,
+            "mock".to_string(),
+            1,
+            crate::reducer::event::AgentErrorKind::InternalError,
+            false,
+        ),
+    );
+
+    assert!(retrying_state.continuation.same_agent_retry_pending);
+    assert_eq!(
+        retrying_state.agent_chain.current_mode,
+        crate::agents::DrainMode::SameAgentRetry
+    );
+
+    let recovered_state = reduce(
+        retrying_state,
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Developer, "mock".to_string()),
+    );
+
+    assert_eq!(
+        recovered_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Normal
+    );
+}
+
+#[test]
+fn test_xsd_retry_uses_xsd_retry_mode_until_success() {
+    let mut state = create_test_state();
+    state.phase = PipelinePhase::Development;
+    state.agent_chain = state
+        .agent_chain
+        .with_drain(crate::agents::AgentDrain::Analysis);
+
+    let retrying_state = reduce(
+        state,
+        PipelineEvent::agent_xsd_validation_failed(
+            AgentRole::Analysis,
+            crate::reducer::state::ArtifactType::DevelopmentResult,
+            "invalid xml".to_string(),
+            0,
+        ),
+    );
+
+    assert!(retrying_state.continuation.xsd_retry_pending);
+    assert_eq!(
+        retrying_state.agent_chain.current_mode,
+        crate::agents::DrainMode::XsdRetry
+    );
+
+    let recovered_state = reduce(
+        retrying_state,
+        PipelineEvent::agent_invocation_succeeded(AgentRole::Analysis, "mock".to_string()),
+    );
+
+    assert_eq!(
+        recovered_state.agent_chain.current_mode,
+        crate::agents::DrainMode::Normal
+    );
 }
 
 #[test]

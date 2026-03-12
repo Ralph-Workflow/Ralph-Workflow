@@ -144,6 +144,7 @@ fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
         AgentRole::Developer,
     );
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "saved prompt".to_string(),
     });

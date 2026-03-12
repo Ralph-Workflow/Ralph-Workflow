@@ -46,7 +46,7 @@ impl MainEffectHandler {
         ctx: &mut PhaseContext<'_>,
     ) -> Result<EffectResult> {
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Commit);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Commit);
 
         let attempt = current_commit_attempt(&self.state.commit);
         let prompt = match ctx
@@ -73,7 +73,14 @@ impl MainEffectHandler {
             .cloned()
             .ok_or(ErrorEvent::CommitAgentNotInitialized { attempt })?;
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Commit, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Commit,
+            AgentRole::Commit,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

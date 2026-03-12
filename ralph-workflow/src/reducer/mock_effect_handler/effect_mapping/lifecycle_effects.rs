@@ -73,9 +73,9 @@ impl MockEffectHandler {
                         })
                     }
                     PipelinePhase::Review => {
-                        // Distinguish between issues XML and fix result XML based on
-                        // whether we're in fix mode (review_issues_found = true)
-                        if self.state.review_issues_found {
+                        // Review-phase cleanup follows the active drain so mock execution stays
+                        // aligned with reducer-owned fix continuation and retry flows.
+                        if self.state.runtime_drain() == crate::agents::AgentDrain::Fix {
                             PipelineEvent::Review(ReviewEvent::FixResultXmlCleaned {
                                 pass: self.state.reviewer_pass,
                             })
@@ -119,7 +119,8 @@ impl MockEffectHandler {
                 ))
             }
 
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
+                let role = drain.role();
                 // Emit phase transition when initializing agent chain for a new phase
                 let ui = match role {
                     crate::agents::AgentRole::Developer
@@ -142,7 +143,7 @@ impl MockEffectHandler {
                 };
                 Some((
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["mock_agent".to_string()],
                         3,
                         1000,

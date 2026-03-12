@@ -51,11 +51,11 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                     PipelineEvent::development_continuation_context_cleaned(),
                 );
             }
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,
@@ -472,11 +472,11 @@ fn test_pipeline_flow_skip_planning_when_zero_iterations() {
         let effect = determine_next_effect(&state);
 
         match effect {
-            Effect::InitializeAgentChain { role } => {
+            Effect::InitializeAgentChain { drain, .. } => {
                 state = reduce(
                     state,
                     PipelineEvent::agent_chain_initialized(
-                        role,
+                        drain,
                         vec!["claude".to_string()],
                         3,
                         1000,

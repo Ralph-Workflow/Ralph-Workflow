@@ -61,6 +61,7 @@
 use super::event::{CheckpointTrigger, PipelinePhase, RebasePhase};
 use super::state::{CommitState, PipelineState, PromptMode, RebaseState};
 
+#[cfg(test)]
 use crate::agents::AgentRole;
 use crate::reducer::effect::{ContinuationContextData, Effect};
 

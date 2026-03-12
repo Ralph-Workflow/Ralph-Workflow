@@ -1,5 +1,7 @@
 use super::*;
+use crate::config::loader::ConfigLoadWithValidationError;
 use crate::config::path_resolver::MemoryConfigEnvironment;
+use crate::config::validation::ConfigValidationError;
 use crate::config::Verbosity;
 use std::path::Path;
 
@@ -246,6 +248,33 @@ fn test_load_config_returns_defaults_without_file() {
 }
 
 #[test]
+fn test_load_config_from_path_with_env_rejects_invalid_named_drain_reference() {
+    let toml_str = r#"
+[agent_chains]
+shared_dev = ["codex"]
+
+[agent_drains]
+planning = "missing_chain"
+"#;
+
+    let env = MemoryConfigEnvironment::new().with_file(".agent/ralph-workflow.toml", toml_str);
+
+    let result = load_config_from_path_with_env(None, &env);
+    let Err(ConfigLoadWithValidationError::ValidationErrors(errors)) = result else {
+        panic!("expected semantic validation failure from config loader");
+    };
+
+    assert!(
+        errors.iter().any(|error| matches!(
+            error,
+            ConfigValidationError::InvalidValue { key, message, .. }
+                if key == "agent_drains.planning" && message.contains("missing_chain")
+        )),
+        "expected invalid named drain binding error, got: {errors:?}"
+    );
+}
+
+#[test]
 fn test_load_config_with_local_override() {
     let global_toml = r"
 [general]
@@ -420,8 +449,7 @@ developer = ["codex"]
 
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.developer, vec!["codex"]);
     assert_eq!(
@@ -461,8 +489,7 @@ developer_iters = 9
 
     let builtins = crate::agents::AgentRegistry::new()
         .expect("built-in registry should load")
-        .fallback_config()
-        .clone();
+        .fallback_config();
 
     assert_eq!(chain.developer, vec!["codex"]);
     assert_eq!(

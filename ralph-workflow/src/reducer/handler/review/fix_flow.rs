@@ -271,7 +271,61 @@ impl MainEffectHandler {
                 )
             }
             PromptMode::Continuation => {
-                return Err(ErrorEvent::FixContinuationNotSupported.into());
+                let scope_key =
+                    PromptScopeKey::for_fix(pass, RetryMode::Normal, self.state.recovery_epoch);
+                let prompt_key = scope_key.to_string();
+                let status = continuation_state
+                    .fix_status
+                    .unwrap_or(crate::reducer::state::FixStatus::IssuesRemain);
+                let summary = continuation_state
+                    .fix_previous_summary
+                    .clone()
+                    .unwrap_or_else(|| {
+                        "Continue addressing the remaining review issues.".to_string()
+                    });
+                let continuation_note = format!(
+                    "## Fix Continuation\n\nThis is continuation attempt {} of {}.\nPrevious status: {}\nPrevious summary: {}\n\nContinue from the prior fix attempt instead of starting over. Preserve completed work and focus on unresolved review issues before writing the next XML result.\n",
+                    continuation_state.fix_continuation_attempt,
+                    continuation_state.max_fix_continue_count,
+                    status,
+                    summary
+                );
+
+                let prompt_id = sha256_hex_str(&prompt_content);
+                let plan_id = sha256_hex_str(&plan_content);
+                let issues_id = sha256_hex_str(&issues_content);
+                let current_prompt_content_id = sha256_hex_str(&format!(
+                    "fix_continuation|attempt:{}|status:{}|summary:{}|{prompt_id}|{plan_id}|{issues_id}",
+                    continuation_state.fix_continuation_attempt,
+                    status,
+                    summary
+                ));
+
+                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                    &scope_key,
+                    &self.state.prompt_history,
+                    Some(&current_prompt_content_id),
+                    || {
+                        let base_prompt = prompt_fix_xml_with_context(
+                            ctx.template_context,
+                            &prompt_content,
+                            &plan_content,
+                            &issues_content,
+                            &[],
+                            ctx.workspace,
+                        );
+                        format!("{continuation_note}\n{base_prompt}")
+                    },
+                );
+
+                (
+                    prompt_key,
+                    prompt,
+                    was_replayed,
+                    "fix_mode_xml",
+                    Some(current_prompt_content_id),
+                    true,
+                )
             }
         };
         let rendered_log = if should_validate && !was_replayed {
@@ -288,6 +342,36 @@ impl MainEffectHandler {
                     ctx.workspace,
                     template_name,
                 )
+            } else if matches!(prompt_mode, PromptMode::Continuation) {
+                let status = continuation_state
+                    .fix_status
+                    .unwrap_or(crate::reducer::state::FixStatus::IssuesRemain);
+                let summary = continuation_state
+                    .fix_previous_summary
+                    .clone()
+                    .unwrap_or_else(|| {
+                        "Continue addressing the remaining review issues.".to_string()
+                    });
+                let continuation_note = format!(
+                    "## Fix Continuation\n\nThis is continuation attempt {} of {}.\nPrevious status: {}\nPrevious summary: {}\n\nContinue from the prior fix attempt instead of starting over. Preserve completed work and focus on unresolved review issues before writing the next XML result.\n",
+                    continuation_state.fix_continuation_attempt,
+                    continuation_state.max_fix_continue_count,
+                    status,
+                    summary
+                );
+                let rendered = crate::prompts::review::prompt_fix_xml_with_log(
+                    ctx.template_context,
+                    &prompt_content,
+                    &plan_content,
+                    &issues_content,
+                    &[],
+                    ctx.workspace,
+                    template_name,
+                );
+                crate::prompts::RenderedTemplate {
+                    content: format!("{continuation_note}\n{}", rendered.content),
+                    log: rendered.log,
+                }
             } else {
                 crate::prompts::review::prompt_fix_xml_with_log(
                     ctx.template_context,
@@ -380,7 +464,7 @@ impl MainEffectHandler {
         use std::path::Path;
 
         // Normalize agent chain state before invocation for determinism
-        self.normalize_agent_chain_for_invocation(ctx, AgentRole::Reviewer);
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Fix);
 
         let prompt = match ctx.workspace.read(Path::new(".agent/tmp/fix_prompt.txt")) {
             Ok(s) => s,
@@ -403,7 +487,14 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
-        let mut result = self.invoke_agent(ctx, AgentRole::Reviewer, &agent, None, prompt)?;
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Fix,
+            AgentRole::Reviewer,
+            &agent,
+            None,
+            prompt,
+        )?;
         if result.additional_events.iter().any(|e| {
             matches!(
                 e,

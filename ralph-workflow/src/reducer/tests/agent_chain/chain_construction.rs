@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use crate::reducer::tests::*;
 
 #[test]
@@ -15,7 +15,7 @@ fn test_agent_chain_initialized_for_developer() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Developer,
+            AgentDrain::Development,
             agents.clone(),
             3,
             1000,
@@ -27,6 +27,7 @@ fn test_agent_chain_initialized_for_developer() {
     assert_eq!(new_state.agent_chain.agents, Arc::from(agents));
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
     assert_eq!(new_state.agent_chain.current_model_index, 0);
+    assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Development);
 }
 
 #[test]
@@ -37,7 +38,7 @@ fn test_agent_chain_initialized_for_reviewer() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            AgentDrain::Review,
             agents.clone(),
             3,
             1000,
@@ -47,6 +48,7 @@ fn test_agent_chain_initialized_for_reviewer() {
     );
 
     assert_eq!(new_state.agent_chain.agents, Arc::from(agents));
+    assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Review);
 }
 
 #[test]
@@ -57,7 +59,7 @@ fn test_agent_chain_initialized_for_commit_role() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Commit,
+            AgentDrain::Commit,
             agents.clone(),
             3,
             1000,
@@ -70,6 +72,7 @@ fn test_agent_chain_initialized_for_commit_role() {
     assert_eq!(new_state.agent_chain.current_agent_index, 0);
     assert_eq!(new_state.agent_chain.current_model_index, 0);
     assert_eq!(new_state.agent_chain.current_role, AgentRole::Commit);
+    assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Commit);
 }
 
 #[test]
@@ -90,7 +93,7 @@ fn test_agent_chain_initialized_resets_retry_cycle() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            AgentDrain::Review,
             new_agents.clone(),
             3,
             1000,
@@ -106,6 +109,7 @@ fn test_agent_chain_initialized_resets_retry_cycle() {
     assert_eq!(new_state.agent_chain.current_model_index, 0);
     assert_eq!(new_state.agent_chain.retry_cycle, 0); // RESET to 0, not preserved
     assert_eq!(new_state.agent_chain.current_role, AgentRole::Reviewer);
+    assert_eq!(new_state.agent_chain.current_drain, AgentDrain::Review);
 }
 
 #[test]
@@ -113,7 +117,14 @@ fn test_agent_chain_initialized_with_empty_list() {
     let state = create_test_state();
     let new_state = reduce(
         state,
-        PipelineEvent::agent_chain_initialized(AgentRole::Developer, vec![], 3, 1000, 2.0, 60000),
+        PipelineEvent::agent_chain_initialized(
+            AgentDrain::Development,
+            vec![],
+            3,
+            1000,
+            2.0,
+            60000,
+        ),
     );
 
     // Empty agent list should be accepted
@@ -135,7 +146,7 @@ fn test_agent_chain_initialized_contains_full_fallback_chain() {
     let new_state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            AgentDrain::Review,
             agents.clone(),
             3,
             1000,
@@ -157,5 +168,29 @@ fn test_agent_chain_initialized_contains_full_fallback_chain() {
         new_state.agent_chain.current_agent().map(String::as_str),
         Some("codex"),
         "Current agent should be the first in the chain"
+    );
+}
+
+#[test]
+fn test_consumer_signature_distinguishes_shared_chains_by_drain() {
+    let planning = crate::reducer::state::AgentChainState::initial()
+        .with_agents(
+            vec!["agent-a".to_string()],
+            vec![vec!["model-1".to_string()]],
+            AgentRole::Developer,
+        )
+        .with_drain(AgentDrain::Planning);
+    let development = crate::reducer::state::AgentChainState::initial()
+        .with_agents(
+            vec!["agent-a".to_string()],
+            vec![vec!["model-1".to_string()]],
+            AgentRole::Developer,
+        )
+        .with_drain(AgentDrain::Development);
+
+    assert_ne!(
+        planning.consumer_signature_sha256(),
+        development.consumer_signature_sha256(),
+        "shared ordered chains must still hash differently for different drains"
     );
 }

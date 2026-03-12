@@ -6,7 +6,7 @@
 //!
 //! See `docs/architecture/effect-system.md` for the design overview.
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
 use serde::{Deserialize, Serialize};
 
 use super::effect_support_types::{ContinuationContextData, RecoveryResetType};
@@ -26,8 +26,12 @@ pub enum Effect {
         prompt: String,
     },
 
+    /// Resolve and materialize the concrete chain bound to a built-in runtime drain.
+    ///
+    /// The reducer/orchestrator addresses drains directly so handlers never need to
+    /// reconstruct chain selection from compatibility role metadata at invocation time.
     InitializeAgentChain {
-        role: AgentRole,
+        drain: AgentDrain,
     },
 
     /// Prepare the planning prompt for an iteration (single-task).

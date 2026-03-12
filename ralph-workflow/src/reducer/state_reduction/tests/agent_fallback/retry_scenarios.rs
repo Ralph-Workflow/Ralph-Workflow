@@ -30,6 +30,7 @@ fn test_rate_limit_fallback_switches_agent() {
     assert_eq!(
         new_state.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "test prompt".to_string(),
         })
@@ -59,6 +60,7 @@ fn test_rate_limit_fallback_with_no_prompt_context() {
 fn test_success_clears_rate_limit_continuation_prompt() {
     let mut state = create_test_state();
     state.agent_chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "old prompt".to_string(),
     });
@@ -84,6 +86,7 @@ fn test_legacy_rate_limit_failure_clears_stale_rate_limit_continuation_prompt() 
     // prompt, otherwise the next invocation may run with stale prompt context.
     let mut state = create_test_state();
     state.agent_chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "stale prompt".to_string(),
     });
@@ -141,6 +144,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
     assert_eq!(
         after_rate_limit.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         })
@@ -153,6 +157,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
     assert_eq!(
         after_started.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -177,6 +182,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
     assert_eq!(
         after_failure.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -192,6 +198,7 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
             .agent_chain
             .rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -221,6 +228,7 @@ fn test_auth_fallback_clears_session_and_advances_agent() {
         )
         .with_session_id(Some("session-123".to_string()));
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "some saved prompt".to_string(),
     });
@@ -288,6 +296,7 @@ fn test_rate_limit_fallback_clears_session_id() {
     assert_eq!(
         new_state.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "preserved prompt".to_string(),
         }),
@@ -358,6 +367,7 @@ fn test_rate_limit_vs_auth_fallback_prompt_semantics() {
     assert_eq!(
         after_rate_limit.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "preserved prompt".to_string(),
         }),
@@ -397,6 +407,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
         AgentRole::Developer,
     );
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "saved prompt".to_string(),
     });
@@ -423,6 +434,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
             .agent_chain
             .rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -442,6 +454,7 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
     assert_eq!(
         after_second_timeout.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -461,6 +474,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
         AgentRole::Developer,
     );
     chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
+        drain: crate::agents::AgentDrain::Development,
         role: AgentRole::Developer,
         prompt: "saved prompt".to_string(),
     });
@@ -487,6 +501,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
             .agent_chain
             .rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),
@@ -506,6 +521,7 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
     assert_eq!(
         after_second_failure.agent_chain.rate_limit_continuation_prompt,
         Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
             role: AgentRole::Developer,
             prompt: "saved prompt".to_string(),
         }),

@@ -151,7 +151,6 @@ fn test_resume_continues_from_correct_reviewer_pass() {
 #[test]
 fn test_agent_chain_initialized_across_resume() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -171,7 +170,8 @@ fn test_agent_chain_initialized_across_resume() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    drain: ralph_workflow::agents::AgentDrain::Development,
+                    ..
                 }
             ),
             "Resumed state should require agent chain initialization, got {effect:?}"
@@ -296,7 +296,6 @@ fn test_metrics_survive_checkpoint_resume() {
 #[test]
 fn test_resume_at_final_iteration_completes_full_pipeline() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -323,7 +322,8 @@ fn test_resume_at_final_iteration_completes_full_pipeline() {
         let is_development_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                drain: ralph_workflow::agents::AgentDrain::Development,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(
@@ -340,7 +340,6 @@ fn test_resume_at_final_iteration_completes_full_pipeline() {
 #[test]
 fn test_resume_mid_pipeline_continues_normally() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -359,7 +358,8 @@ fn test_resume_mid_pipeline_continues_normally() {
         let is_development_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                drain: ralph_workflow::agents::AgentDrain::Development,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(
@@ -381,7 +381,6 @@ fn test_resume_mid_pipeline_continues_normally() {
 #[test]
 fn test_resume_at_final_iteration_boundary_runs_development() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -406,7 +405,8 @@ fn test_resume_at_final_iteration_boundary_runs_development() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    drain: ralph_workflow::agents::AgentDrain::Development,
+                    ..
                 } | Effect::PrepareDevelopmentContext { .. }
             ),
             "Expected development effect at iteration=1, total=1. Got: {effect:?}"
@@ -421,7 +421,6 @@ fn test_resume_at_final_iteration_boundary_runs_development() {
 #[test]
 fn test_resume_at_final_review_pass_boundary_runs_review() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -447,7 +446,8 @@ fn test_resume_at_final_review_pass_boundary_runs_review() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Reviewer
+                    drain: ralph_workflow::agents::AgentDrain::Review,
+                    ..
                 } | Effect::PrepareReviewContext { .. }
             ),
             "Expected review effect at reviewer_pass=2, total=2. Got: {effect:?}"
@@ -461,7 +461,6 @@ fn test_resume_at_final_review_pass_boundary_runs_review() {
 #[test]
 fn test_resume_zero_indexed_iteration_boundary() {
     with_default_timeout(|| {
-        use ralph_workflow::agents::AgentRole;
         use ralph_workflow::reducer::effect::Effect;
         use ralph_workflow::reducer::orchestration::determine_next_effect;
 
@@ -479,7 +478,8 @@ fn test_resume_zero_indexed_iteration_boundary() {
         let is_dev_effect = matches!(
             effect,
             Effect::InitializeAgentChain {
-                role: AgentRole::Developer
+                drain: ralph_workflow::agents::AgentDrain::Development,
+                ..
             } | Effect::PrepareDevelopmentContext { .. }
         );
         assert!(

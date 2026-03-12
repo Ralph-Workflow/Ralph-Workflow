@@ -125,8 +125,37 @@ pub fn validate_config_file(
     // Unknown keys won't cause deserialization to fail due to #[serde(default)],
     // but we've already detected them in Step 2
     match toml::from_str::<crate::config::unified::UnifiedConfig>(content) {
-        Ok(_) => {
-            // Successfully deserialized - types are valid
+        Ok(config) => {
+            let has_named_chains = !config.agent_chains.is_empty();
+            let has_named_drains = !config.agent_drains.is_empty();
+            let has_legacy_role_bindings = config
+                .agent_chain
+                .as_ref()
+                .is_some_and(crate::agents::fallback::FallbackConfig::uses_legacy_role_schema);
+            let validate_named_schema_now = (!has_named_chains && !has_named_drains)
+                || (has_named_chains && has_named_drains)
+                || has_legacy_role_bindings;
+
+            if validate_named_schema_now {
+                if let Err(message) = config.resolve_agent_drains_checked() {
+                    let key = if message.contains("references unknown chain") {
+                        message
+                            .split_whitespace()
+                            .next()
+                            .map_or_else(|| "agent_drains".to_string(), ToString::to_string)
+                    } else if message.contains("cannot be combined") {
+                        "agent_chain".to_string()
+                    } else {
+                        "agent_drains".to_string()
+                    };
+
+                    errors.push(ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key,
+                        message,
+                    });
+                }
+            }
         }
         Err(e) => {
             // TOML is syntactically valid but doesn't match our schema
@@ -453,5 +482,114 @@ developer_iters = 5
         if let Ok(warnings) = result {
             assert_eq!(warnings.len(), 0, "Should have no warnings");
         }
+    }
+
+    #[test]
+    fn test_validate_config_file_rejects_unknown_agent_drain_binding_target() {
+        let content = r#"
+[agent_chains]
+shared_dev = ["codex"]
+
+[agent_drains]
+planning = "missing_chain"
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_err(),
+            "unknown drain binding target should fail validation"
+        );
+
+        let errors = result.expect_err("validation should fail");
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key == "agent_drains.planning"
+                        && message.contains("missing_chain")
+            )),
+            "expected invalid drain binding error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_file_rejects_mixed_legacy_and_named_chain_schema() {
+        let content = r#"
+[agent_chain]
+developer = ["codex"]
+
+[agent_chains]
+shared_dev = ["claude"]
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_err(),
+            "mixing legacy and named chain schema should fail validation"
+        );
+
+        let errors = result.expect_err("validation should fail");
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key == "agent_chain"
+                        && message.contains("agent_chains")
+                        && message.contains("agent_drains")
+            )),
+            "expected mixed schema error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_file_rejects_incomplete_named_drain_resolution() {
+        let content = r#"
+[agent_chains]
+shared_review = ["claude"]
+
+[agent_drains]
+review = "shared_review"
+fix = "shared_review"
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_err(),
+            "incomplete drain coverage should fail validation"
+        );
+
+        let errors = result.expect_err("validation should fail");
+        assert!(
+            errors.iter().any(|error| matches!(
+                error,
+                ConfigValidationError::InvalidValue { key, message, .. }
+                    if key == "agent_drains"
+                        && message.contains("planning")
+                        && message.contains("development")
+                        && message.contains("analysis")
+            )),
+            "expected incomplete drain coverage error, got: {errors:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_file_accepts_commit_and_analysis_derived_from_bound_drains() {
+        let content = r#"
+[agent_chains]
+shared_dev = ["codex"]
+shared_review = ["claude"]
+
+[agent_drains]
+planning = "shared_dev"
+development = "shared_dev"
+review = "shared_review"
+fix = "shared_review"
+"#;
+
+        let result = validate_config_file(Path::new("test.toml"), content);
+        assert!(
+            result.is_ok(),
+            "commit and analysis should derive from existing bound drains"
+        );
     }
 }

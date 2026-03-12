@@ -462,6 +462,32 @@ fn run_development_iteration(ctx: &mut PhaseContext) {
 
 The pipeline layer uses a **reducer pattern** to manage complex state transitions. This pattern separates concerns into distinct components.
 
+### Agent-chain architecture consistency requirement
+
+When the pipeline executes agents, the effect system should operate on a consistent domain model:
+
+- config layer defines reusable chain definitions
+- binding/normalization layer attaches drains to chains
+- runtime executes concrete chains for the active drain
+- retry and continuation remain drain-local modes unless they truly need separate chain attachment
+
+Legacy `[agent_chain]` remains a config-input compatibility path only. The effect boundary should see the same resolved built-in drain bindings regardless of whether the user wrote legacy role-keyed config or explicit named chains and drains.
+
+Normalization should prefer already-bound drains when filling built-in defaults. For example, if `review` and `fix` are both bound to `shared_review`, then an omitted `commit` drain should inherit that resolved binding instead of inventing a new role-shaped default at handler time.
+
+At runtime, handler code should read retry settings and agent lists from the resolved drain configuration itself. Do not keep a second stored fallback table in runtime state and hope it stays synchronized.
+
+Checkpoint resume follows the same rule: the persisted drain is authoritative, and any persisted broad role label is compatibility metadata only. Handlers should be able to continue correctly even when `current_role` is absent from older checkpoints.
+
+Effect handlers must not become a second policy engine for agent architecture. In particular:
+
+- do not push unresolved chain aliases into handler-time logic
+- do not rely on role-only defaults to stand in for distinct drains long-term
+- do not let invocation-time normalization become the place where chain-vs-drain semantics are decided
+- do initialize chains and emit chain-initialized events using the resolved drain identity, with any broad role metadata derived from that drain instead of passed separately
+
+The handler boundary should receive a resolved, concrete drain-to-chain mapping and execute it. Changes in this area should update config semantics, runtime semantics, and architecture documentation together so the same concept exists consistently at every layer.
+
 ### Core Concepts
 
 **State**: Immutable snapshot of pipeline progress (current phase, iteration counts, flags).

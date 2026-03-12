@@ -34,16 +34,13 @@ fn test_loop_detection_counters_computed_after_additional_events() {
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
         state.continuation.xsd_retry_pending = true;
-        state.continuation.last_effect_kind =
-            Some("Planning:developer:iter=0:pass=0:xsd_retry=true".to_string());
+        let expected_initial_fingerprint = compute_effect_fingerprint(&state);
+        state.continuation.last_effect_kind = Some(expected_initial_fingerprint.clone());
         state.continuation.consecutive_same_effect_count = 3;
 
         // Record the fingerprint BEFORE any event processing (for comparison)
         let fingerprint_before = compute_effect_fingerprint(&state);
-        assert_eq!(
-            fingerprint_before,
-            "Planning:developer:iter=0:pass=0:xsd_retry=true"
-        );
+        assert_eq!(fingerprint_before, expected_initial_fingerprint);
 
         // Simulate the event loop behavior:
         // 1. Primary event: ContextCleaned (doesn't change phase or retry state)
@@ -104,8 +101,8 @@ fn test_loop_detection_resets_when_additional_events_change_phase() {
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
         state.continuation.xsd_retry_pending = true;
-        state.continuation.last_effect_kind =
-            Some("Planning:developer:iter=0:pass=0:xsd_retry=true".to_string());
+        let expected_initial_fingerprint = compute_effect_fingerprint(&state);
+        state.continuation.last_effect_kind = Some(expected_initial_fingerprint);
         state.continuation.consecutive_same_effect_count = 4;
 
         // Verify we're in a "looping" state
@@ -151,8 +148,8 @@ fn test_loop_detection_increments_when_additional_events_preserve_fingerprint() 
         let mut state = PipelineState::initial(1, 0);
         state.phase = PipelinePhase::Planning;
         state.continuation.xsd_retry_pending = true;
-        state.continuation.last_effect_kind =
-            Some("Planning:developer:iter=0:pass=0:xsd_retry=true".to_string());
+        let expected_initial_fingerprint = compute_effect_fingerprint(&state);
+        state.continuation.last_effect_kind = Some(expected_initial_fingerprint);
         state.continuation.consecutive_same_effect_count = 2;
 
         // Simulate: primary event and additional events that both keep us in

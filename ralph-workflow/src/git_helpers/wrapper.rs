@@ -1013,9 +1013,6 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
     }
 
     let marker_meta = fs::symlink_metadata(&marker_path).ok();
-    let marker_is_symlink = marker_meta
-        .as_ref()
-        .is_some_and(|m| m.file_type().is_symlink());
     let marker_exists = marker_meta
         .as_ref()
         .is_some_and(|m| m.file_type().is_file() && !m.file_type().is_symlink());
@@ -1369,6 +1366,14 @@ pub fn ensure_agent_phase_protections(logger: &Logger) -> ProtectionCheckResult 
             .details
             .push("Marker and hooks missing before agent spawn — reinstalling".to_string());
     }
+
+    let marker_meta = fs::symlink_metadata(&marker_path).ok();
+    let marker_is_symlink = marker_meta
+        .as_ref()
+        .is_some_and(|meta| meta.file_type().is_symlink());
+    let marker_exists = marker_meta
+        .as_ref()
+        .is_some_and(|meta| meta.file_type().is_file() && !meta.file_type().is_symlink());
 
     // Repair marker if missing or replaced with a symlink.
     if marker_is_symlink {
@@ -2608,6 +2613,7 @@ mod tests {
 
         let _ = fs::remove_file(&marker_path);
         let _ = fs::remove_dir_all(&marker_path);
+        fs::create_dir_all(marker_path.parent().unwrap()).unwrap();
         fs::create_dir(&marker_path).unwrap();
 
         let _result = ensure_thread.join().unwrap();

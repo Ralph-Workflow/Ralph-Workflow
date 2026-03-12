@@ -32,7 +32,7 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
     assert!(matches!(
         effect,
         Effect::InitializeAgentChain {
-            role: AgentRole::Reviewer
+            drain: crate::agents::AgentDrain::Review
         }
     ));
 
@@ -40,7 +40,7 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -63,7 +63,7 @@ fn test_review_phase_emits_prepare_review_context_after_chain_initialized() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -85,7 +85,7 @@ fn test_review_phase_emits_cleanup_required_files_after_prompt_prepared() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -119,7 +119,7 @@ fn test_review_phase_emits_extract_review_issues_xml_after_agent_invoked() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -153,7 +153,7 @@ fn test_review_phase_emits_validate_review_issues_xml_after_extracted() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -191,7 +191,7 @@ fn test_review_phase_emits_write_issues_markdown_after_validated() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -236,7 +236,7 @@ fn test_review_phase_emits_extract_issue_snippets_after_markdown_written() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -285,7 +285,7 @@ fn test_review_phase_emits_archive_issues_xml_after_snippets_extracted() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -332,7 +332,7 @@ fn test_review_phase_emits_apply_review_outcome_after_issues_xml_archived() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,
@@ -390,7 +390,7 @@ fn test_review_phase_emits_prepare_review_prompt_after_context_prepared() {
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
-            AgentRole::Reviewer,
+            crate::agents::AgentDrain::Review,
             vec!["mock".to_string()],
             1,
             0,

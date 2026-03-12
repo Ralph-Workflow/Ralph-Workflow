@@ -40,17 +40,31 @@
 //! personal = "ccs personal"
 //! gemini = "ccs gemini"
 //!
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["ccs/work", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
 //! ```
 //!
 //! ## Agent Switching / Fallback
 //!
 //! Configure fallback agents for automatic switching when primary agent fails:
 //! ```toml
-//! [agent_chain]
+//! [agent_chains]
 //! developer = ["claude", "codex", "goose"]
 //! reviewer = ["codex", "claude"]
+//!
+//! [agent_drains]
+//! planning = "developer"
+//! development = "developer"
+//! review = "reviewer"
+//! fix = "reviewer"
+//! commit = "reviewer"
+//! analysis = "developer"
+//!
+//! [agent_chain]
 //! max_retries = 3
 //! retry_delay_ms = 1000
 //! ```
@@ -89,7 +103,7 @@ pub use config::{
     AgentConfig, AgentConfigBuilder, AgentsConfigFile, ConfigInitResult, ConfigSource,
 };
 pub use error::{contains_glm_model, is_glm_like_agent, AgentErrorKind};
-pub use fallback::AgentRole;
+pub use fallback::{AgentDrain, AgentRole, DrainMode};
 pub use parser::JsonParserType;
 pub use providers::{
     auth_failure_advice, strip_model_flag_prefix, validate_model_flag, OpenCodeProviderType,

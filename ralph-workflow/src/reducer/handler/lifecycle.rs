@@ -119,6 +119,7 @@ impl MainEffectHandler {
 
         let agent_result = match self.invoke_agent(
             ctx,
+            crate::agents::AgentDrain::Development,
             crate::agents::AgentRole::Developer,
             &agent,
             None,

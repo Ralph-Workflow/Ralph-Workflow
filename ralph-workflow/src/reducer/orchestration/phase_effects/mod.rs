@@ -137,7 +137,7 @@ pub(in crate::reducer::orchestration) fn determine_next_effect_for_phase(
                 };
                 Effect::TriggerDevFixFlow {
                     failed_phase,
-                    failed_role: state.agent_chain.current_role,
+                    failed_role: state.agent_chain.current_drain.role(),
                     retry_cycle: state.agent_chain.retry_cycle,
                 }
             }

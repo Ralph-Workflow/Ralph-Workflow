@@ -41,7 +41,8 @@ fn recovery_level_1_retry_same_operation() {
             matches!(
                 effect,
                 Effect::InitializeAgentChain {
-                    role: AgentRole::Developer
+                    drain: ralph_workflow::agents::AgentDrain::Development,
+                    ..
                 } | Effect::PrepareDevelopmentContext { .. }
             ),
             "Level 1 recovery should retry same operation, got {effect:?}"

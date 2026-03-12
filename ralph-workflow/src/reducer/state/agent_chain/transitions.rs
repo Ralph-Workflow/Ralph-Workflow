@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use super::backoff::calculate_backoff_delay_ms;
-use super::{AgentChainState, AgentRole, RateLimitContinuationPrompt};
+use super::{AgentChainState, AgentDrain, AgentRole, DrainMode, RateLimitContinuationPrompt};
 
 impl AgentChainState {
     #[must_use]
@@ -32,6 +32,8 @@ impl AgentChainState {
                         max_backoff_ms: self.max_backoff_ms,
                         backoff_pending_ms: self.backoff_pending_ms,
                         current_role: self.current_role,
+                        current_drain: self.current_drain,
+                        current_mode: self.current_mode,
                         rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                         last_session_id: self.last_session_id.clone(),
                     }
@@ -65,6 +67,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: None,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
             }
@@ -87,6 +91,8 @@ impl AgentChainState {
                     max_backoff_ms: self.max_backoff_ms,
                     backoff_pending_ms: None,
                     current_role: self.current_role,
+                    current_drain: self.current_drain,
+                    current_mode: self.current_mode,
                     rate_limit_continuation_prompt: None,
                     last_session_id: None,
                 };
@@ -105,6 +111,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: new_backoff_pending_ms,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
             }
@@ -135,6 +143,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: None,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
             };
@@ -160,6 +170,8 @@ impl AgentChainState {
                     max_backoff_ms: self.max_backoff_ms,
                     backoff_pending_ms: None,
                     current_role: self.current_role,
+                    current_drain: self.current_drain,
+                    current_mode: self.current_mode,
                     rate_limit_continuation_prompt: None,
                     last_session_id: None,
                 };
@@ -178,6 +190,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: new_backoff_pending_ms,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
             }
@@ -195,6 +209,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: None,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
             }
@@ -223,7 +239,10 @@ impl AgentChainState {
             max_backoff_ms: base.max_backoff_ms,
             backoff_pending_ms: base.backoff_pending_ms,
             current_role: base.current_role,
+            current_drain: base.current_drain,
+            current_mode: base.current_mode,
             rate_limit_continuation_prompt: prompt.map(|p| RateLimitContinuationPrompt {
+                drain: base.current_drain,
                 role: base.current_role,
                 prompt: p,
             }),
@@ -251,8 +270,13 @@ impl AgentChainState {
             max_backoff_ms: base.max_backoff_ms,
             backoff_pending_ms: base.backoff_pending_ms,
             current_role: base.current_role,
-            rate_limit_continuation_prompt: prompt
-                .map(|p| RateLimitContinuationPrompt { role, prompt: p }),
+            current_drain: base.current_drain,
+            current_mode: base.current_mode,
+            rate_limit_continuation_prompt: prompt.map(|p| RateLimitContinuationPrompt {
+                drain: base.current_drain,
+                role,
+                prompt: p,
+            }),
             last_session_id: base.last_session_id,
         }
     }
@@ -275,13 +299,15 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: self.backoff_pending_ms,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
             rate_limit_continuation_prompt: None,
             last_session_id: self.last_session_id.clone(),
         }
     }
 
     #[must_use]
-    pub fn reset_for_role(&self, role: AgentRole) -> Self {
+    pub fn reset_for_drain(&self, drain: AgentDrain) -> Self {
         Self {
             agents: Arc::clone(&self.agents),
             current_agent_index: 0,
@@ -293,10 +319,22 @@ impl AgentChainState {
             backoff_multiplier: self.backoff_multiplier,
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: None,
-            current_role: role,
+            current_role: drain.role(),
+            current_drain: drain,
+            current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
         }
+    }
+
+    #[must_use]
+    pub fn reset_for_role(&self, role: AgentRole) -> Self {
+        self.reset_for_drain(match role {
+            AgentRole::Developer => AgentDrain::Development,
+            AgentRole::Reviewer => AgentDrain::Review,
+            AgentRole::Commit => AgentDrain::Commit,
+            AgentRole::Analysis => AgentDrain::Analysis,
+        })
     }
 
     #[must_use]
@@ -313,6 +351,8 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: None,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
         }
@@ -333,6 +373,8 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: self.backoff_pending_ms,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: session_id,
         }
@@ -353,6 +395,8 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: self.backoff_pending_ms,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: None,
         }
@@ -377,6 +421,8 @@ impl AgentChainState {
                 max_backoff_ms: self.max_backoff_ms,
                 backoff_pending_ms: None,
                 current_role: self.current_role,
+                current_drain: self.current_drain,
+                current_mode: self.current_mode,
                 rate_limit_continuation_prompt: None,
                 last_session_id: None,
             };
@@ -395,6 +441,8 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: new_backoff_pending_ms,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: self.last_session_id.clone(),
         }
@@ -414,6 +462,8 @@ impl AgentChainState {
             max_backoff_ms: self.max_backoff_ms,
             backoff_pending_ms: None,
             current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: self.last_session_id.clone(),
         }

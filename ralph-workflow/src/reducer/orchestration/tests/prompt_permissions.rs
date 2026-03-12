@@ -43,11 +43,13 @@ fn test_orchestration_skips_lock_when_already_locked() {
         },
         gitignore_entries_ensured: true, // Skip gitignore effect
         context_cleaned: true,           // Skip context cleanup effect
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["agent1".to_string()],
-            vec![vec!["model1".to_string()]],
-            AgentRole::Developer,
-        ),
+        agent_chain: AgentChainState::initial()
+            .with_agents(
+                vec!["agent1".to_string()],
+                vec![vec!["model1".to_string()]],
+                AgentRole::Developer,
+            )
+            .with_drain(crate::agents::AgentDrain::Planning),
         ..PipelineState::initial(1, 0)
     };
 

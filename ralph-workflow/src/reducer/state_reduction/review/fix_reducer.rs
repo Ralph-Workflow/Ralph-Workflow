@@ -1,14 +1,62 @@
 // NOTE: split from reducer/state_reduction/review.rs (fix attempt events).
 
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::event::{PipelinePhase, ReviewEvent};
 use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, FixStatus, FixValidatedOutcome, PipelineState,
 };
 
+fn clear_fix_drain_progress(state: PipelineState) -> PipelineState {
+    PipelineState {
+        review_issues_found: false,
+        fix_prompt_prepared_pass: None,
+        fix_required_files_cleaned_pass: None,
+        fix_agent_invoked_pass: None,
+        fix_result_xml_extracted_pass: None,
+        fix_validated_outcome: None,
+        fix_result_xml_archived_pass: None,
+        ..state
+    }
+}
+
+fn transition_to_commit_after_fix(
+    state: PipelineState,
+    pass: u32,
+    increment_review_passes_completed: bool,
+) -> PipelineState {
+    let state = clear_fix_drain_progress(state);
+
+    PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        previous_phase: Some(PipelinePhase::Review),
+        reviewer_pass: pass,
+        agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
+        commit: CommitState::NotStarted,
+        commit_prompt_prepared: false,
+        commit_diff_prepared: false,
+        commit_diff_empty: false,
+        commit_diff_content_id_sha256: None,
+        commit_agent_invoked: false,
+        commit_required_files_cleaned: false,
+        commit_xml_extracted: false,
+        commit_validated_outcome: None,
+        commit_xml_archived: false,
+        commit_selected_files: Vec::new(),
+        commit_excluded_files: Vec::new(),
+        commit_is_second_pass: false,
+        continuation: state.continuation.reset(),
+        metrics: if increment_review_passes_completed {
+            state.metrics.increment_review_passes_completed()
+        } else {
+            state.metrics
+        },
+        ..state
+    }
+}
+
 /// Handles `ReviewEvent::FixAttemptStarted`.
 ///
-/// Starts a new fix attempt by resetting the agent chain for Reviewer role
+/// Starts a new fix attempt by resetting the agent chain for the Fix drain
 /// and clearing pending flags to prevent infinite loops.
 ///
 /// Fix attempts use the Reviewer agent chain by design. The pipeline has three
@@ -24,7 +72,7 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
                 state.agent_chain.backoff_multiplier,
                 state.agent_chain.max_backoff_ms,
             )
-            .reset_for_role(AgentRole::Reviewer),
+            .reset_for_drain(AgentDrain::Fix),
         // Clear pending flags when fix attempt starts to prevent infinite loops.
         // xsd_retry_pending is cleared to ensure the XSD retry effect doesn't re-trigger
         // after the fix attempt starts a fresh agent invocation.
@@ -54,6 +102,7 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
 /// Clears retry and continuation flags to prevent infinite loops.
 pub(super) fn reduce_fix_prompt_prepared(state: PipelineState, pass: u32) -> PipelineState {
     PipelineState {
+        agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_prompt_prepared_pass: Some(pass),
         continuation: ContinuationState {
             xsd_retry_pending: false,
@@ -86,6 +135,7 @@ pub(super) fn reduce_fix_result_xml_cleaned(state: PipelineState, pass: u32) -> 
 /// Clears retry flags since agent invocation is a fresh attempt.
 pub(super) fn reduce_fix_agent_invoked(state: PipelineState, pass: u32) -> PipelineState {
     PipelineState {
+        agent_chain: state.agent_chain.with_drain(AgentDrain::Fix),
         fix_agent_invoked_pass: Some(pass),
         continuation: ContinuationState {
             xsd_retry_pending: false,
@@ -189,36 +239,7 @@ pub(super) fn reduce_fix_attempt_completed(
     pass: u32,
     _changes_made: bool,
 ) -> PipelineState {
-    // Fix completed successfully - increment completed passes counter
-    PipelineState {
-        phase: PipelinePhase::CommitMessage,
-        previous_phase: Some(PipelinePhase::Review),
-        reviewer_pass: pass,
-        review_issues_found: false,
-        fix_prompt_prepared_pass: None,
-        fix_required_files_cleaned_pass: None,
-        fix_agent_invoked_pass: None,
-        fix_result_xml_extracted_pass: None,
-        fix_validated_outcome: None,
-        fix_result_xml_archived_pass: None,
-        commit: CommitState::NotStarted,
-        commit_prompt_prepared: false,
-        commit_diff_prepared: false,
-        commit_diff_empty: false,
-        commit_agent_invoked: false,
-        commit_required_files_cleaned: false,
-        commit_xml_extracted: false,
-        commit_validated_outcome: None,
-        commit_xml_archived: false,
-        continuation: ContinuationState {
-            invalid_output_attempts: 0,
-            // Clear fix error when transitioning to commit phase
-            last_fix_xsd_error: None,
-            ..state.continuation
-        },
-        metrics: state.metrics.increment_review_passes_completed(),
-        ..state
-    }
+    transition_to_commit_after_fix(state, pass, true)
 }
 
 /// Handles `ReviewEvent::FixContinuationTriggered`.
@@ -233,6 +254,10 @@ pub(super) fn reduce_fix_continuation_triggered(
 ) -> PipelineState {
     // Fix output is valid but indicates work is incomplete (issues_remain)
     PipelineState {
+        agent_chain: state
+            .agent_chain
+            .with_drain(AgentDrain::Fix)
+            .with_mode(DrainMode::Continuation),
         reviewer_pass: pass,
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
@@ -258,29 +283,7 @@ pub(super) fn reduce_fix_continuation_succeeded(
     pass: u32,
     _total_attempts: u32,
 ) -> PipelineState {
-    // Fix continuation succeeded - transition to CommitMessage
-    // Use reset() instead of new() to preserve configured limits
-    // Fix succeeded after continuation - increment review passes completed
-    PipelineState {
-        phase: PipelinePhase::CommitMessage,
-        previous_phase: Some(PipelinePhase::Review),
-        reviewer_pass: pass,
-        review_issues_found: false,
-        commit: CommitState::NotStarted,
-        commit_prompt_prepared: false,
-        commit_diff_prepared: false,
-        commit_diff_empty: false,
-        commit_diff_content_id_sha256: None,
-        commit_agent_invoked: false,
-        commit_required_files_cleaned: false,
-        commit_xml_extracted: false,
-        commit_validated_outcome: None,
-        commit_xml_archived: false,
-        continuation: state.continuation.reset(),
-        fix_required_files_cleaned_pass: None,
-        metrics: state.metrics.increment_review_passes_completed(),
-        ..state
-    }
+    transition_to_commit_after_fix(state, pass, true)
 }
 
 /// Handles `ReviewEvent::FixContinuationBudgetExhausted`.
@@ -293,27 +296,9 @@ pub(super) fn reduce_fix_continuation_budget_exhausted(
     _total_attempts: u32,
     _last_status: FixStatus,
 ) -> PipelineState {
-    // Fix continuation budget exhausted - proceed to commit with current state
-    // Policy: We accept partial fixes rather than blocking the pipeline
-    // Use reset() instead of new() to preserve configured limits
-    PipelineState {
-        phase: PipelinePhase::CommitMessage,
-        previous_phase: Some(PipelinePhase::Review),
-        reviewer_pass: pass,
-        commit: CommitState::NotStarted,
-        commit_prompt_prepared: false,
-        commit_diff_prepared: false,
-        commit_diff_empty: false,
-        commit_diff_content_id_sha256: None,
-        commit_agent_invoked: false,
-        commit_required_files_cleaned: false,
-        commit_xml_extracted: false,
-        commit_validated_outcome: None,
-        commit_xml_archived: false,
-        continuation: state.continuation.reset(),
-        fix_required_files_cleaned_pass: None,
-        ..state
-    }
+    // Fix continuation budget exhausted - proceed to commit with current state.
+    // Policy: We accept partial fixes rather than blocking the pipeline.
+    transition_to_commit_after_fix(state, pass, false)
 }
 
 /// Handles `ReviewEvent::FixOutputValidationFailed` and `ReviewEvent::FixResultXmlMissing`.
@@ -336,11 +321,17 @@ pub(super) fn reduce_fix_output_validation_failed(
     if new_xsd_count >= state.continuation.max_xsd_retry_count {
         // XSD retries exhausted - switch to next agent
         // Reset orchestration flags to ensure prompt is prepared and new agent is invoked
-        let new_agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
+        let new_agent_chain = state
+            .agent_chain
+            .with_drain(AgentDrain::Fix)
+            .switch_to_next_agent()
+            .clear_session_id();
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
-            agent_chain: new_agent_chain,
+            agent_chain: new_agent_chain
+                .with_drain(AgentDrain::Fix)
+                .with_mode(DrainMode::Normal),
             continuation: ContinuationState {
                 invalid_output_attempts: 0,
                 xsd_retry_count: 0,
@@ -371,6 +362,10 @@ pub(super) fn reduce_fix_output_validation_failed(
         PipelineState {
             phase: PipelinePhase::Review,
             reviewer_pass: pass,
+            agent_chain: state
+                .agent_chain
+                .with_drain(AgentDrain::Fix)
+                .with_mode(DrainMode::XsdRetry),
             continuation: ContinuationState {
                 invalid_output_attempts: attempt + 1,
                 xsd_retry_count: new_xsd_count,
