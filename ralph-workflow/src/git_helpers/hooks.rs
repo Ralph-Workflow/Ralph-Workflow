@@ -396,18 +396,29 @@ fn ensure_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
         return Ok(());
     }
 
+    ensure_worktree_config_extension(scope)?;
+
     let state_path = hooks_path_state_path(&scope.ralph_dir);
-    if !state_path.exists() {
+    let created_state_file = if state_path.exists() {
+        false
+    } else {
         let current_value = worktree_config_path(scope)
             .map(|path| read_config_string(path, "core.hooksPath"))
             .transpose()?
             .flatten();
         let state = current_value.map_or(StoredHookPath::Missing, StoredHookPath::Value);
         store_hook_path_state(&state_path, &state)?;
+        true
+    };
+
+    if let Err(err) = write_worktree_hooks_path(scope) {
+        if created_state_file {
+            let _ = fs::remove_file(&state_path);
+        }
+        return Err(err);
     }
 
-    ensure_worktree_config_extension(scope)?;
-    write_worktree_hooks_path(scope)
+    Ok(())
 }
 
 fn restore_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
@@ -417,6 +428,46 @@ fn restore_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {
 
     restore_worktree_hooks_path(scope)?;
     restore_worktree_config_extension(scope)
+}
+
+fn ensure_scoped_hooks_dir_is_owned(scope: &ProtectionScope) -> io::Result<()> {
+    if scope.hooks_dir.parent() != Some(scope.ralph_dir.as_path()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to install hooks outside Ralph's scoped metadata dir: {}",
+                scope.hooks_dir.display()
+            ),
+        ));
+    }
+
+    if let Ok(meta) = fs::symlink_metadata(&scope.hooks_dir) {
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!(
+                    "refusing to use non-directory scoped hooks dir: {}",
+                    scope.hooks_dir.display()
+                ),
+            ));
+        }
+    }
+
+    fs::create_dir_all(&scope.hooks_dir)?;
+
+    let resolved_hooks_dir = fs::canonicalize(&scope.hooks_dir)?;
+    let resolved_ralph_dir = fs::canonicalize(&scope.ralph_dir)?;
+    if resolved_hooks_dir.parent() != Some(resolved_ralph_dir.as_path()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to use hook dir outside Ralph's scoped metadata dir: {}",
+                scope.hooks_dir.display()
+            ),
+        ));
+    }
+
+    Ok(())
 }
 
 fn hooks_path_matches_scope(scope: &ProtectionScope) -> io::Result<bool> {
@@ -553,6 +604,7 @@ exit 0
 fn install_hook_with_repo_root(
     hook_name: &str,
     ralph_dir: &Path,
+    hooks_dir: &Path,
     hook_path: &Path,
 ) -> io::Result<()> {
     // Compute absolute paths for marker and track file inside the ralph git dir.
@@ -564,26 +616,40 @@ fn install_hook_with_repo_root(
     let marker_path_bash = bash_single_quote_literal(&marker_path.display().to_string());
     let track_file_path_bash = bash_single_quote_literal(&track_file_path.display().to_string());
 
-    // Create hooks directory if needed.
-    //
-    // IMPORTANT: we must do this BEFORE canonicalize(), otherwise canonicalize() fails
-    // when the hooks directory is missing.
-    if let Some(parent) = hook_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Use absolute path for orig backup.
-    // Handle the case where hook_path has no parent or file_name gracefully.
-    let hook_dir = hook_path.parent().ok_or_else(|| {
+    let hook_parent_dir = hook_path.parent().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
             "Hook path has no parent directory",
         )
     })?;
+    if hook_parent_dir != hooks_dir {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to install hook outside scoped hooks dir: {}",
+                hook_path.display()
+            ),
+        ));
+    }
+
+    let resolved_hook_dir = fs::canonicalize(hooks_dir)?;
+    let resolved_ralph_dir = fs::canonicalize(ralph_dir)?;
+    if resolved_hook_dir.parent() != Some(resolved_ralph_dir.as_path()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to install hook outside Ralph's scoped metadata dir: {}",
+                hook_path.display()
+            ),
+        ));
+    }
+
+    // Use absolute path for orig backup.
+    // Handle the case where hook_path has no parent or file_name gracefully.
     let hook_file_name = hook_path
         .file_name()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Hook path has no file name"))?;
-    let hook_path_abs = fs::canonicalize(hook_dir)?.join(hook_file_name);
+    let hook_path_abs = resolved_hook_dir.join(hook_file_name);
     let orig_path_abs = PathBuf::from(format!("{}.ralph.orig", hook_path_abs.display()));
 
     // Store the orig path as a bash-safe single-quoted literal.
@@ -645,7 +711,13 @@ fn install_hook_with_repo_root(
 pub fn install_hook(hook_name: &str, hook_path: &Path) -> io::Result<()> {
     let repo_root = super::repo::get_repo_root()?;
     let ralph_dir = super::repo::ensure_ralph_git_dir(&repo_root)?;
-    install_hook_with_repo_root(hook_name, &ralph_dir, hook_path)
+    let hooks_dir = hook_path.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Hook path has no parent directory",
+        )
+    })?;
+    install_hook_with_repo_root(hook_name, &ralph_dir, hooks_dir, hook_path)
 }
 
 /// Install Ralph-managed hooks for an explicit repository root.
@@ -659,7 +731,7 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
     // Resolve the ralph metadata dir (handles worktrees via libgit2).
     let ralph_dir = super::repo::ensure_ralph_git_dir(repo_root)?;
     let hooks_dir = scope.hooks_dir.clone();
-    fs::create_dir_all(&hooks_dir)?;
+    ensure_scoped_hooks_dir_is_owned(&scope)?;
     ensure_worktree_hook_scoping(&scope)?;
 
     for hook_name in RALPH_HOOK_NAMES {
@@ -670,7 +742,7 @@ pub fn install_hooks_in_repo(repo_root: &Path) -> io::Result<()> {
             "commit-msg" => "Commit message",
             _ => hook_name,
         };
-        install_hook_with_repo_root(label, &ralph_dir, &hooks_dir.join(hook_name))?;
+        install_hook_with_repo_root(label, &ralph_dir, &hooks_dir, &hooks_dir.join(hook_name))?;
     }
 
     Ok(())
@@ -1430,6 +1502,79 @@ mod tests {
         assert!(
             !outside.path().join("hooks").exists(),
             "scoped hook creation must not follow a symlinked linked-worktree ralph dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_install_hooks_in_repo_rejects_symlinked_scoped_hooks_dir() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_path = tmp.path().join("wt-one");
+        let _wt = main_repo.worktree("wt-one", &worktree_path, None).unwrap();
+
+        let scope = resolve_protection_scope_from(&worktree_path).unwrap();
+        fs::create_dir_all(&scope.ralph_dir).unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        symlink(outside.path(), &scope.hooks_dir).unwrap();
+
+        let err = install_hooks_in_repo(&worktree_path).expect_err(
+            "install must reject hook dirs that resolve outside the scoped ralph metadata dir",
+        );
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            !outside.path().join("pre-commit").exists(),
+            "install must not create hooks through the symlink target"
+        );
+        assert!(
+            read_config_string(
+                &scope
+                    .worktree_config_path
+                    .clone()
+                    .expect("linked worktree should have config.worktree"),
+                "core.hooksPath"
+            )
+            .unwrap()
+            .is_none(),
+            "install must not persist a worktree hooksPath override when hook dir ownership is unsafe"
+        );
+        assert!(
+            !hooks_path_state_path(&scope.ralph_dir).exists(),
+            "failed install must not leave stale hooks-path.previous state behind"
+        );
+    }
+
+    #[test]
+    fn test_install_hooks_in_repo_rolls_back_hooks_path_state_on_failed_activation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_repo_path = tmp.path().join("main");
+        fs::create_dir_all(&root_repo_path).unwrap();
+        let main_repo = init_repo_with_commit(&root_repo_path);
+        let worktree_one = tmp.path().join("wt-one");
+        let worktree_two = tmp.path().join("wt-two");
+        let _wt_one = main_repo.worktree("wt-one", &worktree_one, None).unwrap();
+        let _wt_two = main_repo.worktree("wt-two", &worktree_two, None).unwrap();
+
+        let scope = resolve_protection_scope_from(&worktree_one).unwrap();
+        let sibling_config = git2::Repository::open(&worktree_two)
+            .unwrap()
+            .path()
+            .join("config.worktree");
+        let mut sibling_cfg = open_config(&sibling_config).unwrap();
+        sibling_cfg.set_str("core.fsmonitor", "true").unwrap();
+
+        let err = install_hooks_in_repo(&worktree_one)
+            .expect_err("unsafe shared worktreeConfig activation should fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert!(
+            !hooks_path_state_path(&scope.ralph_dir).exists(),
+            "failed activation must not leave stale hooks-path.previous state behind"
         );
     }
 }

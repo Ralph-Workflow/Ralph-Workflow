@@ -543,14 +543,25 @@ fn make_wrapper_content(
        fi
        ;;
      branch)
-       # Allow only list-only forms of `git branch` (no positional args).
+       # Allow only explicit read-only `git branch` forms.
        found_branch=0
+       branch_allows_value=0
        for a2 in "$@"; do
+         if [ "$branch_allows_value" = "1" ]; then
+           branch_allows_value=0
+           continue
+         fi
          if [ "$found_branch" = "1" ]; then
            case "$a2" in
-             -*) ;;
+             --list|-l|--all|-a|--remotes|-r|--verbose|-v|--vv|--show-current|--column|--no-column|--color|--no-color|--ignore-case|--omit-empty)
+               ;;
+             --contains|--no-contains|--merged|--no-merged|--points-at|--sort|--format|--abbrev)
+               branch_allows_value=1
+               ;;
+             --contains=*|--no-contains=*|--merged=*|--no-merged=*|--points-at=*|--sort=*|--format=*|--abbrev=*)
+               ;;
              *)
-               echo "Blocked: git branch <name> disabled during agent phase (list-only allowed)." >&2
+               echo "Blocked: git branch disabled during agent phase (read-only forms only; mutating flags like --unset-upstream are blocked)." >&2
                exit 1
                ;;
            esac
@@ -2294,8 +2305,17 @@ mod tests {
     fn test_wrapper_script_blocks_branch_positional_args() {
         let content = test_wrapper_content();
         assert!(
-            content.contains("branch <name>"),
-            "wrapper should block git branch <name>; got:\n{content}"
+            content.contains("git branch disabled during agent phase"),
+            "wrapper should block positional git branch invocations via the branch allowlist; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn test_wrapper_script_blocks_flag_only_mutating_branch_forms() {
+        let content = test_wrapper_content();
+        assert!(
+            content.contains("--unset-upstream"),
+            "wrapper branch allowlist should explicitly reject mutating flag-only forms; got:\n{content}"
         );
     }
 
