@@ -327,7 +327,27 @@ impl MainEffectHandler {
         // contamination (e.g., a review continuation prompt overriding a fix prompt).
         if let Some(ref continuation) = self.state.agent_chain.rate_limit_continuation_prompt {
             if continuation.drain != expected_drain || continuation.role != expected_role {
-                self.state.agent_chain.rate_limit_continuation_prompt = None;
+                let legacy_fix_prompt_mismatch = expected_drain == AgentDrain::Fix
+                    && self.state.runtime_drain() == AgentDrain::Fix
+                    && self.state.agent_chain.current_drain == AgentDrain::Review
+                    && continuation.drain == AgentDrain::Review
+                    && continuation.role == AgentRole::Reviewer;
+
+                if legacy_fix_prompt_mismatch {
+                    if let Some(prompt) = self
+                        .state
+                        .agent_chain
+                        .rate_limit_continuation_prompt
+                        .as_mut()
+                    {
+                        prompt.drain = AgentDrain::Fix;
+                        prompt.role = AgentRole::Reviewer;
+                    }
+                    self.state.agent_chain.current_drain = AgentDrain::Fix;
+                    self.state.agent_chain.current_role = AgentRole::Reviewer;
+                } else {
+                    self.state.agent_chain.rate_limit_continuation_prompt = None;
+                }
             }
         }
 

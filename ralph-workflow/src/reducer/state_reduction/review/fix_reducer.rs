@@ -6,6 +6,19 @@ use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, FixStatus, FixValidatedOutcome, PipelineState,
 };
 
+fn clear_fix_drain_progress(state: PipelineState) -> PipelineState {
+    PipelineState {
+        review_issues_found: false,
+        fix_prompt_prepared_pass: None,
+        fix_required_files_cleaned_pass: None,
+        fix_agent_invoked_pass: None,
+        fix_result_xml_extracted_pass: None,
+        fix_validated_outcome: None,
+        fix_result_xml_archived_pass: None,
+        ..state
+    }
+}
+
 /// Handles `ReviewEvent::FixAttemptStarted`.
 ///
 /// Starts a new fix attempt by resetting the agent chain for the Fix drain
@@ -268,11 +281,12 @@ pub(super) fn reduce_fix_continuation_succeeded(
     // Fix continuation succeeded - transition to CommitMessage
     // Use reset() instead of new() to preserve configured limits
     // Fix succeeded after continuation - increment review passes completed
+    let state = clear_fix_drain_progress(state);
+
     PipelineState {
         phase: PipelinePhase::CommitMessage,
         previous_phase: Some(PipelinePhase::Review),
         reviewer_pass: pass,
-        review_issues_found: false,
         commit: CommitState::NotStarted,
         commit_prompt_prepared: false,
         commit_diff_prepared: false,
@@ -285,7 +299,6 @@ pub(super) fn reduce_fix_continuation_succeeded(
         commit_xml_archived: false,
         continuation: state.continuation.reset(),
         agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
-        fix_required_files_cleaned_pass: None,
         metrics: state.metrics.increment_review_passes_completed(),
         ..state
     }
@@ -304,6 +317,8 @@ pub(super) fn reduce_fix_continuation_budget_exhausted(
     // Fix continuation budget exhausted - proceed to commit with current state
     // Policy: We accept partial fixes rather than blocking the pipeline
     // Use reset() instead of new() to preserve configured limits
+    let state = clear_fix_drain_progress(state);
+
     PipelineState {
         phase: PipelinePhase::CommitMessage,
         previous_phase: Some(PipelinePhase::Review),
@@ -320,7 +335,6 @@ pub(super) fn reduce_fix_continuation_budget_exhausted(
         commit_xml_archived: false,
         continuation: state.continuation.reset(),
         agent_chain: state.agent_chain.with_mode(DrainMode::Normal),
-        fix_required_files_cleaned_pass: None,
         ..state
     }
 }

@@ -536,10 +536,7 @@ fn default_chain_binding_for_drain(
                     })
             });
 
-    match drain {
-        AgentDrain::Commit | AgentDrain::Analysis => sibling_binding.or(compatibility_binding),
-        _ => compatibility_binding.or(sibling_binding),
-    }
+    sibling_binding.or(compatibility_binding)
 }
 
 const fn preferred_chain_names_for_drain(drain: AgentDrain) -> &'static [&'static str] {

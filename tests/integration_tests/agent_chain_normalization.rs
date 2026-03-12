@@ -238,16 +238,6 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_continuation() {
         let restored_state: PipelineState =
             serde_json::from_str(&legacy_json).expect("legacy checkpoint should deserialize");
 
-        assert_eq!(restored_state.agent_chain.current_drain, AgentDrain::Fix);
-        assert_eq!(
-            restored_state
-                .agent_chain
-                .rate_limit_continuation_prompt
-                .as_ref()
-                .map(|prompt| prompt.drain),
-            Some(AgentDrain::Fix)
-        );
-
         let effect = determine_next_effect(&restored_state);
         assert!(
             matches!(
@@ -258,6 +248,48 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_continuation() {
                 }
             ),
             "legacy fix continuation should resume in the fix drain, got: {effect:?}"
+        );
+    });
+}
+
+#[test]
+fn test_checkpoint_replay_recovers_fix_drain_for_legacy_fix_resume_with_structured_prompt_missing_drain(
+) {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 1));
+        state.phase = PipelinePhase::Review;
+        state.reviewer_pass = 1;
+        state.review_issues_found = true;
+        state.fix_prompt_prepared_pass = Some(1);
+        state.fix_agent_invoked_pass = Some(1);
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.agent_chain.current_role = AgentRole::Reviewer;
+
+        let mut json = serde_json::to_value(&state).expect("state should serialize");
+        json["agent_chain"]["rate_limit_continuation_prompt"] = serde_json::json!({
+            "role": "Reviewer",
+            "prompt": "continue fixing remaining issues"
+        });
+        if let Some(agent_chain) = json["agent_chain"].as_object_mut() {
+            agent_chain.remove("current_drain");
+        }
+
+        let restored_state: PipelineState =
+            serde_json::from_value(json).expect("legacy checkpoint should deserialize");
+
+        let effect = determine_next_effect(&restored_state);
+        assert!(
+            matches!(
+                effect,
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: _,
+                } | Effect::InitializeAgentChain {
+                    drain: AgentDrain::Fix,
+                    ..
+                }
+            ),
+            "legacy fix resume should remain in the fix drain, got: {effect:?}"
         );
     });
 }
@@ -392,7 +424,10 @@ fn test_checkpoint_replay_recovers_fix_drain_for_legacy_normal_mode() {
         assert!(
             matches!(
                 effect,
-                Effect::InitializeAgentChain {
+                Effect::PrepareFixPrompt {
+                    pass: 1,
+                    prompt_mode: PromptMode::Normal,
+                } | Effect::InitializeAgentChain {
                     drain: AgentDrain::Fix,
                     ..
                 }
@@ -634,6 +669,158 @@ fn test_named_schema_prefers_sibling_drains_for_commit_and_analysis_defaults() {
         assert_eq!(commit.agents, vec!["claude"]);
         assert_eq!(analysis.chain_name, "shared_dev");
         assert_eq!(analysis.agents, vec!["codex"]);
+    });
+}
+
+#[test]
+fn test_named_schema_prefers_sibling_drains_for_planning_development_and_review_fix_defaults() {
+    with_default_timeout(|| {
+        let config = ralph_workflow::config::UnifiedConfig {
+            agent_chains: std::collections::HashMap::from([
+                ("shared_dev".to_string(), vec!["codex".to_string()]),
+                ("shared_review".to_string(), vec!["claude".to_string()]),
+                (
+                    "developer".to_string(),
+                    vec!["legacy-dev".to_string(), "legacy-dev-2".to_string()],
+                ),
+                (
+                    "reviewer".to_string(),
+                    vec!["legacy-review".to_string(), "legacy-review-2".to_string()],
+                ),
+            ]),
+            agent_drains: std::collections::HashMap::from([
+                ("planning".to_string(), "shared_dev".to_string()),
+                ("review".to_string(), "shared_review".to_string()),
+            ]),
+            ..Default::default()
+        };
+
+        let resolved = config
+            .resolve_agent_drains_checked()
+            .expect("drain defaults should resolve")
+            .expect("named drain config should resolve");
+
+        let development = resolved
+            .binding(AgentDrain::Development)
+            .expect("development drain should resolve");
+        let fix = resolved
+            .binding(AgentDrain::Fix)
+            .expect("fix drain should resolve");
+
+        assert_eq!(development.chain_name, "shared_dev");
+        assert_eq!(development.agents, vec!["codex"]);
+        assert_eq!(fix.chain_name, "shared_review");
+        assert_eq!(fix.agents, vec!["claude"]);
+    });
+}
+
+#[test]
+fn test_fix_continuation_succeeded_clears_fix_drain_state_before_returning_to_review() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 2));
+        state.phase = PipelinePhase::Review;
+        state.review_issues_found = true;
+        state.fix_prompt_prepared_pass = Some(0);
+        state.fix_required_files_cleaned_pass = Some(0);
+        state.fix_agent_invoked_pass = Some(0);
+        state.fix_result_xml_extracted_pass = Some(0);
+        state.fix_validated_outcome = Some(ralph_workflow::reducer::state::FixValidatedOutcome {
+            pass: 0,
+            status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
+            summary: Some("continue".to_string()),
+        });
+        state.fix_result_xml_archived_pass = Some(0);
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.continuation.fix_continue_pending = true;
+        state.continuation.fix_continuation_attempt = 1;
+        state.continuation.fix_status =
+            Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
+        state.continuation.fix_previous_summary = Some("continue".to_string());
+        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
+
+        let state = reduce(
+            state,
+            ralph_workflow::reducer::event::PipelineEvent::fix_continuation_succeeded(0, 1),
+        );
+        let state = reduce(
+            state,
+            ralph_workflow::reducer::event::PipelineEvent::commit_created(
+                "abc".to_string(),
+                "fix".to_string(),
+            ),
+        );
+
+        assert_eq!(state.phase, PipelinePhase::Review);
+        assert_eq!(state.runtime_drain(), AgentDrain::Review);
+        assert!(!state.review_issues_found);
+        assert!(state.fix_prompt_prepared_pass.is_none());
+        assert!(state.fix_required_files_cleaned_pass.is_none());
+        assert!(state.fix_agent_invoked_pass.is_none());
+        assert!(state.fix_result_xml_extracted_pass.is_none());
+        assert!(state.fix_validated_outcome.is_none());
+        assert!(state.fix_result_xml_archived_pass.is_none());
+        assert!(!state.continuation.fix_continue_pending);
+        assert_eq!(state.continuation.fix_continuation_attempt, 0);
+        assert!(state.continuation.fix_status.is_none());
+        assert!(state.continuation.fix_previous_summary.is_none());
+        assert!(state.continuation.last_fix_xsd_error.is_none());
+    });
+}
+
+#[test]
+fn test_fix_continuation_budget_exhausted_clears_fix_drain_state_before_returning_to_review() {
+    with_default_timeout(|| {
+        let mut state = with_locked_prompt_permissions(PipelineState::initial(1, 2));
+        state.phase = PipelinePhase::Review;
+        state.review_issues_found = true;
+        state.fix_prompt_prepared_pass = Some(0);
+        state.fix_required_files_cleaned_pass = Some(0);
+        state.fix_agent_invoked_pass = Some(0);
+        state.fix_result_xml_extracted_pass = Some(0);
+        state.fix_validated_outcome = Some(ralph_workflow::reducer::state::FixValidatedOutcome {
+            pass: 0,
+            status: ralph_workflow::reducer::state::FixStatus::IssuesRemain,
+            summary: Some("continue".to_string()),
+        });
+        state.fix_result_xml_archived_pass = Some(0);
+        state.agent_chain.current_drain = AgentDrain::Fix;
+        state.continuation.fix_continue_pending = true;
+        state.continuation.fix_continuation_attempt = 2;
+        state.continuation.fix_status =
+            Some(ralph_workflow::reducer::state::FixStatus::IssuesRemain);
+        state.continuation.fix_previous_summary = Some("continue".to_string());
+        state.continuation.last_fix_xsd_error = Some("bad xml".to_string());
+
+        let state = reduce(
+            state,
+            ralph_workflow::reducer::event::PipelineEvent::fix_continuation_budget_exhausted(
+                0,
+                2,
+                ralph_workflow::reducer::state::FixStatus::IssuesRemain,
+            ),
+        );
+        let state = reduce(
+            state,
+            ralph_workflow::reducer::event::PipelineEvent::commit_created(
+                "abc".to_string(),
+                "fix".to_string(),
+            ),
+        );
+
+        assert_eq!(state.phase, PipelinePhase::Review);
+        assert_eq!(state.runtime_drain(), AgentDrain::Review);
+        assert!(!state.review_issues_found);
+        assert!(state.fix_prompt_prepared_pass.is_none());
+        assert!(state.fix_required_files_cleaned_pass.is_none());
+        assert!(state.fix_agent_invoked_pass.is_none());
+        assert!(state.fix_result_xml_extracted_pass.is_none());
+        assert!(state.fix_validated_outcome.is_none());
+        assert!(state.fix_result_xml_archived_pass.is_none());
+        assert!(!state.continuation.fix_continue_pending);
+        assert_eq!(state.continuation.fix_continuation_attempt, 0);
+        assert!(state.continuation.fix_status.is_none());
+        assert!(state.continuation.fix_previous_summary.is_none());
+        assert!(state.continuation.last_fix_xsd_error.is_none());
     });
 }
 
