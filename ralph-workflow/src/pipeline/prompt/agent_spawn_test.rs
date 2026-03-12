@@ -228,18 +228,28 @@ pub fn run_with_agent_spawn_with_monitor_config(
             } else {
                 ""
             };
-            let idle_timeout_cause = child_status_at_timeout
-                .filter(crate::executor::ChildProcessInfo::has_stalled_children)
-                .map_or(
-                    IdleTimeoutCause::NoQualifyingChildren,
-                    IdleTimeoutCause::StalledChildren,
-                );
+            let idle_timeout_cause =
+                child_status_at_timeout.map_or(IdleTimeoutCause::NoQualifying, |info| {
+                    if info.has_stalled_children() {
+                        IdleTimeoutCause::Stalled(info)
+                    } else if info.has_currently_active_children() {
+                        IdleTimeoutCause::StaleActive(info)
+                    } else {
+                        IdleTimeoutCause::NoQualifying
+                    }
+                });
             let child_msg = match idle_timeout_cause {
-                IdleTimeoutCause::NoQualifyingChildren => ", no active child processes".to_string(),
-                IdleTimeoutCause::StalledChildren(info) => {
+                IdleTimeoutCause::NoQualifying => ", no active child processes".to_string(),
+                IdleTimeoutCause::Stalled(info) => {
                     format!(
                         ", child processes present but not currently active (0 active of {} total, CPU at {}ms)",
                         info.child_count, info.cpu_time_ms
+                    )
+                }
+                IdleTimeoutCause::StaleActive(info) => {
+                    format!(
+                        ", child processes still looked active but showed no fresh progress ({} active of {} total, CPU stalled at {}ms)",
+                        info.active_child_count, info.child_count, info.cpu_time_ms
                     )
                 }
             };
@@ -258,7 +268,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
         MonitorResult::ProcessCompleted => {
             if let Some(info) = child_activity_suppression_info {
                 runtime.logger.info(&format!(
-                    "idle timeout suppression: currently active child processes remained relevant \
+                    "idle timeout suppression: child processes showed fresh progress and remained relevant \
                      ({} active of {} total, CPU at {}ms, signature {})",
                     info.active_child_count,
                     info.child_count,

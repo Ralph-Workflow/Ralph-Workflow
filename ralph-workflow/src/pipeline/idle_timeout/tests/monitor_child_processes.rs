@@ -391,6 +391,53 @@ fn children_transition_active_to_stalled_allows_kill() {
     );
 }
 
+/// A child that keeps reporting itself as currently active without any new CPU
+/// progress must not suppress idle timeout forever.
+#[test]
+fn repeated_active_snapshot_without_fresh_progress_allows_kill() {
+    let timestamp = new_activity_timestamp();
+    wait_until_idle_timeout_exceeded(&timestamp, Duration::ZERO);
+
+    let should_stop = Arc::new(AtomicBool::new(false));
+
+    let (mock_child, _controller) = MockAgentChild::new_running(0);
+    let child_pid = mock_child.id();
+    let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+    let executor: Arc<dyn crate::executor::ProcessExecutor> =
+        Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 1,
+                cpu_time_ms: 4_200,
+                descendant_pid_signature: 91,
+            },
+        ));
+
+    let config = MonitorConfig {
+        timeout: Duration::ZERO,
+        check_interval: Duration::ZERO,
+        kill_config: fast_kill_config(),
+        required_idle_confirmations: 2,
+        check_child_processes: true,
+    };
+
+    let result = monitor_idle_timeout_with_interval_and_kill_config(
+        &timestamp,
+        None,
+        &child,
+        &should_stop,
+        &executor,
+        config,
+    );
+
+    assert!(
+        matches!(result, MonitorResult::TimedOut { .. }),
+        "repeated active snapshots without fresh child progress must not suppress idle timeout"
+    );
+}
+
 /// Mere descendant existence must not earn startup grace.
 #[test]
 fn first_child_observation_without_current_activity_times_out_immediately() {

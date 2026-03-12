@@ -422,11 +422,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             let info = executor.get_child_process_info(child_pid);
             if info.has_children() {
                 last_child_info = Some(info);
-                let first_active_observation = last_child_observation.is_none();
-                let active_subtree_changed = last_child_observation.is_some_and(|prev| {
-                    prev.descendant_pid_signature != info.descendant_pid_signature
-                });
-                let first_active_child_observation = first_active_observation
+                let previous_observation = last_child_observation;
+                let first_active_child_observation = previous_observation.is_none()
                     && child_startup_grace_available
                     && info.has_currently_active_children();
 
@@ -445,21 +442,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     continue;
                 }
 
-                if info.has_currently_active_children() {
+                if previous_observation.is_some_and(|prev| info.shows_fresh_progress_since(prev)) {
                     last_child_observation = Some(info);
-                    if active_subtree_changed && child_startup_grace_available {
-                        child_startup_grace_available = false;
-                        consecutive_idle_count = 0;
-                        eprintln!(
-                            "Agent has currently active child processes for the first time during idle timeout \
-                             (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
-                            info.active_child_count,
-                            info.child_count,
-                            info.cpu_time_ms,
-                            info.descendant_pid_signature
-                        );
-                        continue;
-                    }
                     if let Some(observed_activity) = child_activity_suppressed.as_ref() {
                         *observed_activity
                             .lock()
@@ -477,7 +461,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     );
                     continue;
                 }
-                last_child_observation = None;
+
                 if info.has_stalled_children() {
                     eprintln!(
                         "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
@@ -486,11 +470,18 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                         info.cpu_time_ms,
                         info.descendant_pid_signature
                     );
+                } else if info.has_currently_active_children() {
+                    eprintln!(
+                        "Agent has child processes (pid {child_pid}, {} active of {} total, cpu {}ms, signature {}) \
+                         but they showed no fresh progress since the last idle check; treating as idle",
+                        info.active_child_count,
+                        info.child_count,
+                        info.cpu_time_ms,
+                        info.descendant_pid_signature
+                    );
                 }
+                last_child_observation = Some(info);
             } else {
-                if last_child_info.is_some() {
-                    child_startup_grace_available = false;
-                }
                 last_child_observation = None;
                 last_child_info = None;
             }

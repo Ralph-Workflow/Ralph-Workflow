@@ -31,10 +31,13 @@ pub struct CommandResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdleTimeoutCause {
     /// The agent timed out with no qualifying child work present.
-    NoQualifyingChildren,
+    NoQualifying,
     /// The agent timed out while child processes still existed but no longer showed
     /// current work that should suppress enforcement.
-    StalledChildren(ChildProcessInfo),
+    Stalled(ChildProcessInfo),
+    /// The agent timed out while child snapshots still looked active, but they
+    /// stopped showing fresh progress across idle checks.
+    StaleActive(ChildProcessInfo),
 }
 
 /// RAII guard for agent phase cleanup.

@@ -1069,6 +1069,66 @@ fn sleeping_subprocess_with_historical_cpu_still_times_out() {
     });
 }
 
+/// Repeated child snapshots that stay marked active but never show fresh CPU
+/// progress must still time out.
+#[test]
+fn active_flag_without_fresh_subprocess_progress_still_times_out() {
+    use ralph_workflow::executor::ChildProcessInfo;
+
+    with_default_timeout(|| {
+        let timestamp = new_activity_timestamp();
+        timestamp.store(0, Ordering::Release);
+
+        let should_stop = Arc::new(AtomicBool::new(false));
+
+        let (mock_child, controller) = MockAgentChild::new_running(0);
+        let child_pid = mock_child.id();
+        let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
+
+        let executor_impl = Arc::new(MockProcessExecutor::new().with_active_children_info(
+            child_pid,
+            ChildProcessInfo {
+                child_count: 1,
+                active_child_count: 1,
+                cpu_time_ms: 5_000,
+                descendant_pid_signature: 155,
+            },
+        ));
+        let executor_dyn: Arc<dyn ProcessExecutor> = Arc::new(KillNotifyingExecutor::new(
+            executor_impl.clone(),
+            Some(Arc::clone(&controller)),
+        ));
+
+        let monitor_handle = thread::spawn(move || {
+            monitor_idle_timeout_with_interval_and_kill_config(
+                &timestamp,
+                None,
+                &child,
+                &should_stop,
+                &executor_dyn,
+                MonitorConfig {
+                    timeout: Duration::ZERO,
+                    check_interval: Duration::from_millis(5),
+                    kill_config: fast_kill_config(),
+                    required_idle_confirmations: 2,
+                    check_child_processes: true,
+                },
+            )
+        });
+
+        let result = monitor_handle.join().expect("monitor thread panicked");
+
+        assert!(
+            matches!(result, MonitorResult::TimedOut { .. }),
+            "an active flag without fresh child progress must not keep the run alive"
+        );
+        assert!(
+            !executor_impl.execute_calls_for("kill").is_empty(),
+            "timeout enforcement should still trigger when child snapshots stay active but stale"
+        );
+    });
+}
+
 /// When output is idle, no file activity is present, and no child processes are
 /// running, the monitor must enforce the idle timeout.
 #[test]

@@ -155,6 +155,15 @@ impl ChildProcessInfo {
     pub const fn has_stalled_children(&self) -> bool {
         self.has_children() && !self.has_currently_active_children()
     }
+
+    /// Whether the latest snapshot proves fresh current work from the same
+    /// descendant subtree as a previous observation.
+    #[must_use]
+    pub const fn shows_fresh_progress_since(&self, previous: Self) -> bool {
+        self.has_currently_active_children()
+            && self.descendant_pid_signature == previous.descendant_pid_signature
+            && self.cpu_time_ms > previous.cpu_time_ms
+    }
 }
 
 /// Result of an agent command execution (for testing).
@@ -231,5 +240,37 @@ mod tests {
         assert!(stalled.has_stalled_children());
         assert!(!active.has_stalled_children());
         assert!(!ChildProcessInfo::NONE.has_stalled_children());
+    }
+
+    #[test]
+    fn child_process_info_requires_same_subtree_and_cpu_growth_for_fresh_progress() {
+        let previous = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 200,
+            descendant_pid_signature: 7,
+        };
+        let fresh = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 300,
+            descendant_pid_signature: 7,
+        };
+        let stale = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 200,
+            descendant_pid_signature: 7,
+        };
+        let replaced = ChildProcessInfo {
+            child_count: 1,
+            active_child_count: 1,
+            cpu_time_ms: 400,
+            descendant_pid_signature: 8,
+        };
+
+        assert!(fresh.shows_fresh_progress_since(previous));
+        assert!(!stale.shows_fresh_progress_since(previous));
+        assert!(!replaced.shows_fresh_progress_since(previous));
     }
 }

@@ -123,3 +123,39 @@ fn same_process_group_busy_descendant_qualifies_as_active_child_work() {
         "same-process-group descendants doing current CPU work must qualify as active child work"
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn same_process_group_descendant_stops_qualifying_after_busy_work_finishes() {
+    let executor = RealProcessExecutor::new();
+    let script = "python3 -c 'import time\nend=time.time()+0.3\nwhile time.time()<end:\n    pass\ntime.sleep(0.8)' & sleep 1.3";
+    let mut shell = spawn_shell_in_own_process_group(script);
+
+    let active_info = wait_for_descendant_snapshot_matching(
+        &executor,
+        shell.id(),
+        Duration::from_secs(1),
+        |info| info.active_child_count > 0,
+    );
+    let stalled_info = wait_for_descendant_snapshot_matching(
+        &executor,
+        shell.id(),
+        Duration::from_secs(1),
+        |info| info.child_count > 0 && info.active_child_count == 0,
+    );
+
+    shell.wait().expect("wait for shell");
+
+    assert!(
+        active_info.active_child_count > 0,
+        "busy descendants should initially qualify as current child work"
+    );
+    assert!(
+        stalled_info.child_count > 0,
+        "the descendant should remain observable after the busy phase ends"
+    );
+    assert_eq!(
+        stalled_info.active_child_count, 0,
+        "once busy work finishes, the descendant must stop qualifying as current child work"
+    );
+}

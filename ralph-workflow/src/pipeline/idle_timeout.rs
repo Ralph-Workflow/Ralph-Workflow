@@ -29,11 +29,14 @@
 //! commit message generation, and other file-intensive phases.
 //!
 //! 3. **Child-Process Activity**: Descendant processes only suppress an idle
-//!    timeout when the latest executor snapshot shows currently relevant child
-//!    work. Mere descendant existence, historical CPU usage, or a previously
-//!    observed child subtree is not enough. If child work goes stale, exits,
-//!    detaches, or is replaced without showing fresh current activity, the
-//!    monitor resumes normal idle-timeout enforcement.
+//!    timeout when the current idle spell contains fresh cross-poll evidence of
+//!    relevant child work. A first active snapshot earns a one-poll startup
+//!    grace so new subprocess work can be confirmed, but continued suppression
+//!    requires the same descendant subtree to keep advancing. Mere descendant
+//!    existence, historical CPU usage, or an "active-looking" snapshot that no
+//!    longer changes is not enough. If child work goes stale, exits, detaches,
+//!    or is replaced without showing fresh current activity, the monitor resumes
+//!    normal idle-timeout enforcement.
 //!
 //! # Timeout Value
 //!

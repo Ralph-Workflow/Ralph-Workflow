@@ -7,6 +7,299 @@ use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput,
 use std::io;
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
+fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
+    use std::collections::{HashSet, VecDeque};
+    use std::ffi::c_void;
+
+    const PROC_PIDT_SHORTBSDINFO: libc::c_int = 13;
+    const PROC_PIDTASKINFO: libc::c_int = 4;
+    const MAXCOMLEN: usize = 16;
+    const SIDL: u32 = 1;
+    const SRUN: u32 = 2;
+    const SSTOP: u32 = 4;
+    const SZOMB: u32 = 5;
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    #[repr(C)]
+    struct ProcBsdShortInfo {
+        pid: u32,
+        parent_pid: u32,
+        process_group_id: u32,
+        status: u32,
+        command: [libc::c_char; MAXCOMLEN],
+        flags: u32,
+        uid: libc::uid_t,
+        gid: libc::gid_t,
+        real_uid: libc::uid_t,
+        real_gid: libc::gid_t,
+        saved_uid: libc::uid_t,
+        saved_gid: libc::gid_t,
+        reserved: u32,
+    }
+
+    #[repr(C)]
+    struct ProcTaskInfo {
+        virtual_size: u64,
+        resident_size: u64,
+        total_user_time: u64,
+        total_system_time: u64,
+        threads_user_time: u64,
+        threads_system_time: u64,
+        policy: i32,
+        faults: i32,
+        pageins: i32,
+        cow_faults: i32,
+        messages_sent: i32,
+        messages_received: i32,
+        mach_syscalls: i32,
+        unix_syscalls: i32,
+        context_switches: i32,
+        thread_count: i32,
+        running_thread_count: i32,
+        priority: i32,
+    }
+
+    #[link(name = "proc")]
+    unsafe extern "C" {
+        fn proc_listchildpids(pid: libc::pid_t, buffer: *mut c_void, buffersize: i32) -> i32;
+        fn proc_pidinfo(
+            pid: libc::pid_t,
+            flavor: libc::c_int,
+            arg: u64,
+            buffer: *mut c_void,
+            buffersize: libc::c_int,
+        ) -> libc::c_int;
+    }
+
+    fn descendant_pid_signature(descendants: &[u32]) -> u64 {
+        let mut signature = FNV_OFFSET;
+        for pid in descendants {
+            for byte in pid.to_le_bytes() {
+                signature ^= u64::from(byte);
+                signature = signature.wrapping_mul(FNV_PRIME);
+            }
+        }
+        signature
+    }
+
+    const fn qualifies_libproc_status(status: u32) -> bool {
+        !matches!(status, SIDL | SSTOP | SZOMB)
+    }
+
+    const fn libproc_state_indicates_current_activity(
+        status: u32,
+        cpu_time_ms: u64,
+        num_running_threads: i32,
+    ) -> bool {
+        status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
+    }
+
+    fn is_passive_wrapper_command(command: &str) -> bool {
+        matches!(
+            command,
+            "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish" | "tcsh" | "csh"
+        )
+    }
+
+    fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
+        let pid = libc::pid_t::try_from(parent_pid).ok()?;
+        let mut capacity: usize = 32;
+
+        loop {
+            let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
+            let buffer_size = i32::try_from(byte_len).ok()?;
+            let mut buffer = vec![libc::pid_t::default(); capacity];
+
+            // Safety: `buffer` is valid for `buffer_size` bytes, and the kernel
+            // writes at most that many bytes of child pid entries.
+            let bytes_written = unsafe {
+                proc_listchildpids(pid, buffer.as_mut_ptr().cast::<c_void>(), buffer_size)
+            };
+            if bytes_written < 0 {
+                return None;
+            }
+            if bytes_written == 0 {
+                return Some(Vec::new());
+            }
+
+            let count = usize::try_from(bytes_written).ok()?;
+            if count < capacity {
+                buffer.truncate(count);
+                let child_pids = buffer
+                    .into_iter()
+                    .filter_map(|child_pid| u32::try_from(child_pid).ok())
+                    .collect();
+                return Some(child_pids);
+            }
+
+            capacity = capacity.checked_mul(2)?;
+        }
+    }
+
+    fn fetch_bsd_short_info(pid: u32) -> Option<ProcBsdShortInfo> {
+        let mut info = ProcBsdShortInfo {
+            pid: 0,
+            parent_pid: 0,
+            process_group_id: 0,
+            status: 0,
+            command: [0; MAXCOMLEN],
+            flags: 0,
+            uid: 0,
+            gid: 0,
+            real_uid: 0,
+            real_gid: 0,
+            saved_uid: 0,
+            saved_gid: 0,
+            reserved: 0,
+        };
+        let pid = libc::pid_t::try_from(pid).ok()?;
+        let expected = i32::try_from(std::mem::size_of::<ProcBsdShortInfo>()).ok()?;
+        // Safety: `info` points to writable memory sized exactly for
+        // `ProcBsdShortInfo`, which matches the C ABI layout.
+        let bytes = unsafe {
+            proc_pidinfo(
+                pid,
+                PROC_PIDT_SHORTBSDINFO,
+                0,
+                (&raw mut info).cast::<c_void>(),
+                expected,
+            )
+        };
+        (bytes == expected).then_some(info)
+    }
+
+    fn short_info_command(info: &ProcBsdShortInfo) -> Option<String> {
+        let len = info
+            .command
+            .iter()
+            .position(|&byte| byte == 0)
+            .unwrap_or(info.command.len());
+        let bytes = info.command[..len]
+            .iter()
+            .map(|&byte| u8::try_from(byte).ok())
+            .collect::<Option<Vec<_>>>()?;
+        std::str::from_utf8(&bytes).ok().map(ToString::to_string)
+    }
+
+    fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
+        let mut info = ProcTaskInfo {
+            virtual_size: 0,
+            resident_size: 0,
+            total_user_time: 0,
+            total_system_time: 0,
+            threads_user_time: 0,
+            threads_system_time: 0,
+            policy: 0,
+            faults: 0,
+            pageins: 0,
+            cow_faults: 0,
+            messages_sent: 0,
+            messages_received: 0,
+            mach_syscalls: 0,
+            unix_syscalls: 0,
+            context_switches: 0,
+            thread_count: 0,
+            running_thread_count: 0,
+            priority: 0,
+        };
+        let pid = libc::pid_t::try_from(pid).ok()?;
+        let expected = i32::try_from(std::mem::size_of::<ProcTaskInfo>()).ok()?;
+        // Safety: `info` points to writable memory sized exactly for
+        // `ProcTaskInfo`, which matches the C ABI layout.
+        let bytes = unsafe {
+            proc_pidinfo(
+                pid,
+                PROC_PIDTASKINFO,
+                0,
+                (&raw mut info).cast::<c_void>(),
+                expected,
+            )
+        };
+        (bytes == expected).then_some(info)
+    }
+
+    let mut descendants = Vec::new();
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(parent_pid);
+
+    while let Some(current_pid) = queue.pop_front() {
+        let child_pids = list_child_pids(current_pid)?;
+        for child_pid in child_pids {
+            if visited.insert(child_pid) {
+                descendants.push(child_pid);
+                queue.push_back(child_pid);
+            }
+        }
+    }
+
+    if descendants.is_empty() {
+        return None;
+    }
+
+    descendants.sort_unstable();
+
+    let mut child_count: u32 = 0;
+    let mut active_child_count: u32 = 0;
+    let mut total_cpu_ms: u64 = 0;
+    let mut qualifying_descendants = Vec::new();
+
+    for descendant_pid in descendants {
+        let Some(bsd_info) = fetch_bsd_short_info(descendant_pid) else {
+            continue;
+        };
+        if bsd_info.process_group_id != parent_pid || !qualifies_libproc_status(bsd_info.status) {
+            continue;
+        }
+
+        let task_info = fetch_task_info(descendant_pid);
+        let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
+            (info.total_user_time + info.total_system_time) / 1_000_000
+        });
+        let num_running_threads = task_info
+            .as_ref()
+            .map_or(0, |info| info.running_thread_count);
+
+        child_count += 1;
+        total_cpu_ms += cpu_time_ms;
+        let has_qualifying_descendants =
+            list_child_pids(descendant_pid).is_some_and(|child_pids| {
+                child_pids.into_iter().any(|child_pid| {
+                    fetch_bsd_short_info(child_pid).is_some_and(|child_info| {
+                        child_info.process_group_id == parent_pid
+                            && qualifies_libproc_status(child_info.status)
+                    })
+                })
+            });
+        let counts_as_current_activity = libproc_state_indicates_current_activity(
+            bsd_info.status,
+            cpu_time_ms,
+            num_running_threads,
+        ) && (has_qualifying_descendants
+            || !short_info_command(&bsd_info)
+                .as_deref()
+                .is_some_and(is_passive_wrapper_command));
+
+        if counts_as_current_activity {
+            active_child_count += 1;
+        }
+        qualifying_descendants.push(descendant_pid);
+    }
+
+    if child_count == 0 {
+        return Some(ChildProcessInfo::NONE);
+    }
+
+    Some(ChildProcessInfo {
+        child_count,
+        active_child_count,
+        cpu_time_ms: total_cpu_ms,
+        descendant_pid_signature: descendant_pid_signature(&qualifying_descendants),
+    })
+}
+
 /// Trait for executing external processes.
 ///
 /// This trait abstracts process execution to allow dependency injection.
@@ -190,6 +483,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 cpu_time_ms: u64,
                 in_scope: bool,
                 currently_active: bool,
+                is_passive_wrapper: bool,
             }
 
             /// Parse "DD-HH:MM:SS", "HH:MM:SS", "MM:SS", or "MM:SS.ss" cputime format to milliseconds.
@@ -248,6 +542,13 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 }
             }
 
+            fn is_passive_wrapper_command(command: &str) -> bool {
+                matches!(
+                    command,
+                    "sh" | "bash" | "dash" | "zsh" | "ksh" | "fish" | "tcsh" | "csh"
+                )
+            }
+
             fn descendant_pid_signature(descendants: &[u32]) -> u64 {
                 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
                 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -299,21 +600,26 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                     };
                     saw_parseable = true;
 
-                    let (in_scope, currently_active, cputime_text) = if parts.len() >= 5 {
-                        let pgid_matches_parent = parts[2]
-                            .parse::<u32>()
-                            .ok()
-                            .is_some_and(|pgid| pgid == parent_pid);
-                        let state_qualifies = qualifies_process_state(parts[3]);
-                        let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
-                        (
-                            pgid_matches_parent && state_qualifies,
-                            state_indicates_current_activity(parts[3], cpu_ms),
-                            parts[4],
-                        )
-                    } else {
-                        (true, false, parts[2])
-                    };
+                    let (in_scope, currently_active, cputime_text, is_passive_wrapper) =
+                        if parts.len() >= 5 {
+                            let pgid_matches_parent = parts[2]
+                                .parse::<u32>()
+                                .ok()
+                                .is_some_and(|pgid| pgid == parent_pid);
+                            let state_qualifies = qualifies_process_state(parts[3]);
+                            let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
+                            let is_passive_wrapper = parts
+                                .get(5)
+                                .is_some_and(|command| is_passive_wrapper_command(command));
+                            (
+                                pgid_matches_parent && state_qualifies,
+                                state_indicates_current_activity(parts[3], cpu_ms),
+                                parts[4],
+                                is_passive_wrapper,
+                            )
+                        } else {
+                            (true, false, parts[2], false)
+                        };
 
                     let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
                     children_of
@@ -325,6 +631,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             cpu_time_ms: cpu_ms,
                             in_scope,
                             currently_active,
+                            is_passive_wrapper,
                         });
                 }
 
@@ -349,8 +656,13 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             }
 
                             debug_assert_eq!(child.parent_pid, current);
+                            let has_in_scope_descendants = children_of
+                                .get(&child.pid)
+                                .is_some_and(|entries| entries.iter().any(|entry| entry.in_scope));
                             child_count += 1;
-                            if child.currently_active {
+                            if child.currently_active
+                                && (!child.is_passive_wrapper || has_in_scope_descendants)
+                            {
                                 active_child_count += 1;
                             }
                             total_cpu_ms += child.cpu_time_ms;
@@ -440,265 +752,17 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 Some(descendants)
             };
 
-            #[cfg(target_os = "macos")]
-            let child_info_from_libproc = |parent_pid: u32| -> Option<ChildProcessInfo> {
-                use std::collections::{HashSet, VecDeque};
-                use std::ffi::c_void;
-
-                const PROC_PIDT_SHORTBSDINFO: libc::c_int = 13;
-                const PROC_PIDTASKINFO: libc::c_int = 4;
-                const MAXCOMLEN: usize = 16;
-                const SIDL: u32 = 1;
-                const SRUN: u32 = 2;
-                const SSTOP: u32 = 4;
-                const SZOMB: u32 = 5;
-
-                #[repr(C)]
-                struct ProcBsdShortInfo {
-                    pid: u32,
-                    parent_pid: u32,
-                    process_group_id: u32,
-                    status: u32,
-                    command: [libc::c_char; MAXCOMLEN],
-                    flags: u32,
-                    uid: libc::uid_t,
-                    gid: libc::gid_t,
-                    real_uid: libc::uid_t,
-                    real_gid: libc::gid_t,
-                    saved_uid: libc::uid_t,
-                    saved_gid: libc::gid_t,
-                    reserved: u32,
-                }
-
-                #[repr(C)]
-                struct ProcTaskInfo {
-                    virtual_size: u64,
-                    resident_size: u64,
-                    total_user_time: u64,
-                    total_system_time: u64,
-                    threads_user_time: u64,
-                    threads_system_time: u64,
-                    policy: i32,
-                    faults: i32,
-                    pageins: i32,
-                    cow_faults: i32,
-                    messages_sent: i32,
-                    messages_received: i32,
-                    mach_syscalls: i32,
-                    unix_syscalls: i32,
-                    context_switches: i32,
-                    thread_count: i32,
-                    running_thread_count: i32,
-                    priority: i32,
-                }
-
-                #[link(name = "proc")]
-                unsafe extern "C" {
-                    fn proc_listchildpids(
-                        pid: libc::pid_t,
-                        buffer: *mut c_void,
-                        buffersize: i32,
-                    ) -> i32;
-                    fn proc_pidinfo(
-                        pid: libc::pid_t,
-                        flavor: libc::c_int,
-                        arg: u64,
-                        buffer: *mut c_void,
-                        buffersize: libc::c_int,
-                    ) -> libc::c_int;
-                }
-
-                fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
-                    let pid = libc::pid_t::try_from(parent_pid).ok()?;
-                    let mut capacity: usize = 32;
-
-                    loop {
-                        let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
-                        let buffer_size = i32::try_from(byte_len).ok()?;
-                        let mut buffer = vec![libc::pid_t::default(); capacity];
-
-                        // Safety: `buffer` is valid for `buffer_size` bytes, and the kernel
-                        // writes at most that many bytes of child pid entries.
-                        let bytes_written = unsafe {
-                            proc_listchildpids(
-                                pid,
-                                buffer.as_mut_ptr().cast::<c_void>(),
-                                buffer_size,
-                            )
-                        };
-                        if bytes_written < 0 {
-                            return None;
-                        }
-                        if bytes_written == 0 {
-                            return Some(Vec::new());
-                        }
-
-                        let count = usize::try_from(bytes_written).ok()?;
-                        if count < capacity {
-                            buffer.truncate(count);
-                            let child_pids = buffer
-                                .into_iter()
-                                .filter_map(|child_pid| u32::try_from(child_pid).ok())
-                                .collect();
-                            return Some(child_pids);
-                        }
-
-                        capacity = capacity.checked_mul(2)?;
-                    }
-                }
-
-                const fn qualifies_libproc_status(status: u32) -> bool {
-                    !matches!(status, SIDL | SSTOP | SZOMB)
-                }
-
-                const fn libproc_state_indicates_current_activity(
-                    status: u32,
-                    cpu_time_ms: u64,
-                    num_running_threads: i32,
-                ) -> bool {
-                    status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
-                }
-
-                fn fetch_bsd_short_info(pid: u32) -> Option<ProcBsdShortInfo> {
-                    let mut info = ProcBsdShortInfo {
-                        pid: 0,
-                        parent_pid: 0,
-                        process_group_id: 0,
-                        status: 0,
-                        command: [0; MAXCOMLEN],
-                        flags: 0,
-                        uid: 0,
-                        gid: 0,
-                        real_uid: 0,
-                        real_gid: 0,
-                        saved_uid: 0,
-                        saved_gid: 0,
-                        reserved: 0,
-                    };
-                    let pid = libc::pid_t::try_from(pid).ok()?;
-                    let expected = i32::try_from(std::mem::size_of::<ProcBsdShortInfo>()).ok()?;
-                    // Safety: `info` points to writable memory sized exactly for
-                    // `ProcBsdShortInfo`, which matches the C ABI layout.
-                    let bytes = unsafe {
-                        proc_pidinfo(
-                            pid,
-                            PROC_PIDT_SHORTBSDINFO,
-                            0,
-                            (&raw mut info).cast::<c_void>(),
-                            expected,
-                        )
-                    };
-                    (bytes == expected).then_some(info)
-                }
-
-                fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
-                    let mut info = ProcTaskInfo {
-                        virtual_size: 0,
-                        resident_size: 0,
-                        total_user_time: 0,
-                        total_system_time: 0,
-                        threads_user_time: 0,
-                        threads_system_time: 0,
-                        policy: 0,
-                        faults: 0,
-                        pageins: 0,
-                        cow_faults: 0,
-                        messages_sent: 0,
-                        messages_received: 0,
-                        mach_syscalls: 0,
-                        unix_syscalls: 0,
-                        context_switches: 0,
-                        thread_count: 0,
-                        running_thread_count: 0,
-                        priority: 0,
-                    };
-                    let pid = libc::pid_t::try_from(pid).ok()?;
-                    let expected = i32::try_from(std::mem::size_of::<ProcTaskInfo>()).ok()?;
-                    // Safety: `info` points to writable memory sized exactly for
-                    // `ProcTaskInfo`, which matches the C ABI layout.
-                    let bytes = unsafe {
-                        proc_pidinfo(
-                            pid,
-                            PROC_PIDTASKINFO,
-                            0,
-                            (&raw mut info).cast::<c_void>(),
-                            expected,
-                        )
-                    };
-                    (bytes == expected).then_some(info)
-                }
-
-                let mut descendants = Vec::new();
-                let mut visited = HashSet::new();
-                let mut queue = VecDeque::new();
-                queue.push_back(parent_pid);
-
-                while let Some(current_pid) = queue.pop_front() {
-                    let child_pids = list_child_pids(current_pid)?;
-                    for child_pid in child_pids {
-                        if visited.insert(child_pid) {
-                            descendants.push(child_pid);
-                            queue.push_back(child_pid);
-                        }
-                    }
-                }
-
-                if descendants.is_empty() {
-                    return None;
-                }
-
-                descendants.sort_unstable();
-
-                let mut child_count: u32 = 0;
-                let mut active_child_count: u32 = 0;
-                let mut total_cpu_ms: u64 = 0;
-                let mut qualifying_descendants = Vec::new();
-
-                for descendant_pid in descendants {
-                    let Some(bsd_info) = fetch_bsd_short_info(descendant_pid) else {
-                        continue;
-                    };
-                    if bsd_info.process_group_id != parent_pid
-                        || !qualifies_libproc_status(bsd_info.status)
-                    {
-                        continue;
-                    }
-
-                    let task_info = fetch_task_info(descendant_pid);
-                    let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
-                        (info.total_user_time + info.total_system_time) / 1_000_000
-                    });
-                    let num_running_threads = task_info
-                        .as_ref()
-                        .map_or(0, |info| info.running_thread_count);
-
-                    child_count += 1;
-                    total_cpu_ms += cpu_time_ms;
-                    if libproc_state_indicates_current_activity(
-                        bsd_info.status,
-                        cpu_time_ms,
-                        num_running_threads,
-                    ) {
-                        active_child_count += 1;
-                    }
-                    qualifying_descendants.push(descendant_pid);
-                }
-
-                if child_count == 0 {
-                    return Some(ChildProcessInfo::NONE);
-                }
-
-                Some(ChildProcessInfo {
-                    child_count,
-                    active_child_count,
-                    cpu_time_ms: total_cpu_ms,
-                    descendant_pid_signature: descendant_pid_signature(&qualifying_descendants),
-                })
-            };
-
             // Try richer ps invocations first so detached/stopped descendants can
             // be filtered out, then fall back to the legacy shape for compatibility.
-            let ps_attempts: [&[&str]; 4] = [
+            let ps_attempts: [&[&str]; 6] = [
+                &[
+                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                    "cputime=", "-o", "comm=",
+                ],
+                &[
+                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                    "cputime=", "-o", "comm=",
+                ],
                 &[
                     "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
                     "cputime=",
@@ -828,6 +892,28 @@ mod tests {
                 "stat=".to_string(),
                 "-o".to_string(),
                 "cputime=".to_string(),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn ps_key_with_state_group_and_command() -> (String, Vec<String>) {
+        (
+            "ps".to_string(),
+            vec![
+                "-ax".to_string(),
+                "-o".to_string(),
+                "pid=".to_string(),
+                "-o".to_string(),
+                "ppid=".to_string(),
+                "-o".to_string(),
+                "pgid=".to_string(),
+                "-o".to_string(),
+                "stat=".to_string(),
+                "-o".to_string(),
+                "cputime=".to_string(),
+                "-o".to_string(),
+                "comm=".to_string(),
             ],
         )
     }
@@ -1037,6 +1123,50 @@ mod tests {
             1000 + 2000,
             "detached descendants in a different process group must be excluded"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_treats_busy_shell_wrapper_without_descendants_as_stalled() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_group_and_command(),
+            ok_output("200 100 100 R 0:01.00 sh\n"),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(info.child_count, 1);
+        assert_eq!(
+            info.active_child_count, 0,
+            "shell wrappers without qualifying descendants must remain observable but not count as current child work"
+        );
+        assert_eq!(info.cpu_time_ms, 1000);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn get_child_process_info_keeps_non_wrapper_busy_processes_active() {
+        let parent = 100;
+
+        let mut results: ResultMap = HashMap::new();
+        results.insert(
+            ps_key_with_state_group_and_command(),
+            ok_output("200 100 100 R 0:01.00 python3\n"),
+        );
+
+        let exec = TestExecutor::new(results);
+        let info = exec.get_child_process_info(parent);
+
+        assert_eq!(info.child_count, 1);
+        assert_eq!(
+            info.active_child_count, 1,
+            "real worker processes must still count as current child work when they are busy"
+        );
+        assert_eq!(info.cpu_time_ms, 1000);
     }
 
     #[test]
