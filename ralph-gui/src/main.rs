@@ -8,13 +8,16 @@ use ralph_gui::commands::{
 use ralph_gui::state::new_shared_state;
 use tauri_specta::collect_commands;
 
-fn main() {
-    // Build tauri-specta command registry for type-safe TypeScript bindings
+/// Build and return the tauri-specta builder with all commands and types registered.
+fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     let builder = tauri_specta::Builder::<tauri::Wry>::new().commands(collect_commands![
         // Session commands
         session::get_sessions,
         session::create_session,
         session::get_session_detail,
+        session::batch_resume_sessions,
+        session::batch_cancel_sessions,
+        session::batch_delete_sessions,
         // Worktree commands
         worktree::list_worktrees,
         worktree::create_worktree,
@@ -23,6 +26,7 @@ fn main() {
         config::get_global_config,
         config::get_project_config,
         config::get_effective_config,
+        config::get_effective_config_with_sources,
         config::save_global_config,
         config::save_project_config,
         config::get_raw_global_config_toml,
@@ -33,6 +37,11 @@ fn main() {
         config::validate_config_toml,
         config::get_agent_tools,
         config::test_agent_tool_connection,
+        config::get_config_schema,
+        config::check_tool_updates,
+        config::install_agent_tool,
+        config::open_tool_settings,
+        config::refresh_tool_models,
         // Run management commands
         run_management::get_run_status,
         run_management::get_run_detail,
@@ -49,6 +58,7 @@ fn main() {
         session_prompt::review_prompt_with_ai,
         session_prompt::assist_prompt_describe,
         session_prompt::assist_prompt_refine,
+        session_prompt::get_planning_drain_agent,
         session_prompt::list_templates,
         session_prompt::save_template,
         session_prompt::delete_template,
@@ -68,11 +78,23 @@ fn main() {
         workspace::update_workspace_run_count,
     ]);
 
-    // Export additional types needed by the frontend
-    let builder = builder
+    register_extra_types(builder)
+}
+
+/// Register additional Specta types not directly attached to commands.
+fn register_extra_types(
+    builder: tauri_specta::Builder<tauri::Wry>,
+) -> tauri_specta::Builder<tauri::Wry> {
+    builder
         .typ::<ralph_gui::commands::config::ConfigView>()
+        .typ::<ralph_gui::commands::config::ConfigSource>()
+        .typ::<ralph_gui::commands::config::ConfigFieldWithSource>()
+        .typ::<ralph_gui::commands::config::EffectiveConfigWithSources>()
         .typ::<ralph_gui::commands::config::AgentProfile>()
         .typ::<ralph_gui::commands::config::AgentToolInfo>()
+        .typ::<ralph_gui::commands::config::ConfigFieldSchema>()
+        .typ::<ralph_gui::commands::config::ConfigSection>()
+        .typ::<ralph_gui::commands::config::ToolUpdateInfo>()
         .typ::<ralph_gui::commands::preferences::GuiPreferences>()
         .typ::<ralph_gui::commands::run_management::RunStatus>()
         .typ::<ralph_gui::commands::run_management::RunDetail>()
@@ -81,12 +103,19 @@ fn main() {
         .typ::<ralph_gui::commands::run_management::RunChanges>()
         .typ::<ralph_gui::commands::session::SessionSummary>()
         .typ::<ralph_gui::commands::session::CreateSessionRequest>()
+        .typ::<ralph_gui::commands::session::BatchOperationResult>()
         .typ::<ralph_gui::commands::session_launch::LaunchSessionArgs>()
         .typ::<ralph_gui::commands::session_prompt::PromptReviewResult>()
         .typ::<ralph_gui::commands::session_prompt::TemplateInfo>()
+        .typ::<ralph_gui::commands::session_prompt::PromptAssistantMessage>()
+        .typ::<ralph_gui::commands::session_prompt::PromptAnalysis>()
         .typ::<ralph_gui::commands::worktree::WorktreeInfo>()
         .typ::<ralph_gui::commands::worktree::CreateWorktreeResult>()
-        .typ::<ralph_gui::commands::workspace::WorkspaceEntry>();
+        .typ::<ralph_gui::commands::workspace::WorkspaceEntry>()
+}
+
+fn main() {
+    let builder = build_specta_builder();
 
     // Export TypeScript bindings in debug builds for frontend type safety
     #[cfg(debug_assertions)]

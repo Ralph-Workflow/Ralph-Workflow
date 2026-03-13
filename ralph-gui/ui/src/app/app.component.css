@@ -5,16 +5,26 @@
   overflow: hidden;
 }
 
+/* Root shell: vertical flex column — tab bar + container + status bar */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
 .app-container {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   background: var(--bg-base);
 }
 
 .sidebar {
-  width: var(--sidebar-width, 220px);
-  min-width: var(--sidebar-width, 220px);
+  width: 220px; /* default; overridden by [ngStyle] binding */
+  min-width: 180px;
   height: 100%;
   background: var(--sidebar-bg, #1a1a1e);
   border-right: 1px solid var(--border-subtle, #2a2a30);
@@ -220,6 +230,23 @@
   min-width: 18px;
   text-align: center;
   display: inline-block;
+}
+
+.sidebar-resize-handle {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  transition: background var(--transition-fast, 150ms);
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent, #f59e0b);
+  opacity: 0.5;
 }
 
 .main-content {

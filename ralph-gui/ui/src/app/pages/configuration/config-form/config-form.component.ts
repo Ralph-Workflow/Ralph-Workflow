@@ -17,21 +17,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import type { ConfigView } from '../../../types';
 import { ContextualHelpComponent } from '../../../components/contextual-help/contextual-help.component';
 
-/** Extra retry/fallback fields not yet in the base ConfigView spec. */
-interface RetryFallbackFields {
-  max_retries?: number;
-  max_same_agent_retries?: number;
-  retry_delay_ms?: number;
-  backoff_multiplier?: number;
-  max_backoff_ms?: number;
-  max_fallback_cycles?: number;
-}
-
-/** Extra git identity fields not yet in the base ConfigView spec. */
-interface GitFields {
-  git_user_name?: string;
-  git_user_email?: string;
-}
+// ConfigView now includes all fields inline — no extra local interfaces needed.
 
 /**
  * Form component for editing a ConfigView.
@@ -67,10 +53,18 @@ export class ConfigFormComponent {
     developer_iters: [1, [Validators.min(1), Validators.max(20)]],
     reviewer_reviews: [1, [Validators.min(1), Validators.max(10)]],
     review_depth: ['standard'],
+    max_dev_continuations: [3, [Validators.min(1), Validators.max(10)]],
+    // General path fields
+    prompt_path: [''],
+    templates_dir: [''],
+    // Execution fields
     checkpoint_enabled: [true],
     isolation_mode: [false],
     interactive: [false],
-    max_dev_continuations: [3, [Validators.min(1), Validators.max(10)]],
+    developer_context: ['normal'],
+    reviewer_context: ['normal'],
+    force_universal_prompt: [false],
+    auto_detect_stack: [true],
     // Retry and Fallback fields
     max_retries: [3, [Validators.min(1), Validators.max(10)]],
     max_same_agent_retries: [2, [Validators.min(1), Validators.max(5)]],
@@ -97,10 +91,18 @@ export class ConfigFormComponent {
           developer_iters: cfg.developer_iters,
           reviewer_reviews: cfg.reviewer_reviews,
           review_depth: cfg.review_depth,
+          max_dev_continuations: cfg.max_dev_continuations,
+          // General path fields
+          prompt_path: cfg.prompt_path ?? '',
+          templates_dir: cfg.templates_dir ?? '',
+          // Execution
           checkpoint_enabled: cfg.checkpoint_enabled,
           isolation_mode: cfg.isolation_mode,
           interactive: cfg.interactive,
-          max_dev_continuations: cfg.max_dev_continuations,
+          developer_context: cfg.developer_context ?? 'normal',
+          reviewer_context: cfg.reviewer_context ?? 'normal',
+          force_universal_prompt: cfg.force_universal_prompt ?? false,
+          auto_detect_stack: cfg.auto_detect_stack ?? true,
           // Retry and Fallback
           max_retries: cfg.max_retries ?? 3,
           max_same_agent_retries: cfg.max_same_agent_retries ?? 2,
@@ -142,9 +144,15 @@ export class ConfigFormComponent {
   get isReviewerReviewsDirty() { return this.isFieldDirty('reviewer_reviews'); }
   get isMaxDevContinuationsDirty() { return this.isFieldDirty('max_dev_continuations'); }
   get isReviewDepthDirty() { return this.isFieldDirty('review_depth'); }
+  get isPromptPathDirty() { return this.isFieldDirty('prompt_path'); }
+  get isTemplatesDirDirty() { return this.isFieldDirty('templates_dir'); }
   get isCheckpointEnabledDirty() { return this.isFieldDirty('checkpoint_enabled'); }
   get isIsolationModeDirty() { return this.isFieldDirty('isolation_mode'); }
   get isInteractiveDirty() { return this.isFieldDirty('interactive'); }
+  get isDeveloperContextDirty() { return this.isFieldDirty('developer_context'); }
+  get isReviewerContextDirty() { return this.isFieldDirty('reviewer_context'); }
+  get isForceUniversalPromptDirty() { return this.isFieldDirty('force_universal_prompt'); }
+  get isAutoDetectStackDirty() { return this.isFieldDirty('auto_detect_stack'); }
   // Retry and Fallback dirty getters
   get isMaxRetriesDirty() { return this.isFieldDirty('max_retries'); }
   get isMaxSameAgentRetriesDirty() { return this.isFieldDirty('max_same_agent_retries'); }
@@ -200,16 +208,24 @@ export class ConfigFormComponent {
     return c?.hasError('email') ?? false;
   }
 
-  private _buildConfig(value: Partial<ConfigView & RetryFallbackFields & GitFields>): ConfigView {
+  private _buildConfig(value: Partial<ConfigView>): ConfigView {
     return {
       verbosity: value.verbosity ?? 0,
       developer_iters: value.developer_iters ?? 1,
       reviewer_reviews: value.reviewer_reviews ?? 1,
       review_depth: value.review_depth ?? 'standard',
+      max_dev_continuations: value.max_dev_continuations ?? 3,
+      // General path fields
+      prompt_path: value.prompt_path ?? '',
+      templates_dir: value.templates_dir ?? '',
+      // Execution
       checkpoint_enabled: value.checkpoint_enabled ?? true,
       isolation_mode: value.isolation_mode ?? false,
       interactive: value.interactive ?? false,
-      max_dev_continuations: value.max_dev_continuations ?? 3,
+      developer_context: value.developer_context ?? 'normal',
+      reviewer_context: value.reviewer_context ?? 'normal',
+      force_universal_prompt: value.force_universal_prompt ?? false,
+      auto_detect_stack: value.auto_detect_stack ?? true,
       // Retry and Fallback
       max_retries: value.max_retries ?? 3,
       max_same_agent_retries: value.max_same_agent_retries ?? 2,

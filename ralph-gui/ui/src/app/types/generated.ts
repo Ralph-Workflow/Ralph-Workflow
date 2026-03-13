@@ -57,6 +57,14 @@ export interface ConfigView {
   interactive: boolean;
   review_depth: string;
   max_dev_continuations: number;
+  // General path settings
+  prompt_path?: string;
+  templates_dir?: string;
+  // Execution context settings
+  developer_context?: string;
+  reviewer_context?: string;
+  force_universal_prompt?: boolean;
+  auto_detect_stack?: boolean;
   // Retry and Fallback settings
   max_retries?: number;
   max_same_agent_retries?: number;
@@ -197,6 +205,57 @@ export interface AgentToolInfo {
   version: string | null;
   auth_status: string;
   health: string;
+  description: string;
+  available_models: string[];
+  binary_location: string | null;
+}
+
+export interface ToolUpdateInfo {
+  name: string;
+  current_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  message: string;
+}
+
+// Config schema types for dynamic form rendering
+export interface ConfigFieldSchema {
+  name: string;
+  label: string;
+  description: string;
+  field_type: string; // "number" | "boolean" | "string" | "enum" | "path"
+  default_value: string;
+  min_value: number | null;
+  max_value: number | null;
+  enum_options: string[];
+  section: string;
+}
+
+export interface ConfigSection {
+  name: string;
+  label: string;
+  description: string;
+  fields: ConfigFieldSchema[];
+}
+
+// Batch session operation result
+export interface BatchOperationResult {
+  succeeded: number;
+  failed: number;
+  errors: Record<string, string>;
+}
+
+// AI prompt assistant types
+export interface PromptAssistantMessage {
+  role: string; // "user" | "assistant"
+  content: string;
+}
+
+export interface PromptAnalysis {
+  issues: string[];
+  suggestions: string[];
+  quality_rating: number; // 1-10
+  improved_prompt: string | null;
 }
 
 // Prompt templates
@@ -205,4 +264,17 @@ export interface TemplateInfo {
   description: string;
   content: string;
   tags: string[];
+}
+
+// Config source tracking (for Effective tab source indicators)
+export type ConfigSource = 'default' | 'global' | 'project';
+
+export interface ConfigFieldWithSource {
+  field_name: string;
+  source: ConfigSource;
+}
+
+export interface EffectiveConfigWithSources {
+  config: ConfigView;
+  sources: ConfigFieldWithSource[];
 }

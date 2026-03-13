@@ -1,5 +1,8 @@
 # Ralph Workflow - UX Principles & Ongoing Quality Standards
 
+Terminology in this document follows `ralph-gui/docs/glossary.md` so UX review
+language matches the product, acceptance, and architecture docs.
+
 UX is not a phase. It's not something you "do" and then you're done. It is a
 continuous discipline that shapes every design decision, every new feature, every
 iteration of this product. This document is a **living reference** — not a punch

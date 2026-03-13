@@ -13,9 +13,9 @@ describe('OnboardingComponent', () => {
   let router: Router;
 
   const mockTools: AgentToolInfo[] = [
-    { name: 'Claude Code', binary: 'claude', installed: true, version: '1.0.0', auth_status: 'authenticated', health: 'healthy' },
-    { name: 'Codex', binary: 'codex', installed: false, version: null, auth_status: 'unknown', health: 'not-installed' },
-    { name: 'OpenCode', binary: 'opencode', installed: false, version: null, auth_status: 'unknown', health: 'not-installed' },
+    { name: 'Claude Code', binary: 'claude', installed: true, version: '1.0.0', auth_status: 'authenticated', health: 'healthy', description: 'Anthropic Claude Code CLI', available_models: ['claude-sonnet-4-6'], binary_location: '/usr/local/bin/claude' },
+    { name: 'Codex', binary: 'codex', installed: false, version: null, auth_status: 'unknown', health: 'not-installed', description: 'OpenAI Codex CLI', available_models: [], binary_location: null },
+    { name: 'OpenCode', binary: 'opencode', installed: false, version: null, auth_status: 'unknown', health: 'not-installed', description: 'OpenCode AI CLI', available_models: [], binary_location: null },
   ];
 
   const mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {

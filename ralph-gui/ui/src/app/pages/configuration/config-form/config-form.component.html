@@ -96,6 +96,34 @@
             </mat-select>
           </mat-form-field>
         </div>
+
+        <div class="form-field-wrapper" [class.field-dirty]="isPromptPathDirty">
+          <div class="form-label-row">
+            <label class="form-label">Prompt Path</label>
+            <app-contextual-help
+              helpText="Path to a default prompt file used when no explicit prompt is provided. Leave blank to require a prompt each session."
+            />
+          </div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Prompt Path</mat-label>
+            <input matInput type="text" formControlName="prompt_path"
+                   placeholder="e.g. ~/.ralph/default-prompt.md" />
+          </mat-form-field>
+        </div>
+
+        <div class="form-field-wrapper" [class.field-dirty]="isTemplatesDirDirty">
+          <div class="form-label-row">
+            <label class="form-label">Templates Directory</label>
+            <app-contextual-help
+              helpText="Directory where prompt templates are stored. Defaults to ~/.ralph/templates/."
+            />
+          </div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Templates Directory</mat-label>
+            <input matInput type="text" formControlName="templates_dir"
+                   placeholder="e.g. ~/.ralph/templates" />
+          </mat-form-field>
+        </div>
       </div>
     </mat-expansion-panel>
 
@@ -136,6 +164,60 @@
             </mat-slide-toggle>
             <app-contextual-help
               helpText="Allow agents to prompt for interactive input when they need clarification. Disable for fully unattended pipeline runs."
+            />
+          </div>
+        </div>
+
+        <div class="form-field-wrapper" [class.field-dirty]="isDeveloperContextDirty">
+          <div class="form-label-row">
+            <label class="form-label">Developer Context</label>
+            <app-contextual-help
+              helpText="Controls how much codebase context the developer agent receives per prompt. Minimal reduces token usage; Normal provides full context."
+            />
+          </div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Developer Context</mat-label>
+            <mat-select formControlName="developer_context">
+              <mat-option value="minimal">Minimal</mat-option>
+              <mat-option value="normal">Normal</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="form-field-wrapper" [class.field-dirty]="isReviewerContextDirty">
+          <div class="form-label-row">
+            <label class="form-label">Reviewer Context</label>
+            <app-contextual-help
+              helpText="Controls how much codebase context the reviewer agent receives. Minimal reduces token usage; Normal provides full context."
+            />
+          </div>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Reviewer Context</mat-label>
+            <mat-select formControlName="reviewer_context">
+              <mat-option value="minimal">Minimal</mat-option>
+              <mat-option value="normal">Normal</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <div class="toggle-row" [class.field-dirty]="isForceUniversalPromptDirty">
+          <div class="toggle-label-row">
+            <mat-slide-toggle formControlName="force_universal_prompt">
+              Force Universal Prompt
+            </mat-slide-toggle>
+            <app-contextual-help
+              helpText="Forces all agents to use the same universal prompt format instead of stack-specific templates. Useful for cross-stack consistency."
+            />
+          </div>
+        </div>
+
+        <div class="toggle-row" [class.field-dirty]="isAutoDetectStackDirty">
+          <div class="toggle-label-row">
+            <mat-slide-toggle formControlName="auto_detect_stack">
+              Auto-detect Stack
+            </mat-slide-toggle>
+            <app-contextual-help
+              helpText="Automatically detects the project's tech stack and selects appropriate prompt templates. Disable to use the universal prompt format."
             />
           </div>
         </div>
@@ -292,17 +374,6 @@
             }
           </mat-form-field>
         </div>
-      </div>
-    </mat-expansion-panel>
-
-    <!-- Agent Chains and Drains (placeholder) -->
-    <mat-expansion-panel>
-      <mat-expansion-panel-header>
-        <mat-panel-title>Agent Chains and Drains</mat-panel-title>
-      </mat-expansion-panel-header>
-      <div class="placeholder-card">
-        <p class="placeholder-description">Agent chains and drains are configured in the Agent Tools section.</p>
-        <a [routerLink]="['/agent-tools']" class="placeholder-link">Go to Agent Tools Manager →</a>
       </div>
     </mat-expansion-panel>
 

@@ -7,7 +7,12 @@
       {{ descriptionValue }}
     </div>
   </div>
-  <div [style]="valueStyle">
-    {{ displayValue }}
+  <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 24px;">
+    @if (sourceValue !== null) {
+      <span [class]="sourceBadgeClass" [title]="sourceBadgeTooltip">
+        {{ sourceBadgeLabel }}
+      </span>
+    }
+    <span [style]="valueStyle">{{ displayValue }}</span>
   </div>
 </div>

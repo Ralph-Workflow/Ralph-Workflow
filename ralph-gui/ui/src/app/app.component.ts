@@ -1,4 +1,5 @@
-import { Component, ChangeDetectionStrategy, effect, inject, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, effect, inject, signal, computed, DOCUMENT } from '@angular/core';
+import { NgStyle } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
@@ -10,6 +11,7 @@ import { WorktreesService } from './services/worktrees.service';
 import { WorkspaceService } from './services/workspace.service';
 import { NotificationService } from './services/notification.service';
 import { PreferencesService } from './services/preferences.service';
+import { SessionsService } from './services/sessions.service';
 import { WorkspaceTabBarComponent } from './components/workspace-tab-bar/workspace-tab-bar.component';
 import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { NotificationCenterComponent } from './components/notification-center/notification-center.component';
@@ -78,11 +80,16 @@ const NAV_ITEMS_BOTTOM: NavItem[] = [
   { path: '/preferences', label: 'Preferences', icon: 'settings' },
 ];
 
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 400;
+const DEFAULT_SIDEBAR_WIDTH = 220;
+
 @Component({
   selector: 'app-root',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgStyle,
     RouterModule,
     MatSidenavModule,
     MatListModule,
@@ -101,12 +108,21 @@ const NAV_ITEMS_BOTTOM: NavItem[] = [
     '(window:keydown)': 'handleKeyboard($event)',
   },
 })
+
 export class AppComponent {
   readonly worktreesService = inject(WorktreesService);
   readonly workspaceService = inject(WorkspaceService);
   readonly notificationService = inject(NotificationService);
   readonly preferencesService = inject(PreferencesService);
+  private readonly sessionsService = inject(SessionsService);
   private readonly router = inject(Router);
+  private readonly document = inject(DOCUMENT);
+
+  /** Count of failed or paused sessions — shown as badge on the Sessions nav icon. */
+  readonly failedPausedCount = computed(() => {
+    const sessions = this.sessionsService.sessions();
+    return sessions.filter(s => s.status === 'failed' || s.status === 'paused').length;
+  });
 
   readonly navItems = NAV_ITEMS;
   readonly navItemsBottom = NAV_ITEMS_BOTTOM;
@@ -116,16 +132,43 @@ export class AppComponent {
   readonly showConceptsGuide = signal(false);
   readonly shortcutGroups: ShortcutGroup[] = SHORTCUT_GROUPS;
 
+  /** Sidebar width in px — set from preferences on load, adjustable via drag handle. */
+  readonly sidebarWidth = signal(DEFAULT_SIDEBAR_WIDTH);
+
+  /** Computed NgStyle object for the sidebar element. */
+  readonly sidebarStyle = computed(() => {
+    const width = this.sidebarWidth();
+    return { width: `${width}px`, 'min-width': `${width}px` };
+  });
+
+  get sidebarStyleValue() { return this.sidebarStyle(); }
   get worktrees() { return this.worktreesService.worktrees(); }
   get unreadCount() { return this.notificationService.unreadCount(); }
   get isShowHelp() { return this.showHelp(); }
   get isShowCommandPalette() { return this.showCommandPalette(); }
   get isShowConceptsGuide() { return this.showConceptsGuide(); }
+  get failedPausedCountValue(): number { return this.failedPausedCount(); }
 
   private pendingNavKey: string | null = null;
   private keyTimeout: ReturnType<typeof setTimeout> | null = null;
+  private isDraggingSidebar = false;
+  private dragStartX = 0;
+  private dragStartWidth = DEFAULT_SIDEBAR_WIDTH;
+
+  private readonly onSidebarResizeMoveRef = (e: MouseEvent) => this.onSidebarResizeMove(e);
+  private readonly onSidebarResizeEndRef = () => this.onSidebarResizeEnd();
 
   constructor() {
+    // Sync sidebar width from persisted preferences on load.
+    effect(() => {
+      const prefs = this.preferencesService.preferences();
+      if (!this.isDraggingSidebar) {
+        this.sidebarWidth.set(
+          Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, prefs.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH)),
+        );
+      }
+    });
+
     // Redirect to /welcome (or /onboarding on first run) when no workspaces
     // are open after initial load.
     // Do NOT redirect if already on /welcome, /onboarding, or /preferences.
@@ -261,6 +304,36 @@ export class AppComponent {
       }, 500);
       event.preventDefault();
     }
+  }
+
+  onSidebarResizeStart(event: MouseEvent): void {
+    event.preventDefault();
+    this.isDraggingSidebar = true;
+    this.dragStartX = event.clientX;
+    this.dragStartWidth = this.sidebarWidth();
+    this.document.addEventListener('mousemove', this.onSidebarResizeMoveRef);
+    this.document.addEventListener('mouseup', this.onSidebarResizeEndRef);
+    this.document.body.style.userSelect = 'none';
+    this.document.body.style.cursor = 'col-resize';
+  }
+
+  private onSidebarResizeMove(event: MouseEvent): void {
+    if (!this.isDraggingSidebar) return;
+    const delta = event.clientX - this.dragStartX;
+    const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, this.dragStartWidth + delta));
+    this.sidebarWidth.set(newWidth);
+  }
+
+  private onSidebarResizeEnd(): void {
+    if (!this.isDraggingSidebar) return;
+    this.isDraggingSidebar = false;
+    this.document.removeEventListener('mousemove', this.onSidebarResizeMoveRef);
+    this.document.removeEventListener('mouseup', this.onSidebarResizeEndRef);
+    this.document.body.style.userSelect = '';
+    this.document.body.style.cursor = '';
+    // Persist width to preferences.
+    const current = this.preferencesService.preferences();
+    void this.preferencesService.save({ ...current, sidebarWidth: this.sidebarWidth() });
   }
 
   private clearKeyTimeout(): void {

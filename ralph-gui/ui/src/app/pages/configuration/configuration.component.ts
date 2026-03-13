@@ -1,7 +1,7 @@
 import { Component, inject, signal, effect, computed, input, ChangeDetectionStrategy, forwardRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
+import { ReactiveFormsModule } from '@angular/forms';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSelectModule } from '@angular/material/select';
@@ -13,7 +13,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ConfigService } from '../../services/config.service';
 import { WorktreesService } from '../../services/worktrees.service';
 import { TauriService } from '../../services/tauri.service';
-import type { ConfigView } from '../../types';
+import { NotificationService } from '../../services/notification.service';
+import type { ConfigFieldWithSource, ConfigSource, ConfigView, EffectiveConfigWithSources } from '../../types';
+import { ConfigFormComponent } from './config-form/config-form.component';
+import { AgentChainsEditorComponent } from './agent-chains-editor/agent-chains-editor.component';
 
 type TabId = 'effective' | 'global' | 'project';
 type ViewMode = 'form' | 'toml';
@@ -22,6 +25,50 @@ const DEFAULT_TOML_TEMPLATE = (label: string) =>
   `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`;
 
 const VALIDATION_DEBOUNCE_MS = 300;
+
+/**
+ * Converts a ConfigView to a TOML string for the [defaults] section.
+ * Only includes fields that are present and non-empty.
+ */
+function configViewToToml(cfg: ConfigView): string {
+  const lines: string[] = ['[defaults]'];
+
+  lines.push(`verbosity = ${cfg.verbosity}`);
+  lines.push(`developer_iters = ${cfg.developer_iters}`);
+  lines.push(`reviewer_reviews = ${cfg.reviewer_reviews}`);
+  lines.push(`review_depth = "${cfg.review_depth}"`);
+  lines.push(`max_dev_continuations = ${cfg.max_dev_continuations}`);
+  lines.push(`checkpoint_enabled = ${cfg.checkpoint_enabled}`);
+  lines.push(`isolation_mode = ${cfg.isolation_mode}`);
+  lines.push(`interactive = ${cfg.interactive}`);
+
+  if (cfg.developer_context) lines.push(`developer_context = "${cfg.developer_context}"`);
+  if (cfg.reviewer_context) lines.push(`reviewer_context = "${cfg.reviewer_context}"`);
+  if (cfg.force_universal_prompt !== undefined) lines.push(`force_universal_prompt = ${cfg.force_universal_prompt}`);
+  if (cfg.auto_detect_stack !== undefined) lines.push(`auto_detect_stack = ${cfg.auto_detect_stack}`);
+  if (cfg.prompt_path) lines.push(`prompt_path = "${cfg.prompt_path}"`);
+  if (cfg.templates_dir) lines.push(`templates_dir = "${cfg.templates_dir}"`);
+
+  const retryLines: string[] = [];
+  if (cfg.max_retries !== undefined) retryLines.push(`max_retries = ${cfg.max_retries}`);
+  if (cfg.max_same_agent_retries !== undefined) retryLines.push(`max_same_agent_retries = ${cfg.max_same_agent_retries}`);
+  if (cfg.retry_delay_ms !== undefined) retryLines.push(`retry_delay_ms = ${cfg.retry_delay_ms}`);
+  if (cfg.backoff_multiplier !== undefined) retryLines.push(`backoff_multiplier = ${cfg.backoff_multiplier}`);
+  if (cfg.max_backoff_ms !== undefined) retryLines.push(`max_backoff_ms = ${cfg.max_backoff_ms}`);
+  if (cfg.max_fallback_cycles !== undefined) retryLines.push(`max_fallback_cycles = ${cfg.max_fallback_cycles}`);
+  if (retryLines.length > 0) {
+    lines.push('', '[retry]', ...retryLines);
+  }
+
+  const gitLines: string[] = [];
+  if (cfg.git_user_name) gitLines.push(`user_name = "${cfg.git_user_name}"`);
+  if (cfg.git_user_email) gitLines.push(`user_email = "${cfg.git_user_email}"`);
+  if (gitLines.length > 0) {
+    lines.push('', '[git]', ...gitLines);
+  }
+
+  return lines.join('\n');
+}
 
 @Component({
   selector: 'app-configuration',
@@ -39,16 +86,19 @@ const VALIDATION_DEBOUNCE_MS = 300;
     MatFormFieldModule,
     MatButtonModule,
     MatTooltipModule,
+    ConfigFormComponent,
+    AgentChainsEditorComponent,
     forwardRef(() => ConfigTableComponent),
     forwardRef(() => TomlEditorComponent),
     forwardRef(() => AiIntegrationSectionComponent),
-    forwardRef(() => ConfigFormComponent),
   ],
   templateUrl: './configuration.component.html',
 })
 export class ConfigurationComponent {
   readonly configService = inject(ConfigService);
   readonly worktreesService = inject(WorktreesService);
+  private readonly tauri = inject(TauriService);
+  private readonly notifications = inject(NotificationService);
 
   readonly tabs: { id: TabId; label: string }[] = [
     { id: 'effective', label: 'Effective' },
@@ -58,6 +108,16 @@ export class ConfigurationComponent {
 
   private readonly _activeTab = signal<TabId>('effective');
   private readonly _viewMode = signal<ViewMode>('form');
+  private readonly _formPendingConfig = signal<ConfigView | null>(null);
+  private readonly _formSaving = signal(false);
+  private readonly _formSaveMsg = signal<string | null>(null);
+  private readonly _formSaveError = signal<string | null>(null);
+
+  /** Raw TOML for the global config (used by the AgentChainsEditor in form view). */
+  private readonly _rawGlobalToml = signal<string>('');
+
+  /** Effective config with per-field source provenance (for Effective tab source badges). */
+  private readonly _effectiveWithSources = signal<EffectiveConfigWithSources | null>(null);
 
   private readonly _repoPath = computed(() => {
     const activePath = this.worktreesService.activeWorktreePath();
@@ -83,11 +143,19 @@ export class ConfigurationComponent {
   get projectConfigPath() { return this._projectConfigPath(); }
   get globalStatus() { return this.configService.globalStatus(); }
   get globalConfig() { return this.configService.globalConfig(); }
+  get formPendingConfig() { return this._formPendingConfig(); }
+  get formSaving() { return this._formSaving(); }
+  get formSaveMsg() { return this._formSaveMsg(); }
+  get formSaveError() { return this._formSaveError(); }
+  get formHasPendingChanges() { return this._formPendingConfig() !== null; }
+  get rawGlobalToml() { return this._rawGlobalToml(); }
+  get effectiveWithSources() { return this._effectiveWithSources(); }
 
   constructor() {
     // Fetch global config on mount
     effect(() => {
       void this.configService.fetchGlobalConfig();
+      void this.tauri.getRawGlobalConfigToml().then(toml => this._rawGlobalToml.set(toml)).catch(() => void 0);
     });
 
     // Fetch effective config when repo changes
@@ -95,7 +163,20 @@ export class ConfigurationComponent {
       const repo = this._repoPath();
       if (repo) {
         void this.configService.fetchEffectiveConfig(repo);
+        void this.tauri.getEffectiveConfigWithSources(repo)
+          .then(result => this._effectiveWithSources.set(result))
+          .catch(() => this._effectiveWithSources.set(null));
       }
+    });
+
+    // Auto-clear save message after 3 seconds
+    effect(() => {
+      const msg = this._formSaveMsg();
+      if (msg) {
+        const timer = setTimeout(() => this._formSaveMsg.set(null), 3000);
+        return () => clearTimeout(timer);
+      }
+      return;
     });
   }
 
@@ -106,91 +187,65 @@ export class ConfigurationComponent {
   toggleViewMode(): void {
     this._viewMode.update(mode => mode === 'form' ? 'toml' : 'form');
   }
-}
 
-@Component({
-  selector: 'app-config-form',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    MatExpansionModule,
-    MatSliderModule,
-    MatSelectModule,
-    MatSlideToggleModule,
-    MatInputModule,
-    MatFormFieldModule,
-    MatTooltipModule,
-  ],
-  templateUrl: './config-form.component.html',
-})
-export class ConfigFormComponent {
-  readonly config = input.required<ConfigView>();
-  
-  private readonly fb = inject(FormBuilder);
-  private readonly tauri = inject(TauriService);
-  private readonly configService = inject(ConfigService);
-
-  readonly form: FormGroup;
-  private readonly _saving = signal(false);
-  private readonly _saveMsg = signal<string | null>(null);
-
-  get saving() { return this._saving(); }
-  get saveMsg() { return this._saveMsg(); }
-
-  constructor() {
-    this.form = this.fb.group({
-      verbosity: [0],
-      developer_iters: [1],
-      reviewer_reviews: [2],
-      review_depth: ['medium'],
-      checkpoint_enabled: [true],
-      isolation_mode: [false],
-      interactive: [false],
-    });
-
-    effect(() => {
-      const cfg = this.config();
-      this.form.patchValue({
-        verbosity: cfg.verbosity ?? 0,
-        developer_iters: cfg.developer_iters ?? 1,
-        reviewer_reviews: cfg.reviewer_reviews ?? 2,
-        review_depth: cfg.review_depth ?? 'medium',
-        checkpoint_enabled: cfg.checkpoint_enabled ?? true,
-        isolation_mode: cfg.isolation_mode ?? false,
-        interactive: cfg.interactive ?? false,
-      });
-    });
+  /** Returns the source (default/global/project) for a config field in the Effective tab. */
+  getFieldSource(fieldName: string): ConfigSource {
+    const sources = this._effectiveWithSources()?.sources;
+    if (!sources) return 'default';
+    return sources.find((s: ConfigFieldWithSource) => s.field_name === fieldName)?.source ?? 'default';
   }
 
-  async handleSave(): Promise<void> {
-    if (this.form.invalid) return;
+  /** Called by the config form when any field changes. Tracks pending config. */
+  onFormConfigChange(config: ConfigView): void {
+    this._formPendingConfig.set(config);
+    this.configService.setDirty(true);
+  }
 
-    this._saving.set(true);
-    this._saveMsg.set(null);
+  /** Saves the pending form config to the global TOML file. */
+  async saveFormConfig(): Promise<void> {
+    const pending = this._formPendingConfig();
+    if (!pending) return;
+
+    this._formSaving.set(true);
+    this._formSaveMsg.set(null);
+    this._formSaveError.set(null);
 
     try {
-      const formValue = this.form.value;
-      const tomlLines = [
-        '[defaults]',
-        `verbosity = ${formValue.verbosity}`,
-        `developer_iters = ${formValue.developer_iters}`,
-        `reviewer_reviews = ${formValue.reviewer_reviews}`,
-        `review_depth = "${formValue.review_depth}"`,
-        `checkpoint_enabled = ${formValue.checkpoint_enabled}`,
-        `isolation_mode = ${formValue.isolation_mode}`,
-        `interactive = ${formValue.interactive}`,
-      ];
-      const toml = tomlLines.join('\n');
+      const toml = configViewToToml(pending);
       await this.tauri.saveGlobalConfig(toml);
       await this.configService.fetchGlobalConfig();
-      this._saveMsg.set('Saved successfully.');
+      this._formPendingConfig.set(null);
+      this._formSaveMsg.set('Saved successfully.');
+      this.configService.setDirty(false);
+      this.notifications.add({ type: 'success', message: 'Configuration saved successfully.' });
+    } catch (e) {
+      this._formSaveError.set(e instanceof Error ? e.message : String(e));
+    } finally {
+      this._formSaving.set(false);
+    }
+  }
+
+  /** Reverts pending form changes. */
+  revertFormConfig(): void {
+    this._formPendingConfig.set(null);
+    this._formSaveMsg.set(null);
+    this._formSaveError.set(null);
+    this.configService.setDirty(false);
+  }
+
+  /**
+   * Called when the AgentChainsEditor emits an updated raw TOML.
+   * Immediately saves the new TOML (chains/drains changes are always auto-saved).
+   */
+  async onChainsTomlChange(updatedToml: string): Promise<void> {
+    this._rawGlobalToml.set(updatedToml);
+    this.configService.setDirty(true);
+    try {
+      await this.tauri.saveGlobalConfig(updatedToml);
+      await this.configService.fetchGlobalConfig();
       this.configService.setDirty(false);
     } catch (e) {
-      this._saveMsg.set(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      this._saving.set(false);
+      console.error('Failed to save agent chains config:', e);
     }
   }
 }
@@ -206,6 +261,8 @@ export class ConfigFieldComponent {
   readonly label = input<string>('');
   readonly description = input<string>('');
   readonly value = input<string | number | boolean>('');
+  /** Optional source indicator for the Effective tab (default/global/project). */
+  readonly source = input<ConfigSource | null>(null);
 
   private readonly _displayValue = computed(() => {
     const v = this.value();
@@ -226,10 +283,39 @@ export class ConfigFieldComponent {
     `.replace(/\n/g, ' ');
   });
 
+  /** CSS classes for the source badge (Tailwind-first with identifying class). */
+  get sourceBadgeClass(): string {
+    const src = this.source();
+    if (src === 'project') {
+      return 'source-badge source-badge--project text-xs px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-semibold font-mono';
+    }
+    if (src === 'global') {
+      return 'source-badge source-badge--global text-xs px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-400 font-semibold font-mono';
+    }
+    return 'source-badge source-badge--default text-xs px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-semibold font-mono';
+  }
+
+  /** Human-readable label for the source badge. */
+  get sourceBadgeLabel(): string {
+    const src = this.source();
+    if (src === 'project') return 'Project';
+    if (src === 'global') return 'Global';
+    return 'Default';
+  }
+
+  /** Tooltip text for the source badge showing the config file path. */
+  get sourceBadgeTooltip(): string {
+    const src = this.source();
+    if (src === 'project') return 'Set in project config: .agent/ralph-workflow.toml';
+    if (src === 'global') return 'Set in global config: ~/.config/ralph-workflow.toml';
+    return 'Using compiled-in default value';
+  }
+
   get labelValue() { return this.label(); }
   get descriptionValue() { return this.description(); }
   get displayValue() { return this._displayValue(); }
   get valueStyle() { return this._valueStyle(); }
+  get sourceValue() { return this.source(); }
 }
 
 @Component({
@@ -241,6 +327,24 @@ export class ConfigFieldComponent {
 })
 export class ConfigTableComponent {
   readonly config = input.required<ConfigView>();
+  /** Optional map of field name → source for the Effective tab source badges. */
+  readonly sources = input<ConfigFieldWithSource[] | null>(null);
+
+  /** Pre-computed source map keyed by field_name for O(1) lookup in template. */
+  private readonly _sourceMap = computed<Record<string, ConfigSource>>(() => {
+    const srcs = this.sources();
+    if (!srcs) return {};
+    return Object.fromEntries(srcs.map(s => [s.field_name, s.source]));
+  });
+
+  /** Source map exposed to template. */
+  get sourceMap(): Record<string, ConfigSource> { return this._sourceMap(); }
+
+  getSource(fieldName: string): ConfigSource | null {
+    const srcs = this.sources();
+    if (!srcs) return null;
+    return srcs.find(s => s.field_name === fieldName)?.source ?? null;
+  }
 
   get configValue() { return this.config(); }
 }

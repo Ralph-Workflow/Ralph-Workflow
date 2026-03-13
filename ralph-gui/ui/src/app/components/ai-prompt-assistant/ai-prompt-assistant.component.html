@@ -1,5 +1,19 @@
 @if (isOpen_) {
   <div class="assistant-panel" data-testid="assistant-panel">
+
+    <!-- Unconfigured state -->
+    @if (isUnconfigured_) {
+      <div class="unconfigured-state" data-testid="unconfigured-state">
+        <div class="unconfigured-icon" aria-hidden="true">⚙</div>
+        <p class="unconfigured-message">
+          No Planning drain agent configured. The AI Prompt Assistant requires a Planning drain to be set up.
+        </p>
+        <a routerLink="/configuration" class="btn btn-secondary unconfigured-link" data-testid="go-to-config-link">
+          Go to Configuration
+        </a>
+      </div>
+    } @else {
+
     <!-- Tab bar -->
     <div class="tab-bar" role="tablist">
       <button
@@ -8,6 +22,7 @@
         [class.active]="activeTab_ === 'describe'"
         [attr.aria-selected]="activeTab_ === 'describe'"
         (click)="setTab('describe')"
+        [disabled]="isUnconfigured_"
         data-testid="tab-describe"
       >
         Describe
@@ -18,6 +33,7 @@
         [class.active]="activeTab_ === 'refine'"
         [attr.aria-selected]="activeTab_ === 'refine'"
         (click)="setTab('refine')"
+        [disabled]="isUnconfigured_"
         data-testid="tab-refine"
       >
         Refine
@@ -145,7 +161,12 @@
 
     <!-- Footer -->
     <div class="panel-footer">
-      <span class="footer-label">Using: Planning drain agent</span>
+      @if (planningDrainAgent_) {
+        <span class="footer-label">Using: {{ planningDrainAgent_ }} via Planning drain</span>
+      } @else {
+        <span class="footer-label">Planning drain</span>
+      }
     </div>
+    } <!-- end @else (configured) -->
   </div>
 }

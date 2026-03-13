@@ -3,6 +3,18 @@
 This document defines the complete acceptance criteria for the Ralph Workflow application.
 Items marked with [DONE] are already implemented. All others are outstanding.
 
+Terminology in this document follows `ralph-gui/docs/glossary.md`.
+
+Language rules used here:
+
+- `Workspace` = an opened repository in the GUI
+- `Worktree` = a git worktree inside a workspace
+- `Session` = the user-facing launched unit in the GUI
+- `Run` = the underlying Ralph CLI execution for a session
+
+At the current product boundary, one session maps to one run unless a later
+architecture document explicitly changes that model.
+
 ---
 
 ## AC-1: Multi-Workspace Management
@@ -131,10 +143,10 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Progress indicator during batch operations
 
 ### AC-4.3: New Session Wizard
-- [DONE] Multi-step wizard: Prompt -> Configure -> Preflight -> Launch
+- [DONE] Multi-step wizard: Prompt -> Configure -> Review & Launch
 - [DONE] Step 1: Prompt template selection and customization
 - [DONE] Step 2: Agent selection, iteration count, review passes
-- [DONE] Step 3: Preflight summary with launch confirmation
+- [DONE] Step 3: Review & Launch summary with launch confirmation
 
 #### AC-4.3.1: Prompt Editor (Step 1)
 - [DONE] Text area for writing/editing the prompt
@@ -231,7 +243,7 @@ Items marked with [DONE] are already implemented. All others are outstanding.
       collapses it back to the summary
 - [ ] The summary line updates in real-time as inline numeric spinners are changed
 - [ ] If the user has not modified anything, they can proceed directly from the summary
-      view to Preflight (Step 3) in one click — the wizard is optimized for experienced
+      view to Review & Launch (Step 3) in one click — the wizard is optimized for experienced
       users running sessions frequently
 
 ##### Expanded view (after clicking [Customize ▾])
@@ -266,17 +278,25 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 ##### Launch presets
 - [DONE] Launch presets (save/load/delete named configurations)
 
-#### AC-4.3.3: Preflight (Step 3)
+#### AC-4.3.3: Review & Launch (Step 3)
 - [DONE] Summary of all launch parameters
 - [ ] Effective configuration preview (merged from global + project + wizard overrides)
 - [ ] Estimated resource usage indicator
 - [DONE] Launch button with loading state
+- [ ] Review & Launch reflects the canonical ownership model from `ralph-gui/docs/designs/tauri-cli-backend-architecture.md` so user-visible session values are derived from Tauri/CLI-backed state, not duplicated frontend-only execution logic
 
 ### AC-4.4: Session Launch
 - [DONE] Launches Ralph Workflow CLI as background process via Tauri
 - [DONE] Returns run ID and navigates to run detail
 - [ ] Error handling: if CLI fails to start, show error with diagnostics
 - [ ] The session appears immediately in the session list as "Starting"
+- [ ] Session launch and monitoring architecture follows `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`
+- [ ] Tauri remains the only GUI-to-backend bridge; Angular never talks to the CLI directly
+- [ ] The CLI is the authoritative source of run identity and lifecycle state; Tauri does not synthesize or override canonical run state
+- [ ] Session launch uses a modular Tauri boundary so command handling, supervision, transport, and persistence concerns are not collapsed into one implementation layer
+- [ ] Launch behavior is testable through deterministic service seams without requiring full desktop end-to-end execution
+- [ ] Session launch succeeds only after a valid protocol handshake/bootstrap response is received; missing, malformed, or incompatible bootstrap data fails the launch with a structured error
+- [ ] Launch/bootstrap responses include enough protocol metadata for Tauri to validate version compatibility and advertised capabilities before the run is treated as attached
 
 ---
 
@@ -287,6 +307,7 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [DONE] Phase timeline visualization
 - [DONE] Run log viewer
 - [DONE] Resume button for paused/failed runs
+- [ ] Run Detail distinguishes transport state from workflow state (for example: disconnected transport does not automatically imply failed run)
 
 ### AC-5.2: Phase Timeline
 - [DONE] Shows pipeline phases: Plan -> Develop -> Review -> Commit
@@ -305,6 +326,10 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Monospace font (JetBrains Mono)
 - [ ] ANSI color code support for colored log output
 - [ ] Virtualized rendering for large logs (5000+ lines)
+- [ ] Live run updates use the Tauri/CLI architecture contract from `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`, with durable files used for replay/recovery rather than as the only live transport
+- [ ] Log/live event handling is resilient to event bursts: status/lifecycle events remain accurate even if live log rendering is truncated or backpressured
+- [ ] The transport respects framing rules from `ralph-gui/docs/designs/tauri-cli-protocol.md`: stdout machine frames are parsed deterministically, stderr diagnostics do not corrupt live state, and malformed frames surface a protocol error state
+- [ ] Replay/reconnect behavior resumes from the last acknowledged sequence boundary rather than silently dropping or reordering run events
 
 ### AC-5.4: Iteration & Review Tracking
 - [ ] Iteration history panel showing each dev iteration
@@ -321,6 +346,7 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [DONE] Resume button for paused or failed runs
 - [ ] Cancel button for running sessions (with confirmation dialog)
 - [ ] Retry button for failed runs (restarts from beginning)
+- [ ] Attach/detach/cancel/close actions are idempotent from the GUI perspective; repeated user actions do not corrupt run state or create duplicate attachments
 - [ ] "Open in Terminal" to view raw CLI output
 - [ ] "Open Worktree" to open the worktree directory in system file manager
 
@@ -383,7 +409,7 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 
 ### AC-7.1: Scope Tabs
 - [DONE] Three tabs: Effective (read-only), Global, Project
-- [ ] Effective tab shows merged configuration with source indicators
+- [DONE] Effective tab shows merged configuration with source indicators
       (icon or label showing whether each value comes from default/global/project)
 - [DONE] Global tab edits `~/.config/ralph-workflow.toml`
 - [DONE] Project tab edits `.agent/ralph-workflow.toml`
@@ -463,9 +489,9 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 ### AC-7.4: Save/Revert
 - [DONE] Dirty tracking (unsaved changes detection)
 - [DONE] Save and Revert buttons
-- [ ] Warning dialog when navigating away with unsaved changes
+- [DONE] Warning dialog when navigating away with unsaved changes
 - [DONE] Validation errors shown inline before save is allowed
-- [ ] Success toast after save
+- [DONE] Success toast after save
 
 ### AC-7.5: Raw TOML Fallback
 - [ ] "View as TOML" toggle to switch between form view and raw TOML editor
@@ -672,6 +698,9 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Graceful handling of lost file system access (repo moved/deleted)
 - [ ] Auto-reconnect for log streaming on connection drop
 - [ ] No data loss on unexpected app close (preferences auto-saved)
+- [ ] Active-session lifecycle, detach/close behavior, and cleanup semantics follow `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`
+- [ ] Recovery behavior is conservative: if liveness cannot be proven, the GUI surfaces detached/unknown state instead of falsely claiming a run is still active
+- [ ] Durable run artifacts are preserved during uncertain recovery and partial cleanup paths
 
 ### AC-15.3: Accessibility
 - [ ] All interactive elements reachable via keyboard
@@ -687,6 +716,29 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] No API keys displayed, stored, or transmitted by the Ralph Workflow GUI
 - [ ] No API keys in log output or error messages
 - [ ] GUI preferences file has restricted permissions (600)
+
+### AC-15.5: Backend Architecture Contract
+- [ ] `ralph-gui/docs/designs/tauri-cli-backend-architecture.md` is the binding architecture reference for GUI/Tauri/CLI session lifecycle behavior
+- [ ] One run/session maps to one Ralph CLI process unless a later approved architecture document replaces that model
+- [ ] Tauri owns desktop orchestration, supervision, and transport bridging; the CLI owns workflow execution, checkpoints, logs, and final lifecycle truth
+- [ ] Closing a session, workspace, or the app follows explicit detach/stop/cleanup policies rather than implicit process orphaning or ad hoc file deletion
+- [ ] Any change to GUI/backend session lifecycle behavior updates both implementation and this architecture contract when the behavior changes
+- [ ] The GUI backend integration remains modular, with separable concerns for command handling, session orchestration, supervision, transport adaptation, and persistence/recovery
+- [ ] The architecture remains valid even if richer CLI event emission is introduced incrementally; the GUI does not require a big-bang protocol rewrite to stay correct
+- [ ] Type reconciliation between CLI protocol data, Tauri domain models, and frontend contract types follows the mapping strategy documented in `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`
+- [ ] Equivalent concepts such as run status, run snapshot, run event, and launch/bootstrap data have explicit conversion boundaries in Rust rather than ad hoc duplicated shapes
+- [ ] The Tauri/CLI protocol uses explicit handshake, versioning, capability advertisement, and structured error envelopes rather than implicit startup assumptions or raw string failures
+- [ ] The transport complies with the framing and correlation rules in `ralph-gui/docs/designs/tauri-cli-protocol.md`, including stdout-only machine frames, request/response correlation identifiers where applicable, and ordered per-run event sequencing
+- [ ] Protocol evolution follows documented schema-evolution rules so unknown fields, unknown event kinds, and additive changes degrade safely rather than corrupting run state
+
+### AC-15.6: Testability & Modularity
+- [ ] GUI/backend integration behavior is verifiable through deterministic tests below the full desktop E2E layer
+- [ ] Transport adaptation can be tested with recorded stdout/checkpoint/log fixtures
+- [ ] Session lifecycle orchestration can be tested with fake supervisors and fake persistence stores
+- [ ] Recovery and snapshot assembly can be tested against divergent live-state and durable-state inputs
+- [ ] Tauri command handlers remain thin wrappers over modular services rather than the primary location of lifecycle logic
+- [ ] Type mapping between CLI protocol types, Tauri domain types, and frontend contract types is covered by deterministic tests, including backward-compatible decoding and invalid-payload rejection
+- [ ] Protocol tests cover handshake/version mismatch handling, malformed frame handling, structured error decoding, and heartbeat or silent-period timeout behavior
 
 ---
 

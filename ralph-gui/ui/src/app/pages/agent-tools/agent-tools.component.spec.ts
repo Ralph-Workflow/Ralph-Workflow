@@ -11,6 +11,9 @@ const MOCK_TOOLS: AgentToolInfo[] = [
     version: '1.2.3',
     auth_status: 'authenticated',
     health: 'ready',
+    description: 'Anthropic Claude Code CLI',
+    available_models: ['claude-sonnet-4-6', 'claude-opus-4-5'],
+    binary_location: '/usr/local/bin/claude',
   },
   {
     name: 'Codex',
@@ -19,6 +22,9 @@ const MOCK_TOOLS: AgentToolInfo[] = [
     version: null,
     auth_status: 'unknown',
     health: 'not_installed',
+    description: 'OpenAI Codex CLI',
+    available_models: [],
+    binary_location: null,
   },
   {
     name: 'OpenCode',
@@ -27,6 +33,9 @@ const MOCK_TOOLS: AgentToolInfo[] = [
     version: '0.1.0',
     auth_status: 'unauthenticated',
     health: 'needs_setup',
+    description: 'OpenCode AI CLI',
+    available_models: ['gpt-4'],
+    binary_location: '/usr/local/bin/opencode',
   },
 ];
 

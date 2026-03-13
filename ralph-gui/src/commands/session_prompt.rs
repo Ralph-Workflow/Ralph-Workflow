@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// A single message in a multi-turn AI prompt assistant conversation.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct PromptAssistantMessage {
+    pub role: String, // "user" | "assistant"
+    pub content: String,
+}
+
+/// Structured analysis of a PROMPT.md provided by the AI refine mode.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct PromptAnalysis {
+    pub issues: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub quality_rating: u8, // 1–10
+    pub improved_prompt: Option<String>,
+}
+
 /// Result of an AI-assisted PROMPT.md review.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct PromptReviewResult {
@@ -222,15 +238,20 @@ pub fn delete_template(name: String, templates_dir: String) -> Result<(), String
 
 /// AI-assisted: generate a structured prompt from a natural language description.
 ///
-/// Routes through the Planning drain agent.
-/// In dry-run mode (`RALPH_GUI_DRY_RUN=1`), returns a placeholder result.
+/// Accepts an optional `history` of prior conversation turns so the assistant
+/// can maintain context across multi-turn interactions. In dry-run mode
+/// (`RALPH_GUI_DRY_RUN=1`), returns a placeholder result.
 ///
 /// # Errors
 ///
 /// Returns an error if the AI call fails or no Planning drain is configured.
 #[tauri::command]
 #[specta::specta]
-pub fn assist_prompt_describe(description: String, _repo_path: String) -> Result<String, String> {
+pub fn assist_prompt_describe(
+    description: String,
+    _repo_path: String,
+    history: Vec<PromptAssistantMessage>,
+) -> Result<String, String> {
     if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
         return Ok(format!(
             "# Task: {description}\n\n## Objective\n\nImplement the requested feature.\n\n## Acceptance Criteria\n\n- [ ] Feature works as described\n- [ ] Tests are added\n- [ ] Documentation is updated\n"
@@ -242,11 +263,18 @@ pub fn assist_prompt_describe(description: String, _repo_path: String) -> Result
         .filter(|k| !k.is_empty())
         .ok_or_else(|| "ANTHROPIC_API_KEY not set.".to_string())?;
 
+    // Build conversation history for the API call.
+    let mut messages: Vec<serde_json::Value> = history
+        .into_iter()
+        .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
+        .collect();
+    messages.push(serde_json::json!({ "role": "user", "content": description }));
+
     let body = serde_json::json!({
         "model": "claude-sonnet-4-6",
         "max_tokens": 2048,
         "system": "You are a technical writing assistant that creates structured PROMPT.md files for AI coding agents. Given a description of a task, generate a well-structured prompt with: # Task title, ## Objective, ## Context, ## Acceptance Criteria (checklist), ## Out of Scope (if applicable), ## Technical Notes. Return only the markdown content.",
-        "messages": [{ "role": "user", "content": description }]
+        "messages": messages
     });
 
     let response = ureq::post("https://api.anthropic.com/v1/messages")
@@ -267,7 +295,10 @@ pub fn assist_prompt_describe(description: String, _repo_path: String) -> Result
     Ok(text)
 }
 
-/// AI-assisted: refine and analyze an existing prompt.
+/// AI-assisted: refine and analyze an existing prompt, returning structured analysis.
+///
+/// Returns a `PromptAnalysis` with specific issues, suggestions, a quality rating,
+/// and an improved prompt string. In dry-run mode returns a placeholder.
 ///
 /// # Errors
 ///
@@ -277,8 +308,121 @@ pub fn assist_prompt_describe(description: String, _repo_path: String) -> Result
 pub fn assist_prompt_refine(
     current_prompt: String,
     _repo_path: String,
-) -> Result<PromptReviewResult, String> {
-    review_prompt_with_ai(current_prompt)
+) -> Result<PromptAnalysis, String> {
+    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+        return Ok(PromptAnalysis {
+            issues: vec!["Acceptance criteria could be more specific.".to_string()],
+            suggestions: vec![
+                "Add measurable acceptance criteria.".to_string(),
+                "Include an Out of Scope section.".to_string(),
+            ],
+            quality_rating: 7,
+            improved_prompt: Some(format!("{current_prompt}\n\n## Out of Scope\n\n- N/A\n")),
+        });
+    }
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "ANTHROPIC_API_KEY not set.".to_string())?;
+
+    let system_prompt =
+        "You analyze PROMPT.md files for AI coding agents and return structured JSON. \
+        Return ONLY valid JSON with these keys: \
+        'issues' (array of strings describing specific problems), \
+        'suggestions' (array of improvement strings), \
+        'quality_rating' (integer 1-10), \
+        'improved_prompt' (string with the full improved prompt or null if no changes needed). \
+        Do not include markdown fences or any text outside the JSON object.";
+
+    let body = serde_json::json!({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 2048,
+        "system": system_prompt,
+        "messages": [{ "role": "user", "content": current_prompt }]
+    });
+
+    let response = ureq::post("https://api.anthropic.com/v1/messages")
+        .set("x-api-key", &api_key)
+        .set("anthropic-version", "2023-06-01")
+        .set("content-type", "application/json")
+        .send_json(body)
+        .map_err(|e| format!("API call failed: {e}"))?;
+
+    let json: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("Failed to parse API response: {e}"))?;
+
+    let text = json["content"][0]["text"].as_str().unwrap_or("{}");
+
+    serde_json::from_str::<PromptAnalysis>(text)
+        .unwrap_or_else(|_| PromptAnalysis {
+            issues: vec![],
+            suggestions: vec![text.to_string()],
+            quality_rating: 5,
+            improved_prompt: None,
+        })
+        .pipe_ok()
+}
+
+/// Helper trait to convert a value into `Ok(v)`.
+trait PipeOk: Sized {
+    fn pipe_ok(self) -> Result<Self, String> {
+        Ok(self)
+    }
+}
+impl PipeOk for PromptAnalysis {}
+
+/// Return the name of the first agent in the Planning drain, if one is configured.
+///
+/// Reads from the global config (`~/.config/ralph-workflow.toml`) and searches for the
+/// Planning drain chain. Returns `None` when no Planning drain is configured.
+///
+/// # Errors
+///
+/// Returns an error if the config file exists but cannot be read or parsed.
+#[tauri::command]
+#[specta::specta]
+pub fn get_planning_drain_agent(_repo_path: String) -> Result<Option<String>, String> {
+    // Try to read the global config to find the Planning drain.
+    let config_path = if let Some(config_dir) = dirs::config_dir() {
+        config_dir.join("ralph-workflow.toml")
+    } else {
+        return Ok(None);
+    };
+
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let content =
+        std::fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {e}"))?;
+
+    let parsed: toml::Value =
+        toml::from_str(&content).map_err(|e| format!("Failed to parse config: {e}"))?;
+
+    // Navigate: drains.planning -> chain name -> chains[name][0].agent
+    let planning_chain = parsed
+        .get("drains")
+        .and_then(|d| d.get("planning"))
+        .and_then(|p| p.as_str())
+        .map(std::borrow::ToOwned::to_owned);
+
+    let Some(chain_name) = planning_chain else {
+        return Ok(None);
+    };
+
+    // Look up the first agent in that chain.
+    let first_agent = parsed
+        .get("chains")
+        .and_then(|c| c.get(&chain_name))
+        .and_then(|agents| agents.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|agent| agent.get("agent").or_else(|| agent.get("name")))
+        .and_then(|a| a.as_str())
+        .map(std::borrow::ToOwned::to_owned);
+
+    Ok(first_agent)
 }
 
 #[cfg(test)]
@@ -437,5 +581,126 @@ mod tests {
             !review.suggestions.is_empty(),
             "Dry-run should return placeholder suggestions even for empty prompt"
         );
+    }
+
+    // --- assist_prompt_describe multi-turn history tests ---
+
+    #[test]
+    fn test_assist_prompt_describe_dry_run_with_history_returns_ok() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
+        std::env::set_var("RALPH_GUI_DRY_RUN", "1");
+
+        let history = vec![
+            PromptAssistantMessage {
+                role: "user".to_string(),
+                content: "I want to add a login feature".to_string(),
+            },
+            PromptAssistantMessage {
+                role: "assistant".to_string(),
+                content: "I can help with that. What type of authentication?".to_string(),
+            },
+        ];
+
+        let result = assist_prompt_describe(
+            "OAuth2 login with Google".to_string(),
+            "/tmp/test-repo".to_string(),
+            history,
+        );
+
+        if let Some(v) = old_val {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        } else {
+            std::env::remove_var("RALPH_GUI_DRY_RUN");
+        }
+
+        assert!(result.is_ok(), "Should succeed in dry-run: {result:?}");
+        let text = result.unwrap();
+        assert!(
+            text.contains("OAuth2 login with Google"),
+            "Should include the description"
+        );
+    }
+
+    #[test]
+    fn test_assist_prompt_describe_dry_run_with_empty_history_returns_ok() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
+        std::env::set_var("RALPH_GUI_DRY_RUN", "1");
+
+        let result = assist_prompt_describe(
+            "Add dark mode toggle".to_string(),
+            "/tmp/test-repo".to_string(),
+            vec![],
+        );
+
+        if let Some(v) = old_val {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        } else {
+            std::env::remove_var("RALPH_GUI_DRY_RUN");
+        }
+
+        assert!(
+            result.is_ok(),
+            "Should succeed with empty history: {result:?}"
+        );
+    }
+
+    // --- assist_prompt_refine dry-run tests ---
+
+    #[test]
+    fn test_assist_prompt_refine_dry_run_returns_prompt_analysis() {
+        let _guard = ENV_MUTEX.lock().unwrap();
+        let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
+        std::env::set_var("RALPH_GUI_DRY_RUN", "1");
+
+        let result = assist_prompt_refine(
+            "# Add login feature\n\nPlease add a login form.".to_string(),
+            "/tmp/test-repo".to_string(),
+        );
+
+        if let Some(v) = old_val {
+            std::env::set_var("RALPH_GUI_DRY_RUN", v);
+        } else {
+            std::env::remove_var("RALPH_GUI_DRY_RUN");
+        }
+
+        assert!(result.is_ok(), "Dry-run refine should succeed: {result:?}");
+        let analysis = result.unwrap();
+        assert!(
+            !analysis.issues.is_empty() || !analysis.suggestions.is_empty(),
+            "Should return issues or suggestions"
+        );
+        assert!(
+            analysis.quality_rating >= 1 && analysis.quality_rating <= 10,
+            "Quality rating should be 1-10, got: {}",
+            analysis.quality_rating
+        );
+    }
+
+    // --- PromptAssistantMessage type tests ---
+
+    #[test]
+    fn test_prompt_assistant_message_serializes_correctly() {
+        let msg = PromptAssistantMessage {
+            role: "user".to_string(),
+            content: "Hello".to_string(),
+        };
+        let json = serde_json::to_value(&msg).expect("Should serialize");
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "Hello");
+    }
+
+    #[test]
+    fn test_prompt_analysis_serializes_correctly() {
+        let analysis = PromptAnalysis {
+            issues: vec!["Missing context".to_string()],
+            suggestions: vec!["Add more detail".to_string()],
+            quality_rating: 7,
+            improved_prompt: Some("# Better prompt\n".to_string()),
+        };
+        let json = serde_json::to_value(&analysis).expect("Should serialize");
+        assert_eq!(json["quality_rating"], 7);
+        assert_eq!(json["issues"].as_array().unwrap().len(), 1);
     }
 }

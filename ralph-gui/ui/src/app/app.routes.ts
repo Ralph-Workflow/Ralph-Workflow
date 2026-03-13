@@ -1,4 +1,5 @@
 import { type Routes } from '@angular/router';
+import { configurationCanDeactivateGuard } from './pages/configuration/configuration.guard';
 
 export const routes: Routes = [
   {
@@ -25,6 +26,7 @@ export const routes: Routes = [
     path: 'configuration',
     loadComponent: () =>
       import('./pages/configuration/configuration.component').then((m) => m.ConfigurationComponent),
+    canDeactivate: [configurationCanDeactivateGuard],
   },
   {
     path: 'preferences',

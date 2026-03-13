@@ -1,5 +1,14 @@
 # Ralph Workflow — Design Document
 
+Terminology in this document follows `ralph-gui/docs/glossary.md`.
+
+Language rules used here:
+
+- `Session` is the primary user-facing term for launched work.
+- `Run` is used when referring to execution state, logs, phases, checkpoints, or
+  CLI-backed behavior.
+- One session currently maps to one run.
+
 ## 1. Vision
 
 Ralph Workflow is an IDE-like desktop application for managing unattended AI

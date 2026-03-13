@@ -46,10 +46,19 @@ const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
     ],
   },
   {
+    category: 'Workspaces',
+    shortcuts: [
+      { keys: ['Ctrl+Tab'], description: 'Cycle workspace tabs forward' },
+      { keys: ['Ctrl+Shift+Tab'], description: 'Cycle workspace tabs backward' },
+      { keys: ['Ctrl+W'], description: 'Close active workspace' },
+    ],
+  },
+  {
     category: 'General',
     shortcuts: [
       { keys: ['?'], description: 'Show keyboard shortcuts' },
       { keys: ['Ctrl+,'], description: 'Open preferences' },
+      { keys: ['Esc'], description: 'Close panel / dialog' },
     ],
   },
 ];

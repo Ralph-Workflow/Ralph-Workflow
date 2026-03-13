@@ -1,5 +1,8 @@
 # Ralph Workflow - Design Criteria
 
+Terminology in this document follows `ralph-gui/docs/glossary.md` so visual,
+product, UX, and backend documentation use the same language.
+
 This document defines the binding design standards for all visual and interaction
 work on Ralph Workflow. It complements the UX Principles document — that document
 covers *how the experience should feel*, this one covers *how the design should
@@ -11,9 +14,9 @@ be executed*.
 
 **The `frontend-design` skill must be used for all UI work.**
 
-**Prefer Typewind over inline CSS styles for GUI implementation.** Inline styles
+**Prefer Tailwind over inline CSS styles for GUI implementation.** Inline styles
 should be a last resort when a specific need cannot be expressed cleanly through
-Typewind or the existing styling system.
+Tailwind or the existing styling system.
 
 Every screen, component, or visual change must be designed and reviewed through
 the `frontend-design` skill. This is not optional. The skill exists to prevent

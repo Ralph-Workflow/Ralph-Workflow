@@ -20,7 +20,7 @@ ALWAYS USE test-driven-development!
 - **Testing guide is REQUIRED reading** before writing/changing tests: `docs/agents/testing-guide.md`.
 - **The GUI is Angular v21, not React.** If older prompts, docs, or comments mention React for the GUI, treat that as stale and update the reference to Angular v21 when touching it.
 - **Any Angular v21 work must use the Angular MCP server and frontend-angular skill.** The Angular MCP server in this repo is also running v21, so use it first for Angular v21 implementation, debugging, analysis, refactors, or documentation lookups.
-- **Prefer Typewind over inline CSS styles in the GUI.** Use inline styles only when there is a clear reason they are necessary.
+- **Prefer Tailwind over inline CSS styles in the GUI.** Use inline styles only when there is a clear reason they are necessary.
 - **Do not introduce tech debt.** If the alternative is adding/keeping tech debt, **prefer refactor** even when it makes the diff larger; do not leave deprecated/unused code behind.
 - **Do not change linting rules without explicit direction.** Lint policy is a repository contract, not a convenience setting.
 - **Never weaken or disable lint rules just to avoid refactoring.** "Being lazy to refactor" is explicitly forbidden as a reason to change linting behavior.

@@ -13,6 +13,14 @@ const DEFAULT_CONFIG: ConfigView = {
   interactive: false,
   review_depth: 'standard',
   max_dev_continuations: 3,
+  // General path settings
+  prompt_path: '',
+  templates_dir: '',
+  // Execution context
+  developer_context: 'normal',
+  reviewer_context: 'normal',
+  force_universal_prompt: false,
+  auto_detect_stack: true,
   // Retry and Fallback defaults
   max_retries: 3,
   max_same_agent_retries: 2,
@@ -84,8 +92,10 @@ describe('ConfigFormComponent', () => {
       expect(compiled.textContent).toContain('Agent Tools');
     });
 
-    it('should render the Agent Chains and Drains placeholder', () => {
-      expect(compiled.textContent).toContain('Agent Chains');
+    it('should not render an Agent Chains placeholder (editor is hosted by the parent)', () => {
+      // Agent Chains and Drains editor is rendered by ConfigurationComponent, not ConfigFormComponent.
+      // The config form only renders the Agent Tools placeholder link.
+      expect(compiled.querySelector('app-agent-chains-editor')).toBeNull();
     });
   });
 
@@ -459,6 +469,88 @@ describe('ConfigFormComponent', () => {
     }));
   });
 
+  describe('execution section — new fields', () => {
+    it('should render Developer Context dropdown', () => {
+      expect(compiled.textContent).toContain('Developer Context');
+    });
+
+    it('should render Reviewer Context dropdown', () => {
+      expect(compiled.textContent).toContain('Reviewer Context');
+    });
+
+    it('should render Force Universal Prompt toggle', () => {
+      expect(compiled.textContent).toContain('Force Universal Prompt');
+    });
+
+    it('should render Auto-detect Stack toggle', () => {
+      expect(compiled.textContent).toContain('Auto-detect Stack');
+    });
+
+    it('should emit configChange when developer_context changes', fakeAsync(() => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+
+      const changeSpy = jasmine.createSpy('configChange');
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configForm.configChange.subscribe(changeSpy);
+      configFormFixture.detectChanges();
+
+      configForm.form.get('developer_context')?.setValue('minimal');
+      tick(0);
+      configFormFixture.detectChanges();
+
+      expect(changeSpy).toHaveBeenCalledWith(
+        jasmine.objectContaining({ developer_context: 'minimal' })
+      );
+    }));
+
+    it('should emit configChange when force_universal_prompt toggle changes', fakeAsync(() => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+
+      const changeSpy = jasmine.createSpy('configChange');
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configForm.configChange.subscribe(changeSpy);
+      configFormFixture.detectChanges();
+
+      configForm.form.get('force_universal_prompt')?.setValue(true);
+      tick(0);
+      configFormFixture.detectChanges();
+
+      expect(changeSpy).toHaveBeenCalledWith(
+        jasmine.objectContaining({ force_universal_prompt: true })
+      );
+    }));
+  });
+
+  describe('general section — path fields', () => {
+    it('should render Prompt Path field', () => {
+      expect(compiled.textContent).toContain('Prompt Path');
+    });
+
+    it('should render Templates Directory field', () => {
+      expect(compiled.textContent).toContain('Templates Directory');
+    });
+
+    it('should emit configChange when prompt_path changes', fakeAsync(() => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+
+      const changeSpy = jasmine.createSpy('configChange');
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configForm.configChange.subscribe(changeSpy);
+      configFormFixture.detectChanges();
+
+      configForm.form.get('prompt_path')?.setValue('/home/user/prompt.md');
+      tick(0);
+      configFormFixture.detectChanges();
+
+      expect(changeSpy).toHaveBeenCalledWith(
+        jasmine.objectContaining({ prompt_path: '/home/user/prompt.md' })
+      );
+    }));
+  });
+
   describe('toggle emits configChange', () => {
     it('should emit configChange when isolation_mode toggle changes', fakeAsync(() => {
       const configFormFixture = TestBed.createComponent(ConfigFormComponent);
@@ -494,6 +586,32 @@ describe('ConfigFormComponent', () => {
       expect(changeSpy).toHaveBeenCalledWith(
         jasmine.objectContaining({ interactive: true })
       );
+    }));
+  });
+
+  describe('form patching on input signal changes', () => {
+    it('should patch form values when config input changes', fakeAsync(() => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, verbosity: 0 });
+      configFormFixture.detectChanges();
+      tick(0);
+      expect(configForm.form.get('verbosity')?.value).toBe(0);
+
+      // Update config input
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, verbosity: 3 });
+      configFormFixture.detectChanges();
+      tick(0);
+      expect(configForm.form.get('verbosity')?.value).toBe(3);
+    }));
+
+    it('should patch retry fields when config input contains retry values', fakeAsync(() => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, max_retries: 7 });
+      configFormFixture.detectChanges();
+      tick(0);
+      expect(configForm.form.get('max_retries')?.value).toBe(7);
     }));
   });
 

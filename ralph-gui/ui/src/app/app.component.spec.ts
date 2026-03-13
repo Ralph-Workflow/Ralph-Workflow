@@ -350,4 +350,70 @@ describe('AppComponent', () => {
       }
     });
   });
+
+  describe('sidebar resize', () => {
+    beforeEach(() => {
+      fixture.detectChanges();
+    });
+
+    it('should start with default sidebar width', () => {
+      expect(component.sidebarWidth()).toBe(220);
+    });
+
+    it('should update sidebar width on drag', () => {
+      // Simulate drag start at x=220
+      const startEvent = new MouseEvent('mousedown', { clientX: 220, bubbles: true });
+      component.onSidebarResizeStart(startEvent);
+
+      // Move 50px to the right
+      const moveEvent = new MouseEvent('mousemove', { clientX: 270, bubbles: true });
+      document.dispatchEvent(moveEvent);
+
+      expect(component.sidebarWidth()).toBe(270);
+    });
+
+    it('should clamp width to minimum (180px)', () => {
+      // Start at 220
+      const startEvent = new MouseEvent('mousedown', { clientX: 300, bubbles: true });
+      component.onSidebarResizeStart(startEvent);
+
+      // Move far to left (beyond min)
+      const moveEvent = new MouseEvent('mousemove', { clientX: 0, bubbles: true });
+      document.dispatchEvent(moveEvent);
+
+      expect(component.sidebarWidth()).toBe(180);
+    });
+
+    it('should clamp width to maximum (400px)', () => {
+      // Start at 220
+      const startEvent = new MouseEvent('mousedown', { clientX: 220, bubbles: true });
+      component.onSidebarResizeStart(startEvent);
+
+      // Move far to right (beyond max)
+      const moveEvent = new MouseEvent('mousemove', { clientX: 1000, bubbles: true });
+      document.dispatchEvent(moveEvent);
+
+      expect(component.sidebarWidth()).toBe(400);
+    });
+
+    it('should persist width to preferences on drag end', fakeAsync(async () => {
+      const mockPreferencesService = TestBed.inject(PreferencesService) as jasmine.SpyObj<PreferencesService>;
+      const saveSpy = mockPreferencesService.save as jasmine.Spy;
+
+      // Drag from 220 to 300
+      const startEvent = new MouseEvent('mousedown', { clientX: 220, bubbles: true });
+      component.onSidebarResizeStart(startEvent);
+
+      const moveEvent = new MouseEvent('mousemove', { clientX: 300, bubbles: true });
+      document.dispatchEvent(moveEvent);
+
+      const endEvent = new MouseEvent('mouseup', { bubbles: true });
+      document.dispatchEvent(endEvent);
+
+      tick();
+      await fixture.whenStable();
+
+      expect(saveSpy).toHaveBeenCalledWith(jasmine.objectContaining({ sidebarWidth: 300 }));
+    }));
+  });
 });

@@ -1,4 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { AiPromptAssistantComponent } from './ai-prompt-assistant.component';
 import { TAURI_INVOKE } from '../../services/tauri.service';
 import type { PromptReviewResult } from '../../types';
@@ -26,6 +29,9 @@ describe('AiPromptAssistantComponent', () => {
     await TestBed.configureTestingModule({
       imports: [AiPromptAssistantComponent],
       providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideAnimationsAsync(),
         { provide: TAURI_INVOKE, useValue: mockInvoke },
       ],
     }).compileComponents();
@@ -109,10 +115,11 @@ describe('AiPromptAssistantComponent', () => {
 
     it('should not submit when input is empty', fakeAsync(async () => {
       component.describeInput.set('');
+      mockInvoke.calls.reset();
 
       await component.submitDescribe();
 
-      expect(mockInvoke).not.toHaveBeenCalled();
+      expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_describe', jasmine.any(Object));
     }));
   });
 
@@ -201,6 +208,47 @@ describe('AiPromptAssistantComponent', () => {
       component.applyRefineResult();
 
       expect(emittedValues).toEqual(['Improved prompt text']);
+    }));
+  });
+
+  describe('unconfigured agent state', () => {
+    it('should show unconfigured state when planning drain agent returns null', fakeAsync(async () => {
+      // The component's planningDrainAgent is already null after ngOnInit (default mock returns null)
+      // so isUnconfigured should be true.
+      tick(50);
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(component.isUnconfigured()).toBeTrue();
+    }));
+
+    it('should not show unconfigured state when planning drain agent is configured', fakeAsync(async () => {
+      mockInvoke.and.callFake((cmd: string) => {
+        if (cmd === 'get_planning_drain_agent') return Promise.resolve('planner');
+        if (cmd === 'assist_prompt_describe') return Promise.resolve('result');
+        if (cmd === 'assist_prompt_refine') return Promise.resolve({ suggestions: [], improved_prompt: null });
+        return Promise.resolve(null);
+      });
+
+      // Re-create component fresh so ngOnInit runs with the right spy
+      await TestBed.resetTestingModule().compileComponents();
+      await TestBed.configureTestingModule({
+        imports: [AiPromptAssistantComponent],
+        providers: [
+          provideZonelessChangeDetection(),
+          provideRouter([]),
+          provideAnimationsAsync(),
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+        ],
+      }).compileComponents();
+      const newFixture = TestBed.createComponent(AiPromptAssistantComponent);
+      const newComponent = newFixture.componentInstance;
+      newFixture.detectChanges();
+      tick(50);
+      await newFixture.whenStable();
+
+      expect(newComponent.isUnconfigured()).toBeFalse();
+      expect(newComponent.planningDrainAgent()).toBe('planner');
     }));
   });
 });

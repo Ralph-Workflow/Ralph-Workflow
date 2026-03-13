@@ -1440,13 +1440,10 @@ diff --git a/src/bar.rs b/src/bar.rs
         }
 
         // Verify there is no entry before subscribe
-        {
-            let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
-            assert!(
-                !subs.contains_key(&run_id),
-                "Should not have entry before subscribe"
-            );
-        }
+        assert!(
+            !LOG_SUBSCRIPTIONS.lock().unwrap().contains_key(&run_id),
+            "Should not have entry before subscribe"
+        );
 
         // Insert a cancel handle manually (simulates what subscribe does)
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1456,14 +1453,15 @@ diff --git a/src/bar.rs b/src/bar.rs
         }
 
         // Verify it is in the map and not yet cancelled
-        {
-            let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
-            let stored = subs.get(&run_id).expect("Should have cancel handle");
-            assert!(
-                !stored.load(Ordering::Relaxed),
-                "Cancel flag should be false before unsubscribe"
-            );
-        }
+        assert!(
+            !LOG_SUBSCRIPTIONS
+                .lock()
+                .unwrap()
+                .get(&run_id)
+                .expect("Should have cancel handle")
+                .load(Ordering::Relaxed),
+            "Cancel flag should be false before unsubscribe"
+        );
 
         // Clean up
         let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
@@ -1495,9 +1493,8 @@ diff --git a/src/bar.rs b/src/bar.rs
         );
 
         // The entry should be removed from the map
-        let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
         assert!(
-            !subs.contains_key(&run_id),
+            !LOG_SUBSCRIPTIONS.lock().unwrap().contains_key(&run_id),
             "Handle should be removed from map after unsubscribe"
         );
     }

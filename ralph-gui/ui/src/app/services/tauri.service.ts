@@ -3,17 +3,23 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type {
   AgentProfile,
   AgentToolInfo,
+  BatchOperationResult,
+  ConfigSection,
   ConfigView,
   CreateSessionRequest,
   CreateWorktreeResult,
+  EffectiveConfigWithSources,
   GuiPreferences,
   LaunchSessionArgs,
+  PromptAnalysis,
+  PromptAssistantMessage,
   PromptReviewResult,
   RunChanges,
   RunDetail,
   RunStatusSummary,
   SessionSummary,
   TemplateInfo,
+  ToolUpdateInfo,
   WorkspaceEntry,
   WorktreeInfo,
 } from '../types';
@@ -92,6 +98,12 @@ export class TauriService {
 
   async getEffectiveConfig(repoPath: string): Promise<ConfigView> {
     return this.invoke<ConfigView>('get_effective_config', { repo_path: repoPath });
+  }
+
+  async getEffectiveConfigWithSources(repoPath: string): Promise<EffectiveConfigWithSources> {
+    return this.invoke<EffectiveConfigWithSources>('get_effective_config_with_sources', {
+      repo_path: repoPath,
+    });
   }
 
   async saveGlobalConfig(configToml: string): Promise<void> {
@@ -323,18 +335,27 @@ export class TauriService {
 
   // --- AI prompt assistance ---
 
-  async assistPromptDescribe(description: string, repoPath: string): Promise<string> {
+  async assistPromptDescribe(
+    description: string,
+    repoPath: string,
+    history: PromptAssistantMessage[] = [],
+  ): Promise<string> {
     return this.invoke<string>('assist_prompt_describe', {
       description,
+      repo_path: repoPath,
+      history,
+    });
+  }
+
+  async assistPromptRefine(currentPrompt: string, repoPath: string): Promise<PromptAnalysis> {
+    return this.invoke<PromptAnalysis>('assist_prompt_refine', {
+      current_prompt: currentPrompt,
       repo_path: repoPath,
     });
   }
 
-  async assistPromptRefine(currentPrompt: string, repoPath: string): Promise<PromptReviewResult> {
-    return this.invoke<PromptReviewResult>('assist_prompt_refine', {
-      current_prompt: currentPrompt,
-      repo_path: repoPath,
-    });
+  async getPlanningDrainAgent(repoPath: string): Promise<string | null> {
+    return this.invoke<string | null>('get_planning_drain_agent', { repo_path: repoPath });
   }
 
   // --- Prompt templates ---
@@ -367,6 +388,44 @@ export class TauriService {
 
   async getResumableRunsForPath(repoPath: string): Promise<RunDetail[]> {
     return this.invoke<RunDetail[]>('get_resumable_runs', { repo_path: repoPath });
+  }
+
+  // --- Config schema ---
+
+  async getConfigSchema(): Promise<ConfigSection[]> {
+    return this.invoke<ConfigSection[]>('get_config_schema');
+  }
+
+  // --- Agent tool management ---
+
+  async checkToolUpdates(): Promise<ToolUpdateInfo[]> {
+    return this.invoke<ToolUpdateInfo[]>('check_tool_updates');
+  }
+
+  async installAgentTool(name: string): Promise<void> {
+    return this.invoke<void>('install_agent_tool', { name });
+  }
+
+  async openToolSettings(name: string): Promise<void> {
+    return this.invoke<void>('open_tool_settings', { name });
+  }
+
+  async refreshToolModels(name: string): Promise<string[]> {
+    return this.invoke<string[]>('refresh_tool_models', { name });
+  }
+
+  // --- Batch session operations ---
+
+  async batchResumeSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_resume_sessions', { run_ids: runIds });
+  }
+
+  async batchCancelSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_cancel_sessions', { run_ids: runIds });
+  }
+
+  async batchDeleteSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_delete_sessions', { run_ids: runIds });
   }
 
 }
