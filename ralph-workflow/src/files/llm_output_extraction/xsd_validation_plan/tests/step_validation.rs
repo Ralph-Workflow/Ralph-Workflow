@@ -84,6 +84,39 @@ fn test_step_invalid_number_attribute() {
     assert_eq!(err.error_type, XsdErrorType::InvalidContent);
     assert!(err.element_path.contains("number"));
     assert!(err.found.contains("abc"));
+
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test</context>
+<scope-items>
+<scope-item>item 1</scope-item>
+<scope-item>item 2</scope-item>
+<scope-item>item 3</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="0" type="action">
+<title>Test</title>
+<content><paragraph>Test</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files><file path="test.rs" action="create"/></primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair><risk>R</risk><mitigation>M</mitigation></risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification><method>M</method><expected-outcome>O</expected-outcome></verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert_eq!(err.error_type, XsdErrorType::InvalidContent);
+    assert!(err.element_path.contains("number"));
+    assert!(err.found.contains('0'));
 }
 
 #[test]

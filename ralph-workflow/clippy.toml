@@ -7,15 +7,11 @@
 # ============================================================================
 # Package-local clippy configuration for ralph-workflow.
 # Keep lint policy strict while configuring thresholds for structural lints.
+# Deliberate policy decision: unit-test modules and the generated lib-test
+# harness can exceed `clippy::large_stack_frames`, so keep the lint active for
+# production code while allowing it in `#[test]` and `#[cfg(test)]` code.
+allow-large-stack-frames-in-tests = true
 
 too-many-lines-threshold = 500
 max-struct-bools = 32
-# ~652KB stack frame detected in test code (clippy emits no source location
-# for large_stack_frames/large_stack_arrays when the function is generated
-# by macro expansion - known clippy limitation).
-# Threshold raised incrementally as test suites grow (more TestDescAndFn entries).
-# Last raised after adding XSD tolerant parsing tests for dev-result, fix-result,
-# issues, and commit validators which pushed the generated lib-test harness
-# from 676584 to 681512 bytes.
-stack-size-threshold = 685000
 array-size-threshold = 65536

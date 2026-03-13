@@ -1737,10 +1737,9 @@ fn test_plan_bare_reference_file_without_reference_files_wrapper_is_accepted() {
     );
 }
 
-/// Test: ambiguous bare file (has both action and purpose attributes) should be handled gracefully.
-/// When a bare file has action, it's treated as primary. The purpose attr is ignored.
+/// Test: ambiguous bare critical-file classifications are rejected.
 #[test]
-fn test_plan_bare_file_with_action_attr_becomes_primary_not_reference() {
+fn test_plan_bare_critical_file_ambiguous_classification_is_rejected() {
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test ambiguous bare file</context>
@@ -1777,14 +1776,54 @@ fn test_plan_bare_file_with_action_attr_becomes_primary_not_reference() {
 
     let result = validate_plan_xml(xml);
     assert!(
-        result.is_ok(),
-        "Bare file with action attr should be accepted as primary file: {:?}",
-        result.err()
+        result.is_err(),
+        "Bare file with both action and purpose should be rejected as ambiguous"
     );
-    let plan = result.unwrap();
-    // action attribute wins → primary file
-    assert_eq!(plan.critical_files.primary_files.len(), 1);
-    assert_eq!(plan.critical_files.primary_files[0].path, "src/main.rs");
+    let error = result.unwrap_err();
+    assert_eq!(error.error_type, XsdErrorType::InvalidContent);
+    assert!(error.element_path.contains("ralph-critical-files/file"));
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test missing bare file classification</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<file path="src/main.rs"/>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_err(),
+        "Bare file without action or purpose should be rejected as ambiguous"
+    );
+    let error = result.unwrap_err();
+    assert_eq!(error.error_type, XsdErrorType::InvalidContent);
+    assert!(error.element_path.contains("ralph-critical-files/file"));
 }
 
 // ============================================================================
@@ -2019,7 +2058,7 @@ fn test_plan_heading_without_level_defaults_to_3() {
     );
 }
 
-/// Test: step without number attribute is auto-assigned sequential number starting from 1.
+/// Test: step without number attribute is auto-assigned using unused positive numbers.
 #[test]
 fn test_plan_step_without_number_is_auto_assigned() {
     let xml = r#"<ralph-plan>
@@ -2038,10 +2077,16 @@ fn test_plan_step_without_number_is_auto_assigned() {
 <paragraph>Details.</paragraph>
 </content>
 </step>
-<step type="action" priority="medium">
-<title>Second step without number</title>
+<step number="1" type="action" priority="medium">
+<title>Explicit step one</title>
 <content>
 <paragraph>More details.</paragraph>
+</content>
+</step>
+<step type="action" priority="low">
+<title>Trailing step without number</title>
+<content>
+<paragraph>Trailing details.</paragraph>
 </content>
 </step>
 </ralph-implementation-steps>
@@ -2067,18 +2112,19 @@ fn test_plan_step_without_number_is_auto_assigned() {
     let result = validate_plan_xml(xml);
     assert!(
         result.is_ok(),
-        "steps without number attribute should be auto-assigned sequential numbers: {:?}",
+        "steps without number attribute should use unused positive numbers: {:?}",
         result.err()
     );
     let plan = result.unwrap();
-    assert_eq!(plan.steps.len(), 2, "Should have 2 steps");
+    assert_eq!(plan.steps.len(), 3, "Should have 3 steps");
     assert_eq!(
-        plan.steps[0].number, 1,
-        "First auto-assigned step should be number 1"
+        plan.steps[0].number, 2,
+        "First auto-assigned step should skip reserved explicit step 1"
     );
+    assert_eq!(plan.steps[1].number, 1, "Explicit step keeps number 1");
     assert_eq!(
-        plan.steps[1].number, 2,
-        "Second auto-assigned step should be number 2"
+        plan.steps[2].number, 3,
+        "Trailing auto-assigned step should take the next unused positive number"
     );
 }
 

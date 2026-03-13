@@ -655,6 +655,108 @@ fn test_plan_xml_realistic_llm_output_with_multiple_tolerances() {
     });
 }
 
+#[test]
+fn test_plan_xml_auto_numbering_avoids_explicit_number_collisions() {
+    with_default_timeout(|| {
+        let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test reserved numbering</context>
+<scope-items>
+<scope-item count="1" category="steps">steps</scope-item>
+<scope-item count="1" category="tests">test</scope-item>
+<scope-item count="1" category="tasks">task</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step type="action" priority="high">
+<title>Unnumbered first step</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+<step number="1" type="action" priority="medium">
+<title>Explicit step one</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+<step type="action" priority="low">
+<title>Unnumbered third step</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/parser.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Collision</risk>
+<mitigation>Reserve explicit numbers first</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>cargo test</method>
+<expected-outcome>All tests pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+        let result = ralph_workflow::validate_plan_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Reserved numbering should parse: {:?}",
+            result.err()
+        );
+
+        let plan = result.unwrap();
+        assert_eq!(plan.steps[0].number, 2);
+        assert_eq!(plan.steps[1].number, 1);
+        assert_eq!(plan.steps[2].number, 3);
+    });
+}
+
+#[test]
+fn test_plan_xml_bare_critical_file_with_ambiguous_classification_is_rejected() {
+    with_default_timeout(|| {
+        let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test ambiguous critical file</context>
+<scope-items>
+<scope-item count="1" category="files">file</scope-item>
+<scope-item count="1" category="tests">test</scope-item>
+<scope-item count="1" category="tasks">task</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Do work</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<file path="src/parser.rs" action="modify" purpose="reference"/>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Ambiguous classification</risk>
+<mitigation>Reject the payload</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>cargo test</method>
+<expected-outcome>All tests pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+        let result = ralph_workflow::validate_plan_xml(xml);
+        assert!(
+            result.is_err(),
+            "Ambiguous bare critical file should be rejected"
+        );
+    });
+}
+
 /// Test that plan missing required sections still fails.
 ///
 /// This verifies that tolerance only applies to non-essential structure,

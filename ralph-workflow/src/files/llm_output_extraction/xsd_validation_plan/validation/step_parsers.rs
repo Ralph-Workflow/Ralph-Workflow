@@ -4,8 +4,8 @@
 ///
 /// After collecting all steps, auto-assigns sequential numbers to any steps that
 /// were parsed with sentinel number 0 (i.e., the number attribute was missing).
-/// Auto-assignment uses `max(existing_numbers) + 1` for each unnumbered step,
-/// processing in document order.
+/// Explicit step numbers are reserved first, then unnumbered steps receive the
+/// next unused positive numbers in document order.
 fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationError> {
     let mut steps = Vec::new();
     let mut buf = Vec::new();
@@ -45,21 +45,19 @@ fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationErr
         });
     }
 
-    // Auto-assign sequential numbers to steps with sentinel number 0.
-    // For each unnumbered step, take the maximum explicit number seen so far and add 1.
+    let mut used_numbers: std::collections::HashSet<u32> = steps
+        .iter()
+        .filter_map(|step| (step.number != 0).then_some(step.number))
+        .collect();
     let mut next_auto = 1u32;
     for step in &mut steps {
         if step.number == 0 {
-            // Find the maximum explicitly-assigned number in the already-seen steps
-            // (includes steps we've already assigned numbers to above this point in the loop).
-            // We already track next_auto which advances past any seen explicit numbers.
-            step.number = next_auto;
-            next_auto += 1;
-        } else {
-            // If this explicit number is >= next_auto, advance the counter past it.
-            if step.number >= next_auto {
-                next_auto = step.number + 1;
+            while used_numbers.contains(&next_auto) {
+                next_auto += 1;
             }
+            step.number = next_auto;
+            used_numbers.insert(next_auto);
+            next_auto += 1;
         }
     }
 
@@ -105,14 +103,29 @@ fn parse_single_step(
 ) -> Result<Step, XsdValidationError> {
     // Tolerant: if number attribute is missing, use 0 as sentinel for auto-assignment by caller.
     let number: u32 = if let Some(num_str) = attrs.get("number") {
-        num_str.parse().map_err(|_| XsdValidationError {
+        let parsed_number = num_str.parse().map_err(|_| XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
             element_path: "step/@number".to_string(),
             expected: "positive integer".to_string(),
             found: num_str.clone(),
             suggestion: "Use a positive integer for step number".to_string(),
             example: None,
-        })?
+        })?;
+
+        if parsed_number == 0 {
+            return Err(XsdValidationError {
+                error_type: XsdErrorType::InvalidContent,
+                element_path: "step/@number".to_string(),
+                expected: "positive integer greater than 0".to_string(),
+                found: num_str.clone(),
+                suggestion:
+                    "Omit the number attribute to auto-assign it, or use a value of 1 or greater"
+                        .to_string(),
+                example: None,
+            });
+        }
+
+        parsed_number
     } else {
         // Sentinel 0 means "auto-assign" — parse_steps will renumber these.
         0
@@ -337,10 +350,10 @@ fn parse_target_files(reader: &mut Reader<&[u8]>) -> Result<Vec<TargetFile>, Xsd
 ///
 /// Tolerant behavior: bare `<file>` elements directly under `<ralph-critical-files>`
 /// (without a `<primary-files>` or `<reference-files>` wrapper) are classified by
-/// attribute heuristics:
-/// - File with `action` attribute → primary file
-/// - File with `purpose` attribute (and no `action`) → reference file
-/// - File with `action` attribute takes precedence over `purpose` if both are present
+/// their unambiguous attributes:
+/// - File with `action` only → primary file
+/// - File with `purpose` only → reference file
+/// - File with both or neither → rejected as ambiguous
 fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, XsdValidationError> {
     let mut primary_files = Vec::new();
     let mut reference_files = Vec::new();
@@ -412,42 +425,70 @@ fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, Xsd
 
 /// Classify a bare `<file>` element under `<ralph-critical-files>` into primary or reference.
 ///
-/// Heuristic:
-/// - Has `action` attribute → primary file (action wins even if purpose is also present)
-/// - Has `purpose` attribute (no `action`) → reference file
-/// - Neither → skip silently (no path or ambiguous attributes)
+/// Classification rules:
+/// - Has `action` only → primary file
+/// - Has `purpose` only → reference file
+/// - Has both or neither → rejected as ambiguous
 fn classify_bare_critical_file(
     attrs: &HashMap<String, String>,
     primary_files: &mut Vec<PrimaryFile>,
     reference_files: &mut Vec<ReferenceFile>,
 ) -> Result<(), XsdValidationError> {
     let Some(path) = attrs.get("path").cloned() else {
-        // No path — cannot classify. Skip silently.
-        return Ok(());
+        return Err(XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: "ralph-critical-files/file".to_string(),
+            expected: "path attribute".to_string(),
+            found: "no path attribute".to_string(),
+            suggestion: "Add path=\"...\" to the critical file element".to_string(),
+            example: None,
+        });
     };
 
-    if let Some(action_str) = attrs.get("action") {
-        // action attribute present → primary file
-        let action = FileAction::from_str(action_str).ok_or_else(|| XsdValidationError {
+    match (attrs.get("action"), attrs.get("purpose")) {
+        (Some(action_str), None) => {
+            let action = FileAction::from_str(action_str).ok_or_else(|| XsdValidationError {
+                error_type: XsdErrorType::InvalidContent,
+                element_path: "ralph-critical-files/file/@action".to_string(),
+                expected: "create, modify, or delete".to_string(),
+                found: action_str.clone(),
+                suggestion: "Use action=\"create\", action=\"modify\", or action=\"delete\""
+                    .to_string(),
+                example: None,
+            })?;
+            primary_files.push(PrimaryFile {
+                path,
+                action,
+                estimated_changes: attrs.get("estimated-changes").cloned(),
+            });
+            Ok(())
+        }
+        (None, Some(purpose)) => {
+            reference_files.push(ReferenceFile {
+                path,
+                purpose: purpose.clone(),
+            });
+            Ok(())
+        }
+        (Some(_), Some(_)) => Err(XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
-            element_path: "ralph-critical-files/file/@action".to_string(),
-            expected: "create, modify, or delete".to_string(),
-            found: action_str.clone(),
-            suggestion: "Use action=\"create\", action=\"modify\", or action=\"delete\""
-                .to_string(),
+            element_path: "ralph-critical-files/file".to_string(),
+            expected: "exactly one classification attribute: action or purpose".to_string(),
+            found: format!("file {path:?} has both action and purpose"),
+            suggestion:
+                "Keep action for a primary file or purpose for a reference file, but not both"
+                    .to_string(),
             example: None,
-        })?;
-        primary_files.push(PrimaryFile {
-            path,
-            action,
-            estimated_changes: attrs.get("estimated-changes").cloned(),
-        });
-    } else if let Some(purpose) = attrs.get("purpose").cloned() {
-        // purpose attribute present, no action → reference file
-        reference_files.push(ReferenceFile { path, purpose });
+        }),
+        (None, None) => Err(XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-critical-files/file".to_string(),
+            expected: "exactly one classification attribute: action or purpose".to_string(),
+            found: format!("file {path:?} has neither action nor purpose"),
+            suggestion: "Add action for a primary file or purpose for a reference file".to_string(),
+            example: None,
+        }),
     }
-    // Otherwise: skip (neither action nor purpose — ambiguous, do not add)
-    Ok(())
 }
 
 /// Parse primary-files

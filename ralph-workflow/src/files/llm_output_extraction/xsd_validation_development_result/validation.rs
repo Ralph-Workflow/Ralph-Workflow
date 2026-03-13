@@ -340,6 +340,7 @@ pub fn validate_development_result_xml(
 pub fn validate_continuation_development_result_xml(
     xml_content: &str,
 ) -> Result<DevelopmentResultElements, XsdValidationError> {
+    reject_unknown_continuation_children(xml_content)?;
     let elements = validate_development_result_xml(xml_content)?;
 
     if !CONTINUATION_VALID_STATUSES.contains(&elements.status.as_str()) {
@@ -586,4 +587,61 @@ fn unwrap_cdata_wrapper(content: &str) -> Cow<'_, str> {
         return Cow::Borrowed(trimmed);
     };
     Cow::Borrowed(inner.trim())
+}
+
+fn reject_unknown_continuation_children(xml_content: &str) -> Result<(), XsdValidationError> {
+    let content = unwrap_cdata_wrapper(xml_content);
+    let mut reader = create_reader(content.as_ref());
+    let mut buf = Vec::new();
+    let mut inside_root = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"ralph-development-result" => {
+                inside_root = true;
+            }
+            Ok(Event::Start(e)) if inside_root => {
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                if !is_allowed_continuation_child(name.as_str()) {
+                    return Err(unexpected_continuation_child_error(
+                        &name,
+                        format!("<{name}>"),
+                    ));
+                }
+                let _ = skip_to_end(&mut reader, e.name().as_ref());
+            }
+            Ok(Event::Empty(e)) if inside_root => {
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                if !is_allowed_continuation_child(name.as_str()) {
+                    return Err(unexpected_continuation_child_error(
+                        &name,
+                        format!("<{name}/>"),
+                    ));
+                }
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-development-result" => return Ok(()),
+            Ok(Event::Eof) => return Ok(()),
+            Ok(_) => {}
+            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+        buf.clear();
+    }
+}
+
+fn is_allowed_continuation_child(name: &str) -> bool {
+    matches!(name, "ralph-status" | "ralph-summary" | "ralph-next-steps")
+}
+
+fn unexpected_continuation_child_error(name: &str, found: String) -> XsdValidationError {
+    XsdValidationError {
+        error_type: XsdErrorType::UnexpectedElement,
+        element_path: name.to_string(),
+        expected: "only continuation-safe child elements: ralph-status, ralph-summary, and ralph-next-steps"
+            .to_string(),
+        found,
+        suggestion:
+            "Remove unknown child elements from continuation output and keep only recovery-critical fields"
+                .to_string(),
+        example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
+    }
 }

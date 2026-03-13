@@ -148,29 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_empty_summary_now_succeeds_with_fallback() {
-        // Tolerance change: empty summary is now accepted with a fallback placeholder.
-        // The status outcome is the actionable field; summary is informational.
-        let xml = r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary>   </ralph-summary>
-</ralph-development-result>";
-
-        let result = validate_development_result_xml(xml);
-        assert!(
-            result.is_ok(),
-            "Empty summary should now succeed (tolerant): {:?}",
-            result.err()
-        );
-        let elements = result.unwrap();
-        assert_eq!(elements.status, "completed");
-        assert!(
-            !elements.summary.is_empty(),
-            "Summary should have fallback text"
-        );
-    }
-
-    #[test]
     fn test_validate_duplicate_status() {
         let xml = r"<ralph-development-result>
 <ralph-status>completed</ralph-status>
@@ -573,81 +550,47 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_continuation_validation_rejects_unknown_child_elements() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the blocker.
+2. Re-run the relevant tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+<tests-run>cargo test -p ralph-workflow --lib</tests-run>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.error_type,
+            crate::files::llm_output_extraction::xsd_validation::XsdErrorType::UnexpectedElement
+        );
+        assert_eq!(error.element_path, "tests-run");
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the blocker.
+2. Re-run the relevant tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+<tests-run />
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert_eq!(
+            error.error_type,
+            crate::files::llm_output_extraction::xsd_validation::XsdErrorType::UnexpectedElement
+        );
+        assert_eq!(error.element_path, "tests-run");
+    }
+
     // =========================================================================
     // Development result status preservation tests (Step 4 of implementation plan)
     // =========================================================================
-
-    /// Test: empty summary with valid status should succeed, with fallback summary text.
-    ///
-    /// The acceptance criteria states: "the system correctly recognizes and preserves
-    /// the status outcome even when other fields are incomplete, reordered, or otherwise
-    /// non-critical." Summary is informational; status is the actionable field.
-    #[test]
-    fn test_tolerant_empty_summary_with_valid_status_succeeds() {
-        let xml = r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary></ralph-summary>
-</ralph-development-result>";
-
-        let result = validate_development_result_xml(xml);
-        assert!(
-            result.is_ok(),
-            "Empty summary with valid status should succeed (summary is informational, status is key): {:?}",
-            result.err()
-        );
-        let elements = result.unwrap();
-        assert_eq!(
-            elements.status, "completed",
-            "Status should be preserved correctly"
-        );
-        // Summary should have a fallback placeholder, not be empty
-        assert!(
-            !elements.summary.is_empty(),
-            "Summary should have fallback placeholder text"
-        );
-    }
-
-    /// Test: self-closing summary with valid status preserves the status outcome.
-    #[test]
-    fn test_tolerant_self_closing_summary_with_valid_status_preserves_status() {
-        let xml = r"<ralph-development-result>
-<ralph-status>completed</ralph-status>
-<ralph-summary/>
-</ralph-development-result>";
-
-        let result = validate_development_result_xml(xml);
-        assert!(
-            result.is_ok(),
-            "Self-closing summary with valid status should succeed: {:?}",
-            result.err()
-        );
-        let elements = result.unwrap();
-        assert_eq!(
-            elements.status, "completed",
-            "Status should be preserved even when summary is self-closing"
-        );
-    }
-
-    /// Test: whitespace-only summary with valid status is accepted with fallback.
-    #[test]
-    fn test_tolerant_whitespace_only_summary_with_valid_status_succeeds() {
-        let xml = r"<ralph-development-result>
-<ralph-status>partial</ralph-status>
-<ralph-summary>   </ralph-summary>
-</ralph-development-result>";
-
-        let result = validate_development_result_xml(xml);
-        assert!(
-            result.is_ok(),
-            "Whitespace-only summary with valid status should succeed: {:?}",
-            result.err()
-        );
-        let elements = result.unwrap();
-        assert_eq!(
-            elements.status, "partial",
-            "Status partial should be preserved when summary is whitespace-only"
-        );
-    }
 
     /// Test: empty status is still rejected (status is the critical required field).
     #[test]

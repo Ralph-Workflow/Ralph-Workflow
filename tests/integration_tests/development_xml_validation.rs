@@ -339,6 +339,29 @@ fn test_continuation_development_xml_rejects_single_recovery_step() {
     });
 }
 
+#[test]
+fn test_continuation_development_xml_rejects_unknown_child_elements() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because validator changes are still missing.</ralph-summary>
+<ralph-next-steps>1. Implement the missing validator guard.
+2. Re-run the focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+<tests-run>cargo test -p ralph-workflow --lib</tests-run>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Continuation XML should reject unknown child elements outside the allowed continuation contract"
+        );
+
+        let error = result.unwrap_err();
+        assert_eq!(error.element_path, "tests-run");
+    });
+}
+
 /// Test that invalid XML format produces specific XSD validation error.
 ///
 /// This verifies that when the development agent produces XML that fails

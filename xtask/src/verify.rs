@@ -1264,8 +1264,17 @@ mod tests {
 
     use std::collections::HashMap;
     use std::collections::VecDeque;
+    use std::fs;
     use std::path::Path;
+    use std::path::PathBuf;
     use std::sync::Mutex;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("xtask manifest dir should live under repo root")
+            .to_path_buf()
+    }
 
     #[derive(Debug, Default)]
     struct FakeRunner {
@@ -2223,6 +2232,28 @@ mod tests {
                 .any(|c| c.name == "audit-no-shell-scripts"),
             "NATIVE_REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
         );
+    }
+
+    #[test]
+    fn test_clippy_configs_document_test_large_stack_frames_exception() {
+        for relative_path in [
+            "clippy.toml",
+            "ralph-workflow/clippy.toml",
+            "tests/clippy.toml",
+        ] {
+            let path = repo_root().join(relative_path);
+            let source = fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("read {relative_path}: {err}"));
+
+            assert!(
+                source.contains("allow-large-stack-frames-in-tests = true"),
+                "{relative_path} must explicitly allow large_stack_frames in test code"
+            );
+            assert!(
+                source.contains("deliberate") || source.contains("Deliberate"),
+                "{relative_path} must document why test large stack frames are deliberately ignored"
+            );
+        }
     }
 
     #[test]
