@@ -284,7 +284,10 @@ fn test_development_xml_duplicate_status_fails_validation() {
     });
 }
 
-/// Test that unexpected elements fail validation with clear error.
+/// Test that unexpected elements are tolerated by the lenient validator.
+///
+/// The validator now skips unknown child elements rather than rejecting them.
+/// Required elements (status, summary) are still enforced.
 #[test]
 fn test_development_xml_unexpected_element_fails_validation() {
     with_default_timeout(|| {
@@ -295,16 +298,16 @@ fn test_development_xml_unexpected_element_fails_validation() {
 </ralph-development-result>";
 
         let extracted = extract_development_result_xml(xml);
-        assert!(extracted.is_some(), "Should extract XML even if invalid");
+        assert!(extracted.is_some(), "Should extract XML");
 
         let validated = validate_development_result_xml(&extracted.unwrap());
+        // Tolerant validator skips unknown elements, so this now succeeds
         assert!(
-            validated.is_err(),
-            "Should fail validation with unexpected element"
+            validated.is_ok(),
+            "Tolerant validator should skip unknown elements and succeed: {validated:?}"
         );
-
-        let error = validated.unwrap_err();
-        assert!(error.element_path.contains("ralph-unknown"));
+        let elements = validated.unwrap();
+        assert_eq!(elements.status, "completed");
     });
 }
 

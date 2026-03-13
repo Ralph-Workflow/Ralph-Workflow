@@ -280,6 +280,53 @@ fn test_llm_uses_cdata_for_code_content() {
 }
 
 // =========================================================================
+// TOLERANT PARSING TESTS
+// These test the tolerant behavior: unknown elements are skipped,
+// stray text is ignored. Issues has no enum status field, so no
+// normalization tests are needed here.
+// =========================================================================
+
+#[test]
+fn test_tolerant_issues_skips_unknown_elements() {
+    // Extra elements like <ralph-analysis>...</ralph-analysis> should be skipped
+    let xml = r"<ralph-issues>
+<ralph-issue>First issue</ralph-issue>
+<ralph-analysis>Some extra analysis that should be skipped</ralph-analysis>
+<ralph-issue>Second issue</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Unknown elements should be skipped, not rejected: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(
+        elements.issues.len(),
+        2,
+        "Issues should be parsed correctly despite unknown elements"
+    );
+}
+
+#[test]
+fn test_tolerant_issues_ignores_stray_text() {
+    // Text between issue elements should be tolerated
+    let xml = "<ralph-issues>\nsome stray text here\n<ralph-issue>First issue</ralph-issue>\nmore stray text\n</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Stray text between issue elements should be tolerated: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(
+        elements.issues.len(),
+        1,
+        "Issue should be parsed correctly despite stray text"
+    );
+}
+
+// =========================================================================
 // REGRESSION TEST FOR BUG: NUL byte from NBSP typo
 // =========================================================================
 

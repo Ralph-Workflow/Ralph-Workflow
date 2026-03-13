@@ -51,9 +51,11 @@
 //! - [`validation`] - Illegal character detection and validation
 //! - [`readers`] - XML reading and traversal utilities
 //! - [`errors`] - Error builder functions for consistent error messages
+//! - [`tolerant_parsing`] - Tolerant enum normalization and synonym tables for lenient validation
 
 pub mod errors;
 pub mod readers;
+pub mod tolerant_parsing;
 pub mod validation;
 
 // Re-export commonly used functions for backward compatibility

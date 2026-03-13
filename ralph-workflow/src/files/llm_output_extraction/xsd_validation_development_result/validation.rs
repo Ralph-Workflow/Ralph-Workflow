@@ -3,8 +3,8 @@
 use super::types::DevelopmentResultElements;
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    missing_required_error, read_text_until_end, skip_to_end, text_outside_tags_error,
-    unexpected_element_error,
+    missing_required_error, read_text_until_end, skip_to_end,
+    tolerant_parsing::{normalize_enum_value, DEVELOPMENT_STATUS_SYNONYMS},
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -86,13 +86,6 @@ pub fn validate_development_result_xml(
     xml_content: &str,
 ) -> Result<DevelopmentResultElements, XsdValidationError> {
     use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
-
-    const VALID_TAGS: [&str; 4] = [
-        "ralph-status",
-        "ralph-summary",
-        "ralph-files-changed",
-        "ralph-next-steps",
-    ];
 
     let trimmed = xml_content.trim();
     let content = unwrap_cdata_wrapper(trimmed);
@@ -191,12 +184,10 @@ pub fn validate_development_result_xml(
                     next_steps = Some(read_text_until_end(&mut reader, b"ralph-next-steps")?);
                 }
                 other => {
+                    // Tolerant: skip unknown elements instead of rejecting.
+                    // Required elements (status, summary) are still enforced after the loop.
                     let _ = skip_to_end(&mut reader, other);
-                    return Err(unexpected_element_error(
-                        other,
-                        &VALID_TAGS,
-                        "ralph-development-result",
-                    ));
+                    // Continue parsing — do not return an error for unknown elements.
                 }
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -239,19 +230,17 @@ pub fn validate_development_result_xml(
                     next_steps = Some(String::new());
                 }
                 other => {
-                    return Err(unexpected_element_error(
-                        other,
-                        &VALID_TAGS,
-                        "ralph-development-result",
-                    ));
+                    // Tolerant: skip unknown empty elements instead of rejecting.
+                    let _ = other;
+                    // Continue parsing — do not return an error for unknown elements.
                 }
             },
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default();
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Err(text_outside_tags_error(trimmed, "ralph-development-result"));
-                }
+                // Tolerant: ignore stray text between elements.
+                // By the time content reaches the validator it has been extracted with matching
+                // open/close tags. Stray text between child elements within a valid root is
+                // genuinely harmless — it does not change the meaning of the result.
+                let _ = e;
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-development-result" => break,
             Ok(Event::Eof) => {
@@ -302,8 +291,10 @@ pub fn validate_development_result_xml(
         });
     }
 
-    // Validate status is one of the allowed values
-    if !VALID_STATUSES.contains(&status.as_str()) {
+    // Tolerant: normalize status via synonym table (case-insensitive, synonym mapping).
+    // Returns the canonical form if the value is recognized, or None if truly ambiguous.
+    let Some(status) = normalize_enum_value(&status, &VALID_STATUSES, DEVELOPMENT_STATUS_SYNONYMS)
+    else {
         return Err(XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
             element_path: "ralph-status".to_string(),
@@ -316,7 +307,7 @@ pub fn validate_development_result_xml(
             ),
             example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
         });
-    }
+    };
 
     // Validate summary content
     if summary.is_empty() {

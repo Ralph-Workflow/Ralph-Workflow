@@ -336,14 +336,17 @@ fn test_review_xml_duplicate_no_issues_found_produces_error() {
     });
 }
 
-/// Test that unexpected elements produce specific error.
+/// Test that XML with only unknown elements still fails validation.
 ///
-/// This verifies that when the review agent includes unknown elements,
-/// a specific error identifies the problem and lists valid options.
+/// This verifies that when the review agent includes only unknown elements
+/// and no valid issue content, the validator still correctly rejects the
+/// response because no required issue content was found. The tolerant
+/// validator skips unknown elements but still requires at least one
+/// `<ralph-issue>` or `<ralph-no-issues-found>`.
 #[test]
 fn test_review_xml_unexpected_element_provides_valid_options() {
     with_default_timeout(|| {
-        // Setup: Create XML with unexpected element
+        // Setup: Create XML with ONLY an unexpected element (no valid issue content)
         let xml = r"<ralph-issues>
 <ralph-unknown-field>Some value</ralph-unknown-field>
 </ralph-issues>";
@@ -351,18 +354,20 @@ fn test_review_xml_unexpected_element_provides_valid_options() {
         // Execute: Try to validate the XML
         let result = ralph_workflow::validate_issues_xml(xml);
 
-        // Assert: Verify validation fails with specific error about valid tags
-        assert!(result.is_err(), "Unexpected element should fail validation");
+        // Assert: Should still fail because no valid issue content was found.
+        // The tolerant validator skips unknown elements but enforces the requirement
+        // for at least one <ralph-issue> or <ralph-no-issues-found>.
+        assert!(
+            result.is_err(),
+            "XML with only unknown elements should fail (no valid issue content found)"
+        );
 
         let error = result.unwrap_err();
+        // Error should be about missing required content, not about the unknown element itself
         assert!(
-            error.element_path.contains("ralph-unknown-field"),
-            "Error should identify the unexpected element"
-        );
-        assert!(
-            error.suggestion.contains("ralph-issue")
-                && error.suggestion.contains("ralph-no-issues-found"),
-            "Error should list valid element names"
+            error.expected.contains("at least one"),
+            "Error should explain that valid issue content is required, got: {}",
+            error.expected
         );
     });
 }

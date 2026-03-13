@@ -23,7 +23,7 @@
 use super::types::IssuesElements;
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    read_text_until_end, skip_to_end, text_outside_tags_error, unexpected_element_error,
+    read_text_until_end, skip_to_end,
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -90,8 +90,6 @@ pub const EXAMPLE_NO_ISSUES_XML: &str = r"<ralph-issues>
 /// - The XML is malformed
 pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValidationError> {
     use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
-
-    const VALID_TAGS: [&str; 2] = ["ralph-issue", "ralph-no-issues-found"];
 
     let content = xml_content.trim();
 
@@ -183,17 +181,17 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
                             Some(read_text_until_end(&mut reader, b"ralph-no-issues-found")?);
                     }
                     other => {
+                        // Tolerant: skip unknown elements instead of rejecting.
+                        // Required elements (ralph-issue or ralph-no-issues-found) are still
+                        // enforced after the loop.
                         let _ = skip_to_end(&mut reader, other);
-                        return Err(unexpected_element_error(other, &VALID_TAGS, "ralph-issues"));
+                        // Continue parsing — do not return an error for unknown elements.
                     }
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default();
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Err(text_outside_tags_error(trimmed, "ralph-issues"));
-                }
+                // Tolerant: ignore stray text between elements.
+                let _ = e;
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issues" => break,
             Ok(Event::Eof) => {

@@ -7,8 +7,8 @@
 
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    missing_required_error, read_text_until_end, skip_to_end, text_outside_tags_error,
-    unexpected_element_error,
+    missing_required_error, read_text_until_end, skip_to_end,
+    tolerant_parsing::{normalize_enum_value, FIX_STATUS_SYNONYMS},
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -48,8 +48,6 @@ const VALID_STATUSES: [&str; 3] = ["all_issues_addressed", "issues_remain", "no_
 /// Returns error if the operation fails.
 pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, XsdValidationError> {
     use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
-
-    const VALID_TAGS: [&str; 2] = ["ralph-status", "ralph-summary"];
 
     let content = xml_content.trim();
 
@@ -117,20 +115,15 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
                     summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
                 }
                 other => {
+                    // Tolerant: skip unknown elements instead of rejecting.
+                    // Required elements (status) are still enforced after the loop.
                     let _ = skip_to_end(&mut reader, other);
-                    return Err(unexpected_element_error(
-                        other,
-                        &VALID_TAGS,
-                        "ralph-fix-result",
-                    ));
+                    // Continue parsing — do not return an error for unknown elements.
                 }
             },
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default();
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Err(text_outside_tags_error(trimmed, "ralph-fix-result"));
-                }
+                // Tolerant: ignore stray text between elements.
+                let _ = e;
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-fix-result" => break,
             Ok(Event::Eof) => {
@@ -172,8 +165,9 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
         });
     }
 
-    // Validate status is one of the allowed values
-    if !VALID_STATUSES.contains(&status.as_str()) {
+    // Tolerant: normalize status via synonym table (case-insensitive, synonym mapping).
+    // Returns the canonical form if the value is recognized, or None if truly ambiguous.
+    let Some(status) = normalize_enum_value(&status, &VALID_STATUSES, FIX_STATUS_SYNONYMS) else {
         return Err(XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
             element_path: "ralph-status".to_string(),
@@ -186,7 +180,7 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
             ),
             example: Some(EXAMPLE_FIX_RESULT_XML.into()),
         });
-    }
+    };
 
     Ok(FixResultElements {
         status,
@@ -197,8 +191,15 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
 /// Parsed fix result elements from valid XML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixResultElements {
-    /// The fix status (required)
-    /// Valid values: `all_issues_addressed`, `issues_remain`, `no_issues_found`
+    /// The fix status (required).
+    ///
+    /// This field always contains a canonical, normalized status value. The validator
+    /// applies tolerant parsing (see `xml_helpers::tolerant_parsing::normalize_enum_value`)
+    /// before storing the status, so this field is guaranteed to be one of the canonical
+    /// values: `"all_issues_addressed"`, `"issues_remain"`, or `"no_issues_found"`.
+    ///
+    /// Downstream consumers can safely use exact string comparison
+    /// without needing to handle synonym values or case variations.
     pub status: String,
     /// Optional summary of fixes applied
     pub summary: Option<String>,
@@ -318,6 +319,81 @@ mod tests {
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(error.expected.contains("all_issues_addressed"));
+    }
+
+    #[test]
+    fn test_tolerant_fix_status_synonym_fixed() {
+        // "fixed" should map to "all_issues_addressed"
+        let xml = r"<ralph-fix-result>
+<ralph-status>fixed</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'fixed' should be accepted as 'all_issues_addressed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "all_issues_addressed",
+            "Synonym 'fixed' should be normalized to 'all_issues_addressed'"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_fix_status_case_insensitive() {
+        // ALL_ISSUES_ADDRESSED should be accepted (case-insensitive)
+        let xml = r"<ralph-fix-result>
+<ralph-status>ALL_ISSUES_ADDRESSED</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Case-insensitive 'ALL_ISSUES_ADDRESSED' should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "all_issues_addressed",
+            "Case-insensitive 'ALL_ISSUES_ADDRESSED' should be normalized to lowercase"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_fix_skips_unknown_elements() {
+        // Extra elements alongside valid ones should be skipped
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_issues_addressed</ralph-status>
+<ralph-summary>All fixed</ralph-summary>
+<ralph-extra-info>some extra info</ralph-extra-info>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Unknown elements should be skipped, not rejected: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+    }
+
+    #[test]
+    fn test_truly_unknown_fix_status_rejected() {
+        // Ambiguous/unknown status values should still be rejected
+        let xml = r"<ralph-fix-result>
+<ralph-status>banana</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Truly unknown status 'banana' should still be rejected"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status"
+        );
     }
 
     #[test]

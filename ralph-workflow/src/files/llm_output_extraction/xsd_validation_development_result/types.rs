@@ -3,8 +3,15 @@
 /// Parsed development result elements from valid XML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DevelopmentResultElements {
-    /// The development status (required)
-    /// Valid values: completed, partial, failed
+    /// The development status (required).
+    ///
+    /// This field always contains a canonical, normalized status value. The validator
+    /// applies tolerant parsing (see `xml_helpers::tolerant_parsing::normalize_enum_value`)
+    /// before storing the status, so this field is guaranteed to be one of the canonical
+    /// values: `"completed"`, `"partial"`, or `"failed"`.
+    ///
+    /// Downstream consumers can safely use exact string comparison (e.g., `== "completed"`)
+    /// without needing to handle synonym values or case variations.
     pub status: String,
     /// Summary of what was done (required)
     pub summary: String,

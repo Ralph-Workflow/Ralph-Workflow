@@ -171,7 +171,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_unexpected_element() {
+    fn test_validate_unexpected_element_is_now_tolerated() {
+        // Unknown elements are now skipped (tolerant behavior) rather than causing errors.
+        // The validator should parse successfully and ignore the unknown element.
         let xml = r"<ralph-development-result>
 <ralph-status>completed</ralph-status>
 <ralph-summary>Test</ralph-summary>
@@ -179,9 +181,116 @@ mod tests {
 </ralph-development-result>";
 
         let result = validate_development_result_xml(xml);
-        assert!(result.is_err());
+        assert!(
+            result.is_ok(),
+            "Unknown elements should be tolerated (skipped), not rejected"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_status_synonym_done_maps_to_completed() {
+        let xml = r"<ralph-development-result>
+<ralph-status>done</ralph-status>
+<ralph-summary>Finished all work</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'done' should be accepted as 'completed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "completed",
+            "Synonym 'done' should be normalized to 'completed'"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_status_case_insensitive() {
+        let xml = r"<ralph-development-result>
+<ralph-status>Completed</ralph-status>
+<ralph-summary>Done</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Case-insensitive 'Completed' should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "completed",
+            "Case-insensitive 'Completed' should be normalized to lowercase 'completed'"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_skips_unknown_elements() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary>Test</ralph-summary>
+<ralph-analysis>extra info that should be skipped</ralph-analysis>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Unknown elements should be skipped, not rejected: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+    }
+
+    #[test]
+    fn test_tolerant_ignores_stray_text() {
+        // Stray text between elements should be tolerated
+        let xml = "<ralph-development-result>\n  some stray text  \n<ralph-status>completed</ralph-status>\n<ralph-summary>Done</ralph-summary>\n</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Stray text between elements should be tolerated: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_truly_unknown_status_still_rejected() {
+        let xml = r"<ralph-development-result>
+<ralph-status>banana</ralph-status>
+<ralph-summary>Test</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Truly unknown status 'banana' should still be rejected"
+        );
         let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-unknown"));
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_preserves_status_with_incomplete_optional_fields() {
+        // Status and summary are present, unknown optional elements are skipped
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary>Done</ralph-summary>
+<ralph-unknown-extra>some data</ralph-unknown-extra>
+<ralph-another-unknown>more data</ralph-another-unknown>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Unknown optional fields should be skipped: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert_eq!(elements.summary, "Done");
     }
 
     #[test]

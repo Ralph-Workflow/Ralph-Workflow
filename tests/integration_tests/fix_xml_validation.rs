@@ -372,7 +372,8 @@ fn test_fix_xml_duplicate_status_produces_specific_error() {
 /// Test that unexpected elements produce specific error.
 ///
 /// This verifies that when the fix agent includes unknown elements,
-/// a specific error identifies the problem and lists valid options.
+/// the validator is now tolerant and skips them rather than failing.
+/// Required elements (status) are still enforced.
 #[test]
 fn test_fix_xml_unexpected_element_provides_valid_options() {
     with_default_timeout(|| {
@@ -385,18 +386,14 @@ fn test_fix_xml_unexpected_element_provides_valid_options() {
         // Execute: Try to validate the XML
         let result = ralph_workflow::validate_fix_result_xml(xml);
 
-        // Assert: Verify validation fails with specific error about valid tags
-        assert!(result.is_err(), "Unexpected element should fail validation");
-
-        let error = result.unwrap_err();
+        // Assert: Tolerant validator skips unknown elements instead of rejecting.
+        // Required element (status) is present and valid.
         assert!(
-            error.element_path.contains("ralph-unknown-field"),
-            "Error should identify the unexpected element"
+            result.is_ok(),
+            "Tolerant validator should skip unknown elements: {result:?}"
         );
-        assert!(
-            error.suggestion.contains("ralph-status") && error.suggestion.contains("ralph-summary"),
-            "Error should list valid element names"
-        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
     });
 }
 

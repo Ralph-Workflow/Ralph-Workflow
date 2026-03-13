@@ -589,7 +589,8 @@ fn test_development_xml_duplicate_elements_produce_specific_error() {
 /// Test that unexpected elements produce specific error.
 ///
 /// This verifies that when the development agent includes unknown elements,
-/// a specific error identifies the problem and lists valid options.
+/// the validator is now tolerant and skips them rather than failing.
+/// Required elements (status, summary) are still enforced.
 #[test]
 fn test_development_xml_unexpected_element_provides_valid_options() {
     with_default_timeout(|| {
@@ -603,26 +604,23 @@ fn test_development_xml_unexpected_element_provides_valid_options() {
         // Execute: Try to validate the XML
         let result = ralph_workflow::validate_development_result_xml(xml);
 
-        // Assert: Verify validation fails with specific error about valid tags
-        assert!(result.is_err(), "Unexpected element should fail validation");
-
-        let error = result.unwrap_err();
+        // Assert: Tolerant validator skips unknown elements instead of rejecting.
+        // Required elements (status, summary) are present and valid.
         assert!(
-            error.element_path.contains("ralph-unknown-element"),
-            "Error should identify the unexpected element"
+            result.is_ok(),
+            "Tolerant validator should skip unknown elements: {result:?}"
         );
-        assert!(
-            error.suggestion.contains("ralph-status") && error.suggestion.contains("ralph-summary"),
-            "Error should list valid element names"
-        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert_eq!(elements.summary, "Some summary");
     });
 }
 
-/// Test that text inside root but outside child elements produces error.
+/// Test that text inside root but outside child elements is tolerated.
 ///
 /// This verifies that when the development agent includes loose text
-/// inside the root element but outside any child tags, a specific error
-/// identifies the problem.
+/// inside the root element but outside any child tags, the tolerant
+/// validator ignores it rather than rejecting the response.
 #[test]
 fn test_development_xml_text_outside_child_tags_produces_error() {
     with_default_timeout(|| {
@@ -636,18 +634,14 @@ Some loose text that shouldn't be here
         // Execute: Try to validate the XML
         let result = ralph_workflow::validate_development_result_xml(xml);
 
-        // Assert: Verify validation fails with text outside tags error
+        // Assert: Tolerant validator ignores stray text between elements.
+        // Required elements (status, summary) are present and valid.
         assert!(
-            result.is_err(),
-            "Text outside child tags should fail validation"
+            result.is_ok(),
+            "Tolerant validator should ignore stray text between elements: {result:?}"
         );
-
-        let error = result.unwrap_err();
-        assert!(
-            error.element_path.contains("ralph-development-result"),
-            "Error should identify the element with loose text, got: {}",
-            error.element_path
-        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
     });
 }
 
