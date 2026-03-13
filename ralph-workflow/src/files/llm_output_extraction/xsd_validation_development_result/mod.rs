@@ -19,6 +19,7 @@ pub use validation::validate_continuation_development_result_xml;
 pub use validation::validate_development_result_xml;
 
 #[cfg(test)]
+#[allow(clippy::large_stack_frames)]
 mod tests {
     use super::*;
 
@@ -551,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn test_continuation_validation_rejects_unknown_child_elements() {
+    fn test_continuation_validation_ignores_noncritical_unknown_child_elements() {
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
 <ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
@@ -562,13 +563,8 @@ mod tests {
 </ralph-development-result>";
 
         let result = validate_continuation_development_result_xml(xml);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(
-            error.error_type,
-            crate::files::llm_output_extraction::xsd_validation::XsdErrorType::UnexpectedElement
-        );
-        assert_eq!(error.element_path, "tests-run");
+        assert!(result.is_ok(), "extra bookkeeping child should be ignored");
+
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
 <ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
@@ -579,13 +575,30 @@ mod tests {
 </ralph-development-result>";
 
         let result = validate_continuation_development_result_xml(xml);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(
-            error.error_type,
-            crate::files::llm_output_extraction::xsd_validation::XsdErrorType::UnexpectedElement
+        assert!(
+            result.is_ok(),
+            "extra empty bookkeeping child should be ignored"
         );
-        assert_eq!(error.element_path, "tests-run");
+    }
+
+    #[test]
+    fn test_continuation_validation_still_rejects_critical_file_bookkeeping() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the blocker.
+2. Re-run the relevant tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+<ralph-files-changed>src/lib.rs</ralph-files-changed>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "continuation output should still reject file bookkeeping"
+        );
+        let error = result.unwrap_err();
+        assert_eq!(error.element_path, "ralph-files-changed");
     }
 
     // =========================================================================

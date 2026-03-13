@@ -145,6 +145,7 @@ pub mod handler;
 pub mod mock_effect_handler;
 pub mod orchestration;
 #[cfg(test)]
+#[allow(clippy::large_stack_frames)]
 mod orchestration_tests;
 pub mod prompt_inputs;
 pub mod state;
@@ -152,6 +153,7 @@ pub mod state_reduction;
 pub mod ui_event;
 
 #[cfg(test)]
+#[allow(clippy::large_stack_frames)]
 mod tests;
 
 pub use effect::{EffectHandler, EffectResult};

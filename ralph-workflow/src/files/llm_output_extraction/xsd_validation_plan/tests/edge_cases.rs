@@ -296,6 +296,55 @@ fn test_step_with_multiple_dependencies() {
 }
 
 #[test]
+fn test_mixed_explicit_and_implicit_step_numbers_keep_dependency_targets_stable() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test</context>
+<scope-items>
+<scope-item>item 1</scope-item>
+<scope-item>item 2</scope-item>
+<scope-item>item 3</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step type="action">
+<title>First implicit step</title>
+<content><paragraph>First</paragraph></content>
+</step>
+<step number="1" type="action">
+<title>Explicit first step</title>
+<content><paragraph>Second</paragraph></content>
+<depends-on step="1"/>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files><file path="test.rs" action="create"/></primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair><risk>R</risk><mitigation>M</mitigation></risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification><method>M</method><expected-outcome>O</expected-outcome></verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    let plan = result.unwrap();
+
+    assert_eq!(
+        plan.steps[0].number, 2,
+        "implicit step should be renumbered after explicit 1"
+    );
+    assert_eq!(plan.steps[1].number, 1);
+    assert_eq!(
+        plan.steps[1].depends_on,
+        vec![2],
+        "depends-on should continue to reference the original implicit predecessor"
+    );
+}
+
+#[test]
 fn test_step_optional_fields() {
     let xml = r#"<ralph-plan>
 <ralph-summary>

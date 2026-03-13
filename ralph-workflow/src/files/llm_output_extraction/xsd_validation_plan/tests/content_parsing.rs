@@ -290,3 +290,38 @@ pub client_id: String,
     // Verification checks
     assert_eq!(plan.verification_strategy.len(), 2);
 }
+
+#[test]
+fn test_merges_bare_content_with_content_wrapper() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test mixed content</context>
+<scope-items>
+<scope-item>item 1</scope-item>
+<scope-item>item 2</scope-item>
+<scope-item>item 3</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action">
+<title>Mixed content step</title>
+<content><paragraph>Wrapped paragraph</paragraph></content>
+<paragraph>Bare paragraph</paragraph>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files><file path="test.rs" action="create"/></primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair><risk>R</risk><mitigation>M</mitigation></risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification><method>M</method><expected-outcome>O</expected-outcome></verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(result.is_ok(), "Error: {:?}", result.err());
+    let plan = result.unwrap();
+    assert_eq!(plan.steps[0].content.elements.len(), 2);
+}

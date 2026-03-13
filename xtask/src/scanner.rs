@@ -887,7 +887,7 @@ fn scan_group_collect(
             if is_violation {
                 if check.name == "forbidden-allow-expect-scan"
                     && is_allowed_test_only_large_stack_frames_allow(
-                        file_path, &content, &line_idx, byte_start,
+                        &content, &line_idx, byte_start,
                     )
                 {
                     continue;
@@ -1084,26 +1084,14 @@ fn previous_nonempty_noncomment_line<'a>(
     None
 }
 
-fn path_has_tests_component(path: &Path) -> bool {
-    path.components()
-        .any(|component| component.as_os_str().to_str() == Some("tests"))
-}
-
 fn is_allowed_test_only_large_stack_frames_allow(
-    file_path: &Path,
     content: &[u8],
     line_idx: &LineIndex,
     byte_offset: usize,
 ) -> bool {
     let current_line = trim_ascii_whitespace(line_idx.extract_line(content, byte_offset));
-    if current_line != b"#[allow(clippy::large_stack_frames)]"
-        && current_line != b"#![allow(clippy::large_stack_frames)]"
-    {
+    if current_line != b"#[allow(clippy::large_stack_frames)]" {
         return false;
-    }
-
-    if path_has_tests_component(file_path) {
-        return true;
     }
 
     let current_line_number = line_idx.line_number(byte_offset);
@@ -2529,6 +2517,36 @@ mod tests {
         assert!(
             results[0].passed,
             "test-only #[allow(clippy::large_stack_frames)] should be exempt from forbidden-allow-expect-scan"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_rejects_file_scope_large_stack_frames_in_tests_tree() {
+        let dir = make_temp_dir("line-start-large-stack-tests-tree-inner-allow");
+        write_file(
+            &dir,
+            "tests/integration_tests/sample.rs",
+            "#![allow(clippy::large_stack_frames)]\nfn sample() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["tests"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "file-scope large_stack_frames allow should not be exempt just because the file is under tests/"
         );
 
         let _ = fs::remove_dir_all(&dir);

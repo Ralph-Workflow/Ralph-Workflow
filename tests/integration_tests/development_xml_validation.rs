@@ -340,7 +340,7 @@ fn test_continuation_development_xml_rejects_single_recovery_step() {
 }
 
 #[test]
-fn test_continuation_development_xml_rejects_unknown_child_elements() {
+fn test_continuation_development_xml_ignores_noncritical_unknown_child_elements() {
     with_default_timeout(|| {
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
@@ -353,12 +353,32 @@ fn test_continuation_development_xml_rejects_unknown_child_elements() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
+            result.is_ok(),
+            "Continuation XML should tolerate noncritical bookkeeping children when the continuation meaning stays unambiguous"
+        );
+    });
+}
+
+#[test]
+fn test_continuation_development_xml_still_rejects_critical_file_bookkeeping() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The full plan was not completed because validator changes are still missing.</ralph-summary>
+<ralph-next-steps>1. Implement the missing validator guard.
+2. Re-run the focused continuation tests.
+3. Finish the remaining plan and run repository verification.</ralph-next-steps>
+<ralph-files-changed>src/lib.rs</ralph-files-changed>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_continuation_development_result_xml(xml);
+        assert!(
             result.is_err(),
-            "Continuation XML should reject unknown child elements outside the allowed continuation contract"
+            "Continuation XML should still reject file bookkeeping that changes the continuation contract"
         );
 
         let error = result.unwrap_err();
-        assert_eq!(error.element_path, "tests-run");
+        assert_eq!(error.element_path, "ralph-files-changed");
     });
 }
 

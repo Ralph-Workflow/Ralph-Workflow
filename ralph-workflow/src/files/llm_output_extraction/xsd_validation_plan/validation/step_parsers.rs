@@ -1,5 +1,12 @@
 // Step parsing functions (parse_steps, parse_single_step, parse_file_element, parse_target_files, parse_critical_files)
 
+struct ParsedStep {
+    step: Step,
+    explicit_number: Option<u32>,
+    parse_order: u32,
+    dependency_targets: Vec<Option<u32>>,
+}
+
 /// Parse the ralph-implementation-steps section.
 ///
 /// After collecting all steps, auto-assigns sequential numbers to any steps that
@@ -14,7 +21,32 @@ fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationErr
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.name().as_ref() == b"step" => {
                 let attrs = get_attributes(&e);
+                let parse_order =
+                    u32::try_from(steps.len() + 1).map_err(|_| XsdValidationError {
+                        error_type: XsdErrorType::InvalidContent,
+                        element_path: "ralph-implementation-steps".to_string(),
+                        expected: "step count that fits within u32".to_string(),
+                        found: format!("{} steps", steps.len() + 1),
+                        suggestion: "Reduce the number of implementation steps in the plan."
+                            .to_string(),
+                        example: None,
+                    })?;
                 let step = parse_single_step(reader, &attrs)?;
+                let explicit_number = (step.number != 0).then_some(step.number);
+                let dependency_targets = step
+                    .depends_on
+                    .iter()
+                    .copied()
+                    .map(|dependency_number| {
+                        resolve_dependency_parse_order(dependency_number, &steps)
+                    })
+                    .collect();
+                let step = ParsedStep {
+                    step,
+                    explicit_number,
+                    parse_order,
+                    dependency_targets,
+                };
                 steps.push(step);
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-implementation-steps" => break,
@@ -47,21 +79,41 @@ fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationErr
 
     let mut used_numbers: std::collections::HashSet<u32> = steps
         .iter()
-        .filter_map(|step| (step.number != 0).then_some(step.number))
+        .filter_map(|step| step.explicit_number)
         .collect();
     let mut next_auto = 1u32;
     for step in &mut steps {
-        if step.number == 0 {
+        if step.step.number == 0 {
             while used_numbers.contains(&next_auto) {
                 next_auto += 1;
             }
-            step.number = next_auto;
+            step.step.number = next_auto;
             used_numbers.insert(next_auto);
             next_auto += 1;
         }
     }
 
-    Ok(steps)
+    let final_numbers_by_parse_order: std::collections::HashMap<u32, u32> = steps
+        .iter()
+        .map(|step| (step.parse_order, step.step.number))
+        .collect();
+
+    Ok(steps
+        .into_iter()
+        .map(|mut parsed| {
+            parsed.step.depends_on = parsed
+                .dependency_targets
+                .into_iter()
+                .zip(parsed.step.depends_on.iter().copied())
+                .map(|(target, original)| {
+                    target.map_or(original, |parse_order| {
+                        final_numbers_by_parse_order[&parse_order]
+                    })
+                })
+                .collect();
+            parsed.step
+        })
+        .collect())
 }
 
 /// Content element names that can appear directly under a step (without a `<content>` wrapper).
@@ -142,7 +194,7 @@ fn parse_single_step(
     let mut target_files = Vec::new();
     let mut location = None;
     let mut rationale = None;
-    let mut content = None;
+    let mut content_fragments = Vec::new();
     let mut depends_on = Vec::new();
     // Accumulator for bare content elements (no <content> wrapper)
     let mut bare_content_xml = String::new();
@@ -165,8 +217,12 @@ fn parse_single_step(
                     rationale = Some(read_text_until_end(reader, b"rationale")?);
                 }
                 b"content" => {
+                    if !bare_content_xml.is_empty() {
+                        content_fragments.push(parse_rich_content(&bare_content_xml)?);
+                        bare_content_xml.clear();
+                    }
                     let inner = read_inner_xml(reader, b"content")?;
-                    content = Some(parse_rich_content(&inner)?);
+                    content_fragments.push(parse_rich_content(&inner)?);
                 }
                 b"depends-on" => {
                     let dep_attrs = get_attributes(&e);
@@ -228,8 +284,8 @@ fn parse_single_step(
 
     // If no explicit <content> wrapper was found but bare content elements were accumulated,
     // parse those as the step content.
-    if content.is_none() && !bare_content_xml.is_empty() {
-        content = Some(parse_rich_content(&bare_content_xml)?);
+    if !bare_content_xml.is_empty() {
+        content_fragments.push(parse_rich_content(&bare_content_xml)?);
     }
 
     let title = title.ok_or_else(|| XsdValidationError {
@@ -254,14 +310,16 @@ fn parse_single_step(
         });
     }
 
-    let content = content.ok_or_else(|| XsdValidationError {
-        error_type: XsdErrorType::MissingRequiredElement,
-        element_path: format!("step[{number}]/content"),
-        expected: "<content> element".to_string(),
-        found: "no <content> found".to_string(),
-        suggestion: "Add <content><paragraph>...</paragraph></content>".to_string(),
-        example: None,
-    })?;
+    let content = (!content_fragments.is_empty())
+        .then(|| merge_rich_content_fragments(content_fragments))
+        .ok_or_else(|| XsdValidationError {
+            error_type: XsdErrorType::MissingRequiredElement,
+            element_path: format!("step[{number}]/content"),
+            expected: "<content> element".to_string(),
+            found: "no <content> found".to_string(),
+            suggestion: "Add <content><paragraph>...</paragraph></content>".to_string(),
+            example: None,
+        })?;
 
     Ok(Step {
         number,
@@ -274,6 +332,34 @@ fn parse_single_step(
         content,
         depends_on,
     })
+}
+
+fn resolve_dependency_parse_order(
+    dependency_number: u32,
+    parsed_steps: &[ParsedStep],
+) -> Option<u32> {
+    let mut matches = parsed_steps.iter().filter_map(|parsed_step| {
+        let is_match = parsed_step.explicit_number == Some(dependency_number)
+            || (parsed_step.explicit_number.is_none()
+                && parsed_step.parse_order == dependency_number);
+        is_match.then_some(parsed_step.parse_order)
+    });
+
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        None
+    } else {
+        Some(first)
+    }
+}
+
+fn merge_rich_content_fragments(fragments: Vec<RichContent>) -> RichContent {
+    RichContent {
+        elements: fragments
+            .into_iter()
+            .flat_map(|fragment| fragment.elements)
+            .collect(),
+    }
 }
 
 /// Helper to parse a single <file> element's attributes into a `TargetFile`
