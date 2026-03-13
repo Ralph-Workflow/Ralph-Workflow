@@ -1,0 +1,49 @@
+@if (!hasIterations_) {
+  <div class="iteration-empty" data-testid="iteration-empty">
+    <span class="iteration-empty__text">No iterations recorded yet</span>
+  </div>
+} @else {
+  <div class="iteration-history">
+    <div class="iteration-history__heading">Iteration History</div>
+    @for (item of displayItems_; track item.iteration.iteration_number) {
+      <div
+        class="iteration-row"
+        [class.iteration-row--active]="item.isActive"
+        data-testid="iteration-row"
+      >
+        <span class="iteration-row__number">{{ item.iteration.iteration_number }}</span>
+
+        <button
+          class="iteration-row__files"
+          data-testid="iteration-files"
+          [attr.aria-label]="'View changes for iteration ' + item.iteration.iteration_number"
+          (click)="onFilesClick(item.iteration.iteration_number)"
+        >
+          {{ item.iteration.files_changed }} {{ item.iteration.files_changed !== 1 ? 'files' : 'file' }}
+        </button>
+
+        @if (item.formattedDuration) {
+          <span class="iteration-row__duration" data-testid="iteration-duration">
+            {{ item.formattedDuration }}
+          </span>
+        }
+
+        @if (item.iteration.tests_passed !== null && item.iteration.tests_total !== null) {
+          <span class="iteration-row__tests" data-testid="iteration-tests">
+            {{ item.iteration.tests_passed }} of {{ item.iteration.tests_total }} pass
+          </span>
+        }
+
+        <span
+          class="iteration-row__status"
+          [class.iteration-row__status--complete]="item.iteration.status === 'Complete'"
+          [class.iteration-row__status--running]="item.iteration.status === 'Running'"
+          [class.iteration-row__status--failed]="item.iteration.status === 'Failed'"
+          data-testid="iteration-status"
+        >
+          {{ item.statusLabel }}
+        </span>
+      </div>
+    }
+  </div>
+}

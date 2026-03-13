@@ -12,6 +12,13 @@ import { CommonModule } from '@angular/common';
 import type { FileDiff, RunChanges } from '../../types';
 import { TauriService } from '../../services/tauri.service';
 
+/** A file diff grouped under its parent directory. */
+export interface FileGroup {
+  directory: string;
+  files: FileDiff[];
+  expanded: boolean;
+}
+
 @Component({
   selector: 'app-changes-viewer',
   standalone: true,
@@ -26,6 +33,8 @@ export class ChangesViewerComponent implements OnInit {
   readonly runId = input<string>('');
   readonly repoPath = input<string>('');
   readonly worktreePath = input<string | null>(null);
+  /** Pre-select a specific iteration filter (from iteration history click). */
+  readonly filterIteration = input<number | null>(null);
 
   readonly selectedIteration = signal<number | null>(null);
   readonly selectedFile = signal<FileDiff | null>(null);
@@ -36,6 +45,26 @@ export class ChangesViewerComponent implements OnInit {
   readonly sideBySide = signal(false);
 
   readonly files = computed(() => this.runChanges()?.files ?? []);
+
+  /** Files grouped by parent directory for the file tree layout. */
+  readonly fileGroups = computed<FileGroup[]>(() => {
+    const files = this.files();
+    const groupMap = new Map<string, FileDiff[]>();
+
+    for (const file of files) {
+      const parts = file.path.split('/');
+      const directory = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+      const group = groupMap.get(directory) ?? [];
+      group.push(file);
+      groupMap.set(directory, group);
+    }
+
+    return Array.from(groupMap.entries()).map(([directory, groupFiles]) => ({
+      directory,
+      files: groupFiles,
+      expanded: true,
+    }));
+  });
 
   readonly iterationOptions = computed((): Array<{ label: string; value: number | null }> => {
     const changes = this.runChanges();
@@ -80,6 +109,7 @@ export class ChangesViewerComponent implements OnInit {
   get repoPath_() { return this.repoPath(); }
   get isLoading_() { return this.isLoading(); }
   get files_() { return this.files(); }
+  get fileGroups_() { return this.fileGroups(); }
   get runChanges_() { return this.runChanges(); }
   get selectedIteration_() { return this.selectedIteration(); }
   get copySuccess_() { return this.copySuccess(); }
@@ -91,6 +121,14 @@ export class ChangesViewerComponent implements OnInit {
   get removedLines_() { return this.removedLines(); }
 
   constructor() {
+    // Apply filterIteration input to the selectedIteration signal on first run
+    effect(() => {
+      const filter = this.filterIteration();
+      if (filter != null) {
+        this.selectedIteration.set(filter);
+      }
+    });
+
     // React to iteration changes after the initial load
     effect(() => {
       const iteration = this.selectedIteration();
@@ -105,7 +143,9 @@ export class ChangesViewerComponent implements OnInit {
   ngOnInit(): void {
     const repoPath = this.repoPath();
     if (!repoPath) return;
-    void this.loadChanges(repoPath, this.selectedIteration());
+    // If a filterIteration was provided, use it for initial load
+    const initialIteration = this.filterIteration() ?? this.selectedIteration();
+    void this.loadChanges(repoPath, initialIteration);
   }
 
   private async loadChanges(repoPath: string, iteration: number | null): Promise<void> {

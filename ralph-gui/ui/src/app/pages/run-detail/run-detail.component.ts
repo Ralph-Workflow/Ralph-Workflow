@@ -16,6 +16,9 @@ import { RunStatusBadgeComponent } from '../../components/run-status-badge/run-s
 import { RunLogComponent } from '../../components/run-log/run-log.component';
 import { ChangesViewerComponent } from '../../components/changes-viewer/changes-viewer.component';
 import { PhaseTimelineComponent, PhaseInfo } from '../../components/phase-timeline/phase-timeline.component';
+import { IterationHistoryComponent } from '../../components/iteration-history/iteration-history.component';
+import { ReviewHistoryComponent } from '../../components/review-history/review-history.component';
+import { CancelConfirmationComponent } from '../../components/cancel-confirmation/cancel-confirmation.component';
 
 export type DetailTab = 'log' | 'changes' | 'info';
 
@@ -30,6 +33,9 @@ export type DetailTab = 'log' | 'changes' | 'info';
     RunLogComponent,
     ChangesViewerComponent,
     PhaseTimelineComponent,
+    IterationHistoryComponent,
+    ReviewHistoryComponent,
+    CancelConfirmationComponent,
     forwardRef(() => DetailRowComponent),
   ],
   templateUrl: './run-detail.component.html',
@@ -45,9 +51,18 @@ export class RunDetailComponent {
   readonly runDetail = this.runsService.runDetail;
   readonly isLoading = computed(() => this.runsService.status() === 'loading');
   readonly error = this.runsService.error;
+  readonly iterationHistory = this.runsService.iterationHistory;
+  readonly reviewHistory = this.runsService.reviewHistory;
 
   // Tab state — default depends on run status
   readonly activeTab = signal<DetailTab>('log');
+
+  // Cancel confirmation dialog state
+  readonly showCancelDialog = signal(false);
+  readonly showRetryDialog = signal(false);
+
+  // Iteration filter for changes tab (set when iterationClick is received)
+  readonly changesFilterIteration = signal<number | null>(null);
 
   readonly canResume = computed(() => {
     const detail = this.runDetail();
@@ -156,12 +171,16 @@ export class RunDetailComponent {
     }
   }
 
-  async handleCancel(): Promise<void> {
+  handleCancel(): void {
+    this.showCancelDialog.set(true);
+  }
+
+  async onCancelConfirmed(confirmed: boolean): Promise<void> {
+    this.showCancelDialog.set(false);
+    if (!confirmed) return;
+
     const detail = this.runDetail();
     if (!detail) return;
-
-    const confirmed = window.confirm('Cancel this run? Progress up to the last checkpoint will be saved.');
-    if (!confirmed) return;
 
     try {
       await this.tauri.cancelRun(detail.repo_path, detail.worktree_path);
@@ -171,12 +190,16 @@ export class RunDetailComponent {
     }
   }
 
-  async handleRetry(): Promise<void> {
+  handleRetry(): void {
+    this.showRetryDialog.set(true);
+  }
+
+  async onRetryConfirmed(confirmed: boolean): Promise<void> {
+    this.showRetryDialog.set(false);
+    if (!confirmed) return;
+
     const detail = this.runDetail();
     if (!detail) return;
-
-    const confirmed = window.confirm('Retry this run from the beginning?');
-    if (!confirmed) return;
 
     try {
       await this.tauri.resumeRalphSession(detail.run_id, detail.repo_path);
@@ -191,6 +214,16 @@ export class RunDetailComponent {
     this.activeTab.set('log');
   }
 
+  onIterationClick(iterationNumber: number): void {
+    // Switch to changes tab filtered to this iteration
+    this.changesFilterIteration.set(iterationNumber);
+    this.activeTab.set('changes');
+  }
+
+  goToConfiguration(): void {
+    void this.router.navigate(['/configuration']);
+  }
+
   get isLoadingValue(): boolean { return this.isLoading(); }
   get errorValue(): string | null { return this.error(); }
   get runDetailValue() { return this.runDetail(); }
@@ -198,6 +231,11 @@ export class RunDetailComponent {
   get activeTabValue(): DetailTab { return this.activeTab(); }
   get timelinePhasesValue(): PhaseInfo[] { return this.timelinePhases(); }
   get iterationCountValue(): string { return this.iterationCount(); }
+  get iterationHistoryValue() { return this.iterationHistory(); }
+  get reviewHistoryValue() { return this.reviewHistory(); }
+  get showCancelDialogValue(): boolean { return this.showCancelDialog(); }
+  get showRetryDialogValue(): boolean { return this.showRetryDialog(); }
+  get changesFilterIterationValue(): number | null { return this.changesFilterIteration(); }
 }
 
 @Component({

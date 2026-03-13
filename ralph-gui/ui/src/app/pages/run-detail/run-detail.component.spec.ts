@@ -6,7 +6,7 @@ import { RunDetailComponent, DetailTab } from './run-detail.component';
 import { RunsService } from '../../services/runs.service';
 import { TAURI_INVOKE } from '../../services/tauri.service';
 import { LISTEN_TOKEN } from '../../components/run-log/run-log.component';
-import type { RunDetail } from '../../types';
+import type { IterationSummary, ReviewSummary, RunDetail } from '../../types';
 
 const MOCK_COMPLETED_RUN: RunDetail = {
   run_id: 'run-completed-1',
@@ -71,11 +71,17 @@ const MOCK_RUNNING_RUN: RunDetail = {
 describe('RunDetailComponent', () => {
   let tauriInvokeSpy: jasmine.Spy;
 
-  function createRunsServiceMock(runDetailValue: RunDetail | null): {
+  function createRunsServiceMock(
+    runDetailValue: RunDetail | null,
+    iterationHistory: IterationSummary[] = [],
+    reviewHistory: ReviewSummary[] = [],
+  ): {
     runDetail: Signal<RunDetail | null>;
     status: Signal<'idle' | 'loading' | 'succeeded' | 'failed'>;
     error: Signal<string | null>;
     pollingStatus: Signal<boolean>;
+    iterationHistory: Signal<IterationSummary[]>;
+    reviewHistory: Signal<ReviewSummary[]>;
     fetchRunDetail: jasmine.Spy;
     startPolling: jasmine.Spy;
     stopPolling: jasmine.Spy;
@@ -86,6 +92,8 @@ describe('RunDetailComponent', () => {
       status: signal<'idle' | 'loading' | 'succeeded' | 'failed'>('succeeded').asReadonly(),
       error: signal<string | null>(null).asReadonly(),
       pollingStatus: signal<boolean>(false).asReadonly(),
+      iterationHistory: signal<IterationSummary[]>(iterationHistory).asReadonly(),
+      reviewHistory: signal<ReviewSummary[]>(reviewHistory).asReadonly(),
       fetchRunDetail: jasmine.createSpy('fetchRunDetail').and.returnValue(Promise.resolve()),
       startPolling: jasmine.createSpy('startPolling'),
       stopPolling: jasmine.createSpy('stopPolling'),
@@ -93,8 +101,12 @@ describe('RunDetailComponent', () => {
     };
   }
 
-  function createComponent(run: RunDetail | null) {
-    const runsServiceMock = createRunsServiceMock(run);
+  function createComponent(
+    run: RunDetail | null,
+    iterations: IterationSummary[] = [],
+    reviews: ReviewSummary[] = [],
+  ) {
+    const runsServiceMock = createRunsServiceMock(run, iterations, reviews);
 
     TestBed.configureTestingModule({
       imports: [RunDetailComponent],
@@ -251,6 +263,200 @@ describe('RunDetailComponent', () => {
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('[data-testid="tab-content-changes"]')).toBeTruthy();
       expect(el.querySelector('app-changes-viewer')).toBeTruthy();
+    }));
+  });
+
+  describe('cancel confirmation dialog', () => {
+    it('should not show cancel dialog initially for Running run', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_RUNNING_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      expect(component.showCancelDialog()).toBeFalse();
+    }));
+
+    it('should show cancel dialog when cancel button is clicked', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_RUNNING_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      component.handleCancel();
+      fixture.detectChanges();
+
+      expect(component.showCancelDialog()).toBeTrue();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="cancel-dialog"]')).toBeTruthy();
+    }));
+
+    it('should hide cancel dialog when onCancelConfirmed(false) is called', fakeAsync(async () => {
+      const { fixture, component } = createComponent(MOCK_RUNNING_RUN);
+      fixture.detectChanges();
+      tick();
+
+      component.handleCancel();
+      fixture.detectChanges();
+      expect(component.showCancelDialog()).toBeTrue();
+
+      await component.onCancelConfirmed(false);
+      fixture.detectChanges();
+      expect(component.showCancelDialog()).toBeFalse();
+    }));
+  });
+
+  describe('retry confirmation dialog', () => {
+    it('should show retry dialog when retry action is triggered', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_FAILED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      component.handleRetry();
+      fixture.detectChanges();
+
+      expect(component.showRetryDialog()).toBeTrue();
+    }));
+  });
+
+  describe('completed state metrics', () => {
+    it('should show metric cards for completed run', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_COMPLETED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="metric-iterations"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="metric-reviews"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="metric-files"]')).toBeTruthy();
+    }));
+
+    it('should show iteration count value in metric card', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_COMPLETED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const iterCard = el.querySelector('[data-testid="metric-iterations"]');
+      expect(iterCard?.textContent).toContain('3');
+    }));
+  });
+
+  describe('failed state recovery actions', () => {
+    it('should show resume action button in failed state', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_FAILED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="resume-action-btn"]')).toBeTruthy();
+    }));
+
+    it('should show retry action button in failed state', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_FAILED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="retry-action-btn"]')).toBeTruthy();
+    }));
+
+    it('should show the error message from last_error', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_FAILED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="failed-error-msg"]')?.textContent).toContain('Build failed: syntax error');
+    }));
+  });
+
+  describe('paused state hero resume', () => {
+    it('should show large paused resume button', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_PAUSED_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="paused-resume-btn"]')).toBeTruthy();
+    }));
+  });
+
+  describe('running state info', () => {
+    it('should show running state info panel', fakeAsync(() => {
+      const { fixture } = createComponent(MOCK_RUNNING_RUN);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="running-info"]')).toBeTruthy();
+    }));
+  });
+
+  describe('iteration history integration', () => {
+    const MOCK_ITERATIONS: IterationSummary[] = [
+      { iteration_number: 1, status: 'Complete', duration_secs: 120, files_changed: 3, tests_passed: 5, tests_total: 5 },
+    ];
+
+    it('should render iteration-history section when iterations are available', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_COMPLETED_RUN, MOCK_ITERATIONS);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      // Switch to info tab to see iteration history
+      component.setTab('info');
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="iteration-history-section"]')).toBeTruthy();
+    }));
+
+    it('should switch to changes tab filtered to iteration when iterationClick fires', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_RUNNING_RUN, MOCK_ITERATIONS);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      component.onIterationClick(1);
+      fixture.detectChanges();
+
+      expect(component.activeTab()).toBe('changes');
+      expect(component.changesFilterIteration()).toBe(1);
+    }));
+  });
+
+  describe('review history integration', () => {
+    const MOCK_REVIEWS: ReviewSummary[] = [
+      { review_number: 1, status: 'Complete', duration_secs: 45, findings_count: 2 },
+    ];
+
+    it('should render review-history section when reviews are available', fakeAsync(() => {
+      const { fixture, component } = createComponent(MOCK_COMPLETED_RUN, [], MOCK_REVIEWS);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      component.setTab('info');
+      fixture.detectChanges();
+
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="review-history-section"]')).toBeTruthy();
+    }));
+  });
+
+  describe('degraded state details', () => {
+    it('should show retry count when degraded_info is present', fakeAsync(() => {
+      const degradedRun: RunDetail = {
+        ...MOCK_RUNNING_RUN,
+        is_degraded: true,
+        degraded_info: { retry_count: 3, fallback_agent: 'backup-claude', reason: 'Timeout' },
+      };
+      const { fixture } = createComponent(degradedRun);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="degraded-banner"]')?.textContent).toContain('3');
     }));
   });
 });

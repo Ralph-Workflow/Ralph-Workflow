@@ -1,0 +1,30 @@
+@if (hasReviews_) {
+  <div class="review-history">
+    <div class="review-history__heading" data-testid="review-heading">Review History</div>
+    @for (item of displayItems_; track item.review.review_number) {
+      <div class="review-row" data-testid="review-row">
+        <span class="review-row__number">{{ item.review.review_number }}</span>
+
+        @if (item.formattedDuration) {
+          <span class="review-row__duration" data-testid="review-duration">
+            {{ item.formattedDuration }}
+          </span>
+        }
+
+        <span class="review-row__findings" data-testid="review-findings">
+          {{ item.findingsLabel }}
+        </span>
+
+        <span
+          class="review-row__status"
+          [class.review-row__status--complete]="item.review.status === 'Complete'"
+          [class.review-row__status--running]="item.review.status === 'Running'"
+          [class.review-row__status--failed]="item.review.status === 'Failed'"
+          data-testid="review-status"
+        >
+          {{ item.statusLabel }}
+        </span>
+      </div>
+    }
+  </div>
+}

@@ -10,10 +10,12 @@ import type {
   CreateWorktreeResult,
   EffectiveConfigWithSources,
   GuiPreferences,
+  IterationSummary,
   LaunchSessionArgs,
   PromptAnalysis,
   PromptAssistantMessage,
   PromptReviewResult,
+  ReviewSummary,
   RunChanges,
   RunDetail,
   RunStatusSummary,
@@ -311,6 +313,14 @@ export class TauriService {
       repo_path: repoPath,
       worktree_path: worktreePath,
     });
+  }
+
+  async getIterationHistory(runId: string): Promise<IterationSummary[]> {
+    return this.invoke<IterationSummary[]>('get_iteration_history', { run_id: runId });
+  }
+
+  async getReviewHistory(runId: string): Promise<ReviewSummary[]> {
+    return this.invoke<ReviewSummary[]>('get_review_history', { run_id: runId });
   }
 
   // --- GUI Preferences ---

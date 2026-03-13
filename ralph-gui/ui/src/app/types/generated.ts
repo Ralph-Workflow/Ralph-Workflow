@@ -104,6 +104,12 @@ export interface RunDetail {
   iteration_count?: number;
   last_error?: string | null;
   is_degraded?: boolean;
+  phase_durations?: PhaseDuration[];
+  degraded_info?: DegradedInfo | null;
+  total_duration_secs?: number | null;
+  total_files_changed?: number;
+  total_tests_passed?: number | null;
+  review_count?: number;
 }
 
 export interface AgentProfile {
@@ -264,6 +270,42 @@ export interface TemplateInfo {
   description: string;
   content: string;
   tags: string[];
+}
+
+// Iteration history types
+export type IterationStatus = 'Complete' | 'Running' | 'Failed';
+
+export interface IterationSummary {
+  iteration_number: number;
+  status: IterationStatus;
+  duration_secs: number | null;
+  files_changed: number;
+  tests_passed: number | null;
+  tests_total: number | null;
+}
+
+// Review history types
+export type ReviewStatus = 'Complete' | 'Running' | 'Failed';
+
+export interface ReviewSummary {
+  review_number: number;
+  status: ReviewStatus;
+  duration_secs: number | null;
+  findings_count: number;
+}
+
+// Phase duration info for timeline
+export interface PhaseDuration {
+  phase_name: string;
+  duration_secs: number | null;
+  status: string;
+}
+
+// Degradation details
+export interface DegradedInfo {
+  retry_count: number;
+  fallback_agent: string | null;
+  reason: string | null;
 }
 
 // Config source tracking (for Effective tab source indicators)

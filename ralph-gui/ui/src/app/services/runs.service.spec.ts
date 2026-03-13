@@ -1,7 +1,7 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { RunsService } from './runs.service';
 import { TauriService } from './tauri.service';
-import type { RunDetail, RunStatusSummary } from '../types';
+import type { IterationSummary, ReviewSummary, RunDetail, RunStatusSummary } from '../types';
 
 describe('RunsService', () => {
   let service: RunsService;
@@ -31,7 +31,7 @@ describe('RunsService', () => {
   beforeEach(() => {
     mockTauriService = jasmine.createSpyObj(
       'TauriService',
-      ['getRunDetail', 'getResumableRuns', 'getRunStatus', 'notifyRunStatusChange'],
+      ['getRunDetail', 'getResumableRuns', 'getRunStatus', 'notifyRunStatusChange', 'getIterationHistory', 'getReviewHistory'],
     );
 
     TestBed.configureTestingModule({
@@ -50,6 +50,8 @@ describe('RunsService', () => {
     it('should fetch run detail and update signal', async () => {
       const mockDetail = createMockRunDetail();
       mockTauriService.getRunDetail.and.resolveTo(mockDetail);
+      mockTauriService.getIterationHistory.and.resolveTo([]);
+      mockTauriService.getReviewHistory.and.resolveTo([]);
       await service.fetchRunDetail('run-123');
 
       expect(mockTauriService.getRunDetail).toHaveBeenCalledWith('run-123');
@@ -63,6 +65,75 @@ describe('RunsService', () => {
 
       expect(service.status()).toBe('failed');
       expect(service.error()).toBe('Failed to fetch');
+    });
+
+    it('should also fetch iteration and review history on success', async () => {
+      const mockDetail = createMockRunDetail();
+      const mockIterations: IterationSummary[] = [
+        { iteration_number: 1, status: 'Complete', duration_secs: 120, files_changed: 3, tests_passed: 5, tests_total: 5 },
+      ];
+      const mockReviews: ReviewSummary[] = [
+        { review_number: 1, status: 'Complete', duration_secs: 45, findings_count: 2 },
+      ];
+      mockTauriService.getRunDetail.and.resolveTo(mockDetail);
+      mockTauriService.getIterationHistory.and.resolveTo(mockIterations);
+      mockTauriService.getReviewHistory.and.resolveTo(mockReviews);
+
+      await service.fetchRunDetail('run-123');
+      // Wait for parallel promises to settle
+      await Promise.resolve();
+
+      expect(mockTauriService.getIterationHistory).toHaveBeenCalledWith('run-123');
+      expect(mockTauriService.getReviewHistory).toHaveBeenCalledWith('run-123');
+    });
+  });
+
+  describe('fetchIterationHistory', () => {
+    it('should update iterationHistory signal on success', async () => {
+      const mockIterations: IterationSummary[] = [
+        { iteration_number: 1, status: 'Complete', duration_secs: 60, files_changed: 2, tests_passed: 3, tests_total: 3 },
+        { iteration_number: 2, status: 'Running', duration_secs: null, files_changed: 0, tests_passed: null, tests_total: null },
+      ];
+      mockTauriService.getIterationHistory.and.resolveTo(mockIterations);
+
+      await service.fetchIterationHistory('run-abc');
+
+      expect(service.iterationHistory()).toEqual(mockIterations);
+    });
+
+    it('should set iterationHistory to empty array on error', async () => {
+      mockTauriService.getIterationHistory.and.rejectWith(new Error('Not found'));
+      service.iterationHistory.set([
+        { iteration_number: 1, status: 'Complete', duration_secs: null, files_changed: 0, tests_passed: null, tests_total: null },
+      ]);
+
+      await service.fetchIterationHistory('run-abc');
+
+      expect(service.iterationHistory()).toEqual([]);
+    });
+  });
+
+  describe('fetchReviewHistory', () => {
+    it('should update reviewHistory signal on success', async () => {
+      const mockReviews: ReviewSummary[] = [
+        { review_number: 1, status: 'Complete', duration_secs: 30, findings_count: 1 },
+      ];
+      mockTauriService.getReviewHistory.and.resolveTo(mockReviews);
+
+      await service.fetchReviewHistory('run-abc');
+
+      expect(service.reviewHistory()).toEqual(mockReviews);
+    });
+
+    it('should set reviewHistory to empty array on error', async () => {
+      mockTauriService.getReviewHistory.and.rejectWith(new Error('Not found'));
+      service.reviewHistory.set([
+        { review_number: 1, status: 'Complete', duration_secs: null, findings_count: 0 },
+      ]);
+
+      await service.fetchReviewHistory('run-abc');
+
+      expect(service.reviewHistory()).toEqual([]);
     });
   });
 

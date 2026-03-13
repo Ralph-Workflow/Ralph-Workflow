@@ -108,5 +108,45 @@ describe('TauriService', () => {
       const result = service.getRunLogs('/repo', null, 100);
       expect(result).toBeInstanceOf(Promise);
     });
+
+    it('should have getIterationHistory method', () => {
+      expect(service.getIterationHistory).toBeDefined();
+    });
+
+    it('should have getReviewHistory method', () => {
+      expect(service.getReviewHistory).toBeDefined();
+    });
+  });
+
+  describe('new invoke wrappers', () => {
+    let capturedCmd: string;
+    let capturedArgs: Record<string, unknown>;
+
+    beforeEach(() => {
+      TestBed.resetTestingModule();
+      const capturingInvoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        capturedCmd = cmd;
+        capturedArgs = args ?? {};
+        return [] as unknown as T;
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: capturingInvoke },
+        ],
+      });
+      service = TestBed.inject(TauriService);
+    });
+
+    it('getIterationHistory should invoke get_iteration_history with run_id', async () => {
+      await service.getIterationHistory('run-abc-123');
+      expect(capturedCmd).toBe('get_iteration_history');
+      expect(capturedArgs['run_id']).toBe('run-abc-123');
+    });
+
+    it('getReviewHistory should invoke get_review_history with run_id', async () => {
+      await service.getReviewHistory('run-xyz-456');
+      expect(capturedCmd).toBe('get_review_history');
+      expect(capturedArgs['run_id']).toBe('run-xyz-456');
+    });
   });
 });

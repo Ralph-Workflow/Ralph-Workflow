@@ -180,4 +180,79 @@ describe('PhaseTimelineComponent', () => {
       expect(nodes.length).toBe(0);
     });
   });
+
+  describe('phase-specific colors in dot style', () => {
+    it('should use purple color (--phase-plan) for Plan phase when completed', () => {
+      const { component } = createComponent([
+        { name: 'Plan', status: 'completed' },
+      ]);
+      const planPhase: PhaseInfo = { name: 'Plan', status: 'completed' };
+      const style = component.getDotStyle(planPhase);
+      // Should reference phase-plan CSS variable
+      expect(style).toContain('var(--phase-plan)');
+    });
+
+    it('should use blue color (--phase-develop) for Develop phase when active', () => {
+      const { component } = createComponent([
+        { name: 'Develop', status: 'active' },
+      ]);
+      const developPhase: PhaseInfo = { name: 'Develop', status: 'active' };
+      const style = component.getDotStyle(developPhase);
+      expect(style).toContain('var(--phase-develop)');
+    });
+
+    it('should use amber color (--phase-review) for Review phase when completed', () => {
+      const { component } = createComponent([
+        { name: 'Review', status: 'completed' },
+      ]);
+      const reviewPhase: PhaseInfo = { name: 'Review', status: 'completed' };
+      const style = component.getDotStyle(reviewPhase);
+      expect(style).toContain('var(--phase-review)');
+    });
+
+    it('should use green color (--phase-commit) for Commit phase when completed', () => {
+      const { component } = createComponent([
+        { name: 'Commit', status: 'completed' },
+      ]);
+      const commitPhase: PhaseInfo = { name: 'Commit', status: 'completed' };
+      const style = component.getDotStyle(commitPhase);
+      expect(style).toContain('var(--phase-commit)');
+    });
+
+    it('should use muted color for pending phases', () => {
+      const { component } = createComponent([
+        { name: 'Plan', status: 'pending' },
+      ]);
+      const pendingPhase: PhaseInfo = { name: 'Plan', status: 'pending' };
+      const style = component.getDotStyle(pendingPhase);
+      // Pending phases use default muted colors, not phase-specific
+      expect(style).toContain('var(--border-default)');
+    });
+  });
+
+  describe('connector line styles', () => {
+    it('should show done connector for completed phase', () => {
+      const { fixture } = createComponent([
+        { name: 'Plan', status: 'completed' },
+        { name: 'Develop', status: 'active' },
+        { name: 'Review', status: 'pending' },
+        { name: 'Commit', status: 'pending' },
+      ]);
+      const el: HTMLElement = fixture.nativeElement;
+      const connectors = el.querySelectorAll('.phase-timeline__connector');
+      expect(connectors[0]?.classList).toContain('phase-timeline__connector--done');
+    });
+
+    it('should show active connector for active phase', () => {
+      const { fixture } = createComponent([
+        { name: 'Plan', status: 'completed' },
+        { name: 'Develop', status: 'active' },
+        { name: 'Review', status: 'pending' },
+        { name: 'Commit', status: 'pending' },
+      ]);
+      const el: HTMLElement = fixture.nativeElement;
+      const connectors = el.querySelectorAll('.phase-timeline__connector');
+      expect(connectors[1]?.classList).toContain('phase-timeline__connector--active');
+    });
+  });
 });

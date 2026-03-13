@@ -52,6 +52,8 @@ fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         run_management::unsubscribe_run_logs,
         run_management::get_run_changes,
         run_management::cancel_run,
+        run_management::get_iteration_history,
+        run_management::get_review_history,
         // Session prompt commands
         session_prompt::read_prompt_file,
         session_prompt::save_prompt_file,
@@ -101,6 +103,12 @@ fn register_extra_types(
         .typ::<ralph_gui::commands::run_management::RunLogLine>()
         .typ::<ralph_gui::commands::run_management::FileDiff>()
         .typ::<ralph_gui::commands::run_management::RunChanges>()
+        .typ::<ralph_gui::commands::run_management::IterationSummary>()
+        .typ::<ralph_gui::commands::run_management::IterationStatus>()
+        .typ::<ralph_gui::commands::run_management::ReviewSummary>()
+        .typ::<ralph_gui::commands::run_management::ReviewStatus>()
+        .typ::<ralph_gui::commands::run_management::PhaseDuration>()
+        .typ::<ralph_gui::commands::run_management::DegradedInfo>()
         .typ::<ralph_gui::commands::session::SessionSummary>()
         .typ::<ralph_gui::commands::session::CreateSessionRequest>()
         .typ::<ralph_gui::commands::session::BatchOperationResult>()

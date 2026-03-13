@@ -218,6 +218,42 @@ describe('ChangesViewerComponent', () => {
     }));
   });
 
+  describe('file tree grouping by directory', () => {
+    it('should group files by their parent directory', fakeAsync(async () => {
+      const { fixture, component } = createComponent('run-1', '/repo');
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      // Both files are in 'src/' directory
+      const groups = component.fileGroups();
+      expect(groups.length).toBe(1);
+      expect(groups[0]?.directory).toBe('src');
+    }));
+
+    it('should include all files in the correct group', fakeAsync(async () => {
+      const { fixture, component } = createComponent('run-1', '/repo');
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      const groups = component.fileGroups();
+      expect(groups[0]?.files.length).toBe(2);
+    }));
+  });
+
+  describe('filterIteration input', () => {
+    it('should pre-select filter iteration when filterIteration input is set', fakeAsync(async () => {
+      const { fixture, component } = createComponent('run-1', '/repo');
+      fixture.componentRef.setInput('filterIteration', 2);
+      fixture.detectChanges();
+      tick();
+      fixture.detectChanges();
+
+      expect(component.selectedIteration()).toBe(2);
+    }));
+  });
+
   describe('unified/side-by-side toggle', () => {
     it('should start in unified view mode (sideBySide = false)', () => {
       const { fixture, component } = createComponent('run-1', '/repo');

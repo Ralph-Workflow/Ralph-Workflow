@@ -6,6 +6,60 @@ use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
+/// Status of a single developer iteration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "PascalCase")]
+pub enum IterationStatus {
+    Complete,
+    Running,
+    Failed,
+}
+
+/// Summary of a single developer iteration.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct IterationSummary {
+    pub iteration_number: u32,
+    pub status: IterationStatus,
+    pub duration_secs: Option<f64>,
+    pub files_changed: u32,
+    pub tests_passed: Option<u32>,
+    pub tests_total: Option<u32>,
+}
+
+/// Status of a single review cycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "PascalCase")]
+pub enum ReviewStatus {
+    Complete,
+    Running,
+    Failed,
+}
+
+/// Summary of a single review cycle.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ReviewSummary {
+    pub review_number: u32,
+    pub status: ReviewStatus,
+    pub duration_secs: Option<f64>,
+    pub findings_count: u32,
+}
+
+/// Phase duration info for the timeline.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct PhaseDuration {
+    pub phase_name: String,
+    pub duration_secs: Option<f64>,
+    pub status: String,
+}
+
+/// Detailed degradation info.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct DegradedInfo {
+    pub retry_count: u32,
+    pub fallback_agent: Option<String>,
+    pub reason: Option<String>,
+}
+
 /// Current status of a Ralph run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "PascalCase")]
@@ -41,6 +95,30 @@ pub struct RunDetail {
     /// fallback agents used, etc.). Defaults to false for older checkpoints.
     #[serde(default)]
     pub is_degraded: bool,
+    /// Per-phase duration info for the timeline visualization.
+    /// Defaults to empty vec for checkpoints that pre-date this field.
+    #[serde(default)]
+    pub phase_durations: Vec<PhaseDuration>,
+    /// Detailed degradation info when `is_degraded` is true.
+    /// Defaults to None for older checkpoints.
+    #[serde(default)]
+    pub degraded_info: Option<DegradedInfo>,
+    /// Total run duration in seconds from `created_at` to last checkpoint or now.
+    /// Defaults to None for older checkpoints.
+    #[serde(default)]
+    pub total_duration_secs: Option<f64>,
+    /// Total files changed across all iterations.
+    /// Defaults to 0 for older checkpoints.
+    #[serde(default)]
+    pub total_files_changed: u32,
+    /// Total tests passed from the most recent iteration with test data.
+    /// Defaults to None for older checkpoints.
+    #[serde(default)]
+    pub total_tests_passed: Option<u32>,
+    /// Number of completed reviews.
+    /// Defaults to 0 for older checkpoints.
+    #[serde(default)]
+    pub review_count: u32,
 }
 
 /// Summary of run status for a repository/worktree context.
@@ -185,6 +263,25 @@ pub fn collect_resumable_runs(paths: &[std::path::PathBuf]) -> Vec<RunDetail> {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
+        let phase_durations = parse_phase_durations_from_checkpoint(&checkpoint);
+        let degraded_info = parse_degraded_info_from_checkpoint(&checkpoint);
+        let total_files_changed = checkpoint
+            .get("total_files_changed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(0u32);
+        let total_tests_passed = checkpoint
+            .get("total_tests_passed")
+            .and_then(serde_json::Value::as_u64)
+            .map(|v| v.try_into().unwrap_or(0u32));
+        let review_count = checkpoint
+            .get("review_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(0u32);
+
         results.push(RunDetail {
             run_id,
             status: RunStatus::Paused,
@@ -198,6 +295,12 @@ pub fn collect_resumable_runs(paths: &[std::path::PathBuf]) -> Vec<RunDetail> {
             iteration_count,
             last_error,
             is_degraded,
+            phase_durations,
+            degraded_info,
+            total_duration_secs: None,
+            total_files_changed,
+            total_tests_passed,
+            review_count,
         });
     }
 
@@ -295,6 +398,25 @@ fn find_run_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<RunDe
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
+        let phase_durations = parse_phase_durations_from_checkpoint(&checkpoint);
+        let degraded_info = parse_degraded_info_from_checkpoint(&checkpoint);
+        let total_files_changed = checkpoint
+            .get("total_files_changed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(0u32);
+        let total_tests_passed = checkpoint
+            .get("total_tests_passed")
+            .and_then(serde_json::Value::as_u64)
+            .map(|v| v.try_into().unwrap_or(0u32));
+        let review_count = checkpoint
+            .get("review_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(0u32);
+
         return Some(RunDetail {
             run_id: run_id.to_string(),
             status,
@@ -308,9 +430,109 @@ fn find_run_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<RunDe
             iteration_count,
             last_error,
             is_degraded,
+            phase_durations,
+            degraded_info,
+            total_duration_secs: None,
+            total_files_changed,
+            total_tests_passed,
+            review_count,
         });
     }
     None
+}
+
+/// Parse phase durations from a checkpoint JSON value.
+fn parse_phase_durations_from_checkpoint(checkpoint: &serde_json::Value) -> Vec<PhaseDuration> {
+    if let Some(arr) = checkpoint.get("phase_history").and_then(|v| v.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|item| {
+                let phase_name = item
+                    .get("phase_name")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)?;
+                let duration_secs = item
+                    .get("duration_secs")
+                    .and_then(serde_json::Value::as_f64);
+                let status = item
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("completed")
+                    .to_string();
+                Some(PhaseDuration {
+                    phase_name,
+                    duration_secs,
+                    status,
+                })
+            })
+            .collect();
+    }
+
+    // If no phase_history, synthesize from current_phase
+    let current_phase = checkpoint
+        .get("phase")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown");
+
+    let phases = ["Plan", "Develop", "Review", "Commit"];
+    let phase_order_lower = ["plan", "develop", "review", "commit"];
+    let current_lower = current_phase.to_lowercase();
+    let current_idx = phase_order_lower
+        .iter()
+        .position(|p| current_lower.contains(p));
+
+    phases
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| {
+            let status = current_idx.map_or_else(
+                || "pending".to_string(),
+                |ci| match idx.cmp(&ci) {
+                    std::cmp::Ordering::Less => "completed".to_string(),
+                    std::cmp::Ordering::Equal => "active".to_string(),
+                    std::cmp::Ordering::Greater => "pending".to_string(),
+                },
+            );
+            PhaseDuration {
+                phase_name: (*name).to_string(),
+                duration_secs: None,
+                status,
+            }
+        })
+        .collect()
+}
+
+/// Parse degraded info from a checkpoint JSON value.
+fn parse_degraded_info_from_checkpoint(checkpoint: &serde_json::Value) -> Option<DegradedInfo> {
+    let is_degraded = checkpoint
+        .get("is_degraded")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    if !is_degraded {
+        return None;
+    }
+
+    let retry_count = checkpoint
+        .get("retry_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+        .try_into()
+        .unwrap_or(0u32);
+    let fallback_agent = checkpoint
+        .get("fallback_agent")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let reason = checkpoint
+        .get("degraded_reason")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    Some(DegradedInfo {
+        retry_count,
+        fallback_agent,
+        reason,
+    })
 }
 
 /// Get detailed information for a specific run by scanning all known repo paths.
@@ -714,6 +936,227 @@ pub fn get_run_changes(
         total_deletions,
         iteration,
     })
+}
+
+/// Get iteration history for a specific run.
+///
+/// Reads the iterations array from checkpoint.json. If the array is absent (older
+/// checkpoint format), synthesizes a single entry from the scalar `iteration_count`.
+///
+/// # Errors
+///
+/// Returns an error if the checkpoint cannot be read.
+#[tauri::command]
+#[specta::specta]
+pub fn get_iteration_history(
+    run_id: String,
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<Vec<IterationSummary>, String> {
+    let known_repos = {
+        let locked = state
+            .lock()
+            .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+        locked.known_repos.clone()
+    };
+
+    for repo_path in &known_repos {
+        let checkpoint_file = repo_path.join(".agent").join("checkpoint.json");
+        if !checkpoint_file.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&checkpoint_file) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let checkpoint_run_id = checkpoint
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if checkpoint_run_id != run_id {
+            continue;
+        }
+
+        return Ok(parse_iteration_history(&checkpoint));
+    }
+
+    Err(format!("Run not found: {run_id}"))
+}
+
+/// Parse iteration history from a checkpoint JSON value.
+///
+/// If a detailed `iterations` array is present, returns that. Otherwise,
+/// synthesizes entries from the scalar `iteration_count`.
+fn parse_iteration_history(checkpoint: &serde_json::Value) -> Vec<IterationSummary> {
+    // Try to parse a detailed iterations array first
+    if let Some(arr) = checkpoint.get("iterations").and_then(|v| v.as_array()) {
+        let mut result = Vec::with_capacity(arr.len());
+        for (idx, item) in arr.iter().enumerate() {
+            let fallback_number = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+            let iteration_number = item
+                .get("iteration_number")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_else(|| u64::from(fallback_number))
+                .try_into()
+                .unwrap_or(fallback_number);
+
+            let status_str = item
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Complete");
+            let status = match status_str {
+                "Running" => IterationStatus::Running,
+                "Failed" => IterationStatus::Failed,
+                _ => IterationStatus::Complete,
+            };
+
+            let duration_secs = item
+                .get("duration_secs")
+                .and_then(serde_json::Value::as_f64);
+
+            let files_changed = item
+                .get("files_changed")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0)
+                .try_into()
+                .unwrap_or(0u32);
+
+            let tests_passed = item
+                .get("tests_passed")
+                .and_then(serde_json::Value::as_u64)
+                .map(|v| v.try_into().unwrap_or(0u32));
+
+            let tests_total = item
+                .get("tests_total")
+                .and_then(serde_json::Value::as_u64)
+                .map(|v| v.try_into().unwrap_or(0u32));
+
+            result.push(IterationSummary {
+                iteration_number,
+                status,
+                duration_secs,
+                files_changed,
+                tests_passed,
+                tests_total,
+            });
+        }
+        return result;
+    }
+
+    // Fall back: synthesize from scalar iteration_count
+    let count: u32 = checkpoint
+        .get("iteration_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0)
+        .try_into()
+        .unwrap_or(0u32);
+
+    (1..=count)
+        .map(|n| IterationSummary {
+            iteration_number: n,
+            status: IterationStatus::Complete,
+            duration_secs: None,
+            files_changed: 0,
+            tests_passed: None,
+            tests_total: None,
+        })
+        .collect()
+}
+
+/// Get review history for a specific run.
+///
+/// Reads the reviews array from checkpoint.json. Returns an empty vec when
+/// no review data is available (older format or run not yet in review phase).
+///
+/// # Errors
+///
+/// Returns an error if the checkpoint cannot be read.
+#[tauri::command]
+#[specta::specta]
+pub fn get_review_history(
+    run_id: String,
+    state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<Vec<ReviewSummary>, String> {
+    let known_repos = {
+        let locked = state
+            .lock()
+            .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
+        locked.known_repos.clone()
+    };
+
+    for repo_path in &known_repos {
+        let checkpoint_file = repo_path.join(".agent").join("checkpoint.json");
+        if !checkpoint_file.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&checkpoint_file) else {
+            continue;
+        };
+        let Ok(checkpoint) = serde_json::from_str::<serde_json::Value>(&content) else {
+            continue;
+        };
+        let checkpoint_run_id = checkpoint
+            .get("run_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if checkpoint_run_id != run_id {
+            continue;
+        }
+
+        return Ok(parse_review_history(&checkpoint));
+    }
+
+    Err(format!("Run not found: {run_id}"))
+}
+
+/// Parse review history from a checkpoint JSON value.
+///
+/// Returns an empty vec if no reviews array is present.
+fn parse_review_history(checkpoint: &serde_json::Value) -> Vec<ReviewSummary> {
+    let Some(arr) = checkpoint.get("reviews").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut result = Vec::with_capacity(arr.len());
+    for (idx, item) in arr.iter().enumerate() {
+        let fallback_number = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+        let review_number = item
+            .get("review_number")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_else(|| u64::from(fallback_number))
+            .try_into()
+            .unwrap_or(fallback_number);
+
+        let status_str = item
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Complete");
+        let status = match status_str {
+            "Running" => ReviewStatus::Running,
+            "Failed" => ReviewStatus::Failed,
+            _ => ReviewStatus::Complete,
+        };
+
+        let duration_secs = item
+            .get("duration_secs")
+            .and_then(serde_json::Value::as_f64);
+
+        let findings_count = item
+            .get("findings_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(0u32);
+
+        result.push(ReviewSummary {
+            review_number,
+            status,
+            duration_secs,
+            findings_count,
+        });
+    }
+    result
 }
 
 /// Cancel an active run by removing its lock file.
@@ -1514,5 +1957,323 @@ diff --git a/src/bar.rs b/src/bar.rs
             result.is_ok(),
             "Unsubscribing a non-existent run_id should return Ok"
         );
+    }
+
+    // --- IterationSummary deserialization tests ---
+
+    #[test]
+    fn test_iteration_summary_deserializes_with_all_fields() {
+        let json = serde_json::json!({
+            "iteration_number": 2,
+            "status": "Complete",
+            "duration_secs": 252.5,
+            "files_changed": 5,
+            "tests_passed": 8,
+            "tests_total": 10
+        });
+        let summary: IterationSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(summary.iteration_number, 2);
+        assert_eq!(summary.status, IterationStatus::Complete);
+        assert_eq!(summary.duration_secs, Some(252.5));
+        assert_eq!(summary.files_changed, 5);
+        assert_eq!(summary.tests_passed, Some(8));
+        assert_eq!(summary.tests_total, Some(10));
+    }
+
+    #[test]
+    fn test_iteration_summary_deserializes_with_missing_optional_fields() {
+        let json = serde_json::json!({
+            "iteration_number": 1,
+            "status": "Running",
+            "duration_secs": null,
+            "files_changed": 0,
+            "tests_passed": null,
+            "tests_total": null
+        });
+        let summary: IterationSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(summary.iteration_number, 1);
+        assert_eq!(summary.status, IterationStatus::Running);
+        assert!(summary.duration_secs.is_none());
+        assert!(summary.tests_passed.is_none());
+        assert!(summary.tests_total.is_none());
+    }
+
+    #[test]
+    fn test_iteration_status_deserializes_correctly() {
+        let complete: IterationStatus = serde_json::from_str("\"Complete\"").unwrap();
+        assert_eq!(complete, IterationStatus::Complete);
+
+        let running: IterationStatus = serde_json::from_str("\"Running\"").unwrap();
+        assert_eq!(running, IterationStatus::Running);
+
+        let failed: IterationStatus = serde_json::from_str("\"Failed\"").unwrap();
+        assert_eq!(failed, IterationStatus::Failed);
+    }
+
+    // --- ReviewSummary deserialization tests ---
+
+    #[test]
+    fn test_review_summary_deserializes_with_all_fields() {
+        let json = serde_json::json!({
+            "review_number": 1,
+            "status": "Complete",
+            "duration_secs": 45.0,
+            "findings_count": 3
+        });
+        let summary: ReviewSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(summary.review_number, 1);
+        assert_eq!(summary.status, ReviewStatus::Complete);
+        assert_eq!(summary.duration_secs, Some(45.0));
+        assert_eq!(summary.findings_count, 3);
+    }
+
+    #[test]
+    fn test_review_summary_deserializes_with_missing_optional_fields() {
+        let json = serde_json::json!({
+            "review_number": 2,
+            "status": "Running",
+            "duration_secs": null,
+            "findings_count": 1
+        });
+        let summary: ReviewSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(summary.review_number, 2);
+        assert_eq!(summary.status, ReviewStatus::Running);
+        assert!(summary.duration_secs.is_none());
+    }
+
+    // --- parse_iteration_history tests ---
+
+    #[test]
+    fn test_parse_iteration_history_from_detailed_array() {
+        let checkpoint = serde_json::json!({
+            "run_id": "test",
+            "iterations": [
+                {
+                    "iteration_number": 1,
+                    "status": "Complete",
+                    "duration_secs": 120.0,
+                    "files_changed": 3,
+                    "tests_passed": 5,
+                    "tests_total": 5
+                },
+                {
+                    "iteration_number": 2,
+                    "status": "Running",
+                    "duration_secs": null,
+                    "files_changed": 0,
+                    "tests_passed": null,
+                    "tests_total": null
+                }
+            ]
+        });
+        let history = parse_iteration_history(&checkpoint);
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].iteration_number, 1);
+        assert_eq!(history[0].status, IterationStatus::Complete);
+        assert_eq!(history[0].duration_secs, Some(120.0));
+        assert_eq!(history[0].files_changed, 3);
+        assert_eq!(history[1].iteration_number, 2);
+        assert_eq!(history[1].status, IterationStatus::Running);
+    }
+
+    #[test]
+    fn test_parse_iteration_history_synthesizes_from_scalar_count() {
+        let checkpoint = serde_json::json!({
+            "run_id": "test",
+            "iteration_count": 3
+        });
+        let history = parse_iteration_history(&checkpoint);
+        assert_eq!(
+            history.len(),
+            3,
+            "Should synthesize 3 entries from iteration_count"
+        );
+        assert_eq!(history[0].iteration_number, 1);
+        assert_eq!(history[0].status, IterationStatus::Complete);
+        assert!(
+            history[0].duration_secs.is_none(),
+            "Synthesized entries have no duration"
+        );
+        assert_eq!(history[2].iteration_number, 3);
+    }
+
+    #[test]
+    fn test_parse_iteration_history_returns_empty_when_no_data() {
+        let checkpoint = serde_json::json!({ "run_id": "test" });
+        let history = parse_iteration_history(&checkpoint);
+        assert!(
+            history.is_empty(),
+            "Should return empty when no iteration data"
+        );
+    }
+
+    // --- parse_review_history tests ---
+
+    #[test]
+    fn test_parse_review_history_from_reviews_array() {
+        let checkpoint = serde_json::json!({
+            "run_id": "test",
+            "reviews": [
+                {
+                    "review_number": 1,
+                    "status": "Complete",
+                    "duration_secs": 45.0,
+                    "findings_count": 2
+                }
+            ]
+        });
+        let history = parse_review_history(&checkpoint);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].review_number, 1);
+        assert_eq!(history[0].status, ReviewStatus::Complete);
+        assert_eq!(history[0].findings_count, 2);
+    }
+
+    #[test]
+    fn test_parse_review_history_returns_empty_when_no_reviews() {
+        let checkpoint = serde_json::json!({ "run_id": "test" });
+        let history = parse_review_history(&checkpoint);
+        assert!(
+            history.is_empty(),
+            "Should return empty when no reviews in checkpoint"
+        );
+    }
+
+    // --- RunDetail new fields backward compat tests ---
+
+    #[test]
+    fn test_run_detail_new_fields_default_correctly_for_old_checkpoints() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        // Old checkpoint without new fields
+        let checkpoint = serde_json::json!({
+            "run_id": "compat-run-1",
+            "phase": "Development",
+            "timestamp": "2024-01-01 10:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let repos = vec![dir.path().to_path_buf()];
+        let detail = find_run_in_repos("compat-run-1", &repos).unwrap();
+
+        assert_eq!(detail.total_files_changed, 0, "Should default to 0");
+        assert!(
+            detail.total_tests_passed.is_none(),
+            "Should default to None"
+        );
+        assert_eq!(detail.review_count, 0, "Should default to 0");
+        assert!(
+            detail.total_duration_secs.is_none(),
+            "Should default to None"
+        );
+        assert!(
+            !detail.phase_durations.is_empty(),
+            "Should synthesize phase_durations from current_phase"
+        );
+    }
+
+    #[test]
+    fn test_run_detail_parses_new_fields_from_checkpoint() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let checkpoint = serde_json::json!({
+            "run_id": "new-fields-run-1",
+            "phase": "Development",
+            "timestamp": "2024-01-01 10:00:00",
+            "developer_agent": "claude",
+            "reviewer_agent": "codex",
+            "total_files_changed": 7,
+            "total_tests_passed": 18,
+            "review_count": 2,
+            "is_degraded": true,
+            "retry_count": 3,
+            "fallback_agent": "codex-fallback",
+            "degraded_reason": "Max retries reached"
+        });
+        std::fs::write(
+            agent_dir.join("checkpoint.json"),
+            serde_json::to_string(&checkpoint).unwrap(),
+        )
+        .unwrap();
+
+        let repos = vec![dir.path().to_path_buf()];
+        let detail = find_run_in_repos("new-fields-run-1", &repos).unwrap();
+
+        assert_eq!(detail.total_files_changed, 7);
+        assert_eq!(detail.total_tests_passed, Some(18));
+        assert_eq!(detail.review_count, 2);
+        assert!(detail.degraded_info.is_some());
+        let degraded = detail.degraded_info.unwrap();
+        assert_eq!(degraded.retry_count, 3);
+        assert_eq!(degraded.fallback_agent.as_deref(), Some("codex-fallback"));
+        assert_eq!(degraded.reason.as_deref(), Some("Max retries reached"));
+    }
+
+    // --- PhaseDuration synthesis tests ---
+
+    #[test]
+    fn test_parse_phase_durations_synthesizes_from_current_phase() {
+        let checkpoint = serde_json::json!({
+            "phase": "Develop"
+        });
+        let durations = parse_phase_durations_from_checkpoint(&checkpoint);
+        assert!(!durations.is_empty(), "Should synthesize phases");
+        // Find Plan — should be completed (before Develop)
+        let plan = durations.iter().find(|d| d.phase_name == "Plan");
+        assert!(plan.is_some(), "Plan should be in durations");
+        assert_eq!(plan.unwrap().status, "completed");
+        // Develop should be active
+        let develop = durations.iter().find(|d| d.phase_name == "Develop");
+        assert!(develop.is_some());
+        assert_eq!(develop.unwrap().status, "active");
+        // Review and Commit should be pending
+        let review = durations.iter().find(|d| d.phase_name == "Review");
+        assert_eq!(review.unwrap().status, "pending");
+    }
+
+    #[test]
+    fn test_parse_phase_durations_from_phase_history_array() {
+        let checkpoint = serde_json::json!({
+            "phase_history": [
+                { "phase_name": "Plan", "duration_secs": 30.0, "status": "completed" },
+                { "phase_name": "Develop", "duration_secs": 120.0, "status": "completed" }
+            ]
+        });
+        let durations = parse_phase_durations_from_checkpoint(&checkpoint);
+        assert_eq!(durations.len(), 2);
+        assert_eq!(durations[0].phase_name, "Plan");
+        assert_eq!(durations[0].duration_secs, Some(30.0));
+        assert_eq!(durations[1].phase_name, "Develop");
+    }
+
+    // --- DegradedInfo tests ---
+
+    #[test]
+    fn test_parse_degraded_info_returns_none_when_not_degraded() {
+        let checkpoint = serde_json::json!({ "is_degraded": false });
+        let info = parse_degraded_info_from_checkpoint(&checkpoint);
+        assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_parse_degraded_info_returns_some_when_degraded() {
+        let checkpoint = serde_json::json!({
+            "is_degraded": true,
+            "retry_count": 2,
+            "fallback_agent": "backup-agent",
+            "degraded_reason": "Primary timed out"
+        });
+        let info = parse_degraded_info_from_checkpoint(&checkpoint).unwrap();
+        assert_eq!(info.retry_count, 2);
+        assert_eq!(info.fallback_agent.as_deref(), Some("backup-agent"));
+        assert_eq!(info.reason.as_deref(), Some("Primary timed out"));
     }
 }
