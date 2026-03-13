@@ -54,9 +54,11 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Fixed bar at the bottom of the window (28px height)
 - [ ] Left section: active workspace name and current branch
 - [ ] Center section: aggregated run status summary (e.g., "2 running, 1 paused")
-- [ ] Right section: notification bell with unread count
+- [ ] Right section: notification bell with unread count, connection status indicator
+      (green dot = connected, red dot = disconnected, with text label)
 - [ ] Clicking the notification bell opens a notification history panel
 - [ ] Run status summary updates in real-time as runs change state
+- [ ] Connection status updates in real-time (connected/disconnected)
 
 ### AC-2.4: Keyboard Navigation
 - [DONE] `g` then `h` navigates to Home
@@ -70,8 +72,10 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] `Ctrl+Tab` switches to next workspace
 - [ ] `Ctrl+Shift+Tab` switches to previous workspace
 - [ ] `Ctrl+W` closes current workspace (with confirmation if runs active)
-- [ ] `Ctrl+F` activates search in current context
+- [ ] `Ctrl+K` opens global search / command palette
+- [ ] `Ctrl+F` activates search within current view (log viewer, session list, config)
 - [ ] `Escape` closes any open modal or dialog
+- [ ] Right-click context menus on list rows (sessions, worktrees) mirror the three-dot menu actions
 
 ---
 
@@ -136,20 +140,130 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [DONE] Text area for writing/editing the prompt
 - [DONE] Load from template picker
 - [ ] Markdown preview toggle
-- [DONE] AI-assisted prompt review with suggestions
 - [ ] "Save as Template" to save current prompt for reuse
 - [ ] Prompt history (last 10 prompts used in this workspace)
 - [ ] Character/word count indicator
 
+##### AI Prompt Assistant (Step 1 side panel)
+- [ ] "[AI Assist ▾]" toggle button in the Step 1 toolbar opens/closes the AI Prompt
+      Assistant panel. The button shows a chevron indicating open/closed state
+- [ ] The panel is hidden by default; toggling it does not clear the prompt editor content
+- [ ] Panel layout: prompt editor occupies the left or main area; assistant panel appears
+      to the right (or below on narrow windows) when open. The editor remains fully usable
+      while the panel is open
+- [ ] Panel has two mode tabs: **"Describe what to build"** and **"Refine current prompt"**
+- [ ] The active mode tab is visually highlighted (amber underline)
+- [ ] "Describe what to build" mode — full definition of done:
+  - [ ] Shows a conversational chat interface with a scrollable message history area
+        and a text input at the bottom labeled "Describe the feature or problem…"
+  - [ ] User types a natural-language description (e.g., "Add a dark mode toggle to the
+        settings page, persisted in local storage") and submits via Enter or a send button
+  - [ ] The assistant (using the Planning drain's first configured agent) responds with a
+        structured, detailed prompt focused on end-result behavior, not implementation steps
+  - [ ] The response appears as a "Suggested Prompt" card in the conversation, visually
+        distinguished from the user's message (different background, label "Suggested Prompt")
+  - [ ] Suggested Prompt card has two action buttons:
+        **[Apply to Editor]** — replaces prompt editor content with the suggestion; panel
+        remains open for further refinement.
+        **[Edit & Apply]** — copies suggestion into editor AND closes the panel so the
+        user can edit inline
+  - [ ] Multiple back-and-forth exchanges are supported. Each exchange appends to the
+        conversation history above. User can continue refining ("make it more concise",
+        "focus on the API side") and receive updated suggestions
+  - [ ] Conversation history persists for the duration of the wizard session (not saved
+        between wizard opens)
+- [ ] "Refine current prompt" mode — full definition of done:
+  - [ ] On tab activation, the assistant immediately analyzes the current content of the
+        prompt editor (no additional user input required to trigger analysis)
+  - [ ] A loading indicator appears while analysis is in progress
+  - [ ] The assistant returns a structured analysis card showing:
+        — **Issues identified** (e.g., "Too much implementation detail", "Missing success
+          criteria", "Focuses on how, not what")
+        — **Suggested improved prompt** as a quoted/styled block
+  - [ ] The analysis card has two action buttons:
+        **[Apply Suggestion]** — replaces editor content with the improved prompt.
+        **[Edit & Apply]** — copies suggestion into editor AND closes the panel
+  - [ ] A "[Analyze again]" button triggers a fresh analysis of the current editor content
+        (useful after manual edits)
+  - [ ] If the editor is empty when the tab is activated, the assistant shows a prompt:
+        "Write or load a prompt in the editor, then switch here to refine it"
+- [ ] Agent used for both modes is the first agent in the Planning drain as configured
+      in `~/.config/ralph-workflow.toml` or `.agent/ralph-workflow.toml`. If no Planning
+      drain is configured, the panel shows: "No Planning agent configured. Set one up in
+      Configuration to enable AI assistance." with a "[Go to Configuration →]" link and
+      both mode tabs are disabled
+- [ ] Ralph controls the system prompt sent to the AI agent. The user does not see and
+      cannot modify the system prompt. The system prompt instructs the agent to return
+      structured prompts focused on end-result behavior, not implementation details
+- [ ] The panel displays the name of the agent being used (e.g., "Using: glm-agent via
+      Planning drain") as a subtle label so the user knows which AI is assisting
+- [ ] Closing the panel (toggle button or Escape) does not clear conversation history
+      within the same wizard session. Reopening shows the prior conversation
+- [ ] Panel has a minimum usable width; below a window width threshold, the panel
+      stacks below the editor rather than side-by-side
+- [ ] All assistant interactions are performed via the same Tauri/CLI mechanism used for
+      running sessions. No separate API integration is required; the assistant call routes
+      through the Planning drain agent's CLI tool
+
 #### AC-4.3.2: Configuration (Step 2)
-- [DONE] Developer agent selection dropdown
-- [DONE] Reviewer agent selection dropdown
 - [DONE] Developer iterations (numeric input with min/max)
 - [DONE] Reviewer review passes (numeric input)
+
+##### Smart Defaults — Prefill from configuration
+- [ ] Step 2 reads effective configuration on open from `~/.config/ralph-workflow.toml`
+      (global) and `.agent/ralph-workflow.toml` (project), merging them with project
+      values taking precedence (matching Ralph's own merge order)
+- [ ] All numeric fields (iterations, review passes) are prefilled with values from
+      effective configuration, not hardcoded UI defaults
+- [ ] Drain-to-chain bindings displayed in Step 2 reflect the bindings currently
+      configured in the effective config — not placeholder or example values
+
+##### Happy-path view (configured user — default state)
+- [ ] When at least one agent chain and drain binding is configured, Step 2 opens in
+      **collapsed/summary mode** showing a single line:
+      `"[drain chain name] (agent1 → agent2 → agent3) · N iterations · M reviews · [review depth]"`
+      Example: `"Developer (glm-agent → claude-opus → codex-o3) · 3 iterations · 2 reviews · standard"`
+- [ ] Numeric spinners for **iterations** and **review passes** are directly editable inline
+      in the summary row without needing to expand — these are the most commonly adjusted
+      fields and must not require expansion to change
+- [ ] A **[Customize ▾]** button appears to the right of the summary line. Clicking it
+      expands the full configuration panel. Clicking again (now labeled **[Customize ▲]**)
+      collapses it back to the summary
+- [ ] The summary line updates in real-time as inline numeric spinners are changed
+- [ ] If the user has not modified anything, they can proceed directly from the summary
+      view to Preflight (Step 3) in one click — the wizard is optimized for experienced
+      users running sessions frequently
+
+##### Expanded view (after clicking [Customize ▾])
+- [ ] The expanded panel shows all 6 drain dropdowns:
+      Planning, Development, Analysis, Review, Fix, Commit — each populated with the
+      names of all configured chains, with the currently configured chain pre-selected
+- [ ] Iterations and review passes numeric inputs with min/max validation
 - [ ] Review depth dropdown (standard, comprehensive, security, incremental)
-- [ ] Developer/Reviewer context level toggles (minimal vs normal)
-- [ ] Verbosity slider (0-4 with labels: quiet, normal, verbose, full, debug)
-- [ ] "Advanced" collapsible section for less common options
+- [ ] An **"Advanced"** collapsible sub-section for less common options (developer context,
+      reviewer context, checkpoint enabled, isolation mode)
+- [ ] A **"[Reset to defaults]"** button reverts all Step 2 overrides to the values read
+      from effective configuration (not to hardcoded defaults)
+- [ ] A subtle note is shown: *"Changes here apply to this session only and are not saved
+      to your configuration files"*
+- [ ] Collapsing back to summary after expanding preserves all changes made in the
+      expanded view and reflects them in the summary line
+
+##### Unconfigured user state (no agent chains configured)
+- [ ] When no agent chains are configured (no `[chains]` entries in effective config),
+      Step 2 shows a **"Setup Required"** callout in place of the summary/customize UI:
+      — Amber/warning background with a distinct border
+      — Heading: "Agent chains not configured"
+      — Body: "You need at least one agent chain configured before launching a session.
+        Set one up in Configuration, then return here."
+      — Action link: **"[Go to Configuration →]"** (navigates to Configuration page,
+        closing the wizard with a confirmation if the prompt is non-empty)
+- [ ] The **[Next →]** button in the wizard footer is disabled when in the "Setup Required"
+      state, with a tooltip: "Configure an agent chain before launching"
+- [ ] The disabled next button is visually distinct (reduced opacity) but the tooltip
+      explains why it is disabled — not a silent failure
+
+##### Launch presets
 - [DONE] Launch presets (save/load/delete named configurations)
 
 #### AC-4.3.3: Preflight (Step 3)
@@ -209,6 +323,35 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Retry button for failed runs (restarts from beginning)
 - [ ] "Open in Terminal" to view raw CLI output
 - [ ] "Open Worktree" to open the worktree directory in system file manager
+
+### AC-5.7: Run Detail — State-Specific Views (UX-6.6, UX-3.9, UX-13.1)
+- [ ] **Completed state:** Completion summary card with ✓ icon, total duration,
+      and metric cards (iterations, reviews, files changed, tests). Phase timeline
+      fully filled with all checkmarks. Changes tab selected by default
+- [ ] **Failed state:** Error summary card with ✕ icon, plain-language error
+      message, affected phase/iteration, and "What you can do" recovery guidance.
+      Inline recovery actions: Resume, Retry from Beginning, Go to Config.
+      Resume button also in page header. Log tab selected by default
+- [ ] **Paused state:** Paused banner with ⏸ icon, checkpoint confirmation,
+      which iteration will resume from, and time since pause. Resume as hero
+      action (large amber button). Log tab selected by default
+- [ ] Tab bar below phase timeline: [Log] [Changes] [Info] with amber underline
+      on active tab. Default tab varies by run state (see above)
+
+### AC-5.8: Changes Viewer (Diff View)
+- [ ] Accessible from Run Detail as "Changes" tab alongside Log and Info
+- [ ] Split layout: file tree (left, 240px) and diff panel (right, flex)
+- [ ] File tree shows changed files in directory structure with +/- counts per file
+- [ ] Syntax-highlighted unified diff with green-tinted added lines, red-tinted removed lines
+- [ ] Summary bar: total files changed, total additions, total deletions
+- [ ] Iteration filter dropdown: "All Iterations", "Iteration 1", "Iteration 2", etc.
+- [ ] Per-iteration filtering shows only that iteration's diff
+- [ ] Unified/side-by-side toggle
+- [ ] For completed sessions: cumulative diff across all iterations shown by default
+- [ ] "Copy as Patch" and "Open in Editor" actions on completed sessions
+- [ ] Empty state when no changes yet: "Code changes will appear here as the AI develops"
+- [ ] Clicking "Files Changed" count in Iteration History switches to Changes tab
+      filtered to that iteration
 
 ---
 
@@ -287,18 +430,35 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] User Name (text)
 - [ ] User Email (text, email validation)
 
-#### Agent Profiles
-- [ ] List of configured agents as cards
-- [ ] Each agent card shows: name, provider, model, parser
-- [ ] Add/edit/remove agents via dialog
-- [ ] Developer chain: drag-to-reorder list of agents
-- [ ] Reviewer chain: drag-to-reorder list of agents
+#### Agent Chains & Drains
+- [ ] **Chains subsection:** Named, ordered lists of agents displayed as drag-to-reorder pipelines
+- [ ] Each chain shows: name, agent count, and agent cards in fallback order
+- [ ] Each agent card in a chain shows: name, CLI tool, provider, model
+- [ ] Create, rename, delete chains. Add/remove/reorder agents within chains
+- [ ] **Drains subsection:** Six dropdown selectors binding pipeline phases to named chains:
+      Planning, Development, Review, Fix, Commit, Analysis
+- [ ] Each drain dropdown populated from configured chain names
+- [ ] Helper text explaining drain semantics (matching agent strengths to pipeline phases)
+- [ ] Multiple drains can share the same chain (e.g., Planning + Development → "developer")
+- [ ] **Configured Agents subsection:** All defined agents as cards with Edit/Remove actions
+- [ ] **Add Agent dialog — adaptive widget design:**
+  - [ ] CLI Tool: radio group showing only installed tools (name, version, status). Auto-selects if only 1 installed
+  - [ ] Provider: auto-filled read-only label for single-provider tools (Claude Code → Anthropic, Codex → OpenAI); dropdown with auth indicators for multi-provider tools (OpenCode)
+  - [ ] Model (small list, ≤15): grouped dropdown by model family, showing context window size
+  - [ ] Model (large list, >15): searchable combo box with type-ahead, grouped by family, showing context window + cost tier
+  - [ ] Loading skeleton while models are fetched from provider API
+  - [ ] Widget type adapts automatically based on the number of available models
+- [ ] **Add Agent to Chain:** popover picker of existing agents not in chain, with "Create new agent..." inline option
+- [ ] Agents can be shared across multiple chains
 
-#### API Keys
-- [DONE] API key input fields per provider
-- [DONE] Show/hide toggle for key visibility
-- [ ] Validation indicator (key format check)
-- [ ] "Test Connection" button per provider
+#### Agent Tools (Configuration Section)
+- [ ] List of CLI tools Ralph delegates to (Claude Code, Claude Code Switch, Codex, OpenCode)
+- [ ] Each tool shows: installed status, version, authentication status, health indicator
+- [ ] Available models line summarizing models accessible through each tool
+- [ ] "Open CLI Settings" button per tool (delegates auth/key management to each tool's own config)
+- [ ] "Test Connection" button per tool (health check via trivial CLI invocation)
+- [ ] "Install" action for tools not yet installed
+- [ ] Note: Ralph Workflow does NOT manage API keys directly — each CLI tool handles its own authentication
 
 ### AC-7.4: Save/Revert
 - [DONE] Dirty tracking (unsaved changes detection)
@@ -335,6 +495,7 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] Notify on run completion (on/off)
 - [ ] Notify on run failure (on/off)
 - [ ] Notify on phase change (on/off)
+- [ ] Notify on degraded condition detected (on/off)
 - [ ] Notification sound selection
 
 ### AC-8.4: Startup
@@ -365,32 +526,39 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 
 ### AC-9.2: Wizard Steps
 - [ ] Step 1: Welcome screen explaining what Ralph Workflow does
-- [ ] Step 2: API key configuration (at least one provider required to proceed,
-      but can be skipped with a warning)
-- [ ] Step 3: Open first workspace (directory picker)
-- [ ] Step 4: Quick tips and keyboard shortcuts summary
+- [ ] Step 2: Agent Tools check (auto-detects installed CLI tools; at least one
+      must be installed and authenticated to proceed; tools can be installed or
+      skipped individually)
+- [ ] Step 3: Open first workspace (directory picker or drag-and-drop)
 - [ ] Each step has Back/Next navigation
-- [ ] Progress indicator showing current step
+- [ ] Progress indicator showing current step (3 steps)
 
 ### AC-9.3: Post-Onboarding
 - [ ] After completion, user lands on the Dashboard of their selected workspace
+- [ ] A dismissible "Quick Tips" card appears at top of dashboard (shows once):
+      keyboard navigation hints, first session guidance
 - [ ] If skipped, user sees the welcome/empty state with prompts to get started
 
 ---
 
 ## AC-10: Search
 
-### AC-10.1: Global Search
-- [ ] Search input accessible via `Ctrl+F` or search icon in toolbar
+### AC-10.1: Global Search / Command Palette
+- [ ] Search input accessible via `Ctrl+K` or search icon in toolbar (following
+      GitHub/Linear/Notion pattern — this is the app-wide command palette shortcut)
 - [ ] Searches across: session descriptions, worktree names, run IDs
 - [ ] Results grouped by type (sessions, worktrees, runs)
 - [ ] Clicking a result navigates to the relevant detail page
 - [ ] Search is scoped to the current workspace
+- [ ] `Ctrl+F` is NOT used for global search — it is reserved for contextual/in-page
+      search (per AC-2.4 and Jakob's Law UX-6.5)
 
 ### AC-10.2: Contextual Search
-- [ ] In Sessions page: search filters the session list
-- [ ] In Log Viewer: search highlights matching lines
-- [ ] In Configuration: search filters visible settings
+- [ ] `Ctrl+F` activates in-page search within the currently focused view
+- [ ] In Sessions page: search filters the session list by description, worktree, or run ID
+- [ ] In Log Viewer: search highlights matching lines, with next/prev match navigation
+- [ ] In Configuration: search filters visible settings by label or description
+- [ ] Pressing `Escape` dismisses the contextual search input and returns focus to the page
 
 ---
 
@@ -427,22 +595,85 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 
 ---
 
-## AC-13: Non-Functional Requirements
+## AC-13: Help & In-App Documentation
 
-### AC-13.1: Performance
+### AC-13.1: Keyboard Shortcuts Overlay
+- [DONE] `?` key opens keyboard shortcuts overlay from anywhere
+- [ ] Shortcuts grouped by category: Navigation, Actions, Workspaces, General
+- [ ] Dismissible via Escape or clicking outside
+
+### AC-13.2: Contextual Help Tooltips
+- [ ] `[?]` icon on every configuration field, wizard step, and drain binding
+- [ ] Tooltip explains: what the setting does, when to change it, recommended values
+- [ ] Analysis drain tooltip explains its role (checks code vs plan, GPT models recommended)
+- [ ] Agent chain tooltip explains fallback behavior
+
+### AC-13.3: Concepts Guide
+- [ ] Accessible from `?` (Help) icon in activity bar and Help menu
+- [ ] Collapsible sections covering: How It Works, The Pipeline, Agent Chains & Drains,
+      Worktrees, Sessions & Runs, Configuration Scopes
+- [ ] Plain-language explanations (no jargon assumed)
+- [ ] Each concept links to its related page in the app (e.g., "Agent Chains" → Configuration)
+- [ ] Drain descriptions include role-specific guidance:
+      - Analysis: "Checks code against the plan after each dev iteration. GPT models recommended."
+      - Planning: "Creates the implementation plan from your prompt."
+      - Development: "Writes and modifies code to implement the plan."
+      - Review: "Reviews code changes for quality and correctness."
+      - Fix: "Addresses issues found during review."
+      - Commit: "Generates commit messages for completed work."
+
+### AC-13.4: Empty State Help
+- [ ] Every empty state includes a brief explanation of the area's purpose
+- [ ] Empty states include a link to the relevant Concepts Guide section
+- [ ] First-time empty states (e.g., no sessions) include "[Learn how it works]" link
+
+---
+
+## AC-14: Agent Tools Manager
+
+### AC-14.1: Tool Cards
+- [ ] List of all CLI tools Ralph Workflow delegates to (Claude Code, Claude Code Switch, Codex, OpenCode)
+- [ ] Each tool card shows: name, description, installed status, version, binary location,
+      authentication status, health indicator (Ready / Needs setup / Not installed)
+- [ ] Available models line showing models accessible through the tool (fetched dynamically)
+
+### AC-14.2: Tool Actions
+- [ ] "Test Connection" — runs health check via trivial CLI invocation, shows result
+- [ ] "Open CLI Settings" — launches the tool's own configuration interface
+- [ ] "Check for Updates" — compares installed version against latest; shows changelog if update available
+- [ ] "Install" flow for uninstalled tools — platform-appropriate install method picker
+      (npm, Homebrew, manual) with command preview before execution
+- [ ] "Refresh Models" — refetches available models from all configured providers
+
+### AC-14.3: Tool States
+- [ ] Installed & configured: green health indicator, full details shown
+- [ ] Installed but no auth: amber health indicator, prompt to open CLI settings
+- [ ] Not installed: install button with description of tool's capabilities
+- [ ] Update available: version comparison with "Update to vX.Y.Z" button and changelog
+
+### AC-14.4: Access Points
+- [ ] Accessible from Preferences menu
+- [ ] Accessible from Configuration page's Agent Tools section via "Open Settings" links
+- [ ] Shown during onboarding (Step 2) in simplified form
+
+---
+
+## AC-15: Non-Functional Requirements
+
+### AC-15.1: Performance
 - [ ] App startup to interactive in < 2 seconds
 - [ ] Workspace switching in < 200ms
 - [ ] Log viewer handles 10,000+ lines without lag (virtualized rendering)
 - [ ] Session list handles 100+ sessions without lag
 - [ ] No unnecessary re-renders (OnPush change detection throughout)
 
-### AC-13.2: Reliability
+### AC-15.2: Reliability
 - [ ] Graceful handling of CLI process crashes (detect and show error)
 - [ ] Graceful handling of lost file system access (repo moved/deleted)
 - [ ] Auto-reconnect for log streaming on connection drop
 - [ ] No data loss on unexpected app close (preferences auto-saved)
 
-### AC-13.3: Accessibility
+### AC-15.3: Accessibility
 - [ ] All interactive elements reachable via keyboard
 - [ ] Visible focus indicators on all focusable elements
 - [ ] ARIA labels on icon-only buttons and status indicators
@@ -451,9 +682,9 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 - [ ] `aria-live` regions for dynamic content (log stream, status updates)
 - [ ] Respect `prefers-reduced-motion`
 
-### AC-13.4: Security
-- [ ] API keys stored securely (OS keychain via Tauri secure storage, not plaintext)
-- [ ] API keys masked in UI by default (show/hide toggle)
+### AC-15.4: Security
+- [ ] API key management delegated to each CLI tool's own configuration (not stored by Ralph)
+- [ ] No API keys displayed, stored, or transmitted by the Ralph Workflow GUI
 - [ ] No API keys in log output or error messages
 - [ ] GUI preferences file has restricted permissions (600)
 
@@ -461,20 +692,27 @@ Items marked with [DONE] are already implemented. All others are outstanding.
 
 ## Priority Summary
 
-| Priority | Feature Area                      | Acceptance Criteria    |
-|----------|-----------------------------------|------------------------|
-| P0       | Multi-workspace tabs & switching  | AC-1                   |
-| P0       | Status bar                        | AC-2.3                 |
-| P0       | Visual config forms               | AC-7.2, AC-7.3         |
-| P1       | GUI preferences                   | AC-8                   |
-| P1       | Log streaming                     | AC-5.3                 |
-| P1       | Enhanced run detail               | AC-5.2, AC-5.4, AC-5.5|
-| P1       | Session batch operations          | AC-4.2                 |
-| P1       | Session search                    | AC-4.1 (search)        |
-| P2       | Onboarding wizard                 | AC-9                   |
-| P2       | Prompt templates library          | AC-12                  |
-| P2       | Notification center               | AC-11.2                |
-| P2       | Agent chain editor                | AC-7.3 (agent section) |
-| P3       | Global search                     | AC-10                  |
-| P3       | Run comparison                    | (future, not yet spec'd)|
-| P3       | Worktree deletion & diff          | AC-6.3                 |
+| Priority | Feature Area                          | Acceptance Criteria                   |
+|----------|---------------------------------------|---------------------------------------|
+| P0       | Multi-workspace tabs & switching      | AC-1                                  |
+| P0       | Status bar                            | AC-2.3                                |
+| P0       | Visual config forms                   | AC-7.2, AC-7.3                        |
+| P1       | AI Prompt Assistant (wizard Step 1)   | AC-4.3.1 (AI Prompt Assistant)        |
+| P1       | Smart wizard defaults (Step 2)        | AC-4.3.2 (Smart Defaults, Happy Path) |
+| P1       | GUI preferences                       | AC-8                                  |
+| P1       | Log streaming                         | AC-5.3                                |
+| P1       | Enhanced run detail                   | AC-5.2, AC-5.4, AC-5.5               |
+| P1       | Run detail state views                | AC-5.7                                |
+| P1       | Changes viewer (diff)                 | AC-5.8                                |
+| P1       | Session batch operations              | AC-4.2                                |
+| P1       | Session search                        | AC-4.1 (search)                       |
+| P1       | Help & in-app docs                    | AC-13                                 |
+| P1       | Agent tools manager                   | AC-14                                 |
+| P2       | Onboarding wizard                     | AC-9                                  |
+| P2       | Prompt templates library              | AC-12                                 |
+| P2       | Notification center                   | AC-11.2                               |
+| P2       | Agent chain editor                    | AC-7.3 (agent section)                |
+| P3       | Global search / command palette       | AC-10.1                               |
+| P3       | Contextual in-page search             | AC-10.2                               |
+| P3       | Run comparison                        | (future, not yet spec'd)              |
+| P3       | Worktree deletion & diff              | AC-6.3                                |

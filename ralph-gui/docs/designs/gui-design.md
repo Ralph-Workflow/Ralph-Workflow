@@ -204,7 +204,7 @@ content changes based on which activity bar item is selected:
 
 **When Configuration is selected:**
 - Header: "Configuration"
-- Section list: General, Execution, Retry & Fallback, Git, Agents, Agent Tools
+- Section list: General, Execution, Retry & Fallback, Git Identity, Agent Chains & Drains, Agent Tools
 - Clicking a section scrolls the main content to that section
 - Small indicator dot on sections with values overridden from defaults
 
@@ -394,18 +394,26 @@ area. Three steps: **Prompt → Configure → Review & Launch**.
 |  [1. Prompt ●━━━━━━━2. Configure ━━━━━━━3. Review & Launch]      |
 +------------------------------------------------------------------+
 |                                                                   |
-|  What should Ralph Workflow build?                                |
+|  What should Ralph Workflow build?          [(sparkle) AI Assist] |
 |                                                                   |
 |  +--------------------------------------------------------------+|
 |  |                                                               ||
 |  |  # Feature: Add user authentication                          ||
 |  |                                                               ||
-|  |  Implement JWT-based authentication with:                     ||
-|  |  - Login/register endpoints                                   ||
-|  |  - Password hashing with bcrypt                               ||
-|  |  - Token refresh mechanism                                    ||
+|  |  Add authentication to the API so users can register, log     ||
+|  |  in, and access protected endpoints with token-based auth.    ||
 |  |                                                               ||
+|  |  Requirements:                                                ||
+|  |  - Registration with email and password                       ||
+|  |  - Secure password storage                                    ||
+|  |  - Token-based login with automatic refresh                   ||
+|  |  - Protected endpoint middleware                              ||
 |  |                                                               ||
+|  |  Acceptance criteria:                                         ||
+|  |  - New users can register and log in successfully             ||
+|  |  - Protected routes reject unauthenticated requests (401)     ||
+|  |  - Tokens refresh transparently before expiry                 ||
+|  |  - All auth endpoints have test coverage                      ||
 |  |                                                               ||
 |  +--------------------------------------------------------------+|
 |                                                                   |
@@ -421,16 +429,168 @@ area. Three steps: **Prompt → Configure → Review & Launch**.
 +------------------------------------------------------------------+
 ```
 
-The prompt editor is a tall, focused textarea with monospace font. It supports
-Markdown preview toggle. Below the editor, the user can:
+When the user clicks `(sparkle) AI Assist`, the editor shrinks to 60% and a
+right panel (40%) opens with the AI Prompt Assistant:
+
+```
++------------------------------------------------------------------+
+|  New Session                                                      |
+|  [1. Prompt ●━━━━━━━2. Configure ━━━━━━━3. Review & Launch]      |
++------------------------------------------------------------------+
+|                                                                   |
+|  What should Ralph Workflow build?       [(sparkle) AI Assist ●]  |
+|                                                                   |
+|  +--- Editor (60%) --------+--- AI Assistant (40%) --------------+|
+|  |                          |                                     ||
+|  |  # Feature: Add user    |  AI Prompt Assistant                 ||
+|  |  authentication          |  Using: planner (claude-opus)       ||
+|  |                          |                          [Change ▾] ||
+|  |  Add authentication...   |                                     ||
+|  |                          |  How can I help with your prompt?   ||
+|  |  Requirements:           |                                     ||
+|  |  - Registration...       |  [Describe what to build]           ||
+|  |  - Secure password...    |    Tell me about the feature and    ||
+|  |  - Token-based login...  |    I'll write a structured prompt.  ||
+|  |                          |                                     ||
+|  |  Acceptance criteria:    |  [Refine current prompt]            ||
+|  |  - New users can...      |    I'll review your prompt and      ||
+|  |                          |    suggest improvements.            ||
+|  |                          |                                     ||
+|  |                          |  ──────────────────────────         ||
+|  |                          |                                     ||
+|  |                          |  [Type a message...]          [↵]  ||
+|  +--------------------------+-------------------------------------+|
+|                                                                   |
+|  Templates: [Browse...] [Save as Template]                        |
+|                                            [Cancel]  [Next →]     |
++------------------------------------------------------------------+
+```
+
+**"Describe what to build" flow** — The user describes their feature in natural
+language. The AI asks clarifying questions, then generates a structured prompt:
+
+```
+|  AI Assistant                                                     |
+|                                                                   |
+|  AI: Tell me about the feature you want to build.                |
+|  What should it do? What's the expected behavior                 |
+|  when it's working?                                              |
+|                                                                   |
+|  You: We need auth on our Rust/Axum API. Users                   |
+|  register, log in, and use tokens to hit protected               |
+|  endpoints. Tokens should refresh automatically.                 |
+|                                                                   |
+|  AI: A few clarifying questions:                                 |
+|  1. What should happen on invalid credentials?                   |
+|  2. Do you need role-based access control?                       |
+|  3. Any password requirements (minimum length)?                  |
+|                                                                   |
+|  You: Return 401 on bad creds. No roles for now.                 |
+|  Standard rules — 8+ chars.                                      |
+|                                                                   |
+|  AI: Here's a prompt based on your description:                  |
+|                                                                   |
+|  +-- Suggested Prompt ────────────────────────────+              |
+|  |  # Add API Authentication                      |              |
+|  |                                                |              |
+|  |  Add token-based authentication to the API     |              |
+|  |  so users can register, log in, and access     |              |
+|  |  protected endpoints.                          |              |
+|  |                                                |              |
+|  |  Requirements:                                 |              |
+|  |  - User registration (email + password)        |              |
+|  |  - Login returning auth token                  |              |
+|  |  - Automatic token refresh before expiry       |              |
+|  |  - Protected endpoint middleware               |              |
+|  |  - Passwords must be 8+ characters             |              |
+|  |                                                |              |
+|  |  Acceptance criteria:                          |              |
+|  |  - New users can register and log in           |              |
+|  |  - Invalid credentials return 401              |              |
+|  |  - Expired tokens refresh transparently        |              |
+|  |  - Unauthenticated requests return 401         |              |
+|  |  - All auth endpoints have tests               |              |
+|  |                                                |              |
+|  |  [Apply to Editor]  [Edit & Apply]             |              |
+|  +------------------------------------------------+              |
+|                                                                   |
+|  [Type a message...]                                        [↵]  |
+```
+
+**"Refine current prompt" flow** — The AI analyzes the existing prompt and
+identifies issues:
+
+```
+|  AI Assistant                                                     |
+|                                                                   |
+|  AI: I've reviewed your prompt. Here's my analysis:              |
+|                                                                   |
+|  Quality:  ★★★☆☆  Needs Refinement                              |
+|                                                                   |
+|  ⚠ Implementation details detected                              |
+|    Your prompt specifies "bcrypt" and "JWT" — these              |
+|    are implementation choices the AI agent should                |
+|    make. Describe the desired behavior instead.                  |
+|                                                                   |
+|  ⚠ Missing acceptance criteria                                  |
+|    Add specific, testable outcomes. What should                  |
+|    pass when this feature is done?                               |
+|                                                                   |
+|  ✓ Clear feature description                                    |
+|  ✓ Structured with bullet points                                |
+|                                                                   |
+|  +-- Suggested Revision ──────────────────────────+              |
+|  |  (revised prompt with issues addressed)        |              |
+|  |                                                |              |
+|  |  [Apply to Editor]  [Edit & Apply]             |              |
+|  +------------------------------------------------+              |
+|                                                                   |
+|  You can continue the conversation to refine further.            |
+|  [Type a message...]                                        [↵]  |
+```
+
+The prompt editor is a tall, focused textarea. It supports Markdown preview
+toggle. Below the editor, the user can:
 - Browse the template library to start from a template
 - See their recent templates for quick reuse
 - Save the current prompt as a new template
 
-There is no configuration on this step — just the prompt. (UX-6.1: one decision
-per step)
+There is no configuration on this step — just the prompt. The AI assistant
+panel is the only addition, and it's toggled off by default so the simple
+path remains uncluttered. (UX-6.1: one decision per step, UX-5.1: progressive
+disclosure)
+
+**Prompt philosophy:** The AI Prompt Assistant is trained to guide users toward
+outcome-focused prompts. Good prompts describe *what the feature should do when
+it's working*, not *how to implement it*. Implementation details (which library,
+which algorithm, which pattern) should be left to the AI development agents
+unless the user has a specific constraint. The more detail about the desired
+behavior and acceptance criteria, the better the development result.
+
+**How it works under the hood:** Ralph controls the system prompt sent to the
+AI agent. The user's input is wrapped in instructions that direct the AI to:
+- Focus on desired outcomes, not implementation specifics
+- Include acceptance criteria (testable outcomes)
+- Ask clarifying questions when the description is vague
+- Structure the response with clear sections (title, description, requirements,
+  acceptance criteria)
+- Return the prompt in a structured format that Ralph can parse and present
+
+The agent used defaults to the Planning drain's first agent (since prompt
+writing is closest to the planning role). The user can change this via a
+`[Change ▾]` dropdown showing all configured agents. The conversation is
+ephemeral — it exists only during the wizard session and is not saved. The
+resulting prompt text in the editor is what matters.
 
 **Step 2: Configure**
+
+The wizard reads defaults from `~/.config/ralph-workflow.toml` (global) and
+`.agent/ralph-workflow.toml` (project). If the user already has their pipeline
+configured, Step 2 should be nearly zero-friction — pick a worktree, confirm
+defaults, move on. The full configuration is only shown when the user asks
+for it or when something is missing.
+
+**Default view — configured user (happy path):**
 
 ```
 +------------------------------------------------------------------+
@@ -443,34 +603,132 @@ per step)
 |  Worktree        [add-auth                          ▾]            |
 |                   Or: [+ Create New Worktree]                     |
 |                                                                   |
-|  ── Agents ──────────────────────────────────────────             |
-|                                                                   |
-|  Developer       [claude                            ▾]            |
-|  Reviewer        [codex                             ▾]            |
-|                                                                   |
-|  ── Limits ──────────────────────────────────────────             |
-|                                                                   |
-|  Iterations      [5        ]  How many develop cycles             |
-|  Reviews         [2        ]  Review passes per iteration         |
-|                                                                   |
-|  ── Preset ──────────────────────────────────────────             |
-|                                                                   |
-|  [● Standard]  [ ] Thorough (more iterations)                     |
-|  [ ] Quick (fewer iterations)  [ ] Custom                         |
+|  Using your configured defaults:                                  |
+|  5 iterations · 2 reviews · Standard depth                        |
+|  6 drains → 5 chains · 4 agents configured                       |
+|                                                 [Customize ▾]    |
 |                                                                   |
 |                                    [← Back]  [Cancel]  [Next →]   |
 +------------------------------------------------------------------+
 ```
 
-This step has only the essential choices grouped into clear sections:
-- **Where:** Which worktree to run in (dropdown of existing worktrees, plus an
-  option to create a new one inline)
-- **Agents:** Which AI agents to use for development and review. Dropdowns with
-  the configured agents. Helper text explains what each role does
-- **Limits:** Iteration and review counts with inline descriptions
-- **Preset:** Radio buttons for common configurations (Standard, Thorough,
-  Quick, Custom). Selecting a preset auto-fills the Limits values. "Custom"
-  lets the user edit freely
+For an experienced user with everything configured, Step 2 is just: **pick a
+worktree, confirm the one-line summary looks right, hit Next.** All values come
+from the existing config. The user shouldn't have to re-specify iterations,
+agents, or drains every single session — that's what the Configuration page is
+for. (UX-4.4 Eliminate Excise: don't ask for information the system already
+knows)
+
+When `[Customize ▾]` is clicked, the full options expand:
+
+```
++------------------------------------------------------------------+
+|  New Session                                                      |
+|  [1. Prompt ━━━━━━━●2. Configure ━━━━━━━3. Review & Launch]      |
++------------------------------------------------------------------+
+|                                                                   |
+|  Where & How                                                      |
+|                                                                   |
+|  Worktree        [add-auth                          ▾]            |
+|                   Or: [+ Create New Worktree]                     |
+|                                                                   |
+|  ── Customize (overrides for this session only) ────  [Collapse ▴]|
+|                                                                   |
+|  Iterations      [5        ]  How many develop cycles             |
+|  Reviews         [2        ]  Review passes per iteration         |
+|                                                                   |
+|  Preset:  [● Standard]  [ ] Thorough  [ ] Quick  [ ] Custom      |
+|                                                                   |
+|  ── Agent Chains ────────────────────────────────────             |
+|                                                                   |
+|  Using configured drain bindings:                                 |
+|  Planning:    planner   → claude-opus → opencode-gpt4             |
+|  Development: developer → glm-agent → claude-opus → codex-o3     |
+|  Analysis:    analyzer  → opencode-gpt4                           |
+|  Review:      reviewer  → opencode-gpt4 → claude-opus            |
+|  Fix:         developer → glm-agent → claude-opus → codex-o3     |
+|  Commit:      commit    → claude-opus                              |
+|                                      [Customize for this session] |
+|                                                                   |
+|  ⓘ These values come from your workspace configuration.           |
+|    Changes here apply to this session only.                        |
+|                                      [Reset to configured ↺]     |
+|                                                                   |
+|                                    [← Back]  [Cancel]  [Next →]   |
++------------------------------------------------------------------+
+```
+
+When "Customize for this session" is clicked within the expanded Agent Chains
+section, the drain bindings become editable dropdowns allowing the user to
+override which chain is used for each drain (does not change the global config):
+
+```
+|  ── Agent Chains (customized for this session) ──────            |
+|                                                                   |
+|  Planning       [planner             ▾]                           |
+|  Development    [developer           ▾]                           |
+|  Review         [reviewer            ▾]                           |
+|  Fix            [developer           ▾]                           |
+|  Commit         [commit              ▾]                           |
+|  Analysis       [analyzer            ▾]                           |
+|                                                                   |
+|  ⓘ These overrides apply to this session only.                   |
+|    Edit chains in Configuration → Agent Chains & Drains.          |
+|                                      [Reset to configured ↺]     |
+```
+
+**Unconfigured user — first time or missing config:**
+
+If no agent chains are configured (empty `[agent_chains]` in the TOML), Step 2
+shows a prominent setup callout instead of the compact summary:
+
+```
++------------------------------------------------------------------+
+|  New Session                                                      |
+|  [1. Prompt ━━━━━━━●2. Configure ━━━━━━━3. Review & Launch]      |
++------------------------------------------------------------------+
+|                                                                   |
+|  Where & How                                                      |
+|                                                                   |
+|  Worktree        [add-auth                          ▾]            |
+|                   Or: [+ Create New Worktree]                     |
+|                                                                   |
+|  +-- Setup Required ──────────────────────────────────+          |
+|  |                                                     |          |
+|  |  ⚠ No agent chains configured                      |          |
+|  |                                                     |          |
+|  |  Ralph Workflow needs at least one agent chain to   |          |
+|  |  run sessions. Set up your agents and drain         |          |
+|  |  bindings in Configuration first.                   |          |
+|  |                                                     |          |
+|  |  [Go to Configuration →]                            |          |
+|  +-----------------------------------------------------+          |
+|                                                                   |
+|                                    [← Back]  [Cancel]             |
++------------------------------------------------------------------+
+```
+
+The "Next →" button is disabled until configuration is complete. This prevents
+launching sessions that would immediately fail. (UX-3.5 Error Prevention)
+
+**Key design decisions for Step 2:**
+
+- **Smart defaults over manual entry:** All values are pre-filled from the
+  workspace configuration. The user only changes what they need to change.
+  For most sessions, the answer is "nothing" — just pick a worktree and go
+- **Two-tier disclosure:** Compact summary by default (one line), full
+  customization on demand. This means the common case (configured user
+  starting a new session) requires exactly one selection (worktree) and two
+  clicks (Next, then Launch on Step 3). Three steps, ~5 seconds
+- **Configuration, not the wizard, is where you set up agents:** The wizard
+  is for per-session overrides only. If the user wants to change their default
+  iterations from 5 to 3, they do it in Configuration once — not in the wizard
+  every time
+- **Fail fast on missing config:** If agents aren't configured, the wizard
+  catches it here with a clear path to fix it. The user never reaches Step 3
+  and hits a confusing launch failure
+- **No mandatory fields beyond worktree:** Everything else has a default. The
+  user can literally click Next without touching anything (UX-4.4)
 
 This is a significant reduction from dumping all options on one screen.
 Advanced options (retry settings, context levels, etc.) use workspace-level
@@ -494,8 +752,11 @@ configuration — they don't belong in the per-session wizard. (UX-5.1, UX-6.1)
 |                                                                   |
 |  +-- Configuration Summary ------------------------------------+ |
 |  |  Worktree:      add-auth (branch: wt-62-auth)               | |
-|  |  Developer:     claude (claude-opus-4)                       | |
-|  |  Reviewer:      codex (gpt-4-turbo)                          | |
+|  |  Planning:      planner (claude-opus + 1 more)              | |
+|  |  Dev & Fix:     developer (glm-agent + 2 more)              | |
+|  |  Analysis:      analyzer (opencode-gpt4)                    | |
+|  |  Review:        reviewer (opencode-gpt4 + 1 more)           | |
+|  |  Commit:        commit (claude-opus)                         | |
 |  |  Iterations:    5                                            | |
 |  |  Reviews:       2 per iteration                              | |
 |  |  Preset:        Standard                                     | |
@@ -510,7 +771,7 @@ configuration — they don't belong in the per-session wizard. (UX-5.1, UX-6.1)
 |  |                                          [Review Again]      | |
 |  +--------------------------------------------------------------+ |
 |                                                                   |
-|                             [← Back]  [Cancel]  [🚀 Launch]      |
+|                             [← Back]  [Cancel]  [▶ Launch]      |
 +------------------------------------------------------------------+
 ```
 
@@ -616,6 +877,191 @@ occasional interaction. (UX-4.3)
 - **Actions dropdown** (top right) contains: Resume, Pause, Cancel, Copy Run
   ID, Open in Terminal. The primary action (e.g., Resume for paused runs) is
   also available as a prominent button
+- **Tab bar** below the phase timeline: **[Log]  [Changes]  [Info]**. The
+  active tab has an amber underline. Default tab depends on run state: Log
+  for running sessions, Changes for completed sessions, Log for failed/paused
+  sessions. This ensures the user sees the most relevant content first
+
+#### 4.4.1 Run Detail — Completed State (UX-6.6)
+
+When a run completes successfully, the Run Detail page celebrates the
+accomplishment and surfaces the results — not just "status: done".
+
+```
++------------------------------------------------------------------+
+|  ← Sessions         add-auth                                     |
+|                      "Add user authentication"         [Actions ▾]|
++------------------------------------------------------------------+
+|                                                                   |
+|  +-- Phase Timeline -------------------------------------------+ |
+|  |                                                              | |
+|  |  [Plan]━━━━━━[Develop]━━━━━━[Review]━━━━━━[Commit]          | |
+|  |    ✓           ✓              ✓              ✓               | |
+|  |   1m 20s      18m 45s        4m 30s         0m 55s           | |
+|  |                                                              | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  +-- Completion Summary ----------------------------------------+ |
+|  |                                                               | |
+|  |  ✓  Session completed successfully                 25m 30s    | |
+|  |                                                               | |
+|  |  +--Iterations--+ +--Reviews----+ +--Files------+ +--Tests-+ | |
+|  |  |      3       | |     2       | |     7       | |   18   | | |
+|  |  | dev cycles   | | passes      | | changed     | | passed | | |
+|  |  | all passed   | | 0 findings  | | +142 -38    | | 0 fail | | |
+|  |  +----------- --+ +-------------+ +-------------+ +--------+ | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  [Log]  [Changes ●]  [Info]                                      |
+|                                                                   |
+|  Session complete · 3 iterations · 7 files changed  +142  -38     |
+|  [View by Iteration ▾]  [Copy as Patch]  [Open in Editor]        |
+|                                                                   |
+|  (Changes tab shown by default — see Section 4.12)               |
+|                                                                   |
++------------------------------------------------------------------+
+```
+
+**Key design decisions:**
+
+- **Completion Summary card** replaces the degraded banner area. Uses a green-
+  tinted left border and the ✓ icon at large size. The total duration is
+  prominent. This is the "peak-end" moment (UX-6.6) — the user's last
+  impression of a run should feel satisfying, not anticlimactic
+- **Metric cards** show the four most important outcomes: iterations completed,
+  review passes, files changed (with +/- counts), and test results. These give
+  the user a complete picture at a glance without reading logs
+- **Phase timeline** shows all four phases completed with checkmarks and
+  individual durations. The connecting lines are fully filled in green. This
+  visual completion reinforces "everything succeeded"
+- **Changes tab is selected by default** because after a run completes, the
+  user's primary goal is "what did it produce?" — the code diff answers this
+  directly (UX-4.1)
+- **No recovery actions needed** — the Actions dropdown still offers "Copy Run
+  ID", "Open in Terminal", "Start New Session" (pre-filled with same worktree)
+
+#### 4.4.2 Run Detail — Failed State (UX-3.9, UX-11.2)
+
+When a run fails, the page must clearly communicate what went wrong, why,
+and what the user can do about it — never a dead end.
+
+```
++------------------------------------------------------------------+
+|  ← Sessions         login-flow                                   |
+|                      "Add login flow"          [Resume]  [Actions ▾]|
++------------------------------------------------------------------+
+|                                                                   |
+|  +-- Phase Timeline -------------------------------------------+ |
+|  |                                                              | |
+|  |  [Plan]━━━━━━[Develop]━━━━━━[Review]      [Commit]          | |
+|  |    ✓           ✕ 2/5          ○              ○               | |
+|  |   1m 20s      Failed        Skipped        Skipped           | |
+|  |                                                              | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  +-- Error Summary (red-tinted) --------------------------------+ |
+|  |                                                               | |
+|  |  ✕  Session failed during Development (iteration 2 of 5)     | |
+|  |                                                               | |
+|  |  Error:   API rate limit exceeded                             | |
+|  |  Agent:   claude (claude-opus-4-6)                            | |
+|  |  When:    2 hours ago (failed at iteration 2 of 5)            | |
+|  |  Duration: 8m 15s before failure                              | |
+|  |                                                               | |
+|  |  What you can do:                                             | |
+|  |  · Wait for the rate limit to reset and resume                | |
+|  |  · Switch to a different agent in Configuration                | |
+|  |  · Check your API provider dashboard for usage limits          | |
+|  |                                                               | |
+|  |  [Resume Session]  [Retry from Beginning]  [Go to Config]     | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  [Log ●]  [Changes]  [Info]                                      |
+|                                                                   |
+|  (Log tab shown by default — last output helps diagnose the issue)|
+|                                                                   |
++------------------------------------------------------------------+
+```
+
+**Key design decisions:**
+
+- **Error Summary card** replaces the degraded/completion banner area. Uses a
+  red-tinted left border and red ✕ icon. States the error in plain language,
+  identifies which phase and iteration failed, and shows relevant context
+  (agent, timing)
+- **"What you can do" section** provides actionable recovery guidance specific
+  to the error type. This follows UX-11.2: every error states what happened,
+  why, and what the user can do about it
+- **Three recovery actions** are shown inline on the card:
+  - "Resume Session" — continues from the checkpoint (most common action)
+  - "Retry from Beginning" — starts over with a clean slate
+  - "Go to Config" — for errors that require configuration changes (agent
+    swap, API key issues)
+- **Resume button also appears** in the page header (next to the session name)
+  for quick access. This is the primary action for failed runs (UX-4.1:
+  "Resume action visible on the session itself")
+- **Phase timeline** marks the failed phase with ✕ and shows subsequent phases
+  as "Skipped" with empty circles. The connecting lines stop at the failure
+  point, visually showing "progress stopped here"
+- **Log tab is selected by default** for failed runs because the last log
+  output is usually the most useful diagnostic information
+
+#### 4.4.3 Run Detail — Paused State (UX-13.1)
+
+When a run is paused (checkpoint saved), the page communicates that work is
+preserved and resumption is one click away.
+
+```
++------------------------------------------------------------------+
+|  ← Sessions         cache-layer                                  |
+|                      "Add caching layer"       [Resume]  [Actions ▾]|
++------------------------------------------------------------------+
+|                                                                   |
+|  +-- Phase Timeline -------------------------------------------+ |
+|  |                                                              | |
+|  |  [Plan]━━━━━━[Develop]━━━━━━[Review]      [Commit]          | |
+|  |    ✓           ⏸ 3/5          ○              ○               | |
+|  |   1m 20s      Paused        Waiting        Waiting           | |
+|  |                                                              | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  +-- Paused Banner (amber-tinted) ------------------------------+ |
+|  |                                                               | |
+|  |  ⏸  Session paused — checkpoint saved                        | |
+|  |                                                               | |
+|  |  Paused during Development (iteration 3 of 5)                | |
+|  |  Checkpoint includes all progress from iterations 1-2.        | |
+|  |  Resuming will continue from iteration 3.                     | |
+|  |                                                               | |
+|  |  Last active: 1 day ago · Total time: 14m 30s                | |
+|  |                                                               | |
+|  |  [▶ Resume Session]                          [Cancel Session] | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  [Log ●]  [Changes]  [Info]                                      |
+|                                                                   |
+|  (Log shows output up to the pause point)                        |
+|                                                                   |
++------------------------------------------------------------------+
+```
+
+**Key design decisions:**
+
+- **Paused Banner** uses an amber-tinted left border and ⏸ icon, consistent
+  with the warning/paused color language. The tone is reassuring — "checkpoint
+  saved", "progress includes all iterations 1-2"
+- **Resume is the hero action** — large amber button, prominently placed, and
+  also in the page header. The user should feel that resuming is effortless
+  (UX-4.4: eliminate excise)
+- **Cancel is available but visually secondary** — outlined style, positioned
+  away from Resume to prevent accidental clicks. Clicking Cancel shows the
+  confirmation dialog (Section 5.4)
+- **Phase timeline** shows ⏸ on the paused phase (not ✕ — this is not a
+  failure). Future phases show "Waiting" to indicate they haven't been skipped,
+  just not reached yet
+- **Context about what's preserved** is explicit: "Checkpoint includes all
+  progress from iterations 1-2. Resuming will continue from iteration 3."
+  This gives the user confidence that nothing is lost (UX-13.1)
 
 ### 4.5 Worktrees
 
@@ -757,29 +1203,93 @@ a scope selector and collapsible sections.
 |  ▶ Retry & Fallback                                 6 settings    |
 |  ▶ Git Identity                                     2 settings    |
 |                                                                   |
-|  ▼ Agent Profiles                                                 |
+|  ▼ Agent Chains & Drains                                          |
 |  +--------------------------------------------------------------+ |
 |  |                                                               | |
-|  |  Developer Chain (tried in order, drag to reorder):           | |
-|  |  ┌────────────────┐  ┌────────────────┐  ┌─────────┐        | |
-|  |  │ my-claude      │→ │ opencode-gpt4  │→ │ + Add   │        | |
-|  |  │ claude-code    │  │ opencode       │  │         │        | |
-|  |  │ opus-4-6       │  │ gpt-4-turbo    │  │         │        | |
-|  |  └────────────────┘  └────────────────┘  └─────────┘        | |
+|  |  Agent chains are named, ordered lists of agents. The first   | |
+|  |  agent is preferred; the rest serve as fallbacks if it fails  | |
+|  |  (rate limit, auth error, context exhaustion).                | |
 |  |                                                               | |
-|  |  Reviewer Chain (tried in order, drag to reorder):            | |
-|  |  ┌────────────────┐  ┌────────────────┐  ┌─────────┐        | |
-|  |  │ opencode-gpt4  │→ │ my-claude      │→ │ + Add   │        | |
-|  |  │ opencode       │  │ claude-code    │  │         │        | |
-|  |  │ gpt-4-turbo    │  │ opus-4-6       │  │         │        | |
-|  |  └────────────────┘  └────────────────┘  └─────────┘        | |
+|  |  ── Chains (drag to reorder) ────────────────────────         | |
 |  |                                                               | |
-|  |  Configured Agents:                                           | |
+|  |  planner (2 agents):                                          | |
+|  |  ┌────────────────┐  ┌────────────────┐                      | |
+|  |  │ claude-opus    │→ │ opencode-gpt4  │                      | |
+|  |  │ claude-code    │  │ opencode       │                      | |
+|  |  │ opus-4-6       │  │ gpt-4-turbo    │                      | |
+|  |  └────────────────┘  └────────────────┘                      | |
+|  |  [+ Add Agent to Chain]                        [Rename] [✕]  | |
+|  |                                                               | |
+|  |  developer (3 agents):                                        | |
+|  |  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  | |
+|  |  │ glm-agent      │→ │ claude-opus    │→ │ codex-o3       │  | |
+|  |  │ opencode       │  │ claude-code    │  │ codex          │  | |
+|  |  │ glm-4-plus     │  │ opus-4-6       │  │ o3             │  | |
+|  |  └────────────────┘  └────────────────┘  └────────────────┘  | |
+|  |  [+ Add Agent to Chain]                        [Rename] [✕]  | |
+|  |                                                               | |
+|  |  reviewer (2 agents):                                         | |
+|  |  ┌────────────────┐  ┌────────────────┐                      | |
+|  |  │ opencode-gpt4  │→ │ claude-opus    │                      | |
+|  |  │ opencode       │  │ claude-code    │                      | |
+|  |  │ gpt-4-turbo    │  │ opus-4-6       │                      | |
+|  |  └────────────────┘  └────────────────┘                      | |
+|  |  [+ Add Agent to Chain]                        [Rename] [✕]  | |
+|  |                                                               | |
+|  |  analyzer (1 agent):                                          | |
+|  |  ┌────────────────┐                                          | |
+|  |  │ opencode-gpt4  │                                          | |
+|  |  │ opencode       │                                          | |
+|  |  │ gpt-4-turbo    │                                          | |
+|  |  └────────────────┘                                          | |
+|  |  [+ Add Agent to Chain]                        [Rename] [✕]  | |
+|  |                                                               | |
+|  |  commit (1 agent):                                            | |
+|  |  ┌────────────────┐                                          | |
+|  |  │ claude-opus    │                                          | |
+|  |  │ claude-code    │                                          | |
+|  |  │ opus-4-6       │                                          | |
+|  |  └────────────────┘                                          | |
+|  |  [+ Add Agent to Chain]                        [Rename] [✕]  | |
+|  |                                                               | |
+|  |  [+ Create New Chain]                                         | |
+|  |                                                               | |
+|  |  ── Drains (which phase uses which chain) ───────────         | |
+|  |                                                               | |
+|  |  Drains assign each pipeline phase to the best chain for the  | |
+|  |  job. Different models excel at different tasks — use drains   | |
+|  |  to match agent strengths to phase requirements.              | |
+|  |                                                               | |
+|  |  Example: Claude Opus excels at planning, GLM at executing    | |
+|  |  detailed instructions, GPT at verification. Drains let you   | |
+|  |  assign each to the phase where it shines.                    | |
+|  |                                                               | |
+|  |  Planning        [planner            ▾]  Creates the plan     | |
+|  |  Development     [developer           ▾]  Writes the code     | |
+|  |  Review          [reviewer            ▾]  Reviews changes     | |
+|  |  Fix             [developer           ▾]  Fixes review issues | |
+|  |  Commit          [commit              ▾]  Writes commit msgs  | |
+|  |  Analysis  [?]   [analyzer            ▾]  Checks code vs plan | |
+|  |                                                               | |
+|  |  [?] Analysis runs after each dev iteration to verify the     | |
+|  |  code satisfies the plan. GPT models are often a good fit     | |
+|  |  for this role — consider a dedicated chain.                  | |
+|  |                                                               | |
+|  |  ── Configured Agents ───────────────────────────────         | |
+|  |                                                               | |
 |  |  ┌───────────────────────┐  ┌───────────────────────┐        | |
-|  |  │  my-claude            │  │  opencode-gpt4        │        | |
+|  |  │  claude-opus          │  │  opencode-gpt4        │        | |
 |  |  │  Tool: Claude Code    │  │  Tool: OpenCode       │        | |
 |  |  │  Provider: Anthropic  │  │  Provider: OpenAI     │        | |
 |  |  │  Model: opus-4-6      │  │  Model: gpt-4-turbo   │        | |
+|  |  │  [Edit]    [Remove]   │  │  [Edit]    [Remove]   │        | |
+|  |  └───────────────────────┘  └───────────────────────┘        | |
+|  |                                                               | |
+|  |  ┌───────────────────────┐  ┌───────────────────────┐        | |
+|  |  │  glm-agent            │  │  codex-o3             │        | |
+|  |  │  Tool: OpenCode       │  │  Tool: Codex          │        | |
+|  |  │  Provider: ZhipuAI    │  │  Provider: OpenAI     │        | |
+|  |  │  Model: glm-4-plus    │  │  Model: o3            │        | |
 |  |  │  [Edit]    [Remove]   │  │  [Edit]    [Remove]   │        | |
 |  |  └───────────────────────┘  └───────────────────────┘        | |
 |  |                                                               | |
@@ -818,45 +1328,151 @@ a scope selector and collapsible sections.
 - **Sections are collapsible** with a disclosure triangle. Collapsed sections
   show how many settings they contain. This lets the user see the full table
   of contents and expand only what they need (UX-5.1)
-- **Agent Profiles** section shows the developer and reviewer chains as visual
-  pipelines with drag-to-reorder. Each agent card shows a user-defined name,
-  the CLI tool it uses, the provider, and the model. Clicking "+ Add Agent"
-  opens the Add Agent dialog (see below). Agents can be edited, removed, or
-  reordered by dragging
-- **Add/Edit Agent dialog:** Selecting a CLI tool first (Claude Code, Codex,
-  OpenCode) determines what providers and models are available. For OpenCode,
-  the provider and model lists are fetched dynamically from the provider's
-  API (e.g., listing available models). For Claude Code and Codex, the
-  model list is also fetched from the respective APIs. The user picks a
-  tool → a provider (if the tool supports multiple) → a model from the
-  dynamically populated list. This prevents invalid combinations and ensures
-  the user only sees models they actually have access to
+- **Agent Chains & Drains** section has three subsections:
+  - **Chains:** Named, ordered lists of agents displayed as visual pipelines
+    with drag-to-reorder. Each chain has a name (e.g., "developer", "reviewer",
+    "commit") and contains agent cards showing the user-defined name, CLI tool,
+    provider, and model. Chains can be created, renamed, or deleted. Agents
+    within a chain can be added, removed, or reordered by dragging. When an
+    agent fails (rate limit, auth error, etc.), Ralph automatically falls back
+    to the next agent in the chain
+  - **Drains:** Six dropdown selectors that bind pipeline phases to named
+    chains. The six drains are Planning, Development, Review, Fix, Commit, and
+    Analysis. The primary purpose of drains is matching agent strengths to
+    phase requirements — for example, Claude Opus excels at planning, GLM at
+    executing detailed instructions, and GPT at verification. Each drain also
+    independently tracks its fallback position within its chain.
+    Multiple drains can share the same chain if desired. The dropdown options
+    are populated from the configured chain names
+  - **Configured Agents:** All agents defined in the system, shown as cards.
+    Clicking "+ Add Agent" opens the Add Agent dialog (see below). Agents can
+    be edited, removed, or reordered within chains by dragging
+- **Add/Edit Agent dialog — adaptive widget design:** The dialog uses
+  progressive narrowing: CLI Tool → Provider → Model. Each selection
+  constrains the next field. Widget types adapt to the data volume of each
+  tool, following UX-6.1 (Hick's Law: ≤7 visible items; longer lists need
+  search) and UX-4.4 (Eliminate Excise: don't ask for info the system knows).
+
+  **CLI Tool** uses a **radio group** (not dropdown) showing only installed
+  tools. Radio groups surface all options at once — faster than opening a
+  dropdown for 2-4 items (UX-3.6 Recognition over Recall). Each option shows
+  the tool name, version, and connection status. Uninstalled tools are not
+  shown (UX-3.5 Error Prevention). If only one tool is installed, it is
+  auto-selected and shown as a read-only label.
+
+  **Provider** is adaptive:
+  - Claude Code / Codex → single provider → **auto-filled read-only label**
+    ("Anthropic" / "OpenAI"). No selector shown — eliminates a meaningless
+    decision (UX-4.4).
+  - OpenCode → multiple providers → **dropdown** with auth status indicators
+    (✓ configured / ⚠ needs key). Typically 5-10 providers.
+
+  **Model** is adaptive based on list size:
+  - Small list (≤15 models, e.g., Claude Code, Codex) → **grouped dropdown**
+    organized by model family (e.g., "Claude 4.x", "Claude 3.5.x"). Each
+    option shows model name and context window size.
+  - Large list (>15 models, e.g., OpenCode) → **searchable combo box** with
+    type-ahead filtering. User types to narrow results. Options are grouped
+    by model family. Each option shows model name, context window, and cost
+    tier indicator ($ / $$ / $$$). A loading skeleton appears while models
+    are fetched from the provider API.
+
+  **Why adaptive, not one-size-fits-all:** A flat dropdown with 200 models is
+  unusable (Hick's Law). But forcing a search box on someone choosing between
+  3 Codex models adds friction. The widget matches the data.
 
   ```
+  Add Agent dialog — when CLI tool has few models (Claude Code / Codex):
+
   +----------------------------------------------------+
-  |  Add Agent                                         |
+  |  Add Agent                                    [✕]  |
   +----------------------------------------------------+
   |                                                    |
   |  Agent Name         [my-reviewer       ]           |
   |    A short name to identify this agent             |
   |                                                    |
-  |  CLI Tool           [OpenCode               ▾]    |
-  |                      Claude Code                   |
-  |                      Claude Code Switch            |
-  |                    → OpenCode                      |
-  |                      Codex                         |
+  |  CLI Tool                                          |
+  |    (●) Claude Code   v1.2.3  ✓                     |
+  |    ( ) Codex         v0.9.1  ✓                     |
+  |    ( ) OpenCode      v2.1.0  ✓                     |
   |                                                    |
-  |  Provider           [Anthropic              ▾]    |
-  |                      (fetched from opencode)       |
+  |  Provider            Anthropic                     |
+  |                      (determined by tool)           |
   |                                                    |
   |  Model              [claude-opus-4-6        ▾]    |
-  |                      (fetched from provider API)   |
-  |                                                    |
-  |  ⓘ Models are fetched live from the provider.     |
-  |    Only models available to your account appear.   |
+  |                      ── Claude 4.x ──              |
+  |                        opus-4-6   (200K ctx)       |
+  |                        sonnet-4-6 (200K ctx)       |
+  |                      ── Claude 3.5.x ──            |
+  |                        haiku-3-5  (200K ctx)       |
   |                                                    |
   |               [Cancel]     [Add Agent]             |
   +----------------------------------------------------+
+
+
+  Add Agent dialog — when CLI tool has many models (OpenCode):
+
+  +----------------------------------------------------+
+  |  Add Agent                                    [✕]  |
+  +----------------------------------------------------+
+  |                                                    |
+  |  Agent Name         [my-analyzer      ]            |
+  |    A short name to identify this agent             |
+  |                                                    |
+  |  CLI Tool                                          |
+  |    ( ) Claude Code   v1.2.3  ✓                     |
+  |    ( ) Codex         v0.9.1  ✓                     |
+  |    (●) OpenCode      v2.1.0  ✓                     |
+  |                                                    |
+  |  Provider           [OpenAI           ✓ ▾]        |
+  |                      Anthropic        ✓            |
+  |                      Google           ✓            |
+  |                      Mistral          ⚠            |
+  |                                                    |
+  |  Model              [gpt-4-turbo         ✕]       |
+  |                     ┌────────────────────────┐     |
+  |                     │ 🔍 gpt-4              │     |
+  |                     │ ── Recommended ──────  │     |
+  |                     │   gpt-4-turbo  128K $$ │     |
+  |                     │   gpt-4o       128K $$ │     |
+  |                     │ ── GPT-4.x ──────────  │     |
+  |                     │   gpt-4        8K  $$  │     |
+  |                     │   gpt-4-32k    32K $$$ │     |
+  |                     │ ── GPT-3.5 ──────────  │     |
+  |                     │   gpt-3.5-turbo 16K $  │     |
+  |                     └────────────────────────┘     |
+  |                                                    |
+  |               [Cancel]     [Add Agent]             |
+  +----------------------------------------------------+
+  ```
+
+- **"Add Agent to Chain" interaction:** Clicking `[+ Add Agent to Chain]`
+  within a chain opens a **popover picker** listing all configured agents
+  not already in that chain. Each option shows the agent name, tool, and
+  model as secondary text. A "Create new agent..." option at the bottom
+  opens the Add Agent dialog inline, and the newly created agent is
+  automatically added to the chain. This eliminates the two-step workflow
+  of defining an agent first and then navigating back to add it (UX-4.4
+  Eliminate Excise).
+
+  ```
+  Add Agent to Chain popover:
+
+  ┌─────────────────────────────────┐
+  │  Add to "planner" chain         │
+  │                                 │
+  │  ○ claude-opus                  │
+  │    Claude Code · opus-4-6       │
+  │                                 │
+  │  ○ opencode-gpt4               │
+  │    OpenCode · gpt-4-turbo       │
+  │                                 │
+  │  ○ codex-o3                    │
+  │    Codex · o3                   │
+  │                                 │
+  │  ── or ──────────────────────── │
+  │  [+ Create new agent...]        │
+  └─────────────────────────────────┘
   ```
 
 - **Agent Tools** section shows the status of the CLI tools (Claude Code,
@@ -963,6 +1579,7 @@ It takes over the entire main content area.
 ```
 +------------------------------------------------------------------+
 |                                                                   |
+|  Step 1 of 3                                                      |
 |                                                                   |
 |                          [R]                                      |
 |                    Ralph Workflow                                  |
@@ -1056,7 +1673,7 @@ which tools are already installed on the user's system.
 |                                                                   |
 |  +--------------------------------------------------------------+ |
 |  |                                                               | |
-|  |       📁  [Browse for Repository...]                         | |
+|  |       (folder)  [Browse for Repository...]                   | |
 |  |                                                               | |
 |  |  Or drag and drop a folder here                               | |
 |  |                                                               | |
@@ -1079,7 +1696,7 @@ appears at the top of the dashboard:
 
 ```
 +--------------------------------------------------------------+
-|  👋 Quick Tips                                          [✕]  |
+|  (lightbulb) Quick Tips                                 [✕]  |
 |                                                               |
 |  · Press g then h/s/w/c to navigate between pages            |
 |  · Press ? to see all keyboard shortcuts                      |
@@ -1094,8 +1711,8 @@ This tips card only appears once (dismissed permanently when closed).
 
 **Purpose:** Find sessions, worktrees, and runs across the current workspace.
 
-Search is accessible via `Ctrl+F` or the search field in the Sessions sidebar.
-The global search opens as a command palette overlay (like VS Code's Ctrl+P):
+Search is accessible via `Ctrl+K` or the search field in the Sessions sidebar.
+The global search opens as a command palette overlay (like GitHub's Ctrl+K):
 
 ```
 +-------- centered overlay, 600px wide --------+
@@ -1517,6 +2134,175 @@ setup process.
 |  |  [Open CLI Settings]                                          | |
 ```
 
+### 4.14 Help & Documentation
+
+**Purpose:** In-app guidance so users never need to leave the application to
+understand Ralph Workflow's concepts, features, or configuration.
+**Posture:** Reference view — quick lookups and learning, not deep reading.
+
+Ralph Workflow has several layers of in-app help, following UX-3.10 ("Help
+content is positioned in context, next to the thing it explains"):
+
+#### 4.14.1 Keyboard Shortcuts Overlay
+
+Triggered by `?` from anywhere. A centered overlay showing all shortcuts
+grouped by category:
+
+```
++---------- centered overlay, 500px wide ----------+
+|  Keyboard Shortcuts                         [✕]  |
++---------------------------------------------------+
+|                                                   |
+|  Navigation                                       |
+|  g then h         Home                            |
+|  g then s         Sessions                        |
+|  g then w         Worktrees                       |
+|  g then c         Configuration                   |
+|  g then p         Preferences                     |
+|                                                   |
+|  Actions                                          |
+|  Ctrl+N           New Session                     |
+|  Ctrl+K           Search / Command Palette        |
+|  Ctrl+F           Find in Current View            |
+|  Ctrl+,           Preferences                     |
+|                                                   |
+|  Workspaces                                       |
+|  Ctrl+Tab         Next Workspace                  |
+|  Ctrl+Shift+Tab   Previous Workspace              |
+|  Ctrl+W           Close Workspace                 |
+|                                                   |
+|  General                                          |
+|  ?                This help                        |
+|  Escape           Close dialog/modal              |
++---------------------------------------------------+
+```
+
+#### 4.14.2 Contextual Help Tooltips
+
+Every configuration field, wizard step, and drain binding has a `[?]` icon
+that shows a contextual tooltip on hover or click. Tooltips explain:
+- **What the setting does** in plain language
+- **When to change it** (common use cases)
+- **Recommended values** where applicable
+
+Examples:
+- Analysis drain `[?]`: "Runs after each development iteration to verify the
+  code satisfies the plan. GPT models (e.g., gpt-4-turbo) are often a good
+  fit — consider using a separate chain from your developer."
+- Developer Iterations `[?]`: "How many times the developer agent will attempt
+  to implement the feature. More iterations = more refinement. 3-5 is typical."
+- Agent Chains `[?]`: "When an agent fails (rate limit, auth error, context
+  exceeded), Ralph automatically falls back to the next agent in the chain.
+  Order matters — put your preferred agent first."
+
+#### 4.14.3 Concepts Guide
+
+Accessible from the `?` (Help) icon in the activity bar, or from Help menu.
+A slide-out panel or dedicated page explaining Ralph Workflow's core concepts:
+
+```
++------------------------------------------------------------------+
+|  Help                                                             |
++------------------------------------------------------------------+
+|                                                                   |
+|  ▼ Core Concepts                                                  |
+|  +--------------------------------------------------------------+ |
+|  |                                                               | |
+|  |  How Ralph Workflow Works                                     | |
+|  |                                                               | |
+|  |  You write a prompt → Ralph creates a plan → an AI agent      | |
+|  |  develops code → another agent reviews it → Ralph commits.    | |
+|  |  This repeats until the feature is complete.                  | |
+|  |                                                               | |
+|  |  The Pipeline                                                 | |
+|  |  [Plan] → [Develop] → [Review] → [Commit]                    | |
+|  |  Each phase is powered by one or more "agent drains" (see     | |
+|  |  below) that select which AI agent handles each role.         | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  ▼ Agent Chains & Drains                                          |
+|  +--------------------------------------------------------------+ |
+|  |                                                               | |
+|  |  Agent Chains                                                 | |
+|  |  A chain is an ordered list of AI agents. When the first      | |
+|  |  agent fails (rate limit, auth error, etc.), Ralph            | |
+|  |  automatically tries the next one. Chains give your pipeline  | |
+|  |  resilience — if one API is down, work continues.             | |
+|  |                                                               | |
+|  |  Agent Drains                                                 | |
+|  |  A drain binds a pipeline role to a chain. Six drains map     | |
+|  |  to the four pipeline phases:                                 | |
+|  |                                                               | |
+|  |  Plan phase:                                                  | |
+|  |  · Planning — creates the implementation plan                 | |
+|  |                                                               | |
+|  |  Develop phase:                                               | |
+|  |  · Development — writes and modifies code                     | |
+|  |  · Analysis — checks code against the plan after each dev     | |
+|  |    iteration (GPT models recommended for this role)           | |
+|  |                                                               | |
+|  |  Review phase:                                                | |
+|  |  · Review — reviews code changes for quality                  | |
+|  |  · Fix — addresses issues found during review                 | |
+|  |                                                               | |
+|  |  Commit phase:                                                | |
+|  |  · Commit — generates commit messages                         | |
+|  |                                                               | |
+|  |  Each drain lets you pick the best agent for that phase.       | |
+|  |  For example, use Claude Opus for planning, GLM for dev,      | |
+|  |  and GPT for analysis/review. Fallback order is per-drain.    | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  ▼ Worktrees                                                      |
+|  +--------------------------------------------------------------+ |
+|  |  Worktrees are parallel copies of your repository — each      | |
+|  |  gets its own branch and directory. They let Ralph work on    | |
+|  |  multiple features simultaneously without conflicts.          | |
+|  |  Named as wt-{ticket}-{description} (e.g., wt-62-gui).       | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  ▼ Sessions & Runs                                                |
+|  +--------------------------------------------------------------+ |
+|  |  A session is a complete AI development task — from prompt    | |
+|  |  to committed code. A run is the execution of that session.   | |
+|  |  Runs can be paused, resumed, and retried. Checkpoints save   | |
+|  |  progress so you can stop and continue later.                 | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
+|  ▼ Configuration Scopes                                           |
+|  +--------------------------------------------------------------+ |
+|  |  Settings can be defined at two levels:                       | |
+|  |  · Global (~/.config/ralph-workflow.toml) — applies everywhere| |
+|  |  · Project (.agent/ralph-workflow.toml) — per-repository      | |
+|  |                                                               | |
+|  |  Project settings override global settings. The "Effective"   | |
+|  |  tab in Configuration shows the final merged result.          | |
+|  +--------------------------------------------------------------+ |
+|                                                                   |
++------------------------------------------------------------------+
+```
+
+**Key design decisions:**
+
+- **Collapsible sections** so the user can scan topics and expand what they
+  need (UX-5.1)
+- **Plain language, not technical docs** — this is a quick reference for
+  users inside the app, not a developer guide. Jargon is explained, not
+  assumed (UX-3.2)
+- **Accessible from the activity bar** via the `?` (Help) icon at the bottom,
+  making it reachable from anywhere in 1 click (UX-5.4)
+- **Each concept links to its related page** — "Agent Chains & Drains" links
+  to Configuration, "Worktrees" links to the Worktrees page, etc. These
+  cross-references help users navigate from understanding to action (UX-8.4)
+
+#### 4.14.4 Empty State Help
+
+Every empty state in the app includes a brief explanation and a link to the
+relevant help section. For example, the empty dashboard includes
+"[Learn how it works]" which opens the Concepts Guide. This ensures that
+even brand-new users have a path to understanding without leaving the app
+(UX-1.3, UX-3.10).
+
 ---
 
 ## 5. State Design
@@ -1732,7 +2518,8 @@ The safe/cancel option is the visual default. (UX-3.3)
 | `?`               | Show keyboard shortcuts overlay |
 | `Ctrl+N`          | New Session                     |
 | `Ctrl+,`          | Open Preferences                |
-| `Ctrl+F`          | Open Search / Command Palette   |
+| `Ctrl+K`          | Open Search / Command Palette   |
+| `Ctrl+F`          | Search within current view      |
 | `Ctrl+Tab`        | Next workspace                  |
 | `Ctrl+Shift+Tab`  | Previous workspace              |
 | `Ctrl+W`          | Close current workspace         |
@@ -1807,6 +2594,8 @@ All lists in the application share:
 - Click anywhere on the row to navigate to the detail view
 - Status badges positioned consistently (right side)
 - Three-dot menus for secondary actions (right edge)
+- Right-click context menus on list rows, mirroring the three-dot menu actions
+  (UX-10.1: "Right-click context menus are available where users expect them")
 - Horizontal dividers between rows using `--border-default`
 
 ### 9.3 Form Pattern
