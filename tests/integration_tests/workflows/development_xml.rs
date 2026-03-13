@@ -331,9 +331,12 @@ fn test_development_xml_empty_status_fails_validation() {
     });
 }
 
-/// Test that empty summary fails validation with clear error.
+/// Test that empty/whitespace-only summary now succeeds with a fallback (tolerant parsing).
+///
+/// Previously, an empty summary was rejected. It now uses a fallback string
+/// to remain tolerant of LLMs that emit empty summary tags.
 #[test]
-fn test_development_xml_empty_summary_fails_validation() {
+fn test_development_xml_empty_summary_succeeds_with_fallback() {
     with_default_timeout(|| {
         let xml = r"<ralph-development-result>
 <ralph-status>completed</ralph-status>
@@ -341,12 +344,20 @@ fn test_development_xml_empty_summary_fails_validation() {
 </ralph-development-result>";
 
         let extracted = extract_development_result_xml(xml);
-        assert!(extracted.is_some(), "Should extract XML even if invalid");
+        assert!(extracted.is_some(), "Should extract the XML");
 
         let validated = validate_development_result_xml(&extracted.unwrap());
         assert!(
-            validated.is_err(),
-            "Should fail validation with empty summary"
+            validated.is_ok(),
+            "Empty summary should now succeed with a fallback: {:?}",
+            validated.err()
+        );
+
+        let elements = validated.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert!(
+            !elements.summary.is_empty(),
+            "Summary should have a non-empty fallback"
         );
     });
 }

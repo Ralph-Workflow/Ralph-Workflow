@@ -1,6 +1,11 @@
 // Step parsing functions (parse_steps, parse_single_step, parse_file_element, parse_target_files, parse_critical_files)
 
-/// Parse the ralph-implementation-steps section
+/// Parse the ralph-implementation-steps section.
+///
+/// After collecting all steps, auto-assigns sequential numbers to any steps that
+/// were parsed with sentinel number 0 (i.e., the number attribute was missing).
+/// Auto-assignment uses `max(existing_numbers) + 1` for each unnumbered step,
+/// processing in document order.
 fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationError> {
     let mut steps = Vec::new();
     let mut buf = Vec::new();
@@ -40,33 +45,78 @@ fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationErr
         });
     }
 
+    // Auto-assign sequential numbers to steps with sentinel number 0.
+    // For each unnumbered step, take the maximum explicit number seen so far and add 1.
+    let mut next_auto = 1u32;
+    for step in &mut steps {
+        if step.number == 0 {
+            // Find the maximum explicitly-assigned number in the already-seen steps
+            // (includes steps we've already assigned numbers to above this point in the loop).
+            // We already track next_auto which advances past any seen explicit numbers.
+            step.number = next_auto;
+            next_auto += 1;
+        } else {
+            // If this explicit number is >= next_auto, advance the counter past it.
+            if step.number >= next_auto {
+                next_auto = step.number + 1;
+            }
+        }
+    }
+
     Ok(steps)
 }
 
-/// Parse a single step element
+/// Content element names that can appear directly under a step (without a `<content>` wrapper).
+const BARE_CONTENT_ELEMENTS: &[&[u8]] =
+    &[b"paragraph", b"code-block", b"list", b"heading", b"table"];
+
+/// Reconstruct an XML element from a start event and its inner XML content.
+fn reconstruct_element(name: &[u8], attrs_str: &str, inner: &str) -> String {
+    format!(
+        "<{name_str}{attrs_str}>{inner}</{name_str}>",
+        name_str = String::from_utf8_lossy(name),
+        attrs_str = attrs_str,
+        inner = inner,
+    )
+}
+
+/// Extract attribute string from a quick-xml `BytesStart` for re-serialization.
+fn attrs_to_string(e: &quick_xml::events::BytesStart<'_>) -> String {
+    let mut result = String::new();
+    for attr in e.attributes().flatten() {
+        result.push(' ');
+        result.push_str(&String::from_utf8_lossy(attr.key.as_ref()));
+        result.push_str("=\"");
+        result.push_str(&String::from_utf8_lossy(&attr.value));
+        result.push('"');
+    }
+    result
+}
+
+/// Parse a single step element.
+///
+/// Tolerant behavior:
+/// - Missing `number` attribute: uses sentinel 0 so caller can auto-assign
+/// - Bare `<file>` elements (without `<target-files>` wrapper): collected as target files
+/// - Bare content elements (paragraph, code-block, list, heading, table) without `<content>` wrapper
 fn parse_single_step(
     reader: &mut Reader<&[u8]>,
     attrs: &HashMap<String, String>,
 ) -> Result<Step, XsdValidationError> {
-    let number: u32 = attrs
-        .get("number")
-        .ok_or_else(|| XsdValidationError {
-            error_type: XsdErrorType::MissingRequiredElement,
-            element_path: "step".to_string(),
-            expected: "number attribute".to_string(),
-            found: "no number attribute".to_string(),
-            suggestion: "Add number=\"N\" to the step".to_string(),
-            example: None,
-        })?
-        .parse()
-        .map_err(|_| XsdValidationError {
+    // Tolerant: if number attribute is missing, use 0 as sentinel for auto-assignment by caller.
+    let number: u32 = if let Some(num_str) = attrs.get("number") {
+        num_str.parse().map_err(|_| XsdValidationError {
             error_type: XsdErrorType::InvalidContent,
             element_path: "step/@number".to_string(),
             expected: "positive integer".to_string(),
-            found: attrs.get("number").cloned().unwrap_or_default(),
+            found: num_str.clone(),
             suggestion: "Use a positive integer for step number".to_string(),
             example: None,
-        })?;
+        })?
+    } else {
+        // Sentinel 0 means "auto-assign" — parse_steps will renumber these.
+        0
+    };
 
     let kind = attrs
         .get("type")
@@ -81,6 +131,8 @@ fn parse_single_step(
     let mut rationale = None;
     let mut content = None;
     let mut depends_on = Vec::new();
+    // Accumulator for bare content elements (no <content> wrapper)
+    let mut bare_content_xml = String::new();
     let mut buf = Vec::new();
 
     loop {
@@ -90,7 +142,8 @@ fn parse_single_step(
                     title = Some(read_text_until_end(reader, b"title")?);
                 }
                 b"target-files" => {
-                    target_files = parse_target_files(reader)?;
+                    let mut wrapped = parse_target_files(reader)?;
+                    target_files.append(&mut wrapped);
                 }
                 b"location" => {
                     location = Some(read_text_until_end(reader, b"location")?);
@@ -109,16 +162,40 @@ fn parse_single_step(
                     }
                     let _ = skip_to_end(reader, b"depends-on");
                 }
+                b"file" => {
+                    // Tolerant: bare <file> element without <target-files> wrapper.
+                    let file_attrs = get_attributes(&e);
+                    let file = parse_file_element(&file_attrs)?;
+                    target_files.push(file);
+                    // Skip to end of file element (it may have text content even if unlikely)
+                    let _ = skip_to_end(reader, b"file");
+                }
+                name if BARE_CONTENT_ELEMENTS.contains(&name) => {
+                    // Tolerant: bare content element without <content> wrapper.
+                    let attrs_str = attrs_to_string(&e);
+                    let inner = read_inner_xml(reader, name)?;
+                    let element_xml = reconstruct_element(name, &attrs_str, &inner);
+                    bare_content_xml.push_str(&element_xml);
+                }
                 _ => {
                     let _ = skip_to_end(reader, e.name().as_ref());
                 }
             },
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"depends-on" => {
-                let dep_attrs = get_attributes(&e);
-                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
-                    depends_on.push(step_num);
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"depends-on" => {
+                    let dep_attrs = get_attributes(&e);
+                    if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
+                        depends_on.push(step_num);
+                    }
                 }
-            }
+                b"file" => {
+                    // Tolerant: self-closing bare <file> element without <target-files> wrapper.
+                    let file_attrs = get_attributes(&e);
+                    let file = parse_file_element(&file_attrs)?;
+                    target_files.push(file);
+                }
+                _ => {}
+            },
             Ok(Event::End(e)) if e.name().as_ref() == b"step" => break,
             Ok(Event::Eof) => break,
             Ok(_) => {}
@@ -134,6 +211,12 @@ fn parse_single_step(
             }
         }
         buf.clear();
+    }
+
+    // If no explicit <content> wrapper was found but bare content elements were accumulated,
+    // parse those as the step content.
+    if content.is_none() && !bare_content_xml.is_empty() {
+        content = Some(parse_rich_content(&bare_content_xml)?);
     }
 
     let title = title.ok_or_else(|| XsdValidationError {
@@ -250,7 +333,14 @@ fn parse_target_files(reader: &mut Reader<&[u8]>) -> Result<Vec<TargetFile>, Xsd
     Ok(files)
 }
 
-/// Parse the ralph-critical-files section
+/// Parse the ralph-critical-files section.
+///
+/// Tolerant behavior: bare `<file>` elements directly under `<ralph-critical-files>`
+/// (without a `<primary-files>` or `<reference-files>` wrapper) are classified by
+/// attribute heuristics:
+/// - File with `action` attribute → primary file
+/// - File with `purpose` attribute (and no `action`) → reference file
+/// - File with `action` attribute takes precedence over `purpose` if both are present
 fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, XsdValidationError> {
     let mut primary_files = Vec::new();
     let mut reference_files = Vec::new();
@@ -260,15 +350,32 @@ fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, Xsd
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"primary-files" => {
-                    primary_files = parse_primary_files(reader)?;
+                    let mut wrapped = parse_primary_files(reader)?;
+                    primary_files.append(&mut wrapped);
                 }
                 b"reference-files" => {
-                    reference_files = parse_reference_files(reader)?;
+                    let mut wrapped = parse_reference_files(reader)?;
+                    reference_files.append(&mut wrapped);
+                }
+                b"file" => {
+                    // Tolerant: bare file element without wrapper.
+                    let file_attrs = get_attributes(&e);
+                    classify_bare_critical_file(
+                        &file_attrs,
+                        &mut primary_files,
+                        &mut reference_files,
+                    )?;
+                    let _ = skip_to_end(reader, b"file");
                 }
                 _ => {
                     let _ = skip_to_end(reader, e.name().as_ref());
                 }
             },
+            Ok(Event::Empty(e)) if e.name().as_ref() == b"file" => {
+                // Tolerant: self-closing bare file element without wrapper.
+                let file_attrs = get_attributes(&e);
+                classify_bare_critical_file(&file_attrs, &mut primary_files, &mut reference_files)?;
+            }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-critical-files" => break,
             Ok(Event::Eof) => break,
             Ok(_) => {}
@@ -301,6 +408,46 @@ fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, Xsd
         primary_files,
         reference_files,
     })
+}
+
+/// Classify a bare `<file>` element under `<ralph-critical-files>` into primary or reference.
+///
+/// Heuristic:
+/// - Has `action` attribute → primary file (action wins even if purpose is also present)
+/// - Has `purpose` attribute (no `action`) → reference file
+/// - Neither → skip silently (no path or ambiguous attributes)
+fn classify_bare_critical_file(
+    attrs: &HashMap<String, String>,
+    primary_files: &mut Vec<PrimaryFile>,
+    reference_files: &mut Vec<ReferenceFile>,
+) -> Result<(), XsdValidationError> {
+    let Some(path) = attrs.get("path").cloned() else {
+        // No path — cannot classify. Skip silently.
+        return Ok(());
+    };
+
+    if let Some(action_str) = attrs.get("action") {
+        // action attribute present → primary file
+        let action = FileAction::from_str(action_str).ok_or_else(|| XsdValidationError {
+            error_type: XsdErrorType::InvalidContent,
+            element_path: "ralph-critical-files/file/@action".to_string(),
+            expected: "create, modify, or delete".to_string(),
+            found: action_str.clone(),
+            suggestion: "Use action=\"create\", action=\"modify\", or action=\"delete\""
+                .to_string(),
+            example: None,
+        })?;
+        primary_files.push(PrimaryFile {
+            path,
+            action,
+            estimated_changes: attrs.get("estimated-changes").cloned(),
+        });
+    } else if let Some(purpose) = attrs.get("purpose").cloned() {
+        // purpose attribute present, no action → reference file
+        reference_files.push(ReferenceFile { path, purpose });
+    }
+    // Otherwise: skip (neither action nor purpose — ambiguous, do not add)
+    Ok(())
 }
 
 /// Parse primary-files

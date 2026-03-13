@@ -126,26 +126,22 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                     }
                     b"heading" => {
                         let attrs = get_attributes(&e);
-                        let level: u8 =
+                        let raw_level: u8 =
                             attrs.get("level").and_then(|s| s.parse().ok()).unwrap_or(3);
+                        // Tolerant: clamp level to the valid range 2..=4 instead of rejecting.
+                        // Level 1 → 2 (below minimum), level 5+ → 4 (above maximum), missing → 3.
+                        let level = raw_level.clamp(2, 4);
                         let text = read_text_until_end(&mut reader, b"heading")?;
-                        if !(2..=4).contains(&level) {
-                            return Err(XsdValidationError {
-                                error_type: XsdErrorType::InvalidContent,
-                                element_path: "heading/@level".to_string(),
-                                expected: "level between 2 and 4".to_string(),
-                                found: level.to_string(),
-                                suggestion: "Use level=\"2\", level=\"3\", or level=\"4\""
-                                    .to_string(),
-                                example: None,
-                            });
-                        }
                         elements.push(ContentElement::Heading(Heading { level, text }));
                     }
                     b"list" => {
                         let attrs = get_attributes(&e);
                         let list_type_str =
                             attrs.get("type").map_or("", std::string::String::as_str);
+                        // Tolerant: missing or unrecognized list type defaults to Unordered.
+                        // Only true synonyms (bulleted, ul, numbered, ol) and canonical values
+                        // are recognized; everything else (including empty/missing) defaults to
+                        // Unordered rather than rejecting, since type is non-essential structure.
                         let list_type = match normalize_enum_value(
                             list_type_str,
                             LIST_TYPE_VALID,
@@ -154,18 +150,8 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                         .as_deref()
                         {
                             Some("ordered") => ListType::Ordered,
-                            Some("unordered") => ListType::Unordered,
-                            _ => {
-                                return Err(XsdValidationError {
-                                    error_type: XsdErrorType::InvalidContent,
-                                    element_path: "list/@type".to_string(),
-                                    expected: "ordered or unordered".to_string(),
-                                    found: list_type_str.to_string(),
-                                    suggestion: "Use type=\"ordered\" or type=\"unordered\""
-                                        .to_string(),
-                                    example: None,
-                                });
-                            }
+                            // Unknown, empty, or unordered value: default to Unordered
+                            Some(_) | None => ListType::Unordered,
                         };
                         let list = parse_list(&mut reader, list_type)?;
                         elements.push(ContentElement::List(list));
@@ -427,7 +413,20 @@ fn parse_summary(reader: &mut Reader<&[u8]>) -> Result<PlanSummary, XsdValidatio
                     context = Some(read_text_until_end(reader, b"context")?);
                 }
                 b"scope-items" => {
-                    scope_items = parse_scope_items(reader)?;
+                    // Normal path: scope-items wrapper is present
+                    let mut wrapped = parse_scope_items(reader)?;
+                    scope_items.append(&mut wrapped);
+                }
+                b"scope-item" => {
+                    // Tolerant: bare scope-item without scope-items wrapper.
+                    // Merge directly into scope_items vec.
+                    let attrs = get_attributes(&e);
+                    let description = read_text_until_end(reader, b"scope-item")?;
+                    scope_items.push(ScopeItem {
+                        description,
+                        count: attrs.get("count").cloned(),
+                        category: attrs.get("category").cloned(),
+                    });
                 }
                 _ => {
                     let _ = skip_to_end(reader, e.name().as_ref());

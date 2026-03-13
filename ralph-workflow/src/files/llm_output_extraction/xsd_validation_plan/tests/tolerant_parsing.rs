@@ -545,7 +545,10 @@ fn test_plan_list_type_synonym_numbered_parses_as_ordered() {
 }
 
 #[test]
-fn test_plan_list_type_invalid_still_rejected() {
+fn test_plan_list_type_unrecognized_defaults_to_unordered() {
+    // Tolerance change: unrecognized list type now defaults to Unordered instead of rejecting.
+    // The list type attribute is non-essential structure; the list contents are what matter.
+    // This preserves semantically-complete responses that just use non-standard type names.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test plan</context>
@@ -588,7 +591,21 @@ fn test_plan_list_type_invalid_still_rejected() {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err(), "list type=\"random\" should be rejected");
+    assert!(
+        result.is_ok(),
+        "list type=\"random\" should now default to Unordered instead of being rejected: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    assert_eq!(
+        list.list_type,
+        ListType::Unordered,
+        "Unrecognized list type should default to Unordered"
+    );
 }
 
 // ============================================================================
@@ -1284,4 +1301,855 @@ fn test_plan_full_plan_with_synonym_enums_parses_successfully() {
         plan.critical_files.primary_files[1].action,
         FileAction::Modify
     ); // "change" → modify
+}
+
+// ============================================================================
+// Wrapper element bypass tolerance tests (Steps 2 in the implementation plan)
+// ============================================================================
+
+/// Test: scope-item elements directly under ralph-summary (no scope-items wrapper)
+/// should be accepted and parsed identically to properly-wrapped scope-items.
+#[test]
+fn test_plan_scope_items_without_wrapper_is_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test scope-items without wrapper</context>
+<scope-item count="1" category="files">file one</scope-item>
+<scope-item count="2" category="tests">test two</scope-item>
+<scope-item count="3" category="features">feature three</scope-item>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "scope-item elements without scope-items wrapper should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.summary.scope_items.len(),
+        3,
+        "Should parse 3 scope-items from bare elements"
+    );
+    assert_eq!(plan.summary.scope_items[0].description, "file one");
+    assert_eq!(plan.summary.scope_items[1].description, "test two");
+    assert_eq!(plan.summary.scope_items[2].description, "feature three");
+}
+
+/// Test: bare scope-item elements directly produce the same result as wrapped ones.
+/// Verify attributes (count, category) are preserved when wrapper is omitted.
+#[test]
+fn test_plan_bare_scope_items_preserve_attributes() {
+    let wrapped_xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Same plan</context>
+<scope-items>
+<scope-item count="5" category="refactors">refactoring items</scope-item>
+<scope-item count="10" category="tests">unit tests</scope-item>
+<scope-item count="3" category="docs">doc updates</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step</title>
+<content><paragraph>Do things.</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/lib.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>cargo test</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let bare_xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Same plan</context>
+<scope-item count="5" category="refactors">refactoring items</scope-item>
+<scope-item count="10" category="tests">unit tests</scope-item>
+<scope-item count="3" category="docs">doc updates</scope-item>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step</title>
+<content><paragraph>Do things.</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/lib.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>cargo test</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let wrapped = validate_plan_xml(wrapped_xml);
+    let bare = validate_plan_xml(bare_xml);
+
+    assert!(
+        wrapped.is_ok(),
+        "Wrapped version should parse: {:?}",
+        wrapped.err()
+    );
+    assert!(bare.is_ok(), "Bare version should parse: {:?}", bare.err());
+
+    let w = wrapped.unwrap();
+    let b = bare.unwrap();
+
+    assert_eq!(w.summary.scope_items.len(), b.summary.scope_items.len());
+    for (wi, bi) in w.summary.scope_items.iter().zip(&b.summary.scope_items) {
+        assert_eq!(wi.description, bi.description);
+        assert_eq!(wi.count, bi.count);
+        assert_eq!(wi.category, bi.category);
+    }
+}
+
+/// Test: file elements directly under step (no target-files wrapper) are accepted.
+#[test]
+fn test_plan_file_elements_without_target_files_wrapper_is_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test target-files without wrapper</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<file path="src/main.rs" action="modify"/>
+<file path="src/lib.rs" action="create"/>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "file elements without target-files wrapper should be accepted for file-change steps: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.steps[0].target_files.len(),
+        2,
+        "Should parse 2 target files from bare file elements"
+    );
+    assert_eq!(plan.steps[0].target_files[0].path, "src/main.rs");
+    assert_eq!(plan.steps[0].target_files[0].action, FileAction::Modify);
+    assert_eq!(plan.steps[0].target_files[1].path, "src/lib.rs");
+    assert_eq!(plan.steps[0].target_files[1].action, FileAction::Create);
+}
+
+/// Test: self-closing file element directly under step is accepted.
+#[test]
+fn test_plan_self_closing_file_without_target_files_wrapper_is_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<file path="src/main.rs" action="modify"/>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Self-closing file element without wrapper should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps[0].target_files.len(), 1);
+}
+
+/// Test: content elements directly under step (no content wrapper) are accepted.
+#[test]
+fn test_plan_content_elements_without_content_wrapper_is_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test content without wrapper</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<paragraph>First paragraph of details.</paragraph>
+<paragraph>Second paragraph of details.</paragraph>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "paragraph elements without content wrapper should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    // Should have content with at least one element
+    assert!(
+        !plan.steps[0].content.elements.is_empty(),
+        "Should have content elements"
+    );
+}
+
+/// Test: file elements directly under ralph-critical-files (no primary-files wrapper) are accepted.
+#[test]
+fn test_plan_files_without_primary_files_wrapper_are_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test primary-files without wrapper</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<file path="src/main.rs" action="modify"/>
+<file path="src/lib.rs" action="create"/>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "file elements without primary-files wrapper should be accepted as primary files: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.critical_files.primary_files.len(),
+        2,
+        "Should parse 2 primary files from bare file elements under ralph-critical-files"
+    );
+    assert_eq!(plan.critical_files.primary_files[0].path, "src/main.rs");
+    assert_eq!(
+        plan.critical_files.primary_files[0].action,
+        FileAction::Modify
+    );
+    assert_eq!(plan.critical_files.primary_files[1].path, "src/lib.rs");
+    assert_eq!(
+        plan.critical_files.primary_files[1].action,
+        FileAction::Create
+    );
+}
+
+/// Test: file with purpose attribute directly under ralph-critical-files becomes a reference file.
+#[test]
+fn test_plan_bare_reference_file_without_reference_files_wrapper_is_accepted() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test reference-files without wrapper</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="modify"/>
+</primary-files>
+<file path="docs/architecture.md" purpose="reference for patterns"/>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "file element with purpose attr without reference-files wrapper should become reference file: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.critical_files.reference_files.len(),
+        1,
+        "Should parse 1 reference file from bare file element with purpose attribute"
+    );
+    assert_eq!(
+        plan.critical_files.reference_files[0].path,
+        "docs/architecture.md"
+    );
+}
+
+/// Test: ambiguous bare file (has both action and purpose attributes) should be handled gracefully.
+/// When a bare file has action, it's treated as primary. The purpose attr is ignored.
+#[test]
+fn test_plan_bare_file_with_action_attr_becomes_primary_not_reference() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test ambiguous bare file</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<file path="src/main.rs" action="modify" purpose="also has purpose"/>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Bare file with action attr should be accepted as primary file: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    // action attribute wins → primary file
+    assert_eq!(plan.critical_files.primary_files.len(), 1);
+    assert_eq!(plan.critical_files.primary_files[0].path, "src/main.rs");
+}
+
+// ============================================================================
+// Missing/invalid attribute default tests (Step 3 in the implementation plan)
+// ============================================================================
+
+/// Test: list without type attribute defaults to Unordered instead of failing.
+#[test]
+fn test_plan_list_without_type_attribute_defaults_to_unordered() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test list without type attr</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<list>
+<item>First item</item>
+<item>Second item</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "list without type attribute should default to Unordered instead of failing: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    assert_eq!(
+        list.list_type,
+        ListType::Unordered,
+        "Missing list type should default to Unordered"
+    );
+}
+
+/// Test: heading with level="1" (below minimum) is clamped to 2.
+#[test]
+fn test_plan_heading_level_1_clamped_to_2() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test heading level clamping</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<heading level="1">H1 Should Be Clamped</heading>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "heading level=\"1\" should be clamped to 2 instead of failing: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let heading = match &plan.steps[0].content.elements[0] {
+        ContentElement::Heading(h) => h,
+        other => panic!("Expected Heading, got {other:?}"),
+    };
+    assert_eq!(
+        heading.level, 2,
+        "heading level=\"1\" should be clamped to 2"
+    );
+}
+
+/// Test: heading with level="5" (above maximum) is clamped to 4.
+#[test]
+fn test_plan_heading_level_5_clamped_to_4() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test heading level clamping</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<heading level="5">H5 Should Be Clamped</heading>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "heading level=\"5\" should be clamped to 4 instead of failing: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let heading = match &plan.steps[0].content.elements[0] {
+        ContentElement::Heading(h) => h,
+        other => panic!("Expected Heading, got {other:?}"),
+    };
+    assert_eq!(
+        heading.level, 4,
+        "heading level=\"5\" should be clamped to 4"
+    );
+}
+
+/// Test: heading without level attribute defaults to 3.
+#[test]
+fn test_plan_heading_without_level_defaults_to_3() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test heading without level attr</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Step one</title>
+<content>
+<heading>No Level Specified</heading>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "heading without level attribute should default to 3: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let heading = match &plan.steps[0].content.elements[0] {
+        ContentElement::Heading(h) => h,
+        other => panic!("Expected Heading, got {other:?}"),
+    };
+    assert_eq!(
+        heading.level, 3,
+        "heading without level attr should default to 3"
+    );
+}
+
+/// Test: step without number attribute is auto-assigned sequential number starting from 1.
+#[test]
+fn test_plan_step_without_number_is_auto_assigned() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test step auto-numbering</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step type="action" priority="high">
+<title>First step without number</title>
+<content>
+<paragraph>Details.</paragraph>
+</content>
+</step>
+<step type="action" priority="medium">
+<title>Second step without number</title>
+<content>
+<paragraph>More details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "steps without number attribute should be auto-assigned sequential numbers: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 2, "Should have 2 steps");
+    assert_eq!(
+        plan.steps[0].number, 1,
+        "First auto-assigned step should be number 1"
+    );
+    assert_eq!(
+        plan.steps[1].number, 2,
+        "Second auto-assigned step should be number 2"
+    );
+}
+
+/// Test: mixed - some steps have explicit numbers, unnumbered ones get next available.
+#[test]
+fn test_plan_mixed_numbered_and_unnumbered_steps() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test mixed numbering</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="action" priority="high">
+<title>Explicit step 1</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+<step type="action" priority="medium">
+<title>No-number step after step 1</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+<step number="5" type="action" priority="low">
+<title>Explicit step 5</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+<step type="action" priority="low">
+<title>No-number step after step 5</title>
+<content><paragraph>Details.</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Mixed numbered/unnumbered steps should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 4, "Should have 4 steps");
+    assert_eq!(plan.steps[0].number, 1, "Explicit step 1");
+    assert_eq!(plan.steps[2].number, 5, "Explicit step 5");
+    // The unnumbered steps should get sequential numbers after each explicit step
+    // step[1] (after step 1): auto-assigns to 2
+    // step[3] (after step 5): auto-assigns to 6
+    assert!(
+        plan.steps[1].number > 0,
+        "Second step should have non-zero number"
+    );
+    assert!(
+        plan.steps[3].number > 0,
+        "Fourth step should have non-zero number"
+    );
 }

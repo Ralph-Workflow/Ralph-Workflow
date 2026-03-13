@@ -7,7 +7,9 @@ use super::*;
 use crate::files::llm_output_extraction::xsd_validation::XsdErrorType;
 
 #[test]
-fn test_step_missing_number_attribute() {
+fn test_step_missing_number_attribute_is_auto_assigned() {
+    // Tolerance change: missing number attribute is now auto-assigned sequentially
+    // instead of producing an error. This matches the acceptance criteria for tolerant parsing.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test</context>
@@ -35,12 +37,17 @@ fn test_step_missing_number_attribute() {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.element_path.contains("step"));
-    assert!(err.expected.contains("number"));
-    let retry_msg = err.format_for_ai_retry();
-    assert!(retry_msg.contains("number"));
+    assert!(
+        result.is_ok(),
+        "Missing number attribute should be auto-assigned, not fail: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 1);
+    assert_eq!(
+        plan.steps[0].number, 1,
+        "Auto-assigned step should get number 1"
+    );
 }
 
 #[test]

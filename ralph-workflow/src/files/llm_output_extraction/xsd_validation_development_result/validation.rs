@@ -309,17 +309,14 @@ pub fn validate_development_result_xml(
         });
     };
 
-    // Validate summary content
-    if summary.is_empty() {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::InvalidContent,
-            element_path: "ralph-summary".to_string(),
-            expected: "non-empty summary description".to_string(),
-            found: "empty summary".to_string(),
-            suggestion: "Add a description of what was done inside <ralph-summary>.".to_string(),
-            example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
-        });
-    }
+    // Tolerant: empty summary is informational — the status outcome is what matters.
+    // When summary is empty, use a fallback placeholder rather than rejecting.
+    // This preserves the status outcome even when the LLM omits the summary text.
+    let summary = if summary.is_empty() {
+        "(no summary provided)".to_string()
+    } else {
+        summary
+    };
 
     Ok(DevelopmentResultElements {
         status,

@@ -518,7 +518,120 @@ fn test_development_xml_formatted_for_display() {
     });
 }
 
-/// Test that all optional fields can be omitted.
+/// Test that development XML with empty summary still succeeds with a fallback.
+///
+/// This verifies tolerant parsing: an LLM emitting an empty `<ralph-summary>`
+/// tag is accepted and a fallback text is substituted rather than producing an error.
+/// The status must still be valid.
+#[test]
+fn test_development_xml_empty_summary_succeeds_with_fallback() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary></ralph-summary>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Empty summary should succeed with a fallback: {:?}",
+            result.err()
+        );
+
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed", "Status should be extracted");
+        assert!(
+            !elements.summary.is_empty(),
+            "Summary should have a fallback (not empty)"
+        );
+    });
+}
+
+/// Test that development XML with whitespace-only summary succeeds with a fallback.
+///
+/// This verifies tolerant parsing: an LLM emitting a `<ralph-summary>` containing
+/// only whitespace is treated the same as empty and a fallback text is substituted.
+#[test]
+fn test_development_xml_whitespace_only_summary_succeeds_with_fallback() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>   </ralph-summary>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Whitespace-only summary should succeed with a fallback: {:?}",
+            result.err()
+        );
+
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "partial", "Status should be extracted");
+        assert!(
+            !elements.summary.trim().is_empty(),
+            "Summary should have a non-empty fallback"
+        );
+    });
+}
+
+/// Test that development XML with self-closing summary succeeds with a fallback.
+///
+/// This verifies tolerant parsing: an LLM emitting `<ralph-summary/>` (self-closing)
+/// is accepted and a fallback text is substituted.
+#[test]
+fn test_development_xml_self_closing_summary_succeeds_with_fallback() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary/>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing summary should succeed with a fallback: {:?}",
+            result.err()
+        );
+
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "failed", "Status should be extracted");
+        assert!(
+            !elements.summary.is_empty(),
+            "Summary should have a fallback (not empty)"
+        );
+        assert!(elements.is_failed(), "Should identify as failed");
+    });
+}
+
+/// Test that development XML with empty summary but invalid status still fails.
+///
+/// This verifies that tolerant parsing for empty summary does not mask a missing
+/// or invalid status — the status is still required and validated.
+#[test]
+fn test_development_xml_empty_summary_with_invalid_status_still_fails() {
+    with_default_timeout(|| {
+        let xml = r"<ralph-development-result>
+<ralph-status>invalid_status_value</ralph-status>
+<ralph-summary></ralph-summary>
+</ralph-development-result>";
+
+        let result = ralph_workflow::validate_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Invalid status should still fail even when summary is empty"
+        );
+
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should point to the invalid status, got: {}",
+            error.element_path
+        );
+    });
+}
+
+/// Test all optional fields can be omitted.
 ///
 /// This verifies that the development XML schema correctly handles
 /// optional fields (files-changed, next-steps).

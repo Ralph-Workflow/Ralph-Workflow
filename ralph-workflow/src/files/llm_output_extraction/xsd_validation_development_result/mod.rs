@@ -148,14 +148,26 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_empty_summary() {
+    fn test_validate_empty_summary_now_succeeds_with_fallback() {
+        // Tolerance change: empty summary is now accepted with a fallback placeholder.
+        // The status outcome is the actionable field; summary is informational.
         let xml = r"<ralph-development-result>
 <ralph-status>completed</ralph-status>
 <ralph-summary>   </ralph-summary>
 </ralph-development-result>";
 
         let result = validate_development_result_xml(xml);
-        assert!(result.is_err());
+        assert!(
+            result.is_ok(),
+            "Empty summary should now succeed (tolerant): {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert!(
+            !elements.summary.is_empty(),
+            "Summary should have fallback text"
+        );
     }
 
     #[test]
@@ -559,5 +571,123 @@ mod tests {
 
         let result = validate_continuation_development_result_xml(xml);
         assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // Development result status preservation tests (Step 4 of implementation plan)
+    // =========================================================================
+
+    /// Test: empty summary with valid status should succeed, with fallback summary text.
+    ///
+    /// The acceptance criteria states: "the system correctly recognizes and preserves
+    /// the status outcome even when other fields are incomplete, reordered, or otherwise
+    /// non-critical." Summary is informational; status is the actionable field.
+    #[test]
+    fn test_tolerant_empty_summary_with_valid_status_succeeds() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary></ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Empty summary with valid status should succeed (summary is informational, status is key): {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "completed",
+            "Status should be preserved correctly"
+        );
+        // Summary should have a fallback placeholder, not be empty
+        assert!(
+            !elements.summary.is_empty(),
+            "Summary should have fallback placeholder text"
+        );
+    }
+
+    /// Test: self-closing summary with valid status preserves the status outcome.
+    #[test]
+    fn test_tolerant_self_closing_summary_with_valid_status_preserves_status() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary/>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing summary with valid status should succeed: {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "completed",
+            "Status should be preserved even when summary is self-closing"
+        );
+    }
+
+    /// Test: whitespace-only summary with valid status is accepted with fallback.
+    #[test]
+    fn test_tolerant_whitespace_only_summary_with_valid_status_succeeds() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>   </ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Whitespace-only summary with valid status should succeed: {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "partial",
+            "Status partial should be preserved when summary is whitespace-only"
+        );
+    }
+
+    /// Test: empty status is still rejected (status is the critical required field).
+    #[test]
+    fn test_tolerant_empty_status_still_rejected_even_with_summary() {
+        let xml = r"<ralph-development-result>
+<ralph-status></ralph-status>
+<ralph-summary>Some summary that is not empty</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Empty status should still be rejected: status is the critical required field"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status"
+        );
+    }
+
+    /// Test: failed status with empty summary succeeds (status is preserved).
+    #[test]
+    fn test_tolerant_failed_status_with_empty_summary_preserves_status() {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary></ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Failed status with empty summary should succeed - status is the key field: {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "failed",
+            "Failed status should be preserved when summary is empty"
+        );
+        assert!(elements.is_failed(), "Should be identified as failed");
     }
 }
