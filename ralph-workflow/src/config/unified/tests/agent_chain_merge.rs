@@ -54,19 +54,19 @@ fn test_merge_with_content_general_retry_settings_override_global() {
         ..Default::default()
     };
 
-    let local_toml = r#"
+    let local_toml = r"
 [general]
 max_retries = 5
 retry_delay_ms = 2500
 max_cycles = 6
-"#;
+";
 
     let local = UnifiedConfig::load_from_content(local_toml).unwrap();
     let merged = global.merge_with_content(local_toml, &local);
 
     assert_eq!(merged.general.max_retries, 5);
     assert_eq!(merged.general.retry_delay_ms, 2_500);
-    assert_eq!(merged.general.backoff_multiplier, 2.0);
+    assert!((merged.general.backoff_multiplier - 2.0).abs() < f64::EPSILON);
     assert_eq!(merged.general.max_backoff_ms, 60_000);
     assert_eq!(merged.general.max_cycles, 6);
 }

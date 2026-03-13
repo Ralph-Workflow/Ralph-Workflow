@@ -7,10 +7,5 @@
 # ============================================================================
 # Package-local clippy configuration for ralph-workflow-tests.
 # Keep pedantic/nursery enabled while tuning structural thresholds.
-# Deliberate policy decision: integration test code may build large generated
-# harness frames, so keep `clippy::large_stack_frames` enforced for non-test
-# code while allowing it in `#[test]` and `#[cfg(test)]` code.
-allow-large-stack-frames-in-tests = true
-
 too-many-lines-threshold = 500
 max-struct-bools = 32

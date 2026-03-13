@@ -885,6 +885,14 @@ fn scan_group_collect(
             };
 
             if is_violation {
+                if check.name == "forbidden-allow-expect-scan"
+                    && is_allowed_test_only_large_stack_frames_allow(
+                        file_path, &content, &line_idx, byte_start,
+                    )
+                {
+                    continue;
+                }
+
                 let line_number = line_idx.line_number(byte_start) + 1;
                 let line = String::from_utf8_lossy(line_idx.extract_line(&content, byte_start))
                     .to_string();
@@ -1035,6 +1043,72 @@ fn only_whitespace_before_on_line(
     content[line_start..byte_offset]
         .iter()
         .all(|&b| b == b' ' || b == b'\t')
+}
+
+fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
+    while let Some((first, rest)) = bytes.split_first() {
+        if !first.is_ascii_whitespace() {
+            break;
+        }
+        bytes = rest;
+    }
+
+    while let Some((last, rest)) = bytes.split_last() {
+        if !last.is_ascii_whitespace() {
+            break;
+        }
+        bytes = rest;
+    }
+
+    bytes
+}
+
+fn previous_nonempty_noncomment_line<'a>(
+    content: &'a [u8],
+    line_idx: &LineIndex,
+    line_number: usize,
+) -> Option<&'a [u8]> {
+    if line_number == 0 {
+        return None;
+    }
+
+    for prior_line in (0..line_number).rev() {
+        let start = line_idx.start_of_line(prior_line);
+        let line = trim_ascii_whitespace(line_idx.extract_line(content, start));
+        if line.is_empty() || line.starts_with(b"//") {
+            continue;
+        }
+        return Some(line);
+    }
+
+    None
+}
+
+fn path_has_tests_component(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str().to_str() == Some("tests"))
+}
+
+fn is_allowed_test_only_large_stack_frames_allow(
+    file_path: &Path,
+    content: &[u8],
+    line_idx: &LineIndex,
+    byte_offset: usize,
+) -> bool {
+    let current_line = trim_ascii_whitespace(line_idx.extract_line(content, byte_offset));
+    if current_line != b"#[allow(clippy::large_stack_frames)]"
+        && current_line != b"#![allow(clippy::large_stack_frames)]"
+    {
+        return false;
+    }
+
+    if path_has_tests_component(file_path) {
+        return true;
+    }
+
+    let current_line_number = line_idx.line_number(byte_offset);
+    previous_nonempty_noncomment_line(content, line_idx, current_line_number)
+        == Some(b"#[cfg(test)]".as_slice())
 }
 
 /// Return true when the character immediately after `end` is NOT an ASCII
@@ -2425,6 +2499,36 @@ mod tests {
         assert!(
             results[0].passed,
             "comment-line #[allow( must be skipped when skip_comment_lines=true"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_allows_large_stack_frames_in_cfg_test_module() {
+        let dir = make_temp_dir("line-start-large-stack-test-allow");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg(test)]\n#[allow(clippy::large_stack_frames)]\nmod tests {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            results[0].passed,
+            "test-only #[allow(clippy::large_stack_frames)] should be exempt from forbidden-allow-expect-scan"
         );
 
         let _ = fs::remove_dir_all(&dir);

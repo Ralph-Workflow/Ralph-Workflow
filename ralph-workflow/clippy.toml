@@ -7,10 +7,10 @@
 # ============================================================================
 # Package-local clippy configuration for ralph-workflow.
 # Keep lint policy strict while configuring thresholds for structural lints.
-# Deliberate policy decision: unit-test modules and the generated lib-test
-# harness can exceed `clippy::large_stack_frames`, so keep the lint active for
-# production code while allowing it in `#[test]` and `#[cfg(test)]` code.
-allow-large-stack-frames-in-tests = true
+# Deliberate policy decision: test-only lints that stem from generated harness
+# behavior (such as `clippy::large_stack_frames`) should use narrow, documented
+# test-only code allowances plus a matching xtask verify exception instead of
+# widening package-wide thresholds.
 
 too-many-lines-threshold = 500
 max-struct-bools = 32

@@ -2236,6 +2236,25 @@ mod tests {
 
     #[test]
     fn test_clippy_configs_document_test_large_stack_frames_exception() {
+        let workflow_config_path = repo_root().join("ralph-workflow/clippy.toml");
+        let workflow_source = fs::read_to_string(&workflow_config_path)
+            .unwrap_or_else(|err| panic!("read ralph-workflow/clippy.toml: {err}"));
+
+        assert!(
+            workflow_source.contains("large_stack_frames"),
+            "ralph-workflow/clippy.toml must document the large_stack_frames policy exception"
+        );
+        assert!(
+            workflow_source.contains("deliberate") || workflow_source.contains("Deliberate"),
+            "ralph-workflow/clippy.toml must document why the test harness exception is deliberate"
+        );
+        assert!(
+            workflow_source.contains("test-only code allowances")
+                || workflow_source
+                    .contains("test-only code allowances plus a matching xtask verify exception"),
+            "ralph-workflow/clippy.toml must document the narrow test-only exception strategy"
+        );
+
         for relative_path in [
             "clippy.toml",
             "ralph-workflow/clippy.toml",
@@ -2246,12 +2265,8 @@ mod tests {
                 .unwrap_or_else(|err| panic!("read {relative_path}: {err}"));
 
             assert!(
-                source.contains("allow-large-stack-frames-in-tests = true"),
-                "{relative_path} must explicitly allow large_stack_frames in test code"
-            );
-            assert!(
-                source.contains("deliberate") || source.contains("Deliberate"),
-                "{relative_path} must document why test large stack frames are deliberately ignored"
+                !source.contains("allow-large-stack-frames-in-tests ="),
+                "{relative_path} must not set unsupported allow-large-stack-frames-in-tests config"
             );
         }
     }

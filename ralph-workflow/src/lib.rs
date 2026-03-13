@@ -7,6 +7,7 @@
 // (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
 // issues outside our control and don't reflect code quality problems.
 #![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![cfg_attr(test, allow(clippy::large_stack_frames))]
 //! Ralph workflow library for AI agent orchestration.
 //!
 //! This crate provides the core functionality for the `ralph` CLI binary,
