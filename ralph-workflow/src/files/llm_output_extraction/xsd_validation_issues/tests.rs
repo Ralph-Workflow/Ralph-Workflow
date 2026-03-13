@@ -327,6 +327,84 @@ fn test_tolerant_issues_ignores_stray_text() {
 }
 
 // =========================================================================
+// ADDITIONAL TOLERANT PARSING TESTS
+// These cover the self-closing empty element case (Event::Empty handler)
+// and confirm issues has no enum fields requiring normalization.
+// =========================================================================
+
+#[test]
+fn test_tolerant_issues_skips_self_closing_unknown_element() {
+    // Self-closing unknown elements (Event::Empty) should be skipped
+    let xml = r"<ralph-issues>
+<ralph-meta/>
+<ralph-issue>First issue</ralph-issue>
+<ralph-tag/>
+<ralph-issue>Second issue</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Self-closing unknown elements should be skipped, not rejected: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(
+        elements.issues.len(),
+        2,
+        "Issues should be parsed correctly despite self-closing unknown elements"
+    );
+    assert_eq!(elements.issues[0], "First issue");
+    assert_eq!(elements.issues[1], "Second issue");
+}
+
+#[test]
+fn test_tolerant_issues_multiple_unknown_elements_interspersed() {
+    // Multiple unknown elements interspersed between issue elements should be skipped
+    let xml = r"<ralph-issues>
+<ralph-preamble>some metadata</ralph-preamble>
+<ralph-issue>Issue one</ralph-issue>
+<ralph-analysis>extra analysis</ralph-analysis>
+<ralph-issue>Issue two</ralph-issue>
+<ralph-footer>end of response</ralph-footer>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Multiple unknown elements interspersed should be skipped: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(
+        elements.issues.len(),
+        2,
+        "Only real issues should be collected, not unknown elements"
+    );
+    assert_eq!(elements.issues[0], "Issue one");
+    assert_eq!(elements.issues[1], "Issue two");
+}
+
+#[test]
+fn test_tolerant_no_issues_found_with_self_closing_unknown() {
+    // Self-closing unknown elements alongside no-issues-found should be tolerated
+    let xml = r"<ralph-issues>
+<ralph-meta/>
+<ralph-no-issues-found>No issues found during review</ralph-no-issues-found>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Self-closing unknown element alongside no-issues-found should be tolerated: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert!(elements.issues.is_empty());
+    assert_eq!(
+        elements.no_issues_found,
+        Some("No issues found during review".to_string())
+    );
+}
+
+// =========================================================================
 // REGRESSION TEST FOR BUG: NUL byte from NBSP typo
 // =========================================================================
 

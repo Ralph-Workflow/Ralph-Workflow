@@ -802,6 +802,366 @@ fn test_plan_unknown_top_level_section_is_skipped() {
 }
 
 // ============================================================================
+// Nested list type synonym acceptance tests
+// These test the bug fix in section_parsers.rs parse_list function which
+// previously used a hardcoded match instead of normalize_enum_value for
+// nested list type attributes.
+// ============================================================================
+
+#[test]
+fn test_plan_nested_list_type_bulleted_parses_as_unordered() {
+    // Nested list with type="bulleted" should normalize to unordered
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<list type="unordered">
+<item>Parent item
+<list type="bulleted">
+<item>Nested bulleted item</item>
+</list>
+</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Nested list type=\"bulleted\" should be accepted as unordered: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    // Verify the nested list was parsed with the correct type
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    let nested = list.items[0]
+        .nested_list
+        .as_ref()
+        .expect("should have nested list");
+    assert_eq!(
+        nested.list_type,
+        ListType::Unordered,
+        "Nested list type=\"bulleted\" should normalize to Unordered"
+    );
+}
+
+#[test]
+fn test_plan_nested_list_type_numbered_parses_as_ordered() {
+    // Nested list with type="numbered" should normalize to ordered
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<list type="unordered">
+<item>Parent item
+<list type="numbered">
+<item>Nested numbered item one</item>
+<item>Nested numbered item two</item>
+</list>
+</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Nested list type=\"numbered\" should be accepted as ordered: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    let nested = list.items[0]
+        .nested_list
+        .as_ref()
+        .expect("should have nested list");
+    assert_eq!(
+        nested.list_type,
+        ListType::Ordered,
+        "Nested list type=\"numbered\" should normalize to Ordered"
+    );
+}
+
+#[test]
+fn test_plan_nested_list_type_ol_parses_as_ordered() {
+    // Nested list with type="ol" should normalize to ordered
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<list type="unordered">
+<item>Parent item
+<list type="ol">
+<item>Nested ol item one</item>
+<item>Nested ol item two</item>
+</list>
+</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Nested list type=\"ol\" should be accepted as ordered: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    let nested = list.items[0]
+        .nested_list
+        .as_ref()
+        .expect("should have nested list");
+    assert_eq!(
+        nested.list_type,
+        ListType::Ordered,
+        "Nested list type=\"ol\" should normalize to Ordered"
+    );
+}
+
+#[test]
+fn test_plan_nested_list_type_ordered_uppercase_parses_as_ordered() {
+    // Nested list with type="ORDERED" (case-insensitive) should normalize to ordered
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<list type="unordered">
+<item>Parent item
+<list type="ORDERED">
+<item>Nested ORDERED item</item>
+</list>
+</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Nested list type=\"ORDERED\" (case-insensitive) should be accepted as ordered: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    let nested = list.items[0]
+        .nested_list
+        .as_ref()
+        .expect("should have nested list");
+    assert_eq!(
+        nested.list_type,
+        ListType::Ordered,
+        "Nested list type=\"ORDERED\" should normalize to Ordered"
+    );
+}
+
+#[test]
+fn test_plan_nested_list_type_ul_parses_as_unordered() {
+    // Nested list with type="ul" should normalize to unordered
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Step one</title>
+<target-files>
+<file path="src/foo.rs" action="modify"/>
+</target-files>
+<content>
+<list type="ordered">
+<item>Parent item
+<list type="ul">
+<item>Nested ul item</item>
+</list>
+</item>
+</list>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/foo.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Nested list type=\"ul\" should be accepted as unordered: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    let list = match &plan.steps[0].content.elements[0] {
+        ContentElement::List(l) => l,
+        other => panic!("Expected List, got {other:?}"),
+    };
+    let nested = list.items[0]
+        .nested_list
+        .as_ref()
+        .expect("should have nested list");
+    assert_eq!(
+        nested.list_type,
+        ListType::Unordered,
+        "Nested list type=\"ul\" should normalize to Unordered"
+    );
+}
+
+// ============================================================================
 // Missing required content is still rejected
 // ============================================================================
 

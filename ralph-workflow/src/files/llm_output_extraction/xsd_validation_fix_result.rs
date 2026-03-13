@@ -407,6 +407,156 @@ mod tests {
     }
 
     #[test]
+    fn test_tolerant_fix_status_synonym_all_fixed_maps_to_all_issues_addressed() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_fixed</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'all_fixed' should be accepted as 'all_issues_addressed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+    }
+
+    #[test]
+    fn test_tolerant_fix_status_synonym_remaining_maps_to_issues_remain() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>remaining</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'remaining' should be accepted as 'issues_remain': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "issues_remain");
+    }
+
+    #[test]
+    fn test_tolerant_fix_status_synonym_no_issues_maps_to_no_issues_found() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>no_issues</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'no_issues' should be accepted as 'no_issues_found': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "no_issues_found");
+    }
+
+    #[test]
+    fn test_tolerant_fix_status_case_insensitive_issues_remain() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>ISSUES_REMAIN</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Case-insensitive 'ISSUES_REMAIN' should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "issues_remain");
+    }
+
+    #[test]
+    fn test_tolerant_fix_skips_self_closing_unknown_element() {
+        // Self-closing unknown elements should be skipped (tests Event::Empty handler)
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_issues_addressed</ralph-status>
+<ralph-meta/>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing unknown element should be skipped, not rejected: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+    }
+
+    #[test]
+    fn test_tolerant_fix_element_reordering_summary_before_status() {
+        // summary before status should still parse correctly
+        let xml = r"<ralph-fix-result>
+<ralph-summary>All issues have been addressed</ralph-summary>
+<ralph-status>all_issues_addressed</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Element reordering (summary before status) should be tolerated: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+        assert_eq!(
+            elements.summary,
+            Some("All issues have been addressed".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tolerant_fix_stray_text_between_elements() {
+        // Stray text between elements should be tolerated
+        let xml = "<ralph-fix-result>\nSome stray text\n<ralph-status>all_issues_addressed</ralph-status>\nMore stray text\n</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Stray text between elements should be tolerated: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+    }
+
+    #[test]
+    fn test_tolerant_fix_truly_ambiguous_status_rejected() {
+        // Ambiguous/unknown status values should still be rejected
+        let xml = r"<ralph-fix-result>
+<ralph-status>partially_fixed</ralph-status>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Ambiguous status 'partially_fixed' should still be rejected"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status"
+        );
+    }
+
+    #[test]
+    fn test_tolerant_fix_empty_self_closing_status_rejected() {
+        // Empty self-closing status should be rejected (no value)
+        let xml = r"<ralph-fix-result>
+<ralph-status/>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Empty self-closing status element should be rejected"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status"
+        );
+    }
+
+    #[test]
     fn test_validate_duplicate_status() {
         let xml = r"<ralph-fix-result>
 <ralph-status>all_issues_addressed</ralph-status>

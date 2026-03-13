@@ -326,6 +326,189 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // =========================================================================
+    // Additional status synonym tests
+    // =========================================================================
+
+    #[test]
+    fn test_tolerant_status_synonym_succeeded_maps_to_completed() {
+        let xml = r"<ralph-development-result>
+<ralph-status>succeeded</ralph-status>
+<ralph-summary>All work completed successfully</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'succeeded' should be accepted as 'completed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+    }
+
+    #[test]
+    fn test_tolerant_status_synonym_finished_maps_to_completed() {
+        let xml = r"<ralph-development-result>
+<ralph-status>finished</ralph-status>
+<ralph-summary>Task is finished</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'finished' should be accepted as 'completed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+    }
+
+    #[test]
+    fn test_tolerant_status_synonym_failure_maps_to_failed() {
+        let xml = r"<ralph-development-result>
+<ralph-status>failure</ralph-status>
+<ralph-summary>Task failed due to error</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'failure' should be accepted as 'failed': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "failed");
+    }
+
+    #[test]
+    fn test_tolerant_status_synonym_in_progress_hyphen_maps_to_partial() {
+        let xml = r"<ralph-development-result>
+<ralph-status>in-progress</ralph-status>
+<ralph-summary>Task is in progress</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Synonym 'in-progress' should be accepted as 'partial': {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "partial");
+    }
+
+    // =========================================================================
+    // Self-closing unknown element tolerance tests
+    // =========================================================================
+
+    #[test]
+    fn test_tolerant_skips_self_closing_unknown_element() {
+        // Self-closing unknown elements (Event::Empty) should also be skipped
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary>Done</ralph-summary>
+<ralph-unknown/>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing unknown elements should be skipped, not rejected: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+    }
+
+    #[test]
+    fn test_tolerant_skips_multiple_self_closing_unknown_elements() {
+        // Multiple self-closing unknown elements should all be skipped
+        let xml = r"<ralph-development-result>
+<ralph-meta/>
+<ralph-status>completed</ralph-status>
+<ralph-extra/>
+<ralph-summary>Done</ralph-summary>
+<ralph-tag/>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Multiple self-closing unknown elements should be skipped: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+    }
+
+    // =========================================================================
+    // Element reordering tolerance tests
+    // =========================================================================
+
+    #[test]
+    fn test_tolerant_element_reordering_summary_before_status() {
+        // summary before status should still parse correctly
+        let xml = r"<ralph-development-result>
+<ralph-summary>Task completed successfully</ralph-summary>
+<ralph-status>completed</ralph-status>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Element reordering (summary before status) should be tolerated: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert_eq!(elements.summary, "Task completed successfully");
+    }
+
+    // =========================================================================
+    // Multiple unknown elements interspersed tests
+    // =========================================================================
+
+    #[test]
+    fn test_tolerant_multiple_unknown_elements_interspersed() {
+        // Multiple unknown elements interspersed between known elements should be skipped
+        let xml = r"<ralph-development-result>
+<ralph-preamble>Some preamble</ralph-preamble>
+<ralph-status>completed</ralph-status>
+<ralph-rationale>Some rationale</ralph-rationale>
+<ralph-summary>Done</ralph-summary>
+<ralph-conclusion>Some conclusion</ralph-conclusion>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Multiple unknown elements interspersed should be skipped: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert_eq!(elements.summary, "Done");
+    }
+
+    // =========================================================================
+    // Empty self-closing status element is rejected
+    // =========================================================================
+
+    #[test]
+    fn test_tolerant_empty_self_closing_status_rejected() {
+        // An empty self-closing status element (<ralph-status/>) should be rejected
+        // because status is required and must have a value
+        let xml = r"<ralph-development-result>
+<ralph-status/>
+<ralph-summary>Done</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_err(),
+            "Empty self-closing status element should be rejected (status is required)"
+        );
+        let error = result.unwrap_err();
+        assert!(
+            error.element_path.contains("ralph-status"),
+            "Error should reference ralph-status, got: {}",
+            error.element_path
+        );
+    }
+
     #[test]
     fn test_continuation_validation_rejects_single_recovery_step() {
         let xml = r"<ralph-development-result>

@@ -232,12 +232,23 @@ fn parse_list(reader: &mut Reader<&[u8]>, list_type: ListType) -> Result<List, X
                         match inner_reader.read_event_into(&mut inner_buf) {
                             Ok(Event::Start(e2)) if e2.name().as_ref() == b"list" => {
                                 let attrs = get_attributes(&e2);
-                                let nested_type =
-                                    match attrs.get("type").map_or("", std::string::String::as_str)
-                                    {
-                                        "ordered" => ListType::Ordered,
-                                        _ => ListType::Unordered, // Default (unordered or unknown)
-                                    };
+                                // Tolerant: normalize nested list type via synonym table.
+                                // Accepts "bulleted", "bullet", "ul" as "unordered";
+                                // "numbered", "ol" as "ordered"; case-insensitive.
+                                // Unknown values default to Unordered (previous behavior preserved).
+                                let raw_nested_type =
+                                    attrs.get("type").map_or("", std::string::String::as_str);
+                                let nested_type = match normalize_enum_value(
+                                    raw_nested_type,
+                                    &["ordered", "unordered"],
+                                    LIST_TYPE_SYNONYMS,
+                                )
+                                .as_deref()
+                                {
+                                    Some("ordered") => ListType::Ordered,
+                                    // Unknown or unordered value: default to unordered
+                                    Some(_) | None => ListType::Unordered,
+                                };
                                 nested =
                                     Some(Box::new(parse_list(&mut inner_reader, nested_type)?));
                             }

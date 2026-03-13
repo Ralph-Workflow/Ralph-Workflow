@@ -1,5 +1,11 @@
 // ============================================================================
 // Tests for commit message validator tolerant parsing
+//
+// NOTE: The commit validator has NO enum status fields - its only "value"
+// fields are ralph-subject (free text) and ralph-skip (free text). Therefore
+// no enum normalization tests are needed. All tolerance tests here focus on
+// structural tolerance: unknown element skipping, stray text, self-closing
+// unknown elements, and XML comments.
 // ============================================================================
 
 #[test]
@@ -104,6 +110,49 @@ fn test_commit_unknown_self_closing_element_is_skipped() {
         "Self-closing unknown element should be skipped: {:?}",
         result.err()
     );
+}
+
+// ============================================================================
+// Additional tolerance tests - XML comments between elements
+// ============================================================================
+
+#[test]
+fn test_commit_xml_comments_between_elements_are_tolerated() {
+    // XML comments should be tolerated between known elements
+    let xml = r"<ralph-commit>
+<!-- This is a comment explaining the commit -->
+<ralph-subject>feat: add new feature</ralph-subject>
+<!-- Another comment -->
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_ok(),
+        "XML comments between elements should be tolerated: {:?}",
+        result.err()
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.subject, "feat: add new feature");
+}
+
+#[test]
+fn test_commit_multiple_sequential_unknown_self_closing_elements_skipped() {
+    // Multiple sequential self-closing unknown elements should all be skipped
+    let xml = r"<ralph-commit>
+<ralph-subject>chore: update dependencies</ralph-subject>
+<meta1/>
+<meta2/>
+<meta3/>
+</ralph-commit>";
+
+    let result = validate_xml_against_xsd(xml);
+    assert!(
+        result.is_ok(),
+        "Multiple sequential self-closing unknown elements should be skipped: {:?}",
+        result.err()
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.subject, "chore: update dependencies");
 }
 
 #[test]
