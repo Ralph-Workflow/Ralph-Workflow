@@ -15,9 +15,25 @@ Language rules used here:
 At the current product boundary, one session maps to one run unless a later
 architecture document explicitly changes that model.
 
+## Wireframe References
+
+Use these wireframe documents as the visual/layout reference for the acceptance
+sections below:
+
+| Acceptance area | Wireframe reference |
+|---|---|
+| `AC-1`, `AC-2` | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |
+| `AC-3`, `AC-4` | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md`, `ralph-gui/docs/wireframes/03-new-session-wizard.md` |
+| `AC-5` | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| `AC-6`, `AC-7`, `AC-8` | `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md` |
+| `AC-9`, `AC-10`, `AC-11`, `AC-12`, `AC-13`, `AC-14` | `ralph-gui/docs/wireframes/06-supporting-flows.md` |
+| Cross-cutting interactions spanning multiple sections | `ralph-gui/docs/wireframes/README.md` |
+
 ---
 
 ## AC-1: Multi-Workspace Management
+
+Applicable wireframe: `ralph-gui/docs/wireframes/01-shell-and-workspaces.md`
 
 ### AC-1.1: Workspace Tab Bar
 - [ ] A horizontal tab bar is displayed below the title bar showing all open workspaces
@@ -46,6 +62,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-2: Application Shell
+
+Applicable wireframe: `ralph-gui/docs/wireframes/01-shell-and-workspaces.md`
 
 ### AC-2.1: Activity Bar
 - [DONE] Vertical icon bar on the far left with navigation icons
@@ -93,6 +111,8 @@ architecture document explicitly changes that model.
 
 ## AC-3: Home / Dashboard
 
+Applicable wireframe: `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md`
+
 ### AC-3.1: Stats Overview
 - [DONE] Displays stat cards: active worktrees, resumable runs
 - [ ] Stat cards show trend indicators (up/down/flat vs previous period)
@@ -125,6 +145,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-4: Session Management
+
+Applicable wireframes: `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md`, `ralph-gui/docs/wireframes/03-new-session-wizard.md`
 
 ### AC-4.1: Session List
 - [DONE] Lists all sessions for the current workspace
@@ -302,6 +324,8 @@ architecture document explicitly changes that model.
 
 ## AC-5: Run Monitoring
 
+Applicable wireframe: `ralph-gui/docs/wireframes/04-run-monitoring.md`
+
 ### AC-5.1: Run Detail Page
 - [DONE] Displays run metadata (ID, status, agent, worktree, timestamps)
 - [DONE] Phase timeline visualization
@@ -383,6 +407,8 @@ architecture document explicitly changes that model.
 
 ## AC-6: Worktree Management
 
+Applicable wireframe: `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md`
+
 ### AC-6.1: Worktree List
 - [DONE] Lists all worktrees for the current repository
 - [DONE] Shows: worktree name, branch, active run status
@@ -406,6 +432,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-7: Configuration (Visual Settings)
+
+Applicable wireframe: `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md`
 
 ### AC-7.1: Scope Tabs
 - [DONE] Three tabs: Effective (read-only), Global, Project
@@ -502,6 +530,8 @@ architecture document explicitly changes that model.
 
 ## AC-8: GUI Preferences
 
+Applicable wireframe: `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md`
+
 ### AC-8.1: Appearance
 - [ ] Theme selection (currently only dark; future: light, system)
 - [ ] Accent color picker (default: #f59e0b amber)
@@ -545,6 +575,8 @@ architecture document explicitly changes that model.
 
 ## AC-9: Onboarding / First Run
 
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
+
 ### AC-9.1: First Run Detection
 - [ ] On first launch (no preferences file exists), show onboarding wizard
 - [ ] Onboarding can be skipped entirely
@@ -569,6 +601,8 @@ architecture document explicitly changes that model.
 
 ## AC-10: Search
 
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
+
 ### AC-10.1: Global Search / Command Palette
 - [ ] Search input accessible via `Ctrl+K` or search icon in toolbar (following
       GitHub/Linear/Notion pattern — this is the app-wide command palette shortcut)
@@ -590,6 +624,8 @@ architecture document explicitly changes that model.
 
 ## AC-11: Notifications
 
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
+
 ### AC-11.1: Desktop Notifications
 - [DONE] System notifications on run status changes
 - [ ] Notification preferences respected (which events trigger notifications)
@@ -605,6 +641,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-12: Prompt Templates
+
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
 
 ### AC-12.1: Template Library
 - [ ] Browsable list of saved prompt templates
@@ -622,6 +660,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-13: Help & In-App Documentation
+
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
 
 ### AC-13.1: Keyboard Shortcuts Overlay
 - [DONE] `?` key opens keyboard shortcuts overlay from anywhere
@@ -656,6 +696,8 @@ architecture document explicitly changes that model.
 ---
 
 ## AC-14: Agent Tools Manager
+
+Applicable wireframe: `ralph-gui/docs/wireframes/06-supporting-flows.md`
 
 ### AC-14.1: Tool Cards
 - [ ] List of all CLI tools Ralph Workflow delegates to (Claude Code, Claude Code Switch, Codex, OpenCode)

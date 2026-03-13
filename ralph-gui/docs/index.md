@@ -11,17 +11,19 @@ should use the same vocabulary.
 1. `ralph-gui/docs/glossary.md`
    - Canonical terms for workspace, worktree, session, run, checkpoint, and
      backend ownership.
-2. `ralph-gui/docs/designs/gui-design.md`
-   - Product structure, screens, page behavior, and interaction model.
-3. `ralph-gui/docs/designs/design-criteria.md`
+2. `ralph-gui/docs/wireframes/README.md`
+   - Canonical screen-by-screen wireframes, UX coverage notes, and state layouts.
+3. `ralph-gui/docs/designs/gui-design.md`
+   - Lightweight pointer document for the wireframe system.
+4. `ralph-gui/docs/designs/design-criteria.md`
    - Binding visual and interaction design standards.
-4. `ralph-gui/docs/designs/ux-acceptance-criteria.md`
+5. `ralph-gui/docs/designs/ux-acceptance-criteria.md`
    - Ongoing UX review principles and quality standards.
-5. `ralph-gui/docs/designs/acceptance-criteria.md`
+6. `ralph-gui/docs/designs/acceptance-criteria.md`
    - Implementation acceptance contract for the GUI.
-6. `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`
+7. `ralph-gui/docs/designs/tauri-cli-backend-architecture.md`
    - Binding architecture contract for Angular, Tauri, and CLI integration.
-7. `ralph-gui/docs/designs/tauri-cli-protocol.md`
+8. `ralph-gui/docs/designs/tauri-cli-protocol.md`
    - Detailed communication, typing, and compatibility contract between Tauri
      and the Ralph CLI.
 
@@ -29,8 +31,10 @@ should use the same vocabulary.
 
 - `glossary.md`
   - Shared language. If docs disagree on a term, update the glossary first.
+- `wireframes/README.md`
+  - Canonical wireframe entry point with organized screen documents.
 - `designs/gui-design.md`
-  - What the GUI is and how the product should behave.
+  - Redirect/reference doc pointing readers to the wireframe system.
 - `designs/design-criteria.md`
   - How the GUI should look and feel when implemented.
 - `designs/ux-acceptance-criteria.md`
@@ -52,3 +56,5 @@ should use the same vocabulary.
 - Keep acceptance, UX, design, and architecture docs aligned when behavior or
   terminology changes.
 - When adding a new GUI doc, link it here and make it reference the glossary.
+- Keep detailed ASCII wireframes in `ralph-gui/docs/wireframes/`.
+- Do not reintroduce large inline wireframe specs into `designs/gui-design.md`.

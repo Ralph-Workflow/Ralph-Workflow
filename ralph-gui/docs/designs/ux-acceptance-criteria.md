@@ -20,6 +20,23 @@ The goal is not to check every box once. The goal is to internalize these
 principles so deeply that they become the default way we think about every
 design decision.
 
+## Wireframe References
+
+Use the wireframe system as the concrete screen reference when applying these
+principles:
+
+| UX review area | Primary wireframe reference |
+|---|---|
+| App orientation, workspace switching, shell clarity | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |
+| Dashboard scanning, session management, batch flows | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| Prompting, wizard flow, launch setup, preflight review | `ralph-gui/docs/wireframes/03-new-session-wizard.md` |
+| Live monitoring, degraded states, pause/fail recovery, diff review | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| Worktrees, settings, preferences, raw TOML fallback | `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md` |
+| Onboarding, search, notifications, templates, help, agent tools | `ralph-gui/docs/wireframes/06-supporting-flows.md` |
+
+When a UX review calls for a concrete screen check, inspect the corresponding
+wireframe file above instead of looking for layout guidance in `gui-design.md`.
+
 ---
 
 ## How to Use This Document
@@ -591,16 +608,16 @@ These tasks represent what users actually want to accomplish. Every design
 decision should be tested against these — not just once, but every time the
 relevant screens change.
 
-| # | Task | Relevant Principles |
-|---|------|---------------------|
-| T1 | First-time user opens app and starts a session | UX-1.3, UX-4.1, UX-6.1, UX-10.1 |
-| T2 | Check status of all running sessions | UX-2.4, UX-3.1, UX-4.1, UX-5.2 |
-| T3 | Investigate a failed run and resume it | UX-3.9, UX-4.1, UX-11.2, UX-13.1 |
-| T4 | Change a configuration setting | UX-3.6, UX-4.1, UX-5.1, UX-6.1 |
-| T5 | Monitor a run's progress in real-time | UX-2.4, UX-6.4, UX-9.4, UX-13.3 |
-| T6 | Switch between workspaces | UX-4.2, UX-6.4, UX-6.5, UX-10.2 |
-| T7 | Find and resume a session from yesterday | UX-3.6, UX-5.3, UX-8.2, UX-8.4 |
-| T8 | Understand why a run is in degraded state | UX-2.1, UX-3.2, UX-11.2, UX-13.3 |
+| # | Task | Relevant Principles | Wireframe |
+|---|------|---------------------|-----------|
+| T1 | First-time user opens app and starts a session | UX-1.3, UX-4.1, UX-6.1, UX-10.1 | `ralph-gui/docs/wireframes/06-supporting-flows.md` |
+| T2 | Check status of all running sessions | UX-2.4, UX-3.1, UX-4.1, UX-5.2 | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| T3 | Investigate a failed run and resume it | UX-3.9, UX-4.1, UX-11.2, UX-13.1 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| T4 | Change a configuration setting | UX-3.6, UX-4.1, UX-5.1, UX-6.1 | `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md` |
+| T5 | Monitor a run's progress in real-time | UX-2.4, UX-6.4, UX-9.4, UX-13.3 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| T6 | Switch between workspaces | UX-4.2, UX-6.4, UX-6.5, UX-10.2 | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |
+| T7 | Find and resume a session from yesterday | UX-3.6, UX-5.3, UX-8.2, UX-8.4 | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| T8 | Understand why a run is in degraded state | UX-2.1, UX-3.2, UX-11.2, UX-13.3 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
 
 These tasks should grow as the product grows. When a new feature is added,
 ask: "What user task does this serve?" and add it to this list. If you can't
