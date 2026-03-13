@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::path::Path;
 use tauri_plugin_notification::NotificationExt;
 
 /// Current status of a Ralph run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "PascalCase")]
 pub enum RunStatus {
     Running,
@@ -14,7 +15,7 @@ pub enum RunStatus {
 }
 
 /// Detailed information about a Ralph run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct RunDetail {
     pub run_id: String,
     pub status: RunStatus,
@@ -40,7 +41,7 @@ pub struct RunDetail {
 }
 
 /// Summary of run status for a repository/worktree context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct RunStatusSummary {
     pub status: RunStatus,
     pub run_id: Option<String>,
@@ -56,6 +57,7 @@ pub struct RunStatusSummary {
 ///
 /// Returns an error if the path cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn get_run_status(
     repo_path: String,
     worktree_path: Option<String>,
@@ -207,6 +209,7 @@ pub fn collect_resumable_runs(paths: &[std::path::PathBuf]) -> Vec<RunDetail> {
 ///
 /// Returns an error if the app state lock cannot be acquired.
 #[tauri::command]
+#[specta::specta]
 pub fn get_resumable_runs(
     repo_path: String,
     state: tauri::State<'_, crate::state::SharedState>,
@@ -313,6 +316,7 @@ fn find_run_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<RunDe
 ///
 /// Returns an error if the run is not found in any known repository.
 #[tauri::command]
+#[specta::specta]
 pub fn get_run_detail(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,
@@ -371,6 +375,7 @@ pub fn notification_params_for_status(
 /// Returns an error if the notification plugin is unavailable or the OS rejects the request.
 /// The frontend should handle this gracefully and not surface notification errors to users.
 #[tauri::command]
+#[specta::specta]
 pub fn notify_run_status_change(
     app: tauri::AppHandle,
     status: String,
@@ -401,6 +406,7 @@ pub fn notify_run_status_change(
 ///
 /// Returns an error if the log file exists but cannot be read (permissions, IO error).
 #[tauri::command]
+#[specta::specta]
 pub fn get_run_logs(
     repo_path: String,
     worktree_path: Option<String>,

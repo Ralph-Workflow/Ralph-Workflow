@@ -1,0 +1,144 @@
+import { Component, Input, Output, EventEmitter, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { TauriService } from '../../services/tauri.service';
+import type { PromptReviewResult } from '../../types';
+
+type PanelState = 'idle' | 'loading' | 'success' | 'error' | 'no-key';
+
+@Component({
+  selector: 'app-prompt-review-panel',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CommonModule],
+  template: `
+    <div
+      data-testid="prompt-review-panel"
+      style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;"
+    >
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-primary);">
+          AI Review
+        </span>
+        <button
+          class="btn btn-secondary"
+          style="font-size: 12px; padding: 4px 12px;"
+          (click)="handleReview()"
+          [disabled]="panelState() === 'loading'"
+          data-testid="review-button"
+        >
+          {{ panelState() === 'loading' ? 'Reviewing…' : 'Review prompt' }}
+        </button>
+      </div>
+
+      @if (panelState() === 'loading') {
+        <div
+          data-testid="loading-indicator"
+          style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);"
+        >
+          Analysing your prompt…
+        </div>
+      }
+
+      @if (panelState() === 'no-key') {
+        <div
+          data-testid="no-key-message"
+          style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;"
+        >
+          AI review requires an Anthropic API key. Set
+          <code style="font-family: var(--font-mono); background: var(--bg-surface); padding: 1px 4px; border-radius: 3px;">
+            ANTHROPIC_API_KEY
+          </code>
+          in your environment or add
+          <code style="font-family: var(--font-mono);">api_key = "..."</code>
+          under
+          <code style="font-family: var(--font-mono);">[gui]</code>
+          in
+          <code style="font-family: var(--font-mono);">~/.ralph/config.toml</code>
+          .
+        </div>
+      }
+
+      @if (panelState() === 'error' && errorMsg()) {
+        <div
+          data-testid="error-message"
+          style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);"
+        >
+          {{ errorMsg() }}
+        </div>
+      }
+
+      @if (panelState() === 'success' && result()) {
+        <div data-testid="suggestions-list" style="display: flex; flex-direction: column; gap: 8px;">
+          @if (result()!.suggestions.length > 0) {
+            <div>
+              <div class="section-label" style="margin-bottom: 6px; font-size: 11px;">
+                Suggestions
+              </div>
+              <ul style="margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 4px;">
+                @for (s of result()!.suggestions; track $index) {
+                  <li style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">
+                    {{ s }}
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+
+          @if (result()!.improved_prompt) {
+            <button
+              class="btn btn-primary"
+              style="align-self: flex-start; font-size: 12px;"
+              (click)="applyImproved()"
+              data-testid="apply-improved-button"
+            >
+              Apply improved version
+            </button>
+          }
+        </div>
+      }
+
+      @if (panelState() === 'idle') {
+        <div style="font-size: 12px; color: var(--text-muted);">
+          Click "Review prompt" to get AI-powered improvement suggestions.
+        </div>
+      }
+    </div>
+  `,
+})
+export class PromptReviewPanelComponent {
+  private readonly tauri = inject(TauriService);
+
+  @Input() promptContent = '';
+  @Output() applyImprovedPrompt = new EventEmitter<string>();
+
+  readonly panelState = signal<PanelState>('idle');
+  readonly result = signal<PromptReviewResult | null>(null);
+  readonly errorMsg = signal<string | null>(null);
+
+  async handleReview(): Promise<void> {
+    this.panelState.set('loading');
+    this.result.set(null);
+    this.errorMsg.set(null);
+
+    try {
+      const res = await this.tauri.reviewPromptWithAi(this.promptContent);
+      this.result.set(res);
+      this.panelState.set('success');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('ANTHROPIC_API_KEY')) {
+        this.panelState.set('no-key');
+      } else {
+        this.panelState.set('error');
+        this.errorMsg.set(msg);
+      }
+    }
+  }
+
+  applyImproved(): void {
+    const improved = this.result()?.improved_prompt;
+    if (improved) {
+      this.applyImprovedPrompt.emit(improved);
+    }
+  }
+}

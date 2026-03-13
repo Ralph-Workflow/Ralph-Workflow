@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Summary of a Ralph workflow session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SessionSummary {
     pub run_id: String,
     pub status: String,
@@ -19,7 +20,7 @@ pub struct SessionSummary {
 }
 
 /// Request to create a new Ralph workflow session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CreateSessionRequest {
     pub repo_path: String,
     pub worktree_path: Option<String>,
@@ -34,6 +35,7 @@ pub struct CreateSessionRequest {
 ///
 /// Returns an error string if the repo path is invalid or cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
     let repo_path = std::path::PathBuf::from(repo_path);
     let repo = repo_path.as_path();
@@ -127,6 +129,7 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
 ///
 /// Returns an error string if the prompt file does not exist or the repo path is invalid.
 #[tauri::command]
+#[specta::specta]
 pub fn create_session(request: CreateSessionRequest) -> Result<SessionSummary, String> {
     let prompt_path = std::path::PathBuf::from(&request.prompt_path);
     if !prompt_path.exists() {
@@ -241,6 +244,7 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
 ///
 /// Returns an error string if the `run_id` is not found in any known repository.
 #[tauri::command]
+#[specta::specta]
 pub fn get_session_detail(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,

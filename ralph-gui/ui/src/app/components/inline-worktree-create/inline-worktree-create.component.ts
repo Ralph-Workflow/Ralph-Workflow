@@ -1,0 +1,124 @@
+import { Component, Input, Output, EventEmitter, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { WorktreesService } from '../../services/worktrees.service';
+import type { WorktreeInfo } from '../../types';
+
+@Component({
+  selector: 'app-inline-worktree-create',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CommonModule],
+  template: `
+    <div
+      data-testid="inline-worktree-create"
+      style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding: 12px 14px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);"
+    >
+      <div>
+        <label class="section-label" for="wt-branch">Branch name</label>
+        <input
+          id="wt-branch"
+          data-testid="wt-branch-input"
+          class="input input-mono"
+          placeholder="wt-51-my-feature"
+          [value]="branch()"
+          (input)="onBranchInput($event)"
+          (blur)="onBranchBlur()"
+          [disabled]="!repoPath"
+        />
+        <div style="margin-top: 4px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+          Will be created from HEAD if it does not exist
+        </div>
+      </div>
+
+      <div>
+        <label class="section-label" for="wt-name">
+          Worktree name
+          <span style="color: var(--text-muted); font-family: var(--font-mono); font-size: 10px;">(wt-N-slug format)</span>
+        </label>
+        <input
+          id="wt-name"
+          data-testid="wt-name-input"
+          class="input input-mono"
+          placeholder="wt-51-my-feature"
+          [value]="name()"
+          (input)="onNameInput($event)"
+          [disabled]="!repoPath"
+        />
+      </div>
+
+      @if (!repoPath) {
+        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+          Select a repository first
+        </div>
+      }
+
+      @if (error()) {
+        <div
+          data-testid="wt-create-error"
+          style="padding: 6px 10px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.2); border-radius: var(--radius-md); color: var(--status-failed); font-size: 12px; font-family: var(--font-mono);"
+        >
+          {{ error() }}
+        </div>
+      }
+
+      <button
+        data-testid="wt-create-button"
+        class="btn btn-secondary"
+        (click)="handleCreate()"
+        [disabled]="creating() || !branch() || !name() || !repoPath"
+        style="align-self: flex-start;"
+      >
+        {{ creating() ? 'Creating...' : 'Create worktree' }}
+      </button>
+    </div>
+  `,
+})
+export class InlineWorktreeCreateComponent {
+  private readonly worktreesService = inject(WorktreesService);
+
+  @Input() repoPath = '';
+  @Output() created = new EventEmitter<WorktreeInfo>();
+
+  readonly branch = signal('');
+  readonly name = signal('');
+  readonly error = signal<string | null>(null);
+  readonly creating = signal(false);
+
+  onBranchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.branch.set(value);
+  }
+
+  onNameInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.name.set(value);
+  }
+
+  onBranchBlur(): void {
+    if (this.branch() && !this.name()) {
+      this.name.set(this.branch());
+    }
+  }
+
+  async handleCreate(): Promise<void> {
+    if (!this.repoPath || !this.branch() || !this.name()) return;
+
+    this.creating.set(true);
+    this.error.set(null);
+
+    try {
+      const worktree = await this.worktreesService.createWorktree(
+        this.repoPath,
+        this.branch(),
+        this.name()
+      );
+      // Refresh the worktrees list
+      await this.worktreesService.fetchWorktrees(this.repoPath);
+      this.created.emit(worktree);
+    } catch (e) {
+      this.error.set(e instanceof Error ? e.message : String(e));
+    } finally {
+      this.creating.set(false);
+    }
+  }
+}

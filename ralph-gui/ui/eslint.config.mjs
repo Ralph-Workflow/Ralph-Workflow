@@ -1,36 +1,63 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
+import angular from "angular-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "node_modules"] },
+  { ignores: ["dist", "coverage", "node_modules", "**/*.spec.ts", "**/*.test.ts"] },
   {
-    extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
-    files: ["**/*.{ts,tsx}"],
+    files: ["**/*.ts"],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommended,
+    ],
     languageOptions: {
       parserOptions: {
-        project: true,
-        tsconfigRootDir: import.meta.dirname,
+        project: "./tsconfig.json",
       },
     },
-    plugins: {
-      "react-hooks": reactHooks,
-      "react-refresh": reactRefresh,
-    },
     rules: {
-      ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
-      "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
-        { prefer: "type-imports" },
-      ],
-      "@typescript-eslint/no-unused-vars": "error",
-      "@typescript-eslint/no-non-null-assertion": "error",
+      // Core type safety rules
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/consistent-type-imports": ["warn", { "prefer": "type-imports" }],
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      // Relax strict rules for this project
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-unnecessary-condition": "off",
+      "@typescript-eslint/prefer-readonly-parameter-types": "off",
     },
   },
+  {
+    files: ["**/*.component.ts"],
+    extends: [...angular.configs.tsRecommended],
+    rules: {
+      "@angular-eslint/component-class-suffix": "error",
+      "@angular-eslint/component-selector": ["error", { "type": "element", "prefix": "app", "style": "kebab-case" }],
+      "@angular-eslint/directive-class-suffix": "error",
+      "@angular-eslint/directive-selector": ["error", { "type": "attribute", "prefix": "app", "style": "camelCase" }],
+      "@angular-eslint/prefer-on-push-component-change-detection": "error",
+      "@angular-eslint/prefer-standalone": "error",
+      // Relax style guide rules for inline templates/styles
+      "@angular-eslint/component-max-inline-declarations": "off",
+      "@angular-eslint/sort-keys-in-type-decorator": "off",
+      "@angular-eslint/consistent-component-styles": "off",
+      // Allow legacy @Input/@Output for now
+      "@angular-eslint/prefer-signals": "off",
+      "@angular-eslint/prefer-output-emitter-ref": "off",
+      "@angular-eslint/prefer-output-readonly": "off",
+      // Allow forwardRef
+      "@angular-eslint/no-forward-ref": "off",
+    },
+  },
+  {
+    files: ["**/*.html"],
+    extends: [...angular.configs.templateRecommended],
+    rules: {
+      "@angular-eslint/template/no-call-expression": "warn",
+      "@angular-eslint/template/eqeqeq": "error",
+      // i18n is not needed for this internal tool
+      "@angular-eslint/template/i18n": "off",
+    },
+  }
 );
