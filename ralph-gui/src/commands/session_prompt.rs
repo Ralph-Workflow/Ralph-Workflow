@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Result of an AI-assisted PROMPT.md review.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct PromptReviewResult {
     pub suggestions: Vec<String>,
     pub improved_prompt: Option<String>,
@@ -13,6 +14,7 @@ pub struct PromptReviewResult {
 ///
 /// Returns an error if the file cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn read_prompt_file(prompt_path: String) -> Result<String, String> {
     std::fs::read_to_string(&prompt_path).map_err(|e| format!("Failed to read prompt file: {e}"))
 }
@@ -23,6 +25,7 @@ pub fn read_prompt_file(prompt_path: String) -> Result<String, String> {
 ///
 /// Returns an error if the parent directory cannot be created or the file cannot be written.
 #[tauri::command]
+#[specta::specta]
 pub fn save_prompt_file(prompt_path: String, content: String) -> Result<(), String> {
     let path = std::path::PathBuf::from(&prompt_path);
     if let Some(parent) = path.parent() {
@@ -67,6 +70,7 @@ fn read_api_key_from_config() -> Result<String, String> {
 ///
 /// Returns an error if the API key is absent or the API call fails.
 #[tauri::command]
+#[specta::specta]
 pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResult, String> {
     // Dry-run mode for testing — skip network call.
     if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {

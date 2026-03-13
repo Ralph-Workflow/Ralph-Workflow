@@ -1,0 +1,82 @@
+<div class="page-content">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+    <h1 class="page-title" style="margin-bottom: 0;">Configuration</h1>
+    @if (repoPath()) {
+      <span class="chip-mono" style="font-size: 11px;">{{ repoPath() }}</span>
+    }
+  </div>
+
+  <div style="animation: fadeIn 200ms ease 40ms both;">
+    <div class="tab-bar" style="margin-bottom: var(--space-5);">
+      @for (tab of tabs; track tab.id) {
+        <button
+          class="tab-item{{ activeTab() === tab.id ? ' tab-item--active' : '' }}"
+          (click)="setActiveTab(tab.id)"
+        >
+          {{ tab.label }}
+        </button>
+      }
+    </div>
+
+    @if (activeTab() === 'effective') {
+      <div class="card">
+        <div style="margin-bottom: 12px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+          Merged view: project overrides global defaults
+        </div>
+
+        @if (configService.globalStatus() === 'loading') {
+          <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+            Loading...
+          </div>
+        } @else if (displayConfig()) {
+          <app-config-table [config]="displayConfig()!" />
+        } @else {
+          <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+            @if (!repoPath()) {
+              Select a repository to see effective config.
+            } @else {
+              No configuration loaded.
+            }
+          </div>
+        }
+      </div>
+    }
+
+    @if (activeTab() === 'global') {
+      <div class="card">
+        <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+            Global config stored at <span style="color: var(--text-secondary);">~/.config/ralph-workflow.toml</span>
+          </div>
+          <button
+            mat-stroked-button
+            (click)="toggleViewMode()"
+            style="font-size: 11px; min-width: auto;"
+          >
+            {{ viewMode() === 'form' ? 'Raw TOML' : 'Form View' }}
+          </button>
+        </div>
+        @if (viewMode() === 'form' && configService.globalConfig()) {
+          <app-config-form [config]="configService.globalConfig()!" />
+        } @else {
+          <app-toml-editor label="Global" scope="global" [repoPath]="null" />
+        }
+        <app-ai-integration-section />
+      </div>
+    }
+
+    @if (activeTab() === 'project') {
+      <div class="card">
+        <div style="margin-bottom: 16px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+          Project-level config stored at <span style="color: var(--text-secondary);">{{ projectConfigPath() }}</span>
+        </div>
+        @if (!repoPath()) {
+          <div style="padding: 10px 12px; background: rgba(232,168,56,0.08); border: 1px solid rgba(232,168,56,0.2); border-radius: var(--radius-md); color: var(--accent); font-size: 12px; font-family: var(--font-mono); margin-bottom: 12px;">
+            Select a repository context to edit project config.
+          </div>
+        }
+        <app-toml-editor label="Project" scope="project" [repoPath]="repoPath()" />
+      </div>
+    }
+  </div>
+</div>

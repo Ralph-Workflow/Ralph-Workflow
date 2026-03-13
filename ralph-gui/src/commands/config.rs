@@ -1,8 +1,9 @@
 use ralph_workflow::config::unified::UnifiedConfig;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// An agent profile from `agents.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AgentProfile {
     pub name: String,
     pub developer_agent: String,
@@ -18,6 +19,7 @@ pub struct AgentProfile {
 ///
 /// Returns an error if an existing file cannot be parsed.
 #[tauri::command]
+#[specta::specta]
 pub fn list_agent_profiles(repo_path: Option<String>) -> Result<Vec<AgentProfile>, String> {
     let mut search_paths: Vec<std::path::PathBuf> = Vec::new();
     if let Some(repo) = repo_path {
@@ -54,7 +56,7 @@ pub fn list_agent_profiles(repo_path: Option<String>) -> Result<Vec<AgentProfile
 }
 
 /// Serializable representation of the Ralph configuration for the GUI.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ConfigView {
     pub verbosity: u8,
     pub developer_iters: u32,
@@ -89,6 +91,7 @@ impl From<&UnifiedConfig> for ConfigView {
 ///
 /// Returns an error string if the config file cannot be read or parsed.
 #[tauri::command]
+#[specta::specta]
 pub fn get_global_config() -> Result<ConfigView, String> {
     Ok(ConfigView::from(
         &UnifiedConfig::load_default().unwrap_or_default(),
@@ -103,6 +106,7 @@ pub fn get_global_config() -> Result<ConfigView, String> {
 ///
 /// Returns an error string if the config file cannot be parsed.
 #[tauri::command]
+#[specta::specta]
 pub fn get_project_config(repo_path: String) -> Result<Option<ConfigView>, String> {
     let config_path = std::path::PathBuf::from(repo_path)
         .join(".agent")
@@ -124,6 +128,7 @@ pub fn get_project_config(repo_path: String) -> Result<Option<ConfigView>, Strin
 ///
 /// Returns an error string if configs cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn get_effective_config(repo_path: String) -> Result<ConfigView, String> {
     let global = UnifiedConfig::load_default().unwrap_or_default();
 
@@ -153,6 +158,7 @@ pub fn get_effective_config(repo_path: String) -> Result<ConfigView, String> {
 ///
 /// Panics if the config path has no parent directory (should not happen in practice).
 #[tauri::command]
+#[specta::specta]
 pub fn save_global_config(config_toml: String) -> Result<(), String> {
     // Validate the TOML first
     UnifiedConfig::load_from_content(&config_toml).map_err(|e| format!("Invalid config: {e}"))?;
@@ -178,6 +184,7 @@ pub fn save_global_config(config_toml: String) -> Result<(), String> {
 ///
 /// Returns an error if the file exists but cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn get_raw_global_config_toml() -> Result<String, String> {
     let config_path = dirs::home_dir()
         .ok_or_else(|| "Cannot determine home directory".to_string())?
@@ -199,6 +206,7 @@ pub fn get_raw_global_config_toml() -> Result<String, String> {
 ///
 /// Returns an error if the file exists but cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn get_raw_project_config_toml(repo_path: String) -> Result<String, String> {
     let config_path = std::path::PathBuf::from(repo_path)
         .join(".agent")
@@ -217,6 +225,7 @@ pub fn get_raw_project_config_toml(repo_path: String) -> Result<String, String> 
 ///
 /// Returns an error if the `.agent` directory cannot be created or the file cannot be written.
 #[tauri::command]
+#[specta::specta]
 pub fn save_project_config(repo_path: String, config_toml: String) -> Result<(), String> {
     // Validate the TOML first
     UnifiedConfig::load_from_content(&config_toml).map_err(|e| format!("Invalid config: {e}"))?;
@@ -240,6 +249,7 @@ pub fn save_project_config(repo_path: String, config_toml: String) -> Result<(),
 ///
 /// This command does not return `Err`; parse failures are returned as `Ok(Some(message))`.
 #[tauri::command]
+#[specta::specta]
 pub fn validate_config_toml(config_toml: String) -> Result<Option<String>, String> {
     match UnifiedConfig::load_from_content(&config_toml) {
         Ok(_) => Ok(None),
@@ -308,6 +318,7 @@ fn save_gui_config(config: &GuiConfig) -> Result<(), String> {
 ///
 /// Returns an error if the config file exists but cannot be read or parsed.
 #[tauri::command]
+#[specta::specta]
 pub fn get_ai_api_key() -> Result<String, String> {
     let config = load_gui_config()?;
     Ok(config.ai.api_key)
@@ -321,6 +332,7 @@ pub fn get_ai_api_key() -> Result<String, String> {
 ///
 /// Returns an error if the key is empty or the file cannot be written.
 #[tauri::command]
+#[specta::specta]
 pub fn save_ai_api_key(api_key: String) -> Result<(), String> {
     if api_key.trim().is_empty() {
         return Err("API key must not be empty".to_string());

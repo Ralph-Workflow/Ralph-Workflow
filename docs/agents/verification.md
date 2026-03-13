@@ -20,7 +20,7 @@ Verification passes when required checks complete successfully with **no ERROR/W
   - Lane 3: Core cargo (clippy-core, test-ralph-workflow-lib, test-integration — default target/)
   - Lane 4: Xtask cargo (clippy-xtask, test-xtask — target/xtask-parallel-verify)
   - Lane 5: GUI cargo (clippy-ralph-gui, test-ralph-gui-lib — target/gui-parallel-verify)
-  - Lane 6: Frontend (npm ci, lint, test — independent of cargo)
+  - Lane 6: Frontend (bun install, lint, test — independent of cargo)
   - Lane 7: Release (release build, dylint — target/release-parallel-verify)
 
 Result priority: scan > fmt > core_cargo > xtask > gui > frontend > release.
@@ -85,11 +85,11 @@ cargo clippy -p ralph-gui --all-targets -- -D warnings
 
 # Frontend install (xtask forces devDependencies on even under production outer env)
 NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm_config_production=false \
-  npm --prefix ralph-gui/ui ci --no-audit --no-fund --include=dev
+  bun install --cwd ralph-gui/ui --frozen-lockfile
 
 # Frontend checks
-npm --prefix ralph-gui/ui run lint
-npm --prefix ralph-gui/ui run test -- --run
+bun --cwd ralph-gui/ui run lint
+bun --cwd ralph-gui/ui run test
 
 # Unit tests
 cargo test -p xtask

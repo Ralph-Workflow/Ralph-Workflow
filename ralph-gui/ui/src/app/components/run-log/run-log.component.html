@@ -1,0 +1,25 @@
+@if (isLoading()) {
+  <div
+    data-testid="run-log-loading"
+    aria-busy="true"
+    style="padding: 8px 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);"
+  >
+    Loading logs…
+  </div>
+} @else if (lines().length === 0) {
+  <div
+    data-testid="run-log-empty"
+    role="status"
+    style="padding: 8px 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);"
+  >
+    No log output yet.
+  </div>
+} @else {
+  <pre
+    data-testid="run-log-content"
+    role="log"
+    [attr.aria-label]="ariaLabel()"
+    aria-live="polite"
+    style="overflow-y: auto; max-height: 320px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--text-secondary); background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 12px; margin: 0; white-space: pre-wrap; word-break: break-all;"
+  >{{ logContent() }}</pre>
+}

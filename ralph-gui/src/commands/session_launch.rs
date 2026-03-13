@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
 /// Find the `ralph` binary on the system PATH.
 ///
 /// # Errors
@@ -10,7 +13,7 @@ fn find_ralph_binary() -> Result<std::path::PathBuf, String> {
 }
 
 /// Arguments for launching a new unattended Ralph session.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct LaunchSessionArgs {
     pub repo_path: String,
     pub worktree_path: Option<String>,
@@ -30,6 +33,7 @@ pub struct LaunchSessionArgs {
 /// Returns an error if the ralph binary is not found, the paths are invalid,
 /// or the process cannot be spawned.
 #[tauri::command]
+#[specta::specta]
 pub fn launch_ralph_session(args: LaunchSessionArgs) -> Result<String, String> {
     let target_path = args.worktree_path.as_deref().unwrap_or(&args.repo_path);
 
@@ -98,6 +102,7 @@ pub fn launch_ralph_session(args: LaunchSessionArgs) -> Result<String, String> {
 ///
 /// Returns an error if the binary is not found or the process cannot be spawned.
 #[tauri::command]
+#[specta::specta]
 pub fn resume_ralph_session(run_id: String, repo_path: String) -> Result<(), String> {
     if run_id.is_empty() {
         return Err("run_id must not be empty".to_string());

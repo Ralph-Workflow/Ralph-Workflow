@@ -1,0 +1,13 @@
+<button
+  class="card"
+  style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border-subtle); text-align: left; width: 100%; transition: border-color var(--transition-fast), background var(--transition-fast);"
+  (click)="action.emit()"
+  (mouseenter)="onHover($event)"
+  (mouseleave)="onLeave($event)"
+>
+  <span style="font-size: 16px; color: var(--accent); flex-shrink: 0; margin-top: 2px; opacity: 0.9;">{{ icon }}</span>
+  <div>
+    <div style="font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">{{ label }}</div>
+    <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5;">{{ desc }}</div>
+  </div>
+</button>

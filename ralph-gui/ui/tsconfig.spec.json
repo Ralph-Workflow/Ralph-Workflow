@@ -1,0 +1,12 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* Angular configuration: https://angular.dev/tools/cli/configuration */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/spec",
+    "types": ["jasmine", "node"]
+  },
+  "files": ["src/test-setup.ts"],
+  "include": ["src/**/*.spec.ts", "src/**/*.d.ts"],
+  "exclude": ["node_modules"]
+}

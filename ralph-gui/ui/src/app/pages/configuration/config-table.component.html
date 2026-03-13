@@ -1,0 +1,10 @@
+<div>
+  <app-config-field label="verbosity" description="Log verbosity level (0=quiet, 1=normal, 2=verbose)" [value]="config().verbosity" />
+  <app-config-field label="developer_iters" description="Number of developer agent iterations per cycle" [value]="config().developer_iters" />
+  <app-config-field label="reviewer_reviews" description="Number of reviewer passes per cycle" [value]="config().reviewer_reviews" />
+  <app-config-field label="max_dev_continuations" description="Maximum continuation budget for developer agent" [value]="config().max_dev_continuations" />
+  <app-config-field label="review_depth" description="Depth of reviewer analysis (shallow | standard | deep)" [value]="config().review_depth" />
+  <app-config-field label="checkpoint_enabled" description="Persist pipeline state for --resume support" [value]="config().checkpoint_enabled" />
+  <app-config-field label="isolation_mode" description="Run agents in isolated environment" [value]="config().isolation_mode" />
+  <app-config-field label="interactive" description="Pause for user confirmation between phases" [value]="config().interactive" />
+</div>

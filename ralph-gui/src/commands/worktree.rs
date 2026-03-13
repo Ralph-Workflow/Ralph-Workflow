@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::path::Path;
 
 /// Information about a git worktree.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct WorktreeInfo {
     pub path: String,
     pub branch: String,
@@ -12,7 +13,7 @@ pub struct WorktreeInfo {
 }
 
 /// Result of creating a new worktree.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CreateWorktreeResult {
     pub worktree: WorktreeInfo,
 }
@@ -23,6 +24,7 @@ pub struct CreateWorktreeResult {
 ///
 /// Returns an error string if the path is not a git repository or cannot be read.
 #[tauri::command]
+#[specta::specta]
 pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
     let repo_path_buf = std::path::PathBuf::from(repo_path);
     let repo = git2::Repository::open(&repo_path_buf)
@@ -85,6 +87,7 @@ pub fn list_worktrees(repo_path: String) -> Result<Vec<WorktreeInfo>, String> {
 /// Returns an error if the name does not match the convention, the repo is invalid,
 /// or git worktree creation fails.
 #[tauri::command]
+#[specta::specta]
 pub fn create_worktree(
     repo_path: String,
     branch: String,
@@ -183,6 +186,7 @@ fn validate_context_paths(repo_path: &str, worktree_path: Option<&str>) -> Resul
 /// Returns an error if the repo or worktree path does not exist, or if the
 /// state lock cannot be acquired.
 #[tauri::command]
+#[specta::specta]
 pub fn switch_context(
     repo_path: String,
     worktree_path: Option<String>,

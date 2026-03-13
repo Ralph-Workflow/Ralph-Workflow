@@ -1,0 +1,45 @@
+<div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--border-subtle);">
+  <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3);">
+    AI Integration
+  </div>
+
+  <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: var(--space-4);">
+    Anthropic API key used for AI-assisted PROMPT.md review. Stored at
+    <span style="color: var(--text-secondary);">~/.config/ralph-gui.toml</span>
+    with restricted permissions (0600).
+  </div>
+
+  <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);">
+    <input
+      [type]="showKey() ? 'text' : 'password'"
+      class="form-input input-mono"
+      [value]="localKey()"
+      (input)="onKeyInput($event)"
+      placeholder="Enter Anthropic API key (sk-ant-...)"
+      style="flex: 1;"
+    />
+    <button class="btn btn-ghost" (click)="toggleShowKey()" style="flex-shrink: 0; min-width: 52px;">
+      {{ showKey() ? 'Hide' : 'Show' }}
+    </button>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: var(--space-3);">
+    <button
+      class="btn btn-primary"
+      (click)="handleSave()"
+      [disabled]="configService.aiApiKeySaveStatus() === 'saving'"
+    >
+      {{ configService.aiApiKeySaveStatus() === 'saving' ? 'Saving...' : 'Save API Key' }}
+    </button>
+    @if (configService.aiApiKeySaveStatus() === 'saved') {
+      <span style="font-size: 12px; color: var(--status-completed); font-family: var(--font-mono);">
+        Saved
+      </span>
+    }
+    @if (configService.aiApiKeySaveStatus() === 'failed' && configService.aiApiKeyError()) {
+      <span style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);">
+        {{ configService.aiApiKeyError() }}
+      </span>
+    }
+  </div>
+</div>

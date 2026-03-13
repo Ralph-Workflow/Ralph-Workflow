@@ -324,13 +324,11 @@ const DYLINT_SCOPE_FILES: &[&str] = &[
     "lints/file_too_long/dylint-link",
     "lints/file_too_long/rustc-nightly",
 ];
-const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] = &[
-    "ralph-gui/ui/package.json",
-    "ralph-gui/ui/package-lock.json",
-];
+const RALPH_GUI_FRONTEND_INSTALL_FILES: &[&str] =
+    &["ralph-gui/ui/package.json", "ralph-gui/ui/bun.lock"];
 const RALPH_GUI_FRONTEND_CHECK_FILES: &[&str] = &[
     "ralph-gui/ui/package.json",
-    "ralph-gui/ui/package-lock.json",
+    "ralph-gui/ui/bun.lock",
     "ralph-gui/ui/tsconfig.json",
     "ralph-gui/ui/tsconfig.node.json",
     "ralph-gui/ui/vite.config.ts",
@@ -2574,8 +2572,8 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         )
         .unwrap();
         std::fs::write(
-            tmp.join("ralph-gui/ui/package-lock.json"),
-            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+            tmp.join("ralph-gui/ui/bun.lock"),
+            b"{\"lockfileVersion\":1}\n",
         )
         .unwrap();
         std::fs::write(
@@ -2623,8 +2621,8 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         )
         .unwrap();
         std::fs::write(
-            tmp.join("ralph-gui/ui/package-lock.json"),
-            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+            tmp.join("ralph-gui/ui/bun.lock"),
+            b"{\"lockfileVersion\":1}\n",
         )
         .unwrap();
         std::fs::write(
@@ -3409,8 +3407,8 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         )
         .unwrap();
         std::fs::write(
-            tmp.join("ralph-gui/ui/package-lock.json"),
-            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+            tmp.join("ralph-gui/ui/bun.lock"),
+            b"{\"lockfileVersion\":1}\n",
         )
         .unwrap();
         std::fs::write(
@@ -3524,8 +3522,8 @@ default-members = ["ralph-workflow", "test-helpers", "xtask"]
         )
         .unwrap();
         std::fs::write(
-            tmp.join("ralph-gui/ui/package-lock.json"),
-            b"{\"name\":\"ralph-workflow-ui\",\"lockfileVersion\":3}\n",
+            tmp.join("ralph-gui/ui/bun.lock"),
+            b"{\"lockfileVersion\":1}\n",
         )
         .unwrap();
         std::fs::write(

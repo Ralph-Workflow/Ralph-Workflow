@@ -1,0 +1,21 @@
+<div style="display: flex; align-items: center; gap: 0; margin-bottom: 20px;">
+  @for (s of steps; track s.id; let idx = $index) {
+    <div style="display: flex; align-items: center; flex: idx < steps.length - 1 ? 1 : undefined;">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div [style]="stepStyle(s.id)">
+          @if (isDone(idx)) {
+            ✓
+          } @else {
+            {{ idx + 1 }}
+          }
+        </div>
+        <span [style]="labelStyle(s.id)">
+          {{ s.label }}
+        </span>
+      </div>
+      @if (idx < steps.length - 1) {
+        <div [style]="lineStyle(idx)"></div>
+      }
+    </div>
+  }
+</div>

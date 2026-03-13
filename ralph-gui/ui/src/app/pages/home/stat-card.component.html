@@ -1,0 +1,8 @@
+<div class="card" style="padding: 18px 20px;" [style.border-bottom]="accent && value > 0 ? '2px solid var(--accent)' : '2px solid transparent'">
+  <div [style]="valueStyle()">
+    {{ value }}
+  </div>
+  <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-ui); text-transform: uppercase; letter-spacing: 0.06em;">
+    {{ label }}
+  </div>
+</div>

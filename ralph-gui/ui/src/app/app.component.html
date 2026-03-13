@@ -1,0 +1,94 @@
+<div class="app-shell">
+  <app-workspace-tab-bar />
+  <div class="app-container">
+    <aside class="sidebar">
+    <div class="sidebar-accent"></div>
+    <div class="brand">
+      <div class="brand-row">
+        <div class="brand-icon">R</div>
+        <span class="brand-name">Ralph</span>
+      </div>
+      <div class="brand-subtitle">workflow</div>
+    </div>
+    <div class="context-section">
+      <button mat-button class="context-btn" [matMenuTriggerFor]="contextMenu">
+        <mat-icon class="context-icon">folder</mat-icon>
+        <span class="context-text">{{ contextDisplay }}</span>
+        <mat-icon class="context-arrow">arrow_drop_down</mat-icon>
+      </button>
+      <mat-menu #contextMenu="matMenu">
+        <button mat-menu-item (click)="selectContext(null)">
+          <mat-icon>folder_open</mat-icon>
+          <span>Select repository...</span>
+        </button>
+        @if (worktreesService.worktrees().length > 0) {
+          <mat-divider></mat-divider>
+          @for (wt of worktreesService.worktrees(); track wt.path) {
+            <button mat-menu-item (click)="selectContext(wt.path)">
+              <mat-icon>{{ wt.is_main ? 'folder_special' : 'folder' }}</mat-icon>
+              <span>{{ wt.name }}</span>
+            </button>
+          }
+        }
+      </mat-menu>
+    </div>
+    <div class="sidebar-divider"></div>
+    <nav class="nav-section">
+      @for (item of navItems; track item.path) {
+        <a
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{exact: item.path === '/'}"
+          class="nav-item"
+        >
+          @if (isActive(item.path)) {
+            <span class="nav-accent"></span>
+          }
+          <mat-icon [class.active-icon]="isActive(item.path)">{{ item.icon }}</mat-icon>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+    </nav>
+    <div class="sidebar-footer">v0.1.0</div>
+  </aside>
+    <main class="main-content">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+  <app-status-bar />
+</div>
+
+@if (showHelp()) {
+  <div class="modal-overlay" (click)="closeHelp()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Keyboard Shortcuts</h2>
+        <button mat-icon-button (click)="closeHelp()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcut-row">
+          <kbd>?</kbd>
+          <span>Show this help</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>g</kbd> then <kbd>h</kbd>
+          <span>Go to Home</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>g</kbd> then <kbd>s</kbd>
+          <span>Go to Sessions</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>g</kbd> then <kbd>w</kbd>
+          <span>Go to Worktrees</span>
+        </div>
+        <div class="shortcut-row">
+          <kbd>g</kbd> then <kbd>c</kbd>
+          <span>Go to Configuration</span>
+        </div>
+      </div>
+    </div>
+  </div>
+}
