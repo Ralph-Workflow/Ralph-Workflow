@@ -1,6 +1,7 @@
 # Code Style Guide
 
 ## Important Rules for this Project
+- Pre-existing issues are fix-now work: if you find a broken test, warning, lint failure, stale docs, dead code, or other existing repo problem, stop and fix it instead of carrying it forward.
 - Production files should target 300 lines max (guideline), 500 lines recommended limit, 1000 lines hard limit (dylint enforces). Files 500-700 lines should be reviewed for cohesion (see guidelines below). Test files should stay under 1000 lines.
 - A file should do one conceptual job. If you need a paragraph to explain what the file does, it's doing too much.
 - If you need comments to explain what the code does, rewrite it.

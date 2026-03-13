@@ -14,6 +14,7 @@ ALWAYS USE test-driven-development!
 
 ## Non-Negotiables
 
+- **Pre-existing issues are fix-now work.** If you discover a broken test, lint failure, warning, stale docs, dead code, or any other repo issue that already existed, it becomes your top priority immediately. Do not defer it, work around it, or leave it for later.
 - **TDD is required for all code changes.** No production code without a failing test first.
 - **Verification is required for ANY code change** (prod code or tests): run `docs/agents/verification.md` before PR/completion.
 - **Architecture reading is REQUIRED** before any pipeline/reducer/behavioral change: `CODE_STYLE.md` (Architecture), `docs/architecture/event-loop-and-reducers.md`, `docs/architecture/effect-system.md`.
@@ -233,6 +234,8 @@ Run the commands in `docs/agents/verification.md`. Verification passes when requ
 ### YOU MUST FIX ALL FAILURES - NOT JUST YOUR OWN
 
 **CRITICAL:** When verification fails, you MUST fix ALL failures before committing - even if they are pre-existing issues you did not introduce.
+
+**Broader rule:** This repo does not permit carrying known pre-existing issues forward. If you discover one anywhere while doing your task, fix it now. Verification failures are the most obvious case, not the only case.
 
 **Pre-existing failures become YOUR TOP PRIORITY.** Drop whatever you were doing. The user's original prompt is now secondary. Fix the verification failures FIRST.
 

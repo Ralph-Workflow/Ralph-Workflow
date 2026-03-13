@@ -8,6 +8,8 @@ cargo xtask verify
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
 
+If verification exposes a pre-existing failure, or if you discover any other pre-existing repo issue while working, it becomes fix-now work immediately. Do not defer it, work around it, or leave it for another contributor.
+
 ### Parallel execution architecture
 
 `cargo xtask verify` runs a shared serial preparation step, a serial native-check gate, and then seven concurrent lanes:
@@ -151,5 +153,7 @@ cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.
+
+**Broader policy:** known pre-existing issues anywhere in the repo must also be fixed immediately, even when they are outside the narrow change you started with.
 
 For dylint details/troubleshooting, see `docs/tooling/dylint.md`.

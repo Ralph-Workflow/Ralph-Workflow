@@ -308,6 +308,8 @@ Run `cargo xtask verify` before every PR.
 
 See `docs/agents/verification.md` for the complete pre-PR command list.
 
+If a test change, test run, or verification step exposes a pre-existing failure, flake, warning, stale fixture, or other existing repo issue, that issue becomes your top priority immediately. Fix it now rather than documenting or deferring it.
+
 **Key audit checks:**
 - No `cfg!(test)` in integration tests
 - No `TempDir` / `std::fs::*` in integration tests
