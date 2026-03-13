@@ -312,8 +312,9 @@ fn test_comprehensive_real_world_plan() {
 }
 
 #[test]
-fn test_real_world_plan_error_messages_are_actionable() {
-    // Simulate a common LLM mistake: file-change without target-files
+fn test_real_world_plan_file_change_without_target_files_is_reclassified() {
+    // Previously tested that a file-change step without target-files causes an error.
+    // Now that behavior is tolerant (reclassify as action), test the new behavior.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Add feature X</context>
@@ -357,29 +358,19 @@ pub struct NewConfig {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err(), "Should fail due to missing target-files");
-
-    let err = result.unwrap_err();
-
-    // Error should identify the problem element
     assert!(
-        err.element_path.contains("target-files"),
-        "Error path should mention target-files"
+        result.is_ok(),
+        "file-change step without target-files should now be reclassified as action: {:?}",
+        result.err()
     );
-
-    // Error message should be actionable
-    let retry_msg = err.format_for_ai_retry();
-    assert!(
-        retry_msg.contains("MISSING REQUIRED ELEMENT"),
-        "Should indicate missing element"
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.steps[0].kind,
+        StepType::Action,
+        "step should be reclassified as action type"
     );
     assert!(
-        retry_msg.contains("target-files"),
-        "Should mention target-files"
+        plan.steps[0].target_files.is_empty(),
+        "reclassified action step should have no target files"
     );
-    assert!(
-        retry_msg.contains("How to fix"),
-        "Should provide fix guidance"
-    );
-    assert!(retry_msg.contains("<file"), "Should show example fix");
 }

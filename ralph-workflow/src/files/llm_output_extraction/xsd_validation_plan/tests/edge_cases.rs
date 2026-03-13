@@ -211,7 +211,9 @@ fn test_error_message_includes_what_was_found() {
 }
 
 #[test]
-fn test_error_message_provides_actionable_suggestion() {
+fn test_file_change_step_without_target_files_is_reclassified_as_action() {
+    // Previously tested error messages for file-change without target-files.
+    // Now that behavior is tolerant (reclassify as action), test the new behavior.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test</context>
@@ -239,12 +241,17 @@ fn test_error_message_provides_actionable_suggestion() {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-
-    // Suggestion should show how to add target-files
-    assert!(err.suggestion.contains("target-files"));
-    assert!(err.suggestion.contains("file"));
+    assert!(
+        result.is_ok(),
+        "file-change step without target-files should be reclassified as action: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.steps[0].kind,
+        StepType::Action,
+        "step should be reclassified as action type"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

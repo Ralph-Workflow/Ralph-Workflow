@@ -183,7 +183,7 @@ fn parse_single_step(
         0
     };
 
-    let kind = attrs
+    let mut kind = attrs
         .get("type")
         .and_then(|s| StepType::from_str(s))
         .unwrap_or_default();
@@ -297,17 +297,10 @@ fn parse_single_step(
         example: None,
     })?;
 
-    // Validate file-change steps have target-files
+    // Tolerant: file-change step without target-files is reclassified as action.
+    // The step content still describes what to do; the type metadata is secondary.
     if kind == StepType::FileChange && target_files.is_empty() {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::MissingRequiredElement,
-            element_path: format!("step[{number}]/target-files"),
-            expected: "<target-files> with at least one <file> for file-change steps".to_string(),
-            found: "no target-files".to_string(),
-            suggestion: "Add <target-files><file path=\"...\" action=\"modify\"/></target-files>"
-                .to_string(),
-            example: None,
-        });
+        kind = StepType::Action;
     }
 
     let content = (!content_fragments.is_empty())

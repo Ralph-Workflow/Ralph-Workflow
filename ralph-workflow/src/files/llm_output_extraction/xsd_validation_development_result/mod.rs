@@ -500,7 +500,8 @@ mod tests {
     }
 
     #[test]
-    fn test_continuation_validation_rejects_single_recovery_step() {
+    fn test_continuation_validation_accepts_single_recovery_step() {
+        // Previously rejected; now accepted — step count is no longer enforced.
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
 <ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
@@ -508,17 +509,16 @@ mod tests {
 </ralph-development-result>";
 
         let result = validate_continuation_development_result_xml(xml);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(error.element_path, "ralph-next-steps");
         assert!(
-            error.expected.contains("ordered recovery checklist"),
-            "single-step continuation checklist should be rejected as incomplete"
+            result.is_ok(),
+            "Single-step continuation should now be accepted: {:?}",
+            result.err()
         );
     }
 
     #[test]
-    fn test_continuation_validation_rejects_checklist_without_plan_completion_step() {
+    fn test_continuation_validation_accepts_checklist_without_plan_completion_step() {
+        // Previously rejected; now accepted — last-step wording is no longer enforced.
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
 <ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
@@ -527,13 +527,10 @@ mod tests {
 </ralph-development-result>";
 
         let result = validate_continuation_development_result_xml(xml);
-        assert!(result.is_err());
-        let error = result.unwrap_err();
-        assert_eq!(error.element_path, "ralph-next-steps");
         assert!(
-            error.expected.contains("remaining plan")
-                || error.suggestion.contains("remaining plan"),
-            "continuation checklist should explicitly cover finishing the remaining plan"
+            result.is_ok(),
+            "Checklist without explicit plan-completion step should now be accepted: {:?}",
+            result.err()
         );
     }
 
@@ -582,7 +579,8 @@ mod tests {
     }
 
     #[test]
-    fn test_continuation_validation_still_rejects_critical_file_bookkeeping() {
+    fn test_continuation_validation_tolerates_and_clears_files_changed() {
+        // Previously rejected; now accepted — ralph-files-changed is tolerated and cleared.
         let xml = r"<ralph-development-result>
 <ralph-status>partial</ralph-status>
 <ralph-summary>The full plan was not completed because verification still fails.</ralph-summary>
@@ -594,11 +592,19 @@ mod tests {
 
         let result = validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "continuation output should still reject file bookkeeping"
+            result.is_ok(),
+            "Continuation output should now tolerate ralph-files-changed: {:?}",
+            result.err()
         );
-        let error = result.unwrap_err();
-        assert_eq!(error.element_path, "ralph-files-changed");
+        let elements = result.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared in continuation mode"
+        );
+        assert!(
+            !elements.files_changed_present,
+            "files_changed_present should be cleared in continuation mode"
+        );
     }
 
     // =========================================================================
@@ -645,5 +651,169 @@ mod tests {
             "Failed status should be preserved when summary is empty"
         );
         assert!(elements.is_failed(), "Should be identified as failed");
+    }
+
+    // =========================================================================
+    // New tolerance tests (these should FAIL until validation.rs is updated)
+    // =========================================================================
+
+    /// Test: continuation with summary lacking blocker-indicator words should now pass.
+    #[test]
+    fn test_continuation_tolerates_summary_without_blocker_indicator_words() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>Steps 7-10 were not implemented; three test files and cargo xtask verify are still missing.</ralph-summary>
+<ralph-next-steps>1. Create the three missing test files.
+2. Fix pre-existing clippy errors.
+3. Re-run cargo xtask verify.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept summary without explicit blocker-indicator words: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation with summary lacking plan-scope terms should now pass.
+    #[test]
+    fn test_continuation_tolerates_summary_without_plan_scope_terms() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>Implementation incomplete because verification fails with three pre-existing errors.</ralph-summary>
+<ralph-next-steps>1. Fix the three pre-existing errors.
+2. Re-run focused tests.
+3. Confirm all checks pass.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept summary without explicit plan-scope terms: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation with bullet-point next-steps (dashes instead of numbers) should now pass.
+    #[test]
+    fn test_continuation_tolerates_bullet_point_next_steps() {
+        let xml = r"<ralph-development-result>
+<ralph-status>failed</ralph-status>
+<ralph-summary>The implementation was not completed due to missing test files.</ralph-summary>
+<ralph-next-steps>- Create the processing-controls spec file.
+- Create the preview-panel spec file.
+- Fix the vitest config error.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept bullet-point next-steps (dashes): {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation next-steps whose last step does NOT mention finish/remaining plan should now pass.
+    #[test]
+    fn test_continuation_tolerates_next_steps_without_finish_remaining_plan_phrase() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The implementation stalled because clippy errors block verification.</ralph-summary>
+<ralph-next-steps>1. Fix the utoipa clippy errors in six controller files.
+2. Fix the SCSS budget exceeded errors.
+3. Fix the vitest config error.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept next-steps without explicit finish/remaining plan phrase: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation with bookkeeping lines in next-steps should now pass.
+    #[test]
+    fn test_continuation_tolerates_bookkeeping_lines_in_next_steps() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The implementation is incomplete because three test files are still missing.</ralph-summary>
+<ralph-next-steps>1. Files changed: validation.rs, mod.rs.
+2. Tests run: cargo test -p ralph-workflow --lib.
+3. Work completed: removed five semantic checks.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept next-steps containing bookkeeping lines: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation with vague steps in next-steps should now pass.
+    #[test]
+    fn test_continuation_tolerates_vague_steps_in_next_steps() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The implementation is not done because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Keep investigating the root cause of the clippy errors.
+2. Try another fix for the SCSS budget issue.
+3. Continue later with the vitest config.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept next-steps containing vague steps: {:?}",
+            result.err()
+        );
+    }
+
+    /// Test: continuation with ralph-files-changed element present should now pass (element tolerated, value discarded).
+    #[test]
+    fn test_continuation_tolerates_files_changed_element_and_clears_it() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The implementation was not completed because test files are missing.</ralph-summary>
+<ralph-files-changed>src/lib.rs</ralph-files-changed>
+<ralph-next-steps>1. Create the missing test files.
+2. Re-run the verification.
+3. Confirm all tests pass.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should tolerate ralph-files-changed (element present but discarded): {:?}",
+            result.err()
+        );
+        let elements = result.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared/discarded in continuation mode"
+        );
+        assert!(
+            !elements.files_changed_present,
+            "files_changed_present should be cleared/discarded in continuation mode"
+        );
+    }
+
+    /// Test: continuation with a single recovery step should now pass.
+    #[test]
+    fn test_continuation_tolerates_single_recovery_step() {
+        let xml = r"<ralph-development-result>
+<ralph-status>partial</ralph-status>
+<ralph-summary>The implementation is incomplete because verification still fails.</ralph-summary>
+<ralph-next-steps>1. Fix the verification failure and re-run all tests.</ralph-next-steps>
+</ralph-development-result>";
+
+        let result = validate_continuation_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Continuation should accept a single recovery step: {:?}",
+            result.err()
+        );
     }
 }

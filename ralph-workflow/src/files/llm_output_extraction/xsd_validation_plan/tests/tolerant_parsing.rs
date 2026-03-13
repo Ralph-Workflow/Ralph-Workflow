@@ -2128,6 +2128,66 @@ fn test_plan_step_without_number_is_auto_assigned() {
     );
 }
 
+/// Test: file-change step without target-files is reclassified as action type.
+///
+/// When an LLM marks a step as file-change but omits target-files, the intent
+/// is clear — auto-reclassify as action type rather than erroring.
+#[test]
+fn test_plan_file_change_step_without_target_files_is_reclassified_as_action() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test file-change step without target-files</context>
+<scope-items>
+<scope-item count="1" category="a">a</scope-item>
+<scope-item count="1" category="b">b</scope-item>
+<scope-item count="1" category="c">c</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Implement the feature</title>
+<content>
+<paragraph>Implementation details without target files.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="modify"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "file-change step without target-files should be reclassified as action type, not rejected: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.steps[0].kind,
+        StepType::Action,
+        "file-change step without target-files should be reclassified as action"
+    );
+    assert!(
+        plan.steps[0].target_files.is_empty(),
+        "reclassified action step should have no target files"
+    );
+}
+
 /// Test: mixed - some steps have explicit numbers, unnumbered ones get next available.
 #[test]
 fn test_plan_mixed_numbered_and_unnumbered_steps() {

@@ -435,7 +435,7 @@ fn test_development_xml_with_all_optional_fields() {
     });
 }
 
-/// Test that continuation XML rejects bookkeeping-heavy optional fields.
+/// Test that continuation XML tolerates ralph-files-changed (silently discarded).
 #[test]
 fn test_continuation_development_xml_rejects_bookkeeping_fields() {
     with_default_timeout(|| {
@@ -454,8 +454,15 @@ fn test_continuation_development_xml_rejects_bookkeeping_fields() {
 
         let validated = validate_continuation_development_result_xml(&extracted.unwrap());
         assert!(
-            validated.is_err(),
-            "Continuation validation should reject file bookkeeping"
+            validated.is_ok(),
+            "Continuation validation should now tolerate ralph-files-changed: {:?}",
+            validated.err()
+        );
+
+        let elements = validated.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared in continuation mode"
         );
     });
 }

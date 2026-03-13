@@ -171,7 +171,8 @@ fn test_action_step_without_target_files() {
 }
 
 #[test]
-fn test_file_change_step_requires_target_files() {
+fn test_file_change_step_without_target_files_is_reclassified_as_action() {
+    // Previously rejected; now reclassified as action type.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test file-change step</context>
@@ -201,7 +202,15 @@ fn test_file_change_step_requires_target_files() {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.element_path.contains("target-files"));
+    assert!(
+        result.is_ok(),
+        "file-change step without target-files should now be reclassified as action: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(
+        plan.steps[0].kind,
+        StepType::Action,
+        "step should be reclassified as action"
+    );
 }

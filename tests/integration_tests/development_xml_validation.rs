@@ -147,7 +147,7 @@ fn test_continuation_development_xml_requires_recovery_only_contract() {
     });
 }
 
-/// Test that continuation XML rejects bookkeeping-heavy payloads.
+/// Test that continuation XML tolerates ralph-files-changed and clears it.
 #[test]
 fn test_continuation_development_xml_rejects_files_changed() {
     with_default_timeout(|| {
@@ -162,16 +162,20 @@ fn test_continuation_development_xml_rejects_files_changed() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject file bookkeeping"
+            result.is_ok(),
+            "Continuation XML should now tolerate ralph-files-changed: {:?}",
+            result.err()
         );
 
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-files-changed"));
+        let elements = result.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared/discarded in continuation mode"
+        );
     });
 }
 
-/// Test that continuation XML rejects empty file-bookkeeping elements.
+/// Test that continuation XML tolerates empty file-bookkeeping elements.
 #[test]
 fn test_continuation_development_xml_rejects_empty_files_changed_element() {
     with_default_timeout(|| {
@@ -186,16 +190,20 @@ fn test_continuation_development_xml_rejects_empty_files_changed_element() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject even empty file bookkeeping elements"
+            result.is_ok(),
+            "Continuation XML should now tolerate empty ralph-files-changed elements: {:?}",
+            result.err()
         );
 
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-files-changed"));
+        let elements = result.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared/discarded in continuation mode"
+        );
     });
 }
 
-/// Test that continuation XML rejects summaries without a blocker explanation.
+/// Test that continuation XML accepts summaries without explicit blocker-indicator words.
 #[test]
 fn test_continuation_development_xml_rejects_summary_without_blocker() {
     with_default_timeout(|| {
@@ -209,19 +217,14 @@ fn test_continuation_development_xml_rejects_summary_without_blocker() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject summaries that do not explain what blocked full-plan completion"
+            result.is_ok(),
+            "Continuation XML should now accept summaries without blocker-indicator words: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-summary"));
-        assert!(error
-            .suggestion
-            .contains("why the full plan was not completed"));
     });
 }
 
-/// Test that continuation XML rejects plan-scope summaries that still omit the blocker.
+/// Test that continuation XML accepts plan-scope summaries even without a specific blocker.
 #[test]
 fn test_continuation_development_xml_rejects_summary_without_specific_blocker() {
     with_default_timeout(|| {
@@ -235,17 +238,14 @@ fn test_continuation_development_xml_rejects_summary_without_specific_blocker() 
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject summaries that mention the plan but do not explain the blocker"
+            result.is_ok(),
+            "Continuation XML should now accept summaries without a specific blocker explanation: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-summary"));
-        assert!(error.expected.contains("blocker-focused"));
     });
 }
 
-/// Test that continuation XML rejects bookkeeping-heavy ordered next steps.
+/// Test that continuation XML accepts bookkeeping-heavy ordered next steps.
 #[test]
 fn test_continuation_development_xml_rejects_bookkeeping_heavy_next_steps() {
     with_default_timeout(|| {
@@ -259,17 +259,14 @@ fn test_continuation_development_xml_rejects_bookkeeping_heavy_next_steps() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject bookkeeping-heavy ordered next steps"
+            result.is_ok(),
+            "Continuation XML should now accept bookkeeping-heavy ordered next steps: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-next-steps"));
-        assert!(error.suggestion.contains("recovery checklist"));
     });
 }
 
-/// Test that continuation XML rejects blocker summaries scoped only to a local stuck step.
+/// Test that continuation XML accepts summaries scoped to a local stuck step.
 #[test]
 fn test_continuation_development_xml_rejects_local_step_summary() {
     with_default_timeout(|| {
@@ -283,17 +280,14 @@ fn test_continuation_development_xml_rejects_local_step_summary() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject summaries that explain only a local stuck step instead of the full-plan blocker"
+            result.is_ok(),
+            "Continuation XML should now accept summaries scoped to a local stuck step: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-summary"));
-        assert!(error.expected.contains("full plan"));
     });
 }
 
-/// Test that continuation XML rejects vague ordered steps that do not recover the remaining plan.
+/// Test that continuation XML accepts vague ordered steps.
 #[test]
 fn test_continuation_development_xml_rejects_vague_ordered_steps() {
     with_default_timeout(|| {
@@ -307,17 +301,14 @@ fn test_continuation_development_xml_rejects_vague_ordered_steps() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject vague ordered steps that are not actionable recovery work"
+            result.is_ok(),
+            "Continuation XML should now accept vague ordered steps: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-next-steps"));
-        assert!(error.expected.contains("recovery checklist"));
     });
 }
 
-/// Test that continuation XML rejects a single recovery step, even when concrete.
+/// Test that continuation XML accepts a single recovery step.
 #[test]
 fn test_continuation_development_xml_rejects_single_recovery_step() {
     with_default_timeout(|| {
@@ -329,13 +320,10 @@ fn test_continuation_development_xml_rejects_single_recovery_step() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should reject a single ordered recovery step because the continuation contract requires a checklist"
+            result.is_ok(),
+            "Continuation XML should now accept a single recovery step: {:?}",
+            result.err()
         );
-
-        let error = result.unwrap_err();
-        assert!(error.element_path.contains("ralph-next-steps"));
-        assert!(error.expected.contains("at least two numbered steps"));
     });
 }
 
@@ -373,12 +361,16 @@ fn test_continuation_development_xml_still_rejects_critical_file_bookkeeping() {
 
         let result = ralph_workflow::validate_continuation_development_result_xml(xml);
         assert!(
-            result.is_err(),
-            "Continuation XML should still reject file bookkeeping that changes the continuation contract"
+            result.is_ok(),
+            "Continuation XML should now tolerate ralph-files-changed (element silently discarded): {:?}",
+            result.err()
         );
 
-        let error = result.unwrap_err();
-        assert_eq!(error.element_path, "ralph-files-changed");
+        let elements = result.unwrap();
+        assert!(
+            elements.files_changed.is_none(),
+            "files_changed should be cleared in continuation mode"
+        );
     });
 }
 

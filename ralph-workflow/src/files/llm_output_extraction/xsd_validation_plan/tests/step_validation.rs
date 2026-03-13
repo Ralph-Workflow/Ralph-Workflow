@@ -230,8 +230,9 @@ fn test_step_type_defaults_to_file_change() {
 }
 
 #[test]
-fn test_step_without_type_requires_target_files() {
-    // When no type is specified, default is file-change which requires target-files
+fn test_step_without_type_and_without_target_files_is_reclassified_as_action() {
+    // When no type is specified, default is file-change; but since no target-files
+    // are provided, the step is reclassified as action type (tolerant behavior).
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test</context>
@@ -259,10 +260,14 @@ fn test_step_without_type_requires_target_files() {
 </ralph-plan>"#;
 
     let result = validate_plan_xml(xml);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    // Should error because default type (file-change) requires target-files
-    assert!(err.element_path.contains("target-files"));
+    assert!(
+        result.is_ok(),
+        "file-change step (default type) without target-files should be reclassified as action: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    // Default type is file-change, but no target-files → reclassified as action
+    assert_eq!(plan.steps[0].kind, StepType::Action);
 }
 
 #[test]
