@@ -1,0 +1,3 @@
+[submodule "vendor/Ralph-Workflow-Brand"]
+	path = vendor/Ralph-Workflow-Brand
+	url = ssh://git@git.sellogic.ai:2224/mistlight/Ralph-Workflow-Brand.git
