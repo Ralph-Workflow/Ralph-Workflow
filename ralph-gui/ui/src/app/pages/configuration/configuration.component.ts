@@ -1,11 +1,21 @@
 import { Component, inject, signal, effect, computed, input, ChangeDetectionStrategy, forwardRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatSliderModule } from '@angular/material/slider';
+import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ConfigService } from '../../services/config.service';
 import { WorktreesService } from '../../services/worktrees.service';
 import { TauriService } from '../../services/tauri.service';
 import type { ConfigView } from '../../types';
 
 type TabId = 'effective' | 'global' | 'project';
+type ViewMode = 'form' | 'toml';
 
 const DEFAULT_TOML_TEMPLATE = (label: string) =>
   `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`;
@@ -18,86 +28,21 @@ const VALIDATION_DEBOUNCE_MS = 300;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
+    ReactiveFormsModule,
+    MatExpansionModule,
+    MatSliderModule,
+    MatSelectModule,
+    MatSlideToggleModule,
+    MatInputModule,
+    MatFormFieldModule,
+    MatButtonModule,
+    MatTooltipModule,
     forwardRef(() => ConfigTableComponent),
     forwardRef(() => TomlEditorComponent),
     forwardRef(() => AiIntegrationSectionComponent),
+    forwardRef(() => ConfigFormComponent),
   ],
-  template: `
-    <div class="page-content">
-      <!-- Header -->
-      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
-        <h1 class="page-title" style="margin-bottom: 0;">Configuration</h1>
-        @if (repoPath()) {
-          <span class="chip-mono" style="font-size: 11px;">{{ repoPath() }}</span>
-        }
-      </div>
-
-      <div style="animation: fadeIn 200ms ease 40ms both;">
-        <!-- Tab bar -->
-        <div class="tab-bar" style="margin-bottom: var(--space-5);">
-          @for (tab of tabs; track tab.id) {
-            <button
-              class="tab-item{{ activeTab() === tab.id ? ' tab-item--active' : '' }}"
-              (click)="setActiveTab(tab.id)"
-            >
-              {{ tab.label }}
-            </button>
-          }
-        </div>
-
-        <!-- Effective read view -->
-        @if (activeTab() === 'effective') {
-          <div class="card">
-            <div style="margin-bottom: 12px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-              Merged view: project overrides global defaults
-            </div>
-
-            @if (configService.globalStatus() === 'loading') {
-              <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
-                Loading...
-              </div>
-            } @else if (displayConfig()) {
-              <app-config-table [config]="displayConfig()!" />
-            } @else {
-              <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
-                @if (!repoPath()) {
-                  Select a repository to see effective config.
-                } @else {
-                  No configuration loaded.
-                }
-              </div>
-            }
-          </div>
-        }
-
-        <!-- Global edit view -->
-        @if (activeTab() === 'global') {
-          <div class="card">
-            <div style="margin-bottom: 16px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-              Global config stored at <span style="color: var(--text-secondary);">~/.config/ralph-workflow.toml</span>
-            </div>
-            <app-toml-editor label="Global" scope="global" [repoPath]="null" />
-            <app-ai-integration-section />
-          </div>
-        }
-
-        <!-- Project edit view -->
-        @if (activeTab() === 'project') {
-          <div class="card">
-            <div style="margin-bottom: 16px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-              Project-level config stored at <span style="color: var(--text-secondary);">{{ projectConfigPath() }}</span>
-            </div>
-            @if (!repoPath()) {
-              <div style="padding: 10px 12px; background: rgba(232,168,56,0.08); border: 1px solid rgba(232,168,56,0.2); border-radius: var(--radius-md); color: var(--accent); font-size: 12px; font-family: var(--font-mono); margin-bottom: 12px;">
-                Select a repository context to edit project config.
-              </div>
-            }
-            <app-toml-editor label="Project" scope="project" [repoPath]="repoPath()" />
-          </div>
-        }
-      </div>
-    </div>
-  `,
+  templateUrl: './configuration.component.html',
 })
 export class ConfigurationComponent {
   readonly configService = inject(ConfigService);
@@ -110,6 +55,7 @@ export class ConfigurationComponent {
   ];
 
   readonly activeTab = signal<TabId>('effective');
+  readonly viewMode = signal<ViewMode>('form');
 
   readonly repoPath = computed(() => {
     const activePath = this.worktreesService.activeWorktreePath();
@@ -146,6 +92,94 @@ export class ConfigurationComponent {
   setActiveTab(tab: TabId): void {
     this.activeTab.set(tab);
   }
+
+  toggleViewMode(): void {
+    this.viewMode.update(mode => mode === 'form' ? 'toml' : 'form');
+  }
+}
+
+@Component({
+  selector: 'app-config-form',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    MatExpansionModule,
+    MatSliderModule,
+    MatSelectModule,
+    MatSlideToggleModule,
+    MatInputModule,
+    MatFormFieldModule,
+    MatTooltipModule,
+  ],
+  templateUrl: './config-form.component.html',
+})
+export class ConfigFormComponent {
+  readonly config = input.required<ConfigView>();
+  
+  private readonly fb = inject(FormBuilder);
+  private readonly tauri = inject(TauriService);
+  private readonly configService = inject(ConfigService);
+
+  readonly form: FormGroup;
+  readonly saving = signal(false);
+  readonly saveMsg = signal<string | null>(null);
+
+  constructor() {
+    this.form = this.fb.group({
+      verbosity: [0],
+      developer_iters: [1],
+      reviewer_reviews: [2],
+      review_depth: ['medium'],
+      checkpoint_enabled: [true],
+      isolation_mode: [false],
+      interactive: [false],
+    });
+
+    effect(() => {
+      const cfg = this.config();
+      this.form.patchValue({
+        verbosity: cfg.defaults?.verbosity ?? 0,
+        developer_iters: cfg.defaults?.developer_iters ?? 1,
+        reviewer_reviews: cfg.defaults?.reviewer_reviews ?? 2,
+        review_depth: cfg.defaults?.review_depth ?? 'medium',
+        checkpoint_enabled: cfg.defaults?.checkpoint_enabled ?? true,
+        isolation_mode: cfg.defaults?.isolation_mode ?? false,
+        interactive: cfg.defaults?.interactive ?? false,
+      });
+    });
+  }
+
+  async handleSave(): Promise<void> {
+    if (this.form.invalid) return;
+
+    this.saving.set(true);
+    this.saveMsg.set(null);
+
+    try {
+      const formValue = this.form.value;
+      const tomlLines = [
+        '[defaults]',
+        `verbosity = ${formValue.verbosity}`,
+        `developer_iters = ${formValue.developer_iters}`,
+        `reviewer_reviews = ${formValue.reviewer_reviews}`,
+        `review_depth = "${formValue.review_depth}"`,
+        `checkpoint_enabled = ${formValue.checkpoint_enabled}`,
+        `isolation_mode = ${formValue.isolation_mode}`,
+        `interactive = ${formValue.interactive}`,
+      ];
+      const toml = tomlLines.join('\n');
+      await this.tauri.saveGlobalConfig(toml);
+      await this.configService.fetchGlobalConfig();
+      this.saveMsg.set('Saved successfully.');
+      this.configService.setDirty(false);
+    } catch (e) {
+      this.saveMsg.set(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      this.saving.set(false);
+    }
+  }
 }
 
 @Component({
@@ -153,21 +187,7 @@ export class ConfigurationComponent {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
-  template: `
-    <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-subtle);">
-      <div style="flex: 1;">
-        <div style="font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); margin-bottom: 2px;">
-          {{ label() }}
-        </div>
-        <div style="font-size: 11px; color: var(--text-muted);">
-          {{ description() }}
-        </div>
-      </div>
-      <div [style]="valueStyle()">
-        {{ displayValue() }}
-      </div>
-    </div>
-  `,
+  templateUrl: './config-field.component.html',
 })
 export class ConfigFieldComponent {
   readonly label = input<string>('');
@@ -199,18 +219,7 @@ export class ConfigFieldComponent {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, forwardRef(() => ConfigFieldComponent)],
-  template: `
-    <div>
-      <app-config-field label="verbosity" description="Log verbosity level (0=quiet, 1=normal, 2=verbose)" [value]="config().verbosity" />
-      <app-config-field label="developer_iters" description="Number of developer agent iterations per cycle" [value]="config().developer_iters" />
-      <app-config-field label="reviewer_reviews" description="Number of reviewer passes per cycle" [value]="config().reviewer_reviews" />
-      <app-config-field label="max_dev_continuations" description="Maximum continuation budget for developer agent" [value]="config().max_dev_continuations" />
-      <app-config-field label="review_depth" description="Depth of reviewer analysis (shallow | standard | deep)" [value]="config().review_depth" />
-      <app-config-field label="checkpoint_enabled" description="Persist pipeline state for --resume support" [value]="config().checkpoint_enabled" />
-      <app-config-field label="isolation_mode" description="Run agents in isolated environment" [value]="config().isolation_mode" />
-      <app-config-field label="interactive" description="Pause for user confirmation between phases" [value]="config().interactive" />
-    </div>
-  `,
+  templateUrl: './config-table.component.html',
 })
 export class ConfigTableComponent {
   readonly config = input.required<ConfigView>();
@@ -221,65 +230,7 @@ export class ConfigTableComponent {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
-  template: `
-    <div>
-      @if (loading()) {
-        <div style="padding: 8px 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-          Loading...
-        </div>
-      }
-      <textarea
-        class="form-input input-mono"
-        [value]="toml()"
-        (input)="onTomlInput($event)"
-        [style]="textareaStyle()"
-        spellcheck="false"
-      ></textarea>
-      @if (validationError()) {
-        <div
-          data-testid="toml-validation-error"
-          style="margin-top: 6px; padding: 6px 10px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.25); border-radius: var(--radius-md); font-size: 11px; color: var(--status-failed); font-family: var(--font-mono);"
-        >
-          {{ validationError() }}
-        </div>
-      }
-      <div style="display: flex; align-items: center; gap: 12px; margin-top: 10px;">
-        <button
-          class="btn btn-primary"
-          (click)="handleSave()"
-          [disabled]="isSaveDisabled()"
-        >
-          {{ saving() ? 'Saving...' : 'Save' }}
-        </button>
-        <button
-          class="btn btn-ghost"
-          data-testid="revert-config-button"
-          (click)="handleRevert()"
-          [disabled]="toml() === savedToml()"
-          title="Discard unsaved changes and reload from saved state"
-        >
-          Revert
-        </button>
-        <span
-          data-testid="scope-badge"
-          class="chip-mono"
-          style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;"
-        >
-          {{ scopeLabel() }}
-        </span>
-        @if (saveMsg()) {
-          <span style="font-size: 12px; color: var(--status-completed); font-family: var(--font-mono);">
-            {{ saveMsg() }}
-          </span>
-        }
-        @if (saveError()) {
-          <span style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);">
-            {{ saveError() }}
-          </span>
-        }
-      </div>
-    </div>
-  `,
+  templateUrl: './toml-editor.component.html',
 })
 export class TomlEditorComponent {
   private readonly tauri = inject(TauriService);
@@ -417,56 +368,7 @@ export class TomlEditorComponent {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
-  template: `
-    <div style="margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--border-subtle);">
-      <!-- Section heading -->
-      <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3);">
-        AI Integration
-      </div>
-
-      <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: var(--space-4);">
-        Anthropic API key used for AI-assisted PROMPT.md review. Stored at
-        <span style="color: var(--text-secondary);">~/.config/ralph-gui.toml</span>
-        with restricted permissions (0600).
-      </div>
-
-      <!-- Key input with show/hide toggle -->
-      <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);">
-        <input
-          [type]="showKey() ? 'text' : 'password'"
-          class="form-input input-mono"
-          [value]="localKey()"
-          (input)="onKeyInput($event)"
-          placeholder="Enter Anthropic API key (sk-ant-...)"
-          style="flex: 1;"
-        />
-        <button class="btn btn-ghost" (click)="toggleShowKey()" style="flex-shrink: 0; min-width: 52px;">
-          {{ showKey() ? 'Hide' : 'Show' }}
-        </button>
-      </div>
-
-      <!-- Save button + feedback -->
-      <div style="display: flex; align-items: center; gap: var(--space-3);">
-        <button
-          class="btn btn-primary"
-          (click)="handleSave()"
-          [disabled]="configService.aiApiKeySaveStatus() === 'saving'"
-        >
-          {{ configService.aiApiKeySaveStatus() === 'saving' ? 'Saving...' : 'Save API Key' }}
-        </button>
-        @if (configService.aiApiKeySaveStatus() === 'saved') {
-          <span style="font-size: 12px; color: var(--status-completed); font-family: var(--font-mono);">
-            Saved
-          </span>
-        }
-        @if (configService.aiApiKeySaveStatus() === 'failed' && configService.aiApiKeyError()) {
-          <span style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);">
-            {{ configService.aiApiKeyError() }}
-          </span>
-        }
-      </div>
-    </div>
-  `,
+  templateUrl: './ai-integration-section.component.html',
 })
 export class AiIntegrationSectionComponent {
   readonly configService = inject(ConfigService);

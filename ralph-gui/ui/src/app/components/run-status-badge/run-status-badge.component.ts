@@ -53,24 +53,7 @@ const STATUS_CONFIG: Record<RunStatus, StatusConfig> = {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
-  template: `
-    <span role="status" [attr.aria-label]="ariaLabel" style="display: inline-flex; align-items: center; gap: 6px;">
-      <span [title]="config().description" [style]="badgeStyle()">
-        <span [style]="dotStyle()"></span>
-        @if (showLabel) {
-          <span>{{ config().label }}</span>
-        }
-      </span>
-      @if (isDegraded) {
-        <span title="Running with degraded conditions — retries exceeded or fallback agent active" [style]="degradedStyle()">
-          <span style="font-size: 10px;">⚠</span>
-          @if (showLabel) {
-            <span>Degraded</span>
-          }
-        </span>
-      }
-    </span>
-  `,
+  templateUrl: './run-status-badge.component.html',
 })
 export class RunStatusBadgeComponent {
   @Input() status: RunStatus = 'NotStarted';

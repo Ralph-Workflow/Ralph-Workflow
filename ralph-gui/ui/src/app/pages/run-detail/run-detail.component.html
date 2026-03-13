@@ -1,0 +1,133 @@
+<div class="page-content">
+  @if (isLoading()) {
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+      <button class="btn btn-ghost" (click)="goBack()">← Back</button>
+      <h1 class="page-title" style="margin-bottom: 0;">Run Detail</h1>
+    </div>
+    <div style="padding: var(--space-10); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+      Loading run...
+    </div>
+  } @else if (error() || !runDetail()) {
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+      <button class="btn btn-ghost" (click)="goBack()">← Back</button>
+      <h1 class="page-title" style="margin-bottom: 0;">Run Detail</h1>
+    </div>
+    <div class="empty-state">
+      <span class="empty-state-icon">⊘</span>
+      <div class="empty-state-title">Run not found</div>
+      <div class="empty-state-desc">{{ error() ?? 'This run could not be loaded.' }}</div>
+    </div>
+  } @else {
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+      <button class="btn btn-ghost" (click)="goBack()">← Back</button>
+      <h1 class="page-title" style="margin-bottom: 0; flex: 1;">Run Detail</h1>
+      <app-run-status-badge
+        [status]="runDetail()!.status"
+        [showLabel]="true"
+        [isDegraded]="runDetail()!.is_degraded ?? false"
+      />
+      @if (canResume()) {
+        <button class="btn btn-primary" (click)="handleResume()">Resume</button>
+      }
+    </div>
+
+    <div style="animation: fadeIn 200ms ease 40ms both;">
+      <div style="padding: 10px 16px; background: var(--accent-bg); border: 1px solid rgba(232,168,56,0.15); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 12px; color: var(--accent); margin-bottom: var(--space-5); letter-spacing: 0.02em;">
+        {{ runDetail()!.run_id }}
+      </div>
+
+      @if (runDetail()!.is_degraded) {
+        <div
+          data-testid="degraded-banner"
+          style="padding: 10px 16px; background: var(--status-degraded-bg); border: 1px solid var(--status-degraded-border); border-radius: var(--radius-md); color: var(--status-degraded); font-size: 12px; font-family: var(--font-mono); margin-bottom: var(--space-4); display: flex; align-items: center; gap: 10px;"
+        >
+          <span style="font-size: 15px; flex-shrink: 0;">⚠</span>
+          <span>
+            <strong style="font-weight: 600;">Degraded conditions</strong>
+            — retries exceeded or fallback agent active. Monitor closely.
+          </span>
+        </div>
+      }
+
+      <div class="card" style="margin-bottom: var(--space-5);">
+        <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
+          Run information
+        </div>
+
+        <app-detail-row label="status" [value]="runDetail()!.status" [mono]="true" />
+        <app-detail-row label="phase" [value]="runDetail()!.current_phase" [mono]="true" />
+        <app-detail-row label="agent_profile" [value]="runDetail()!.agent_profile" [mono]="true" />
+        <app-detail-row label="repo_path" [value]="runDetail()!.repo_path" [mono]="true" />
+        <app-detail-row label="worktree_path" [value]="runDetail()!.worktree_path" [mono]="true" />
+        <app-detail-row label="created_at" [value]="runDetail()!.created_at" [mono]="true" />
+        <app-detail-row label="last_checkpoint" [value]="runDetail()!.last_checkpoint" [mono]="true" />
+        <app-detail-row label="iteration_count" [value]="iterationCount()" [mono]="true" />
+        @if (runDetail()!.last_error) {
+          <app-detail-row label="last_error" [value]="runDetail()!.last_error ?? null" [mono]="true" />
+        }
+        <app-detail-row label="description" [value]="runDetail()!.description || null" [mono]="false" />
+      </div>
+
+      <div class="card" style="margin-bottom: var(--space-5);">
+        <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px;">
+          Phase
+        </div>
+
+        <div class="phase-timeline" style="align-items: flex-start;">
+          @for (phase of phases; track phase; let idx = $index) {
+            <div style="display: flex; align-items: flex-start; flex: {{ idx < 3 ? 1 : 'unset' }};">
+              <div class="phase-node">
+                <div
+                  class="phase-node__dot"
+                  [style]="phaseDotStyle(phase, idx)"
+                >
+                  @if (isPhaseDone(phase, idx)) {
+                    ✓
+                  } @else {
+                    {{ idx + 1 }}
+                  }
+                </div>
+                <div class="phase-node__label" [style]="phaseLabelStyle(phase, idx)">
+                  {{ phase }}
+                </div>
+              </div>
+              @if (idx < 3) {
+                <div class="phase-connector" [style]="phaseConnectorStyle(phase, idx)"></div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: var(--space-5);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em;">
+            Run Log
+          </div>
+          <div style="display: flex; gap: 8px;">
+            @if (logExpanded() && logFetched()) {
+              <button class="btn btn-ghost" style="font-size: 11px; padding: 2px 10px;" (click)="fetchLogs()">Refresh</button>
+            }
+            <button
+              class="btn btn-ghost"
+              style="font-size: 11px; padding: 2px 10px;"
+              (click)="toggleLogs()"
+              data-testid="toggle-run-log"
+            >
+              {{ logExpanded() ? 'Collapse' : 'Expand' }}
+            </button>
+          </div>
+        </div>
+        @if (logExpanded()) {
+          <div style="margin-top: 12px;">
+            <app-run-log
+              [lines]="logLines()"
+              [isLoading]="logLoading()"
+              ariaLabel="Run log output"
+            />
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

@@ -8,70 +8,7 @@ import type { WorktreeInfo } from '../../types';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
-  template: `
-    <div
-      data-testid="inline-worktree-create"
-      style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding: 12px 14px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);"
-    >
-      <div>
-        <label class="section-label" for="wt-branch">Branch name</label>
-        <input
-          id="wt-branch"
-          data-testid="wt-branch-input"
-          class="input input-mono"
-          placeholder="wt-51-my-feature"
-          [value]="branch()"
-          (input)="onBranchInput($event)"
-          (blur)="onBranchBlur()"
-          [disabled]="!repoPath"
-        />
-        <div style="margin-top: 4px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-          Will be created from HEAD if it does not exist
-        </div>
-      </div>
-
-      <div>
-        <label class="section-label" for="wt-name">
-          Worktree name
-          <span style="color: var(--text-muted); font-family: var(--font-mono); font-size: 10px;">(wt-N-slug format)</span>
-        </label>
-        <input
-          id="wt-name"
-          data-testid="wt-name-input"
-          class="input input-mono"
-          placeholder="wt-51-my-feature"
-          [value]="name()"
-          (input)="onNameInput($event)"
-          [disabled]="!repoPath"
-        />
-      </div>
-
-      @if (!repoPath) {
-        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-          Select a repository first
-        </div>
-      }
-
-      @if (error()) {
-        <div
-          data-testid="wt-create-error"
-          style="padding: 6px 10px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.2); border-radius: var(--radius-md); color: var(--status-failed); font-size: 12px; font-family: var(--font-mono);"
-        >
-          {{ error() }}
-        </div>
-      }
-
-      <button
-        data-testid="wt-create-button"
-        class="btn btn-secondary"
-        (click)="handleCreate()"
-        [disabled]="creating() || !branch() || !name() || !repoPath"
-        style="align-self: flex-start;"
-      >
-        {{ creating() ? 'Creating...' : 'Create worktree' }}
-      </button>
-    </div>
-  `,
+  templateUrl: './inline-worktree-create.component.html',
 })
 export class InlineWorktreeCreateComponent {
   private readonly worktreesService = inject(WorktreesService);
@@ -112,7 +49,6 @@ export class InlineWorktreeCreateComponent {
         this.branch(),
         this.name()
       );
-      // Refresh the worktrees list
       await this.worktreesService.fetchWorktrees(this.repoPath);
       this.created.emit(worktree);
     } catch (e) {

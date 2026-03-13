@@ -1,0 +1,11 @@
+<div class="status-bar">
+  <div class="status-left">
+    <span class="workspace-label">{{ workspaceLabel() }}</span>
+  </div>
+  <div class="status-center">
+    <span class="run-summary">{{ runSummaryText() }}</span>
+  </div>
+  <div class="status-right">
+    <span class="connection-indicator {{ connectionStatusClass() }}">{{ connectionStatus() }}</span>
+  </div>
+</div>

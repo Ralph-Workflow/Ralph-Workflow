@@ -1,0 +1,77 @@
+:host {
+  display: block;
+  width: 100%;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.status-left,
+.status-center,
+.status-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.status-left {
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.status-center {
+  flex: 1;
+  justify-content: center;
+}
+
+.status-right {
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.workspace-label {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-summary {
+  color: var(--text-secondary);
+}
+
+.connection-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connection-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-completed);
+}
+
+.status-connected::before {
+  background: var(--status-completed);
+}
+
+.status-disconnected::before {
+  background: var(--status-failed);
+}
+
+.status-connecting::before {
+  background: var(--status-paused);
+}

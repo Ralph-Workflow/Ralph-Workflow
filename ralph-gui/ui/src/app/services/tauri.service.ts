@@ -216,4 +216,14 @@ export class TauriService {
       repo_path: repoPath,
     });
   }
+
+  async openDirectoryDialog(): Promise<string | null> {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Open Workspace',
+    });
+    return typeof selected === 'string' ? selected : null;
+  }
 }

@@ -1,0 +1,36 @@
+<div class="workspace-tab-bar">
+  @if (workspaces().length === 0) {
+    <div class="empty-state">
+      <span class="empty-text">No workspaces open</span>
+    </div>
+  }
+
+  @for (ws of workspaces(); track ws.id) {
+    <div 
+      class="tab" 
+      [class.active]="activeWorkspaceId() === ws.id"
+      (click)="switchTo(ws.id)"
+      (auxclick)="close(ws.id)"
+    >
+      <span class="tab-label">{{ ws.label }}</span>
+      @if (ws.runSummary.running > 0) {
+        <span class="tab-badge">{{ ws.runSummary.running }}</span>
+      }
+      <button 
+        class="tab-close"
+        (click)="close(ws.id); $event.stopPropagation()"
+        aria-label="Close workspace"
+      >
+        <span class="close-icon">&times;</span>
+      </button>
+    </div>
+  }
+
+  <button 
+    class="add-tab-btn" 
+    (click)="addWorkspace()"
+    aria-label="Add workspace"
+  >
+    <span class="plus-icon">+</span>
+  </button>
+</div>

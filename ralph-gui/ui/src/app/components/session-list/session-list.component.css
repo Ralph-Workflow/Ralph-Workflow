@@ -1,0 +1,12 @@
+:host div[role="button"]:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+}
+:host div[role="button"].selected {
+  background: var(--accent-bg);
+  border-color: var(--accent-dim)30;
+}
+:host div[role="button"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

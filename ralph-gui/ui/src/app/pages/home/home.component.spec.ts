@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, RouterModule } from '@angular/router';
-import { HomeComponent, StatCardComponent, QuickActionComponent } from './home.component';
+import { HomeComponent } from './home.component';
+import { StatCardComponent } from './stat-card.component';
+import { QuickActionComponent } from './quick-action.component';
 import { WorktreesService } from '../../services/worktrees.service';
 import { RunsService } from '../../services/runs.service';
 import { signal, WritableSignal } from '@angular/core';

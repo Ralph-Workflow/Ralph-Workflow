@@ -1,0 +1,62 @@
+@if (!hasContent()) {
+  <div class="page-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+    <div style="max-width: 480px; text-align: center; animation: fadeIn 300ms ease;">
+      <div style="font-size: 40px; margin-bottom: 20px; opacity: 0.15; font-family: var(--font-mono); color: var(--accent); letter-spacing: -0.05em;">◈</div>
+      <h1 style="font-family: var(--font-display); font-size: 24px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.02em; margin-bottom: 10px;">
+        Welcome to Ralph Workflow
+      </h1>
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 28px;">
+        An unattended AI orchestration platform for long-running development and review cycles.
+      </p>
+      <div style="text-align: left; margin-bottom: 16px;">
+        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
+          Enter your repository path to get started
+        </div>
+        <app-repo-selector (repoSelected)="onRepoSelected()" />
+      </div>
+    </div>
+  </div>
+} @else {
+  <div class="page-content">
+    <h1 class="page-title" style="animation: fadeIn 200ms ease;">Home</h1>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; animation: fadeIn 200ms ease 40ms both;">
+      <app-stat-card label="Active worktrees" [value]="activeWorktreeCount()" />
+      <app-stat-card label="Resumable runs" [value]="resumableRunsCount()" [accent]="resumableRunsCount() > 0" />
+    </div>
+
+    @if (resumableRunsCount() > 0) {
+      <section style="margin-bottom: 24px; animation: fadeIn 200ms ease 80ms both;">
+        <div class="section-label">Interrupted runs — action needed</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          @for (run of runsService.resumableRuns(); track run.run_id) {
+            <div class="card card-elevated" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px;">
+              <app-run-status-badge status="Paused" [showLabel]="false" [isDegraded]="run.is_degraded ?? false" />
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);">
+                  {{ run.run_id.slice(0, 16) }}
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  {{ run.current_phase }} · {{ run.agent_profile }}
+                </div>
+              </div>
+              <button class="btn btn-secondary" style="font-size: 12px;" (click)="navigateToRun(run.run_id)">
+                View
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <section style="animation: fadeIn 200ms ease 120ms both;">
+      <div class="section-label" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Quick actions</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <app-quick-action icon="▶" label="New session" desc="Start an unattended run" (action)="navigateToSessions()" />
+        <app-quick-action icon="⎇" label="Worktrees" desc="Manage git worktrees" (action)="navigateToWorktrees()" />
+      </div>
+    </section>
+  </div>
+}
