@@ -68,7 +68,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
             },
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-plan" => break,
             Ok(Event::Eof) => break,
-            Ok(_) => {}
+            Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text and other events
             Err(e) => {
                 return Err(XsdValidationError {
                     error_type: XsdErrorType::MalformedXml,

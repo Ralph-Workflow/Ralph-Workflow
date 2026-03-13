@@ -23,37 +23,6 @@
 use crate::common::truncate_text;
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 
-/// Create an error for unexpected element.
-///
-/// # Arguments
-///
-/// * `found_tag` - The tag name that was found (e.g., `b"foo"`)
-/// * `valid_tags` - List of valid tag names that were expected
-/// * `parent_element` - The parent element containing the unexpected tag
-///
-/// # Examples
-///
-/// See the unit tests in this module for working examples.
-pub fn unexpected_element_error(
-    found_tag: &[u8],
-    valid_tags: &[&str],
-    parent_element: &str,
-) -> XsdValidationError {
-    let found_name = String::from_utf8_lossy(found_tag);
-    let valid_list = valid_tags.join(", ");
-
-    XsdValidationError {
-        error_type: XsdErrorType::UnexpectedElement,
-        element_path: format!("{parent_element}/{found_name}"),
-        expected: format!("one of: {valid_list}"),
-        found: format!("<{found_name}>"),
-        suggestion: format!(
-            "Remove <{found_name}> or replace with a valid element. Valid elements inside <{parent_element}>: {valid_list}"
-        ),
-        example: None,
-    }
-}
-
 /// Create an error for missing required element.
 ///
 /// # Arguments
@@ -194,13 +163,6 @@ pub fn malformed_xml_error(error: &quick_xml::Error) -> XsdValidationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_unexpected_element_error() {
-        let error = unexpected_element_error(b"foo", &["bar", "baz"], "parent");
-        assert_eq!(error.element_path, "parent/foo");
-        assert!(error.suggestion.contains("foo"));
-    }
 
     #[test]
     fn test_missing_required_error() {

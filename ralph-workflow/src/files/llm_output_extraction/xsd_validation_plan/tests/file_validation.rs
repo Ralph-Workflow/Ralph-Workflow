@@ -84,6 +84,8 @@ fn test_target_file_missing_action() {
 
 #[test]
 fn test_target_file_invalid_action() {
+    // Note: "update" is now a valid synonym for "modify" via tolerant parsing.
+    // This test uses a truly invalid action value that has no synonym mapping.
     let xml = r#"<ralph-plan>
 <ralph-summary>
 <context>Test</context>
@@ -97,7 +99,7 @@ fn test_target_file_invalid_action() {
 <step number="1" type="file-change">
 <title>Test</title>
 <target-files>
-<file path="src/test.rs" action="update"/>
+<file path="src/test.rs" action="banana"/>
 </target-files>
 <content><paragraph>Test</paragraph></content>
 </step>
@@ -117,7 +119,7 @@ fn test_target_file_invalid_action() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.error_type, XsdErrorType::InvalidContent);
-    assert!(err.found.contains("update"));
+    assert!(err.found.contains("banana"));
     assert!(
         err.suggestion.contains("create")
             || err.suggestion.contains("modify")

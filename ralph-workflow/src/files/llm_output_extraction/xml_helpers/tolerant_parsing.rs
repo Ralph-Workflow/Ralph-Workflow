@@ -22,9 +22,9 @@
 //!
 //! # Synonym Tables
 //!
-//! The synonym tables (`DEVELOPMENT_STATUS_SYNONYMS`, `FIX_STATUS_SYNONYMS`) contain
-//! only conservative, unambiguous mappings. Each mapping should only be added when
-//! the intent is clearly unambiguous (e.g., "done" clearly means "completed", not "partial").
+//! The synonym tables contain only conservative, unambiguous mappings. Each mapping
+//! should only be added when the intent is clearly unambiguous (e.g., "done" clearly
+//! means "completed", not "partial").
 
 /// Synonym mappings for development result status values.
 ///
@@ -59,6 +59,93 @@ pub const FIX_STATUS_SYNONYMS: &[(&str, &str)] = &[
     ("none_found", "no_issues_found"),
     ("clean", "no_issues_found"),
     ("no_issues", "no_issues_found"),
+];
+
+/// Synonym mappings for plan `FileAction` enum values.
+///
+/// Each tuple is `(synonym, canonical_value)` where `synonym` is a non-canonical
+/// value that unambiguously maps to `canonical_value`.
+///
+/// Canonical values: `"create"`, `"modify"`, `"delete"`
+pub const FILE_ACTION_SYNONYMS: &[(&str, &str)] = &[
+    ("add", "create"),
+    ("new", "create"),
+    ("edit", "modify"),
+    ("change", "modify"),
+    ("update", "modify"),
+    ("remove", "delete"),
+];
+
+/// Synonym mappings for plan `StepType` enum values.
+///
+/// Each tuple is `(synonym, canonical_value)` where `synonym` is a non-canonical
+/// value that unambiguously maps to `canonical_value`.
+///
+/// Canonical values: `"file-change"`, `"action"`, `"research"`
+pub const STEP_TYPE_SYNONYMS: &[(&str, &str)] = &[
+    ("code", "file-change"),
+    ("code-change", "file-change"),
+    ("implementation", "file-change"),
+    ("investigate", "research"),
+    ("analysis", "research"),
+    ("task", "action"),
+    ("run", "action"),
+    ("execute", "action"),
+];
+
+/// Synonym mappings for plan `Priority` enum values.
+///
+/// Each tuple is `(synonym, canonical_value)` where `synonym` is a non-canonical
+/// value that unambiguously maps to `canonical_value`.
+///
+/// Canonical values: `"critical"`, `"high"`, `"medium"`, `"low"`
+pub const PRIORITY_SYNONYMS: &[(&str, &str)] = &[
+    ("p0", "critical"),
+    ("urgent", "critical"),
+    ("must", "critical"),
+    ("p1", "high"),
+    ("important", "high"),
+    ("should", "high"),
+    ("p2", "medium"),
+    ("normal", "medium"),
+    ("p3", "low"),
+    ("nice-to-have", "low"),
+    ("minor", "low"),
+];
+
+/// Synonym mappings for plan `Severity` enum values.
+///
+/// Each tuple is `(synonym, canonical_value)` where `synonym` is a non-canonical
+/// value that unambiguously maps to `canonical_value`.
+///
+/// Canonical values: `"low"`, `"medium"`, `"high"`, `"critical"`
+///
+/// Note: This uses the same values as `Priority` since the enum values overlap,
+/// but is a separate table for clarity and independent extensibility.
+pub const SEVERITY_SYNONYMS: &[(&str, &str)] = &[
+    ("p0", "critical"),
+    ("urgent", "critical"),
+    ("must", "critical"),
+    ("p1", "high"),
+    ("important", "high"),
+    ("p2", "medium"),
+    ("normal", "medium"),
+    ("p3", "low"),
+    ("minor", "low"),
+];
+
+/// Synonym mappings for plan `ListType` enum values.
+///
+/// Each tuple is `(synonym, canonical_value)` where `synonym` is a non-canonical
+/// value that unambiguously maps to `canonical_value`.
+///
+/// Canonical values: `"ordered"`, `"unordered"`
+pub const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
+    ("bulleted", "unordered"),
+    ("bullet", "unordered"),
+    ("ul", "unordered"),
+    ("numbered", "ordered"),
+    ("ol", "ordered"),
 ];
 
 /// Normalize an enum value to its canonical form.
@@ -148,6 +235,11 @@ mod tests {
 
     const DEVELOPMENT_VALID_VALUES: &[&str] = &["completed", "partial", "failed"];
     const FIX_VALID_VALUES: &[&str] = &["all_issues_addressed", "issues_remain", "no_issues_found"];
+    const FILE_ACTION_VALID_VALUES: &[&str] = &["create", "modify", "delete"];
+    const STEP_TYPE_VALID_VALUES: &[&str] = &["file-change", "action", "research"];
+    const PRIORITY_VALID_VALUES: &[&str] = &["critical", "high", "medium", "low"];
+    const SEVERITY_VALID_VALUES: &[&str] = &["low", "medium", "high", "critical"];
+    const LIST_TYPE_VALID_VALUES: &[&str] = &["ordered", "unordered"];
 
     // =========================================================================
     // Development status normalization tests
@@ -388,5 +480,437 @@ mod tests {
             FIX_STATUS_SYNONYMS,
         );
         assert_eq!(result, Some("all_issues_addressed".to_string()));
+    }
+
+    // =========================================================================
+    // FileAction synonym normalization tests
+    // =========================================================================
+
+    #[test]
+    fn test_file_action_exact_match_create() {
+        let result = normalize_enum_value("create", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("create".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_exact_match_modify() {
+        let result = normalize_enum_value("modify", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("modify".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_exact_match_delete() {
+        let result = normalize_enum_value("delete", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("delete".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_add_maps_to_create() {
+        let result = normalize_enum_value("add", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("create".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_new_maps_to_create() {
+        let result = normalize_enum_value("new", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("create".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_edit_maps_to_modify() {
+        let result = normalize_enum_value("edit", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("modify".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_change_maps_to_modify() {
+        let result = normalize_enum_value("change", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("modify".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_update_maps_to_modify() {
+        let result = normalize_enum_value("update", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("modify".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_synonym_remove_maps_to_delete() {
+        let result = normalize_enum_value("remove", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("delete".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_case_insensitive_add() {
+        let result = normalize_enum_value("ADD", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("create".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_case_insensitive_modify() {
+        let result = normalize_enum_value("MODIFY", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, Some("modify".to_string()));
+    }
+
+    #[test]
+    fn test_file_action_unknown_banana_returns_none() {
+        let result = normalize_enum_value("banana", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_file_action_empty_string_returns_none() {
+        let result = normalize_enum_value("", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_file_action_whitespace_only_returns_none() {
+        let result = normalize_enum_value("   ", FILE_ACTION_VALID_VALUES, FILE_ACTION_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // StepType synonym normalization tests
+    // =========================================================================
+
+    #[test]
+    fn test_step_type_exact_match_file_change() {
+        let result =
+            normalize_enum_value("file-change", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("file-change".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_exact_match_action() {
+        let result = normalize_enum_value("action", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("action".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_exact_match_research() {
+        let result = normalize_enum_value("research", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("research".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_code_maps_to_file_change() {
+        let result = normalize_enum_value("code", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("file-change".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_code_change_maps_to_file_change() {
+        let result =
+            normalize_enum_value("code-change", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("file-change".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_implementation_maps_to_file_change() {
+        let result =
+            normalize_enum_value("implementation", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("file-change".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_investigate_maps_to_research() {
+        let result =
+            normalize_enum_value("investigate", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("research".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_analysis_maps_to_research() {
+        let result = normalize_enum_value("analysis", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("research".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_task_maps_to_action() {
+        let result = normalize_enum_value("task", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("action".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_run_maps_to_action() {
+        let result = normalize_enum_value("run", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("action".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_synonym_execute_maps_to_action() {
+        let result = normalize_enum_value("execute", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("action".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_case_insensitive_code() {
+        let result = normalize_enum_value("CODE", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, Some("file-change".to_string()));
+    }
+
+    #[test]
+    fn test_step_type_unknown_returns_none() {
+        let result = normalize_enum_value("banana", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_step_type_empty_returns_none() {
+        let result = normalize_enum_value("", STEP_TYPE_VALID_VALUES, STEP_TYPE_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // Priority synonym normalization tests
+    // =========================================================================
+
+    #[test]
+    fn test_priority_exact_match_critical() {
+        let result = normalize_enum_value("critical", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_priority_exact_match_high() {
+        let result = normalize_enum_value("high", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_priority_exact_match_medium() {
+        let result = normalize_enum_value("medium", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("medium".to_string()));
+    }
+
+    #[test]
+    fn test_priority_exact_match_low() {
+        let result = normalize_enum_value("low", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_p0_maps_to_critical() {
+        let result = normalize_enum_value("p0", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_urgent_maps_to_critical() {
+        let result = normalize_enum_value("urgent", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_must_maps_to_critical() {
+        let result = normalize_enum_value("must", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_p1_maps_to_high() {
+        let result = normalize_enum_value("p1", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_important_maps_to_high() {
+        let result = normalize_enum_value("important", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_should_maps_to_high() {
+        let result = normalize_enum_value("should", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_p2_maps_to_medium() {
+        let result = normalize_enum_value("p2", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("medium".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_normal_maps_to_medium() {
+        let result = normalize_enum_value("normal", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("medium".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_p3_maps_to_low() {
+        let result = normalize_enum_value("p3", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_nice_to_have_maps_to_low() {
+        let result = normalize_enum_value("nice-to-have", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_priority_synonym_minor_maps_to_low() {
+        let result = normalize_enum_value("minor", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_priority_case_insensitive_p0() {
+        let result = normalize_enum_value("P0", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_priority_unknown_returns_none() {
+        let result = normalize_enum_value("banana", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_priority_empty_returns_none() {
+        let result = normalize_enum_value("", PRIORITY_VALID_VALUES, PRIORITY_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // Severity synonym normalization tests
+    // =========================================================================
+
+    #[test]
+    fn test_severity_exact_match_low() {
+        let result = normalize_enum_value("low", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_severity_exact_match_medium() {
+        let result = normalize_enum_value("medium", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("medium".to_string()));
+    }
+
+    #[test]
+    fn test_severity_exact_match_high() {
+        let result = normalize_enum_value("high", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_severity_exact_match_critical() {
+        let result = normalize_enum_value("critical", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_severity_synonym_urgent_maps_to_critical() {
+        let result = normalize_enum_value("urgent", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_severity_synonym_important_maps_to_high() {
+        let result = normalize_enum_value("important", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("high".to_string()));
+    }
+
+    #[test]
+    fn test_severity_synonym_normal_maps_to_medium() {
+        let result = normalize_enum_value("normal", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("medium".to_string()));
+    }
+
+    #[test]
+    fn test_severity_synonym_minor_maps_to_low() {
+        let result = normalize_enum_value("minor", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("low".to_string()));
+    }
+
+    #[test]
+    fn test_severity_case_insensitive_urgent() {
+        let result = normalize_enum_value("URGENT", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_severity_unknown_returns_none() {
+        let result = normalize_enum_value("banana", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_severity_empty_returns_none() {
+        let result = normalize_enum_value("", SEVERITY_VALID_VALUES, SEVERITY_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // ListType synonym normalization tests
+    // =========================================================================
+
+    #[test]
+    fn test_list_type_exact_match_ordered() {
+        let result = normalize_enum_value("ordered", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("ordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_exact_match_unordered() {
+        let result = normalize_enum_value("unordered", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("unordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_synonym_bulleted_maps_to_unordered() {
+        let result = normalize_enum_value("bulleted", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("unordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_synonym_bullet_maps_to_unordered() {
+        let result = normalize_enum_value("bullet", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("unordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_synonym_ul_maps_to_unordered() {
+        let result = normalize_enum_value("ul", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("unordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_synonym_numbered_maps_to_ordered() {
+        let result = normalize_enum_value("numbered", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("ordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_synonym_ol_maps_to_ordered() {
+        let result = normalize_enum_value("ol", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("ordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_case_insensitive_bulleted() {
+        let result = normalize_enum_value("BULLETED", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, Some("unordered".to_string()));
+    }
+
+    #[test]
+    fn test_list_type_unknown_returns_none() {
+        let result = normalize_enum_value("banana", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_list_type_empty_returns_none() {
+        let result = normalize_enum_value("", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_list_type_whitespace_only_returns_none() {
+        let result = normalize_enum_value("   ", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
+        assert_eq!(result, None);
     }
 }

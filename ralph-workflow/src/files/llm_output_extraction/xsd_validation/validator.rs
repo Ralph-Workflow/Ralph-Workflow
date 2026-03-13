@@ -31,6 +31,17 @@ const EXAMPLE_COMMIT_XML: &str = r"<ralph-commit>
 /// * `Ok(CommitMessageElements)` if the XML is valid and contains all required elements
 /// * `Err(XsdValidationError)` if the XML is invalid or doesn't conform to the schema
 ///
+/// # Errors
+///
+/// Returns an `XsdValidationError` if the XML is malformed, contains illegal characters,
+/// is missing the root `<ralph-commit>` element, is missing the required `<ralph-subject>` element,
+/// or if the `<ralph-subject>` does not conform to the conventional commit format.
+///
+/// # Panics
+///
+/// Panics if an internal invariant is violated: `subject` is `None` when `skip_reason` is also
+/// `None` after parsing. This should never happen in practice.
+///
 /// # Examples
 ///
 /// ```ignore
@@ -46,17 +57,6 @@ pub fn validate_xml_against_xsd(
     xml_content: &str,
 ) -> Result<CommitMessageElements, XsdValidationError> {
     use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
-
-    const VALID_TAGS: [&str; 8] = [
-        "ralph-subject",
-        "ralph-body",
-        "ralph-body-summary",
-        "ralph-body-details",
-        "ralph-body-footer",
-        "ralph-skip",
-        "ralph-files",
-        "ralph-excluded-files",
-    ];
 
     let content = xml_content.trim();
 
@@ -339,9 +339,10 @@ pub fn validate_xml_against_xsd(
                         excluded_files = parse_excluded_files_section(&mut reader, &mut buf)?;
                     }
                     other => {
-                        // Skip unknown element but report error
+                        // Tolerant: skip unknown elements instead of rejecting.
+                        // Required elements (ralph-subject or ralph-skip) are still enforced
+                        // after the loop. Mutual exclusivity constraints remain strict.
                         let _ = skip_to_end(&mut reader, other);
-                        return Err(unexpected_element_error(other, &VALID_TAGS, "ralph-commit"));
                     }
                 }
             }
@@ -393,16 +394,10 @@ pub fn validate_xml_against_xsd(
                         });
                 }
                 other => {
-                    return Err(unexpected_element_error(other, &VALID_TAGS, "ralph-commit"));
+                    // Tolerant: skip unknown self-closing elements instead of rejecting.
+                    let _ = other;
                 }
             },
-            Ok(Event::Text(e)) => {
-                let text = unescape_text(&e, "ralph-commit")?;
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Err(text_outside_tags_error(trimmed, "ralph-commit"));
-                }
-            }
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-commit" => break,
             Ok(Event::Eof) => {
                 return Err(XsdValidationError {
@@ -415,7 +410,7 @@ pub fn validate_xml_against_xsd(
                     example: Some(EXAMPLE_COMMIT_XML.into()),
                 });
             }
-            Ok(_) => {} // Skip comments, etc.
+            Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text, comments, etc.
             Err(e) => return Err(malformed_xml_error(&e)),
         }
     }

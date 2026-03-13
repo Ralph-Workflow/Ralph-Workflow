@@ -97,6 +97,9 @@ fn parse_inline_elements(content: &str) -> Vec<InlineElement> {
 
 /// Parse rich content from a <content> element
 fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> {
+    // Tolerant: normalize list type via synonym table before rejecting.
+    // Accepts "bulleted", "bullet", "ul" as "unordered"; "numbered", "ol" as "ordered".
+    const LIST_TYPE_VALID: &[&str] = &["ordered", "unordered"];
     let mut elements = Vec::new();
     let mut reader = Reader::from_str(content);
     reader.config_mut().trim_text(true);
@@ -143,9 +146,15 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                         let attrs = get_attributes(&e);
                         let list_type_str =
                             attrs.get("type").map_or("", std::string::String::as_str);
-                        let list_type = match list_type_str {
-                            "ordered" => ListType::Ordered,
-                            "unordered" => ListType::Unordered,
+                        let list_type = match normalize_enum_value(
+                            list_type_str,
+                            LIST_TYPE_VALID,
+                            LIST_TYPE_SYNONYMS,
+                        )
+                        .as_deref()
+                        {
+                            Some("ordered") => ListType::Ordered,
+                            Some("unordered") => ListType::Unordered,
                             _ => {
                                 return Err(XsdValidationError {
                                     error_type: XsdErrorType::InvalidContent,
@@ -172,7 +181,7 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                 }
             }
             Ok(Event::Eof) => break,
-            Ok(_) => {}
+            Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text and other events
             Err(e) => {
                 return Err(XsdValidationError {
                     error_type: XsdErrorType::MalformedXml,
@@ -415,7 +424,7 @@ fn parse_summary(reader: &mut Reader<&[u8]>) -> Result<PlanSummary, XsdValidatio
             },
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-summary" => break,
             Ok(Event::Eof) => break,
-            Ok(_) => {}
+            Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text and other events
             Err(e) => {
                 return Err(XsdValidationError {
                     error_type: XsdErrorType::MalformedXml,

@@ -8,4 +8,5 @@ mod tests {
     include!("tests/validate_xml_against_xsd.rs");
     include!("tests/commit_message_elements.rs");
     include!("tests/llm_realistic_outputs.rs");
+    include!("tests/tolerant_parsing.rs");
 }

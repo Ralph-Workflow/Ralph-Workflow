@@ -138,6 +138,8 @@ pub use files::llm_output_extraction::validate_continuation_development_result_x
 pub use files::llm_output_extraction::validate_development_result_xml;
 pub use files::llm_output_extraction::validate_fix_result_xml;
 pub use files::llm_output_extraction::validate_issues_xml;
+pub use files::llm_output_extraction::validate_plan_xml;
+pub use files::llm_output_extraction::validate_xml_against_xsd;
 
 // Re-export process executor types for dependency injection.
 // See [`executor`] module for documentation.

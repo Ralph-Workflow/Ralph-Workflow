@@ -201,6 +201,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("commit/pre_termination_safety.rs"),
     },
     SourceFile {
+        path: "commit_xml_validation.rs",
+        contents: include_str!("commit_xml_validation.rs"),
+    },
+    SourceFile {
         path: "common/mod.rs",
         contents: include_str!("common/mod.rs"),
     },
@@ -311,6 +315,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "prompt_permissions.rs",
         contents: include_str!("prompt_permissions.rs"),
+    },
+    SourceFile {
+        path: "plan_xml_validation.rs",
+        contents: include_str!("plan_xml_validation.rs"),
     },
     SourceFile {
         path: "reducer_agent_fallback.rs",

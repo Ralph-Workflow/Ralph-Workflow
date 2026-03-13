@@ -18,3 +18,4 @@ mod risk_verification;
 mod scope_validation;
 mod step_validation;
 mod structure_tests;
+mod tolerant_parsing;

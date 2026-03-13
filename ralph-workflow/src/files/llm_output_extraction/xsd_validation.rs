@@ -8,7 +8,7 @@
 use crate::files::llm_output_extraction::commit::is_conventional_commit_subject;
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    read_text_until_end, skip_to_end, text_outside_tags_error, unexpected_element_error,
+    read_text_until_end, skip_to_end, text_outside_tags_error,
 };
 use quick_xml::events::Event;
 

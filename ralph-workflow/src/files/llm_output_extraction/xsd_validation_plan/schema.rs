@@ -1,6 +1,11 @@
 // Schema definition and structure types for XSD plan validation.
 // Contains all type definitions for plan elements, rich content, and related structures.
 
+use crate::files::llm_output_extraction::xml_helpers::tolerant_parsing::{
+    normalize_enum_value, FILE_ACTION_SYNONYMS, LIST_TYPE_SYNONYMS, PRIORITY_SYNONYMS,
+    SEVERITY_SYNONYMS, STEP_TYPE_SYNONYMS,
+};
+
 // ===============================================================================
 // RICH CONTENT TYPES
 // ===============================================================================
@@ -125,7 +130,8 @@ pub enum FileAction {
 
 impl FileAction {
     pub(super) fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
+        const VALID: &[&str] = &["create", "modify", "delete"];
+        match normalize_enum_value(s, VALID, FILE_ACTION_SYNONYMS)?.as_str() {
             "create" => Some(Self::Create),
             "modify" => Some(Self::Modify),
             "delete" => Some(Self::Delete),
@@ -145,7 +151,8 @@ pub enum StepType {
 
 impl StepType {
     pub(super) fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
+        const VALID: &[&str] = &["file-change", "action", "research"];
+        match normalize_enum_value(s, VALID, STEP_TYPE_SYNONYMS)?.as_str() {
             "file-change" => Some(Self::FileChange),
             "action" => Some(Self::Action),
             "research" => Some(Self::Research),
@@ -165,7 +172,8 @@ pub enum Priority {
 
 impl Priority {
     pub(super) fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
+        const VALID: &[&str] = &["critical", "high", "medium", "low"];
+        match normalize_enum_value(s, VALID, PRIORITY_SYNONYMS)?.as_str() {
             "critical" => Some(Self::Critical),
             "high" => Some(Self::High),
             "medium" => Some(Self::Medium),
@@ -237,7 +245,8 @@ pub enum Severity {
 
 impl Severity {
     pub(super) fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
+        const VALID: &[&str] = &["low", "medium", "high", "critical"];
+        match normalize_enum_value(s, VALID, SEVERITY_SYNONYMS)?.as_str() {
             "low" => Some(Self::Low),
             "medium" => Some(Self::Medium),
             "high" => Some(Self::High),
