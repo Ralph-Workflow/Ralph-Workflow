@@ -1,5 +1,6 @@
 import { Component, inject, signal, effect, computed, input, ChangeDetectionStrategy, forwardRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup } from '@angular/forms';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatSliderModule } from '@angular/material/slider';
@@ -28,6 +29,7 @@ const VALIDATION_DEBOUNCE_MS = 300;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
+    RouterModule,
     ReactiveFormsModule,
     MatExpansionModule,
     MatSliderModule,
@@ -54,25 +56,33 @@ export class ConfigurationComponent {
     { id: 'project', label: 'Project' },
   ];
 
-  readonly activeTab = signal<TabId>('effective');
-  readonly viewMode = signal<ViewMode>('form');
+  private readonly _activeTab = signal<TabId>('effective');
+  private readonly _viewMode = signal<ViewMode>('form');
 
-  readonly repoPath = computed(() => {
+  private readonly _repoPath = computed(() => {
     const activePath = this.worktreesService.activeWorktreePath();
     if (activePath) return activePath;
     const mainWorktree = this.worktreesService.worktrees().find(wt => wt.is_main);
     return mainWorktree?.path ?? null;
   });
 
-  readonly displayConfig = computed(() => {
-    if (this.activeTab() !== 'effective') return null;
+  private readonly _displayConfig = computed(() => {
+    if (this._activeTab() !== 'effective') return null;
     return this.configService.effectiveConfig() ?? this.configService.globalConfig();
   });
 
-  readonly projectConfigPath = computed(() => {
-    const repo = this.repoPath();
+  private readonly _projectConfigPath = computed(() => {
+    const repo = this._repoPath();
     return repo ? `${repo}/.ralph/config.toml` : '<repo>/.ralph/config.toml';
   });
+
+  get activeTab() { return this._activeTab(); }
+  get viewMode() { return this._viewMode(); }
+  get repoPath() { return this._repoPath(); }
+  get displayConfig() { return this._displayConfig(); }
+  get projectConfigPath() { return this._projectConfigPath(); }
+  get globalStatus() { return this.configService.globalStatus(); }
+  get globalConfig() { return this.configService.globalConfig(); }
 
   constructor() {
     // Fetch global config on mount
@@ -82,7 +92,7 @@ export class ConfigurationComponent {
 
     // Fetch effective config when repo changes
     effect(() => {
-      const repo = this.repoPath();
+      const repo = this._repoPath();
       if (repo) {
         void this.configService.fetchEffectiveConfig(repo);
       }
@@ -90,11 +100,11 @@ export class ConfigurationComponent {
   }
 
   setActiveTab(tab: TabId): void {
-    this.activeTab.set(tab);
+    this._activeTab.set(tab);
   }
 
   toggleViewMode(): void {
-    this.viewMode.update(mode => mode === 'form' ? 'toml' : 'form');
+    this._viewMode.update(mode => mode === 'form' ? 'toml' : 'form');
   }
 }
 
@@ -123,8 +133,11 @@ export class ConfigFormComponent {
   private readonly configService = inject(ConfigService);
 
   readonly form: FormGroup;
-  readonly saving = signal(false);
-  readonly saveMsg = signal<string | null>(null);
+  private readonly _saving = signal(false);
+  private readonly _saveMsg = signal<string | null>(null);
+
+  get saving() { return this._saving(); }
+  get saveMsg() { return this._saveMsg(); }
 
   constructor() {
     this.form = this.fb.group({
@@ -140,13 +153,13 @@ export class ConfigFormComponent {
     effect(() => {
       const cfg = this.config();
       this.form.patchValue({
-        verbosity: cfg.defaults?.verbosity ?? 0,
-        developer_iters: cfg.defaults?.developer_iters ?? 1,
-        reviewer_reviews: cfg.defaults?.reviewer_reviews ?? 2,
-        review_depth: cfg.defaults?.review_depth ?? 'medium',
-        checkpoint_enabled: cfg.defaults?.checkpoint_enabled ?? true,
-        isolation_mode: cfg.defaults?.isolation_mode ?? false,
-        interactive: cfg.defaults?.interactive ?? false,
+        verbosity: cfg.verbosity ?? 0,
+        developer_iters: cfg.developer_iters ?? 1,
+        reviewer_reviews: cfg.reviewer_reviews ?? 2,
+        review_depth: cfg.review_depth ?? 'medium',
+        checkpoint_enabled: cfg.checkpoint_enabled ?? true,
+        isolation_mode: cfg.isolation_mode ?? false,
+        interactive: cfg.interactive ?? false,
       });
     });
   }
@@ -154,8 +167,8 @@ export class ConfigFormComponent {
   async handleSave(): Promise<void> {
     if (this.form.invalid) return;
 
-    this.saving.set(true);
-    this.saveMsg.set(null);
+    this._saving.set(true);
+    this._saveMsg.set(null);
 
     try {
       const formValue = this.form.value;
@@ -172,12 +185,12 @@ export class ConfigFormComponent {
       const toml = tomlLines.join('\n');
       await this.tauri.saveGlobalConfig(toml);
       await this.configService.fetchGlobalConfig();
-      this.saveMsg.set('Saved successfully.');
+      this._saveMsg.set('Saved successfully.');
       this.configService.setDirty(false);
     } catch (e) {
-      this.saveMsg.set(e instanceof Error ? e.message : 'Save failed');
+      this._saveMsg.set(e instanceof Error ? e.message : 'Save failed');
     } finally {
-      this.saving.set(false);
+      this._saving.set(false);
     }
   }
 }
@@ -194,12 +207,12 @@ export class ConfigFieldComponent {
   readonly description = input<string>('');
   readonly value = input<string | number | boolean>('');
 
-  displayValue = computed(() => {
+  private readonly _displayValue = computed(() => {
     const v = this.value();
     return typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v);
   });
 
-  valueStyle = computed(() => {
+  private readonly _valueStyle = computed(() => {
     const v = this.value();
     const color = typeof v === 'boolean'
       ? v ? 'var(--status-completed)' : 'var(--text-muted)'
@@ -212,6 +225,11 @@ export class ConfigFieldComponent {
       flex-shrink: 0;
     `.replace(/\n/g, ' ');
   });
+
+  get labelValue() { return this.label(); }
+  get descriptionValue() { return this.description(); }
+  get displayValue() { return this._displayValue(); }
+  get valueStyle() { return this._valueStyle(); }
 }
 
 @Component({
@@ -223,6 +241,8 @@ export class ConfigFieldComponent {
 })
 export class ConfigTableComponent {
   readonly config = input.required<ConfigView>();
+
+  get configValue() { return this.config(); }
 }
 
 @Component({
@@ -240,116 +260,26 @@ export class TomlEditorComponent {
   readonly repoPath = input<string | null>(null);
   readonly scope = input.required<'global' | 'project'>();
 
-  readonly toml = signal(DEFAULT_TOML_TEMPLATE(''));
-  readonly savedToml = signal(DEFAULT_TOML_TEMPLATE(''));
-  readonly loading = signal(true);
-  readonly saving = signal(false);
-  readonly saveMsg = signal<string | null>(null);
-  readonly saveError = signal<string | null>(null);
-  readonly validationError = signal<string | null>(null);
+  private readonly _toml = signal(DEFAULT_TOML_TEMPLATE(''));
+  private readonly _savedToml = signal(DEFAULT_TOML_TEMPLATE(''));
+  private readonly _loading = signal(true);
+  private readonly _saving = signal(false);
+  private readonly _saveMsg = signal<string | null>(null);
+  private readonly _saveError = signal<string | null>(null);
+  private readonly _validationError = signal<string | null>(null);
 
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  readonly scopeLabel = computed(() => this.scope() === 'global' ? 'global' : 'project');
+  private readonly _scopeLabel = computed(() => this.scope() === 'global' ? 'global' : 'project');
 
-  readonly isSaveDisabled = computed(() =>
-    this.saving() ||
+  private readonly _isSaveDisabled = computed(() =>
+    this._saving() ||
     (this.scope() === 'project' && !this.repoPath()) ||
-    this.validationError() !== null
+    this._validationError() !== null
   );
 
-  constructor() {
-    // Load TOML on mount/param change
-    effect(() => {
-      void this.loadToml();
-    });
-
-    // Auto-clear save message after 3 seconds
-    effect(() => {
-      const msg = this.saveMsg();
-      if (msg) {
-        const timer = setTimeout(() => this.saveMsg.set(null), 3000);
-        return () => clearTimeout(timer);
-      }
-      return;
-    });
-  }
-
-  private async loadToml(): Promise<void> {
-    this.loading.set(true);
-    try {
-      let content: string;
-      if (this.scope() === 'global') {
-        content = await this.tauri.getRawGlobalConfigToml();
-      } else if (this.repoPath()) {
-        content = await this.tauri.getRawProjectConfigToml(this.repoPath()!);
-      } else {
-        content = '';
-      }
-      const resolved = content.length > 0 ? content : DEFAULT_TOML_TEMPLATE(this.label());
-      this.toml.set(resolved);
-      this.savedToml.set(resolved);
-    } catch {
-      const fallback = DEFAULT_TOML_TEMPLATE(this.label());
-      this.toml.set(fallback);
-      this.savedToml.set(fallback);
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  onTomlInput(event: Event): void {
-    const value = (event.target as HTMLTextAreaElement).value;
-    this.toml.set(value);
-    this.configService.setDirty(true);
-    this.validateDebounced(value);
-  }
-
-  private validateDebounced(toml: string): void {
-    if (this.debounceTimer !== null) {
-      clearTimeout(this.debounceTimer);
-    }
-    this.debounceTimer = setTimeout(() => {
-      void this.tauri.validateConfigToml(toml).then(error => {
-        this.validationError.set(error ?? null);
-      });
-    }, VALIDATION_DEBOUNCE_MS);
-  }
-
-  async handleSave(): Promise<void> {
-    if (this.scope() === 'project' && !this.repoPath()) return;
-    if (this.validationError() !== null) return;
-
-    this.saving.set(true);
-    this.saveMsg.set(null);
-    this.saveError.set(null);
-
-    try {
-      if (this.scope() === 'global') {
-        await this.tauri.saveGlobalConfig(this.toml());
-        await this.configService.fetchGlobalConfig();
-      } else if (this.repoPath()) {
-        await this.tauri.saveProjectConfig(this.repoPath()!, this.toml());
-        await this.configService.fetchEffectiveConfig(this.repoPath()!);
-      }
-      this.savedToml.set(this.toml());
-      this.saveMsg.set('Saved successfully.');
-      this.configService.setDirty(false);
-    } catch (e) {
-      this.saveError.set(e instanceof Error ? e.message : String(e));
-    } finally {
-      this.saving.set(false);
-    }
-  }
-
-  handleRevert(): void {
-    this.toml.set(this.savedToml());
-    this.validationError.set(null);
-    this.configService.setDirty(false);
-  }
-
-  textareaStyle(): string {
-    const hasError = this.validationError() !== null;
+  private readonly _textareaStyle = computed(() => {
+    const hasError = this._validationError() !== null;
     return `
       min-height: 220px;
       padding: 12px 14px;
@@ -360,6 +290,107 @@ export class TomlEditorComponent {
       background: var(--bg-base, #0d0d0d);
       color: var(--text-primary);
     `.replace(/\n/g, ' ');
+  });
+
+  get toml() { return this._toml(); }
+  get savedToml() { return this._savedToml(); }
+  get loading() { return this._loading(); }
+  get saving() { return this._saving(); }
+  get saveMsg() { return this._saveMsg(); }
+  get saveError() { return this._saveError(); }
+  get validationError() { return this._validationError(); }
+  get scopeLabel() { return this._scopeLabel(); }
+  get isSaveDisabled() { return this._isSaveDisabled(); }
+  get textareaStyle() { return this._textareaStyle(); }
+
+  constructor() {
+    // Load TOML on mount/param change
+    effect(() => {
+      void this.loadToml();
+    });
+
+    // Auto-clear save message after 3 seconds
+    effect(() => {
+      const msg = this._saveMsg();
+      if (msg) {
+        const timer = setTimeout(() => this._saveMsg.set(null), 3000);
+        return () => clearTimeout(timer);
+      }
+      return;
+    });
+  }
+
+  private async loadToml(): Promise<void> {
+    this._loading.set(true);
+    try {
+      let content: string;
+      if (this.scope() === 'global') {
+        content = await this.tauri.getRawGlobalConfigToml();
+      } else if (this.repoPath()) {
+        content = await this.tauri.getRawProjectConfigToml(this.repoPath()!);
+      } else {
+        content = '';
+      }
+      const resolved = content.length > 0 ? content : DEFAULT_TOML_TEMPLATE(this.label());
+      this._toml.set(resolved);
+      this._savedToml.set(resolved);
+    } catch {
+      const fallback = DEFAULT_TOML_TEMPLATE(this.label());
+      this._toml.set(fallback);
+      this._savedToml.set(fallback);
+    } finally {
+      this._loading.set(false);
+    }
+  }
+
+  onTomlInput(event: Event): void {
+    const value = (event.target as HTMLTextAreaElement).value;
+    this._toml.set(value);
+    this.configService.setDirty(true);
+    this.validateDebounced(value);
+  }
+
+  private validateDebounced(toml: string): void {
+    if (this.debounceTimer !== null) {
+      clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(() => {
+      void this.tauri.validateConfigToml(toml).then(error => {
+        this._validationError.set(error ?? null);
+      });
+    }, VALIDATION_DEBOUNCE_MS);
+  }
+
+  async handleSave(): Promise<void> {
+    if (this.scope() === 'project' && !this.repoPath()) return;
+    if (this._validationError() !== null) return;
+
+    this._saving.set(true);
+    this._saveMsg.set(null);
+    this._saveError.set(null);
+
+    try {
+      if (this.scope() === 'global') {
+        await this.tauri.saveGlobalConfig(this._toml());
+        await this.configService.fetchGlobalConfig();
+      } else if (this.repoPath()) {
+        await this.tauri.saveProjectConfig(this.repoPath()!, this._toml());
+        await this.configService.fetchEffectiveConfig(this.repoPath()!);
+      }
+      this._savedToml.set(this._toml());
+      this._saveMsg.set('Saved successfully.');
+      this.configService.setDirty(false);
+    } catch (e) {
+      this._saveError.set(e instanceof Error ? e.message : String(e));
+    } finally {
+      this._saving.set(false);
+    }
+  }
+
+  handleRevert(): void {
+    this._toml.set(this._savedToml());
+    this._validationError.set(null);
+    this.configService.setDirty(false);
   }
 }
 
@@ -373,8 +404,13 @@ export class TomlEditorComponent {
 export class AiIntegrationSectionComponent {
   readonly configService = inject(ConfigService);
 
-  readonly localKey = signal('');
-  readonly showKey = signal(false);
+  private readonly _localKey = signal('');
+  private readonly _showKey = signal(false);
+
+  get localKey() { return this._localKey(); }
+  get showKey() { return this._showKey(); }
+  get aiApiKeySaveStatus() { return this.configService.aiApiKeySaveStatus(); }
+  get aiApiKeyError() { return this.configService.aiApiKeyError(); }
 
   constructor() {
     // Load API key on mount
@@ -384,7 +420,7 @@ export class AiIntegrationSectionComponent {
 
     // Sync local input when store key changes
     effect(() => {
-      this.localKey.set(this.configService.aiApiKey());
+      this._localKey.set(this.configService.aiApiKey());
     });
 
     // Auto-reset save status after 3 seconds
@@ -400,14 +436,14 @@ export class AiIntegrationSectionComponent {
   }
 
   onKeyInput(event: Event): void {
-    this.localKey.set((event.target as HTMLInputElement).value);
+    this._localKey.set((event.target as HTMLInputElement).value);
   }
 
   toggleShowKey(): void {
-    this.showKey.update(v => !v);
+    this._showKey.update(v => !v);
   }
 
   async handleSave(): Promise<void> {
-    await this.configService.saveAiApiKey(this.localKey());
+    await this.configService.saveAiApiKey(this._localKey());
   }
 }

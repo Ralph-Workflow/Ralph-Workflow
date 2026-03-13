@@ -1,4 +1,13 @@
-import { Component, inject, signal, effect, ChangeDetectionStrategy } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  ChangeDetectionStrategy,
+  ViewChild,
+  ElementRef,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { WorktreesService } from '../../services/worktrees.service';
@@ -20,18 +29,33 @@ const STATUS_CHIPS = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, RouterModule, SessionListComponent, NewSessionWizardComponent],
   templateUrl: './sessions.component.html',
+  host: {
+    '(document:keydown)': 'onDocumentKeyDown($event)',
+  },
 })
 export class SessionsComponent {
   readonly worktreesService = inject(WorktreesService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
+
   readonly view = signal<View>('list');
   readonly activeStatusFilters = signal<string[]>([]);
   readonly contextFilter = signal<string>('all');
   readonly preselectedWorktree = signal<string | null>(null);
 
+  /** Search term bound to the search input and passed to session-list */
+  readonly searchTerm = signal('');
+
   readonly statusChips = STATUS_CHIPS;
+
+  readonly statusChipsWithStyle = computed(() =>
+    STATUS_CHIPS.map(chip => ({
+      ...chip,
+      style: this.chipButtonStyle(chip.value),
+    }))
+  );
 
   readonly mainWorktree = this.worktreesService.mainWorktree;
   readonly repoPath = this.worktreesService.repoPath;
@@ -86,10 +110,25 @@ export class SessionsComponent {
     this.contextFilter.set(value);
   }
 
+  onSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchTerm.set(value);
+  }
+
   clearFilters(): void {
     this.activeStatusFilters.set([]);
     this.contextFilter.set('all');
+    this.searchTerm.set('');
   }
+
+  get statusChipsWithStyleList() { return this.statusChipsWithStyle(); }
+  get viewValue(): View { return this.view(); }
+  get preselectedWorktreeValue(): string | null { return this.preselectedWorktree(); }
+  get repoPathValue(): string | null | undefined { return this.repoPath(); }
+  get searchTermValue(): string { return this.searchTerm(); }
+  get activeStatusFiltersValue(): string[] { return this.activeStatusFilters(); }
+  get contextFilterValue(): string { return this.contextFilter(); }
+  get nonMainWorktreesList() { return this.nonMainWorktrees(); }
 
   chipButtonStyle(value: string): string {
     const active = this.activeStatusFilters().includes(value);
@@ -108,5 +147,12 @@ export class SessionsComponent {
 
   handleResume(runId: string): void {
     void this.router.navigate(['/runs', runId]);
+  }
+
+  onDocumentKeyDown(event: KeyboardEvent): void {
+    if (event.ctrlKey && event.key === 'f' && this.view() === 'list') {
+      event.preventDefault();
+      this.searchInput?.nativeElement.focus();
+    }
   }
 }

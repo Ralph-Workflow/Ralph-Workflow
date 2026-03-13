@@ -2,7 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ralph_gui::commands::{
-    config, run_management, session, session_launch, session_prompt, worktree,
+    config, preferences, run_management, session, session_launch, session_prompt, workspace,
+    worktree,
 };
 use ralph_gui::state::new_shared_state;
 use tauri_specta::collect_commands;
@@ -30,32 +31,62 @@ fn main() {
         config::get_ai_api_key,
         config::save_ai_api_key,
         config::validate_config_toml,
+        config::get_agent_tools,
+        config::test_agent_tool_connection,
         // Run management commands
         run_management::get_run_status,
         run_management::get_run_detail,
         run_management::get_run_logs,
         run_management::notify_run_status_change,
+        run_management::get_resumable_runs,
+        run_management::subscribe_run_logs,
+        run_management::unsubscribe_run_logs,
+        run_management::get_run_changes,
+        run_management::cancel_run,
         // Session prompt commands
         session_prompt::read_prompt_file,
         session_prompt::save_prompt_file,
         session_prompt::review_prompt_with_ai,
+        session_prompt::assist_prompt_describe,
+        session_prompt::assist_prompt_refine,
+        session_prompt::list_templates,
+        session_prompt::save_template,
+        session_prompt::delete_template,
         // Session launch commands
         session_launch::launch_ralph_session,
         session_launch::resume_ralph_session,
+        // Preferences commands
+        preferences::get_gui_preferences,
+        preferences::save_gui_preferences,
+        // Workspace commands
+        workspace::get_workspaces,
+        workspace::open_workspace,
+        workspace::close_workspace,
+        workspace::reorder_workspaces,
+        workspace::set_workspace_nav,
+        workspace::get_recent_workspaces,
+        workspace::update_workspace_run_count,
     ]);
 
     // Export additional types needed by the frontend
     let builder = builder
         .typ::<ralph_gui::commands::config::ConfigView>()
         .typ::<ralph_gui::commands::config::AgentProfile>()
+        .typ::<ralph_gui::commands::config::AgentToolInfo>()
+        .typ::<ralph_gui::commands::preferences::GuiPreferences>()
         .typ::<ralph_gui::commands::run_management::RunStatus>()
         .typ::<ralph_gui::commands::run_management::RunDetail>()
+        .typ::<ralph_gui::commands::run_management::RunLogLine>()
+        .typ::<ralph_gui::commands::run_management::FileDiff>()
+        .typ::<ralph_gui::commands::run_management::RunChanges>()
         .typ::<ralph_gui::commands::session::SessionSummary>()
         .typ::<ralph_gui::commands::session::CreateSessionRequest>()
         .typ::<ralph_gui::commands::session_launch::LaunchSessionArgs>()
         .typ::<ralph_gui::commands::session_prompt::PromptReviewResult>()
+        .typ::<ralph_gui::commands::session_prompt::TemplateInfo>()
         .typ::<ralph_gui::commands::worktree::WorktreeInfo>()
-        .typ::<ralph_gui::commands::worktree::CreateWorktreeResult>();
+        .typ::<ralph_gui::commands::worktree::CreateWorktreeResult>()
+        .typ::<ralph_gui::commands::workspace::WorkspaceEntry>();
 
     // Export TypeScript bindings in debug builds for frontend type safety
     #[cfg(debug_assertions)]

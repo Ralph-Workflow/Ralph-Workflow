@@ -10,14 +10,14 @@
       class="btn btn-secondary"
       style="font-size: 12px; padding: 4px 12px;"
       (click)="handleReview()"
-      [disabled]="panelState() === 'loading'"
+      [disabled]="panelState === 'loading'"
       data-testid="review-button"
     >
-      {{ panelState() === 'loading' ? 'Reviewing…' : 'Review prompt' }}
+      {{ panelState === 'loading' ? 'Reviewing…' : 'Review prompt' }}
     </button>
   </div>
 
-  @if (panelState() === 'loading') {
+  @if (panelState === 'loading') {
     <div
       data-testid="loading-indicator"
       style="font-size: 12px; color: var(--text-muted); font-family: var(--font-mono);"
@@ -26,7 +26,7 @@
     </div>
   }
 
-  @if (panelState() === 'no-key') {
+  @if (panelState === 'no-key') {
     <div
       data-testid="no-key-message"
       style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;"
@@ -45,24 +45,24 @@
     </div>
   }
 
-  @if (panelState() === 'error' && errorMsg()) {
+  @if (panelState === 'error' && errorMsg) {
     <div
       data-testid="error-message"
       style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);"
     >
-      {{ errorMsg() }}
+      {{ errorMsg }}
     </div>
   }
 
-  @if (panelState() === 'success' && result()) {
+  @if (panelState === 'success' && result) {
     <div data-testid="suggestions-list" style="display: flex; flex-direction: column; gap: 8px;">
-      @if (result()!.suggestions.length > 0) {
+      @if (result.suggestions.length > 0) {
         <div>
           <div class="section-label" style="margin-bottom: 6px; font-size: 11px;">
             Suggestions
           </div>
           <ul style="margin: 0; padding-left: 18px; list-style: disc; display: flex; flex-direction: column; gap: 4px;">
-            @for (s of result()!.suggestions; track $index) {
+            @for (s of result.suggestions; track $index) {
               <li style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);">
                 {{ s }}
               </li>
@@ -71,7 +71,7 @@
         </div>
       }
 
-      @if (result()!.improved_prompt) {
+      @if (result.improved_prompt) {
         <button
           class="btn btn-primary"
           style="align-self: flex-start; font-size: 12px;"
@@ -84,7 +84,7 @@
     </div>
   }
 
-  @if (panelState() === 'idle') {
+  @if (panelState === 'idle') {
     <div style="font-size: 12px; color: var(--text-muted);">
       Click "Review prompt" to get AI-powered improvement suggestions.
     </div>

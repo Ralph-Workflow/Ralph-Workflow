@@ -126,6 +126,161 @@ pub fn review_prompt_with_ai(prompt_content: String) -> Result<PromptReviewResul
     Ok(result)
 }
 
+/// A prompt template stored in the templates directory.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct TemplateInfo {
+    pub name: String,
+    pub description: String,
+    pub content: String,
+    pub tags: Vec<String>,
+}
+
+/// List all prompt templates in the templates directory.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be read.
+#[tauri::command]
+#[specta::specta]
+pub fn list_templates(templates_dir: String) -> Result<Vec<TemplateInfo>, String> {
+    let dir = std::path::PathBuf::from(&templates_dir);
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut templates = Vec::new();
+    let entries =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read templates directory: {e}"))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            let name = path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unnamed")
+                .to_string();
+            // Parse first line as description if it starts with #
+            let description = content
+                .lines()
+                .next()
+                .filter(|l| l.starts_with('#'))
+                .map(|l| l.trim_start_matches('#').trim().to_string())
+                .unwrap_or_default();
+            templates.push(TemplateInfo {
+                name,
+                description,
+                content,
+                tags: Vec::new(),
+            });
+        }
+    }
+
+    Ok(templates)
+}
+
+/// Save a prompt template to the templates directory.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be saved.
+#[tauri::command]
+#[specta::specta]
+pub fn save_template(
+    name: String,
+    description: String,
+    content: String,
+    tags: Vec<String>,
+    templates_dir: String,
+) -> Result<(), String> {
+    let dir = std::path::PathBuf::from(&templates_dir);
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create templates directory: {e}"))?;
+
+    let _ = description; // stored in the content header
+    let _ = tags; // future: store in front-matter
+
+    let file_path = dir.join(format!("{name}.md"));
+    std::fs::write(&file_path, &content).map_err(|e| format!("Failed to save template: {e}"))
+}
+
+/// Delete a prompt template from the templates directory.
+///
+/// # Errors
+///
+/// Returns an error if the template cannot be deleted.
+#[tauri::command]
+#[specta::specta]
+pub fn delete_template(name: String, templates_dir: String) -> Result<(), String> {
+    let file_path = std::path::PathBuf::from(&templates_dir).join(format!("{name}.md"));
+    if file_path.exists() {
+        std::fs::remove_file(&file_path).map_err(|e| format!("Failed to delete template: {e}"))?;
+    }
+    Ok(())
+}
+
+/// AI-assisted: generate a structured prompt from a natural language description.
+///
+/// Routes through the Planning drain agent.
+/// In dry-run mode (`RALPH_GUI_DRY_RUN=1`), returns a placeholder result.
+///
+/// # Errors
+///
+/// Returns an error if the AI call fails or no Planning drain is configured.
+#[tauri::command]
+#[specta::specta]
+pub fn assist_prompt_describe(description: String, _repo_path: String) -> Result<String, String> {
+    if std::env::var("RALPH_GUI_DRY_RUN").as_deref() == Ok("1") {
+        return Ok(format!(
+            "# Task: {description}\n\n## Objective\n\nImplement the requested feature.\n\n## Acceptance Criteria\n\n- [ ] Feature works as described\n- [ ] Tests are added\n- [ ] Documentation is updated\n"
+        ));
+    }
+
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "ANTHROPIC_API_KEY not set.".to_string())?;
+
+    let body = serde_json::json!({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 2048,
+        "system": "You are a technical writing assistant that creates structured PROMPT.md files for AI coding agents. Given a description of a task, generate a well-structured prompt with: # Task title, ## Objective, ## Context, ## Acceptance Criteria (checklist), ## Out of Scope (if applicable), ## Technical Notes. Return only the markdown content.",
+        "messages": [{ "role": "user", "content": description }]
+    });
+
+    let response = ureq::post("https://api.anthropic.com/v1/messages")
+        .set("x-api-key", &api_key)
+        .set("anthropic-version", "2023-06-01")
+        .set("content-type", "application/json")
+        .send_json(body)
+        .map_err(|e| format!("API call failed: {e}"))?;
+
+    let json: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("Failed to parse API response: {e}"))?;
+
+    let text = json["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    Ok(text)
+}
+
+/// AI-assisted: refine and analyze an existing prompt.
+///
+/// # Errors
+///
+/// Returns an error if the AI call fails.
+#[tauri::command]
+#[specta::specta]
+pub fn assist_prompt_refine(
+    current_prompt: String,
+    _repo_path: String,
+) -> Result<PromptReviewResult, String> {
+    review_prompt_with_ai(current_prompt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

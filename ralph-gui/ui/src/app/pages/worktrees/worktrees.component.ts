@@ -36,19 +36,35 @@ export class WorktreesComponent {
     this.mainWorktree()?.path ?? ''
   );
 
+  readonly worktreesWithMeta = computed(() => {
+    const activePath = this.worktreesService.activeWorktreePath();
+    return this.worktreesService.worktrees().map(wt => {
+      const active = wt.path === activePath || (activePath === null && wt.is_main);
+      const color = active
+        ? 'var(--accent)'
+        : wt.has_active_run
+          ? 'var(--status-running)'
+          : 'var(--border-default)';
+      return {
+        ...wt,
+        active,
+        indicatorStyle: `width: 6px; height: 6px; border-radius: 50%; background: ${color}; flex-shrink: 0;`,
+      };
+    });
+  });
+
+  get repoPathValue(): string { return this.repoPath(); }
+  get showCreateValue(): boolean { return this.showCreate(); }
+  get createErrorValue(): string | null { return this.createError(); }
+  get creatingValue(): boolean { return this.creating(); }
+  get formValue() { return this.form(); }
+  get worktreesStatus() { return this.worktreesService.status(); }
+  get worktreesError() { return this.worktreesService.error(); }
+  get worktreesList() { return this.worktreesWithMeta(); }
+
   isActive(wt: WorktreeInfo): boolean {
     const activePath = this.worktreesService.activeWorktreePath();
     return wt.path === activePath || (activePath === null && wt.is_main);
-  }
-
-  indicatorStyle(wt: WorktreeInfo): string {
-    const active = this.isActive(wt);
-    const color = active
-      ? 'var(--accent)'
-      : wt.has_active_run
-        ? 'var(--status-running)'
-        : 'var(--border-default)';
-    return `width: 6px; height: 6px; border-radius: 50%; background: ${color}; flex-shrink: 0;`;
   }
 
   onRowHover(event: MouseEvent): void {

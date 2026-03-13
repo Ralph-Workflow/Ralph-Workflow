@@ -21,9 +21,9 @@
           <mat-icon>folder_open</mat-icon>
           <span>Select repository...</span>
         </button>
-        @if (worktreesService.worktrees().length > 0) {
+        @if (worktrees.length > 0) {
           <mat-divider></mat-divider>
-          @for (wt of worktreesService.worktrees(); track wt.path) {
+          @for (wt of worktrees; track wt.path) {
             <button mat-menu-item (click)="selectContext(wt.path)">
               <mat-icon>{{ wt.is_main ? 'folder_special' : 'folder' }}</mat-icon>
               <span>{{ wt.name }}</span>
@@ -41,24 +41,73 @@
           [routerLinkActiveOptions]="{exact: item.path === '/'}"
           class="nav-item"
         >
-          @if (isActive(item.path)) {
-            <span class="nav-accent"></span>
-          }
-          <mat-icon [class.active-icon]="isActive(item.path)">{{ item.icon }}</mat-icon>
+          <mat-icon>{{ item.icon }}</mat-icon>
           <span>{{ item.label }}</span>
         </a>
       }
     </nav>
-    <div class="sidebar-footer">v0.1.0</div>
+    <div class="sidebar-bottom">
+      <button
+        type="button"
+        class="nav-item notification-bell-btn"
+        (click)="notificationService.togglePanel()"
+        [attr.aria-label]="'Notifications' + (unreadCount > 0 ? ': ' + unreadCount + ' unread' : '')"
+      >
+        <mat-icon>notifications</mat-icon>
+        <span>Notifications</span>
+        @if (unreadCount > 0) {
+          <span class="notification-badge">{{ unreadCount }}</span>
+        }
+      </button>
+      @for (item of navItemsBottom; track item.path) {
+        <a
+          [routerLink]="item.path"
+          routerLinkActive="active"
+          class="nav-item"
+        >
+          <mat-icon>{{ item.icon }}</mat-icon>
+          <span>{{ item.label }}</span>
+        </a>
+      }
+      <button
+        type="button"
+        class="nav-item help-btn"
+        (click)="showConceptsGuide.update(v => !v)"
+        aria-label="Toggle Concepts Guide"
+        title="Concepts Guide"
+      >
+        <mat-icon>help_outline</mat-icon>
+        <span>Help</span>
+      </button>
+      <div class="sidebar-footer">v0.1.0</div>
+    </div>
   </aside>
+
+  @if (isShowConceptsGuide) {
+    <div class="concepts-guide-panel">
+      <div class="concepts-guide-panel__header">
+        <span class="concepts-guide-panel__title">Concepts Guide</span>
+        <button
+          type="button"
+          class="btn btn-ghost concepts-guide-panel__close"
+          (click)="showConceptsGuide.set(false)"
+          aria-label="Close Concepts Guide"
+        >✕</button>
+      </div>
+      <div class="concepts-guide-panel__body">
+        <app-concepts-guide />
+      </div>
+    </div>
+  }
     <main class="main-content">
       <router-outlet></router-outlet>
     </main>
   </div>
   <app-status-bar />
+  <app-notification-center />
 </div>
 
-@if (showHelp()) {
+@if (isShowHelp) {
   <div class="modal-overlay" (click)="closeHelp()">
     <div class="modal-content" (click)="$event.stopPropagation()">
       <div class="modal-header">
@@ -68,26 +117,37 @@
         </button>
       </div>
       <div class="modal-body">
-        <div class="shortcut-row">
-          <kbd>?</kbd>
-          <span>Show this help</span>
-        </div>
-        <div class="shortcut-row">
-          <kbd>g</kbd> then <kbd>h</kbd>
-          <span>Go to Home</span>
-        </div>
-        <div class="shortcut-row">
-          <kbd>g</kbd> then <kbd>s</kbd>
-          <span>Go to Sessions</span>
-        </div>
-        <div class="shortcut-row">
-          <kbd>g</kbd> then <kbd>w</kbd>
-          <span>Go to Worktrees</span>
-        </div>
-        <div class="shortcut-row">
-          <kbd>g</kbd> then <kbd>c</kbd>
-          <span>Go to Configuration</span>
-        </div>
+        @for (group of shortcutGroups; track group.category) {
+          <div class="shortcut-group">
+            <h3 class="shortcut-category">{{ group.category }}</h3>
+            @for (shortcut of group.shortcuts; track shortcut.description) {
+              <div class="shortcut-row">
+                <span class="shortcut-keys">
+                  @for (key of shortcut.keys; track key; let last = $last) {
+                    <kbd>{{ key }}</kbd>
+                    @if (!last) { <span class="shortcut-then">then</span> }
+                  }
+                </span>
+                <span class="shortcut-desc">{{ shortcut.description }}</span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+@if (isShowCommandPalette) {
+  <div class="modal-overlay" (click)="showCommandPalette.set(false)">
+    <div class="modal-content command-palette" (click)="$event.stopPropagation()">
+      <div class="command-palette__header">
+        <span class="command-palette__icon">⌘</span>
+        <span class="command-palette__title">Command Palette</span>
+      </div>
+      <div class="command-palette__body">
+        <p class="command-palette__coming-soon">Coming soon — command search and quick actions will appear here.</p>
+        <div class="command-palette__hint">Press <kbd>Esc</kbd> to close</div>
       </div>
     </div>
   </div>

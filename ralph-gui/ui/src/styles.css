@@ -1,6 +1,9 @@
 /* Ralph Workflow - Design System CSS Tokens */
 /* Based on gui-design.md Section 2 */
 
+/* === Font Imports === */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 /* === 2.2 Color Palette === */
 
 /* Background tokens */

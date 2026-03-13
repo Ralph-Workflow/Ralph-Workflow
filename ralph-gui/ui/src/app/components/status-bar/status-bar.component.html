@@ -1,11 +1,44 @@
 <div class="status-bar">
+  <!-- Left: active workspace label + branch -->
   <div class="status-left">
-    <span class="workspace-label">{{ workspaceLabel() }}</span>
+    <span class="workspace-label">{{ currentWorkspaceLabel }}</span>
+    @if (currentBranch) {
+      <span class="branch-label">{{ currentBranch }}</span>
+    }
   </div>
+
+  <!-- Center: aggregated run status -->
   <div class="status-center">
-    <span class="run-summary">{{ runSummaryText() }}</span>
+    @if (currentRunSummaryText) {
+      <span class="run-summary">{{ currentRunSummaryText }}</span>
+    }
   </div>
+
+  <!-- Right: notification bell + connection status -->
   <div class="status-right">
-    <span class="connection-indicator {{ connectionStatusClass() }}">{{ connectionStatus() }}</span>
+    <button
+      class="notification-bell"
+      type="button"
+      aria-label="Notifications"
+      (click)="onNotificationsClick()"
+    >
+      <svg
+        class="bell-icon"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+      >
+        <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm6.39-4.79C13.5 10.24 12 9.12 12 5.5c0-2.49-1.75-4.56-4.12-4.93C7.93.38 7.97.2 8 0a.5.5 0 0 0-1 0c.03.2.07.38.12.57C4.75.94 3 3.01 3 5.5c0 3.62-1.5 4.74-2.39 5.71A.5.5 0 0 0 1 12h14a.5.5 0 0 0 .39-.79z"/>
+      </svg>
+      @if (currentNotificationCount > 0) {
+        <span class="notification-badge" aria-label="{{ currentNotificationCount }} unread notifications">
+          {{ currentNotificationCount }}
+        </span>
+      }
+    </button>
+
+    <span class="connection-indicator {{ currentConnectionStatusClass }}">
+      {{ currentConnectionStatus }}
+    </span>
   </div>
 </div>

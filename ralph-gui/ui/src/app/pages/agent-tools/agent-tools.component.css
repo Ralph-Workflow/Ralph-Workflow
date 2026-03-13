@@ -1,0 +1,161 @@
+.agent-tools-page {
+  padding: 24px;
+  max-width: 900px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary, #e5e5e5);
+  margin: 0;
+}
+
+.page-subtitle {
+  color: var(--text-muted, #888);
+  margin-bottom: 24px;
+  font-size: 0.9rem;
+}
+
+.loading-state,
+.empty-state {
+  color: var(--text-muted, #888);
+  padding: 32px 0;
+}
+
+.tool-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tool-card {
+  background: var(--bg-card, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.tool-card[data-health="ready"] {
+  border-left: 3px solid var(--status-completed, #22c55e);
+}
+
+.tool-card[data-health="needs_setup"] {
+  border-left: 3px solid var(--status-degraded, #f59e0b);
+}
+
+.tool-card[data-health="not_installed"] {
+  border-left: 3px solid var(--status-failed, #ef4444);
+  opacity: 0.8;
+}
+
+.tool-card-header {
+  margin-bottom: 12px;
+}
+
+.tool-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.tool-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary, #e5e5e5);
+  margin: 0;
+}
+
+.health-badge {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.health-ready {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--status-completed, #22c55e);
+}
+
+.health-needs-setup {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--status-degraded, #f59e0b);
+}
+
+.health-not-installed {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-failed, #ef4444);
+}
+
+.tool-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted, #888);
+}
+
+.tool-binary {
+  font-family: var(--font-mono, monospace);
+}
+
+.tool-version {
+  font-family: var(--font-mono, monospace);
+  color: var(--accent, #f59e0b);
+}
+
+.tool-card-body {
+  margin-bottom: 16px;
+}
+
+.tool-detail-row {
+  display: flex;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.detail-label {
+  color: var(--text-muted, #888);
+}
+
+.detail-value {
+  color: var(--text-primary, #e5e5e5);
+}
+
+.tool-not-installed-msg {
+  color: var(--text-muted, #888);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.tool-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+}
+
+.test-result {
+  font-size: 0.8rem;
+}
+
+.test-result--ok {
+  color: var(--status-completed, #22c55e);
+}
+
+.test-result--err {
+  color: var(--status-failed, #ef4444);
+}

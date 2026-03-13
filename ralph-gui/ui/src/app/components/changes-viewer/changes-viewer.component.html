@@ -1,0 +1,131 @@
+@if (!repoPath_) {
+  <div class="changes-empty" data-testid="changes-empty">
+    <div class="changes-empty__icon">⌥</div>
+    <div class="changes-empty__text">Code changes will appear here as the AI develops</div>
+  </div>
+} @else if (isLoading_) {
+  <div class="changes-loading">
+    <div class="changes-loading__text">Loading changes…</div>
+  </div>
+} @else if (files_.length === 0) {
+  <div class="changes-empty" data-testid="changes-empty">
+    <div class="changes-empty__icon">⌥</div>
+    <div class="changes-empty__text">Code changes will appear here as the AI develops</div>
+  </div>
+} @else {
+  <div class="changes-viewer">
+    <!-- Summary bar -->
+    <div class="changes-summary" data-testid="changes-summary">
+      <span class="changes-summary__stat">
+        {{ files_.length }} file{{ files_.length === 1 ? '' : 's' }} changed
+      </span>
+      <span class="changes-summary__additions">
+        +{{ runChanges_?.total_additions ?? 0 }} additions
+      </span>
+      <span class="changes-summary__deletions">
+        -{{ runChanges_?.total_deletions ?? 0 }} deletions
+      </span>
+      <div class="changes-summary__actions">
+        <button
+          class="btn btn-ghost changes-view-toggle"
+          [class.changes-view-toggle--active]="sideBySide_"
+          (click)="toggleViewMode()"
+          [attr.data-testid]="'view-mode-toggle'"
+          [title]="sideBySide_ ? 'Switch to unified view' : 'Switch to side-by-side view'"
+          [attr.aria-pressed]="sideBySide_"
+          aria-label="Toggle diff view mode"
+        >
+          {{ sideBySide_ ? 'Unified' : 'Side-by-side' }}
+        </button>
+        <select
+          class="input input-mono changes-iteration-select"
+          [value]="selectedIteration_ ?? ''"
+          (change)="setIteration($any($event.target).value === '' ? null : +$any($event.target).value)"
+          aria-label="Filter by iteration"
+        >
+          @for (opt of iterationOptions_; track opt.value) {
+            <option [value]="opt.value ?? ''">{{ opt.label }}</option>
+          }
+        </select>
+        <button
+          class="btn btn-ghost changes-copy-btn"
+          (click)="copyAsPatch()"
+          [title]="copySuccess_ ? 'Copied!' : 'Copy all diffs as patch'"
+          aria-label="Copy all diffs as patch"
+        >
+          {{ copySuccess_ ? '✓ Copied' : '⎘ Copy as Patch' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- Main content: file tree + diff view -->
+    <div class="changes-body">
+      <!-- Left panel: file tree -->
+      <div class="changes-file-tree" role="list" aria-label="Changed files">
+        @for (file of files_; track file.path) {
+          <button
+            class="changes-file-item"
+            [class.changes-file-item--selected]="selectedFile_?.path === file.path"
+            role="listitem"
+            (click)="selectFile(file)"
+            [attr.aria-pressed]="selectedFile_?.path === file.path"
+            [attr.aria-label]="file.path + ' +' + file.additions + ' -' + file.deletions"
+          >
+            <span class="changes-file-item__path">{{ file.path }}</span>
+            <span class="changes-file-item__stats">
+              <span class="changes-file-item__additions">+{{ file.additions }}</span>
+              <span class="changes-file-item__deletions">-{{ file.deletions }}</span>
+            </span>
+          </button>
+        }
+      </div>
+
+      <!-- Right panel: diff view -->
+      <div class="changes-diff-view">
+        @if (selectedFile_) {
+          <div class="changes-diff-header">
+            <span class="changes-diff-filename">{{ selectedFile_!.path }}</span>
+          </div>
+          @if (!sideBySide_) {
+            <!-- Unified view (default) -->
+            <div class="changes-diff-lines" role="code" aria-label="File diff unified view"
+                 data-testid="diff-unified">
+              @for (entry of diffLines_; track $index) {
+                <div
+                  class="diff-line"
+                  [class]="'diff-line ' + entry.cssClass"
+                >
+                  <span class="diff-line__num" aria-hidden="true">{{ $index + 1 }}</span>
+                  <span class="diff-line__content">{{ entry.text }}</span>
+                </div>
+              }
+            </div>
+          } @else {
+            <!-- Side-by-side view -->
+            <div class="changes-diff-side-by-side" role="code" aria-label="File diff side-by-side view"
+                 data-testid="diff-side-by-side">
+              <div class="changes-diff-col changes-diff-col--removed" aria-label="Removed lines">
+                <div class="changes-diff-col__header">Before</div>
+                @for (line of removedLines_; track $index) {
+                  <div class="diff-line diff-line--removed">
+                    <span class="diff-line__num" aria-hidden="true">{{ $index + 1 }}</span>
+                    <span class="diff-line__content">{{ line }}</span>
+                  </div>
+                }
+              </div>
+              <div class="changes-diff-col changes-diff-col--added" aria-label="Added lines">
+                <div class="changes-diff-col__header">After</div>
+                @for (line of addedLines_; track $index) {
+                  <div class="diff-line diff-line--added">
+                    <span class="diff-line__num" aria-hidden="true">{{ $index + 1 }}</span>
+                    <span class="diff-line__content">{{ line }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </div>
+}

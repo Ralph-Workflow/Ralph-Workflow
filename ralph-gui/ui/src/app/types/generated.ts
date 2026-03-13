@@ -57,6 +57,16 @@ export interface ConfigView {
   interactive: boolean;
   review_depth: string;
   max_dev_continuations: number;
+  // Retry and Fallback settings
+  max_retries?: number;
+  max_same_agent_retries?: number;
+  retry_delay_ms?: number;
+  backoff_multiplier?: number;
+  max_backoff_ms?: number;
+  max_fallback_cycles?: number;
+  // Git identity settings
+  git_user_name?: string;
+  git_user_email?: string;
 }
 
 export type RunStatus =
@@ -107,4 +117,92 @@ export interface LaunchSessionArgs {
   reviewer_passes: number;
   developer_agent: string | null;
   reviewer_agent: string | null;
+}
+
+// Workspace types
+export interface WorkspaceEntry {
+  id: string;
+  repo_path: string;
+  display_name: string;
+  last_nav: string;
+  active_run_count: number;
+}
+
+// GUI Preferences – booleans are split into sub-types to satisfy the Rust
+// pedantic `struct_excessive_bools` lint (max 3 bools per struct).
+
+/** Which run events trigger a desktop notification. */
+export interface GuiNotificationTriggers {
+  notifyCompletion: boolean;
+  notifyFailure: boolean;
+  notifyDegraded: boolean;
+}
+
+/** Notification-related preferences. */
+export interface GuiNotificationSettings {
+  showPhaseNotifications: boolean;
+  desktopNotifications: boolean;
+  notifyPhaseChange: boolean;
+  triggers: GuiNotificationTriggers;
+}
+
+/** Session and log behaviour preferences. */
+export interface GuiSessionSettings {
+  logAutoscroll: boolean;
+  confirmCancel: boolean;
+  restoreWorkspaces: boolean;
+}
+
+export interface GuiPreferences {
+  theme: string;
+  accentColor: string;
+  sidebarWidth: number;
+  fontSize: number;
+  monospaceFont: string;
+  runPollIntervalMs: number;
+  logBufferSize: number;
+  defaultView: string;
+  checkUpdates: boolean;
+  session: GuiSessionSettings;
+  notifications: GuiNotificationSettings;
+}
+
+// Run log streaming
+export interface RunLogLine {
+  run_id: string;
+  line: string;
+  sequence: number;
+}
+
+// Run diff / changes
+export interface FileDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+  diff_text: string;
+}
+
+export interface RunChanges {
+  files: FileDiff[];
+  total_additions: number;
+  total_deletions: number;
+  iteration: number | null;
+}
+
+// Agent tools
+export interface AgentToolInfo {
+  name: string;
+  binary: string;
+  installed: boolean;
+  version: string | null;
+  auth_status: string;
+  health: string;
+}
+
+// Prompt templates
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  content: string;
+  tags: string[];
 }

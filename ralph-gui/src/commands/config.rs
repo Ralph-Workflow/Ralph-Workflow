@@ -257,6 +257,107 @@ pub fn validate_config_toml(config_toml: String) -> Result<Option<String>, Strin
     }
 }
 
+/// Information about an installed or detectable agent tool (CLI).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AgentToolInfo {
+    pub name: String,
+    pub binary: String,
+    pub installed: bool,
+    pub version: Option<String>,
+    pub auth_status: String,
+    pub health: String,
+}
+
+/// Probe a known CLI tool binary in the PATH.
+fn probe_tool(name: &str, binary: &str) -> AgentToolInfo {
+    let which_result = std::process::Command::new("which").arg(binary).output();
+
+    let installed = which_result.is_ok_and(|o| o.status.success());
+
+    let version = if installed {
+        std::process::Command::new(binary)
+            .arg("--version")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| {
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.lines().next().unwrap_or("").trim().to_string())
+            })
+    } else {
+        None
+    };
+
+    let health = if installed {
+        if version.is_some() {
+            "Ready".to_string()
+        } else {
+            "Needs setup".to_string()
+        }
+    } else {
+        "Not installed".to_string()
+    };
+
+    AgentToolInfo {
+        name: name.to_string(),
+        binary: binary.to_string(),
+        installed,
+        version,
+        auth_status: if installed {
+            "Unknown".to_string()
+        } else {
+            "N/A".to_string()
+        },
+        health,
+    }
+}
+
+/// Get information about known agent tools (Claude Code, Codex, `OpenCode`).
+///
+/// # Errors
+///
+/// This command currently never fails but returns `Err` to satisfy the Result interface.
+#[tauri::command]
+#[specta::specta]
+pub fn get_agent_tools() -> Result<Vec<AgentToolInfo>, String> {
+    let tools = vec![
+        probe_tool("Claude Code", "claude"),
+        probe_tool("Codex", "codex"),
+        probe_tool("OpenCode", "opencode"),
+    ];
+    Ok(tools)
+}
+
+/// Run a test invocation of an agent tool to verify it works.
+///
+/// # Errors
+///
+/// Returns an error string if the tool is not installed or the test invocation fails.
+#[tauri::command]
+#[specta::specta]
+pub fn test_agent_tool_connection(name: String) -> Result<String, String> {
+    let binary = match name.as_str() {
+        "Claude Code" => "claude",
+        "Codex" => "codex",
+        "OpenCode" => "opencode",
+        other => return Err(format!("Unknown tool: {other}")),
+    };
+
+    let output = std::process::Command::new(binary)
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("{binary} not found or failed to start: {e}"))?;
+
+    if output.status.success() {
+        let version = String::from_utf8_lossy(&output.stdout).to_string();
+        Ok(format!("Connected: {}", version.trim()))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        Err(format!("Tool returned error: {stderr}"))
+    }
+}
+
 /// GUI-specific configuration stored separately from ralph-workflow config.
 /// Stored at `~/.config/ralph-gui.toml` with restrictive 0o600 permissions.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

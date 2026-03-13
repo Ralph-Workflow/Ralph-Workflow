@@ -188,7 +188,7 @@ describe('StatCardComponent', () => {
       component.accent = false;
       component.value = 3;
 
-      const style = component.valueStyle();
+      const style = component.valueStyle;
 
       expect(style).toContain('color: var(--text-primary)');
       expect(style).toContain('text-shadow: none');
@@ -198,7 +198,7 @@ describe('StatCardComponent', () => {
       component.accent = true;
       component.value = 5;
 
-      const style = component.valueStyle();
+      const style = component.valueStyle;
 
       expect(style).toContain('color: var(--accent)');
       expect(style).toContain('text-shadow');
@@ -208,7 +208,7 @@ describe('StatCardComponent', () => {
       component.accent = true;
       component.value = 0;
 
-      const style = component.valueStyle();
+      const style = component.valueStyle;
 
       expect(style).toContain('color: var(--text-primary)');
     });

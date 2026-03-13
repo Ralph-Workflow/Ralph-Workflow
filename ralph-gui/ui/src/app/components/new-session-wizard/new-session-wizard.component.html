@@ -1,33 +1,37 @@
 <!-- Template Step -->
-@if (step() === 'template') {
+@if (step_ === 'template') {
   <div data-testid="wizard-template-step" style="display: flex; flex-direction: column; gap: 20px;">
-    <app-step-indicator [currentStep]="step()" />
-    <app-prompt-template-picker (selectTemplate)="onTemplateSelect($event)" />
+    <app-step-indicator [currentStep]="step_" />
+    <app-prompt-template-picker
+      [currentPrompt]="promptContent_"
+      (selectTemplate)="onTemplateSelect($event)"
+      (saveAsTemplate)="onSaveAsTemplate($event)"
+    />
     <div style="display: flex; gap: 8px; justify-content: flex-end;">
-      <button class="btn btn-ghost" (click)="closeWizard.emit()">Cancel</button>
+      <button class="btn btn-ghost" (click)="closeWizard.emit(); wizardClosed.emit()">Cancel</button>
     </div>
   </div>
 }
 
 <!-- Preflight Step -->
-@if (step() === 'preflight') {
+@if (step_ === 'preflight') {
   <div style="display: flex; flex-direction: column; gap: 12px;">
-    <app-step-indicator [currentStep]="step()" />
-    @if (launchError()) {
+    <app-step-indicator [currentStep]="step_" />
+    @if (launchError_) {
       <div
         data-testid="launch-error"
         style="padding: 8px 12px; background: var(--error-bg, #fee); border: 1px solid var(--error-border, #f99); border-radius: var(--radius-md); font-size: 12px; color: var(--error-text, #c00);"
       >
-        {{ launchError() }}
+        {{ launchError_ }}
       </div>
     }
     <app-preflight-summary
-      [repoPath]="repoPath()"
-      [worktreePath]="worktreePath()"
-      [promptPath]="promptPath()"
-      [developerIterations]="developerIterations()"
-      [reviewerPasses]="reviewerPasses()"
-      [isLaunching]="isLaunching()"
+      [repoPath]="repoPath_"
+      [worktreePath]="worktreePath_"
+      [promptPath]="promptPath_"
+      [developerIterations]="developerIterations_"
+      [reviewerPasses]="reviewerPasses_"
+      [isLaunching]="isLaunching_"
       (confirmLaunch)="handleLaunch()"
       (goBack)="step.set('config')"
     />
@@ -35,9 +39,31 @@
 }
 
 <!-- Config Step -->
-@if (step() === 'config') {
+@if (step_ === 'config') {
   <div data-testid="wizard-config-step" style="display: flex; flex-direction: column; gap: 16px;">
-    <app-step-indicator [currentStep]="step()" />
+    <app-step-indicator [currentStep]="step_" />
+
+    <!-- Unconfigured state: no agent profiles -->
+    @if (!hasAgentProfiles_) {
+      <div
+        data-testid="unconfigured-callout"
+        style="padding: 12px 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.4); border-radius: var(--radius-md);"
+      >
+        <div style="font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 4px;">
+          ⚠ Setup Required
+        </div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+          Agent chains not configured
+        </div>
+        <a
+          href="#/settings/agents"
+          style="font-size: 12px; color: var(--accent); text-decoration: none;"
+          data-testid="go-to-config-link"
+        >
+          Go to Configuration →
+        </a>
+      </div>
+    }
 
     <!-- Repo path -->
     <div>
@@ -45,14 +71,14 @@
       <input
         id="repo-path"
         class="input input-mono"
-        [value]="repoPath()"
+        [value]="repoPath_"
         (input)="onRepoPathInput($event)"
         placeholder="/path/to/your/repo"
       />
     </div>
 
     <!-- Worktree selection -->
-    @if (worktreesService.worktrees().length > 0) {
+    @if (worktrees_.length > 0) {
       <div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
           <label class="section-label" for="worktree-select" style="margin-bottom: 0;">Context</label>
@@ -62,26 +88,26 @@
             style="font-size: 11px; padding: 2px 10px;"
             (click)="toggleCreateWorktree()"
           >
-            {{ showCreateWorktree() ? '← Select existing' : '+ Create new worktree' }}
+            {{ showCreateWorktree_ ? '← Select existing' : '+ Create new worktree' }}
           </button>
         </div>
-        @if (!showCreateWorktree()) {
+        @if (!showCreateWorktree_) {
           <select
             id="worktree-select"
             class="input"
-            [value]="worktreePath() ?? ''"
+            [value]="worktreePath_ ?? ''"
             (change)="onWorktreeChange($event)"
             style="font-family: var(--font-mono); font-size: 12px;"
           >
             <option value="">Direct repository (no worktree)</option>
-            @for (wt of nonMainWorktrees(); track wt.path) {
+            @for (wt of nonMainWorktrees_; track wt.path) {
               <option [value]="wt.path">{{ wt.name }} ({{ wt.branch }})</option>
             }
           </select>
         }
-        @if (showCreateWorktree()) {
+        @if (showCreateWorktree_) {
           <app-inline-worktree-create
-            [repoPath]="repoPath()"
+            [repoPath]="repoPath_"
             (created)="onWorktreeCreated($event)"
           />
         }
@@ -89,27 +115,130 @@
     }
 
     <!-- Agent profile selection -->
-    @if (agentProfileService.profiles().length > 0) {
+    @if (agentProfiles_.length > 0) {
       <div>
         <label class="section-label" for="agent-profile">Agent profile</label>
         <select
           id="agent-profile"
           data-testid="agent-profile-select"
           class="input"
-          [value]="agentProfileService.selectedProfile() ?? ''"
+          [value]="selectedProfile_ ?? ''"
           (change)="onAgentProfileChange($event)"
           style="font-family: var(--font-mono); font-size: 12px;"
         >
           <option value="">Default (from config)</option>
-          @for (p of agentProfileService.profiles(); track p.name) {
+          @for (p of agentProfiles_; track p.name) {
             <option [value]="p.name">{{ p.name }} — dev: {{ p.developer_agent }} / reviewer: {{ p.reviewer_agent }}</option>
           }
         </select>
       </div>
     }
 
+    <!-- Session config panel (collapsed/expanded) -->
+    <div style="border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden;">
+      <!-- Summary / header row -->
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-surface);">
+        <span style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);" data-testid="config-summary-line">
+          {{ configSummaryLine_ }}
+        </span>
+        <button
+          class="btn btn-ghost"
+          style="font-size: 11px; padding: 2px 10px;"
+          (click)="configPanelExpanded.set(!configPanelExpanded_)"
+          data-testid="customize-config-toggle"
+        >
+          {{ configPanelExpanded_ ? 'Collapse' : 'Customize' }}
+        </button>
+      </div>
+
+      @if (configPanelExpanded_) {
+        <div style="padding: 14px; border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 12px;" data-testid="config-full-panel">
+          <!-- Iteration config -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <label class="section-label" for="dev-iters">Dev iterations (1–20)</label>
+              <input
+                id="dev-iters"
+                class="input"
+                type="number"
+                min="1"
+                max="20"
+                [value]="developerIterations_"
+                (input)="onDevItersChange($event)"
+              />
+            </div>
+            <div>
+              <label class="section-label" for="rev-passes">Review passes (0–10)</label>
+              <input
+                id="rev-passes"
+                class="input"
+                type="number"
+                min="0"
+                max="10"
+                [value]="reviewerPasses_"
+                (input)="onRevPassesChange($event)"
+              />
+            </div>
+          </div>
+
+          <!-- Review depth -->
+          <div>
+            <label class="section-label" for="review-depth">Review depth</label>
+            <select
+              id="review-depth"
+              class="input"
+              [value]="reviewDepth_"
+              (change)="onReviewDepthChange($event)"
+              data-testid="review-depth-select"
+            >
+              <option value="light">Light</option>
+              <option value="standard">Standard</option>
+              <option value="thorough">Thorough</option>
+            </select>
+          </div>
+
+          <!-- Toggles -->
+          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-secondary);">
+              <input
+                type="checkbox"
+                [checked]="checkpointEnabled_"
+                (change)="checkpointEnabled.set(!checkpointEnabled_)"
+                data-testid="checkpoint-toggle"
+              />
+              Checkpoint enabled
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-secondary);">
+              <input
+                type="checkbox"
+                [checked]="isolationMode_"
+                (change)="isolationMode.set(!isolationMode_)"
+                data-testid="isolation-toggle"
+              />
+              Isolation mode
+            </label>
+          </div>
+
+          <!-- Reset / note -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
+            <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
+              Changes here apply to this session only and are not saved to your configuration files
+            </span>
+            <button
+              class="btn btn-ghost"
+              style="font-size: 11px; padding: 2px 10px; flex-shrink: 0;"
+              (click)="resetToDefaults()"
+              data-testid="reset-config-btn"
+            >
+              Reset to defaults
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+
     <!-- Preset picker -->
-    @if (presets().length > 0) {
+    @if (presets_.length > 0) {
       <div>
         <label class="section-label">Load preset</label>
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -120,14 +249,14 @@
             style="font-family: var(--font-mono); font-size: 12px;"
           >
             <option value="">— select a preset —</option>
-            @for (p of presets(); track p.name) {
+            @for (p of presets_; track p.name) {
               <option [value]="p.name">{{ p.name }}</option>
             }
           </select>
         </div>
         <!-- Saved preset list with delete buttons -->
         <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
-          @for (p of presets(); track p.name) {
+          @for (p of presets_; track p.name) {
             <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 100px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
               {{ p.name }}
               <button
@@ -144,34 +273,6 @@
       </div>
     }
 
-    <!-- Iteration config -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-      <div>
-        <label class="section-label" for="dev-iters">Dev iterations</label>
-        <input
-          id="dev-iters"
-          class="input"
-          type="number"
-          min="1"
-          max="20"
-          [value]="developerIterations()"
-          (input)="onDevItersChange($event)"
-        />
-      </div>
-      <div>
-        <label class="section-label" for="rev-passes">Review passes</label>
-        <input
-          id="rev-passes"
-          class="input"
-          type="number"
-          min="1"
-          max="10"
-          [value]="reviewerPasses()"
-          (input)="onRevPassesChange($event)"
-        />
-      </div>
-    </div>
-
     <!-- Save as preset -->
     <div>
       <label class="section-label">Save current config as preset</label>
@@ -179,7 +280,7 @@
         <input
           data-testid="preset-name-input"
           class="input input-mono"
-          [value]="presetNameInput()"
+          [value]="presetNameInput_"
           (input)="onPresetNameInput($event)"
           placeholder="Preset name…"
           style="flex: 1;"
@@ -188,7 +289,7 @@
           data-testid="save-preset-button"
           class="btn btn-secondary"
           (click)="savePreset()"
-          [disabled]="!presetNameInput().trim()"
+          [disabled]="isPresetNameEmpty"
           style="flex-shrink: 0;"
         >
           Save
@@ -196,32 +297,51 @@
       </div>
     </div>
 
-    <!-- Prompt editor with optional AI review panel -->
+    <!-- Prompt editor with optional AI assistant panel -->
     <div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
         <label class="section-label" style="margin-bottom: 0;">PROMPT.md</label>
-        <button
-          class="btn btn-ghost"
-          style="font-size: 11px; padding: 2px 10px;"
-          (click)="showReviewPanel.set(!showReviewPanel())"
-          data-testid="toggle-review-panel"
-        >
-          {{ showReviewPanel() ? 'Hide AI review' : 'Review with AI' }}
-        </button>
+        <div style="display: flex; gap: 6px;">
+          <button
+            class="btn btn-ghost"
+            style="font-size: 11px; padding: 2px 10px;"
+            (click)="showReviewPanel.set(!showReviewPanel_)"
+            data-testid="toggle-review-panel"
+          >
+            {{ showReviewPanel_ ? 'Hide AI review' : 'Review with AI' }}
+          </button>
+          <button
+            class="btn btn-ghost"
+            style="font-size: 11px; padding: 2px 10px;"
+            (click)="showAiAssistant.set(!showAiAssistant_)"
+            data-testid="toggle-ai-assistant"
+          >
+            {{ showAiAssistant_ ? 'Hide AI Assist ▴' : 'AI Assist ▾' }}
+          </button>
+        </div>
       </div>
       <textarea
         id="prompt-editor"
         class="input input-mono"
         rows="10"
-        [value]="promptService.content()"
+        [value]="promptContent_"
         (input)="onPromptChange($event)"
         style="resize: vertical; line-height: 1.6;"
       ></textarea>
-      @if (showReviewPanel()) {
+      @if (showReviewPanel_) {
         <div style="margin-top: 10px;">
           <app-prompt-review-panel
-            [promptContent]="promptService.content()"
+            [promptContent]="promptContent_"
             (applyImprovedPrompt)="applyImprovedPrompt($event)"
+          />
+        </div>
+      }
+      @if (showAiAssistant_) {
+        <div style="margin-top: 10px;" data-testid="ai-assistant-panel">
+          <app-ai-prompt-assistant
+            [currentPrompt]="promptContent_"
+            [repoPath]="repoPath_"
+            (applyPrompt)="applyImprovedPrompt($event)"
           />
         </div>
       }
@@ -229,11 +349,12 @@
 
     <div style="display: flex; gap: 8px; justify-content: flex-end;">
       <button class="btn btn-ghost" (click)="step.set('template')">← Templates</button>
-      <button class="btn btn-ghost" (click)="closeWizard.emit()">Cancel</button>
+      <button class="btn btn-ghost" (click)="closeWizard.emit(); wizardClosed.emit()">Cancel</button>
       <button
         class="btn btn-primary"
         (click)="handleNext()"
-        [disabled]="!repoPath().trim()"
+        [disabled]="!canProceedToLaunch_"
+        [title]="!hasAgentProfiles_ ? 'Agent chains must be configured before launching' : ''"
         data-testid="review-launch-button"
       >
         Review & launch →

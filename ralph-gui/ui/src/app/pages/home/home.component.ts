@@ -48,6 +48,18 @@ export class HomeComponent {
     this.runsService.resumableRuns().length
   );
 
+  readonly resumableRunsWithShortId = computed(() =>
+    this.runsService.resumableRuns().map(run => ({
+      ...run,
+      run_id_short: run.run_id.substring(0, 16),
+    }))
+  );
+
+  get hasContentValue(): boolean { return this.hasContent(); }
+  get activeWorktreeCountValue(): number { return this.activeWorktreeCount(); }
+  get resumableRunsCountValue(): number { return this.resumableRunsCount(); }
+  get resumableRuns() { return this.resumableRunsWithShortId(); }
+
   constructor() {
     effect(() => {
       const main = this.mainWorktree();

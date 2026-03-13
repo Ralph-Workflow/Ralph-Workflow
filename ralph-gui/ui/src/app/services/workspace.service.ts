@@ -1,4 +1,6 @@
-import { Injectable, signal, computed, effect } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
+import { TauriService } from './tauri.service';
+import type { WorkspaceEntry } from '../types';
 
 export interface WorkspaceRunSummary {
   running: number;
@@ -13,25 +15,34 @@ export interface Workspace {
   activeWorktree: string | null;
   runSummary: WorkspaceRunSummary;
   navigationState: string | null;
+  activeRunCount: number;
 }
 
-const WORKSPACES_KEY = 'ralph-workspaces';
-
-function generateId(): string {
-  return `ws-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function extractLabel(path: string): string {
-  const parts = path.split('/');
-  return parts[parts.length - 1] || path;
+function entryToWorkspace(entry: WorkspaceEntry): Workspace {
+  return {
+    id: entry.id,
+    path: entry.repo_path,
+    label: entry.display_name,
+    activeWorktree: null,
+    runSummary: {
+      running: entry.active_run_count,
+      failed: 0,
+      paused: 0,
+    },
+    navigationState: entry.last_nav || null,
+    activeRunCount: entry.active_run_count,
+  };
 }
 
 @Injectable({
   providedIn: 'root',
 })
 export class WorkspaceService {
+  private readonly tauri = inject(TauriService);
+
   readonly workspaces = signal<Workspace[]>([]);
   readonly activeWorkspaceId = signal<string | null>(null);
+  readonly isLoading = signal<boolean>(true);
 
   readonly activeWorkspace = computed(() => {
     const id = this.activeWorkspaceId();
@@ -40,55 +51,71 @@ export class WorkspaceService {
   });
 
   constructor() {
-    this.loadFromStorage();
-    
-    effect(() => {
-      const data = this.workspaces();
-      this.saveToStorage(data);
-    });
+    void this.loadFromBackend();
   }
 
-  openWorkspace(path: string): Workspace {
-    const existing = this.workspaces().find(w => w.path === path);
-    if (existing) {
-      this.activeWorkspaceId.set(existing.id);
-      return existing;
+  private async loadFromBackend(): Promise<void> {
+    this.isLoading.set(true);
+    try {
+      const entries = await this.tauri.getWorkspaces();
+      const workspaces = entries.map(entryToWorkspace);
+      this.workspaces.set(workspaces);
+
+      if (workspaces.length > 0 && !this.activeWorkspaceId()) {
+        const firstWorkspace = workspaces[0];
+        if (firstWorkspace) {
+          this.activeWorkspaceId.set(firstWorkspace.id);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load workspaces from backend:', err);
+      this.workspaces.set([]);
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  async openWorkspace(path: string): Promise<Workspace> {
+    try {
+      const entry = await this.tauri.openWorkspace(path);
+      const workspace = entryToWorkspace(entry);
+
+      const existing = this.workspaces().find(w => w.id === workspace.id);
+      if (!existing) {
+        this.workspaces.update(list => [workspace, ...list]);
+      }
+
+      this.activeWorkspaceId.set(workspace.id);
+      return workspace;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to open workspace: ${msg}`);
+    }
+  }
+
+  async closeWorkspace(id: string): Promise<void> {
+    const workspace = this.workspaces().find(w => w.id === id);
+    if (!workspace) return;
+
+    if (workspace.runSummary.running > 0) {
+      throw new Error(
+        `Cannot close workspace "${workspace.label}" with ${workspace.runSummary.running} active run(s)`,
+      );
     }
 
-    const newWorkspace: Workspace = {
-      id: generateId(),
-      path,
-      label: extractLabel(path),
-      activeWorktree: null,
-      runSummary: { running: 0, failed: 0, paused: 0 },
-      navigationState: null,
-    };
+    try {
+      await this.tauri.closeWorkspace(id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(msg);
+    }
 
-    this.workspaces.update(list => [...list, newWorkspace]);
-    this.activeWorkspaceId.set(newWorkspace.id);
-
-    return newWorkspace;
-  }
-
-  closeWorkspace(id: string): void {
-    const list = this.workspaces();
-    const index = list.findIndex(w => w.id === id);
-    if (index === -1) return;
-
-    this.workspaces.update(wlist => {
-      const updated = [...wlist];
-      updated.splice(index, 1);
-      return updated;
-    });
+    this.workspaces.update(list => list.filter(w => w.id !== id));
 
     if (this.activeWorkspaceId() === id) {
       const remaining = this.workspaces();
       const firstRemaining = remaining[0];
-      if (firstRemaining) {
-        this.activeWorkspaceId.set(firstRemaining.id);
-      } else {
-        this.activeWorkspaceId.set(null);
-      }
+      this.activeWorkspaceId.set(firstRemaining?.id ?? null);
     }
   }
 
@@ -100,66 +127,73 @@ export class WorkspaceService {
     }
   }
 
+  async persistNavigation(id: string, nav: string): Promise<void> {
+    try {
+      await this.tauri.setWorkspaceNav(id, nav);
+      this.workspaces.update(list =>
+        list.map(w => (w.id === id ? { ...w, navigationState: nav } : w)),
+      );
+    } catch {
+      // Non-critical — navigation state is best-effort
+    }
+  }
+
+  async reorderWorkspaces(ids: string[]): Promise<void> {
+    try {
+      await this.tauri.reorderWorkspaces(ids);
+      // Reorder local signal to match
+      const current = this.workspaces();
+      const reordered = ids
+        .map(id => current.find(w => w.id === id))
+        .filter((w): w is Workspace => w !== undefined);
+      this.workspaces.set(reordered);
+    } catch (err) {
+      console.warn('Failed to reorder workspaces:', err);
+    }
+  }
+
   updateWorkspaceRunSummary(id: string, summary: Partial<WorkspaceRunSummary>): void {
     this.workspaces.update(list =>
       list.map(w =>
         w.id === id
           ? { ...w, runSummary: { ...w.runSummary, ...summary } }
-          : w
-      )
+          : w,
+      ),
     );
   }
 
   setActiveWorktree(id: string, worktreePath: string | null): void {
     this.workspaces.update(list =>
-      list.map(w =>
-        w.id === id
-          ? { ...w, activeWorktree: worktreePath }
-          : w
-      )
+      list.map(w => (w.id === id ? { ...w, activeWorktree: worktreePath } : w)),
     );
   }
 
   setNavigationState(id: string, navState: string | null): void {
     this.workspaces.update(list =>
-      list.map(w =>
-        w.id === id
-          ? { ...w, navigationState: navState }
-          : w
-      )
+      list.map(w => (w.id === id ? { ...w, navigationState: navState } : w)),
     );
   }
 
-  private loadFromStorage(): void {
-    if (typeof localStorage === 'undefined') return;
-
+  async getRecentWorkspaces(): Promise<string[]> {
     try {
-      const raw = localStorage.getItem(WORKSPACES_KEY);
-      if (!raw) return;
-
-      const data = JSON.parse(raw) as Workspace[];
-      if (Array.isArray(data) && data.length > 0) {
-        this.workspaces.set(data);
-        
-        if (!this.activeWorkspaceId()) {
-          const firstWorkspace = data[0];
-          if (firstWorkspace) {
-            this.activeWorkspaceId.set(firstWorkspace.id);
-          }
-        }
-      }
+      return await this.tauri.getRecentWorkspaces();
     } catch {
-      console.warn('Failed to load workspaces from localStorage');
+      return [];
     }
   }
 
-  private saveToStorage(data: Workspace[]): void {
-    if (typeof localStorage === 'undefined') return;
-
+  async updateRunCount(id: string, count: number): Promise<void> {
     try {
-      localStorage.setItem(WORKSPACES_KEY, JSON.stringify(data));
+      await this.tauri.updateWorkspaceRunCount(id, count);
+      this.workspaces.update(list =>
+        list.map(w =>
+          w.id === id
+            ? { ...w, activeRunCount: count, runSummary: { ...w.runSummary, running: count } }
+            : w,
+        ),
+      );
     } catch {
-      console.warn('Failed to save workspaces to localStorage');
+      // Non-critical
     }
   }
 }

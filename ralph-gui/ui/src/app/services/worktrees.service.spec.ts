@@ -79,17 +79,14 @@ describe('WorktreesService', () => {
   });
 
   describe('initializeRepo', () => {
-    it('should initialize repo and persist to localStorage', async () => {
+    it('should initialize repo and update lastRepoPath signal', async () => {
       const mockWorktrees = [createMockWorktree()];
       mockTauriService.listWorktrees.and.resolveTo(mockWorktrees);
-      
-      spyOn(localStorage, 'setItem');
-      
+
       await service.initializeRepo('/repo');
-      
+
       expect(service.worktrees()).toEqual(mockWorktrees);
       expect(service.lastRepoPath()).toBe('/repo');
-      expect(localStorage.setItem).toHaveBeenCalledWith('ralph_gui_last_repo', '/repo');
     });
 
     it('should handle initialize error', async () => {

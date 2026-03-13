@@ -1,133 +1,197 @@
 <div class="page-content">
-  @if (isLoading()) {
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+  @if (isLoadingValue) {
+    <div class="run-header">
       <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title" style="margin-bottom: 0;">Run Detail</h1>
+      <h1 class="page-title run-header__title">Run Detail</h1>
     </div>
-    <div style="padding: var(--space-10); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
-      Loading run...
-    </div>
-  } @else if (error() || !runDetail()) {
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+    <div class="run-loading">Loading run...</div>
+  } @else if (errorValue || !runDetailValue) {
+    <div class="run-header">
       <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title" style="margin-bottom: 0;">Run Detail</h1>
+      <h1 class="page-title run-header__title">Run Detail</h1>
     </div>
     <div class="empty-state">
       <span class="empty-state-icon">⊘</span>
       <div class="empty-state-title">Run not found</div>
-      <div class="empty-state-desc">{{ error() ?? 'This run could not be loaded.' }}</div>
+      <div class="empty-state-desc">{{ errorValue ?? 'This run could not be loaded.' }}</div>
     </div>
   } @else {
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
+    <!-- Page header -->
+    <div class="run-header">
       <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title" style="margin-bottom: 0; flex: 1;">Run Detail</h1>
+      <h1 class="page-title run-header__title">Run Detail</h1>
       <app-run-status-badge
-        [status]="runDetail()!.status"
+        [status]="runDetailValue!.status"
         [showLabel]="true"
-        [isDegraded]="runDetail()!.is_degraded ?? false"
+        [isDegraded]="runDetailValue!.is_degraded ?? false"
       />
-      @if (canResume()) {
-        <button class="btn btn-primary" (click)="handleResume()">Resume</button>
+      @if (runDetailValue!.status === 'Running') {
+        <button
+          class="btn btn-ghost btn-danger"
+          data-testid="cancel-btn"
+          (click)="handleCancel()"
+        >
+          Cancel
+        </button>
+      }
+      @if (canResumeValue) {
+        <button
+          class="btn btn-primary"
+          data-testid="resume-btn"
+          (click)="handleResume()"
+        >
+          Resume
+        </button>
       }
     </div>
 
-    <div style="animation: fadeIn 200ms ease 40ms both;">
-      <div style="padding: 10px 16px; background: var(--accent-bg); border: 1px solid rgba(232,168,56,0.15); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 12px; color: var(--accent); margin-bottom: var(--space-5); letter-spacing: 0.02em;">
-        {{ runDetail()!.run_id }}
-      </div>
+    <div class="run-detail-body">
+      <!-- Run ID badge -->
+      <div class="run-id-badge">{{ runDetailValue!.run_id }}</div>
 
-      @if (runDetail()!.is_degraded) {
-        <div
-          data-testid="degraded-banner"
-          style="padding: 10px 16px; background: var(--status-degraded-bg); border: 1px solid var(--status-degraded-border); border-radius: var(--radius-md); color: var(--status-degraded); font-size: 12px; font-family: var(--font-mono); margin-bottom: var(--space-4); display: flex; align-items: center; gap: 10px;"
-        >
-          <span style="font-size: 15px; flex-shrink: 0;">⚠</span>
+      <!-- Degraded banner -->
+      @if (runDetailValue!.is_degraded) {
+        <div class="banner banner--warning" data-testid="degraded-banner">
+          <span class="banner__icon">⚠</span>
           <span>
-            <strong style="font-weight: 600;">Degraded conditions</strong>
+            <strong>Degraded conditions</strong>
             — retries exceeded or fallback agent active. Monitor closely.
           </span>
         </div>
       }
 
-      <div class="card" style="margin-bottom: var(--space-5);">
-        <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
-          Run information
-        </div>
-
-        <app-detail-row label="status" [value]="runDetail()!.status" [mono]="true" />
-        <app-detail-row label="phase" [value]="runDetail()!.current_phase" [mono]="true" />
-        <app-detail-row label="agent_profile" [value]="runDetail()!.agent_profile" [mono]="true" />
-        <app-detail-row label="repo_path" [value]="runDetail()!.repo_path" [mono]="true" />
-        <app-detail-row label="worktree_path" [value]="runDetail()!.worktree_path" [mono]="true" />
-        <app-detail-row label="created_at" [value]="runDetail()!.created_at" [mono]="true" />
-        <app-detail-row label="last_checkpoint" [value]="runDetail()!.last_checkpoint" [mono]="true" />
-        <app-detail-row label="iteration_count" [value]="iterationCount()" [mono]="true" />
-        @if (runDetail()!.last_error) {
-          <app-detail-row label="last_error" [value]="runDetail()!.last_error ?? null" [mono]="true" />
-        }
-        <app-detail-row label="description" [value]="runDetail()!.description || null" [mono]="false" />
-      </div>
-
-      <div class="card" style="margin-bottom: var(--space-5);">
-        <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 20px;">
-          Phase
-        </div>
-
-        <div class="phase-timeline" style="align-items: flex-start;">
-          @for (phase of phases; track phase; let idx = $index) {
-            <div style="display: flex; align-items: flex-start; flex: {{ idx < 3 ? 1 : 'unset' }};">
-              <div class="phase-node">
-                <div
-                  class="phase-node__dot"
-                  [style]="phaseDotStyle(phase, idx)"
-                >
-                  @if (isPhaseDone(phase, idx)) {
-                    ✓
-                  } @else {
-                    {{ idx + 1 }}
-                  }
-                </div>
-                <div class="phase-node__label" [style]="phaseLabelStyle(phase, idx)">
-                  {{ phase }}
-                </div>
+      <!-- State-specific banners -->
+      @if (runDetailValue!.status === 'Completed') {
+        <div class="banner banner--success" data-testid="completed-banner">
+          <span class="banner__icon">✓</span>
+          <div class="banner__content">
+            <strong>Completed</strong>
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span class="metric-card__label">Iterations</span>
+                <span class="metric-card__value">{{ runDetailValue!.iteration_count ?? 0 }}</span>
               </div>
-              @if (idx < 3) {
-                <div class="phase-connector" [style]="phaseConnectorStyle(phase, idx)"></div>
-              }
+              <div class="metric-card">
+                <span class="metric-card__label">Phase</span>
+                <span class="metric-card__value">{{ runDetailValue!.current_phase }}</span>
+              </div>
             </div>
-          }
+          </div>
         </div>
+      }
+
+      @if (runDetailValue!.status === 'Failed') {
+        <div class="banner banner--error" data-testid="failed-banner">
+          <span class="banner__icon">✗</span>
+          <div class="banner__content">
+            <strong>Failed</strong>
+            @if (runDetailValue!.last_error) {
+              <div class="banner__error-msg">{{ runDetailValue!.last_error }}</div>
+            }
+            <div class="banner__actions">
+              <button class="btn btn-ghost" (click)="handleRetry()">Retry from Beginning</button>
+              <a class="btn btn-ghost" routerLink="/configuration">Go to Config →</a>
+            </div>
+          </div>
+        </div>
+      }
+
+      @if (runDetailValue!.status === 'Paused') {
+        <div class="banner banner--paused" data-testid="paused-banner">
+          <span class="banner__icon">⏸</span>
+          <div class="banner__content">
+            <strong>Paused at checkpoint</strong>
+            <div class="banner__subtitle">
+              Will resume from iteration {{ runDetailValue!.iteration_count ?? 0 }}
+            </div>
+            <div class="banner__actions">
+              <button class="btn btn-primary" (click)="handleResume()">Resume</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Phase Timeline (extracted component) -->
+      <div class="card run-phase-card">
+        <div class="card-section-label">Phase</div>
+        <app-phase-timeline
+          [phases]="timelinePhasesValue"
+          (phaseClick)="onPhaseClick($event)"
+        />
       </div>
 
-      <div class="card" style="margin-top: var(--space-5);">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div style="font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em;">
-            Run Log
-          </div>
-          <div style="display: flex; gap: 8px;">
-            @if (logExpanded() && logFetched()) {
-              <button class="btn btn-ghost" style="font-size: 11px; padding: 2px 10px;" (click)="fetchLogs()">Refresh</button>
-            }
-            <button
-              class="btn btn-ghost"
-              style="font-size: 11px; padding: 2px 10px;"
-              (click)="toggleLogs()"
-              data-testid="toggle-run-log"
-            >
-              {{ logExpanded() ? 'Collapse' : 'Expand' }}
-            </button>
-          </div>
-        </div>
-        @if (logExpanded()) {
-          <div style="margin-top: 12px;">
-            <app-run-log
-              [lines]="logLines()"
-              [isLoading]="logLoading()"
-              ariaLabel="Run log output"
-            />
-          </div>
-        }
+      <!-- Tab bar -->
+      <div class="run-tabs" role="tablist" aria-label="Run detail tabs">
+        <button
+          class="run-tab"
+          [class.run-tab--active]="activeTabValue === 'log'"
+          role="tab"
+          [attr.aria-selected]="activeTabValue === 'log'"
+          data-testid="tab-log"
+          (click)="setTab('log')"
+        >
+          Log
+        </button>
+        <button
+          class="run-tab"
+          [class.run-tab--active]="activeTabValue === 'changes'"
+          role="tab"
+          [attr.aria-selected]="activeTabValue === 'changes'"
+          data-testid="tab-changes"
+          (click)="setTab('changes')"
+        >
+          Changes
+        </button>
+        <button
+          class="run-tab"
+          [class.run-tab--active]="activeTabValue === 'info'"
+          role="tab"
+          [attr.aria-selected]="activeTabValue === 'info'"
+          data-testid="tab-info"
+          (click)="setTab('info')"
+        >
+          Info
+        </button>
       </div>
+
+      <!-- Tab content -->
+      @if (activeTabValue === 'log') {
+        <div class="card run-tab-content" data-testid="tab-content-log">
+          <app-run-log
+            [runId]="runDetailValue!.run_id"
+            [repoPath]="runDetailValue!.repo_path"
+            [worktreePath]="runDetailValue!.worktree_path"
+          />
+        </div>
+      }
+
+      @if (activeTabValue === 'changes') {
+        <div class="card run-tab-content" data-testid="tab-content-changes">
+          <app-changes-viewer
+            [runId]="runDetailValue!.run_id"
+            [repoPath]="runDetailValue!.repo_path"
+            [worktreePath]="runDetailValue!.worktree_path"
+          />
+        </div>
+      }
+
+      @if (activeTabValue === 'info') {
+        <div class="card run-tab-content" data-testid="tab-content-info">
+          <div class="card-section-label">Run Information</div>
+          <app-detail-row label="status" [value]="runDetailValue!.status" [mono]="true" />
+          <app-detail-row label="phase" [value]="runDetailValue!.current_phase" [mono]="true" />
+          <app-detail-row label="agent_profile" [value]="runDetailValue!.agent_profile" [mono]="true" />
+          <app-detail-row label="repo_path" [value]="runDetailValue!.repo_path" [mono]="true" />
+          <app-detail-row label="worktree_path" [value]="runDetailValue!.worktree_path" [mono]="true" />
+          <app-detail-row label="created_at" [value]="runDetailValue!.created_at" [mono]="true" />
+          <app-detail-row label="last_checkpoint" [value]="runDetailValue!.last_checkpoint" [mono]="true" />
+          <app-detail-row label="iteration_count" [value]="iterationCountValue" [mono]="true" />
+           @if (runDetailValue!.last_error) {
+             <app-detail-row label="last_error" [value]="runDetailValue!.last_error || null" [mono]="true" />
+           }
+          <app-detail-row label="description" [value]="runDetailValue!.description || null" [mono]="false" />
+        </div>
+      }
     </div>
   }
 </div>

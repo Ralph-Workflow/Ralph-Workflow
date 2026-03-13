@@ -1,0 +1,151 @@
+@if (isOpen_) {
+  <div class="assistant-panel" data-testid="assistant-panel">
+    <!-- Tab bar -->
+    <div class="tab-bar" role="tablist">
+      <button
+        role="tab"
+        class="tab-btn"
+        [class.active]="activeTab_ === 'describe'"
+        [attr.aria-selected]="activeTab_ === 'describe'"
+        (click)="setTab('describe')"
+        data-testid="tab-describe"
+      >
+        Describe
+      </button>
+      <button
+        role="tab"
+        class="tab-btn"
+        [class.active]="activeTab_ === 'refine'"
+        [attr.aria-selected]="activeTab_ === 'refine'"
+        (click)="setTab('refine')"
+        data-testid="tab-refine"
+      >
+        Refine
+      </button>
+    </div>
+
+    <!-- Describe mode -->
+    @if (activeTab_ === 'describe') {
+      <div class="tab-content" data-testid="describe-panel">
+        <!-- Message list -->
+        <div class="message-list" aria-live="polite" aria-label="Conversation">
+          @if (describeMessages_.length === 0 && !describeLoading_) {
+            <div class="empty-hint">
+              Describe a feature or problem and AI will suggest a prompt.
+            </div>
+          }
+          @for (msg of describeMessages_; track $index) {
+            @if (msg.role === 'user') {
+              <div class="msg-user" data-testid="msg-user">
+                <span class="msg-label">You</span>
+                <p>{{ msg.text }}</p>
+              </div>
+            } @else {
+              <div class="msg-ai" data-testid="msg-ai">
+                <span class="msg-label">Suggested Prompt</span>
+                <p>{{ msg.text }}</p>
+                <button
+                  class="btn btn-secondary apply-btn"
+                  (click)="applyFromDescribe(msg.text)"
+                  data-testid="apply-describe-btn"
+                >
+                  Apply to Editor
+                </button>
+              </div>
+            }
+          }
+          @if (describeLoading_) {
+            <div class="loading-row" data-testid="describe-loading">
+              <span class="spinner animate-spin">⟳</span>
+              <span style="font-size: 12px; color: var(--text-muted);">Generating suggestion…</span>
+            </div>
+          }
+        </div>
+
+        <!-- Input area -->
+        <div class="input-row">
+          <textarea
+            class="input input-mono describe-input"
+            rows="2"
+            placeholder="Describe the feature or problem…"
+            [value]="describeInput_"
+            (input)="describeInput.set($any($event.target).value)"
+            (keydown)="onDescribeKeyDown($event)"
+            aria-label="Describe feature or problem"
+            data-testid="describe-input"
+          ></textarea>
+          <button
+            class="btn btn-primary send-btn"
+            (click)="submitDescribe()"
+            [disabled]="isDescribeInputEmpty || describeLoading_"
+            aria-label="Send"
+            data-testid="describe-submit-btn"
+          >
+            ↑
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Refine mode -->
+    @if (activeTab_ === 'refine') {
+      <div class="tab-content" data-testid="refine-panel">
+        @if (refineEmptyState_) {
+          <div class="empty-hint" data-testid="refine-empty-state">
+            Enter a prompt in the editor to analyze it.
+          </div>
+        } @else if (refineLoading_) {
+          <div class="loading-row" data-testid="refine-loading">
+            <span class="spinner animate-spin">⟳</span>
+            <span style="font-size: 12px; color: var(--text-muted);">Analyzing prompt…</span>
+          </div>
+        } @else if (refineError_) {
+          <div class="error-box" data-testid="refine-error">
+            <p>{{ refineError_ }}</p>
+            <button class="btn btn-secondary" (click)="reAnalyze()">Retry</button>
+          </div>
+        } @else if (refineResult_) {
+          <div data-testid="refine-result">
+            @if (refineResult_!.suggestions.length > 0) {
+              <div class="issues-section">
+                <h4 class="section-title">Issues identified</h4>
+                <ul class="issues-list">
+                  @for (s of refineResult_!.suggestions; track $index) {
+                    <li>{{ s }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            @if (refineResult_!.improved_prompt) {
+              <div class="improved-section">
+                <h4 class="section-title">Suggested improved prompt</h4>
+                <pre class="improved-prompt">{{ refineResult_!.improved_prompt }}</pre>
+                <div class="refine-actions">
+                  <button
+                    class="btn btn-primary"
+                    (click)="applyRefineResult()"
+                    data-testid="apply-refine-btn"
+                  >
+                    Apply Suggestion
+                  </button>
+                  <button
+                    class="btn btn-secondary"
+                    (click)="reAnalyze()"
+                    data-testid="analyze-again-btn"
+                  >
+                    Analyze again
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Footer -->
+    <div class="panel-footer">
+      <span class="footer-label">Using: Planning drain agent</span>
+    </div>
+  </div>
+}

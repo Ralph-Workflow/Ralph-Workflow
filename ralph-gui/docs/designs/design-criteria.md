@@ -11,6 +11,10 @@ be executed*.
 
 **The `frontend-design` skill must be used for all UI work.**
 
+**Prefer Typewind over inline CSS styles for GUI implementation.** Inline styles
+should be a last resort when a specific need cannot be expressed cleanly through
+Typewind or the existing styling system.
+
 Every screen, component, or visual change must be designed and reviewed through
 the `frontend-design` skill. This is not optional. The skill exists to prevent
 generic, template-looking interfaces and ensure every piece of UI is

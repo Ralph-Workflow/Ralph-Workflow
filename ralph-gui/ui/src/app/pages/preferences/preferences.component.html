@@ -1,0 +1,302 @@
+<div class="preferences-page">
+  <div class="preferences-header">
+    <h1 class="preferences-title">Preferences</h1>
+    <button class="btn btn-secondary reset-btn" type="button" (click)="resetToDefaults()">
+      Reset All to Defaults
+    </button>
+  </div>
+
+  <!-- Appearance Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Appearance</h2>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-theme">Theme</label>
+      <select
+        id="pref-theme"
+        class="input pref-control"
+        [value]="prefs.theme"
+        (change)="updatePref('theme', asInputValue($event))"
+      >
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-accent">Accent Color</label>
+      <input
+        id="pref-accent"
+        type="color"
+        class="pref-color"
+        [value]="prefs.accentColor"
+        (change)="updatePref('accentColor', asInputValue($event))"
+      />
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-sidebar-width">Sidebar Width (px)</label>
+      <input
+        id="pref-sidebar-width"
+        type="number"
+        class="input pref-control"
+        [value]="prefs.sidebarWidth"
+        min="180"
+        max="400"
+        (change)="updatePref('sidebarWidth', asNumberValue($event))"
+      />
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-font-size">Base Font Size (px)</label>
+      <input
+        id="pref-font-size"
+        type="number"
+        class="input pref-control"
+        [value]="prefs.fontSize"
+        min="12"
+        max="18"
+        (change)="updatePref('fontSize', asNumberValue($event))"
+      />
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-mono-font">Monospace Font</label>
+      <input
+        id="pref-mono-font"
+        type="text"
+        class="input pref-control"
+        [value]="prefs.monospaceFont"
+        (change)="updatePref('monospaceFont', asInputValue($event))"
+      />
+    </div>
+  </section>
+
+  <!-- Behavior Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Behavior</h2>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-poll-interval">Run Poll Interval (ms)</label>
+      <input
+        id="pref-poll-interval"
+        type="number"
+        class="input pref-control"
+        [value]="prefs.runPollIntervalMs"
+        min="1000"
+        max="30000"
+        (change)="updatePref('runPollIntervalMs', asNumberValue($event))"
+      />
+    </div>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label">Log Auto-scroll</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.session.logAutoscroll"
+        (click)="updateSession('logAutoscroll', !prefs.session.logAutoscroll)"
+        [attr.aria-pressed]="prefs.session.logAutoscroll"
+        aria-label="Log Auto-scroll"
+      >
+        {{ prefs.session.logAutoscroll ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-log-buffer">Log Buffer Size</label>
+      <input
+        id="pref-log-buffer"
+        type="number"
+        class="input pref-control"
+        [value]="prefs.logBufferSize"
+        min="1000"
+        max="50000"
+        (change)="updatePref('logBufferSize', asNumberValue($event))"
+      />
+    </div>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label">Confirm Before Cancelling</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.session.confirmCancel"
+        (click)="updateSession('confirmCancel', !prefs.session.confirmCancel)"
+        [attr.aria-pressed]="prefs.session.confirmCancel"
+        aria-label="Confirm Before Cancelling"
+      >
+        {{ prefs.session.confirmCancel ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label">Show Phase Change Notifications</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.showPhaseNotifications"
+        (click)="updateNotification('showPhaseNotifications', !prefs.notifications.showPhaseNotifications)"
+        [attr.aria-pressed]="prefs.notifications.showPhaseNotifications"
+        aria-label="Show Phase Change Notifications"
+      >
+        {{ prefs.notifications.showPhaseNotifications ? 'On' : 'Off' }}
+      </button>
+    </div>
+  </section>
+
+  <!-- Notifications Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Notifications</h2>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label pref-label--master">Desktop Notifications</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.desktopNotifications"
+        (click)="updateNotification('desktopNotifications', !prefs.notifications.desktopNotifications)"
+        [attr.aria-pressed]="prefs.notifications.desktopNotifications"
+        aria-label="Desktop Notifications"
+      >
+        {{ prefs.notifications.desktopNotifications ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row pref-toggle-row pref-row--indented">
+      <span class="pref-label">Notify on Completion</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.triggers.notifyCompletion"
+        (click)="updateTrigger('notifyCompletion', !prefs.notifications.triggers.notifyCompletion)"
+        [attr.aria-pressed]="prefs.notifications.triggers.notifyCompletion"
+        aria-label="Notify on Completion"
+      >
+        {{ prefs.notifications.triggers.notifyCompletion ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row pref-toggle-row pref-row--indented">
+      <span class="pref-label">Notify on Failure</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.triggers.notifyFailure"
+        (click)="updateTrigger('notifyFailure', !prefs.notifications.triggers.notifyFailure)"
+        [attr.aria-pressed]="prefs.notifications.triggers.notifyFailure"
+        aria-label="Notify on Failure"
+      >
+        {{ prefs.notifications.triggers.notifyFailure ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row pref-toggle-row pref-row--indented">
+      <span class="pref-label">Notify on Phase Change</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.notifyPhaseChange"
+        (click)="updateNotification('notifyPhaseChange', !prefs.notifications.notifyPhaseChange)"
+        [attr.aria-pressed]="prefs.notifications.notifyPhaseChange"
+        aria-label="Notify on Phase Change"
+      >
+        {{ prefs.notifications.notifyPhaseChange ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row pref-toggle-row pref-row--indented">
+      <span class="pref-label">Notify on Degraded</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.notifications.triggers.notifyDegraded"
+        (click)="updateTrigger('notifyDegraded', !prefs.notifications.triggers.notifyDegraded)"
+        [attr.aria-pressed]="prefs.notifications.triggers.notifyDegraded"
+        aria-label="Notify on Degraded"
+      >
+        {{ prefs.notifications.triggers.notifyDegraded ? 'On' : 'Off' }}
+      </button>
+    </div>
+  </section>
+
+  <!-- Startup Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Startup</h2>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label">Restore Last Workspaces</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.session.restoreWorkspaces"
+        (click)="updateSession('restoreWorkspaces', !prefs.session.restoreWorkspaces)"
+        [attr.aria-pressed]="prefs.session.restoreWorkspaces"
+        aria-label="Restore Last Workspaces"
+      >
+        {{ prefs.session.restoreWorkspaces ? 'On' : 'Off' }}
+      </button>
+    </div>
+
+    <div class="pref-row">
+      <label class="pref-label" for="pref-default-view">Default View</label>
+      <select
+        id="pref-default-view"
+        class="input pref-control"
+        [value]="prefs.defaultView"
+        (change)="updatePref('defaultView', asInputValue($event))"
+      >
+        @for (opt of defaultViewOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="pref-row pref-toggle-row">
+      <span class="pref-label">Check for Updates</span>
+      <button
+        class="toggle-btn"
+        type="button"
+        [class.active]="prefs.checkUpdates"
+        (click)="updatePref('checkUpdates', !prefs.checkUpdates)"
+        [attr.aria-pressed]="prefs.checkUpdates"
+        aria-label="Check for Updates"
+      >
+        {{ prefs.checkUpdates ? 'On' : 'Off' }}
+      </button>
+    </div>
+  </section>
+
+  <!-- Agent Tools Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Agent Tools</h2>
+    <p class="pref-description">
+      Manage CLI tools Ralph Workflow delegates to (Claude Code, Codex, OpenCode).
+      Check installed status, version, and authentication for each tool.
+    </p>
+    <a
+      [routerLink]="['/agent-tools']"
+      class="btn btn-secondary"
+    >Open Agent Tools Manager</a>
+  </section>
+
+  <!-- Keyboard Shortcuts Section -->
+  <section class="pref-section">
+    <h2 class="pref-section-title">Keyboard Shortcuts</h2>
+
+    @for (group of keyboardShortcuts; track group.category) {
+      <div class="shortcuts-group">
+        <h3 class="shortcuts-category">{{ group.category }}</h3>
+        @for (shortcut of group.shortcuts; track shortcut.description) {
+          <div class="shortcut-row">
+            <span class="shortcut-keys">
+              @for (key of shortcut.keys; track key) {
+                <kbd>{{ key }}</kbd>
+              }
+            </span>
+            <span class="shortcut-desc">{{ shortcut.description }}</span>
+          </div>
+        }
+      </div>
+    }
+  </section>
+</div>

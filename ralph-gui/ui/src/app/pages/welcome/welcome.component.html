@@ -1,0 +1,49 @@
+<div class="welcome-page">
+  <div class="welcome-card">
+    <div class="welcome-logo">
+      <div class="logo-mark">R</div>
+      <div class="logo-text">
+        <span class="logo-name">Ralph</span>
+        <span class="logo-sub">workflow</span>
+      </div>
+    </div>
+
+    <h1 class="welcome-heading">No workspaces open</h1>
+    <p class="welcome-body">Open a Git repository to start managing Ralph workflow sessions.</p>
+
+    @if (errorMessageValue) {
+      <div class="error-banner">
+        <span class="error-icon">⚠</span>
+        <span>{{ errorMessageValue }}</span>
+      </div>
+    }
+
+    <button
+      class="open-workspace-btn"
+      (click)="openWorkspace()"
+      [disabled]="isOpeningValue"
+    >
+      @if (isOpeningValue) {
+        <span class="btn-spinner"></span>
+        <span>Opening...</span>
+      } @else {
+        <span class="btn-icon">📁</span>
+        <span>Open Workspace</span>
+      }
+    </button>
+
+    @if (recentWorkspacesList.length > 0) {
+      <div class="recent-section">
+        <h2 class="recent-heading">Recent Workspaces</h2>
+        <ul class="recent-list">
+          @for (path of recentWorkspacesList; track path) {
+            <li class="recent-item" (click)="openRecentWorkspace(path)">
+              <span class="recent-icon">📂</span>
+              <span class="recent-path" [title]="path">{{ path }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+  </div>
+</div>

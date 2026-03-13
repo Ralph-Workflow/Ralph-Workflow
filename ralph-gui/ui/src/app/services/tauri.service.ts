@@ -2,14 +2,19 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type {
   AgentProfile,
+  AgentToolInfo,
   ConfigView,
   CreateSessionRequest,
   CreateWorktreeResult,
+  GuiPreferences,
   LaunchSessionArgs,
   PromptReviewResult,
+  RunChanges,
   RunDetail,
   RunStatusSummary,
   SessionSummary,
+  TemplateInfo,
+  WorkspaceEntry,
   WorktreeInfo,
 } from '../types';
 
@@ -226,4 +231,142 @@ export class TauriService {
     });
     return typeof selected === 'string' ? selected : null;
   }
+
+  // --- Workspace commands ---
+
+  async getWorkspaces(): Promise<WorkspaceEntry[]> {
+    return this.invoke<WorkspaceEntry[]>('get_workspaces');
+  }
+
+  async openWorkspace(path: string): Promise<WorkspaceEntry> {
+    return this.invoke<WorkspaceEntry>('open_workspace', { path });
+  }
+
+  async closeWorkspace(id: string): Promise<void> {
+    return this.invoke<void>('close_workspace', { id });
+  }
+
+  async reorderWorkspaces(ids: string[]): Promise<void> {
+    return this.invoke<void>('reorder_workspaces', { ids });
+  }
+
+  async setWorkspaceNav(id: string, nav: string): Promise<void> {
+    return this.invoke<void>('set_workspace_nav', { id, nav });
+  }
+
+  async getRecentWorkspaces(): Promise<string[]> {
+    return this.invoke<string[]>('get_recent_workspaces');
+  }
+
+  async updateWorkspaceRunCount(id: string, count: number): Promise<void> {
+    return this.invoke<void>('update_workspace_run_count', { id, count });
+  }
+
+  // --- Run log streaming ---
+
+  async subscribeRunLogs(
+    runId: string,
+    repoPath: string,
+    worktreePath: string | null,
+  ): Promise<void> {
+    return this.invoke<void>('subscribe_run_logs', {
+      run_id: runId,
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+    });
+  }
+
+  async unsubscribeRunLogs(runId: string): Promise<void> {
+    return this.invoke<void>('unsubscribe_run_logs', { run_id: runId });
+  }
+
+  // --- Run changes / diff ---
+
+  async getRunChanges(
+    repoPath: string,
+    worktreePath: string | null,
+    iteration?: number,
+  ): Promise<RunChanges> {
+    return this.invoke<RunChanges>('get_run_changes', {
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+      iteration: iteration ?? null,
+    });
+  }
+
+  async cancelRun(repoPath: string, worktreePath: string | null): Promise<void> {
+    return this.invoke<void>('cancel_run', {
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+    });
+  }
+
+  // --- GUI Preferences ---
+
+  async getGuiPreferences(): Promise<GuiPreferences> {
+    return this.invoke<GuiPreferences>('get_gui_preferences');
+  }
+
+  async saveGuiPreferences(prefs: GuiPreferences): Promise<void> {
+    return this.invoke<void>('save_gui_preferences', { prefs });
+  }
+
+  // --- Agent tools ---
+
+  async getAgentTools(): Promise<AgentToolInfo[]> {
+    return this.invoke<AgentToolInfo[]>('get_agent_tools');
+  }
+
+  async testAgentToolConnection(name: string): Promise<string> {
+    return this.invoke<string>('test_agent_tool_connection', { name });
+  }
+
+  // --- AI prompt assistance ---
+
+  async assistPromptDescribe(description: string, repoPath: string): Promise<string> {
+    return this.invoke<string>('assist_prompt_describe', {
+      description,
+      repo_path: repoPath,
+    });
+  }
+
+  async assistPromptRefine(currentPrompt: string, repoPath: string): Promise<PromptReviewResult> {
+    return this.invoke<PromptReviewResult>('assist_prompt_refine', {
+      current_prompt: currentPrompt,
+      repo_path: repoPath,
+    });
+  }
+
+  // --- Prompt templates ---
+
+  async listTemplates(templatesDir: string): Promise<TemplateInfo[]> {
+    return this.invoke<TemplateInfo[]>('list_templates', { templates_dir: templatesDir });
+  }
+
+  async saveTemplate(
+    name: string,
+    description: string,
+    content: string,
+    tags: string[],
+    templatesDir: string,
+  ): Promise<void> {
+    return this.invoke<void>('save_template', {
+      name,
+      description,
+      content,
+      tags,
+      templates_dir: templatesDir,
+    });
+  }
+
+  async deleteTemplate(name: string, templatesDir: string): Promise<void> {
+    return this.invoke<void>('delete_template', { name, templates_dir: templatesDir });
+  }
+
+  // --- Resumable runs ---
+
+  async getResumableRunsForPath(repoPath: string): Promise<RunDetail[]> {
+    return this.invoke<RunDetail[]>('get_resumable_runs', { repo_path: repoPath });
+  }
+
 }

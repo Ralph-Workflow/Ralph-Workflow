@@ -1,0 +1,132 @@
+<div class="onboarding-container">
+  <div class="onboarding-card">
+    <!-- Progress indicator -->
+    <div class="progress-indicator" [attr.aria-label]="'Step ' + currentStepValue + ' of ' + totalSteps">
+      @for (step of stepNumbers; track step) {
+        <div
+          class="step-dot"
+          [class.active]="step === currentStepValue"
+          [class.completed]="step < currentStepValue"
+        ></div>
+      }
+    </div>
+
+    <!-- Step 1: Welcome -->
+    @if (currentStepValue === 1) {
+      <div class="step-content step-welcome">
+        <div class="ralph-logo" aria-hidden="true">R</div>
+        <h1 class="welcome-title">Welcome to Ralph Workflow</h1>
+        <p class="welcome-subtitle">Get started with Ralph Workflow — an automated AI coding assistant pipeline for your projects.</p>
+        <div class="step-actions">
+          <button type="button" class="btn btn-primary" (click)="next()">
+            Get Started
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Step 2: Agent Tools -->
+    @if (currentStepValue === 2) {
+      <div class="step-content step-tools">
+        <h2 class="step-title">Agent Tools</h2>
+        <p class="step-description">Ralph works with these AI coding agents. At least one must be installed to proceed.</p>
+
+        @if (isLoadingToolsValue) {
+          <div class="tools-loading">Loading agent tools...</div>
+        } @else {
+          <div class="tools-list">
+            @for (tool of agentToolsList; track tool.name) {
+              <div class="tool-item agent-tool" [class.installed]="tool.installed" [class.not-installed]="!tool.installed">
+                <div class="tool-status-icon">
+                  {{ tool.installed ? '✓' : '○' }}
+                </div>
+                <div class="tool-info">
+                  <span class="tool-name">{{ tool.name }}</span>
+                  <span class="tool-binary">{{ tool.binary }}</span>
+                </div>
+                <div class="tool-health">
+                  @if (tool.installed) {
+                    <span class="health-badge health-{{ tool.health }}">{{ tool.health }}</span>
+                    @if (tool.version) {
+                      <span class="tool-version">v{{ tool.version }}</span>
+                    }
+                  } @else {
+                    <span class="health-badge health-not-installed">not installed</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost" (click)="back()">
+            Back
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!hasInstalledToolValue"
+            (click)="next()"
+          >
+            Continue
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Step 3: Open Workspace -->
+    @if (currentStepValue === 3) {
+      <div class="step-content step-workspace">
+        <h2 class="step-title">Open a Workspace</h2>
+        <p class="step-description">Select a git repository to use as your workspace.</p>
+
+        <div class="workspace-picker">
+          @if (selectedDirectoryValue) {
+            <div class="selected-dir">
+              <span class="dir-icon">📁</span>
+              <span class="dir-path">{{ selectedDirectoryValue }}</span>
+            </div>
+          } @else {
+            <p class="no-dir-hint">No directory selected</p>
+          }
+          <button
+            type="button"
+            class="btn btn-secondary"
+            (click)="browseDirectory()"
+            [disabled]="isOpeningWorkspaceValue"
+          >
+            Browse...
+          </button>
+        </div>
+
+        @if (openWorkspaceErrorValue) {
+          <p class="error-text">{{ openWorkspaceErrorValue }}</p>
+        }
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-ghost" (click)="back()">
+            Back
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!selectedDirectoryValue || isOpeningWorkspaceValue"
+            (click)="openWorkspace()"
+          >
+            {{ isOpeningWorkspaceValue ? 'Opening...' : 'Open Workspace' }}
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

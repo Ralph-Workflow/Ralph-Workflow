@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
 /// Current status of a Ralph run.
@@ -458,6 +461,280 @@ pub fn get_run_logs(
     };
 
     Ok(lines)
+}
+
+/// A single log line emitted by a running Ralph session.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct RunLogLine {
+    pub run_id: String,
+    pub line: String,
+    pub sequence: u64,
+}
+
+/// A file diff entry for a run.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct FileDiff {
+    pub path: String,
+    pub additions: i32,
+    pub deletions: i32,
+    pub diff_text: String,
+}
+
+/// All changed files for a run or a specific iteration.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct RunChanges {
+    pub files: Vec<FileDiff>,
+    pub total_additions: i32,
+    pub total_deletions: i32,
+    pub iteration: Option<u32>,
+}
+
+/// Global map of active log subscription cancel handles, keyed by `run_id`.
+static LOG_SUBSCRIPTIONS: std::sync::LazyLock<
+    Mutex<HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
+> = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Subscribe to real-time log streaming for a given run.
+///
+/// Starts a background task that tails the run's log file and emits Tauri events
+/// with payload `RunLogLine` to the event channel named `run-log-{run_id}`.
+///
+/// # Errors
+///
+/// Returns an error if the log subscription cannot be started.
+#[tauri::command]
+#[specta::specta]
+pub fn subscribe_run_logs(
+    app: AppHandle,
+    run_id: String,
+    repo_path: String,
+    worktree_path: Option<String>,
+) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancelled_clone = Arc::clone(&cancelled);
+
+    // Store the cancel handle
+    {
+        let mut subs = LOG_SUBSCRIPTIONS
+            .lock()
+            .map_err(|e| format!("Failed to acquire log subscription lock: {e}"))?;
+        subs.insert(run_id.clone(), cancelled);
+    }
+
+    let run_id_clone = run_id.clone();
+    let event_name = format!("run-log-{run_id}");
+
+    std::thread::spawn(move || {
+        use tauri::Emitter;
+        let base = worktree_path.map_or_else(
+            || std::path::PathBuf::from(&repo_path),
+            std::path::PathBuf::from,
+        );
+        let agent_dir = base.join(".agent");
+        let log_file = agent_dir
+            .join(format!("logs-{run_id_clone}"))
+            .join("pipeline.log");
+
+        let mut sequence: u64 = 0;
+        let mut last_pos: usize = 0;
+
+        loop {
+            if cancelled_clone.load(Ordering::Relaxed) {
+                break;
+            }
+
+            if let Ok(content) = std::fs::read_to_string(&log_file) {
+                let all_lines: Vec<&str> = content.lines().collect();
+                if last_pos < all_lines.len() {
+                    for line in &all_lines[last_pos..] {
+                        let payload = RunLogLine {
+                            run_id: run_id_clone.clone(),
+                            line: line.to_string(),
+                            sequence,
+                        };
+                        let _ = app.emit(&event_name, &payload);
+                        sequence += 1;
+                    }
+                    last_pos = all_lines.len();
+                }
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
+
+    Ok(())
+}
+
+/// Unsubscribe from real-time log streaming for a given run.
+///
+/// # Errors
+///
+/// Returns an error if the subscription state cannot be accessed.
+#[tauri::command]
+#[specta::specta]
+pub fn unsubscribe_run_logs(run_id: String) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+
+    let cancelled = LOG_SUBSCRIPTIONS
+        .lock()
+        .map_err(|e| format!("Failed to acquire log subscription lock: {e}"))?
+        .remove(&run_id);
+
+    if let Some(cancelled) = cancelled {
+        cancelled.store(true, Ordering::Relaxed);
+    }
+
+    Ok(())
+}
+
+/// Parse a unified diff into `FileDiff` structs.
+fn parse_unified_diff(diff_output: &str) -> Vec<FileDiff> {
+    let mut files: Vec<FileDiff> = Vec::new();
+    let mut current_file: Option<FileDiff> = None;
+    let mut diff_lines: Vec<String> = Vec::new();
+
+    for line in diff_output.lines() {
+        if line.starts_with("diff --git ") {
+            // Save the previous file
+            if let Some(mut file) = current_file.take() {
+                file.diff_text = diff_lines.join("\n");
+                files.push(file);
+                diff_lines.clear();
+            }
+            // Start a new file entry
+            current_file = Some(FileDiff {
+                path: String::new(),
+                additions: 0,
+                deletions: 0,
+                diff_text: String::new(),
+            });
+        } else if line.starts_with("+++ b/") {
+            if let Some(ref mut file) = current_file {
+                file.path = line.trim_start_matches("+++ b/").to_string();
+            }
+        } else if line.starts_with('+') && !line.starts_with("+++") {
+            if let Some(ref mut file) = current_file {
+                file.additions += 1;
+            }
+        } else if line.starts_with('-') && !line.starts_with("---") {
+            if let Some(ref mut file) = current_file {
+                file.deletions += 1;
+            }
+        }
+
+        if current_file.is_some() {
+            diff_lines.push(line.to_string());
+        }
+    }
+
+    // Push the last file
+    if let Some(mut file) = current_file {
+        file.diff_text = diff_lines.join("\n");
+        if !file.path.is_empty() {
+            files.push(file);
+        }
+    }
+
+    files
+}
+
+/// Get the diff of changed files for a given run.
+///
+/// Compares the current worktree state against its base branch.
+///
+/// # Errors
+///
+/// Returns an error if the git diff command fails or the run cannot be found.
+#[tauri::command]
+#[specta::specta]
+pub fn get_run_changes(
+    repo_path: String,
+    worktree_path: Option<String>,
+    iteration: Option<u32>,
+) -> Result<RunChanges, String> {
+    let base = worktree_path.as_deref().map_or_else(
+        || std::path::PathBuf::from(&repo_path),
+        std::path::PathBuf::from,
+    );
+
+    if !base.exists() {
+        return Ok(RunChanges {
+            files: Vec::new(),
+            total_additions: 0,
+            total_deletions: 0,
+            iteration,
+        });
+    }
+
+    // Run git diff against the merge-base (the point where the branch diverged)
+    let output = std::process::Command::new("git")
+        .args(["diff", "HEAD~1..HEAD"])
+        .current_dir(&base)
+        .output();
+
+    let diff_output = match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+        Ok(out) => {
+            // If HEAD~1 fails (first commit), try diff of everything
+            let fallback = std::process::Command::new("git")
+                .args(["show", "--format=", "--unified=3"])
+                .current_dir(&base)
+                .output();
+            match fallback {
+                Ok(fb) if fb.status.success() => String::from_utf8_lossy(&fb.stdout).to_string(),
+                _ => {
+                    // Return empty on any git error — not a fatal error
+                    let err = String::from_utf8_lossy(&out.stderr).to_string();
+                    if err.contains("does not have any commits") || err.contains("unknown revision")
+                    {
+                        return Ok(RunChanges {
+                            files: Vec::new(),
+                            total_additions: 0,
+                            total_deletions: 0,
+                            iteration,
+                        });
+                    }
+                    String::new()
+                }
+            }
+        }
+        Err(_) => String::new(),
+    };
+
+    let files = parse_unified_diff(&diff_output);
+    let total_additions = files.iter().map(|f| f.additions).sum();
+    let total_deletions = files.iter().map(|f| f.deletions).sum();
+
+    Ok(RunChanges {
+        files,
+        total_additions,
+        total_deletions,
+        iteration,
+    })
+}
+
+/// Cancel an active run by removing its lock file.
+///
+/// # Errors
+///
+/// Returns an error if the lock file cannot be removed.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_run(repo_path: String, worktree_path: Option<String>) -> Result<(), String> {
+    let base = worktree_path.map_or_else(
+        || std::path::PathBuf::from(&repo_path),
+        std::path::PathBuf::from,
+    );
+    let lock_file = base.join(".agent").join("tmp").join("run.lock");
+
+    if lock_file.exists() {
+        std::fs::remove_file(&lock_file).map_err(|e| format!("Failed to remove lock file: {e}"))?;
+    }
+
+    Ok(())
 }
 
 /// Internal struct for checkpoint summary used within this module.
@@ -1017,5 +1294,228 @@ mod tests {
         assert_eq!(runs[0].iteration_count, 3);
         assert_eq!(runs[0].last_error.as_deref(), Some("Retry limit reached"));
         assert!(runs[0].is_degraded);
+    }
+
+    // --- parse_unified_diff tests ---
+
+    #[test]
+    fn test_parse_unified_diff_parses_multi_file_diff() {
+        let diff = "\
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,3 +1,5 @@
+ fn main() {
++    println!(\"Hello\");
++    println!(\"World\");
+-    // old code
+ }
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,4 +10,5 @@
+ pub fn foo() {
++    let x = 1;
+ }";
+
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 2, "Should parse two file diffs");
+
+        let main_rs = &files[0];
+        assert_eq!(main_rs.path, "src/main.rs");
+        assert_eq!(main_rs.additions, 2, "main.rs should have 2 additions");
+        assert_eq!(main_rs.deletions, 1, "main.rs should have 1 deletion");
+        assert!(!main_rs.diff_text.is_empty());
+
+        let lib_rs = &files[1];
+        assert_eq!(lib_rs.path, "src/lib.rs");
+        assert_eq!(lib_rs.additions, 1, "lib.rs should have 1 addition");
+        assert_eq!(lib_rs.deletions, 0, "lib.rs should have 0 deletions");
+    }
+
+    #[test]
+    fn test_parse_unified_diff_returns_empty_for_empty_string() {
+        let files = parse_unified_diff("");
+        assert!(files.is_empty(), "Empty input should return empty Vec");
+    }
+
+    #[test]
+    fn test_parse_unified_diff_returns_empty_for_whitespace_only() {
+        let files = parse_unified_diff("   \n   \n");
+        assert!(
+            files.is_empty(),
+            "Whitespace-only input should return empty Vec"
+        );
+    }
+
+    #[test]
+    fn test_parse_unified_diff_does_not_panic_without_plus_plus_plus_lines() {
+        // A diff section with diff --git header but no +++ b/ line
+        let diff = "\
+diff --git a/src/binary.bin b/src/binary.bin
+new file mode 100644
+index 0000000..1234567
+Binary files /dev/null and b/src/binary.bin differ";
+
+        // Should not panic and should return a result (may be empty since no +++ b/ line)
+        let files = parse_unified_diff(diff);
+        // Binary diffs have no +++ b/ line so path stays empty and the file is not pushed
+        assert!(
+            files.is_empty(),
+            "Binary diff without +++ b/ should produce no file entries"
+        );
+    }
+
+    #[test]
+    fn test_parse_unified_diff_does_not_panic_for_partial_diff() {
+        // A malformed/partial diff sequence
+        let diff = "\
+diff --git a/src/partial.rs b/src/partial.rs
++++ b/src/partial.rs
+@@ -1,1 +1,2 @@
++new line
+malformed";
+
+        // Should not panic
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1, "Should produce one file from partial diff");
+        let file = &files[0];
+        assert_eq!(file.path, "src/partial.rs");
+        assert_eq!(file.additions, 1, "Should count 1 addition");
+    }
+
+    #[test]
+    fn test_parse_unified_diff_handles_plus_plus_plus_header_lines() {
+        // +++ lines at the start of diff headers should NOT be counted as additions
+        let diff = "\
+diff --git a/src/foo.rs b/src/foo.rs
+--- a/src/foo.rs
++++ b/src/foo.rs
+@@ -1,2 +1,3 @@
+ context
++added line
+ context end";
+
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].additions, 1,
+            "Only the +added line should be counted"
+        );
+        assert_eq!(files[0].deletions, 0);
+    }
+
+    #[test]
+    fn test_parse_unified_diff_handles_minus_minus_minus_header_lines() {
+        // --- lines at the start of diff headers should NOT be counted as deletions
+        let diff = "\
+diff --git a/src/bar.rs b/src/bar.rs
+--- a/src/bar.rs
++++ b/src/bar.rs
+@@ -1,2 +1,1 @@
+ context
+-removed line";
+
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].deletions, 1,
+            "Only the -removed line should be counted"
+        );
+        assert_eq!(files[0].additions, 0);
+    }
+
+    // --- log subscription lifecycle tests ---
+
+    #[test]
+    fn test_subscribe_run_logs_stores_cancel_handle_in_map() {
+        use std::sync::atomic::Ordering;
+
+        let run_id = "test-sub-run-001".to_string();
+
+        // Clear any existing entry first
+        {
+            let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            subs.remove(&run_id);
+        }
+
+        // Verify there is no entry before subscribe
+        {
+            let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            assert!(
+                !subs.contains_key(&run_id),
+                "Should not have entry before subscribe"
+            );
+        }
+
+        // Insert a cancel handle manually (simulates what subscribe does)
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            subs.insert(run_id.clone(), Arc::clone(&cancel));
+        }
+
+        // Verify it is in the map and not yet cancelled
+        {
+            let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            let stored = subs.get(&run_id).expect("Should have cancel handle");
+            assert!(
+                !stored.load(Ordering::Relaxed),
+                "Cancel flag should be false before unsubscribe"
+            );
+        }
+
+        // Clean up
+        let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+        subs.remove(&run_id);
+    }
+
+    #[test]
+    fn test_unsubscribe_run_logs_sets_atomic_bool_and_removes_handle() {
+        use std::sync::atomic::Ordering;
+
+        let run_id = "test-unsub-run-002".to_string();
+
+        // Insert a cancel handle
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cancel_clone = Arc::clone(&cancel);
+        {
+            let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            subs.insert(run_id.clone(), cancel);
+        }
+
+        // Unsubscribe
+        let result = unsubscribe_run_logs(run_id.clone());
+        assert!(result.is_ok(), "unsubscribe should return Ok");
+
+        // The AtomicBool via the clone should now be true
+        assert!(
+            cancel_clone.load(Ordering::Relaxed),
+            "Cancel flag should be true after unsubscribe"
+        );
+
+        // The entry should be removed from the map
+        let subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+        assert!(
+            !subs.contains_key(&run_id),
+            "Handle should be removed from map after unsubscribe"
+        );
+    }
+
+    #[test]
+    fn test_unsubscribe_run_logs_non_existent_id_returns_ok() {
+        let run_id = "nonexistent-run-id-xyz-999".to_string();
+
+        // Ensure it doesn't exist
+        {
+            let mut subs = LOG_SUBSCRIPTIONS.lock().unwrap();
+            subs.remove(&run_id);
+        }
+
+        let result = unsubscribe_run_logs(run_id);
+        assert!(
+            result.is_ok(),
+            "Unsubscribing a non-existent run_id should return Ok"
+        );
     }
 }

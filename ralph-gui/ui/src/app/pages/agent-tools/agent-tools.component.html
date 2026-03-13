@@ -1,0 +1,81 @@
+<div class="agent-tools-page">
+  <div class="page-header">
+    <h1 class="page-title">Agent Tools</h1>
+    <button type="button" class="btn btn-secondary" (click)="refresh()">
+      Refresh
+    </button>
+  </div>
+  <p class="page-subtitle">
+    CLI tools Ralph Workflow uses to interact with AI agents. Each tool must be installed
+    and configured before it can be selected for a session.
+  </p>
+
+  @if (isLoading) {
+    <div class="loading-state">Loading tools…</div>
+  } @else if (tools.length === 0) {
+    <div class="empty-state">
+      <p>No agent tools detected. Make sure the CLI tools are installed and in your PATH.</p>
+    </div>
+  } @else {
+    <div class="tool-cards">
+      @for (tool of tools; track tool.name) {
+        @let isTesting = testing[tool.name];
+        @let testResult = testResults[tool.name];
+        <div class="tool-card" [attr.data-health]="tool.health">
+          <div class="tool-card-header">
+            <div class="tool-name-row">
+              <h2 class="tool-name">{{ tool.name }}</h2>
+              <span
+                class="health-badge"
+                [class.health-ready]="tool.health === 'ready'"
+                [class.health-needs-setup]="tool.health === 'needs_setup'"
+                [class.health-not-installed]="tool.health === 'not_installed'"
+              >{{ healthLabels[tool.health] ?? tool.health }}</span>
+            </div>
+            <div class="tool-meta">
+              <span class="tool-binary">{{ tool.binary }}</span>
+              @if (tool.version) {
+                <span class="tool-version">v{{ tool.version }}</span>
+              }
+            </div>
+          </div>
+
+          <div class="tool-card-body">
+            @if (tool.installed) {
+              <div class="tool-detail-row">
+                <span class="detail-label">Auth status:</span>
+                <span class="detail-value">{{ tool.auth_status }}</span>
+              </div>
+            } @else {
+              <p class="tool-not-installed-msg">
+                Not installed. Install <code>{{ tool.binary }}</code> to use this tool.
+              </p>
+            }
+          </div>
+
+          <div class="tool-card-actions">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              [disabled]="!tool.installed || isTesting"
+              (click)="testConnection(tool.name)"
+            >
+              @if (isTesting) {
+                Testing…
+              } @else {
+                Test Connection
+              }
+            </button>
+            @if (testResult) {
+              <span
+                class="test-result"
+                [class.test-result--ok]="testResult.ok"
+                [class.test-result--err]="!testResult.ok"
+              >{{ testResult.message }}</span>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

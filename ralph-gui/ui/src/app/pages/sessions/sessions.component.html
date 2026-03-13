@@ -2,7 +2,7 @@
   <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
     <h1 class="page-title" style="margin-bottom: 0;">Sessions</h1>
     <div style="display: flex; gap: 8px;">
-      @if (view() === 'new') {
+      @if (viewValue === 'new') {
         <button class="btn btn-ghost" (click)="setView('list')">← Back to list</button>
       } @else {
         <button class="btn btn-primary" (click)="setView('new')">+ New session</button>
@@ -11,46 +11,63 @@
   </div>
 
   <div style="animation: fadeIn 200ms ease 40ms both;">
-    @if (view() === 'new') {
+    @if (viewValue === 'new') {
       <div class="card" style="max-width: 620px;">
         <div style="font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 20px; letter-spacing: -0.01em;">
           New session
         </div>
         <app-new-session-wizard
-          [preselectedWorktreePath]="preselectedWorktree()"
-          (onClose)="setView('list')"
+          [preselectedWorktreePath]="preselectedWorktreeValue"
+          (wizardClosed)="setView('list')"
         />
       </div>
     } @else {
       <div>
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-4);">
           <div class="section-label" style="margin-bottom: 0;">
-            @if (repoPath()) {
-              <span class="chip-mono">{{ repoPath() }}</span>
+            @if (repoPathValue) {
+              <span class="chip-mono">{{ repoPathValue }}</span>
             } @else {
               No repository selected
             }
           </div>
         </div>
 
-        @if (repoPath()) {
+        @if (repoPathValue) {
+          <!-- Search input -->
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-3);">
+            <div style="position: relative; flex: 1; max-width: 340px;">
+              <span style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none;">🔍</span>
+              <input
+                #searchInput
+                data-testid="session-search"
+                class="input input-mono"
+                type="search"
+                placeholder="Search sessions… (Ctrl+F)"
+                [value]="searchTermValue"
+                (input)="onSearchInput($event)"
+                style="padding-left: 30px; font-size: 12px;"
+              />
+            </div>
+          </div>
+
           <div data-testid="filter-toolbar" style="display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-3); flex-wrap: wrap;">
             <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-right: 4px;">
               Filter:
             </span>
-            @for (chip of statusChips; track chip.value) {
-              <button [attr.data-testid]="'filter-chip-' + chip.value" (click)="toggleStatusFilter(chip.value)" [style]="chipButtonStyle(chip.value)">
+            @for (chip of statusChipsWithStyleList; track chip.value) {
+              <button [attr.data-testid]="'filter-chip-' + chip.value" (click)="toggleStatusFilter(chip.value)" [style]="chip.style">
                 {{ chip.label }}
               </button>
             }
-            <select data-testid="filter-context" [value]="contextFilter()" (change)="onContextFilterChange($event)" style="margin-left: 8px; padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); cursor: pointer;">
+            <select data-testid="filter-context" [value]="contextFilterValue" (change)="onContextFilterChange($event)" style="margin-left: 8px; padding: 2px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-muted); font-size: 11px; font-family: var(--font-mono); cursor: pointer;">
               <option value="all">All contexts</option>
               <option value="direct">Direct repo</option>
-              @for (wt of nonMainWorktrees(); track wt.path) {
+              @for (wt of nonMainWorktreesList; track wt.path) {
                 <option [value]="wt.path">{{ wt.name }}</option>
               }
             </select>
-            @if (activeStatusFilters().length > 0 || contextFilter() !== 'all') {
+            @if (activeStatusFiltersValue.length > 0 || contextFilterValue !== 'all' || searchTermValue) {
               <button data-testid="clear-filters" class="btn btn-ghost" style="font-size: 11px; padding: 2px 8px;" (click)="clearFilters()">
                 Clear
               </button>
@@ -58,7 +75,13 @@
           </div>
 
           <div class="card" style="padding: 4px 0;">
-            <app-session-list [repoPath]="repoPath()" [filterStatus]="activeStatusFilters()" [filterWorktreePath]="filterWorktreePath" (resumeRun)="handleResume($event)" />
+            <app-session-list
+              [repoPath]="repoPathValue"
+              [filterStatus]="activeStatusFiltersValue"
+              [filterWorktreePath]="filterWorktreePath"
+              [externalSearchTerm]="searchTermValue"
+              (resumeRun)="handleResume($event)"
+            />
           </div>
         } @else {
           <div class="empty-state">

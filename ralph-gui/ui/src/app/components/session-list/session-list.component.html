@@ -1,56 +1,178 @@
-@if (sessionsService.status() === 'loading') {
+<!-- Batch Action Bar -->
+@if (currentShowBatchBar) {
+  <div
+    data-testid="batch-action-bar"
+    style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-overlay); border-bottom: 1px solid var(--border-default);"
+  >
+    <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">
+      {{ currentSelectedIds.size }} selected
+    </span>
+    <button
+      class="btn btn-secondary"
+      style="padding: 3px 10px; font-size: 12px;"
+      [disabled]="!currentCanBatchResume"
+      (click)="batchResume()"
+      data-testid="batch-resume-btn"
+    >
+      Resume
+    </button>
+    <button
+      class="btn btn-secondary"
+      style="padding: 3px 10px; font-size: 12px;"
+      [disabled]="!currentCanBatchCancel"
+      (click)="batchCancel()"
+      data-testid="batch-cancel-btn"
+    >
+      Cancel
+    </button>
+    <button
+      class="btn btn-secondary"
+      style="padding: 3px 10px; font-size: 12px; color: var(--status-error);"
+      (click)="batchDelete()"
+      data-testid="batch-delete-btn"
+    >
+      Delete
+    </button>
+    <button
+      class="btn btn-ghost"
+      style="padding: 3px 8px; font-size: 11px; margin-left: auto;"
+      (click)="clearSelection()"
+    >
+      Clear
+    </button>
+  </div>
+}
+
+@if (serviceStatus === 'loading') {
   <div style="padding: 24px; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
     Loading sessions…
   </div>
-} @else if (sessionsService.sessions().length === 0) {
+} @else if (serviceSessions.length === 0) {
   <div class="empty-state">
     <span class="empty-state-icon">◈</span>
     <div class="empty-state-title">No sessions yet</div>
     <div class="empty-state-desc">Start a new session to begin an unattended Ralph workflow.</div>
   </div>
-} @else if (visibleSessions().length === 0) {
+} @else if (currentVisibleSessions.length === 0) {
   <div class="empty-state">
     <span class="empty-state-icon">◈</span>
     <div class="empty-state-title">No sessions match the selected filters.</div>
     <div class="empty-state-desc">Try clearing the filters to see all sessions.</div>
   </div>
 } @else {
+  <!-- Column headers -->
+  <div
+    style="display: grid; grid-template-columns: 28px 32px 1fr 120px 140px 80px; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border-default); font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase;"
+  >
+    <!-- Select all -->
+    <div style="display: flex; align-items: center;">
+      <input
+        type="checkbox"
+        [checked]="currentIsAllSelected"
+        (change)="selectAll()"
+        aria-label="Select all sessions"
+        data-testid="select-all-checkbox"
+        style="cursor: pointer;"
+      />
+    </div>
+    <!-- Status (no sort) -->
+    <div></div>
+    <!-- Description -->
+    <button
+      class="btn btn-ghost"
+      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      (click)="setSort('description')"
+      data-testid="sort-description"
+    >
+      Description {{ descriptionSortIcon }}
+    </button>
+    <!-- Status sort -->
+    <button
+      class="btn btn-ghost"
+      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      (click)="setSort('status')"
+      data-testid="sort-status"
+    >
+      Status {{ statusSortIcon }}
+    </button>
+    <!-- Created -->
+    <button
+      class="btn btn-ghost"
+      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      (click)="setSort('created_at')"
+      data-testid="sort-created-at"
+    >
+      Created {{ createdAtSortIcon }}
+    </button>
+    <!-- Actions -->
+    <div></div>
+  </div>
+
   <div style="display: flex; flex-direction: column; gap: 2px;">
-    @for (session of visibleSessions(); track session.run_id) {
+    @for (row of currentDisplaySessions; track row.session.run_id) {
       <div
         role="button"
         tabindex="0"
-        (click)="onSelect(session)"
-        (keydown)="onKeyDown($event, session)"
+        (click)="onSelect(row.session)"
+        (keydown)="onKeyDown($event, row.session)"
         (mouseenter)="onRowHover($event)"
         (mouseleave)="onRowLeave($event)"
-        [class.selected]="session.run_id === sessionsService.selectedRunId()"
-        style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); cursor: pointer; transition: all var(--transition-fast);"
+        [class.selected]="row.isActive"
+        style="display: grid; grid-template-columns: 28px 32px 1fr 120px 140px 80px; gap: 8px; align-items: center; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); cursor: pointer; transition: all var(--transition-fast);"
+        [attr.data-testid]="'session-row-' + row.session.run_id"
       >
+        <!-- Checkbox -->
+        <div (click)="onCheckboxClick($event, row.session.run_id)" style="display: flex; align-items: center;">
+          <input
+            type="checkbox"
+            [checked]="row.isSelected"
+            [attr.aria-label]="'Select session ' + row.session.run_id"
+            style="cursor: pointer;"
+            (change)="toggleSelect(row.session.run_id)"
+          />
+        </div>
+
+        <!-- Status badge -->
         <app-run-status-badge
-          [status]="sessionStatusToRunStatus(session.status)"
+          [status]="row.session.status | sessionStatus"
           [showLabel]="false"
           size="sm"
-          [isDegraded]="session.is_degraded === true"
+          [isDegraded]="row.session.is_degraded === true"
         />
-        <div style="flex: 1; min-width: 0;">
+
+        <!-- Description / run id -->
+        <div style="min-width: 0;">
           <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {{ session.run_id.slice(0, 16) }}
+            {{ row.shortRunId }}
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">
-            {{ session.description }} · {{ session.created_at }}
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{ row.session.description }}
           </div>
         </div>
-        @if (canResume(session)) {
-          <button
-            class="btn btn-secondary"
-            style="padding: 3px 10px; font-size: 11px;"
-            (click)="onResumeClick($event, session)"
-          >
-            Resume
-          </button>
-        }
-        <span style="font-size: 10px; color: var(--text-muted); flex-shrink: 0;">›</span>
+
+        <!-- Status text -->
+        <div style="font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
+          {{ row.session.status }}
+        </div>
+
+        <!-- Created at -->
+        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+          {{ row.session.created_at }}
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; justify-content: flex-end; gap: 4px;">
+          @if (row.canResume) {
+            <button
+              class="btn btn-secondary"
+              style="padding: 3px 10px; font-size: 11px;"
+              (click)="onResumeClick($event, row.session)"
+            >
+              Resume
+            </button>
+          }
+          <span style="font-size: 10px; color: var(--text-muted); flex-shrink: 0; align-self: center;">›</span>
+        </div>
       </div>
     }
   </div>

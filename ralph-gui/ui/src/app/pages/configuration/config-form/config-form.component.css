@@ -1,0 +1,86 @@
+/* ConfigForm Component */
+
+.config-form {
+  display: block;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) 0;
+}
+
+.full-width {
+  width: 100%;
+}
+
+/* Dirty field highlight: amber left border */
+.form-field-wrapper {
+  position: relative;
+  border-radius: var(--radius-md, 6px);
+  transition: border-left-color var(--duration-fast, 150ms) ease-out;
+}
+
+.form-field-wrapper.field-dirty {
+  border-left: 3px solid var(--accent, #f59e0b);
+  padding-left: var(--space-2, 8px);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-radius: var(--radius-md, 6px);
+  border-left: 3px solid transparent;
+  transition: border-left-color var(--duration-fast, 150ms) ease-out;
+}
+
+.toggle-row.field-dirty {
+  border-left-color: var(--accent, #f59e0b);
+}
+
+/* Placeholder cards for future sections */
+.placeholder-card {
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  background: var(--bg-raised, #242428);
+  border: 1px dashed var(--border-default, #333338);
+  border-radius: var(--radius-md, 6px);
+  color: var(--text-muted, #64748b);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  margin: var(--space-2, 8px) 0;
+}
+
+.placeholder-link {
+  color: var(--accent, #f59e0b);
+  text-decoration: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+.placeholder-link:hover {
+  text-decoration: underline;
+}
+
+/* Label row with contextual help icon */
+.form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.form-label {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  font-family: var(--font-ui);
+}
+
+/* Toggle row with contextual help */
+.toggle-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}

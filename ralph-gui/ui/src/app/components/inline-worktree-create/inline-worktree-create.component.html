@@ -9,7 +9,7 @@
       data-testid="wt-branch-input"
       class="input input-mono"
       placeholder="wt-51-my-feature"
-      [value]="branch()"
+      [value]="branch_"
       (input)="onBranchInput($event)"
       (blur)="onBranchBlur()"
       [disabled]="!repoPath"
@@ -29,7 +29,7 @@
       data-testid="wt-name-input"
       class="input input-mono"
       placeholder="wt-51-my-feature"
-      [value]="name()"
+      [value]="name_"
       (input)="onNameInput($event)"
       [disabled]="!repoPath"
     />
@@ -41,12 +41,12 @@
     </div>
   }
 
-  @if (error()) {
+  @if (error_) {
     <div
       data-testid="wt-create-error"
       style="padding: 6px 10px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.2); border-radius: var(--radius-md); color: var(--status-failed); font-size: 12px; font-family: var(--font-mono);"
     >
-      {{ error() }}
+      {{ error_ }}
     </div>
   }
 
@@ -54,9 +54,9 @@
     data-testid="wt-create-button"
     class="btn btn-secondary"
     (click)="handleCreate()"
-    [disabled]="creating() || !branch() || !name() || !repoPath"
+    [disabled]="creating_ || !branch_ || !name_ || !repoPath"
     style="align-self: flex-start;"
   >
-    {{ creating() ? 'Creating...' : 'Create worktree' }}
+    {{ creating_ ? 'Creating...' : 'Create worktree' }}
   </button>
 </div>
