@@ -64,6 +64,44 @@
       </div>
     </div>
 
+    <!-- Provider Section (shown after tool selection) -->
+    @if (selectedToolValue) {
+      <div class="flex flex-col gap-2" data-testid="provider-section">
+        <label class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Provider</label>
+
+        @if (isMultiProviderToolValue) {
+          <!-- Multi-provider dropdown (OpenCode) -->
+          <select
+            data-testid="provider-dropdown"
+            class="input"
+            [value]="selectedProviderValue"
+            (change)="selectedProvider.set($any($event.target).value)"
+          >
+            <option value="" disabled>Select a provider…</option>
+            @for (provider of availableProvidersList; track provider.name) {
+              <option [value]="provider.name">
+                {{ provider.name }}
+                @if (provider.authStatus === 'configured') { ✓ }
+                @else { (not configured) }
+              </option>
+            }
+          </select>
+          <div class="text-[11px] text-zinc-500">
+            Auth status shown in parentheses. Configure API keys in each provider's settings.
+          </div>
+        } @else {
+          <!-- Single-provider read-only label -->
+          <div class="flex items-center gap-2 px-3 py-2.5 rounded-md bg-zinc-800/50 border border-zinc-700">
+            <span class="text-[13px] text-zinc-200 font-mono">{{ singleProviderNameValue }}</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-950 text-green-400">Auto-detected</span>
+          </div>
+          <div class="text-[11px] text-zinc-500">
+            Provider automatically determined from the selected tool.
+          </div>
+        }
+      </div>
+    }
+
     <!-- Model Selection (shown after tool selection) -->
     @if (selectedToolValue) {
       <div class="flex flex-col gap-2" data-testid="model-section">

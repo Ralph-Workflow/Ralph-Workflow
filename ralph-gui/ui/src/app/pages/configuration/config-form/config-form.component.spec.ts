@@ -251,6 +251,19 @@ describe('ConfigFormComponent', () => {
       expect(configForm.form.get('reviewer_reviews')?.invalid).toBe(true);
     });
 
+    it('should mark reviewer_reviews valid when 0 (AC-7.3 allows 0-10)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.detectChanges();
+
+      configForm.form.get('reviewer_reviews')?.setValue(0);
+      await configFormFixture.whenStable();
+      configFormFixture.detectChanges();
+
+      expect(configForm.form.get('reviewer_reviews')?.valid).toBe(true);
+    });
+
     it('should mark max_dev_continuations invalid when above max (10)', async () => {
       const configFormFixture = TestBed.createComponent(ConfigFormComponent);
       const configForm = configFormFixture.componentInstance;

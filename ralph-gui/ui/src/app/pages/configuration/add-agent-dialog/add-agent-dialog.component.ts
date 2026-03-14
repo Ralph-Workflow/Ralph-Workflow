@@ -14,8 +14,20 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { TauriService } from '../../../services/tauri.service';
 import type { AgentToolInfo } from '../../../types';
+
+interface ProviderInfo {
+  name: string;
+  isMulti: boolean;
+}
+
+const TOOL_PROVIDER_MAP: Record<string, ProviderInfo> = {
+  'Claude Code': { name: 'Anthropic', isMulti: false },
+  'Codex': { name: 'OpenAI', isMulti: false },
+  'OpenCode': { name: '', isMulti: true },
+};
 
 /** Data passed into the dialog when opened. */
 export interface AddAgentDialogData {
@@ -52,6 +64,7 @@ export interface AgentDefinition {
     MatInputModule,
     MatSelectModule,
     MatRadioModule,
+    MatTooltipModule,
   ],
   templateUrl: './add-agent-dialog.component.html',
 })
@@ -95,6 +108,38 @@ export class AddAgentDialogComponent implements OnInit {
       : this.availableModels();
   });
 
+  /** Provider info for the currently selected tool. */
+  readonly providerInfo = computed<ProviderInfo | null>(() => {
+    const toolName = this.selectedTool();
+    if (!toolName) return null;
+    return TOOL_PROVIDER_MAP[toolName] ?? null;
+  });
+
+  /** Whether the selected tool is a multi-provider tool (e.g., OpenCode). */
+  readonly isMultiProviderTool = computed(() => {
+    const info = this.providerInfo();
+    return info?.isMulti ?? false;
+  });
+
+  /** Provider name for single-provider tools (read-only display). */
+  readonly singleProviderName = computed(() => {
+    const info = this.providerInfo();
+    if (!info || info.isMulti) return '';
+    return info.name;
+  });
+
+  /** Available providers for multi-provider tools (OpenCode). */
+  readonly availableProviders = computed(() => {
+    if (!this.isMultiProviderTool()) return [];
+    return [
+      { name: 'Anthropic', authStatus: 'configured' },
+      { name: 'OpenAI', authStatus: 'configured' },
+      { name: 'Google', authStatus: 'not-configured' },
+    ];
+  });
+
+  readonly selectedProvider = signal<string>('');
+
   /** Whether the current agent name is a duplicate of an existing name. */
   readonly isDuplicate = computed(() => {
     const names = this.data?.existingNames ?? [];
@@ -131,6 +176,10 @@ export class AddAgentDialogComponent implements OnInit {
   get useModelSearchValue(): boolean { return this.useModelSearch(); }
   get filteredModelsList(): string[] { return this.filteredModels(); }
   get availableModelsList(): string[] { return this.availableModels(); }
+  get isMultiProviderToolValue(): boolean { return this.isMultiProviderTool(); }
+  get selectedProviderValue(): string { return this.selectedProvider(); }
+  get availableProvidersList() { return this.availableProviders(); }
+  get singleProviderNameValue(): string { return this.singleProviderName(); }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 

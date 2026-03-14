@@ -81,14 +81,14 @@
             />
           </div>
           <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
-            Default: 0–10 · Current default: {{ getDefaultValueLabel('reviewer_reviews') }}
+            Range: 0–10 · Current default: {{ getDefaultValueLabel('reviewer_reviews') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Reviewer Reviews</mat-label>
             <input matInput type="number" formControlName="reviewer_reviews"
-                   min="1" max="10" />
+                   min="0" max="10" />
             @if (reviewerReviewsHasRangeError) {
-              <mat-error>Value must be between 1 and 10</mat-error>
+              <mat-error>Value must be between 0 and 10</mat-error>
             }
           </mat-form-field>
         </div>

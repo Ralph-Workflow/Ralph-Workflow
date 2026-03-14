@@ -123,7 +123,7 @@ export class ConfigFormComponent {
   readonly form: FormGroup = this.fb.group({
     verbosity: [0, [Validators.min(0), Validators.max(4)]],
     developer_iters: [1, [Validators.min(1), Validators.max(20)]],
-    reviewer_reviews: [1, [Validators.min(1), Validators.max(10)]],
+    reviewer_reviews: [1, [Validators.min(0), Validators.max(10)]],
     review_depth: ['standard'],
     max_dev_continuations: [3, [Validators.min(1), Validators.max(10)]],
     prompt_path: [''],
