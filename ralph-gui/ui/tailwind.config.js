@@ -85,6 +85,26 @@ module.exports = {
       maxWidth: {
         sidebar: '400px',
       },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        phasePulse: {
+          '0%, 100%': { boxShadow: '0 0 0 0 currentColor', opacity: '1' },
+          '50%': { boxShadow: '0 0 0 6px transparent', opacity: '0.8' },
+        },
+        statusPulse: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.6' },
+        },
+      },
+      animation: {
+        'fade-in': 'fadeIn 200ms ease',
+        'fade-in-delayed': 'fadeIn 200ms ease 40ms both',
+        'phase-pulse': 'phasePulse 2s ease-in-out infinite',
+        'status-pulse': 'statusPulse 2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

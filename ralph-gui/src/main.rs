@@ -1,10 +1,7 @@
 #![deny(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use ralph_gui::commands::{
-    config, preferences, run_management, session, session_launch, session_prompt, workspace,
-    worktree,
-};
+use ralph_gui::commands::{config, run_management, session, workspace, worktree};
 use ralph_gui::state::new_shared_state;
 use tauri_specta::collect_commands;
 
@@ -55,22 +52,8 @@ fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         run_management::cancel_run,
         run_management::get_iteration_history,
         run_management::get_review_history,
-        // Session prompt commands
-        session_prompt::read_prompt_file,
-        session_prompt::save_prompt_file,
-        session_prompt::review_prompt_with_ai,
-        session_prompt::assist_prompt_describe,
-        session_prompt::assist_prompt_refine,
-        session_prompt::get_planning_drain_agent,
-        session_prompt::list_templates,
-        session_prompt::save_template,
-        session_prompt::delete_template,
-        // Session launch commands
-        session_launch::launch_ralph_session,
-        session_launch::resume_ralph_session,
-        // Preferences commands
-        preferences::get_gui_preferences,
-        preferences::save_gui_preferences,
+        run_management::open_in_file_manager,
+        run_management::open_in_terminal,
         // Workspace commands
         workspace::get_workspaces,
         workspace::open_workspace,

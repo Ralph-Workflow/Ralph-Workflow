@@ -2,12 +2,12 @@
  * Integration tests for the full workspace lifecycle:
  * open workspace, navigate, switch, verify reload, switch back, verify nav restore.
  */
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { Router, NavigationEnd } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { signal } from '@angular/core';
 import { Subject } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 import { WorkspaceService } from './services/workspace.service';
 import { WorktreesService } from './services/worktrees.service';
@@ -139,10 +139,10 @@ describe('Workspace Lifecycle Integration', () => {
     }).compileComponents();
   });
 
-  it('should call initializeRepo with workspace A path when workspace A is activated', fakeAsync(() => {
+  it('should call initializeRepo with workspace A path when workspace A is activated', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const router = TestBed.inject(Router);
-    spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+    vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
     const wsA = makeWorkspace('ws-a', '/projects/repo-a');
     workspacesSignal.set([wsA]);
@@ -150,15 +150,15 @@ describe('Workspace Lifecycle Integration', () => {
     isLoadingSignal.set(false);
 
     fixture.detectChanges();
-    tick();
+    await Promise.resolve(); // Flush microtask queue
 
     expect(initializeRepoSpy).toHaveBeenCalledWith('/projects/repo-a');
-  }));
+  });
 
-  it('should call fetchSessions with workspace A path when workspace A is activated', fakeAsync(() => {
+  it('should call fetchSessions with workspace A path when workspace A is activated', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const router = TestBed.inject(Router);
-    spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+    vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
     const wsA = makeWorkspace('ws-a', '/projects/repo-a');
     workspacesSignal.set([wsA]);
@@ -166,15 +166,15 @@ describe('Workspace Lifecycle Integration', () => {
     isLoadingSignal.set(false);
 
     fixture.detectChanges();
-    tick();
+    await Promise.resolve(); // Flush microtask queue
 
     expect(fetchSessionsSpy).toHaveBeenCalledWith('/projects/repo-a');
-  }));
+  });
 
-  it('should reload data with workspace B path after switching from A to B', fakeAsync(() => {
+  it('should reload data with workspace B path after switching from A to B', async () => {
     const fixture = TestBed.createComponent(AppComponent);
     const router = TestBed.inject(Router);
-    spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+    vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
     const wsA = makeWorkspace('ws-a', '/projects/repo-a');
     const wsB = makeWorkspace('ws-b', '/projects/repo-b');
@@ -182,20 +182,20 @@ describe('Workspace Lifecycle Integration', () => {
     activeWorkspaceSignal.set(wsA);
     isLoadingSignal.set(false);
     fixture.detectChanges();
-    tick();
+    await Promise.resolve();
 
     // Switch to workspace B
     activeWorkspaceSignal.set(wsB);
     fixture.detectChanges();
-    tick();
+    await Promise.resolve();
 
     expect(initializeRepoSpy).toHaveBeenCalledWith('/projects/repo-b');
     expect(fetchSessionsSpy).toHaveBeenCalledWith('/projects/repo-b');
-  }));
+  });
 
-  it('should restore navigation state when switching to workspace with saved nav', fakeAsync(() => {
+  it('should restore navigation state when switching to workspace with saved nav', async () => {
     const router = TestBed.inject(Router);
-    const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+    const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
     const fixture = TestBed.createComponent(AppComponent);
 
@@ -207,34 +207,44 @@ describe('Workspace Lifecycle Integration', () => {
     // First activation (initialLoadComplete = false → no nav restore)
     activeWorkspaceSignal.set(wsA);
     fixture.detectChanges();
-    tick();
+    await Promise.resolve();
 
     // Switch to B (initialLoadComplete = true → restore nav)
     activeWorkspaceSignal.set(wsB);
     fixture.detectChanges();
-    tick();
+    await Promise.resolve();
 
     expect(navigateSpy).toHaveBeenCalledWith(['/worktrees']);
-  }));
+  });
 
-  it('should persist navigation state when NavigationEnd fires for non-exempt route', fakeAsync(() => {
-    const router = TestBed.inject(Router);
-    spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
-    const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
+  describe('navigation state persistence with debounce', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
 
-    const fixture = TestBed.createComponent(AppComponent);
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
-    const wsA = makeWorkspace('ws-a', '/projects/repo-a');
-    workspacesSignal.set([wsA]);
-    activeWorkspaceSignal.set(wsA);
-    activeWorkspaceIdSignal.set('ws-a');
-    isLoadingSignal.set(false);
-    fixture.detectChanges();
-    tick();
+    it('should persist navigation state when NavigationEnd fires for non-exempt route', async () => {
+      const router = TestBed.inject(Router);
+      vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
+      const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
 
-    routerEvents$.next(new NavigationEnd(1, '/sessions', '/sessions'));
-    tick(350); // past debounce
+      const fixture = TestBed.createComponent(AppComponent);
 
-    expect(persistNavigationSpy).toHaveBeenCalledWith('ws-a', '/sessions');
-  }));
+      const wsA = makeWorkspace('ws-a', '/projects/repo-a');
+      workspacesSignal.set([wsA]);
+      activeWorkspaceSignal.set(wsA);
+      activeWorkspaceIdSignal.set('ws-a');
+      isLoadingSignal.set(false);
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      routerEvents$.next(new NavigationEnd(1, '/sessions', '/sessions'));
+      vi.advanceTimersByTime(350); // past debounce
+
+      expect(persistNavigationSpy).toHaveBeenCalledWith('ws-a', '/sessions');
+    });
+  });
 });

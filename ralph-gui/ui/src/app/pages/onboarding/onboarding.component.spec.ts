@@ -86,7 +86,7 @@ describe('OnboardingComponent', () => {
     });
 
     it('should navigate to "/" when Skip is clicked on step 1', async () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
       fixture.detectChanges();
       const skipBtn = Array.from(
         fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
@@ -141,7 +141,7 @@ describe('OnboardingComponent', () => {
     });
 
     it('should navigate to "/" when Skip is clicked on step 2', async () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
       component.goToStep(2);
       await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
@@ -175,7 +175,7 @@ describe('OnboardingComponent', () => {
     });
 
     it('should navigate to "/" when Skip is clicked on step 3', async () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
       fixture.detectChanges();
       const skipBtn = Array.from(
         fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,

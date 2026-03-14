@@ -1,5 +1,5 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { RunsService } from './runs.service';
 import { TauriService } from './tauri.service';
 import type { IterationSummary, ReviewSummary, RunDetail, RunStatusSummary } from '../types';
@@ -181,35 +181,43 @@ describe('RunsService', () => {
   });
 
   describe('startPolling/stopPolling', () => {
-    it('should start polling interval', fakeAsync(() => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should start polling interval', async () => {
       const mockSummary = createMockStatusSummary();
       mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
-      tick(6000);
+      vi.advanceTimersByTime(6000);
 
       expect(mockTauriService.getRunStatus).toHaveBeenCalled();
-    }));
+    });
 
-    it('should not start polling twice (double-start guard)', fakeAsync(() => {
+    it('should not start polling twice (double-start guard)', async () => {
       const mockSummary = createMockStatusSummary();
       mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
       service.startPolling('/repo', null);
-      tick(6000);
+      vi.advanceTimersByTime(6000);
 
       expect(mockTauriService.getRunStatus).toHaveBeenCalledTimes(1);
-    }));
+    });
 
-    it('should stop polling', fakeAsync(() => {
+    it('should stop polling', async () => {
       const mockSummary = createMockStatusSummary();
       mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
-      tick(5000);
+      vi.advanceTimersByTime(5000);
       service.stopPolling();
-      tick(10000);
+      vi.advanceTimersByTime(10000);
 
       expect(mockTauriService.getRunStatus).toHaveBeenCalledTimes(1);
-    }));
+    });
   });
 
   describe('clearRunDetail', () => {

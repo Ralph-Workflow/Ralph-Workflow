@@ -1,8 +1,12 @@
-<div class="phase-timeline">
+<div class="flex items-start w-full gap-0">
   @for (item of currentDisplayPhases; track item.phase.name; let idx = $index; let last = $last) {
     <div
-      class="phase-timeline__item"
-      [class.phase-timeline__item--clickable]="item.phase.status === 'completed'"
+      class="flex items-start flex-1 last:flex-none"
+      [class.cursor-pointer]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-2]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-accent]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-offset-2]="item.phase.status === 'completed'"
+      [class.focus-visible:rounded-sm]="item.phase.status === 'completed'"
       [attr.data-testid]="'phase-node'"
       [attr.data-status]="item.phase.status"
       (click)="onPhaseClick(item.phase)"
@@ -11,34 +15,29 @@
       [attr.aria-label]="item.phase.status === 'completed' ? 'View ' + item.phase.name + ' phase details' : null"
       (keydown.enter)="onPhaseClick(item.phase)"
     >
-      <div class="phase-timeline__node">
+      <div class="flex flex-col items-center gap-1 shrink-0">
         <div
-          class="phase-timeline__dot"
-          [class.animate-pulse]="item.phase.status === 'active'"
-          [class]="'phase-timeline__dot--' + item.phase.status + ' phase-timeline__dot--' + item.phase.name.toLowerCase()"
+          [class]="getDotClasses(item.phase)"
+          [class.animate-phase-pulse]="item.phase.status === 'active'"
           [attr.data-testid]="item.dotTestId"
         >{{ item.dotSymbol }}</div>
-        <div [class]="'phase-timeline__label phase-timeline__label--' + item.phase.status + ' phase-timeline__label--' + item.phase.name.toLowerCase()">
+        <div [class]="getLabelClasses(item.phase)">
           {{ item.phase.name }}
         </div>
         @if (item.phase.duration) {
           <div
-            class="phase-timeline__duration"
+            class="font-mono text-[10px] text-text-muted text-center whitespace-nowrap"
             data-testid="phase-duration"
           >
             {{ item.phase.duration }}
           </div>
         }
         @if (item.phase.statusLabel) {
-          <div class="phase-timeline__status-label">{{ item.phase.statusLabel }}</div>
+          <div class="font-ui text-[10px] text-text-muted text-center whitespace-nowrap">{{ item.phase.statusLabel }}</div>
         }
       </div>
       @if (!last) {
-        <div
-          class="phase-timeline__connector"
-          [class.phase-timeline__connector--done]="item.phase.status === 'completed'"
-          [class.phase-timeline__connector--active]="item.phase.status === 'active'"
-        ></div>
+        <div [class]="getConnectorClasses(item.phase)"></div>
       }
     </div>
   }

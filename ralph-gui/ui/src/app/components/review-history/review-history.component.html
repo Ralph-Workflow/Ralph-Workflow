@@ -1,25 +1,30 @@
 @if (hasReviews_) {
-  <div class="review-history">
-    <div class="review-history__heading" data-testid="review-heading">Review History</div>
+  <div class="flex flex-col">
+    <div class="text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-2" data-testid="review-heading">Review History</div>
     @for (item of displayItems_; track item.review.review_number) {
-      <div class="review-row" data-testid="review-row">
-        <span class="review-row__number">{{ item.review.review_number }}</span>
+      <div
+        class="flex items-center gap-2 py-1.5 border-b border-[rgba(255,255,255,0.06)] last:border-b-1 text-[13px]"
+        data-testid="review-row"
+      >
+        <span class="shrink-0 w-5 font-semibold text-text-muted text-xs">{{ item.review.review_number }}</span>
 
         @if (item.formattedDuration) {
-          <span class="review-row__duration" data-testid="review-duration">
+          <span class="shrink-0 font-mono text-[11px] text-text-muted" data-testid="review-duration">
             {{ item.formattedDuration }}
           </span>
         }
 
-        <span class="review-row__findings" data-testid="review-findings">
+        <span class="flex-1 text-[11px] text-text-secondary" data-testid="review-findings">
           {{ item.findingsLabel }}
         </span>
 
         <span
-          class="review-row__status"
-          [class.review-row__status--complete]="item.review.status === 'Complete'"
-          [class.review-row__status--running]="item.review.status === 'Running'"
-          [class.review-row__status--failed]="item.review.status === 'Failed'"
+          class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-sm"
+          [ngClass]="{
+            'bg-[rgba(245,158,11,0.12)] text-accent': item.review.status === 'Complete',
+            'bg-[rgba(59,130,246,0.12)] text-[#3b82f6] animate-status-pulse': item.review.status === 'Running',
+            'bg-[rgba(239,68,68,0.12)] text-status-error': item.review.status === 'Failed'
+          }"
           data-testid="review-status"
         >
           {{ item.statusLabel }}

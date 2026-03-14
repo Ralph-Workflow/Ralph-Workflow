@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { RouterTestingModule } from '@angular/router/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { MockedFunction } from 'vitest';
 import { PreferencesComponent } from './preferences.component';
 import { PreferencesService } from '../../services/preferences.service';
 import type { GuiPreferences } from '../../types';
@@ -36,7 +38,7 @@ const DEFAULT_PREFS: GuiPreferences = {
 describe('PreferencesComponent', () => {
   let component: PreferencesComponent;
   let fixture: ComponentFixture<PreferencesComponent>;
-  let mockPreferencesService: { preferences: ReturnType<typeof signal<GuiPreferences>>; save: jasmine.Spy };
+  let mockPreferencesService: { preferences: ReturnType<typeof signal<GuiPreferences>>; save: MockedFunction<() => Promise<void>> };
 
   beforeEach(async () => {
     const prefsSignal = signal<GuiPreferences>({
@@ -47,7 +49,7 @@ describe('PreferencesComponent', () => {
 
     mockPreferencesService = {
       preferences: prefsSignal,
-      save: jasmine.createSpy('save').and.resolveTo(undefined),
+      save: vi.fn().mockResolvedValue(undefined),
     };
 
     await TestBed.configureTestingModule({
@@ -110,8 +112,8 @@ describe('PreferencesComponent', () => {
       component.updateSession('logAutoscroll', false);
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({
-          session: jasmine.objectContaining({ logAutoscroll: false }),
+        expect.objectContaining({
+          session: expect.objectContaining({ logAutoscroll: false }),
         })
       );
     });
@@ -120,8 +122,8 @@ describe('PreferencesComponent', () => {
       component.updateSession('confirmCancel', false);
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({
-          session: jasmine.objectContaining({ confirmCancel: false }),
+        expect.objectContaining({
+          session: expect.objectContaining({ confirmCancel: false }),
         })
       );
     });
@@ -130,8 +132,8 @@ describe('PreferencesComponent', () => {
       component.updateNotification('desktopNotifications', true);
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({
-          notifications: jasmine.objectContaining({ desktopNotifications: true }),
+        expect.objectContaining({
+          notifications: expect.objectContaining({ desktopNotifications: true }),
         })
       );
     });
@@ -140,8 +142,8 @@ describe('PreferencesComponent', () => {
       component.updateSession('restoreWorkspaces', false);
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({
-          session: jasmine.objectContaining({ restoreWorkspaces: false }),
+        expect.objectContaining({
+          session: expect.objectContaining({ restoreWorkspaces: false }),
         })
       );
     });
@@ -150,7 +152,7 @@ describe('PreferencesComponent', () => {
       component.updatePref('fontSize', 16);
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({ fontSize: 16 })
+        expect.objectContaining({ fontSize: 16 })
       );
     });
 
@@ -158,7 +160,7 @@ describe('PreferencesComponent', () => {
       component.updatePref('theme', 'dark');
       await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
-        jasmine.objectContaining({ theme: 'dark' })
+        expect.objectContaining({ theme: 'dark' })
       );
     });
 
@@ -209,7 +211,7 @@ describe('PreferencesComponent', () => {
       component.updatePref('fontSize', 18);
       await fixture.whenStable();
 
-      mockPreferencesService.save.calls.reset();
+      mockPreferencesService.save.mockClear();
       component.resetToDefaults();
       await fixture.whenStable();
 

@@ -241,25 +241,27 @@ describe('RunLogComponent', () => {
 
   describe('max line limit (5000)', () => {
     it('should keep at most 5000 lines', async () => {
-        const { fixture, component } = await createComponent();
+        const { component } = await createComponent();
+
+        // Disable autoScroll to avoid setTimeout on each line
+        component.setAutoScroll(false);
 
         for (let i = 0; i < 5100; i++) {
           component.addLogLine(`line ${i}`);
         }
-        fixture.detectChanges();
-        await fixture.whenStable();
-
+        // Signal updates are synchronous, no need to wait
         expect(component.logLines().length).toBe(5000);
       });
 
     it('should keep the most recent lines when over limit', async () => {
-        const { fixture, component } = await createComponent();
+        const { component } = await createComponent();
+
+        // Disable autoScroll to avoid setTimeout on each line
+        component.setAutoScroll(false);
 
         for (let i = 0; i < 5001; i++) {
           component.addLogLine(`line ${i}`);
         }
-        fixture.detectChanges();
-        await fixture.whenStable();
 
         // The first line should have been dropped; last line should remain
         const lines = component.logLines();
@@ -288,11 +290,13 @@ describe('RunLogComponent', () => {
     it('should handle large datasets (5000 lines) without exceeding MAX_LINES', async () => {
         const { fixture, component } = await createComponent();
 
+        // Disable autoScroll to avoid setTimeout on each line
+        component.setAutoScroll(false);
+
         for (let i = 0; i < 5000; i++) {
           component.addLogLine(`log line ${i}`);
         }
         fixture.detectChanges();
-        await fixture.whenStable();
 
         // Should cap at 5000 lines (MAX_LINES)
         expect(component.logLines().length).toBe(5000);

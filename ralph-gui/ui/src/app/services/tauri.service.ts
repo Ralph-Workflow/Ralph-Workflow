@@ -445,4 +445,14 @@ export class TauriService {
     return this.invoke<BatchOperationResult>('batch_delete_sessions', { run_ids: runIds });
   }
 
+  // --- Lifecycle actions (AC-5.6) ---
+
+  async openInFileManager(path: string): Promise<void> {
+    return this.invoke<void>('open_in_file_manager', { path });
+  }
+
+  async openInTerminal(path: string): Promise<void> {
+    return this.invoke<void>('open_in_terminal', { path });
+  }
+
 }

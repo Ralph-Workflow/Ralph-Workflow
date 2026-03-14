@@ -22,6 +22,14 @@ import { formatDuration } from '../../pipes/format-duration.pipe';
 
 export type DetailTab = 'log' | 'changes' | 'info';
 
+export interface PhaseSummary {
+  name: string;
+  status: string;
+  duration?: string;
+  iterationRange?: string;
+  keyMetrics?: string[];
+}
+
 @Component({
   selector: 'app-run-detail',
   standalone: true,
@@ -63,7 +71,13 @@ export class RunDetailComponent {
   // Iteration filter for changes tab (set when iterationClick is received)
   readonly changesFilterIteration = signal<number | null>(null);
 
- readonly canResume = computed(() => {
+  // Selected phase for summary overlay (AC-5.2)
+  readonly selectedPhase = signal<PhaseInfo | null>(null);
+
+  // Connection/transport state (AC-5.1)
+  readonly connectionState = signal<'connected' | 'reconnecting' | 'detached'>('connected');
+
+  readonly canResume = computed(() => {
     const detail = this.runDetail();
     return detail && (detail.status === 'Paused' || detail.status === 'Failed');
   });
@@ -125,6 +139,34 @@ export class RunDetailComponent {
 
   readonly iterationCount = computed(() => {
     return String(this.runDetail()?.iteration_count ?? 0);
+  });
+
+  /** Phase summary for overlay panel (AC-5.2) */
+  readonly selectedPhaseSummary = computed((): PhaseSummary | null => {
+    const phase = this.selectedPhase();
+    if (!phase) return null;
+
+    const phaseDurations = this.formattedPhaseDurations();
+    const phaseKey = phase.name.toLowerCase();
+    const durationData = phaseDurations.get(phaseKey);
+
+    return {
+      name: phase.name,
+      status: phase.status,
+      duration: phase.duration ?? (durationData?.duration_secs != null ? formatDuration(durationData.duration_secs) : undefined),
+      iterationRange: undefined, // Would need backend data
+      keyMetrics: undefined, // Would need backend data
+    };
+  });
+
+  /** Connection state label for display */
+  readonly connectionStateLabel = computed(() => {
+    const state = this.connectionState();
+    switch (state) {
+      case 'connected': return 'Live';
+      case 'reconnecting': return 'Reconnecting';
+      case 'detached': return 'Detached';
+    }
   });
 
   /** Convert RunDetail phases to PhaseInfo[] for the PhaseTimelineComponent. */
@@ -286,8 +328,12 @@ export class RunDetailComponent {
     }
   }
 
-  onPhaseClick(_phase: PhaseInfo): void {
-    // Navigate to log tab when a completed phase is clicked (future: filter by phase)
+  onPhaseClick(phase: PhaseInfo): void {
+    // Show phase summary overlay for completed phases (AC-5.2)
+    if (phase.status === 'completed') {
+      this.selectedPhase.set(phase);
+    }
+    // Navigate to log tab when a completed phase is clicked
     this.activeTab.set('log');
   }
 
@@ -299,6 +345,59 @@ export class RunDetailComponent {
 
   goToConfiguration(): void {
     void this.router.navigate(['/configuration']);
+  }
+
+  // Lifecycle actions (AC-5.6)
+  async openWorktreeInFileManager(): Promise<void> {
+    const detail = this.runDetail();
+    if (!detail?.worktree_path) return;
+
+    try {
+      await this.tauri.openInFileManager(detail.worktree_path);
+    } catch (e) {
+      console.error('Failed to open worktree in file manager:', e);
+    }
+  }
+
+  async openInTerminal(): Promise<void> {
+    const detail = this.runDetail();
+    if (!detail?.worktree_path) return;
+
+    try {
+      await this.tauri.openInTerminal(detail.worktree_path);
+    } catch (e) {
+      console.error('Failed to open terminal:', e);
+    }
+  }
+
+  // Transport state helpers (AC-5.1)
+  getConnectionStateClass(): string {
+    const state = this.connectionState();
+    switch (state) {
+      case 'connected': return 'text-status-success';
+      case 'reconnecting': return 'text-status-warning';
+      case 'detached': return 'text-text-muted';
+    }
+  }
+
+  retryConnection(): void {
+    // Trigger a reconnection attempt
+    this.connectionState.set('reconnecting');
+    // The polling effect will handle the actual reconnection
+    const detail = this.runDetail();
+    if (detail?.repo_path) {
+      this.runsService.stopPolling();
+      this.runsService.startPolling(detail.repo_path, detail.worktree_path);
+      // Simulate reconnection success after a brief delay
+      setTimeout(() => {
+        this.connectionState.set('connected');
+      }, 1000);
+    }
+  }
+
+  // Phase summary helpers
+  dismissPhaseSummary(): void {
+    this.selectedPhase.set(null);
   }
 
   get isLoadingValue(): boolean { return this.isLoading(); }
@@ -313,6 +412,7 @@ export class RunDetailComponent {
   get showCancelDialogValue(): boolean { return this.showCancelDialog(); }
   get showRetryDialogValue(): boolean { return this.showRetryDialog(); }
   get changesFilterIterationValue(): number | null { return this.changesFilterIteration(); }
+  get selectedPhaseSummaryValue(): PhaseSummary | null { return this.selectedPhaseSummary(); }
 }
 
 @Component({

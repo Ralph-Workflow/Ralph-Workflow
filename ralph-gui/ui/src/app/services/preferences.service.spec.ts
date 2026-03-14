@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   PreferencesService,
@@ -64,16 +64,27 @@ describe('PreferencesService', () => {
     return TestBed.inject(PreferencesService);
   }
 
+  async function waitForLoadComplete(svc: PreferencesService, timeout = 1000): Promise<void> {
+    const startTime = Date.now();
+    while (svc.isLoading()) {
+      if (Date.now() - startTime > timeout) {
+        throw new Error('Timed out waiting for load to complete');
+      }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    TestBed.flushEffects();
+  }
+
   afterEach(() => {
     document.documentElement.style.removeProperty('--accent');
     document.documentElement.style.removeProperty('--font-size-base');
   });
 
-  it('should be created', fakeAsync(() => {
+  it('should be created', async () => {
     service = createService();
-    tick();
+    await Promise.resolve();
     expect(service).toBeTruthy();
-  }));
+  });
 
   describe('initial state', () => {
     it('should start with isLoading true before backend returns', () => {
@@ -86,122 +97,122 @@ describe('PreferencesService', () => {
       expect(service.preferences()).toEqual(DEFAULT_PREFERENCES);
     });
 
-    it('should set isLoading false after load completes', fakeAsync(() => {
+    it('should set isLoading false after load completes', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(service.isLoading()).toBe(false);
-    }));
+    });
   });
 
   describe('loading preferences on init', () => {
-    it('should call get_gui_preferences on init', fakeAsync(() => {
+    it('should call get_gui_preferences on init', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(mockInvoke).toHaveBeenCalledWith('get_gui_preferences');
-    }));
+    });
 
-    it('should update preferences signal with backend data', fakeAsync(() => {
+    it('should update preferences signal with backend data', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(service.preferences()).toEqual(mockPreferences);
-    }));
+    });
 
-    it('should fall back to defaults when backend call fails', fakeAsync(() => {
+    it('should fall back to defaults when backend call fails', async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_gui_preferences') return Promise.reject(new Error('Backend unavailable'));
         return Promise.resolve(undefined);
       });
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(service.preferences()).toEqual(DEFAULT_PREFERENCES);
       expect(service.isLoading()).toBe(false);
-    }));
+    });
 
-    it('should NOT use localStorage', fakeAsync(() => {
+    it('should NOT use localStorage', async () => {
       const getItemSpy = vi.spyOn(localStorage, 'getItem');
       const setItemSpy = vi.spyOn(localStorage, 'setItem');
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(getItemSpy).not.toHaveBeenCalled();
       expect(setItemSpy).not.toHaveBeenCalled();
-    }));
+    });
   });
 
   describe('CSS variables applied on init', () => {
-    it('should apply --accent CSS variable after load', fakeAsync(() => {
+    it('should apply --accent CSS variable after load', async () => {
       service = createService();
-      tick();
+      await waitForLoadComplete(service);
       expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#f59e0b');
-    }));
+    });
 
-    it('should apply --font-size-base CSS variable after load', fakeAsync(() => {
+    it('should apply --font-size-base CSS variable after load', async () => {
       service = createService();
-      tick();
+      await waitForLoadComplete(service);
       expect(document.documentElement.style.getPropertyValue('--font-size-base')).toBe('14px');
-    }));
+    });
 
-    it('should apply default CSS variables before backend responds', fakeAsync(() => {
+    it('should apply default CSS variables before backend responds', async () => {
       service = createService();
       TestBed.flushEffects();
       expect(document.documentElement.style.getPropertyValue('--accent')).toBe(DEFAULT_PREFERENCES.accentColor);
-    }));
+    });
   });
 
   describe('save', () => {
-    it('should call save_gui_preferences with updated prefs', fakeAsync(async () => {
+    it('should call save_gui_preferences with updated prefs', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       const updated: GuiPreferences = { ...mockPreferences, fontSize: 16, accentColor: '#3b82f6' };
       await service.save(updated);
-      tick();
+      await Promise.resolve();
       expect(mockInvoke).toHaveBeenCalledWith('save_gui_preferences', { prefs: updated });
-    }));
+    });
 
-    it('should update preferences signal after save', fakeAsync(async () => {
+    it('should update preferences signal after save', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       const updated: GuiPreferences = { ...mockPreferences, fontSize: 16 };
       await service.save(updated);
-      tick();
+      await Promise.resolve();
       expect(service.preferences().fontSize).toBe(16);
-    }));
+    });
 
-    it('should apply updated CSS variables after save', fakeAsync(async () => {
+    it('should apply updated CSS variables after save', async () => {
       service = createService();
-      tick();
+      await waitForLoadComplete(service);
       const updated: GuiPreferences = { ...mockPreferences, accentColor: '#3b82f6', fontSize: 18 };
       await service.save(updated);
-      tick();
+      TestBed.flushEffects();
       expect(document.documentElement.style.getPropertyValue('--accent')).toBe('#3b82f6');
       expect(document.documentElement.style.getPropertyValue('--font-size-base')).toBe('18px');
-    }));
+    });
 
-    it('should throw when backend save fails', fakeAsync(async () => {
+    it('should throw when backend save fails', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'save_gui_preferences') return Promise.reject(new Error('Save failed'));
         return Promise.resolve(undefined);
       });
       const updated: GuiPreferences = { ...mockPreferences };
       await expect(async () => service.save(updated)).rejects.toThrow('Save failed');
-    }));
+    });
   });
 
   describe('nested settings access', () => {
-    it('should expose session settings through preferences signal', fakeAsync(() => {
+    it('should expose session settings through preferences signal', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(service.preferences().session.logAutoscroll).toBe(true);
       expect(service.preferences().session.confirmCancel).toBe(true);
-    }));
+    });
 
-    it('should expose notification settings through preferences signal', fakeAsync(() => {
+    it('should expose notification settings through preferences signal', async () => {
       service = createService();
-      tick();
+      await Promise.resolve();
       expect(service.preferences().notifications.triggers.notifyCompletion).toBe(true);
       expect(service.preferences().notifications.notifyPhaseChange).toBe(false);
-    }));
+    });
 
     it('should have correct default session settings', () => {
       expect(DEFAULT_SESSION.logAutoscroll).toBe(true);

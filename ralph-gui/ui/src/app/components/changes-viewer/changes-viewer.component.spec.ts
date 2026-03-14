@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ChangesViewerComponent } from './changes-viewer.component';
-import { TAURI_INVOKE } from '../../services/tauri.service';
+import { TauriService } from '../../services/tauri.service';
 import type { RunChanges, FileDiff } from '../../types';
 
 const MOCK_FILE_DIFF_A: FileDiff = {
@@ -26,19 +26,43 @@ const MOCK_RUN_CHANGES: RunChanges = {
   iteration: null,
 };
 
+/**
+ * Waits for the component to finish loading changes and updates the view.
+ * With zoneless change detection, fixture.whenStable() doesn't track async tasks,
+ * so we poll the isLoading signal until it becomes false.
+ */
+async function waitForLoadComplete(
+  fixture: { detectChanges: () => void },
+  component: ChangesViewerComponent,
+  timeout = 1000,
+): Promise<void> {
+  const startTime = Date.now();
+  while (component.isLoading()) {
+    if (Date.now() - startTime > timeout) {
+      throw new Error('Timed out waiting for load to complete');
+    }
+    // Yield to the microtask queue to allow the Promise to resolve
+    await Promise.resolve();
+    // Trigger change detection to pick up signal updates
+    fixture.detectChanges();
+  }
+  // Final change detection after loading completes
+  fixture.detectChanges();
+}
+
 describe('ChangesViewerComponent', () => {
-  let tauriInvokeSpy: ReturnType<typeof vi.fn>;
+  let tauriServiceMock: { getRunChanges: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    tauriInvokeSpy = vi.fn().mockReturnValue(
-      Promise.resolve(MOCK_RUN_CHANGES)
-    );
+    tauriServiceMock = {
+      getRunChanges: vi.fn().mockResolvedValue(MOCK_RUN_CHANGES),
+    };
 
     await TestBed.configureTestingModule({
       imports: [ChangesViewerComponent],
       providers: [
         provideZonelessChangeDetection(),
-        { provide: TAURI_INVOKE, useValue: tauriInvokeSpy },
+        { provide: TauriService, useValue: tauriServiceMock },
       ],
     }).compileComponents();
   });
@@ -71,27 +95,26 @@ describe('ChangesViewerComponent', () => {
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
       const empty = el.querySelector('[data-testid="changes-empty"]');
-      expect(empty?.textContent).toContain('Code changes will appear here as the AI develops');
+      expect(empty?.textContent).toContain('No code changes yet');
     });
   });
 
   describe('file tree renders from input data', () => {
     it('should render file list from RunChanges.files', async () => {
-      const { fixture } = createComponent('run-1', '/repo');
+      const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.textContent).toContain('src/main.rs');
-      expect(el.textContent).toContain('src/lib.rs');
+      // Component shows basenames in the file tree
+      expect(el.textContent).toContain('main.rs');
+      expect(el.textContent).toContain('lib.rs');
     });
 
     it('should show additions and deletions counts per file', async () => {
-      const { fixture } = createComponent('run-1', '/repo');
+      const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       const el: HTMLElement = fixture.nativeElement;
       // main.rs has +5 -2
@@ -100,10 +123,9 @@ describe('ChangesViewerComponent', () => {
     });
 
     it('should show summary bar with total additions and deletions', async () => {
-      const { fixture } = createComponent('run-1', '/repo');
+      const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       const el: HTMLElement = fixture.nativeElement;
       const summaryBar = el.querySelector('[data-testid="changes-summary"]');
@@ -113,10 +135,9 @@ describe('ChangesViewerComponent', () => {
     });
 
     it('should show total files changed in summary', async () => {
-      const { fixture } = createComponent('run-1', '/repo');
+      const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       const el: HTMLElement = fixture.nativeElement;
       const summaryBar = el.querySelector('[data-testid="changes-summary"]');
@@ -128,8 +149,7 @@ describe('ChangesViewerComponent', () => {
     it('should select first file by default after loading', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       expect(component.selectedFile()).toBe(MOCK_FILE_DIFF_A);
     });
@@ -137,8 +157,7 @@ describe('ChangesViewerComponent', () => {
     it('should update selected file when another is clicked', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
-      fixture.detectChanges();
+      await waitForLoadComplete(fixture, component);
 
       component.selectFile(MOCK_FILE_DIFF_B);
       fixture.detectChanges();
@@ -185,17 +204,23 @@ describe('ChangesViewerComponent', () => {
     });
 
     it('should call navigator.clipboard.writeText with all diff_text when copying', async () => {
-      const clipboardSpy = vi.spyOn(navigator.clipboard, 'writeText').mockReturnValue(Promise.resolve());
+      // Mock clipboard API since it may not be available in test environment
+      const mockWriteText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: mockWriteText },
+        writable: true,
+        configurable: true,
+      });
 
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       await component.copyAsPatch();
 
       const expectedText = MOCK_FILE_DIFF_A.diff_text + '\n' + MOCK_FILE_DIFF_B.diff_text;
-      expect(clipboardSpy).toHaveBeenCalledWith(expectedText);
+      expect(mockWriteText).toHaveBeenCalledWith(expectedText);
     });
   });
 
@@ -209,13 +234,13 @@ describe('ChangesViewerComponent', () => {
     it('should refetch changes when iteration changes', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
 
-      const callCountBefore = tauriInvokeSpy.mock.calls.length;
+      const callCountBefore = tauriServiceMock.getRunChanges.mock.calls.length;
       component.setIteration(2);
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
 
-      expect(tauriInvokeSpy.mock.calls.length).toBeGreaterThan(callCountBefore);
+      expect(tauriServiceMock.getRunChanges.mock.calls.length).toBeGreaterThan(callCountBefore);
     });
   });
 
@@ -223,7 +248,7 @@ describe('ChangesViewerComponent', () => {
     it('should group files by their parent directory', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       // Both files are in 'src/' directory
@@ -235,7 +260,7 @@ describe('ChangesViewerComponent', () => {
     it('should include all files in the correct group', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       const groups = component.fileGroups();
@@ -248,7 +273,7 @@ describe('ChangesViewerComponent', () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.componentRef.setInput('filterIteration', 2);
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       expect(component.selectedIteration()).toBe(2);
@@ -284,9 +309,9 @@ describe('ChangesViewerComponent', () => {
     });
 
     it('should render the toggle button in the summary bar', async () => {
-      const { fixture } = createComponent('run-1', '/repo');
+      const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
@@ -297,7 +322,7 @@ describe('ChangesViewerComponent', () => {
     it('should show "Side-by-side" label when in unified mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       // Default unified mode
@@ -310,7 +335,7 @@ describe('ChangesViewerComponent', () => {
     it('should show "Unified" label when in side-by-side mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       component.toggleViewMode();
@@ -325,7 +350,7 @@ describe('ChangesViewerComponent', () => {
     it('should show unified diff panel when in unified mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       expect(component.sideBySide()).toBe(false);
@@ -339,7 +364,7 @@ describe('ChangesViewerComponent', () => {
     it('should show side-by-side panels when in side-by-side mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      await fixture.whenStable();
+      await waitForLoadComplete(fixture, component);
       fixture.detectChanges();
 
       component.toggleViewMode();

@@ -1,5 +1,5 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Router, NavigationEnd } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { AppComponent } from './app.component';
@@ -282,7 +282,7 @@ describe('AppComponent', () => {
   });
 
   describe('welcome redirect', () => {
-    it('should navigate to /welcome when loading completes with empty workspaces (returning user)', fakeAsync(() => {
+    it('should navigate to /welcome when loading completes with empty workspaces (returning user)', async () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
@@ -295,12 +295,12 @@ describe('AppComponent', () => {
       workspacesSignal.set([]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve(); // Flush microtask queue
 
       expect(navigateSpy).toHaveBeenCalledWith(['/welcome']);
-    }));
+    });
 
-    it('should navigate to /onboarding when loading completes with empty workspaces on first run', fakeAsync(() => {
+    it('should navigate to /onboarding when loading completes with empty workspaces on first run', async () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
@@ -313,12 +313,12 @@ describe('AppComponent', () => {
       workspacesSignal.set([]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve(); // Flush microtask queue
 
       expect(navigateSpy).toHaveBeenCalledWith(['/onboarding']);
-    }));
+    });
 
-    it('should not navigate to /welcome when workspaces exist after loading', fakeAsync(() => {
+    it('should not navigate to /welcome when workspaces exist after loading', async () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
@@ -339,11 +339,11 @@ describe('AppComponent', () => {
       isLoadingSignal.set(false);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve(); // Flush microtask queue
 
       expect(navigateSpy).not.toHaveBeenCalledWith(['/welcome']);
       expect(navigateSpy).not.toHaveBeenCalledWith(['/onboarding']);
-    }));
+    });
   });
 
   describe('shortcut groups', () => {
@@ -410,7 +410,7 @@ describe('AppComponent', () => {
   });
 
   describe('workspace context switching', () => {
-    it('should call initializeRepo when activeWorkspace changes', fakeAsync(() => {
+    it('should call initializeRepo when activeWorkspace changes', async () => {
       fixture.detectChanges();
 
       const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1' });
@@ -418,12 +418,12 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve(); // Flush microtask queue
 
       expect(initializeRepoSpy).toHaveBeenCalledWith('/path/to/repo-1');
-    }));
+    });
 
-    it('should call fetchSessions when activeWorkspace changes', fakeAsync(() => {
+    it('should call fetchSessions when activeWorkspace changes', async () => {
       fixture.detectChanges();
 
       const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1' });
@@ -431,46 +431,54 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve(); // Flush microtask queue
 
       expect(fetchSessionsSpy).toHaveBeenCalledWith('/path/to/repo-1');
-    }));
+    });
 
-    it('should navigate to saved navigationState when workspace changes after initial load', fakeAsync(() => {
+    it('should navigate to saved navigationState when workspace changes after initial load', async () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
       // Initial load
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Set initial workspace (triggers initialLoadComplete flag)
       const ws1 = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1', navigationState: '/sessions' });
       activeWorkspaceSignal.set(ws1);
       workspacesSignal.set([ws1]);
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Switch to ws2 with different nav state
       const ws2 = createMockWorkspace({ id: 'ws-2', path: '/path/to/repo-2', navigationState: '/worktrees' });
       activeWorkspaceSignal.set(ws2);
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       expect(navigateSpy).toHaveBeenCalledWith(['/worktrees']);
-    }));
+    });
 
-    it('should not initializeRepo when activeWorkspace is null', fakeAsync(() => {
+    it('should not initializeRepo when activeWorkspace is null', async () => {
       fixture.detectChanges();
       activeWorkspaceSignal.set(null);
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
       expect(initializeRepoSpy).not.toHaveBeenCalled();
-    }));
+    });
   });
 
   describe('navigation state persistence', () => {
-    it('should persist navigation state on NavigationEnd events', fakeAsync(() => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should persist navigation state on NavigationEnd events', async () => {
       const router = TestBed.inject(Router);
       const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
 
@@ -480,16 +488,16 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Emit a NavigationEnd event
       routerEvents$.next(new NavigationEnd(1, '/sessions', '/sessions'));
-      tick(350); // past debounce
+      vi.advanceTimersByTime(350); // past debounce
 
       expect(persistNavigationSpy).toHaveBeenCalledWith('ws-1', '/sessions');
-    }));
+    });
 
-    it('should not persist navigation state for exempt routes (/welcome)', fakeAsync(() => {
+    it('should not persist navigation state for exempt routes (/welcome)', async () => {
       const router = TestBed.inject(Router);
       const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
 
@@ -499,15 +507,15 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       routerEvents$.next(new NavigationEnd(1, '/welcome', '/welcome'));
-      tick(350);
+      vi.advanceTimersByTime(350);
 
       expect(persistNavigationSpy).not.toHaveBeenCalled();
-    }));
+    });
 
-    it('should not persist navigation state for exempt routes (/onboarding)', fakeAsync(() => {
+    it('should not persist navigation state for exempt routes (/onboarding)', async () => {
       const router = TestBed.inject(Router);
       const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
 
@@ -517,13 +525,13 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       routerEvents$.next(new NavigationEnd(1, '/onboarding', '/onboarding'));
-      tick(350);
+      vi.advanceTimersByTime(350);
 
       expect(persistNavigationSpy).not.toHaveBeenCalled();
-    }));
+    });
   });
 
   describe('sidebar resize', () => {
@@ -571,7 +579,7 @@ describe('AppComponent', () => {
       expect(component.sidebarWidth()).toBe(400);
     });
 
-    it('should persist width to preferences on drag end', fakeAsync(async () => {
+    it('should persist width to preferences on drag end', async () => {
       const mockPreferencesService = TestBed.inject(PreferencesService);
       const saveSpy = vi.spyOn(mockPreferencesService, 'save');
 
@@ -585,22 +593,22 @@ describe('AppComponent', () => {
       const endEvent = new MouseEvent('mouseup', { bubbles: true });
       document.dispatchEvent(endEvent);
 
-      tick();
-      await fixture.whenStable();
+      await Promise.resolve();
+      fixture.detectChanges();
 
       expect(saveSpy).toHaveBeenCalledWith(expect.objectContaining({ sidebarWidth: 300 }));
-    }));
+    });
   });
 
   describe('close active workspace (Ctrl+W)', () => {
-    it('should show close confirmation dialog when Ctrl+W is pressed and workspace has active runs', fakeAsync(() => {
+    it('should show close confirmation dialog when Ctrl+W is pressed and workspace has active runs', async () => {
       const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 2 });
       workspacesSignal.set([ws]);
       activeWorkspaceIdSignal.set('ws-1');
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Initially no dialog
       expect(component.closeActiveConfirmId()).toBeNull();
@@ -610,9 +618,9 @@ describe('AppComponent', () => {
 
       // Dialog should be shown
       expect(component.closeActiveConfirmId()).toBe('ws-1');
-    }));
+    });
 
-    it('should NOT show dialog when Ctrl+W is pressed and workspace has no active runs', fakeAsync(async () => {
+    it('should NOT show dialog when Ctrl+W is pressed and workspace has no active runs', async () => {
       const workspaceService = TestBed.inject(WorkspaceService);
       const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 0 });
       workspacesSignal.set([ws]);
@@ -620,20 +628,20 @@ describe('AppComponent', () => {
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Trigger Ctrl+W
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
 
-      tick();
-      await fixture.whenStable();
+      await Promise.resolve();
+      fixture.detectChanges();
 
       // No dialog shown; workspace should be closed directly
       expect(component.closeActiveConfirmId()).toBeNull();
       expect(workspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', false);
-    }));
+    });
 
-    it('should close workspace with force=true when dialog is confirmed', fakeAsync(async () => {
+    it('should close workspace with force=true when dialog is confirmed', async () => {
       const workspaceService = TestBed.inject(WorkspaceService);
       const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 1 });
       workspacesSignal.set([ws]);
@@ -641,7 +649,7 @@ describe('AppComponent', () => {
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Trigger Ctrl+W to show dialog
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
@@ -649,14 +657,14 @@ describe('AppComponent', () => {
       // Confirm the dialog
       component.onCloseActiveConfirmed(true);
 
-      tick();
-      await fixture.whenStable();
+      await Promise.resolve();
+      fixture.detectChanges();
 
       expect(component.closeActiveConfirmId()).toBeNull();
       expect(workspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', true);
-    }));
+    });
 
-    it('should not close workspace when dialog is cancelled', fakeAsync(async () => {
+    it('should not close workspace when dialog is cancelled', async () => {
       const workspaceService = TestBed.inject(WorkspaceService);
       const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 1 });
       workspacesSignal.set([ws]);
@@ -664,7 +672,7 @@ describe('AppComponent', () => {
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Trigger Ctrl+W to show dialog
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
@@ -672,14 +680,14 @@ describe('AppComponent', () => {
       // Cancel the dialog
       component.onCloseActiveConfirmed(false);
 
-      tick();
-      await fixture.whenStable();
+      await Promise.resolve();
+      fixture.detectChanges();
 
       expect(component.closeActiveConfirmId()).toBeNull();
       expect(workspaceService.closeWorkspace).not.toHaveBeenCalled();
-    }));
+    });
 
-    it('should show error notification when workspace close fails', fakeAsync(() => {
+    it('should show error notification when workspace close fails', async () => {
       const workspaceService = TestBed.inject(WorkspaceService);
       const notificationService = TestBed.inject(NotificationService);
       // Use mockImplementation to create the rejected promise lazily (at call time, not setup time)
@@ -694,24 +702,24 @@ describe('AppComponent', () => {
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Trigger Ctrl+W (no active runs, closes directly)
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
 
-      tick();
+      await Promise.resolve();
 
       expect(notificationService.add).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
-    }));
+    });
 
-    it('should include workspace label and run count in dialog message', fakeAsync(() => {
+    it('should include workspace label and run count in dialog message', async () => {
       const ws = createMockWorkspace({ id: 'ws-1', label: 'my-project', activeRunCount: 3 });
       workspacesSignal.set([ws]);
       activeWorkspaceIdSignal.set('ws-1');
       activeWorkspaceSignal.set(ws);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Trigger Ctrl+W to show dialog
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
@@ -719,16 +727,16 @@ describe('AppComponent', () => {
       const msg = component.closeActiveConfirmMessageValue;
       expect(msg).toContain('my-project');
       expect(msg).toContain('3');
-    }));
+    });
   });
 
-  describe('workspace switching loading state', () => {
+  describe('workspace-switching loading state', () => {
     it('should be false initially before any workspace activates', () => {
       fixture.detectChanges();
       expect(component.isSwitchingWorkspace()).toBe(false);
     });
 
-    it('should set isSwitchingWorkspace to true during workspace switch', fakeAsync(() => {
+    it('should set isSwitchingWorkspace to true during workspace switch', async () => {
       // Make initializeRepo and fetchSessions return pending promises
       let resolveInit!: () => void;
       let resolveFetch!: () => void;
@@ -742,7 +750,7 @@ describe('AppComponent', () => {
       workspacesSignal.set([ws]);
 
       fixture.detectChanges();
-      tick();
+      await Promise.resolve();
 
       // Still switching while promises pending
       expect(component.isSwitchingWorkspace()).toBe(true);
@@ -750,10 +758,10 @@ describe('AppComponent', () => {
       // Resolve both
       resolveInit();
       resolveFetch();
-      tick();
+      await Promise.resolve();
       fixture.detectChanges();
 
       expect(component.isSwitchingWorkspace()).toBe(false);
-    }));
+    });
   });
 });

@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { provideZonelessChangeDetection, signal, Signal } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
 import { RunDetailComponent, DetailTab } from './run-detail.component';
 import { RunsService } from '../../services/runs.service';
-import { TAURI_INVOKE } from '../../services/tauri.service';
+import { TauriService } from '../../services/tauri.service';
 import { LISTEN_TOKEN } from '../../components/run-log/run-log.component';
 import type { IterationSummary, ReviewSummary, RunDetail } from '../../types';
 
@@ -70,73 +70,66 @@ const MOCK_RUNNING_RUN: RunDetail = {
   is_degraded: false,
 };
 
+function createRunsServiceMock(
+  runDetailValue: RunDetail | null,
+  iterationHistory: IterationSummary[] = [],
+  reviewHistory: ReviewSummary[] = [],
+) {
+  return {
+    runDetail: signal<RunDetail | null>(runDetailValue).asReadonly(),
+    status: signal<'idle' | 'loading' | 'succeeded' | 'failed'>('succeeded').asReadonly(),
+    error: signal<string | null>(null).asReadonly(),
+    pollingStatus: signal<boolean>(false).asReadonly(),
+    iterationHistory: signal<IterationSummary[]>(iterationHistory).asReadonly(),
+    reviewHistory: signal<ReviewSummary[]>(reviewHistory).asReadonly(),
+    fetchRunDetail: vi.fn().mockResolvedValue(undefined),
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+    clearRunDetail: vi.fn(),
+  };
+}
+
+async function createComponent(
+  run: RunDetail | null,
+  iterations: IterationSummary[] = [],
+  reviews: ReviewSummary[] = [],
+) {
+  const runsServiceMock = createRunsServiceMock(run, iterations, reviews);
+  const tauriServiceMock = {
+    openInFileManager: vi.fn().mockResolvedValue(undefined),
+    openInTerminal: vi.fn().mockResolvedValue(undefined),
+    subscribeRunLogs: vi.fn().mockResolvedValue(vi.fn()),
+    unsubscribeRunLogs: vi.fn().mockResolvedValue(undefined),
+    getRunChanges: vi.fn().mockResolvedValue({ files: [], diff_text: '' }),
+  };
+
+  TestBed.configureTestingModule({
+    imports: [RunDetailComponent],
+    providers: [
+      provideZonelessChangeDetection(),
+      provideRouter([]),
+      { provide: RunsService, useValue: runsServiceMock },
+      { provide: TauriService, useValue: tauriServiceMock },
+      {
+        provide: LISTEN_TOKEN,
+        useValue: vi.fn().mockResolvedValue(vi.fn()),
+      },
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          snapshot: { paramMap: { get: () => run?.run_id ?? null } },
+        },
+      },
+    ],
+  });
+
+  const fixture = TestBed.createComponent(RunDetailComponent);
+  await fixture.whenStable();
+  return { fixture, component: fixture.componentInstance, tauriServiceMock };
+}
+
 describe('RunDetailComponent', () => {
-  let tauriInvokeSpy: ReturnType<typeof vi.fn>;
-
-  function createRunsServiceMock(
-    runDetailValue: RunDetail | null,
-    iterationHistory: IterationSummary[] = [],
-    reviewHistory: ReviewSummary[] = [],
-  ): {
-    runDetail: Signal<RunDetail | null>;
-    status: Signal<'idle' | 'loading' | 'succeeded' | 'failed'>;
-    error: Signal<string | null>;
-    pollingStatus: Signal<boolean>;
-    iterationHistory: Signal<IterationSummary[]>;
-    reviewHistory: Signal<ReviewSummary[]>;
-    fetchRunDetail: ReturnType<typeof vi.fn>;
-    startPolling: ReturnType<typeof vi.fn>;
-    stopPolling: ReturnType<typeof vi.fn>;
-    clearRunDetail: ReturnType<typeof vi.fn>;
-  } {
-    return {
-      runDetail: signal<RunDetail | null>(runDetailValue).asReadonly(),
-      status: signal<'idle' | 'loading' | 'succeeded' | 'failed'>('succeeded').asReadonly(),
-      error: signal<string | null>(null).asReadonly(),
-      pollingStatus: signal<boolean>(false).asReadonly(),
-      iterationHistory: signal<IterationSummary[]>(iterationHistory).asReadonly(),
-      reviewHistory: signal<ReviewSummary[]>(reviewHistory).asReadonly(),
-      fetchRunDetail: vi.fn().mockResolvedValue(undefined),
-      startPolling: vi.fn(),
-      stopPolling: vi.fn(),
-      clearRunDetail: vi.fn(),
-    };
-  }
-
-  async function createComponent(
-    run: RunDetail | null,
-    iterations: IterationSummary[] = [],
-    reviews: ReviewSummary[] = [],
-  ) {
-    const runsServiceMock = createRunsServiceMock(run, iterations, reviews);
-
-    TestBed.configureTestingModule({
-      imports: [RunDetailComponent],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        { provide: RunsService, useValue: runsServiceMock },
-        { provide: TAURI_INVOKE, useValue: tauriInvokeSpy },
-        {
-          provide: LISTEN_TOKEN,
-          useValue: vi.fn().mockResolvedValue(vi.fn()),
-        },
-        {
-          provide: ActivatedRoute,
-          useValue: {
-            snapshot: { paramMap: { get: () => run?.run_id ?? null } },
-          },
-        },
-      ],
-    });
-
-    const fixture = TestBed.createComponent(RunDetailComponent);
-    await fixture.whenStable();
-    return { fixture, component: fixture.componentInstance };
-  }
-
   beforeEach(() => {
-    tauriInvokeSpy = vi.fn().mockResolvedValue([]);
     TestBed.resetTestingModule();
   });
 
@@ -223,14 +216,14 @@ describe('RunDetailComponent', () => {
     it('should show worktree name in title when worktree_path is set', async () => {
       const { fixture } = await createComponent(MOCK_COMPLETED_RUN);
       const el: HTMLElement = fixture.nativeElement;
-      const title = el.querySelector('.run-header__title');
+      const title = el.querySelector('.page-title');
       expect(title?.textContent).toContain('wt-42-auth');
     });
 
     it('should show description in subtitle when present', async () => {
       const { fixture } = await createComponent(MOCK_COMPLETED_RUN);
       const el: HTMLElement = fixture.nativeElement;
-      const subtitle = el.querySelector('.run-header__subtitle');
+      const subtitle = el.querySelector('.text-text-secondary');
       expect(subtitle?.textContent).toContain('Add user authentication');
     });
   });
@@ -318,11 +311,58 @@ describe('RunDetailComponent', () => {
       const degradedRun: RunDetail = {
         ...MOCK_RUNNING_RUN,
         is_degraded: true,
-        degraded_info: { retry_count: 3, fallback_agent: 'backup-claude', reason: 'Timeout' },
+        degraded_info: { retry_count: 3, fallback_agent: 'backup-claude', reason: 'Timeout' }
       };
       const { fixture } = await createComponent(degradedRun);
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('[data-testid="degraded-banner"]')?.textContent).toContain('3');
+    });
+  });
+
+  describe('lifecycle action buttons (AC-5.6)', () => {
+    it('should show open worktree button when worktree_path is set', async () => {
+      const { fixture } = await createComponent(MOCK_COMPLETED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="open-worktree-btn"]')).toBeTruthy();
+    });
+
+    it('should show open terminal button when worktree_path is set', async () => {
+      const { fixture } = await createComponent(MOCK_COMPLETED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="open-terminal-btn"]')).toBeTruthy();
+    });
+
+    it('should NOT show lifecycle buttons when worktree_path is null', async () => {
+      const { fixture } = await createComponent(MOCK_FAILED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="open-worktree-btn"]')).toBeNull();
+      expect(el.querySelector('[data-testid="open-terminal-btn"]')).toBeNull();
+    });
+
+    it('should call openInFileManager when open worktree button is clicked', async () => {
+      const { fixture, tauriServiceMock } = await createComponent(MOCK_COMPLETED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      const btn = el.querySelector('[data-testid="open-worktree-btn"]') as HTMLElement;
+      btn?.click();
+
+      expect(tauriServiceMock.openInFileManager).toHaveBeenCalledWith('/repo/wt-42-auth');
+    });
+
+    it('should call openInTerminal when open terminal button is clicked', async () => {
+      const { fixture, tauriServiceMock } = await createComponent(MOCK_COMPLETED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      const btn = el.querySelector('[data-testid="open-terminal-btn"]') as HTMLElement;
+      btn?.click();
+
+      expect(tauriServiceMock.openInTerminal).toHaveBeenCalledWith('/repo/wt-42-auth');
+    });
+  });
+
+  describe('phase timeline rendering', () => {
+    it('should render phase timeline component', async () => {
+      const { fixture } = await createComponent(MOCK_COMPLETED_RUN);
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('app-phase-timeline')).toBeTruthy();
     });
   });
 });

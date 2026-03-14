@@ -88,7 +88,7 @@
           "options": {
             "tsConfig": "tsconfig.spec.json",
             "buildTarget": "ralph-workflow-ui:build:development",
-            "setupFiles": ["src/test-setup.ts"]
+            "setupFiles": ["src/zone-patch.ts", "src/test-setup.ts"]
           }
         },
         "lint": {

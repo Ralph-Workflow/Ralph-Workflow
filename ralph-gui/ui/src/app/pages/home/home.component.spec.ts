@@ -176,7 +176,7 @@ describe('HomeComponent', () => {
     });
 
     it('should navigate to run detail', () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       component.navigateToRun('run-123');
 
@@ -184,7 +184,7 @@ describe('HomeComponent', () => {
     });
 
     it('should navigate to sessions', () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       component.navigateToSessions();
 
@@ -192,7 +192,7 @@ describe('HomeComponent', () => {
     });
 
     it('should navigate to worktrees', () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       component.navigateToWorktrees();
 
@@ -200,7 +200,7 @@ describe('HomeComponent', () => {
     });
 
     it('should navigate to configuration', () => {
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       component.navigateToConfiguration();
 
@@ -283,7 +283,7 @@ describe('HomeComponent', () => {
 
     it('should navigate to run detail on viewRun event from active runs', () => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       worktreesSignal.set([createMockWorktree()]);
       sessionsSignal.set([createMockSession({ run_id: 'active-run-1', status: 'running' })]);
@@ -319,7 +319,7 @@ describe('HomeComponent', () => {
 
     it('should navigate to run detail on click in needs attention section', () => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       worktreesSignal.set([createMockWorktree()]);
       sessionsSignal.set([createMockSession({ run_id: 'failed-run-1', status: 'failed' })]);
@@ -352,7 +352,7 @@ describe('HomeComponent', () => {
 
     it('should navigate to run detail on viewRun event from recent completions', () => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       worktreesSignal.set([createMockWorktree()]);
       sessionsSignal.set([createMockSession({ run_id: 'completed-run-1', status: 'completed' })]);
@@ -526,7 +526,7 @@ describe('QuickActionComponent', () => {
   });
 
   it('should emit action on click', () => {
-    spyOn(component.action, 'emit');
+    vi.spyOn(component.action, 'emit');
 
     fixture.debugElement.nativeElement.querySelector('button').click();
 

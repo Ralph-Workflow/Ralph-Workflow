@@ -141,17 +141,22 @@ describe('IterationHistoryComponent', () => {
   describe('active iteration highlighting', () => {
     it('should apply active class to the current iteration row', () => {
       const { fixture } = createComponent([MOCK_COMPLETE, MOCK_RUNNING], 2);
+      fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
       const rows = el.querySelectorAll('[data-testid="iteration-row"]');
-      expect(rows[1]?.classList).toContain('iteration-row--active');
+      // Only the second row (iteration 2) should have the active background class
+      expect(rows[0]?.className).not.toContain('bg-[rgba(245,158,11,0.06)]');
+      expect(rows[1]?.className).toContain('bg-[rgba(245,158,11,0.06)]');
     });
 
     it('should not apply active class when currentIteration is null', () => {
       const { fixture } = createComponent([MOCK_COMPLETE, MOCK_RUNNING], null);
+      fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
       const rows = el.querySelectorAll('[data-testid="iteration-row"]');
+      // No rows should have the active background class
       rows.forEach(row => {
-        expect(row.classList).not.toContain('iteration-row--active');
+        expect(row.className).not.toContain('bg-[rgba(245,158,11,0.06)]');
       });
     });
   });

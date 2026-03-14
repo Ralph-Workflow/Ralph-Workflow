@@ -1,4 +1,5 @@
 import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
+import { NgClass } from '@angular/common';
 import type { ReviewSummary } from '../../types';
 
 /** Formats a duration in seconds into a human-readable string like "45s" or "1m 30s". */
@@ -21,6 +22,7 @@ export interface ReviewDisplayItem {
   selector: 'app-review-history',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgClass],
   templateUrl: './review-history.component.html',
   styleUrl: './review-history.component.css',
 })

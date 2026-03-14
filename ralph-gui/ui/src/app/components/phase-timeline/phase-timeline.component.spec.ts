@@ -66,7 +66,7 @@ describe('PhaseTimelineComponent', () => {
       const el: HTMLElement = fixture.nativeElement;
       const activeDot = el.querySelector('[data-testid="phase-dot-active"]');
       expect(activeDot).toBeTruthy();
-      expect(activeDot?.classList).toContain('animate-pulse');
+      expect(activeDot?.classList).toContain('animate-phase-pulse');
     });
   });
 
@@ -189,7 +189,7 @@ describe('PhaseTimelineComponent', () => {
       ]);
       const el: HTMLElement = fixture.nativeElement;
       const dot = el.querySelector('[data-testid="phase-dot-completed"]');
-      expect(dot?.classList).toContain('phase-timeline__dot--plan');
+      expect(dot?.classList).toContain('text-phase-plan');
     });
 
     it('should apply phase-develop class for Develop phase when active', () => {
@@ -198,7 +198,7 @@ describe('PhaseTimelineComponent', () => {
       ]);
       const el: HTMLElement = fixture.nativeElement;
       const dot = el.querySelector('[data-testid="phase-dot-active"]');
-      expect(dot?.classList).toContain('phase-timeline__dot--develop');
+      expect(dot?.classList).toContain('text-phase-develop');
     });
 
     it('should apply phase-review class for Review phase when completed', () => {
@@ -207,7 +207,7 @@ describe('PhaseTimelineComponent', () => {
       ]);
       const el: HTMLElement = fixture.nativeElement;
       const dot = el.querySelector('[data-testid="phase-dot-completed"]');
-      expect(dot?.classList).toContain('phase-timeline__dot--review');
+      expect(dot?.classList).toContain('text-phase-review');
     });
 
     it('should apply phase-commit class for Commit phase when completed', () => {
@@ -216,7 +216,7 @@ describe('PhaseTimelineComponent', () => {
       ]);
       const el: HTMLElement = fixture.nativeElement;
       const dot = el.querySelector('[data-testid="phase-dot-completed"]');
-      expect(dot?.classList).toContain('phase-timeline__dot--commit');
+      expect(dot?.classList).toContain('text-phase-commit');
     });
 
     it('should apply pending status class for pending phases', () => {
@@ -225,7 +225,7 @@ describe('PhaseTimelineComponent', () => {
       ]);
       const el: HTMLElement = fixture.nativeElement;
       const dot = el.querySelector('[data-testid="phase-dot-pending"]');
-      expect(dot?.classList).toContain('phase-timeline__dot--pending');
+      expect(dot?.classList).toContain('text-text-muted');
     });
   });
 
@@ -238,8 +238,8 @@ describe('PhaseTimelineComponent', () => {
         { name: 'Commit', status: 'pending' },
       ]);
       const el: HTMLElement = fixture.nativeElement;
-      const connectors = el.querySelectorAll('.phase-timeline__connector');
-      expect(connectors[0]?.classList).toContain('phase-timeline__connector--done');
+      const connectors = el.querySelectorAll('[class*="flex-1"][class*="h-0.5"]');
+      expect(connectors[0]?.classList).toContain('bg-status-success');
     });
 
     it('should show active connector for active phase', () => {
@@ -250,8 +250,8 @@ describe('PhaseTimelineComponent', () => {
         { name: 'Commit', status: 'pending' },
       ]);
       const el: HTMLElement = fixture.nativeElement;
-      const connectors = el.querySelectorAll('.phase-timeline__connector');
-      expect(connectors[1]?.classList).toContain('phase-timeline__connector--active');
+      const connectors = el.querySelectorAll('[class*="flex-1"][class*="h-0.5"]');
+      expect(connectors[1]?.classList).toContain('bg-gradient-to-r');
     });
   });
 });

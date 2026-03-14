@@ -1,4 +1,5 @@
 import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
+import { NgClass } from '@angular/common';
 import type { IterationSummary } from '../../types';
 
 /** Formats a duration in seconds into a human-readable string like "4m 12s". */
@@ -21,6 +22,7 @@ export interface IterationDisplayItem {
   selector: 'app-iteration-history',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgClass],
   templateUrl: './iteration-history.component.html',
   styleUrl: './iteration-history.component.css',
 })

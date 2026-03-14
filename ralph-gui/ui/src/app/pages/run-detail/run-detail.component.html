@@ -1,19 +1,19 @@
 <div class="page-content">
   @if (isLoadingValue) {
-    <div class="run-header">
+    <div class="flex items-center gap-3 mb-6 animate-fade-in">
       <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title run-header__title">Run Detail</h1>
+      <h1 class="page-title mb-0">Run Detail</h1>
     </div>
-    <div class="run-loading">Loading run...</div>
+    <div class="py-10 text-center text-text-muted text-[13px] font-mono">Loading run...</div>
   } @else if (errorValue || !runDetailValue) {
-    <div class="run-header">
+    <div class="flex items-center gap-3 mb-6 animate-fade-in">
       <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title run-header__title">Run Detail</h1>
+      <h1 class="page-title mb-0">Run Detail</h1>
     </div>
-    <div class="empty-state">
-      <span class="empty-state-icon">⊘</span>
-      <div class="empty-state-title">Run not found</div>
-      <div class="empty-state-desc">{{ errorValue ?? 'This run could not be loaded.' }}</div>
+    <div class="flex flex-col items-center justify-center gap-3 py-12">
+      <span class="text-3xl text-text-muted">⊘</span>
+      <div class="text-lg font-semibold text-text-primary">Run not found</div>
+      <div class="text-sm text-text-muted">{{ errorValue ?? 'This run could not be loaded.' }}</div>
     </div>
   } @else {
     <!-- Cancel confirmation dialog -->
@@ -43,18 +43,18 @@
     }
 
     <!-- Page header per wireframe -->
-    <div class="run-header">
+    <div class="flex items-center gap-3 mb-6 animate-fade-in">
       <button class="btn btn-ghost" (click)="goBack()">← Runs</button>
-      <div class="run-header__titles">
-        <h1 class="page-title run-header__title">Run Monitoring: {{ worktreeName() }}</h1>
+      <div class="flex flex-col gap-1 flex-1">
+        <h1 class="page-title mb-0">Run Monitoring: {{ worktreeName() }}</h1>
         @if (runDetailValue!.description) {
-          <div class="run-header__subtitle">{{ runDetailValue!.description }}</div>
+          <div class="text-[13px] text-text-secondary">{{ runDetailValue!.description }}</div>
         }
       </div>
-      <div class="run-header__actions">
+      <div class="flex gap-2 items-center">
         @if (runDetailValue!.status === 'Running') {
           <button
-            class="btn btn-ghost btn-danger"
+            class="btn btn-ghost text-status-error hover:bg-[rgba(239,68,68,0.08)]"
             data-testid="cancel-btn"
             (click)="handleCancel()"
           >
@@ -78,15 +78,34 @@
             </button>
           }
         }
+        <!-- Lifecycle actions (AC-5.6) -->
+        @if (runDetailValue!.worktree_path) {
+          <button
+            class="btn btn-ghost text-xs"
+            data-testid="open-worktree-btn"
+            (click)="openWorktreeInFileManager()"
+            title="Open worktree directory in file manager"
+          >
+            📁 Open Worktree
+          </button>
+          <button
+            class="btn btn-ghost text-xs"
+            data-testid="open-terminal-btn"
+            (click)="openInTerminal()"
+            title="Open worktree in terminal"
+          >
+            ⌘ Open Terminal
+          </button>
+        }
       </div>
     </div>
 
-    <div class="run-detail-body">
+    <div class="animate-fade-in-delayed">
       <!-- Degraded banner -->
       @if (runDetailValue!.is_degraded) {
-        <div class="banner banner--warning" data-testid="degraded-banner">
-          <span class="banner__icon">⚠</span>
-          <div class="banner__content">
+        <div class="flex items-start gap-3 px-4 py-3 rounded-md mb-4 text-[13px] bg-[var(--status-degraded-bg)] border border-[var(--status-degraded-border)] text-[var(--status-degraded)]" data-testid="degraded-banner">
+          <span class="text-lg shrink-0 mt-px">⚠</span>
+          <div class="flex-1">
             <strong>Degraded conditions</strong>
             @if (runDetailValue!.degraded_info) {
               <span>
@@ -99,10 +118,10 @@
               <span> — retries exceeded or fallback agent active.</span>
             }
             @if (runDetailValue!.degraded_info?.reason) {
-              <div class="banner__subtitle">{{ runDetailValue!.degraded_info!.reason }}</div>
+              <div class="mt-1 text-xs opacity-80">{{ runDetailValue!.degraded_info!.reason }}</div>
             }
-            <div class="banner__actions">
-              <button class="btn btn-ghost btn-sm" (click)="goToConfiguration()">Open Configuration →</button>
+            <div class="flex gap-2 mt-2">
+              <button class="btn btn-ghost text-xs py-1.5 px-2.5" (click)="goToConfiguration()">Open Configuration →</button>
             </div>
           </div>
         </div>
@@ -110,31 +129,31 @@
 
       <!-- Completed state: success summary card with metrics -->
       @if (runDetailValue!.status === 'Completed') {
-        <div class="state-summary state-summary--completed" data-testid="completed-banner">
-          <div class="state-summary__header">
-            <span class="state-summary__icon">✓</span>
-            <strong class="state-summary__title">Completed</strong>
+        <div class="px-5 py-4 rounded-md mb-4 text-[13px] bg-[rgba(34,197,94,0.08)] border border-[rgba(34,197,94,0.25)]" data-testid="completed-banner">
+          <div class="flex items-center gap-2.5 mb-2.5">
+            <span class="text-xl shrink-0 text-status-success">✓</span>
+            <strong class="text-[15px] font-semibold text-status-success">Completed</strong>
             @if (formattedTotalDuration()) {
-              <span class="state-summary__duration">{{ formattedTotalDuration() }}</span>
+              <span class="font-mono text-xs text-text-muted ml-auto">{{ formattedTotalDuration() }}</span>
             }
           </div>
-          <div class="metric-grid">
-            <div class="metric-card" data-testid="metric-iterations">
-              <span class="metric-card__value">{{ runDetailValue!.iteration_count ?? 0 }}</span>
-              <span class="metric-card__label">Iterations</span>
+          <div class="flex gap-3 mt-2 flex-wrap">
+            <div class="bg-black/20 border border-white/[0.06] rounded-sm px-3.5 py-2 flex flex-col gap-0.5" data-testid="metric-iterations">
+              <span class="text-xl font-bold font-mono text-text-primary">{{ runDetailValue!.iteration_count ?? 0 }}</span>
+              <span class="text-[11px] text-text-muted uppercase tracking-wider">Iterations</span>
             </div>
-            <div class="metric-card" data-testid="metric-reviews">
-              <span class="metric-card__value">{{ runDetailValue!.review_count ?? 0 }}</span>
-              <span class="metric-card__label">Reviews</span>
+            <div class="bg-black/20 border border-white/[0.06] rounded-sm px-3.5 py-2 flex flex-col gap-0.5" data-testid="metric-reviews">
+              <span class="text-xl font-bold font-mono text-text-primary">{{ runDetailValue!.review_count ?? 0 }}</span>
+              <span class="text-[11px] text-text-muted uppercase tracking-wider">Reviews</span>
             </div>
-            <div class="metric-card" data-testid="metric-files">
-              <span class="metric-card__value">{{ runDetailValue!.total_files_changed ?? 0 }}</span>
-              <span class="metric-card__label">Files Changed</span>
+            <div class="bg-black/20 border border-white/[0.06] rounded-sm px-3.5 py-2 flex flex-col gap-0.5" data-testid="metric-files">
+              <span class="text-xl font-bold font-mono text-text-primary">{{ runDetailValue!.total_files_changed ?? 0 }}</span>
+              <span class="text-[11px] text-text-muted uppercase tracking-wider">Files Changed</span>
             </div>
             @if (runDetailValue!.total_tests_passed !== null && runDetailValue!.total_tests_passed !== undefined) {
-              <div class="metric-card" data-testid="metric-tests">
-                <span class="metric-card__value">{{ runDetailValue!.total_tests_passed }}</span>
-                <span class="metric-card__label">Tests Passed</span>
+              <div class="bg-black/20 border border-white/[0.06] rounded-sm px-3.5 py-2 flex flex-col gap-0.5" data-testid="metric-tests">
+                <span class="text-xl font-bold font-mono text-text-primary">{{ runDetailValue!.total_tests_passed }}</span>
+                <span class="text-[11px] text-text-muted uppercase tracking-wider">Tests Passed</span>
               </div>
             }
           </div>
@@ -143,87 +162,104 @@
 
       <!-- Failed state: error summary card with recovery actions -->
       @if (runDetailValue!.status === 'Failed') {
-        <div class="state-summary state-summary--failed" data-testid="failed-banner">
-          <div class="state-summary__header">
-            <span class="state-summary__icon">✗</span>
-            <strong class="state-summary__title">Run stopped during {{ failedPhaseLabel() }}</strong>
+        <div class="px-5 py-4 rounded-md mb-4 text-[13px] bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.25)]" data-testid="failed-banner">
+          <div class="flex items-center gap-2.5 mb-2.5">
+            <span class="text-xl shrink-0 text-status-error">✗</span>
+            <strong class="text-[15px] font-semibold text-status-error">Run stopped during {{ failedPhaseLabel() }}</strong>
           </div>
           @if (runDetailValue!.last_error) {
-            <div class="state-summary__error-msg" data-testid="failed-error-msg">{{ runDetailValue!.last_error }}</div>
+            <div class="mb-2 font-mono text-xs text-status-error bg-[rgba(239,68,68,0.06)] px-2.5 py-2 rounded-sm border border-[rgba(239,68,68,0.15)]" data-testid="failed-error-msg">{{ runDetailValue!.last_error }}</div>
           }
-          <div class="state-summary__guidance-section">
-            <div class="state-summary__guidance-label">What happened:</div>
-            <div class="state-summary__guidance-text">The run encountered an error and stopped. Check the log for details.</div>
+          <div class="mb-2">
+            <div class="text-xs text-text-muted font-medium mb-0.5">What happened:</div>
+            <div class="text-[13px] text-text-secondary">The run encountered an error and stopped. Check the log for details.</div>
           </div>
-          <div class="state-summary__guidance-section">
-            <div class="state-summary__guidance-label">Next step:</div>
-            <div class="state-summary__guidance-text">Resume when capacity returns, switch agent, or retry from the beginning.</div>
+          <div class="mb-2">
+            <div class="text-xs text-text-muted font-medium mb-0.5">Next step:</div>
+            <div class="text-[13px] text-text-secondary">Resume when capacity returns, switch agent, or retry from the beginning.</div>
           </div>
-          <div class="banner__actions">
-            <button class="btn btn-primary btn-sm" data-testid="resume-action-btn" (click)="handleResume()">Resume Run</button>
-            <button class="btn btn-ghost btn-sm" data-testid="retry-action-btn" (click)="handleRetry()">Retry from Start</button>
-            <button class="btn btn-ghost btn-sm" (click)="goToConfiguration()">Go to Config</button>
+          <div class="flex gap-2 mt-2">
+            <button class="btn btn-primary text-xs py-1.5 px-2.5" data-testid="resume-action-btn" (click)="handleResume()">Resume Run</button>
+            <button class="btn btn-ghost text-xs py-1.5 px-2.5" data-testid="retry-action-btn" (click)="handleRetry()">Retry from Start</button>
+            <button class="btn btn-ghost text-xs py-1.5 px-2.5" (click)="goToConfiguration()">Go to Config</button>
           </div>
         </div>
       }
 
       <!-- Paused state: paused banner with checkpoint info -->
       @if (runDetailValue!.status === 'Paused') {
-        <div class="state-summary state-summary--paused" data-testid="paused-banner">
-          <div class="state-summary__header">
-            <span class="state-summary__icon">⏸</span>
-            <strong class="state-summary__title">Checkpoint saved</strong>
+        <div class="px-5 py-4 rounded-md mb-4 text-[13px] bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.25)]" data-testid="paused-banner">
+          <div class="flex items-center gap-2.5 mb-2.5">
+            <span class="text-xl shrink-0 text-accent">⏸</span>
+            <strong class="text-[15px] font-semibold text-accent">Checkpoint saved</strong>
           </div>
-          <div class="state-summary__subtitle">
+          <div class="text-xs text-text-secondary mb-2.5">
             Paused {{ pausedAgo() || 'recently' }}. Resume will continue from iteration {{ runDetailValue!.iteration_count ?? 0 }}.
           </div>
-          <div class="banner__actions">
+          <div class="flex gap-2 mt-2">
             <button
-              class="btn btn-primary btn-lg"
+              class="btn btn-primary py-2.5 px-5 text-sm font-semibold"
               data-testid="paused-resume-btn"
               (click)="handleResume()"
             >
               ▶ Resume Session
             </button>
-            <button class="btn btn-ghost btn-sm" (click)="handleCancel()">Cancel Run</button>
+            <button class="btn btn-ghost text-xs py-1.5 px-2.5" (click)="handleCancel()">Cancel Run</button>
           </div>
         </div>
       }
 
       <!-- Running state: workflow + transport state info -->
       @if (runDetailValue!.status === 'Running') {
-        <div class="state-info state-info--running" data-testid="running-info">
-          <div class="state-info__row">
-            <span class="state-info__label">Current phase:</span>
-            <span class="state-info__value">{{ runDetailValue!.current_phase }} · Iteration {{ runDetailValue!.iteration_count ?? 0 }}</span>
+        <div class="px-3.5 py-2.5 rounded-md mb-4 bg-[rgba(59,130,246,0.06)] border border-[rgba(59,130,246,0.15)] text-xs" data-testid="running-info">
+          <div class="flex gap-2 py-0.5">
+            <span class="text-text-muted w-20 shrink-0">Current phase:</span>
+            <span class="text-text-secondary">{{ runDetailValue!.current_phase }} · Iteration {{ runDetailValue!.iteration_count ?? 0 }}</span>
           </div>
-          <div class="state-info__row">
-            <span class="state-info__label">Connection:</span>
-            <span class="state-info__value">
-              <span class="state-info__value--connected">Live</span>
-              <span class="state-info__separator">|</span>
+          <div class="flex gap-2 py-0.5">
+            <span class="text-text-muted w-20 shrink-0">Connection:</span>
+            <span class="text-text-secondary">
+              <span [class]="getConnectionStateClass()">{{ connectionStateLabel() }}</span>
+              <span class="text-text-muted mx-1.5">|</span>
               <span>Updated just now</span>
-              <span class="state-info__separator">|</span>
+              <span class="text-text-muted mx-1.5">|</span>
               <span>Auto-scroll on</span>
             </span>
           </div>
+          @if (connectionState() === 'reconnecting') {
+            <div class="flex gap-2 mt-2 pt-2 border-t border-border-default">
+              <button class="btn btn-ghost text-xs py-1 px-2" (click)="retryConnection()">Retry Now</button>
+            </div>
+          }
         </div>
       }
 
       <!-- Phase Timeline (extracted component) -->
-      <div class="card run-phase-card">
-        <div class="card-section-label">Phase</div>
+      <div class="card mb-4">
+        <div class="font-display text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-4">Phase</div>
         <app-phase-timeline
           [phases]="timelinePhasesValue"
           (phaseClick)="onPhaseClick($event)"
         />
+        @if (selectedPhaseSummary()) {
+          <div class="mt-3 p-3 bg-bg-raised border border-border-default rounded-md shadow-md text-sm" data-testid="phase-summary-panel">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="font-semibold">{{ selectedPhaseSummary()!.name }}</span>
+              <span class="text-xs text-text-muted">· {{ selectedPhaseSummary()!.status }}</span>
+            </div>
+            @if (selectedPhaseSummary()!.duration) {
+              <div class="text-xs text-text-muted">Duration: {{ selectedPhaseSummary()!.duration }}</div>
+            }
+          </div>
+        }
       </div>
 
       <!-- Tab bar -->
-      <div class="run-tabs" role="tablist" aria-label="Run detail tabs">
+      <div class="flex gap-0 border-b border-[var(--border-subtle)] mb-4" role="tablist" aria-label="Run detail tabs">
         <button
-          class="run-tab"
-          [class.run-tab--active]="activeTabValue === 'log'"
+          class="px-5 py-2 text-[13px] font-ui text-text-muted bg-transparent border-none border-b-2 border-transparent cursor-pointer hover:text-text-secondary transition-colors duration-100"
+          [class.text-accent]="activeTabValue === 'log'"
+          [class.border-b-accent]="activeTabValue === 'log'"
           role="tab"
           [attr.aria-selected]="activeTabValue === 'log'"
           data-testid="tab-log"
@@ -232,8 +268,9 @@
           Log
         </button>
         <button
-          class="run-tab"
-          [class.run-tab--active]="activeTabValue === 'changes'"
+          class="px-5 py-2 text-[13px] font-ui text-text-muted bg-transparent border-none border-b-2 border-transparent cursor-pointer hover:text-text-secondary transition-colors duration-100"
+          [class.text-accent]="activeTabValue === 'changes'"
+          [class.border-b-accent]="activeTabValue === 'changes'"
           role="tab"
           [attr.aria-selected]="activeTabValue === 'changes'"
           data-testid="tab-changes"
@@ -242,8 +279,9 @@
           Changes
         </button>
         <button
-          class="run-tab"
-          [class.run-tab--active]="activeTabValue === 'info'"
+          class="px-5 py-2 text-[13px] font-ui text-text-muted bg-transparent border-none border-b-2 border-transparent cursor-pointer hover:text-text-secondary transition-colors duration-100"
+          [class.text-accent]="activeTabValue === 'info'"
+          [class.border-b-accent]="activeTabValue === 'info'"
           role="tab"
           [attr.aria-selected]="activeTabValue === 'info'"
           data-testid="tab-info"
@@ -255,7 +293,7 @@
 
       <!-- Tab content -->
       @if (activeTabValue === 'log') {
-        <div class="card run-tab-content" data-testid="tab-content-log">
+        <div class="card min-h-[300px]" data-testid="tab-content-log">
           <app-run-log
             [runId]="runDetailValue!.run_id"
             [repoPath]="runDetailValue!.repo_path"
@@ -265,7 +303,7 @@
       }
 
       @if (activeTabValue === 'changes') {
-        <div class="card run-tab-content" data-testid="tab-content-changes">
+        <div class="card min-h-[300px]" data-testid="tab-content-changes">
           <app-changes-viewer
             [runId]="runDetailValue!.run_id"
             [repoPath]="runDetailValue!.repo_path"
@@ -276,8 +314,8 @@
       }
 
       @if (activeTabValue === 'info') {
-        <div class="card run-tab-content" data-testid="tab-content-info">
-          <div class="card-section-label">Run Information</div>
+        <div class="card min-h-[300px]" data-testid="tab-content-info">
+          <div class="font-display text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-4">Run Information</div>
           <app-detail-row label="status" [value]="runDetailValue!.status" [mono]="true" />
           <app-detail-row label="phase" [value]="runDetailValue!.current_phase" [mono]="true" />
           <app-detail-row label="agent_profile" [value]="runDetailValue!.agent_profile" [mono]="true" />
@@ -293,7 +331,7 @@
 
           <!-- Iteration History -->
           @if (iterationHistoryValue.length > 0) {
-            <div class="info-section" data-testid="iteration-history-section">
+            <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]" data-testid="iteration-history-section">
               <app-iteration-history
                 [iterations]="iterationHistoryValue"
                 [currentIteration]="runDetailValue!.status === 'Running' ? (runDetailValue!.iteration_count ?? null) : null"
@@ -304,7 +342,7 @@
 
           <!-- Review History -->
           @if (reviewHistoryValue.length > 0) {
-            <div class="info-section" data-testid="review-history-section">
+            <div class="mt-4 pt-4 border-t border-[var(--border-subtle)]" data-testid="review-history-section">
               <app-review-history [reviews]="reviewHistoryValue" />
             </div>
           }
