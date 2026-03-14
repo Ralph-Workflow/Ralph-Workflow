@@ -10,6 +10,7 @@ import { StatCardComponent } from './stat-card.component';
 import { QuickActionComponent } from './quick-action.component';
 import { ActiveRunsListComponent } from '../../components/active-runs-list/active-runs-list.component';
 import { RecentCompletionsComponent } from '../../components/recent-completions/recent-completions.component';
+import type { SessionSummary } from '../../types';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -56,7 +57,9 @@ export class HomeComponent {
     this.sessionsService.needsAttentionRuns().length
   );
 
-  private readonly completedTodayCountSignal = this.sessionsService.completedToday;
+  private readonly completedTodayStatsSignal = this.sessionsService.completedTodayStats;
+
+  private readonly dashboardTrendsSignal = this.sessionsService.dashboardTrends;
 
   private readonly activeRunsSignal = this.sessionsService.activeRuns;
 
@@ -68,12 +71,15 @@ export class HomeComponent {
     this.worktreesService.worktrees().length > 0 || this.sessionsService.sessions().length > 0
   );
 
-  private readonly needsAttentionWithShortIdSignal = computed(() =>
+  private readonly needsAttentionWithDetailsSignal = computed(() =>
     this.needsAttentionRunsSignal().map(run => ({
       ...run,
       run_id_short: run.run_id.substring(0, 16),
+      relativeTime: this.formatRelativeTime(run.created_at),
     }))
   );
+
+  private readonly activeRunsCountSignal = computed(() => this.activeRunsSignal().length);
 
   get hasContentValue(): boolean {
     return this.hasContentSignal();
@@ -87,23 +93,31 @@ export class HomeComponent {
     return this.resumableRunsCountSignal();
   }
 
-  get completedTodayCountValue(): number {
-    return this.completedTodayCountSignal();
+  get completedTodayStatsValue(): { count: number; successRate: string } {
+    return this.completedTodayStatsSignal();
   }
 
-  get activeRunsValue(): ReturnType<typeof this.sessionsService.activeRuns> {
+  get dashboardTrendsValue(): { activeWorktrees: 'up' | 'down' | 'flat'; resumableRuns: 'up' | 'down' | 'flat'; completedToday: 'up' | 'down' | 'flat'; successRate: 'up' | 'down' | 'flat' } {
+    return this.dashboardTrendsSignal();
+  }
+
+  get activeRunsValue(): SessionSummary[] {
     return this.activeRunsSignal();
   }
 
-  get needsAttentionRunsValue(): ReturnType<typeof this.sessionsService.needsAttentionRuns> {
+  get activeRunsCountValue(): number {
+    return this.activeRunsCountSignal();
+  }
+
+  get needsAttentionRunsValue(): SessionSummary[] {
     return this.needsAttentionRunsSignal();
   }
 
-  get needsAttentionWithShortIdValue(): ReturnType<typeof this.needsAttentionWithShortIdSignal> {
-    return this.needsAttentionWithShortIdSignal();
+  get needsAttentionWithDetailsValue(): Array<SessionSummary & { run_id_short: string; relativeTime: string }> {
+    return this.needsAttentionWithDetailsSignal();
   }
 
-  get recentCompletionsValue(): ReturnType<typeof this.sessionsService.recentCompletions> {
+  get recentCompletionsValue(): SessionSummary[] {
     return this.recentCompletionsSignal();
   }
 
@@ -142,6 +156,25 @@ export class HomeComponent {
     });
   }
 
+  private formatRelativeTime(isoString: string): string {
+    const date = new Date(isoString);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    if (diffSeconds < 10) return 'just now';
+    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  }
+
   private startPolling(repoPath: string): void {
     if (this.pollingIntervalId !== null) return;
 
@@ -175,5 +208,17 @@ export class HomeComponent {
 
   navigateToConfiguration(): void {
     void this.router.navigate(['/configuration']);
+  }
+
+  async resumeSession(runId: string, event: Event): Promise<void> {
+    event.stopPropagation();
+    const workspace = this.activeWorkspace();
+    if (!workspace) return;
+    
+    try {
+      await this.sessionsService.resumeSession(runId, workspace.path);
+    } catch {
+      // Error is already handled in the service
+    }
   }
 }

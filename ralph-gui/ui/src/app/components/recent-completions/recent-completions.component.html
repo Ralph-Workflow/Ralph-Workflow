@@ -38,6 +38,9 @@
           <div class="text-xs text-text-muted truncate">
             {{ completion.description || 'No description' }}
           </div>
+          <div class="text-xs text-text-secondary mt-0.5">
+            {{ formatMetrics(completion) }}
+          </div>
         </div>
 
         <div class="text-xs text-text-muted shrink-0">

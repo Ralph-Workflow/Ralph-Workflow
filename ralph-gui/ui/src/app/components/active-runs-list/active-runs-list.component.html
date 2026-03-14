@@ -40,9 +40,14 @@
           <div class="text-xs text-text-muted truncate mt-0.5">
             {{ run.description || 'No description' }}
           </div>
-          <div class="text-xs text-text-muted mt-0.5">
-            {{ run.phase }} · {{ run.developer_agent }}
+          <div class="text-xs text-text-secondary mt-1">
+            {{ run.pipelineStep }}
           </div>
+        </div>
+
+        <div class="flex flex-col items-end gap-1 shrink-0">
+          <span class="text-xs text-text-muted">{{ run.elapsedTime }}</span>
+          <span class="text-xs text-text-secondary">{{ run.developer_agent }}</span>
         </div>
 
         <button

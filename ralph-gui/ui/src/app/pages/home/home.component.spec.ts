@@ -63,6 +63,26 @@ describe('HomeComponent', () => {
         return created.getTime() === today.getTime();
       }).length;
     });
+    const completedTodayStats = computed(() => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todaySessions = sessionsSignal().filter(s => {
+        const created = new Date(s.created_at);
+        created.setHours(0, 0, 0, 0);
+        return created.getTime() === today.getTime();
+      });
+      const completed = todaySessions.filter(s => s.status === 'completed').length;
+      const failed = todaySessions.filter(s => s.status === 'failed').length;
+      const totalFinished = completed + failed;
+      const successRate = totalFinished > 0 ? Math.round((completed / totalFinished) * 100) : 100;
+      return { count: completed, successRate: `${successRate}%` };
+    });
+    const dashboardTrends = computed(() => ({
+      activeWorktrees: 'flat' as const,
+      resumableRuns: 'flat' as const,
+      completedToday: 'flat' as const,
+      successRate: 'flat' as const,
+    }));
 
     return {
       worktreesService: {
@@ -79,6 +99,8 @@ describe('HomeComponent', () => {
       activeRuns,
       recentCompletions,
       completedToday,
+      completedTodayStats,
+      dashboardTrends,
     },
     workspaceService: {
       activeWorkspace: activeWorkspaceSignal.asReadonly(),
@@ -222,10 +244,11 @@ describe('HomeComponent', () => {
 
       const compiled = fixture.nativeElement as HTMLElement;
       const statCards = compiled.querySelectorAll('app-stat-card');
-      expect(statCards.length).toBe(3);
+      expect(statCards.length).toBe(4);
       expect(compiled.textContent).toContain('Active worktrees');
       expect(compiled.textContent).toContain('Resumable runs');
       expect(compiled.textContent).toContain('Completed today');
+      expect(compiled.textContent).toContain('Success rate');
     });
 
     it('should display correct active worktree count', () => {
@@ -258,7 +281,7 @@ describe('HomeComponent', () => {
       ]);
       fixture.detectChanges();
 
-      expect(component.completedTodayCountValue).toBe(2);
+      expect(component.completedTodayStatsValue.count).toBe(2);
     });
   });
 
@@ -407,7 +430,7 @@ describe('HomeComponent', () => {
       ]);
       fixture.detectChanges();
 
-      expect(component.completedTodayCountValue).toBe(2);
+      expect(component.completedTodayStatsValue.count).toBe(2);
     });
   });
 

@@ -17,6 +17,15 @@ pub struct SessionSummary {
     /// fallback agents used, etc.). Defaults to false for older checkpoints.
     #[serde(default)]
     pub is_degraded: bool,
+    /// Number of development iterations completed. Defaults to 0 if not available.
+    #[serde(default)]
+    pub iteration_count: u32,
+    /// Number of review passes completed. Defaults to 0 if not available.
+    #[serde(default)]
+    pub review_count: u32,
+    /// Total files changed during the session. Defaults to 0 if not available.
+    #[serde(default)]
+    pub total_files_changed: u32,
 }
 
 /// Request to create a new Ralph workflow session.
@@ -107,6 +116,30 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
 
+    let iteration_count = u32::try_from(
+        checkpoint
+            .get("iteration_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    )
+    .unwrap_or(0);
+
+    let review_count = u32::try_from(
+        checkpoint
+            .get("review_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    )
+    .unwrap_or(0);
+
+    let total_files_changed = u32::try_from(
+        checkpoint
+            .get("total_files_changed")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0),
+    )
+    .unwrap_or(0);
+
     let summary = SessionSummary {
         run_id,
         status,
@@ -118,6 +151,9 @@ pub fn get_sessions(repo_path: String) -> Result<Vec<SessionSummary>, String> {
         reviewer_agent,
         phase,
         is_degraded,
+        iteration_count,
+        review_count,
+        total_files_changed,
     };
 
     Ok(vec![summary])
@@ -167,6 +203,9 @@ pub fn create_session(request: CreateSessionRequest) -> Result<SessionSummary, S
         reviewer_agent: String::new(),
         phase: "Pending".to_string(),
         is_degraded: false,
+        iteration_count: 0,
+        review_count: 0,
+        total_files_changed: 0,
     })
 }
 
@@ -220,6 +259,27 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
             .get("is_degraded")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
+        let iteration_count = u32::try_from(
+            checkpoint
+                .get("iteration_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+        )
+        .unwrap_or(0);
+        let review_count = u32::try_from(
+            checkpoint
+                .get("review_count")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+        )
+        .unwrap_or(0);
+        let total_files_changed = u32::try_from(
+            checkpoint
+                .get("total_files_changed")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+        )
+        .unwrap_or(0);
         return Some(SessionSummary {
             run_id: run_id.to_string(),
             status,
@@ -231,6 +291,9 @@ fn find_session_in_repos(run_id: &str, repos: &[std::path::PathBuf]) -> Option<S
             reviewer_agent,
             phase,
             is_degraded,
+            iteration_count,
+            review_count,
+            total_files_changed,
         });
     }
     None
@@ -579,6 +642,9 @@ mod tests {
             reviewer_agent: "codex".to_string(),
             phase: "Review".to_string(),
             is_degraded: true,
+            iteration_count: 0,
+            review_count: 0,
+            total_files_changed: 0,
         };
         let value = serde_json::to_value(&summary).expect("serialization failed");
         assert_eq!(

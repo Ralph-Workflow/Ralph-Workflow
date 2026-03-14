@@ -24,6 +24,9 @@ export interface SessionSummary {
   reviewer_agent: string;
   phase: string;
   is_degraded?: boolean;
+  iteration_count?: number;
+  review_count?: number;
+  total_files_changed?: number;
 }
 
 export interface CreateSessionRequest {

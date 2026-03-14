@@ -22,20 +22,37 @@
   <div class="page-content">
     <h1 class="page-title animate-fade-in">Dashboard</h1>
 
-    <div class="grid grid-cols-3 gap-4 mb-6 animate-fade-in-40">
-      <app-stat-card label="Active worktrees" [value]="activeWorktreeCountValue" />
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-fade-in-40">
+      <app-stat-card
+        label="Active worktrees"
+        [value]="activeWorktreeCountValue"
+        [trend]="dashboardTrendsValue.activeWorktrees"
+        trendLabel="vs yesterday"
+      />
       <app-stat-card
         label="Resumable runs"
         [value]="resumableRunsCountValue"
         [accent]="resumableRunsCountValue > 0"
+        [trend]="dashboardTrendsValue.resumableRuns"
+        trendLabel="vs yesterday"
       />
       <app-stat-card
         label="Completed today"
-        [value]="completedTodayCountValue"
+        [value]="completedTodayStatsValue.count"
+        [subtitle]="completedTodayStatsValue.successRate + ' success'"
+        [trend]="dashboardTrendsValue.completedToday"
+        trendLabel="vs yesterday"
+      />
+      <app-stat-card
+        label="Success rate"
+        [value]="0"
+        [subtitle]="completedTodayStatsValue.successRate"
+        [trend]="dashboardTrendsValue.successRate"
+        trendLabel="vs yesterday"
       />
     </div>
 
-    @if (activeRunsValue.length > 0) {
+    @if (activeRunsCountValue > 0) {
       <section class="mb-6 animate-fade-in-80">
         <app-active-runs-list
           [runs]="activeRunsValue"
@@ -56,7 +73,7 @@
         </div>
 
         <div class="flex flex-col gap-2">
-          @for (run of needsAttentionWithShortIdValue; track run.run_id) {
+          @for (run of needsAttentionWithDetailsValue; track run.run_id) {
             <div
               class="flex items-center gap-3 p-3 rounded-md bg-bg-surface border border-status-warning/30 hover:bg-bg-raised hover:border-status-warning/50 transition-colors cursor-pointer"
               [class.border-l-4]="run.status === 'failed'"
@@ -79,15 +96,23 @@
                   <span class="font-mono text-xs text-text-primary truncate">
                     {{ run.run_id_short }}
                   </span>
+                  <span class="text-xs text-text-muted">
+                    {{ run.relativeTime }}
+                  </span>
                 </div>
                 <div class="text-xs text-text-muted truncate">
                   {{ run.description || run.phase }}
                 </div>
+                @if (run.status === 'failed') {
+                  <div class="text-xs text-status-error truncate mt-0.5">
+                    Click to view error details and recovery options
+                  </div>
+                }
               </div>
 
               <button
                 class="btn btn-primary text-xs px-3 py-1.5"
-                (click)="navigateToRun(run.run_id); $event.stopPropagation()"
+                (click)="resumeSession(run.run_id, $event)"
               >
                 Resume
               </button>
@@ -117,7 +142,7 @@
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-medium text-text-primary">Quick actions</h3>
       </div>
-      <div class="grid grid-cols-2 gap-2.5">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         <app-quick-action
           icon="▶"
           label="New session"
@@ -126,9 +151,15 @@
         />
         <app-quick-action
           icon="⎇"
-          label="Worktrees"
+          label="Create worktree"
           desc="Manage git worktrees"
           (action)="navigateToWorktrees()"
+        />
+        <app-quick-action
+          icon="⚙"
+          label="Open configuration"
+          desc="Edit project settings"
+          (action)="navigateToConfiguration()"
         />
       </div>
     </section>

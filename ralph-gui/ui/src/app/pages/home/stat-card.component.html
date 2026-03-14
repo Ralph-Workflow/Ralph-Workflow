@@ -2,7 +2,20 @@
   <div [class]="valueClassesValue">
     {{ valueValue }}
   </div>
-  <div class="text-xs text-text-muted font-ui uppercase tracking-wider">
+  @if (subtitleValue) {
+    <div class="text-sm text-text-secondary font-ui mb-1">
+      {{ subtitleValue }}
+    </div>
+  }
+  <div class="text-xs text-text-muted font-ui uppercase tracking-wider flex items-center gap-1.5">
     {{ labelValue }}
+    @if (hasTrendValue) {
+      <span class="flex items-center gap-0.5" [class]="trendColorValue">
+        <span>{{ trendIconValue }}</span>
+        @if (trendLabelValue) {
+          <span class="normal-case font-sans">{{ trendLabelValue }}</span>
+        }
+      </span>
+    }
   </div>
 </div>

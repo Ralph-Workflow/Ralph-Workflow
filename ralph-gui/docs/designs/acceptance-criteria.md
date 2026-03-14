@@ -118,32 +118,32 @@ Applicable wireframe: `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md`
 
 ### AC-3.1: Stats Overview
 - [DONE] Displays stat cards: active worktrees, resumable runs
-- [ ] Stat cards show trend indicators (up/down/flat vs previous period)
-- [ ] Additional stat card: "Completed Today" with success rate percentage
-- [ ] Cards use bento grid layout, responsive to window width
+- [DONE] Stat cards show trend indicators (up/down/flat vs previous period)
+- [DONE] Additional stat card: "Completed Today" with success rate percentage
+- [DONE] Cards use bento grid layout, responsive to window width
 
 ### AC-3.2: Active Runs List
 - [DONE] Shows currently running sessions with status
-- [ ] Each entry shows: worktree name, current phase with progress (e.g., "Dev 3/5"),
+- [DONE] Each entry shows: worktree name, current phase with progress (e.g., "Dev 3/5"),
       agent name, elapsed time
-- [ ] Clicking an entry navigates to the Run Detail page
-- [ ] Live-updating (phase and iteration count update without page refresh)
+- [DONE] Clicking an entry navigates to the Run Detail page
+- [DONE] Live-updating (phase and iteration count update without page refresh)
 
 ### AC-3.3: Needs Attention Section
 - [DONE] Shows interrupted/failed runs with resume action
-- [ ] Each entry shows: worktree name, failure reason or pause cause, time since failure
-- [ ] "Resume" button directly resumes the run without navigating away
-- [ ] Failed entries show the last error message inline
+- [DONE] Each entry shows: worktree name, failure reason or pause cause, time since failure
+- [DONE] "Resume" button directly resumes the run without navigating away
+- [DONE] Failed entries show the last error message inline
 
 ### AC-3.4: Recent Completions
-- [ ] Shows last 5-10 completed runs
-- [ ] Each entry shows: worktree name, iteration count, review count, completion time
-- [ ] Clicking navigates to the run detail (read-only completed view)
+- [DONE] Shows last 5-10 completed runs
+- [DONE] Each entry shows: worktree name, iteration count, review count, completion time
+- [DONE] Clicking navigates to the run detail (read-only completed view)
 
 ### AC-3.5: Quick Actions
 - [DONE] "New Session" button prominently placed
 - [DONE] Quick action cards for common operations
-- [ ] Quick actions include: "New Session", "Create Worktree", "Open Configuration"
+- [DONE] Quick actions include: "New Session", "Create Worktree", "Open Configuration"
 
 ---
 

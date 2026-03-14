@@ -84,7 +84,7 @@ describe('ActiveRunsListComponent', () => {
       fixture.detectChanges();
 
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('review');
+      expect(compiled.textContent).toContain('Review');
       expect(compiled.textContent).toContain('claude-3');
     });
 

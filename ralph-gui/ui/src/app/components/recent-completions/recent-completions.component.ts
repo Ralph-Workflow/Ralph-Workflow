@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import type { SessionSummary } from '../../types';
 
-interface DisplayCompletion extends SessionSummary {
+interface CompletionWithDetails extends SessionSummary {
   run_id_short: string;
   relativeTime: string;
 }
@@ -19,7 +19,7 @@ export class RecentCompletionsComponent {
   readonly completions = input<SessionSummary[]>([]);
   readonly viewRun = output<string>();
 
-  private readonly displayCompletionsSignal = computed<DisplayCompletion[]>(() =>
+  private readonly displayCompletionsSignal = computed<CompletionWithDetails[]>(() =>
     this.completions().map(completion => ({
       ...completion,
       run_id_short: completion.run_id.substring(0, 16),
@@ -33,7 +33,7 @@ export class RecentCompletionsComponent {
     return this.completions().length;
   }
 
-  get displayCompletionsValue(): DisplayCompletion[] {
+  get displayCompletionsValue(): CompletionWithDetails[] {
     return this.displayCompletionsSignal();
   }
 
@@ -62,5 +62,25 @@ export class RecentCompletionsComponent {
 
   onViewClick(runId: string): void {
     this.viewRun.emit(runId);
+  }
+
+  formatMetrics(completion: CompletionWithDetails): string {
+    const parts: string[] = [];
+    
+    const iterCount = completion.iteration_count ?? 0;
+    const revCount = completion.review_count ?? 0;
+    const filesCount = completion.total_files_changed ?? 0;
+    
+    if (iterCount > 0) {
+      parts.push(`${iterCount} iteration${iterCount > 1 ? 's' : ''}`);
+    }
+    if (revCount > 0) {
+      parts.push(`${revCount} review${revCount > 1 ? 's' : ''}`);
+    }
+    if (filesCount > 0) {
+      parts.push(`${filesCount} file${filesCount > 1 ? 's' : ''}`);
+    }
+    
+    return parts.length > 0 ? parts.join(', ') : 'Completed';
   }
 }
