@@ -495,7 +495,7 @@ fn test_skipped_pre_termination_clears_prompt_inputs_commit() {
 }
 
 // =========================================================================
-// Tests for residual files and second-pass commit logic
+// Tests for residual files and commit retry-pass logic
 // =========================================================================
 
 #[test]
@@ -542,20 +542,20 @@ fn test_commit_xml_validated_empty_excluded_files() {
 }
 
 #[test]
-fn test_residual_files_found_pass1_sets_second_pass_flag() {
-    // ResidualFilesFound pass=1: pipeline must enter a second commit pass.
-    // commit_is_second_pass must be set to true and commit state must be reset
-    // so orchestration can run a fresh second commit cycle.
+fn test_residual_files_found_pass1_sets_retry_pass_to_2() {
+    // ResidualFilesFound pass=1: pipeline must enter commit retry pass 2.
+    // commit_residual_retry_pass must be set to 2 and commit state must be reset
+    // so orchestration can run a fresh retry cycle.
     let mut state = PipelineState::initial(1, 0);
     state.phase = PipelinePhase::CommitMessage;
-    state.commit_is_second_pass = false;
+    state.commit_residual_retry_pass = 0;
 
     let event = PipelineEvent::residual_files_found(vec!["src/leftover.rs".to_string()], 1);
     let new_state = reduce(state, event);
 
-    assert!(
-        new_state.commit_is_second_pass,
-        "ResidualFilesFound pass=1 must set commit_is_second_pass=true"
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 2,
+        "ResidualFilesFound pass=1 must set commit_residual_retry_pass=2"
     );
     // commit state must be reset for the second pass
     assert!(
@@ -578,43 +578,83 @@ fn test_residual_files_found_pass1_sets_second_pass_flag() {
 }
 
 #[test]
-fn test_residual_files_found_pass2_carries_forward() {
-    // ResidualFilesFound pass=2: files remaining after the second pass must be
-    // stored in commit_residual_files for carry-forward to the next cycle.
-    // commit_is_second_pass must be cleared and commit state must reset normally.
+fn test_residual_files_found_pass2_enters_retry_pass3_when_budget_remains() {
+    // ResidualFilesFound pass=2: with retry budget remaining, the pipeline must
+    // enter commit retry pass 3 instead of carrying files forward immediately.
     let mut state = PipelineState::initial(1, 0);
     state.phase = PipelinePhase::CommitMessage;
-    state.commit_is_second_pass = true;
+    state.commit_residual_retry_pass = 2;
 
     let residual = vec!["src/remaining.rs".to_string(), "tests/other.rs".to_string()];
-    let event = PipelineEvent::residual_files_found(residual.clone(), 2);
+    let event = PipelineEvent::residual_files_found(residual, 2);
     let new_state = reduce(state, event);
 
     assert_eq!(
-        new_state.commit_residual_files, residual,
-        "ResidualFilesFound pass=2 must store files in commit_residual_files"
+        new_state.commit_residual_retry_pass, 3,
+        "ResidualFilesFound pass=2 must advance to commit retry pass 3 while budget remains"
     );
     assert!(
-        !new_state.commit_is_second_pass,
-        "commit_is_second_pass must be cleared after pass=2"
+        new_state.commit_residual_files.is_empty(),
+        "ResidualFilesFound pass=2 must not carry files forward while retry budget remains"
     );
 }
 
 #[test]
-fn test_residual_files_none_clears_second_pass_and_residual() {
-    // ResidualFilesNone: working tree is clean after a commit pass.
-    // commit_is_second_pass must be cleared and commit_residual_files must be cleared.
+fn test_residual_files_found_final_retry_carries_forward() {
+    // ResidualFilesFound on the final configured retry pass must carry files forward
+    // to the next cycle and clear commit retry tracking.
     let mut state = PipelineState::initial(1, 0);
     state.phase = PipelinePhase::CommitMessage;
-    state.commit_is_second_pass = true;
+    state.commit_residual_retry_pass = 11;
+
+    let residual = vec!["src/remaining.rs".to_string(), "tests/other.rs".to_string()];
+    let event = PipelineEvent::residual_files_found(residual.clone(), 11);
+    let new_state = reduce(state, event);
+
+    assert_eq!(
+        new_state.commit_residual_files, residual,
+        "Final residual retry pass must store files in commit_residual_files"
+    );
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 0,
+        "Final residual retry pass must clear commit_residual_retry_pass"
+    );
+}
+
+#[test]
+fn test_residual_files_found_uses_configured_retry_budget() {
+    // With max_commit_residual_retries=1, pass 2 is the final residual check and must
+    // carry files forward immediately instead of continuing toward the default pass 11.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.max_commit_residual_retries = 1;
+    state.commit_residual_retry_pass = 2;
+
+    let residual = vec!["src/remaining.rs".to_string()];
+    let new_state = reduce(
+        state,
+        PipelineEvent::residual_files_found(residual.clone(), 2),
+    );
+
+    assert_eq!(new_state.commit_residual_files, residual);
+    assert_eq!(new_state.commit_residual_retry_pass, 0);
+}
+
+#[test]
+fn test_residual_files_none_clears_retry_pass_and_residual() {
+    // ResidualFilesNone: working tree is clean after a commit pass.
+    // commit_residual_retry_pass must be cleared and commit_residual_files must be cleared.
+    let mut state = PipelineState::initial(1, 0);
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit_residual_retry_pass = 4;
     state.commit_residual_files = vec!["src/old.rs".to_string()];
 
     let event = PipelineEvent::residual_files_none();
     let new_state = reduce(state, event);
 
-    assert!(
-        !new_state.commit_is_second_pass,
-        "ResidualFilesNone must clear commit_is_second_pass"
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 0,
+        "ResidualFilesNone must clear commit_residual_retry_pass"
     );
     assert!(
         new_state.commit_residual_files.is_empty(),
@@ -639,9 +679,9 @@ fn test_residual_files_found_invalid_pass_routes_to_awaiting_dev_fix() {
         Some(PipelinePhase::CommitMessage)
     );
     assert_eq!(new_state.previous_phase, Some(PipelinePhase::CommitMessage));
-    assert!(
-        !new_state.commit_is_second_pass,
-        "invalid pass must not trigger second-pass behavior"
+    assert_eq!(
+        new_state.commit_residual_retry_pass, 0,
+        "invalid pass must not trigger retry-pass behavior"
     );
     assert!(
         new_state.commit_residual_files.is_empty(),
@@ -692,7 +732,7 @@ fn test_commit_residual_files_cleared_after_commit_created() {
 fn test_selective_commit_created_stays_in_commit_message_until_residual_check_completes() {
     // Regression: when the commit is selective (commit_selected_files is non-empty), the
     // pipeline must remain in CommitMessage after the commit is created so orchestration
-    // can run CheckResidualFiles and (if needed) a second commit pass.
+    // can run CheckResidualFiles and (if needed) another commit retry pass.
     let mut state = PipelineState::initial(2, 0);
     state.phase = PipelinePhase::CommitMessage;
     state.previous_phase = Some(PipelinePhase::Development);
@@ -748,7 +788,8 @@ fn test_residual_files_none_transitions_after_selective_commit() {
 
 #[test]
 fn test_residual_files_found_pass2_transitions_and_carries_forward_after_second_pass() {
-    // If pass 2 still has leftovers, carry them forward and transition out of CommitMessage.
+    // If the final residual retry pass still has leftovers, carry them forward and transition
+    // out of CommitMessage.
     let mut state = PipelineState::initial(2, 0);
     state.phase = PipelinePhase::CommitMessage;
     state.previous_phase = Some(PipelinePhase::Development);
@@ -756,13 +797,13 @@ fn test_residual_files_found_pass2_transitions_and_carries_forward_after_second_
     state.commit = CommitState::Committed {
         hash: "abc123".to_string(),
     };
-    state.commit_is_second_pass = true;
+    state.commit_residual_retry_pass = 11;
     state.commit_selected_files = vec!["src/one.rs".to_string()];
 
     let residual = vec!["src/remaining.rs".to_string()];
     let new_state = reduce(
         state,
-        PipelineEvent::residual_files_found(residual.clone(), 2),
+        PipelineEvent::residual_files_found(residual.clone(), 11),
     );
 
     assert_eq!(new_state.commit_residual_files, residual);

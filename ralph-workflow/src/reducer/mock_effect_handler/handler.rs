@@ -212,7 +212,7 @@ If you determine there are NO actual changes to commit, respond with:
                     .push(Effect::CheckResidualFiles { pass });
                 let configured = match pass {
                     1 => self.residual_files_pass_1.clone(),
-                    2 => self.residual_files_pass_2.clone(),
+                    2.. => self.residual_files_pass_2.clone(),
                     _ => None,
                 };
 

@@ -379,6 +379,28 @@ fn test_recovery_emits_success_after_commit_created() {
 }
 
 #[test]
+fn test_committed_retry_pass_emits_matching_residual_check() {
+    let mut state = create_test_state();
+    state.phase = PipelinePhase::CommitMessage;
+    state.commit = CommitState::Committed {
+        hash: "abc123".to_string(),
+    };
+    state.agent_chain = AgentChainState::initial().with_agents(
+        vec!["commit-agent".to_string()],
+        vec![vec![]],
+        AgentRole::Commit,
+    );
+    state.commit_residual_retry_pass = 3;
+
+    let effect = determine_next_effect(&state);
+
+    assert!(
+        matches!(effect, Effect::CheckResidualFiles { pass: 3 }),
+        "Committed retry pass must emit CheckResidualFiles for the same retry pass"
+    );
+}
+
+#[test]
 fn test_determine_effect_final_validation() {
     let mut state = PipelineState {
         phase: PipelinePhase::FinalValidation,

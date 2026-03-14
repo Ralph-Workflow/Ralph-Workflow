@@ -560,6 +560,11 @@ fn test_default_config_sets_continuation_limits() {
         Some(2),
         "default_config() must set max_same_agent_retries to Some(2)"
     );
+    assert_eq!(
+        config.max_commit_residual_retries,
+        Some(10),
+        "default_config() must set max_commit_residual_retries to Some(10)"
+    );
 }
 
 /// Regression test for infinite continuation loop bug (wt-39).
@@ -597,5 +602,11 @@ review_depth = "standard"
     assert!(
         warnings.is_empty(),
         "Should not warn about missing max_dev_continuations (serde default applies): {warnings:?}"
+    );
+
+    assert_eq!(
+        config.max_commit_residual_retries,
+        Some(10),
+        "Missing max_commit_residual_retries key must default to Some(10) via serde default"
     );
 }

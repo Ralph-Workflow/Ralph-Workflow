@@ -39,6 +39,10 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
         ctx.config.max_same_agent_retries.is_some(),
         "BUG: max_same_agent_retries is None when it should always have a value from config loading."
     );
+    debug_assert!(
+        ctx.config.max_commit_residual_retries.is_some(),
+        "BUG: max_commit_residual_retries is None when it should always have a value from config loading."
+    );
 
     // CRITICAL SAFETY MECHANISM: Apply unconditional default of 2 (3 total attempts) when None.
     // This ensures bounded continuation even if Config was constructed without going through
@@ -75,6 +79,8 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
         ctx.config.reviewer_reviews,
         &continuation,
     );
+    state.max_commit_residual_retries =
+        u8::try_from(ctx.config.max_commit_residual_retries.unwrap_or(10)).unwrap_or(u8::MAX);
 
     // Inject a checkpoint-safe (redacted) view of runtime cloud config.
     // This ensures pure orchestration can derive cloud effects when enabled,

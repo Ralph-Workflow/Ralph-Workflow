@@ -16,7 +16,11 @@ impl PipelineState {
 
     #[must_use]
     pub fn initial(developer_iters: u32, reviewer_reviews: u32) -> Self {
-        Self::initial_with_continuation(developer_iters, reviewer_reviews, &ContinuationState::new())
+        Self::initial_with_continuation(
+            developer_iters,
+            reviewer_reviews,
+            &ContinuationState::new(),
+        )
     }
 
     /// Create initial state with custom continuation limits from config.
@@ -102,7 +106,8 @@ impl PipelineState {
             commit_xml_archived: false,
             commit_selected_files: Vec::new(),
             commit_excluded_files: Vec::new(),
-            commit_is_second_pass: false,
+            commit_residual_retry_pass: 0,
+            max_commit_residual_retries: 10,
             commit_residual_files: Vec::new(),
             context_cleaned: false,
             agent_chain: AgentChainState::initial(),

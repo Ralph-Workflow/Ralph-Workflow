@@ -19,6 +19,10 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig, warnings: &mut Vec<St
     // (immediate fallback to next agent on timeout/internal error).
     // When omitted from config file, serde applies default_max_same_agent_retries() -> 2.
     let max_same_agent_retries = general.max_same_agent_retries;
+    // max_commit_residual_retries of 0 is valid and means "carry forward immediately after
+    // the initial residual check".
+    // When omitted from config file, serde applies default_max_commit_residual_retries() -> 10.
+    let max_commit_residual_retries = general.max_commit_residual_retries;
 
     let review_depth = ReviewDepth::from_str(&general.review_depth).unwrap_or_else(|| {
         warnings.push(format!(
@@ -72,6 +76,7 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig, warnings: &mut Vec<St
         max_dev_continuations: Some(max_dev_continuations),
         max_xsd_retries: Some(max_xsd_retries),
         max_same_agent_retries: Some(max_same_agent_retries),
+        max_commit_residual_retries: Some(max_commit_residual_retries),
         execution_history_limit: general.execution_history_limit,
         cloud: crate::config::types::CloudConfig::from_env(),
     }
@@ -121,6 +126,7 @@ pub fn default_config() -> Config {
         max_dev_continuations: Some(2),
         max_xsd_retries: Some(10), // Default to 10 retries before agent fallback
         max_same_agent_retries: Some(2), // Default to 2 failures (initial + 1 retry) before agent fallback
+        max_commit_residual_retries: Some(10), // Default to 10 additional residual commit retries
         execution_history_limit: 1000,   // Default to 1000 entries (ring buffer)
         cloud: crate::config::types::CloudConfig::from_env(),
     }

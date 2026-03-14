@@ -176,13 +176,22 @@ pub struct PipelineState {
     /// Cleared whenever commit phase state is reset.
     #[serde(default)]
     pub commit_excluded_files: Vec<ExcludedFile>,
-    /// True when the pipeline is executing the automatic second commit pass
-    /// triggered by `ResidualFilesFound` after pass 1.
+    /// The current automatic residual retry pass being executed for commit cleanup.
+    ///
+    /// `0` means no residual retry is in progress. `2` means the pipeline is executing
+    /// the first automatic retry after residual files were found on pass 1. Higher values
+    /// continue the unattended retry loop until the configured retry budget is exhausted.
     ///
     /// Cleared when commit phase state is reset at cycle boundary.
     #[serde(default)]
-    pub commit_is_second_pass: bool,
-    /// Files remaining uncommitted after both commit passes.
+    pub commit_residual_retry_pass: u8,
+    /// Maximum additional residual commit retries after the initial residual check.
+    ///
+    /// This is config-derived reducer state. `10` means pass 1 plus ten additional retry
+    /// passes (carry forward after pass 11). `0` means carry forward immediately after pass 1.
+    #[serde(default = "default_max_commit_residual_retries")]
+    pub max_commit_residual_retries: u8,
+    /// Files remaining uncommitted after the residual retry budget is exhausted.
     ///
     /// Carries forward to the next development cycle so the agent can address
     /// them in the next iteration. NOT cleared by commit phase reset.
@@ -458,4 +467,8 @@ pub struct PipelineState {
     /// this field (they populate via `from_checkpoint_with_execution_history_limit`).
     #[serde(default)]
     pub prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+}
+
+const fn default_max_commit_residual_retries() -> u8 {
+    10
 }

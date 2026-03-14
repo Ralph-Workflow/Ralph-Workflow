@@ -314,7 +314,7 @@ impl MainEffectHandler {
             .clone()
             .unwrap_or_else(|| crate::reducer::prompt_inputs::sha256_hex_str(diff_for_prompt));
         let consumer_sig = self.state.agent_chain.consumer_signature_sha256();
-        // Include residual_files in content ID so prompts for second-pass commits are cached
+        // Include residual_files in content ID so prompts for residual retry passes are cached
         // separately from first-pass prompts (different context = different cache key).
         let residual_files_key = if self.state.commit_residual_files.is_empty() {
             String::new()

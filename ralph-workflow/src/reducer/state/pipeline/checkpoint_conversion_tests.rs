@@ -324,14 +324,14 @@ mod tests {
             .build()
             .expect("checkpoint should build");
 
-        checkpoint.commit_is_second_pass = true;
+        checkpoint.commit_residual_retry_pass = 7;
         checkpoint.commit_residual_files = vec!["src/leftover.rs".to_string()];
 
         let state = PipelineState::from_checkpoint_with_execution_history_limit(checkpoint, 1000);
 
-        assert!(
-            state.commit_is_second_pass,
-            "commit_is_second_pass must survive resume when pass-2 was in progress"
+        assert_eq!(
+            state.commit_residual_retry_pass, 7,
+            "commit_residual_retry_pass must survive resume when a retry pass was in progress"
         );
         assert_eq!(
             state.commit_residual_files,

@@ -155,6 +155,14 @@ pub struct GeneralConfig {
     /// Default: 2 (one retry before falling back).
     #[serde(default = "default_max_same_agent_retries")]
     pub max_same_agent_retries: u32,
+    /// Maximum additional residual commit retries after the initial residual-files check.
+    ///
+    /// This value counts retry passes beyond pass 1.
+    ///
+    /// - `0` = no additional retries; residuals carry forward immediately after pass 1
+    /// - `10` = retry through pass 11 before carrying forward
+    #[serde(default = "default_max_commit_residual_retries")]
+    pub max_commit_residual_retries: u32,
     /// Maximum retries per agent before trying the next agent in the active drain.
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
@@ -200,6 +208,10 @@ const fn default_max_xsd_retries() -> u32 {
 /// This allows 2 retries for the same agent before switching to the next agent.
 const fn default_max_same_agent_retries() -> u32 {
     2
+}
+
+const fn default_max_commit_residual_retries() -> u32 {
+    10
 }
 
 const fn default_max_retries() -> u32 {
@@ -259,6 +271,7 @@ impl Default for GeneralConfig {
             max_dev_continuations: default_max_dev_continuations(),
             max_xsd_retries: default_max_xsd_retries(),
             max_same_agent_retries: default_max_same_agent_retries(),
+            max_commit_residual_retries: default_max_commit_residual_retries(),
             max_retries: default_max_retries(),
             retry_delay_ms: default_retry_delay_ms(),
             backoff_multiplier: default_backoff_multiplier(),

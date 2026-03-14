@@ -43,7 +43,7 @@ fn transition_to_commit_after_fix(
         commit_xml_archived: false,
         commit_selected_files: Vec::new(),
         commit_excluded_files: Vec::new(),
-        commit_is_second_pass: false,
+        commit_residual_retry_pass: 0,
         continuation: state.continuation.reset(),
         metrics: if increment_review_passes_completed {
             state.metrics.increment_review_passes_completed()

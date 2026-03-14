@@ -186,6 +186,13 @@ impl UnifiedConfig {
             } else {
                 local.general.max_same_agent_retries
             },
+            max_commit_residual_retries: if local.general.max_commit_residual_retries
+                == defaults.max_commit_residual_retries
+            {
+                self.general.max_commit_residual_retries
+            } else {
+                local.general.max_commit_residual_retries
+            },
             max_retries: if local.general.max_retries == defaults.max_retries {
                 self.general.max_retries
             } else {
@@ -448,6 +455,11 @@ impl UnifiedConfig {
                 local_parsed.general.max_same_agent_retries
             } else {
                 self.general.max_same_agent_retries
+            },
+            max_commit_residual_retries: if has_field("max_commit_residual_retries") {
+                local_parsed.general.max_commit_residual_retries
+            } else {
+                self.general.max_commit_residual_retries
             },
             max_retries: if has_field("max_retries") {
                 local_parsed.general.max_retries

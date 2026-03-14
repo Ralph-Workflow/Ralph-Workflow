@@ -633,6 +633,63 @@ fn test_create_initial_state_with_config_plumbs_max_same_agent_retry_count() {
 }
 
 #[test]
+fn test_create_initial_state_with_config_plumbs_commit_residual_retry_budget() {
+    use crate::agents::AgentRegistry;
+    use crate::checkpoint::{ExecutionHistory, RunContext};
+    use crate::config::Config;
+    use crate::executor::MockProcessExecutor;
+    use crate::logger::{Colors, Logger};
+    use crate::pipeline::Timer;
+    use crate::prompts::template_context::TemplateContext;
+    use crate::workspace::MemoryWorkspace;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    let cloud = crate::config::types::CloudConfig::disabled();
+
+    let config = Config {
+        max_commit_residual_retries: Some(4),
+        ..Default::default()
+    };
+
+    let colors = Colors { enabled: false };
+    let logger = Logger::new(colors);
+    let mut timer = Timer::new();
+
+    let template_context = TemplateContext::default();
+    let registry = AgentRegistry::new().unwrap();
+    let executor = Arc::new(MockProcessExecutor::new());
+    let repo_root = PathBuf::from("/test/repo");
+    let workspace = MemoryWorkspace::new(repo_root.clone());
+    let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+
+    let ctx = PhaseContext {
+        config: &config,
+        registry: &registry,
+        logger: &logger,
+        colors: &colors,
+        timer: &mut timer,
+        developer_agent: "test-developer",
+        reviewer_agent: "test-reviewer",
+        review_guidelines: None,
+        template_context: &template_context,
+        run_context: RunContext::new(),
+        execution_history: ExecutionHistory::new(),
+        executor: &*executor,
+        executor_arc: Arc::clone(&executor) as Arc<dyn crate::executor::ProcessExecutor>,
+        repo_root: &repo_root,
+        workspace: &workspace,
+        workspace_arc: std::sync::Arc::new(workspace.clone()),
+        run_log_context: &run_log_context,
+        cloud_reporter: None,
+        cloud: &cloud,
+    };
+
+    let state = super::create_initial_state_with_config(&ctx);
+    assert_eq!(state.max_commit_residual_retries, 4);
+}
+
+#[test]
 fn test_event_loop_honors_user_interrupt_by_transitioning_to_interrupted_and_checkpointing() {
     use crate::agents::AgentRegistry;
     use crate::checkpoint::{ExecutionHistory, RunContext};

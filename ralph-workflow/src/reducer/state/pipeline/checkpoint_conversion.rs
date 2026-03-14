@@ -160,7 +160,14 @@ impl PipelineState {
             commit_xml_archived: false,
             commit_selected_files: checkpoint.commit_selected_files.clone(),
             commit_excluded_files: checkpoint.commit_excluded_files.clone(),
-            commit_is_second_pass: checkpoint.commit_is_second_pass,
+            commit_residual_retry_pass: if checkpoint.commit_residual_retry_pass > 0 {
+                checkpoint.commit_residual_retry_pass
+            } else if checkpoint.commit_is_second_pass {
+                2
+            } else {
+                0
+            },
+            max_commit_residual_retries: 10,
             commit_residual_files: checkpoint.commit_residual_files.clone(),
             context_cleaned: false,
             agent_chain,

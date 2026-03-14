@@ -148,13 +148,12 @@ pub(super) fn determine_commit_effect(state: &PipelineState) -> Effect {
             trigger: CheckpointTrigger::PhaseTransition,
         },
         CommitState::Committed { .. } => {
-            // After a selective commit (non-empty commit_selected_files) or a second-pass commit
-            // (commit_is_second_pass), check whether any files remain uncommitted before
-            // proceeding. The pass number is 1 for the first selective pass, 2 for the second.
+            // After a selective commit (non-empty commit_selected_files) or a residual retry
+            // pass, check whether any files remain uncommitted before proceeding.
             let is_selective = !state.commit_selected_files.is_empty();
-            let is_second_pass = state.commit_is_second_pass;
-            if is_selective || is_second_pass {
-                let pass = if is_second_pass { 2 } else { 1 };
+            let retry_pass = state.commit_residual_retry_pass;
+            if is_selective || retry_pass > 0 {
+                let pass = if retry_pass > 0 { retry_pass } else { 1 };
                 Effect::CheckResidualFiles { pass }
             } else {
                 Effect::SaveCheckpoint {

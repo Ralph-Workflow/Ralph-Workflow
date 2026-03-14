@@ -95,7 +95,8 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
         checkpoint.recovery_escalation_level = state.recovery_escalation_level;
         checkpoint.failed_phase_for_recovery = state.failed_phase_for_recovery;
         checkpoint.interrupted_by_user = state.interrupted_by_user;
-        checkpoint.commit_is_second_pass = state.commit_is_second_pass;
+        checkpoint.commit_is_second_pass = state.commit_residual_retry_pass == 2;
+        checkpoint.commit_residual_retry_pass = state.commit_residual_retry_pass;
         checkpoint
             .commit_selected_files
             .clone_from(&state.commit_selected_files);
@@ -358,7 +359,7 @@ mod tests {
         };
 
         let mut state = PipelineState::initial(1, 0);
-        state.commit_is_second_pass = true;
+        state.commit_residual_retry_pass = 2;
         state.commit_residual_files = vec!["src/leftover.rs".to_string()];
 
         // Act
@@ -369,9 +370,9 @@ mod tests {
             .expect("checkpoint load should succeed")
             .expect("checkpoint should exist");
 
-        assert!(
-            checkpoint.commit_is_second_pass,
-            "commit_is_second_pass must be persisted for deterministic pass-2 resume"
+        assert_eq!(
+            checkpoint.commit_residual_retry_pass, 2,
+            "commit_residual_retry_pass must be persisted for deterministic retry resume"
         );
         assert_eq!(
             checkpoint.commit_residual_files,

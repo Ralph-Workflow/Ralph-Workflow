@@ -50,8 +50,12 @@ strict_validation = false
 
 # Maximum continuation attempts when developer returns "partial" or "failed"
 # Higher values allow more attempts to complete complex tasks within a single plan
-# Default: 2 (initial attempt + 1 continuation = 2 total attempts per iteration)
+# Default: 2 (initial attempt + 2 continuations = 3 total attempts per iteration)
 # max_dev_continuations = 2
+
+# Maximum additional commit residual retries after the initial residual-files check
+# Default: 10 (carry residual files forward after pass 11)
+# max_commit_residual_retries = 10
 
 # Path to save the last prompt (relative to project root)
 # prompt_path = ".agent/last_prompt.txt"

@@ -293,6 +293,11 @@ pub struct Config {
     ///
     /// Default: 2 (one retry before falling back).
     pub max_same_agent_retries: Option<u32>,
+    /// Maximum additional residual commit retries after the initial residual-files check.
+    ///
+    /// This value counts retry passes beyond pass 1.
+    /// Default: 10 additional retries (carry forward after pass 11).
+    pub max_commit_residual_retries: Option<u32>,
     /// Maximum execution history entries to keep in memory (default: 1000).
     /// Prevents unbounded memory growth by dropping oldest entries when limit is reached.
     pub execution_history_limit: usize,
@@ -352,6 +357,7 @@ impl Config {
             max_dev_continuations: Some(2),
             max_xsd_retries: Some(10),
             max_same_agent_retries: Some(2),
+            max_commit_residual_retries: Some(10),
             execution_history_limit: 1000,
             cloud: CloudConfig::disabled(),
         }

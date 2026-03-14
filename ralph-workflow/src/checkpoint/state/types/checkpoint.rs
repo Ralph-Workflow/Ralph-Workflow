@@ -191,13 +191,20 @@ pub struct PipelineCheckpoint {
     #[serde(default)]
     pub interrupted_by_user: bool,
 
-    /// Commit pass tracking state.
+    /// Commit residual retry tracking state.
     ///
     /// These fields are reducer-owned state and must be preserved across checkpoint/resume
-    /// so unattended runs can deterministically resume a second-pass commit and/or carry
+    /// so unattended runs can deterministically resume a residual retry pass and/or carry
     /// residual files forward to the next cycle.
     #[serde(default)]
     pub commit_is_second_pass: bool,
+
+    /// The current automatic residual retry pass being executed.
+    ///
+    /// `0` means no retry is active. Older checkpoints may omit this field and instead
+    /// set `commit_is_second_pass = true`, which restores as retry pass `2`.
+    #[serde(default)]
+    pub commit_residual_retry_pass: u8,
 
     /// Files selected for the most recent commit pass.
     ///
@@ -275,6 +282,7 @@ impl PipelineCheckpoint {
             failed_phase_for_recovery: None,
             interrupted_by_user: false,
             commit_is_second_pass: false,
+            commit_residual_retry_pass: 0,
             commit_selected_files: Vec::new(),
             commit_excluded_files: Vec::new(),
             commit_residual_files: Vec::new(),

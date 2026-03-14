@@ -218,8 +218,9 @@ impl MockEffectHandler {
 
     /// Configure residual file results for a specific commit pass.
     ///
-    /// `pass` is 1 for the first selective-commit residual check, 2 for the automatic
-    /// second-pass residual check.
+    /// `pass` is 1 for the first selective-commit residual check. `pass >= 2` applies to
+    /// the unattended retry loop; the mock currently stores one shared payload for all retry
+    /// passes after the initial check.
     #[must_use]
     pub fn with_residual_files_for_pass<I, S>(mut self, pass: u8, files: I) -> Self
     where
@@ -229,7 +230,7 @@ impl MockEffectHandler {
         let files: Vec<String> = files.into_iter().map(Into::into).collect();
         match pass {
             1 => self.residual_files_pass_1 = Some(files),
-            2 => self.residual_files_pass_2 = Some(files),
+            2.. => self.residual_files_pass_2 = Some(files),
             _ => {}
         }
         self

@@ -193,7 +193,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
         },
         CommitEvent::Created { hash, .. } => {
             let needs_residual_handling =
-                !state.commit_selected_files.is_empty() || state.commit_is_second_pass;
+                !state.commit_selected_files.is_empty() || state.commit_residual_retry_pass > 0;
 
             // Cloud mode: mark commit as pending push
             let pending_push = if state.cloud.enabled {
@@ -204,8 +204,8 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
 
             if let Some(resume_phase) = state.termination_resume_phase {
                 // Special case: commit was forced by the pre-termination safety check.
-                // If residual checking is required (selective/second-pass), we must stay in
-                // CommitMessage so orchestration can run CheckResidualFiles (and pass 2).
+                // If residual checking is required (selective/retry-pass), we must stay in
+                // CommitMessage so orchestration can run `CheckResidualFiles`.
                 // Otherwise, resume the original termination phase and re-run the safety check
                 // to confirm the repo is clean.
                 if needs_residual_handling {
@@ -226,7 +226,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                         commit_diff_prepared: false,
                         commit_diff_empty: false,
                         commit_diff_content_id_sha256: None,
-                        // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
+                        // NOTE: keep commit_selected_files/commit_residual_retry_pass for residual orchestration.
                         commit_residual_files: vec![],
                         commit_excluded_files: vec![],
                         prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
@@ -254,7 +254,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_archived: false,
                     commit_selected_files: vec![],
                     commit_residual_files: vec![],
-                    commit_is_second_pass: false,
+                    commit_residual_retry_pass: 0,
                     commit_excluded_files: vec![],
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
@@ -268,7 +268,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 };
             }
 
-            // Selective commit + second-pass handling is orchestrated from CommitState::Committed.
+            // Selective commit + residual retry handling is orchestrated from `CommitState::Committed`.
             // To keep residual checking reachable, do not advance the phase until residual
             // handling completes.
             if needs_residual_handling {
@@ -286,7 +286,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
-                    // NOTE: keep commit_selected_files/commit_is_second_pass for residual orchestration.
+                    // NOTE: keep commit_selected_files/commit_residual_retry_pass for residual orchestration.
                     commit_residual_files: vec![],
                     commit_excluded_files: vec![],
                     prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
@@ -312,10 +312,10 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
-                // NOTE: commit_selected_files and commit_is_second_pass are intentionally
+                // NOTE: commit_selected_files and commit_residual_retry_pass are intentionally
                 // NOT cleared here. The orchestration uses them in Committed state to
                 // determine whether to emit CheckResidualFiles before SaveCheckpoint.
-                // They are cleared by ResidualFilesNone / ResidualFilesFound { pass: 2 }.
+                // They are cleared by ResidualFilesNone / ResidualFilesFound on the final retry pass.
                 commit_residual_files: vec![],
                 commit_excluded_files: vec![],
                 prompt_inputs: state.prompt_inputs.clone().with_commit_cleared(),
@@ -381,7 +381,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             commit_xml_archived: false,
             commit_selected_files: vec![],
             commit_excluded_files: vec![],
-            commit_is_second_pass: false,
+            commit_residual_retry_pass: 0,
             ..state
         },
         CommitEvent::Skipped { .. } => {
@@ -414,7 +414,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                     commit_xml_archived: false,
                     commit_selected_files: vec![],
                     commit_excluded_files: vec![],
-                    commit_is_second_pass: false,
+                    commit_residual_retry_pass: 0,
                     commit_diff_prepared: false,
                     commit_diff_empty: false,
                     commit_diff_content_id_sha256: None,
@@ -465,7 +465,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_xml_archived: false,
                 commit_selected_files: vec![],
                 commit_excluded_files: vec![],
-                commit_is_second_pass: false,
+                commit_residual_retry_pass: 0,
                 commit_diff_prepared: false,
                 commit_diff_empty: false,
                 commit_diff_content_id_sha256: None,
@@ -506,7 +506,7 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
                 commit_xml_archived: false,
                 commit_selected_files: vec![],
                 commit_excluded_files: vec![],
-                commit_is_second_pass: false,
+                commit_residual_retry_pass: 0,
                 prompt_inputs: state.prompt_inputs.with_commit_cleared(),
                 // Ensure termination cannot proceed until commit finishes.
                 pre_termination_commit_checked: false,
@@ -527,12 +527,35 @@ fn reduce_residual_files_found(
     files: Vec<String>,
     pass: u8,
 ) -> PipelineState {
-    match pass {
-        1 => PipelineState {
-            // First pass found leftover files — trigger an automatic second commit pass.
-            // Reset commit state so orchestration starts a fresh cycle.
+    let final_pass = 1u8.saturating_add(state.max_commit_residual_retries);
+
+    if !(1..=final_pass).contains(&pass) {
+        // Invariant violation: residual pass must stay within the configured retry budget.
+        // Route through AwaitingDevFix so unattended remediation can proceed.
+        let in_recovery_loop = state.phase == crate::reducer::event::PipelinePhase::AwaitingDevFix
+            || state.previous_phase == Some(crate::reducer::event::PipelinePhase::AwaitingDevFix);
+
+        let mut new_state = state;
+        new_state.previous_phase = Some(new_state.phase);
+        new_state.phase = crate::reducer::event::PipelinePhase::AwaitingDevFix;
+        new_state.dev_fix_triggered = false;
+        new_state.failed_phase_for_recovery =
+            Some(crate::reducer::event::PipelinePhase::CommitMessage);
+
+        if !in_recovery_loop {
+            new_state.dev_fix_attempt_count = 0;
+            new_state.recovery_escalation_level = 0;
+        }
+
+        return new_state;
+    }
+
+    if pass < final_pass {
+        return PipelineState {
+            // Residual files remain and retry budget remains — trigger the next automatic
+            // commit retry pass. Reset commit state so orchestration starts a fresh cycle.
             phase: crate::reducer::event::PipelinePhase::CommitMessage,
-            commit_is_second_pass: true,
+            commit_residual_retry_pass: pass + 1,
             commit: CommitState::NotStarted,
             commit_prompt_prepared: false,
             commit_diff_prepared: false,
@@ -546,91 +569,67 @@ fn reduce_residual_files_found(
             commit_selected_files: vec![],
             commit_excluded_files: vec![],
             prompt_inputs: state.prompt_inputs.with_commit_cleared(),
-            // commit_residual_files stays empty at pass 1 (not carry-forward yet)
+            // commit_residual_files stays empty until retry budget is exhausted.
             ..state
-        },
-        2 => {
-            // Second pass still found leftover files — carry forward to next cycle.
-            let base = PipelineState {
-                commit_is_second_pass: false,
-                commit_selected_files: vec![],
-                commit_excluded_files: vec![],
-                commit_residual_files: files,
-                ..state
-            };
+        };
+    }
 
-            if let Some(resume_phase) = base.termination_resume_phase {
-                // Pre-termination safety path: resume the termination phase, leaving
-                // pre_termination_commit_checked=false so the safety check re-runs and
-                // routes back to commit if needed.
-                PipelineState {
-                    phase: resume_phase,
-                    termination_resume_phase: None,
-                    pre_termination_commit_checked: false,
-                    previous_phase: None,
-                    commit_prompt_prepared: false,
-                    commit_agent_invoked: false,
-                    commit_required_files_cleaned: false,
-                    commit_xml_extracted: false,
-                    commit_validated_outcome: None,
-                    commit_xml_archived: false,
-                    commit_diff_prepared: false,
-                    commit_diff_empty: false,
-                    commit_diff_content_id_sha256: None,
-                    prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
-                    context_cleaned: false,
-                    ..base
-                }
-            } else {
-                let (next_phase, next_iter, next_reviewer_pass, agent_chain, continuation) =
-                    compute_post_commit_phase_data(&base);
+    let base = PipelineState {
+        commit_residual_retry_pass: 0,
+        commit_selected_files: vec![],
+        commit_excluded_files: vec![],
+        commit_residual_files: files,
+        ..state
+    };
 
-                PipelineState {
-                    phase: next_phase,
-                    previous_phase: None,
-                    iteration: next_iter,
-                    reviewer_pass: next_reviewer_pass,
-                    context_cleaned: false,
-                    commit_required_files_cleaned: false,
-                    commit_diff_prepared: false,
-                    commit_diff_empty: false,
-                    commit_diff_content_id_sha256: None,
-                    prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
-                    agent_chain,
-                    continuation,
-                    ..base
-                }
-            }
+    if let Some(resume_phase) = base.termination_resume_phase {
+        // Pre-termination safety path: resume the termination phase, leaving
+        // pre_termination_commit_checked=false so the safety check re-runs and
+        // routes back to commit if needed.
+        PipelineState {
+            phase: resume_phase,
+            termination_resume_phase: None,
+            pre_termination_commit_checked: false,
+            previous_phase: None,
+            commit_prompt_prepared: false,
+            commit_agent_invoked: false,
+            commit_required_files_cleaned: false,
+            commit_xml_extracted: false,
+            commit_validated_outcome: None,
+            commit_xml_archived: false,
+            commit_diff_prepared: false,
+            commit_diff_empty: false,
+            commit_diff_content_id_sha256: None,
+            prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+            context_cleaned: false,
+            ..base
         }
-        _ => {
-            // Invariant violation: residual pass must be 1 or 2.
-            // Route through AwaitingDevFix so unattended remediation can proceed.
-            let in_recovery_loop = state.phase
-                == crate::reducer::event::PipelinePhase::AwaitingDevFix
-                || state.previous_phase
-                    == Some(crate::reducer::event::PipelinePhase::AwaitingDevFix);
+    } else {
+        let (next_phase, next_iter, next_reviewer_pass, agent_chain, continuation) =
+            compute_post_commit_phase_data(&base);
 
-            let mut new_state = state;
-            new_state.previous_phase = Some(new_state.phase);
-            new_state.phase = crate::reducer::event::PipelinePhase::AwaitingDevFix;
-            new_state.dev_fix_triggered = false;
-            new_state.failed_phase_for_recovery =
-                Some(crate::reducer::event::PipelinePhase::CommitMessage);
-
-            if !in_recovery_loop {
-                new_state.dev_fix_attempt_count = 0;
-                new_state.recovery_escalation_level = 0;
-            }
-
-            new_state
+        PipelineState {
+            phase: next_phase,
+            previous_phase: None,
+            iteration: next_iter,
+            reviewer_pass: next_reviewer_pass,
+            context_cleaned: false,
+            commit_required_files_cleaned: false,
+            commit_diff_prepared: false,
+            commit_diff_empty: false,
+            commit_diff_content_id_sha256: None,
+            prompt_inputs: base.prompt_inputs.clone().with_commit_cleared(),
+            agent_chain,
+            continuation,
+            ..base
         }
     }
 }
 
 fn reduce_residual_files_none(state: PipelineState) -> PipelineState {
-    // Working tree is clean after the commit pass. Clear all residual/second-pass state.
+    // Working tree is clean after the commit pass. Clear all residual retry state.
     let base = PipelineState {
-        commit_is_second_pass: false,
+        commit_residual_retry_pass: 0,
         commit_selected_files: vec![],
         commit_excluded_files: vec![],
         commit_residual_files: vec![],
@@ -724,9 +723,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generation_failed_clears_second_pass_and_excluded_files() {
+    fn test_generation_failed_clears_retry_pass_and_excluded_files() {
         let state = PipelineState {
-            commit_is_second_pass: true,
+            commit_residual_retry_pass: 2,
             commit_excluded_files: vec![excluded("src/leftover.txt")],
             ..PipelineState::initial(1, 0)
         };
@@ -737,14 +736,14 @@ mod tests {
                 reason: "nope".to_string(),
             },
         );
-        assert!(!next.commit_is_second_pass);
+        assert_eq!(next.commit_residual_retry_pass, 0);
         assert!(next.commit_excluded_files.is_empty());
     }
 
     #[test]
-    fn test_skipped_clears_second_pass_and_excluded_files() {
+    fn test_skipped_clears_retry_pass_and_excluded_files() {
         let state = PipelineState {
-            commit_is_second_pass: true,
+            commit_residual_retry_pass: 2,
             commit_excluded_files: vec![excluded("src/leftover.txt")],
             ..PipelineState::initial(1, 0)
         };
@@ -755,7 +754,7 @@ mod tests {
                 reason: "skip".to_string(),
             },
         );
-        assert!(!next.commit_is_second_pass);
+        assert_eq!(next.commit_residual_retry_pass, 0);
         assert!(next.commit_excluded_files.is_empty());
     }
 

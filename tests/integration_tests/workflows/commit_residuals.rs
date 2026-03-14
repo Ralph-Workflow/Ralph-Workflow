@@ -1,8 +1,8 @@
 //! Residual file handling workflow integration tests.
 //!
-//! Verifies unattended two-pass residual handling:
-//! - Pass 1 residuals trigger an automatic second commit pass.
-//! - Pass 2 residuals are carried forward to the next cycle (no human interaction).
+//! Verifies unattended residual handling across the full retry budget:
+//! - Pass 1 residuals trigger automatic commit retries.
+//! - Residuals on the final retry pass are carried forward to the next cycle.
 
 use crate::common::{
     create_test_config_struct, mock_executor_with_success, run_ralph_cli_with_handlers,
@@ -52,7 +52,7 @@ fn create_handlers_with_residuals(
 }
 
 #[test]
-fn residuals_trigger_second_pass_and_pass2_carries_forward() {
+fn residuals_trigger_retries_and_final_pass_carries_forward() {
     with_default_timeout(|| {
         let pass1 = vec!["src/leftover_1.rs".to_string()];
         let pass2 = vec![
@@ -68,7 +68,8 @@ fn residuals_trigger_second_pass_and_pass2_carries_forward() {
         run_ralph_cli_with_handlers(&[], executor, config, &mut app_handler, &mut effect_handler)
             .expect("pipeline should complete");
 
-        // Observable behavior: both residual checks are executed.
+        // Observable behavior: residual retries continue beyond pass 2 and stop carrying
+        // forward only after the final configured retry pass.
         let effects = effect_handler.captured_effects();
         assert!(
             effects
@@ -82,18 +83,24 @@ fn residuals_trigger_second_pass_and_pass2_carries_forward() {
                 .any(|e| matches!(e, Effect::CheckResidualFiles { pass: 2 })),
             "expected residual check pass 2"
         );
-
-        // Observable behavior: pass-2 residuals are carried forward in state.
-        assert_eq!(effect_handler.state.commit_residual_files, pass2);
         assert!(
-            !effect_handler.state.commit_is_second_pass,
-            "second-pass flag must be cleared after carry-forward"
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::CheckResidualFiles { pass: 11 })),
+            "expected residual check final retry pass"
+        );
+
+        // Observable behavior: final-pass residuals are carried forward in state.
+        assert_eq!(effect_handler.state.commit_residual_files, pass2);
+        assert_eq!(
+            effect_handler.state.commit_residual_retry_pass, 0,
+            "retry pass must be cleared after carry-forward"
         );
     });
 }
 
 #[test]
-fn pass1_residuals_trigger_second_pass_and_pass2_clean_clears_flags() {
+fn pass1_residuals_trigger_retries_and_clean_pass_clears_flags() {
     with_default_timeout(|| {
         let pass1 = vec!["src/leftover.rs".to_string()];
         let pass2: Vec<String> = vec![];
@@ -114,6 +121,6 @@ fn pass1_residuals_trigger_second_pass_and_pass2_clean_clears_flags() {
             .any(|e| matches!(e, Effect::CheckResidualFiles { pass: 2 })));
 
         assert!(effect_handler.state.commit_residual_files.is_empty());
-        assert!(!effect_handler.state.commit_is_second_pass);
+        assert_eq!(effect_handler.state.commit_residual_retry_pass, 0);
     });
 }

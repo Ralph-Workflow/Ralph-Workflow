@@ -183,8 +183,9 @@ pub enum CommitEvent {
 
     /// Residual uncommitted files detected after a selective commit pass.
     ///
-    /// When `pass == 1`, triggers an automatic second commit pass.
-    /// When `pass == 2`, the files are carried forward to the next cycle.
+    /// When `pass` is below the configured retry limit, triggers the next automatic
+    /// commit retry pass. When `pass` reaches the final retry pass, the files are
+    /// carried forward to the next cycle.
     ResidualFilesFound {
         /// Repo-relative paths of remaining dirty files.
         files: Vec<String>,
