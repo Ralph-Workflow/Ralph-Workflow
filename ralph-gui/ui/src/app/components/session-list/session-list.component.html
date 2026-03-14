@@ -1,15 +1,13 @@
-<!-- Batch Action Bar -->
 @if (currentShowBatchBar) {
   <div
     data-testid="batch-action-bar"
-    style="display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--bg-overlay); border-bottom: 1px solid var(--border-default);"
+    class="flex items-center gap-2 px-3.5 py-2 bg-bg-overlay border-b border-border-default"
   >
-    <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">
+    <span class="text-xs text-text-secondary mr-1">
       {{ currentSelectedIds.size }} selected
     </span>
     <button
-      class="btn btn-secondary"
-      style="padding: 3px 10px; font-size: 12px;"
+      class="btn btn-secondary px-2.5 py-0.5 text-xs"
       [disabled]="!currentCanBatchResume"
       (click)="batchResume()"
       data-testid="batch-resume-btn"
@@ -17,8 +15,7 @@
       Resume
     </button>
     <button
-      class="btn btn-secondary"
-      style="padding: 3px 10px; font-size: 12px;"
+      class="btn btn-secondary px-2.5 py-0.5 text-xs"
       [disabled]="!currentCanBatchCancel"
       (click)="batchCancel()"
       data-testid="batch-cancel-btn"
@@ -26,16 +23,14 @@
       Cancel
     </button>
     <button
-      class="btn btn-secondary"
-      style="padding: 3px 10px; font-size: 12px; color: var(--status-error);"
+      class="btn btn-secondary px-2.5 py-0.5 text-xs text-status-error"
       (click)="batchDelete()"
       data-testid="batch-delete-btn"
     >
       Delete
     </button>
     <button
-      class="btn btn-ghost"
-      style="padding: 3px 8px; font-size: 11px; margin-left: auto;"
+      class="btn btn-ghost px-2 py-0.5 text-[11px] ml-auto"
       (click)="clearSelection()"
     >
       Clear
@@ -44,7 +39,7 @@
 }
 
 @if (serviceStatus === 'loading') {
-  <div style="padding: 24px; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+  <div class="p-6 text-text-muted text-[13px] font-mono">
     Loading sessions…
   </div>
 } @else if (serviceSessions.length === 0) {
@@ -60,79 +55,67 @@
     <div class="empty-state-desc">Try clearing the filters to see all sessions.</div>
   </div>
 } @else {
-  <!-- Column headers -->
   <div
-    style="display: grid; grid-template-columns: 28px 32px 1fr 120px 140px 80px; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--border-default); font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase;"
+    class="grid grid-cols-[28px_32px_1fr_100px_160px_100px_80px_80px] gap-2 px-3.5 py-1.5 border-b border-border-default text-[11px] font-semibold text-text-muted tracking-wider uppercase"
   >
-    <!-- Select all -->
-    <div style="display: flex; align-items: center;">
+    <div class="flex items-center">
       <input
         type="checkbox"
         [checked]="currentIsAllSelected"
         (change)="selectAll()"
         aria-label="Select all sessions"
         data-testid="select-all-checkbox"
-        style="cursor: pointer;"
+        class="cursor-pointer"
       />
     </div>
-    <!-- Status (no sort) -->
     <div></div>
-    <!-- Description -->
     <button
-      class="btn btn-ghost"
-      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      class="btn btn-ghost p-0 text-[11px] font-semibold text-text-muted uppercase tracking-wider justify-start gap-1"
       (click)="setSort('description')"
       data-testid="sort-description"
     >
-      Description {{ descriptionSortIcon }}
+      Name {{ descriptionSortIcon }}
     </button>
-    <!-- Status sort -->
     <button
-      class="btn btn-ghost"
-      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      class="btn btn-ghost p-0 text-[11px] font-semibold text-text-muted uppercase tracking-wider justify-start gap-1"
       (click)="setSort('status')"
       data-testid="sort-status"
     >
       Status {{ statusSortIcon }}
     </button>
-    <!-- Created -->
+    <div class="text-left">Pipeline Step</div>
+    <div class="text-left">Agent</div>
     <button
-      class="btn btn-ghost"
-      style="padding: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; justify-content: flex-start; gap: 4px;"
+      class="btn btn-ghost p-0 text-[11px] font-semibold text-text-muted uppercase tracking-wider justify-start gap-1"
       (click)="setSort('created_at')"
       data-testid="sort-created-at"
     >
-      Created {{ createdAtSortIcon }}
+      Age {{ createdAtSortIcon }}
     </button>
-    <!-- Actions -->
     <div></div>
   </div>
 
-  <div style="display: flex; flex-direction: column; gap: 2px;">
+  <div class="flex flex-col gap-0.5">
     @for (row of currentDisplaySessions; track row.session.run_id) {
       <div
         role="button"
         tabindex="0"
         (click)="onSelect(row.session)"
         (keydown)="onKeyDown($event, row.session)"
-        (mouseenter)="onRowHover($event)"
-        (mouseleave)="onRowLeave($event)"
-        [class.selected]="row.isActive"
-        style="display: grid; grid-template-columns: 28px 32px 1fr 120px 140px 80px; gap: 8px; align-items: center; padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); cursor: pointer; transition: all var(--transition-fast);"
+        [class.session-row-selected]="row.isActive"
+        class="session-row grid grid-cols-[28px_32px_1fr_100px_160px_100px_80px_80px] gap-2 items-center px-3.5 py-2.5 rounded-md border border-border-default cursor-pointer transition-all duration-fast"
         [attr.data-testid]="'session-row-' + row.session.run_id"
       >
-        <!-- Checkbox -->
-        <div (click)="onCheckboxClick($event, row.session.run_id)" style="display: flex; align-items: center;">
+        <div (click)="onCheckboxClick($event, row.session.run_id)" class="flex items-center">
           <input
             type="checkbox"
             [checked]="row.isSelected"
             [attr.aria-label]="'Select session ' + row.session.run_id"
-            style="cursor: pointer;"
+            class="cursor-pointer"
             (change)="toggleSelect(row.session.run_id)"
           />
         </div>
 
-        <!-- Status badge -->
         <app-run-status-badge
           [status]="row.session.status | sessionStatus"
           [showLabel]="false"
@@ -140,40 +123,79 @@
           [isDegraded]="row.session.is_degraded === true"
         />
 
-        <!-- Description / run id -->
-        <div style="min-width: 0;">
-          <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {{ row.shortRunId }}
+        <div class="min-w-0">
+          <div class="text-xs text-text-primary font-semibold overflow-hidden text-ellipsis whitespace-nowrap">
+            {{ row.session.description || row.shortRunId }}
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {{ row.session.description }}
-          </div>
+          @if (row.session.description) {
+            <div class="text-[11px] text-text-muted font-mono mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
+              {{ row.shortRunId }}
+            </div>
+          }
         </div>
 
-        <!-- Status text -->
-        <div style="font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
+        <div class="text-[11px] text-text-secondary font-mono">
           {{ row.session.status }}
         </div>
 
-        <!-- Created at -->
-        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-          {{ row.session.created_at }}
+        <div class="text-xs text-text-secondary font-mono">
+          {{ row.pipelineStep }}
         </div>
 
-        <!-- Actions -->
-        <div style="display: flex; justify-content: flex-end; gap: 4px;">
+        <div class="text-xs text-text-muted font-mono">
+          {{ row.session.developer_agent }}
+        </div>
+
+        <div class="text-[11px] text-text-muted font-mono">
+          {{ row.age }}
+        </div>
+
+        <div class="flex justify-end gap-1">
           @if (row.canResume) {
             <button
-              class="btn btn-secondary"
-              style="padding: 3px 10px; font-size: 11px;"
+              class="btn btn-secondary px-2.5 py-0.5 text-[11px]"
               (click)="onResumeClick($event, row.session)"
             >
               Resume
             </button>
           }
-          <span style="font-size: 10px; color: var(--text-muted); flex-shrink: 0; align-self: center;">›</span>
+          <span class="text-[10px] text-text-muted flex-shrink-0 self-center">›</span>
         </div>
       </div>
     }
   </div>
+}
+
+@if (showBatchCancelDialog()) {
+  <app-cancel-confirmation
+    [title]="'Cancel ' + currentSelectedIds.size + ' Sessions?'"
+    message="The selected sessions will stop immediately. Unsaved UI state is preserved, but the runs will not continue automatically."
+    [confirmLabel]="'Cancel Sessions'"
+    [cancelLabel]="'Keep Sessions Running'"
+    confirmVariant="danger"
+    (confirmed)="onBatchCancelConfirmed($event)"
+  />
+}
+
+@if (showBatchDeleteDialog()) {
+  <app-cancel-confirmation
+    [title]="'Delete ' + currentSelectedIds.size + ' Sessions?'"
+    message="The selected session records will be removed from the list and history views. This cannot be undone."
+    [confirmLabel]="'Delete Sessions'"
+    [cancelLabel]="'Keep Sessions'"
+    confirmVariant="danger"
+    (confirmed)="onBatchDeleteConfirmed($event)"
+  />
+}
+
+@if (batchOverlayVisible()) {
+  <app-batch-progress-overlay
+    [operationType]="batchOperationType()"
+    [targetRunIds]="batchTargetIds()"
+    [runIdToName]="batchRunIdToName()"
+    [result]="batchResult()"
+    [isInProgress]="batchInProgress()"
+    (closed)="onBatchOverlayClosed()"
+    (openRun)="onOpenRun($event)"
+  />
 }

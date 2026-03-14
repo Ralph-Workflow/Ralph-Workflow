@@ -4,9 +4,9 @@ import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionListComponent } from './session-list.component';
 import { SessionsService } from '../../services/sessions.service';
-
+import { TauriService } from '../../services/tauri.service';
 import { TAURI_INVOKE } from '../../services/tauri.service';
-import type { SessionSummary } from '../../types';
+import type { SessionSummary, BatchOperationResult } from '../../types';
 
 const makeSessions = (): SessionSummary[] => [
   {
@@ -27,9 +27,9 @@ const makeSessions = (): SessionSummary[] => [
     worktree_path: null,
     created_at: '2026-01-02T10:00:00Z',
     description: 'Fix API bug',
-    developer_agent: 'claude',
+    developer_agent: 'codex',
     reviewer_agent: 'claude',
-    phase: 'develop',
+    phase: 'review',
   },
   {
     run_id: 'run-003',
@@ -40,7 +40,7 @@ const makeSessions = (): SessionSummary[] => [
     description: 'Refactor auth module',
     developer_agent: 'claude',
     reviewer_agent: 'claude',
-    phase: 'review',
+    phase: 'commit',
   },
   {
     run_id: 'run-004',
@@ -49,9 +49,9 @@ const makeSessions = (): SessionSummary[] => [
     worktree_path: '/repo/a/wt-1',
     created_at: '2026-01-04T10:00:00Z',
     description: 'Update docs',
-    developer_agent: 'claude',
+    developer_agent: 'codex',
     reviewer_agent: 'claude',
-    phase: 'commit',
+    phase: 'plan',
   },
 ];
 
@@ -67,6 +67,11 @@ describe('SessionListComponent', () => {
     error: ReturnType<typeof signal<string | null>>;
     selectedRunId: ReturnType<typeof signal<string | null>>;
     isLoading: ReturnType<typeof signal<boolean>>;
+  };
+  let mockTauriService: {
+    batchResumeSessions: ReturnType<typeof vi.fn>;
+    batchCancelSessions: ReturnType<typeof vi.fn>;
+    batchDeleteSessions: ReturnType<typeof vi.fn>;
   };
   let mockRouter: { navigate: ReturnType<typeof vi.fn> };
   let mockInvoke: ReturnType<typeof vi.fn>;
@@ -85,12 +90,19 @@ describe('SessionListComponent', () => {
       isLoading: signal(false),
     };
 
+    mockTauriService = {
+      batchResumeSessions: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, errors: {} }),
+      batchCancelSessions: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, errors: {} }),
+      batchDeleteSessions: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, errors: {} }),
+    };
+
     mockRouter = { navigate: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [SessionListComponent],
       providers: [
         { provide: SessionsService, useValue: mockSessionsService },
+        { provide: TauriService, useValue: mockTauriService },
         { provide: Router, useValue: mockRouter },
         { provide: TAURI_INVOKE, useValue: mockInvoke },
       ],
@@ -279,47 +291,180 @@ describe('SessionListComponent', () => {
 
     it('canBatchResume is true when selection contains paused/failed session', () => {
       mockSessionsService.sessions.set(makeSessions());
-      component.toggleSelect('run-001'); // paused
+      component.toggleSelect('run-001');
 
       expect(component.canBatchResume()).toBe(true);
     });
 
     it('canBatchResume is false when selection only contains running sessions', () => {
       mockSessionsService.sessions.set(makeSessions());
-      component.toggleSelect('run-002'); // running
+      component.toggleSelect('run-002');
 
       expect(component.canBatchResume()).toBe(false);
     });
 
     it('canBatchCancel is true when selection contains running session', () => {
       mockSessionsService.sessions.set(makeSessions());
-      component.toggleSelect('run-002'); // running
+      component.toggleSelect('run-002');
 
       expect(component.canBatchCancel()).toBe(true);
     });
 
     it('canBatchCancel is false when selection has no running sessions', () => {
       mockSessionsService.sessions.set(makeSessions());
-      component.toggleSelect('run-001'); // paused
+      component.toggleSelect('run-001');
 
       expect(component.canBatchCancel()).toBe(false);
     });
   });
 
-  describe('batchResume', () => {
-    it('should call resumeSession for each paused/failed session in selection', async () => {
+  describe('displaySessions with new columns', () => {
+    it('should include formatted pipelineStep field from session.phase', () => {
       mockSessionsService.sessions.set(makeSessions());
-      mockSessionsService.resumeSession.mockResolvedValue(undefined);
-      component.toggleSelect('run-001'); // paused
-      component.toggleSelect('run-002'); // running - should be skipped
-      component.toggleSelect('run-003'); // failed
+
+      const display = component.displaySessions();
+      const developRow = display.find(d => d.session.run_id === 'run-001');
+      const reviewRow = display.find(d => d.session.run_id === 'run-002');
+      const commitRow = display.find(d => d.session.run_id === 'run-003');
+      const planRow = display.find(d => d.session.run_id === 'run-004');
+
+      expect(developRow?.pipelineStep).toBe('Develop');
+      expect(reviewRow?.pipelineStep).toBe('Review');
+      expect(commitRow?.pipelineStep).toBe('Commit');
+      expect(planRow?.pipelineStep).toBe('Plan');
+    });
+
+    it('should include agent field from session.developer_agent', () => {
+      mockSessionsService.sessions.set(makeSessions());
+
+      const display = component.displaySessions();
+      const claudeRow = display.find(d => d.session.run_id === 'run-001');
+      const codexRow = display.find(d => d.session.run_id === 'run-002');
+
+      expect(claudeRow?.session.developer_agent).toBe('claude');
+      expect(codexRow?.session.developer_agent).toBe('codex');
+    });
+
+    it('should include age field formatted from created_at', () => {
+      mockSessionsService.sessions.set(makeSessions());
+
+      const display = component.displaySessions();
+      expect(display[0]?.age).toBeDefined();
+      expect(typeof display[0]?.age).toBe('string');
+    });
+  });
+
+  describe('batch confirmation dialogs', () => {
+    it('batchCancel() should set showBatchCancelDialog to true', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-002');
+      component.batchCancel();
+
+      expect(component.showBatchCancelDialog()).toBe(true);
+    });
+
+    it('batchDelete() should set showBatchDeleteDialog to true', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-001');
+      component.batchDelete();
+
+      expect(component.showBatchDeleteDialog()).toBe(true);
+    });
+
+    it('onBatchCancelConfirmed(false) should hide dialog without executing cancel', async () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-002');
+      component.showBatchCancelDialog.set(true);
+
+      await component.onBatchCancelConfirmed(false);
+
+      expect(component.showBatchCancelDialog()).toBe(false);
+      expect(mockTauriService.batchCancelSessions).not.toHaveBeenCalled();
+    });
+
+    it('onBatchDeleteConfirmed(false) should hide dialog without executing delete', async () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-001');
+      component.showBatchDeleteDialog.set(true);
+
+      await component.onBatchDeleteConfirmed(false);
+
+      expect(component.showBatchDeleteDialog()).toBe(false);
+      expect(mockTauriService.batchDeleteSessions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('batch overlay integration', () => {
+    it('batch overlay becomes visible after confirmed batch cancel operation starts', async () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-002');
+
+      await component.onBatchCancelConfirmed(true);
+
+      expect(component.batchOverlayVisible()).toBe(true);
+    });
+
+    it('batch overlay shows result after operation completes', async () => {
+      const mockResult: BatchOperationResult = { succeeded: 1, failed: 0, errors: {} };
+      mockTauriService.batchCancelSessions.mockResolvedValue(mockResult);
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-002');
+
+      await component.onBatchCancelConfirmed(true);
+
+      expect(component.batchResult()).toEqual(mockResult);
+      expect(component.batchInProgress()).toBe(false);
+    });
+
+    it('selection is cleared after batch overlay is closed', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-001');
+      component.batchOverlayVisible.set(true);
+
+      component.onBatchOverlayClosed();
+
+      expect(component.selectedIds().size).toBe(0);
+      expect(component.batchOverlayVisible()).toBe(false);
+    });
+
+    it('onOpenRun navigates to run detail and closes overlay', () => {
+      component.batchOverlayVisible.set(true);
+      component.selectedIds.set(new Set(['run-001']));
+
+      component.onOpenRun('run-123');
+
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/runs', 'run-123']);
+      expect(component.batchOverlayVisible()).toBe(false);
+      expect(component.selectedIds().size).toBe(0);
+    });
+  });
+
+  describe('batchResume', () => {
+    it('should call tauri.batchResumeSessions with resumable IDs', async () => {
+      mockTauriService.batchResumeSessions.mockResolvedValue({ succeeded: 2, failed: 0, errors: {} });
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-001');
+      component.toggleSelect('run-002');
+      component.toggleSelect('run-003');
 
       await component.batchResume();
-      await fixture.whenStable();
 
-      expect(mockSessionsService.resumeSession).toHaveBeenCalledWith('run-001', '/repo/a');
-      expect(mockSessionsService.resumeSession).toHaveBeenCalledWith('run-003', '/repo/a');
-      expect(mockSessionsService.resumeSession).not.toHaveBeenCalledWith('run-002', '/repo/a');
+      expect(mockTauriService.batchResumeSessions).toHaveBeenCalledWith(['run-001', 'run-003']);
+    });
+
+    it('should show batch overlay during batch resume', async () => {
+      mockTauriService.batchResumeSessions.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ succeeded: 1, failed: 0, errors: {} }), 100)));
+      mockSessionsService.sessions.set(makeSessions());
+      component.toggleSelect('run-001');
+
+      const promise = component.batchResume();
+
+      expect(component.batchOverlayVisible()).toBe(true);
+      expect(component.batchInProgress()).toBe(true);
+
+      await promise;
+
+      expect(component.batchInProgress()).toBe(false);
     });
   });
 });

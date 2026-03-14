@@ -1,0 +1,92 @@
+<div
+  class="dialog-backdrop"
+  role="presentation"
+  (click)="onBackdropClick($event)"
+>
+  <div
+    class="dialog"
+    role="dialog"
+    [attr.aria-modal]="true"
+    [attr.aria-labelledby]="'batch-dialog-title'"
+    data-testid="batch-progress-dialog"
+    tabindex="-1"
+  >
+    <div class="dialog__header">
+      <h2 class="dialog__title" id="batch-dialog-title">{{ operationTitle_() }}</h2>
+    </div>
+
+    <div class="dialog__body">
+      @if (isInProgress()) {
+        <div class="progress-view">
+          <div class="run-list">
+            @for (info of runDisplayInfos(); track info.runId) {
+              <div class="run-row">
+                <span class="run-name">{{ info.displayName }}</span>
+                <span class="run-status run-status--pending">pending</span>
+              </div>
+            }
+          </div>
+
+          <div class="progress-bar-container">
+            <div class="progress-bar">
+              <div
+                class="progress-bar__fill"
+                [style.width.%]="progressPercent()"
+              ></div>
+            </div>
+            <span class="progress-text">{{ progressCount().done }} of {{ progressCount().total }}</span>
+          </div>
+        </div>
+      } @else if (resultSummary()) {
+        <div class="result-view">
+          @if (hasPartialSuccess()) {
+            <p class="result-summary result-summary--partial">
+              {{ resultSummary()!.succeeded }} session{{ resultSummary()!.succeeded === 1 ? '' : 's' }} completed successfully.
+              {{ resultSummary()!.failed }} session{{ resultSummary()!.failed === 1 ? '' : 's' }} need{{ resultSummary()!.failed === 1 ? 's' : '' }} attention.
+            </p>
+          } @else if (hasFailures()) {
+            <p class="result-summary result-summary--error">
+              {{ resultSummary()!.failed }} session{{ resultSummary()!.failed === 1 ? '' : 's' }} failed.
+            </p>
+          } @else {
+            <p class="result-summary result-summary--success">
+              All {{ resultSummary()!.succeeded }} session{{ resultSummary()!.succeeded === 1 ? '' : 's' }} completed successfully.
+            </p>
+          }
+
+          <div class="run-list">
+            @for (info of runDisplayInfos(); track info.runId) {
+              <div class="run-row" [class.run-row--error]="info.error">
+                <span class="run-name">{{ info.displayName }}</span>
+                @if (info.error) {
+                  <span class="run-error">{{ info.error }}</span>
+                } @else {
+                  <span class="run-status run-status--done">done</span>
+                }
+                <button
+                  class="btn btn-ghost btn-xs"
+                  (click)="onOpenRun(info.runId)"
+                  data-testid="open-run-btn"
+                >
+                  Open Run
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <div class="dialog__footer">
+      <button
+        class="btn btn-primary"
+        data-testid="close-btn"
+        (click)="onClose()"
+        type="button"
+        [disabled]="isInProgress()"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>

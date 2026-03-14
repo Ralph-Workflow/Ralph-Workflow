@@ -12,9 +12,12 @@ import {
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { SessionsService } from '../../services/sessions.service';
+import { TauriService } from '../../services/tauri.service';
 import { RunStatusBadgeComponent } from '../run-status-badge/run-status-badge.component';
+import { CancelConfirmationComponent } from '../cancel-confirmation/cancel-confirmation.component';
+import { BatchProgressOverlayComponent } from '../batch-progress-overlay/batch-progress-overlay.component';
 import { SessionStatusPipe } from '../../pipes/session-status.pipe';
-import type { RunStatus, SessionSummary } from '../../types';
+import type { RunStatus, SessionSummary, BatchOperationResult } from '../../types';
 
 export type SortKey = 'created_at' | 'description' | 'status';
 export type SortDir = 'asc' | 'desc';
@@ -35,41 +38,71 @@ function sessionStatusToRunStatus(status: string): RunStatus {
   }
 }
 
+function formatAge(createdAt: string): string {
+  const created = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  return `${diffDays}d`;
+}
+
+function formatPipelineStep(phase: string): string {
+  const phaseMap: Record<string, string> = {
+    plan: 'Plan',
+    develop: 'Develop',
+    review: 'Review',
+    commit: 'Commit',
+  };
+  return phaseMap[phase.toLowerCase()] || phase;
+}
+
 @Component({
   selector: 'app-session-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, RunStatusBadgeComponent, SessionStatusPipe],
+  imports: [CommonModule, RunStatusBadgeComponent, CancelConfirmationComponent, BatchProgressOverlayComponent, SessionStatusPipe],
   templateUrl: './session-list.component.html',
   styleUrls: ['./session-list.component.css'],
 })
 export class SessionListComponent {
   readonly sessionsService = inject(SessionsService);
+  readonly tauriService = inject(TauriService);
   private readonly router = inject(Router);
 
   @Input() repoPath = '';
   @Input() filterStatus: string[] = [];
   @Input() filterWorktreePath: string | null | undefined = undefined;
-  /** External search term passed from parent (sessions page search box). */
   @Input() set externalSearchTerm(value: string) {
     this.searchTerm.set(value);
   }
   @Output() resumeRun = new EventEmitter<string>();
 
-  // Search & filter signals (also writable from parent via externalSearchTerm input)
   readonly searchTerm = signal('');
   readonly worktreeFilter = signal<string>('__all__');
 
-  // Sort signals (default: created_at desc)
   readonly sortKey = signal<SortKey>('created_at');
   readonly sortDirection = signal<SortDir>('desc');
 
-  // Selection signals
   readonly selectedIds = signal<Set<string>>(new Set());
+
+  readonly showBatchCancelDialog = signal(false);
+  readonly showBatchDeleteDialog = signal(false);
+
+  readonly batchOverlayVisible = signal(false);
+  readonly batchOperationType = signal<'resume' | 'cancel' | 'delete'>('resume');
+  readonly batchTargetIds = signal<string[]>([]);
+  readonly batchResult = signal<BatchOperationResult | null>(null);
+  readonly batchInProgress = signal(false);
+  readonly batchRunIdToName = signal<Record<string, string>>({});
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
-  // Distinct worktree options for filter dropdown
   readonly worktreeFilterOptions = computed<WorktreeOption[]>(() => {
     const sessions = this.sessionsService.sessions();
     const paths = new Set<string>();
@@ -95,7 +128,6 @@ export class SessionListComponent {
     const dir = this.sortDirection();
 
     const filtered = sessions.filter((s) => {
-      // External worktree filter from parent (context switcher)
       if (hasStatusFilter && !this.filterStatus.includes(s.status)) return false;
       if (hasWorktreeFilter) {
         if (this.filterWorktreePath === '') {
@@ -105,12 +137,10 @@ export class SessionListComponent {
         }
       }
 
-      // Internal worktree dropdown filter
       if (worktree !== '__all__') {
         if (s.worktree_path !== worktree) return false;
       }
 
-      // Search filter
       if (search) {
         const desc = s.description.toLowerCase();
         const wt = (s.worktree_path ?? '').toLowerCase();
@@ -123,7 +153,6 @@ export class SessionListComponent {
       return true;
     });
 
-    // Sort
     filtered.sort((a, b) => {
       let cmp = 0;
       if (key === 'created_at') {
@@ -139,7 +168,6 @@ export class SessionListComponent {
     return filtered;
   });
 
-  // Batch action visibility
   readonly showBatchBar = computed(() => this.selectedIds().size > 0);
 
   readonly canBatchResume = computed(() => {
@@ -163,7 +191,6 @@ export class SessionListComponent {
     return visible.every(s => ids.has(s.run_id));
   });
 
-  /** Set of run IDs that can be resumed — avoids parameterized canResume(session) calls in templates. */
   readonly resumableRunIds = computed<Set<string>>(() => {
     const ids = new Set<string>();
     for (const s of this.sessionsService.sessions()) {
@@ -174,7 +201,6 @@ export class SessionListComponent {
     return ids;
   });
 
-  /** Pre-computed display rows: sessions enriched with derived template values. */
   readonly displaySessions = computed(() => {
     const sessions = this.visibleSessions();
     const selectedIds = this.selectedIds();
@@ -186,10 +212,11 @@ export class SessionListComponent {
       isSelected: selectedIds.has(session.run_id),
       isActive: session.run_id === activeRunId,
       canResume: resumable.has(session.run_id),
+      pipelineStep: formatPipelineStep(session.phase),
+      age: formatAge(session.created_at),
     }));
   });
 
-  /** Getters for template read access (avoids calling signals/computed with () in templates). */
   get currentShowBatchBar() { return this.showBatchBar(); }
   get currentSelectedIds() { return this.selectedIds(); }
   get currentCanBatchResume() { return this.canBatchResume(); }
@@ -202,7 +229,6 @@ export class SessionListComponent {
   get serviceSessions() { return this.sessionsService.sessions(); }
   get serviceSelectedRunId() { return this.sessionsService.selectedRunId(); }
 
-  /** Sort icon getters — avoids parameterized sortIcon(key) calls in templates. */
   get descriptionSortIcon() { return this.sortIcon('description'); }
   get statusSortIcon() { return this.sortIcon('status'); }
   get createdAtSortIcon() { return this.sortIcon('created_at'); }
@@ -277,27 +303,139 @@ export class SessionListComponent {
     const resumable = sessions.filter(
       s => ids.has(s.run_id) && (s.status === 'paused' || s.status === 'failed' || s.status === 'interrupted'),
     );
-    for (const s of resumable) {
-      await this.sessionsService.resumeSession(s.run_id, this.repoPath);
+    const resumableIds = resumable.map(s => s.run_id);
+
+    if (resumableIds.length === 0) {
+      this.selectedIds.set(new Set());
+      return;
     }
-    this.selectedIds.set(new Set());
+
+    const nameMap: Record<string, string> = {};
+    for (const s of resumable) {
+      nameMap[s.run_id] = s.description || s.run_id.substring(0, 16);
+    }
+
+    this.batchOperationType.set('resume');
+    this.batchTargetIds.set(resumableIds);
+    this.batchRunIdToName.set(nameMap);
+    this.batchResult.set(null);
+    this.batchInProgress.set(true);
+    this.batchOverlayVisible.set(true);
+
+    try {
+      const result = await this.tauriService.batchResumeSessions(resumableIds);
+      this.batchResult.set(result);
+    } catch (e) {
+      this.batchResult.set({
+        succeeded: 0,
+        failed: resumableIds.length,
+        errors: Object.fromEntries(resumableIds.map(id => [id, String(e)])),
+      });
+    } finally {
+      this.batchInProgress.set(false);
+    }
+
+    void this.sessionsService.fetchSessions(this.repoPath);
   }
 
-  async batchCancel(): Promise<void> {
-    if (!confirm('Cancel all selected running sessions?')) return;
+  batchCancel(): void {
+    this.showBatchCancelDialog.set(true);
+  }
+
+  async onBatchCancelConfirmed(confirmed: boolean): Promise<void> {
+    this.showBatchCancelDialog.set(false);
+    if (!confirmed) return;
+
     const ids = this.selectedIds();
     const sessions = this.sessionsService.sessions();
     const cancellable = sessions.filter(s => ids.has(s.run_id) && s.status === 'running');
-    for (const s of cancellable) {
-      this.cancelRun.emit(s.run_id);
+    const cancellableIds = cancellable.map(s => s.run_id);
+
+    if (cancellableIds.length === 0) {
+      this.selectedIds.set(new Set());
+      return;
     }
+
+    const nameMap: Record<string, string> = {};
+    for (const s of cancellable) {
+      nameMap[s.run_id] = s.description || s.run_id.substring(0, 16);
+    }
+
+    this.batchOperationType.set('cancel');
+    this.batchTargetIds.set(cancellableIds);
+    this.batchRunIdToName.set(nameMap);
+    this.batchResult.set(null);
+    this.batchInProgress.set(true);
+    this.batchOverlayVisible.set(true);
+
+    try {
+      const result = await this.tauriService.batchCancelSessions(cancellableIds);
+      this.batchResult.set(result);
+    } catch (e) {
+      this.batchResult.set({
+        succeeded: 0,
+        failed: cancellableIds.length,
+        errors: Object.fromEntries(cancellableIds.map(id => [id, String(e)])),
+      });
+    } finally {
+      this.batchInProgress.set(false);
+    }
+
+    void this.sessionsService.fetchSessions(this.repoPath);
+  }
+
+  batchDelete(): void {
+    this.showBatchDeleteDialog.set(true);
+  }
+
+  async onBatchDeleteConfirmed(confirmed: boolean): Promise<void> {
+    this.showBatchDeleteDialog.set(false);
+    if (!confirmed) return;
+
+    const ids = Array.from(this.selectedIds());
+
+    if (ids.length === 0) return;
+
+    const sessions = this.sessionsService.sessions();
+    const nameMap: Record<string, string> = {};
+    for (const s of sessions) {
+      if (ids.includes(s.run_id)) {
+        nameMap[s.run_id] = s.description || s.run_id.substring(0, 16);
+      }
+    }
+
+    this.batchOperationType.set('delete');
+    this.batchTargetIds.set(ids);
+    this.batchRunIdToName.set(nameMap);
+    this.batchResult.set(null);
+    this.batchInProgress.set(true);
+    this.batchOverlayVisible.set(true);
+
+    try {
+      const result = await this.tauriService.batchDeleteSessions(ids);
+      this.batchResult.set(result);
+    } catch (e) {
+      this.batchResult.set({
+        succeeded: 0,
+        failed: ids.length,
+        errors: Object.fromEntries(ids.map(id => [id, String(e)])),
+      });
+    } finally {
+      this.batchInProgress.set(false);
+    }
+
+    void this.sessionsService.fetchSessions(this.repoPath);
+  }
+
+  onBatchOverlayClosed(): void {
+    this.batchOverlayVisible.set(false);
     this.selectedIds.set(new Set());
   }
 
-  async batchDelete(): Promise<void> {
-    if (!confirm('Delete all selected sessions?')) return;
-    this.deleteSelected.emit(Array.from(this.selectedIds()));
+  onOpenRun(runId: string): void {
+    this.batchOverlayVisible.set(false);
     this.selectedIds.set(new Set());
+    void this.router.navigate(['/runs', runId]);
   }
 
   onSelect(session: SessionSummary): void {
@@ -317,22 +455,6 @@ export class SessionListComponent {
     this.resumeRun.emit(session.run_id);
   }
 
-  onRowHover(event: MouseEvent): void {
-    const el = event.currentTarget as HTMLElement;
-    if (!el.classList.contains('selected')) {
-      el.style.background = 'var(--bg-elevated)';
-      el.style.borderColor = 'var(--border-default)';
-    }
-  }
-
-  onRowLeave(event: MouseEvent): void {
-    const el = event.currentTarget as HTMLElement;
-    if (!el.classList.contains('selected')) {
-      el.style.background = 'transparent';
-      el.style.borderColor = 'var(--border-subtle)';
-    }
-  }
-
   onCheckboxClick(event: MouseEvent, runId: string): void {
     event.stopPropagation();
     this.toggleSelect(runId);
@@ -346,7 +468,6 @@ export class SessionListComponent {
   @Output() readonly cancelRun = new EventEmitter<string>();
   @Output() readonly deleteSelected = new EventEmitter<string[]>();
 
-  /** Clears the current selection set. */
   clearSelection(): void {
     this.selectedIds.set(new Set());
   }

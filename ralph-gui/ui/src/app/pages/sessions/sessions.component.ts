@@ -11,6 +11,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { WorktreesService } from '../../services/worktrees.service';
+import { SessionsService } from '../../services/sessions.service';
 import { SessionListComponent } from '../../components/session-list/session-list.component';
 import { NewSessionWizardComponent } from '../../components/new-session-wizard/new-session-wizard.component';
 
@@ -35,6 +36,7 @@ const STATUS_CHIPS = [
 })
 export class SessionsComponent {
   readonly worktreesService = inject(WorktreesService);
+  readonly sessionsService = inject(SessionsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -45,15 +47,32 @@ export class SessionsComponent {
   readonly contextFilter = signal<string>('all');
   readonly preselectedWorktree = signal<string | null>(null);
 
-  /** Search term bound to the search input and passed to session-list */
   readonly searchTerm = signal('');
 
   readonly statusChips = STATUS_CHIPS;
 
-  readonly statusChipsWithStyle = computed(() =>
+  readonly statusCounts = computed(() => {
+    const sessions = this.sessionsService.sessions();
+    const counts = {
+      all: sessions.length,
+      running: 0,
+      paused: 0,
+      completed: 0,
+      failed: 0,
+    };
+    for (const s of sessions) {
+      if (s.status === 'running') counts.running++;
+      else if (s.status === 'paused' || s.status === 'interrupted') counts.paused++;
+      else if (s.status === 'completed') counts.completed++;
+      else if (s.status === 'failed') counts.failed++;
+    }
+    return counts;
+  });
+
+  readonly statusChipsWithCount = computed(() =>
     STATUS_CHIPS.map(chip => ({
       ...chip,
-      style: this.chipButtonStyle(chip.value),
+      count: this.statusCounts()[chip.value] ?? 0,
     }))
   );
 
@@ -121,7 +140,7 @@ export class SessionsComponent {
     this.searchTerm.set('');
   }
 
-  get statusChipsWithStyleList() { return this.statusChipsWithStyle(); }
+  get statusChipsWithCountList() { return this.statusChipsWithCount(); }
   get viewValue(): View { return this.view(); }
   get preselectedWorktreeValue(): string | null { return this.preselectedWorktree(); }
   get repoPathValue(): string | null | undefined { return this.repoPath(); }
@@ -129,20 +148,10 @@ export class SessionsComponent {
   get activeStatusFiltersValue(): string[] { return this.activeStatusFilters(); }
   get contextFilterValue(): string { return this.contextFilter(); }
   get nonMainWorktreesList() { return this.nonMainWorktrees(); }
+  get statusCountsValue() { return this.statusCounts(); }
 
-  chipButtonStyle(value: string): string {
-    const active = this.activeStatusFilters().includes(value);
-    return `
-      padding: 2px 10px;
-      border-radius: 100px;
-      font-size: 11px;
-      font-weight: 500;
-      cursor: pointer;
-      border: ${active ? '1px solid var(--accent)' : '1px solid var(--border-default)'};
-      background: ${active ? 'var(--accent-bg)' : 'transparent'};
-      color: ${active ? 'var(--accent)' : 'var(--text-muted)'};
-      transition: all var(--transition-fast);
-    `.replace(/\n/g, ' ');
+  isFilterActive(value: string): boolean {
+    return this.activeStatusFilters().includes(value);
   }
 
   handleResume(runId: string): void {
