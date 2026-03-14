@@ -1,7 +1,17 @@
-import { Component, inject, signal, effect, ChangeDetectionStrategy } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  ChangeDetectionStrategy,
+  ViewChild,
+  ElementRef,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { WorktreesService } from '../../services/worktrees.service';
+import { SessionsService } from '../../services/sessions.service';
 import { SessionListComponent } from '../../components/session-list/session-list.component';
 import { NewSessionWizardComponent } from '../../components/new-session-wizard/new-session-wizard.component';
 
@@ -20,18 +30,51 @@ const STATUS_CHIPS = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, RouterModule, SessionListComponent, NewSessionWizardComponent],
   templateUrl: './sessions.component.html',
+  host: {
+    '(document:keydown)': 'onDocumentKeyDown($event)',
+  },
 })
 export class SessionsComponent {
   readonly worktreesService = inject(WorktreesService);
+  readonly sessionsService = inject(SessionsService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+
+  @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
 
   readonly view = signal<View>('list');
   readonly activeStatusFilters = signal<string[]>([]);
   readonly contextFilter = signal<string>('all');
   readonly preselectedWorktree = signal<string | null>(null);
 
+  readonly searchTerm = signal('');
+
   readonly statusChips = STATUS_CHIPS;
+
+  readonly statusCounts = computed(() => {
+    const sessions = this.sessionsService.sessions();
+    const counts = {
+      all: sessions.length,
+      running: 0,
+      paused: 0,
+      completed: 0,
+      failed: 0,
+    };
+    for (const s of sessions) {
+      if (s.status === 'running') counts.running++;
+      else if (s.status === 'paused' || s.status === 'interrupted') counts.paused++;
+      else if (s.status === 'completed') counts.completed++;
+      else if (s.status === 'failed') counts.failed++;
+    }
+    return counts;
+  });
+
+  readonly statusChipsWithCount = computed(() =>
+    STATUS_CHIPS.map(chip => ({
+      ...chip,
+      count: this.statusCounts()[chip.value] ?? 0,
+    }))
+  );
 
   readonly mainWorktree = this.worktreesService.mainWorktree;
   readonly repoPath = this.worktreesService.repoPath;
@@ -86,27 +129,39 @@ export class SessionsComponent {
     this.contextFilter.set(value);
   }
 
+  onSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.searchTerm.set(value);
+  }
+
   clearFilters(): void {
     this.activeStatusFilters.set([]);
     this.contextFilter.set('all');
+    this.searchTerm.set('');
   }
 
-  chipButtonStyle(value: string): string {
-    const active = this.activeStatusFilters().includes(value);
-    return `
-      padding: 2px 10px;
-      border-radius: 100px;
-      font-size: 11px;
-      font-weight: 500;
-      cursor: pointer;
-      border: ${active ? '1px solid var(--accent)' : '1px solid var(--border-default)'};
-      background: ${active ? 'var(--accent-bg)' : 'transparent'};
-      color: ${active ? 'var(--accent)' : 'var(--text-muted)'};
-      transition: all var(--transition-fast);
-    `.replace(/\n/g, ' ');
+  get statusChipsWithCountList() { return this.statusChipsWithCount(); }
+  get viewValue(): View { return this.view(); }
+  get preselectedWorktreeValue(): string | null { return this.preselectedWorktree(); }
+  get repoPathValue(): string | null | undefined { return this.repoPath(); }
+  get searchTermValue(): string { return this.searchTerm(); }
+  get activeStatusFiltersValue(): string[] { return this.activeStatusFilters(); }
+  get contextFilterValue(): string { return this.contextFilter(); }
+  get nonMainWorktreesList() { return this.nonMainWorktrees(); }
+  get statusCountsValue() { return this.statusCounts(); }
+
+  isFilterActive(value: string): boolean {
+    return this.activeStatusFilters().includes(value);
   }
 
   handleResume(runId: string): void {
     void this.router.navigate(['/runs', runId]);
+  }
+
+  onDocumentKeyDown(event: KeyboardEvent): void {
+    if (event.ctrlKey && event.key === 'f' && this.view() === 'list') {
+      event.preventDefault();
+      this.searchInput?.nativeElement.focus();
+    }
   }
 }

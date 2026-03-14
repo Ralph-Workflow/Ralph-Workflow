@@ -1,14 +1,18 @@
-import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, ViewChild } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDividerModule } from '@angular/material/divider';
 import { WorktreesService } from '../../services/worktrees.service';
+import { TauriService } from '../../services/tauri.service';
 import type { WorktreeInfo } from '../../types';
 
 @Component({
   selector: 'app-worktrees',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, MatMenuModule, MatIconModule, MatDividerModule],
   templateUrl: './worktrees.component.html',
   styles: [`
     .worktree-row:hover {
@@ -17,7 +21,10 @@ import type { WorktreeInfo } from '../../types';
   `],
 })
 export class WorktreesComponent {
+  @ViewChild('worktreeContextMenuTrigger') contextMenuTrigger!: MatMenuTrigger;
+
   readonly worktreesService = inject(WorktreesService);
+  readonly tauriService = inject(TauriService);
   private readonly router = inject(Router);
 
   readonly showCreate = signal(false);
@@ -25,8 +32,7 @@ export class WorktreesComponent {
   readonly createError = signal<string | null>(null);
   readonly creating = signal(false);
 
-  readonly namePrefix = 'wt-';
-  readonly namePlaceholder = 'wt-51-my-feature';
+  readonly contextMenuWorktree = signal<WorktreeInfo | null>(null);
 
   readonly mainWorktree = computed(() =>
     this.worktreesService.worktrees().find(wt => wt.is_main)
@@ -36,19 +42,42 @@ export class WorktreesComponent {
     this.mainWorktree()?.path ?? ''
   );
 
+  readonly worktreesWithMeta = computed(() => {
+    const activePath = this.worktreesService.activeWorktreePath();
+    return this.worktreesService.worktrees().map(wt => {
+      const active = wt.path === activePath || (activePath === null && wt.is_main);
+      const color = active
+        ? 'var(--accent)'
+        : wt.has_active_run
+          ? 'var(--status-running)'
+          : 'var(--border-default)';
+      return {
+        ...wt,
+        active,
+        indicatorStyle: `width: 6px; height: 6px; border-radius: 50%; background: ${color}; flex-shrink: 0;`,
+      };
+    });
+  });
+
+  readonly namePlaceholder = 'wt-51-my-feature';
+
+  get repoPathValue(): string { return this.repoPath(); }
+  get showCreateValue(): boolean { return this.showCreate(); }
+  get createErrorValue(): string | null { return this.createError(); }
+  get creatingValue(): boolean { return this.creating(); }
+  get formValue() { return this.form(); }
+  get worktreesStatus() { return this.worktreesService.status(); }
+  get worktreesError() { return this.worktreesService.error(); }
+  get worktreesList() { return this.worktreesWithMeta(); }
+  get contextMenuWorktreeValue(): WorktreeInfo | null { return this.contextMenuWorktree(); }
+  get contextMenuCanStartSession(): boolean {
+    const wt = this.contextMenuWorktree();
+    return wt !== null && !wt.is_main;
+  }
+
   isActive(wt: WorktreeInfo): boolean {
     const activePath = this.worktreesService.activeWorktreePath();
     return wt.path === activePath || (activePath === null && wt.is_main);
-  }
-
-  indicatorStyle(wt: WorktreeInfo): string {
-    const active = this.isActive(wt);
-    const color = active
-      ? 'var(--accent)'
-      : wt.has_active_run
-        ? 'var(--status-running)'
-        : 'var(--border-default)';
-    return `width: 6px; height: 6px; border-radius: 50%; background: ${color}; flex-shrink: 0;`;
   }
 
   onRowHover(event: MouseEvent): void {
@@ -57,6 +86,39 @@ export class WorktreesComponent {
 
   onRowLeave(event: MouseEvent): void {
     (event.currentTarget as HTMLElement).style.background = 'transparent';
+  }
+
+  onContextMenu(event: MouseEvent, wt: WorktreeInfo): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.contextMenuWorktree.set(wt);
+    this.contextMenuTrigger.openMenu();
+  }
+
+  onContextMenuStartSession(): void {
+    const wt = this.contextMenuWorktree();
+    if (wt && !wt.is_main) {
+      this.startSession(wt);
+    }
+    this.contextMenuWorktree.set(null);
+  }
+
+  async onContextMenuOpenInFileManager(): Promise<void> {
+    const wt = this.contextMenuWorktree();
+    if (wt) {
+      await this.tauriService.openInFileManager(wt.path);
+    }
+    this.contextMenuWorktree.set(null);
+  }
+
+  onContextMenuViewDiff(): void {
+    const wt = this.contextMenuWorktree();
+    if (wt) {
+      void this.router.navigate(['/sessions'], {
+        queryParams: { new: 'true', worktree: wt.path }
+      });
+    }
+    this.contextMenuWorktree.set(null);
   }
 
   startCreate(): void {

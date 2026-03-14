@@ -21,6 +21,11 @@ export class InlineWorktreeCreateComponent {
   readonly error = signal<string | null>(null);
   readonly creating = signal(false);
 
+  get branch_() { return this.branch(); }
+  get name_() { return this.name(); }
+  get error_() { return this.error(); }
+  get creating_() { return this.creating(); }
+
   onBranchInput(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
     this.branch.set(value);

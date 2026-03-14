@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use aho_corasick::AhoCorasick;
@@ -10,6 +11,70 @@ const PAT_TEST_ATTR: usize = 0; // "#[test]"
 const PAT_DEFAULT_TIMEOUT: usize = 1; // "with_default_timeout"
 const PAT_TIMEOUT: usize = 2; // "with_timeout"
 const TIMEOUT_PATTERNS: &[&str] = &["#[test]", "with_default_timeout", "with_timeout"];
+
+struct RemovedTailwindClass {
+    literal: &'static str,
+    replacement: &'static str,
+    is_prefix: bool,
+}
+
+const REMOVED_TAILWIND4_ANGULAR_CLASSES: &[RemovedTailwindClass] = &[
+    RemovedTailwindClass {
+        literal: "bg-opacity-",
+        replacement: "bg-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "text-opacity-",
+        replacement: "text-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "border-opacity-",
+        replacement: "border-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "divide-opacity-",
+        replacement: "divide-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "ring-opacity-",
+        replacement: "ring-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "placeholder-opacity-",
+        replacement: "placeholder-<color>/<opacity>",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "flex-shrink-",
+        replacement: "shrink-*",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "flex-grow-",
+        replacement: "grow-*",
+        is_prefix: true,
+    },
+    RemovedTailwindClass {
+        literal: "overflow-ellipsis",
+        replacement: "text-ellipsis",
+        is_prefix: false,
+    },
+    RemovedTailwindClass {
+        literal: "decoration-slice",
+        replacement: "box-decoration-slice",
+        is_prefix: false,
+    },
+    RemovedTailwindClass {
+        literal: "decoration-clone",
+        replacement: "box-decoration-clone",
+        is_prefix: false,
+    },
+];
 
 /// Scans `scripts/` and `tests/integration_tests/` for `.sh` files.
 ///
@@ -154,6 +219,85 @@ pub fn check_timeout_wrappers(repo_root: &Path) -> NativeCheckResult {
     }
 }
 
+pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckResult {
+    let template_dir = repo_root.join("ralph-gui/ui/src");
+
+    if !template_dir.exists() {
+        return NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        };
+    }
+
+    let mut files = Vec::new();
+    if let Err(error) = crate::scanner::collect_files_with_glob(&template_dir, "*.html", &mut files)
+    {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Failed to walk Angular template directory {}: {error}",
+                template_dir.display()
+            ),
+        };
+    }
+    files.sort();
+
+    let ac = AhoCorasick::new(
+        REMOVED_TAILWIND4_ANGULAR_CLASSES
+            .iter()
+            .map(|pattern| pattern.literal),
+    )
+    .expect("valid Tailwind migration patterns");
+
+    let mut violations = Vec::new();
+    let mut read_errors = Vec::new();
+
+    for file_path in &files {
+        let content = match std::fs::read(file_path) {
+            Ok(content) => content,
+            Err(error) => {
+                read_errors.push(format!("{}: read error: {error}", file_path.display()));
+                continue;
+            }
+        };
+
+        scan_file_for_removed_tailwind4_classes(
+            file_path,
+            repo_root,
+            &content,
+            &ac,
+            &mut violations,
+        );
+    }
+
+    if !read_errors.is_empty() {
+        return NativeCheckResult {
+            status: CheckStatus::Error,
+            message: format!(
+                "Failed to read {} Angular template file(s) during Tailwind 4 migration scan:\n{}",
+                read_errors.len(),
+                read_errors.join("\n")
+            ),
+        };
+    }
+
+    if violations.is_empty() {
+        NativeCheckResult {
+            status: CheckStatus::Pass,
+            message: String::new(),
+        }
+    } else {
+        NativeCheckResult {
+            status: CheckStatus::Warning,
+            message: format!(
+                "Found {} Tailwind 3-only class usage(s) in Angular templates that do not exist in Tailwind 4. Each affected component/file needs rework:\n{}",
+                violations.len(),
+                violations.join("\n")
+            ),
+        }
+    }
+}
+
 fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     crate::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
@@ -169,6 +313,90 @@ fn should_skip_file(path: &Path) -> bool {
         .unwrap_or_default();
 
     matches!(file_name, "_TEMPLATE.rs" | "compliance_check.rs" | "mod.rs")
+}
+
+fn scan_file_for_removed_tailwind4_classes(
+    file_path: &Path,
+    repo_root: &Path,
+    content: &[u8],
+    ac: &AhoCorasick,
+    violations: &mut Vec<String>,
+) {
+    let line_idx = LineIndex::new(content);
+    let mut seen = HashSet::new();
+
+    for mat in ac.find_iter(content) {
+        let rule = &REMOVED_TAILWIND4_ANGULAR_CLASSES[mat.pattern().as_usize()];
+        let line_number = line_idx.line_number(mat.start()) + 1;
+        let line_start = line_idx.line_start(mat.start());
+        let line_bytes = line_idx.extract_line(content, mat.start());
+        let local_offset = mat.start().saturating_sub(line_start);
+        let Some(token) = extract_tailwind_token(line_bytes, local_offset) else {
+            continue;
+        };
+        let candidate = normalize_tailwind_candidate(&token);
+        let matches_rule = if rule.is_prefix {
+            candidate.starts_with(rule.literal)
+        } else {
+            candidate == rule.literal
+        };
+        if !matches_rule {
+            continue;
+        }
+
+        let dedupe_key = format!("{line_number}:{candidate}");
+        if !seen.insert(dedupe_key) {
+            continue;
+        }
+
+        let display_path = file_path.strip_prefix(repo_root).unwrap_or(file_path);
+        violations.push(format!(
+            "{}:{}: Tailwind 3-only class '{}' does not exist in Tailwind 4; replace it with '{}'. This component/file needs rework. Look up the current Tailwind CSS v4 documentation and upgrade guide before changing it.",
+            display_path.display(),
+            line_number,
+            candidate,
+            rule.replacement
+        ));
+    }
+}
+
+fn extract_tailwind_token(line: &[u8], match_offset: usize) -> Option<String> {
+    if match_offset >= line.len() {
+        return None;
+    }
+
+    let mut start = match_offset;
+    while start > 0 && is_tailwind_token_char(line[start - 1]) {
+        start -= 1;
+    }
+
+    let mut end = match_offset;
+    while end < line.len() && is_tailwind_token_char(line[end]) {
+        end += 1;
+    }
+
+    if start == end {
+        return None;
+    }
+
+    Some(String::from_utf8_lossy(&line[start..end]).to_string())
+}
+
+fn is_tailwind_token_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'-' | b'_' | b':' | b'/' | b'[' | b']' | b'!' | b'.' | b'(' | b')'
+        )
+}
+
+fn normalize_tailwind_candidate(token: &str) -> &str {
+    token
+        .rsplit(':')
+        .next()
+        .unwrap_or(token)
+        .trim_start_matches('!')
+        .trim_end_matches('!')
 }
 
 /// Scan a single file using Aho-Corasick O(n+m+z) to find all `#[test]`,
@@ -895,6 +1123,44 @@ fn test_lacks_timeout() {
         assert!(
             !result.message.contains("missing timeout wrapper"),
             "read errors must not be counted as missing wrappers: {}",
+            result.message
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_check_tailwind4_removed_angular_classes_warns_on_tailwind3_only_class() {
+        let dir = make_temp_dir("tailwind4-removed-class");
+        write_file(
+            &dir,
+            "ralph-gui/ui/src/app/components/example/example.component.html",
+            r#"<div class="flex items-center flex-shrink-0">Example</div>"#,
+        );
+
+        let result = check_tailwind4_removed_angular_classes(&dir);
+
+        assert_eq!(result.status, CheckStatus::Warning, "{}", result.message);
+        assert!(
+            result.message.contains("flex-shrink-0"),
+            "message must mention the removed Tailwind 3 class: {}",
+            result.message
+        );
+        assert!(
+            result.message.contains("shrink-0"),
+            "message must mention the Tailwind 4 replacement: {}",
+            result.message
+        );
+        assert!(
+            result.message.contains("needs rework"),
+            "message must tell the user the component/file needs rework: {}",
+            result.message
+        );
+        assert!(
+            result
+                .message
+                .contains("Tailwind CSS v4 documentation and upgrade guide"),
+            "message must direct the user to current Tailwind v4 docs: {}",
             result.message
         );
 

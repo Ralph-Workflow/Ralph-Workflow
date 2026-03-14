@@ -1,31 +1,99 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SessionsComponent } from './sessions.component';
 import { WorktreesService } from '../../services/worktrees.service';
+import { SessionsService } from '../../services/sessions.service';
 import { SessionListComponent } from '../../components/session-list/session-list.component';
 import { NewSessionWizardComponent } from '../../components/new-session-wizard/new-session-wizard.component';
 import { signal } from '@angular/core';
-import type { WorktreeInfo } from '../../types';
+import type { WorktreeInfo, SessionSummary } from '../../types';
+
+const makeSessions = (): SessionSummary[] => [
+  {
+    run_id: 'run-001',
+    status: 'running',
+    repo_path: '/repo/a',
+    worktree_path: null,
+    created_at: '2026-01-01T10:00:00Z',
+    description: 'Test 1',
+    developer_agent: 'claude',
+    reviewer_agent: 'claude',
+    phase: 'develop',
+  },
+  {
+    run_id: 'run-002',
+    status: 'running',
+    repo_path: '/repo/a',
+    worktree_path: null,
+    created_at: '2026-01-01T10:00:00Z',
+    description: 'Test 2',
+    developer_agent: 'claude',
+    reviewer_agent: 'claude',
+    phase: 'develop',
+  },
+  {
+    run_id: 'run-003',
+    status: 'paused',
+    repo_path: '/repo/a',
+    worktree_path: null,
+    created_at: '2026-01-01T10:00:00Z',
+    description: 'Test 3',
+    developer_agent: 'claude',
+    reviewer_agent: 'claude',
+    phase: 'develop',
+  },
+  {
+    run_id: 'run-004',
+    status: 'completed',
+    repo_path: '/repo/a',
+    worktree_path: null,
+    created_at: '2026-01-01T10:00:00Z',
+    description: 'Test 4',
+    developer_agent: 'claude',
+    reviewer_agent: 'claude',
+    phase: 'develop',
+  },
+  {
+    run_id: 'run-005',
+    status: 'failed',
+    repo_path: '/repo/a',
+    worktree_path: null,
+    created_at: '2026-01-01T10:00:00Z',
+    description: 'Test 5',
+    developer_agent: 'claude',
+    reviewer_agent: 'claude',
+    phase: 'develop',
+  },
+];
 
 describe('SessionsComponent', () => {
   let component: SessionsComponent;
   let fixture: ComponentFixture<SessionsComponent>;
-  let mockWorktreesService: jasmine.SpyObj<WorktreesService>;
-  let mockRouter: jasmine.SpyObj<Router>;
+  let mockWorktreesService: {
+    worktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+    mainWorktree: ReturnType<typeof signal<WorktreeInfo | null>>;
+    repoPath: ReturnType<typeof signal<string>>;
+    nonMainWorktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+  };
+  let mockSessionsService: {
+    sessions: ReturnType<typeof signal<SessionSummary[]>>;
+  };
+  let mockRouter: { navigate: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    mockWorktreesService = jasmine.createSpyObj(
-      'WorktreesService',
-      [],
-      {
-        worktrees: signal<WorktreeInfo[]>([]),
-        mainWorktree: signal<WorktreeInfo | null>(null),
-        repoPath: signal(''),
-        nonMainWorktrees: signal<WorktreeInfo[]>([]),
-      },
-    );
+    mockWorktreesService = {
+      worktrees: signal<WorktreeInfo[]>([]),
+      mainWorktree: signal<WorktreeInfo | null>(null),
+      repoPath: signal(''),
+      nonMainWorktrees: signal<WorktreeInfo[]>([]),
+    };
 
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockSessionsService = {
+      sessions: signal<SessionSummary[]>([]),
+    };
+
+    mockRouter = { navigate: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [
@@ -36,6 +104,7 @@ describe('SessionsComponent', () => {
       ],
       providers: [
         { provide: WorktreesService, useValue: mockWorktreesService },
+        { provide: SessionsService, useValue: mockSessionsService },
         { provide: Router, useValue: mockRouter },
         {
           provide: ActivatedRoute,
@@ -48,7 +117,6 @@ describe('SessionsComponent', () => {
       ],
     }).compileComponents();
 
-    // Mock child components
     TestBed.overrideComponent(SessionsComponent, {
       remove: { imports: [SessionListComponent, NewSessionWizardComponent] },
       add: {
@@ -161,21 +229,65 @@ describe('SessionsComponent', () => {
     });
   });
 
-  describe('chipButtonStyle', () => {
-    it('should return active style for selected filter', () => {
-      component.toggleStatusFilter('running');
+  describe('statusCounts computed', () => {
+    it('should return correct counts per status', () => {
+      mockSessionsService.sessions.set(makeSessions());
 
-      const style = component.chipButtonStyle('running');
+      const counts = component.statusCounts();
 
-      expect(style).toContain('var(--accent)');
-      expect(style).toContain('var(--accent-bg)');
+      expect(counts.all).toBe(5);
+      expect(counts.running).toBe(2);
+      expect(counts.paused).toBe(1);
+      expect(counts.completed).toBe(1);
+      expect(counts.failed).toBe(1);
     });
 
-    it('should return inactive style for unselected filter', () => {
-      const style = component.chipButtonStyle('running');
+    it('should count interrupted as paused', () => {
+      mockSessionsService.sessions.set([
+        { run_id: 'run-int', status: 'interrupted', repo_path: '/repo/a', worktree_path: null, created_at: '2026-01-01T10:00:00Z', description: 'Interrupted', developer_agent: 'claude', reviewer_agent: 'claude', phase: 'develop' },
+        { run_id: 'run-pause', status: 'paused', repo_path: '/repo/a', worktree_path: null, created_at: '2026-01-01T10:00:00Z', description: 'Paused', developer_agent: 'claude', reviewer_agent: 'claude', phase: 'develop' },
+      ]);
 
-      expect(style).toContain('var(--text-muted)');
-      expect(style).toContain('var(--border-default)');
+      const counts = component.statusCounts();
+
+      expect(counts.paused).toBe(2);
+    });
+
+    it('should return zeros when no sessions', () => {
+      mockSessionsService.sessions.set([]);
+
+      const counts = component.statusCounts();
+
+      expect(counts.all).toBe(0);
+      expect(counts.running).toBe(0);
+      expect(counts.paused).toBe(0);
+      expect(counts.completed).toBe(0);
+      expect(counts.failed).toBe(0);
+    });
+  });
+
+  describe('statusChipsWithCount', () => {
+    it('should show counts alongside labels', () => {
+      mockSessionsService.sessions.set(makeSessions());
+
+      const chips = component.statusChipsWithCountList;
+
+      expect(chips.find(c => c.value === 'running')?.count).toBe(2);
+      expect(chips.find(c => c.value === 'paused')?.count).toBe(1);
+      expect(chips.find(c => c.value === 'completed')?.count).toBe(1);
+      expect(chips.find(c => c.value === 'failed')?.count).toBe(1);
+    });
+  });
+
+  describe('isFilterActive', () => {
+    it('should return true when filter is active', () => {
+      component.toggleStatusFilter('running');
+
+      expect(component.isFilterActive('running')).toBe(true);
+    });
+
+    it('should return false when filter is not active', () => {
+      expect(component.isFilterActive('running')).toBe(false);
     });
   });
 
@@ -188,23 +300,30 @@ describe('SessionsComponent', () => {
   });
 });
 
-// Separate describe block for query param tests with fresh TestBed
 describe('SessionsComponent query param handling', () => {
   let component: SessionsComponent;
   let fixture: ComponentFixture<SessionsComponent>;
-  let mockWorktreesService: jasmine.SpyObj<WorktreesService>;
+  let mockWorktreesService: {
+    worktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+    mainWorktree: ReturnType<typeof signal<WorktreeInfo | null>>;
+    repoPath: ReturnType<typeof signal<string>>;
+    nonMainWorktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+  };
+  let mockSessionsService: {
+    sessions: ReturnType<typeof signal<SessionSummary[]>>;
+  };
 
   const createComponentWithQueryParams = async (queryParams: Record<string, string>) => {
-    mockWorktreesService = jasmine.createSpyObj(
-      'WorktreesService',
-      [],
-      {
-        worktrees: signal<WorktreeInfo[]>([]),
-        mainWorktree: signal<WorktreeInfo | null>(null),
-        repoPath: signal(''),
-        nonMainWorktrees: signal<WorktreeInfo[]>([]),
-      },
-    );
+    mockWorktreesService = {
+      worktrees: signal<WorktreeInfo[]>([]),
+      mainWorktree: signal<WorktreeInfo | null>(null),
+      repoPath: signal(''),
+      nonMainWorktrees: signal<WorktreeInfo[]>([]),
+    };
+
+    mockSessionsService = {
+      sessions: signal<SessionSummary[]>([]),
+    };
 
     await TestBed.configureTestingModule({
       imports: [
@@ -213,7 +332,8 @@ describe('SessionsComponent query param handling', () => {
       ],
       providers: [
         { provide: WorktreesService, useValue: mockWorktreesService },
-        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: SessionsService, useValue: mockSessionsService },
+        { provide: Router, useValue: { navigate: vi.fn() } },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -235,19 +355,19 @@ describe('SessionsComponent query param handling', () => {
     component = fixture.componentInstance;
   };
 
-  it('should read "new" query param to set view', fakeAsync(async () => {
+  it('should read "new" query param to set view', async () => {
     await createComponentWithQueryParams({ new: 'true' });
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
 
     expect(component.view()).toBe('new');
-  }));
+  });
 
-  it('should read worktree from query params', fakeAsync(async () => {
+  it('should read worktree from query params', async () => {
     await createComponentWithQueryParams({ new: 'true', worktree: '/path/to/wt' });
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
 
     expect(component.preselectedWorktree()).toBe('/path/to/wt');
-  }));
+  });
 });

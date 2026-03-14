@@ -1,13 +1,18 @@
 <div style="display: flex; align-items: flex-start; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-subtle);">
   <div style="flex: 1;">
     <div style="font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); margin-bottom: 2px;">
-      {{ label() }}
+      {{ labelValue }}
     </div>
     <div style="font-size: 11px; color: var(--text-muted);">
-      {{ description() }}
+      {{ descriptionValue }}
     </div>
   </div>
-  <div [style]="valueStyle()">
-    {{ displayValue() }}
+  <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 24px;">
+    @if (sourceValue !== null) {
+      <span [class]="sourceBadgeClass" [title]="sourceBadgeTooltip">
+        {{ sourceBadgeLabel }}
+      </span>
+    }
+    <span [style]="valueStyle">{{ displayValue }}</span>
   </div>
 </div>

@@ -1,17 +1,23 @@
 import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PromptService } from './prompt.service';
 import { TauriService } from './tauri.service';
 import type { PromptReviewResult } from '../types';
 
 describe('PromptService', () => {
   let service: PromptService;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockTauriService: {
+    readPromptFile: ReturnType<typeof vi.fn>;
+    savePromptFile: ReturnType<typeof vi.fn>;
+    reviewPromptWithAi: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
-    mockTauriService = jasmine.createSpyObj(
-      'TauriService',
-      ['readPromptFile', 'savePromptFile', 'reviewPromptWithAi'],
-    );
+    mockTauriService = {
+      readPromptFile: vi.fn(),
+      savePromptFile: vi.fn(),
+      reviewPromptWithAi: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -27,21 +33,27 @@ describe('PromptService', () => {
 
   describe('loadFile', () => {
     it('should load file and update content', async () => {
-      mockTauriService.readPromptFile.and.resolveTo('content');
+      mockTauriService.readPromptFile.mockResolvedValue('content');
       await service.loadFile('/path/to/prompt.md');
       expect(service.content()).toBe('content');
       expect(service.isDirty()).toBe(false);
     });
 
     it('should handle load error', async () => {
-      mockTauriService.readPromptFile.and.rejectWith(new Error('Failed to load'));
-      await expectAsync(service.loadFile('/path/to/prompt.md')).toBeRejectedWithError('Failed to load');
+      mockTauriService.readPromptFile.mockRejectedValue(new Error('Failed to load'));
+      let error: Error | undefined;
+      try {
+        await service.loadFile('/path/to/prompt.md');
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error?.message).toBe('Failed to load');
     });
   });
 
   describe('saveFile', () => {
     it('should save file and clear dirty', async () => {
-      mockTauriService.savePromptFile.and.resolveTo();
+      mockTauriService.savePromptFile.mockResolvedValue(undefined);
       await service.saveFile('/path/to/prompt.md', 'content');
       expect(service.isDirty()).toBe(false);
     });
@@ -53,14 +65,14 @@ describe('PromptService', () => {
         suggestions: ['Add better error handling'],
         improved_prompt: 'Improved version',
       };
-      mockTauriService.reviewPromptWithAi.and.resolveTo(mockResult);
+      mockTauriService.reviewPromptWithAi.mockResolvedValue(mockResult);
       await service.reviewPrompt('prompt content');
       expect(service.reviewResult()).toEqual(mockResult);
       expect(service.reviewStatus()).toBe('succeeded');
     });
 
     it('should handle review error', async () => {
-      mockTauriService.reviewPromptWithAi.and.rejectWith(new Error('Review failed'));
+      mockTauriService.reviewPromptWithAi.mockRejectedValue(new Error('Review failed'));
       await service.reviewPrompt('prompt content');
       expect(service.reviewStatus()).toBe('failed');
       expect(service.reviewError()).toBe('Review failed');

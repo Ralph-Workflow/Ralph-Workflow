@@ -61,15 +61,18 @@ export class RunStatusBadgeComponent {
   @Input() size: 'sm' | 'md' = 'md';
   @Input() isDegraded = false;
 
-  config = computed(() => STATUS_CONFIG[this.status] ?? STATUS_CONFIG.NotStarted);
-  dotSize = computed(() => this.size === 'sm' ? 6 : 8);
+  private readonly _config = computed(() => STATUS_CONFIG[this.status] ?? STATUS_CONFIG.NotStarted);
+  private readonly _dotSize = computed(() => this.size === 'sm' ? 6 : 8);
 
   get ariaLabel(): string {
     return this.isDegraded ? `Status: ${this.status} (degraded)` : `Status: ${this.status}`;
   }
 
-  badgeStyle(): string {
-    const cfg = this.config();
+  get config() { return this._config(); }
+  get dotSizeValue() { return this._dotSize(); }
+
+  get badgeStyle(): string {
+    const cfg = this._config();
     const padding = this.showLabel
       ? this.size === 'sm' ? '2px 8px' : '3px 10px'
       : '3px';
@@ -89,9 +92,9 @@ export class RunStatusBadgeComponent {
     `.replace(/\n/g, ' ');
   }
 
-  dotStyle(): string {
-    const cfg = this.config();
-    const size = this.dotSize();
+  get dotStyle(): string {
+    const cfg = this._config();
+    const size = this._dotSize();
     return `
       width: ${size}px;
       height: ${size}px;
@@ -102,7 +105,7 @@ export class RunStatusBadgeComponent {
     `.replace(/\n/g, ' ');
   }
 
-  degradedStyle(): string {
+  get degradedStyle(): string {
     const padding = this.showLabel ? '3px 8px' : '3px';
     return `
       display: inline-flex;

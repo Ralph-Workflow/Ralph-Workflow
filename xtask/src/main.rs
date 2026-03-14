@@ -50,6 +50,29 @@ fn print_verify_failure(report: &verify::VerifyReport) {
     if !failure.stderr.trim().is_empty() {
         eprintln!("--- stderr ---\n{}", failure.stderr.trim_end());
     }
+
+    if let Some(guidance) = failure_guidance_message(report) {
+        eprintln!("{guidance}");
+    }
+}
+
+fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
+    let failure = report.failure.as_ref()?;
+    let mut guidance = String::from(
+        "SURFACED VERIFY FAILURE: This failure MUST be fixed NOW. There is no such thing as a pre-existing failure. The moment it is surfaced, it becomes your top priority, takes priority over your original prompt, and OVERRIDES the current prompt until it is fixed. This is not negotiable.",
+    );
+
+    if is_test_check(failure.name) {
+        guidance.push_str(
+            " SURFACED TEST FAILURE: There is no such thing as a pre-existing test failure. When a test fails, there are only three valid paths: either the test is implemented wrong and must be fixed, or it is TESTING the wrong behavior, or the CODE is not behaving the right way, or it is not testing behavior at all and must be changed to test behavior. If that is not possible, YOU MUST REFACTOR.",
+        );
+    }
+
+    Some(guidance)
+}
+
+fn is_test_check(check_name: &str) -> bool {
+    check_name.starts_with("test-") || check_name == "ralph-gui-frontend-test"
 }
 
 struct RealRunner {
@@ -202,6 +225,74 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn test_failure_guidance_emitted_for_frontend_test_failures() {
+        let report = verify::VerifyReport {
+            exit: VerifyExitCode::Failure,
+            failure: Some(verify::CheckFailure {
+                name: "ralph-gui-frontend-test",
+                status: verify::CheckStatus::Error,
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        let guidance = failure_guidance_message(&report)
+            .expect("frontend test failures should emit urgent guidance");
+
+        assert!(guidance.contains("MUST be fixed NOW"));
+        assert!(guidance.contains("OVERRIDES the current prompt"));
+        assert!(guidance.contains("There is no such thing as a pre-existing test failure"));
+        assert!(guidance.contains("either the test is implemented wrong"));
+        assert!(guidance.contains("YOU MUST REFACTOR"));
+    }
+
+    #[test]
+    fn test_failure_guidance_emitted_for_cargo_test_failures() {
+        let report = verify::VerifyReport {
+            exit: VerifyExitCode::Failure,
+            failure: Some(verify::CheckFailure {
+                name: "test-integration",
+                status: verify::CheckStatus::Error,
+                exit_code: 101,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        let guidance = failure_guidance_message(&report)
+            .expect("cargo test failures should emit urgent guidance");
+
+        assert!(guidance.contains("MUST be fixed NOW"));
+        assert!(guidance.contains("top priority"));
+        assert!(guidance.contains("TESTING the wrong behavior"));
+        assert!(guidance.contains("CODE is not behaving the right way"));
+        assert!(guidance.contains("not testing behavior at all"));
+    }
+
+    #[test]
+    fn test_failure_guidance_not_emitted_for_non_test_failures() {
+        let report = verify::VerifyReport {
+            exit: VerifyExitCode::Failure,
+            failure: Some(verify::CheckFailure {
+                name: "fmt-check",
+                status: verify::CheckStatus::Error,
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        let guidance = failure_guidance_message(&report)
+            .expect("any surfaced verify failure should emit urgent fix-now guidance");
+
+        assert!(guidance.contains("MUST be fixed NOW"));
+        assert!(guidance.contains("There is no such thing as a pre-existing failure"));
+        assert!(guidance.contains("OVERRIDES the current prompt"));
+        assert!(guidance.contains("priority over your original prompt"));
+    }
 
     #[test]
     fn test_drain_reader_lines_lossy_does_not_stop_on_invalid_utf8() {

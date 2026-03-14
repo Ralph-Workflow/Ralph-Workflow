@@ -1,10 +1,10 @@
 <div>
-  <app-config-field label="verbosity" description="Log verbosity level (0=quiet, 1=normal, 2=verbose)" [value]="config().verbosity" />
-  <app-config-field label="developer_iters" description="Number of developer agent iterations per cycle" [value]="config().developer_iters" />
-  <app-config-field label="reviewer_reviews" description="Number of reviewer passes per cycle" [value]="config().reviewer_reviews" />
-  <app-config-field label="max_dev_continuations" description="Maximum continuation budget for developer agent" [value]="config().max_dev_continuations" />
-  <app-config-field label="review_depth" description="Depth of reviewer analysis (shallow | standard | deep)" [value]="config().review_depth" />
-  <app-config-field label="checkpoint_enabled" description="Persist pipeline state for --resume support" [value]="config().checkpoint_enabled" />
-  <app-config-field label="isolation_mode" description="Run agents in isolated environment" [value]="config().isolation_mode" />
-  <app-config-field label="interactive" description="Pause for user confirmation between phases" [value]="config().interactive" />
+  <app-config-field label="verbosity" description="Log verbosity level (0=quiet, 1=normal, 2=verbose)" [value]="configValue.verbosity" [source]="sourceMap['verbosity'] ?? null" />
+  <app-config-field label="developer_iters" description="Number of developer agent iterations per cycle" [value]="configValue.developer_iters" [source]="sourceMap['developer_iters'] ?? null" />
+  <app-config-field label="reviewer_reviews" description="Number of reviewer passes per cycle" [value]="configValue.reviewer_reviews" [source]="sourceMap['reviewer_reviews'] ?? null" />
+  <app-config-field label="max_dev_continuations" description="Maximum continuation budget for developer agent" [value]="configValue.max_dev_continuations" [source]="sourceMap['max_dev_continuations'] ?? null" />
+  <app-config-field label="review_depth" description="Depth of reviewer analysis (shallow | standard | deep)" [value]="configValue.review_depth" [source]="sourceMap['review_depth'] ?? null" />
+  <app-config-field label="checkpoint_enabled" description="Persist pipeline state for --resume support" [value]="configValue.checkpoint_enabled" [source]="sourceMap['checkpoint_enabled'] ?? null" />
+  <app-config-field label="isolation_mode" description="Run agents in isolated environment" [value]="configValue.isolation_mode" [source]="sourceMap['isolation_mode'] ?? null" />
+  <app-config-field label="interactive" description="Pause for user confirmation between phases" [value]="configValue.interactive" [source]="sourceMap['interactive'] ?? null" />
 </div>

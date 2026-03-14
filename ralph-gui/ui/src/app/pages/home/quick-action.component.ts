@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 
 @Component({
   selector: 'app-quick-action',
@@ -7,20 +7,20 @@ import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from 
   templateUrl: './quick-action.component.html',
 })
 export class QuickActionComponent {
-  @Input() icon = '';
-  @Input() label = '';
-  @Input() desc = '';
-  @Output() action = new EventEmitter<void>();
+  readonly icon = input('');
+  readonly label = input('');
+  readonly desc = input('');
+  readonly action = output<void>();
 
-  onHover(event: MouseEvent): void {
-    const btn = event.currentTarget as HTMLButtonElement;
-    btn.style.borderColor = 'var(--border-default)';
-    btn.style.background = 'var(--bg-elevated)';
+  get iconValue(): string {
+    return this.icon();
   }
 
-  onLeave(event: MouseEvent): void {
-    const btn = event.currentTarget as HTMLButtonElement;
-    btn.style.borderColor = 'var(--border-subtle)';
-    btn.style.background = 'var(--bg-surface)';
+  get labelValue(): string {
+    return this.label();
+  }
+
+  get descValue(): string {
+    return this.desc();
   }
 }

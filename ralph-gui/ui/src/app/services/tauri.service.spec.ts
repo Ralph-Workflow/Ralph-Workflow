@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { TauriService, TAURI_INVOKE } from './tauri.service';
 
@@ -85,28 +86,73 @@ describe('TauriService', () => {
   describe('method signatures', () => {
     it('getSessions should return a Promise', () => {
       const result = service.getSessions('/test');
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
     });
 
     it('createWorktree should accept optional basePath', () => {
       // With basePath
       const withBase = service.createWorktree('/repo', 'branch', 'name', '/base');
-      expect(withBase).toBeInstanceOf(Promise);
+      expect(withBase).toBeDefined();
+      expect(typeof withBase.then).toBe('function');
 
       // Without basePath
       const withoutBase = service.createWorktree('/repo', 'branch', 'name');
-      expect(withoutBase).toBeInstanceOf(Promise);
+      expect(withoutBase).toBeDefined();
+      expect(typeof withoutBase.then).toBe('function');
     });
 
     it('getRunLogs should use 500 as default maxLines', () => {
       // This test verifies the default is applied (integration test would verify backend receives it)
       const result = service.getRunLogs('/repo', null);
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
     });
 
     it('getRunLogs should accept custom maxLines', () => {
       const result = service.getRunLogs('/repo', null, 100);
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
+    });
+
+    it('should have getIterationHistory method', () => {
+      expect(service.getIterationHistory).toBeDefined();
+    });
+
+    it('should have getReviewHistory method', () => {
+      expect(service.getReviewHistory).toBeDefined();
+    });
+  });
+
+  describe('new invoke wrappers', () => {
+    let capturedCmd: string;
+    let capturedArgs: Record<string, unknown>;
+
+    beforeEach(() => {
+      TestBed.resetTestingModule();
+      const capturingInvoke = async <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        capturedCmd = cmd;
+        capturedArgs = args ?? {};
+        return [] as unknown as T;
+      };
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: capturingInvoke },
+        ],
+      });
+      service = TestBed.inject(TauriService);
+    });
+
+    it('getIterationHistory should invoke get_iteration_history with run_id', async () => {
+      await service.getIterationHistory('run-abc-123');
+      expect(capturedCmd).toBe('get_iteration_history');
+      expect(capturedArgs['run_id']).toBe('run-abc-123');
+    });
+
+    it('getReviewHistory should invoke get_review_history with run_id', async () => {
+      await service.getReviewHistory('run-xyz-456');
+      expect(capturedCmd).toBe('get_review_history');
+      expect(capturedArgs['run_id']).toBe('run-xyz-456');
     });
   });
 });

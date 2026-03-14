@@ -2,14 +2,28 @@ import { Injectable, InjectionToken, inject } from '@angular/core';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type {
   AgentProfile,
+  AgentToolInfo,
+  BatchOperationResult,
+  ConfigSection,
   ConfigView,
   CreateSessionRequest,
   CreateWorktreeResult,
+  EffectiveChainsConfig,
+  EffectiveConfigWithSources,
+  GuiPreferences,
+  IterationSummary,
   LaunchSessionArgs,
+  PromptAnalysis,
+  PromptAssistantMessage,
   PromptReviewResult,
+  ReviewSummary,
+  RunChanges,
   RunDetail,
   RunStatusSummary,
   SessionSummary,
+  TemplateInfo,
+  ToolUpdateInfo,
+  WorkspaceEntry,
   WorktreeInfo,
 } from '../types';
 
@@ -87,6 +101,18 @@ export class TauriService {
 
   async getEffectiveConfig(repoPath: string): Promise<ConfigView> {
     return this.invoke<ConfigView>('get_effective_config', { repo_path: repoPath });
+  }
+
+  async getEffectiveConfigWithSources(repoPath: string): Promise<EffectiveConfigWithSources> {
+    return this.invoke<EffectiveConfigWithSources>('get_effective_config_with_sources', {
+      repo_path: repoPath,
+    });
+  }
+
+  async getEffectiveChainsConfig(repoPath: string): Promise<EffectiveChainsConfig> {
+    return this.invoke<EffectiveChainsConfig>('get_effective_chains_config', {
+      repo_path: repoPath,
+    });
   }
 
   async saveGlobalConfig(configToml: string): Promise<void> {
@@ -226,4 +252,207 @@ export class TauriService {
     });
     return typeof selected === 'string' ? selected : null;
   }
+
+  // --- Workspace commands ---
+
+  async getWorkspaces(): Promise<WorkspaceEntry[]> {
+    return this.invoke<WorkspaceEntry[]>('get_workspaces');
+  }
+
+  async openWorkspace(path: string): Promise<WorkspaceEntry> {
+    return this.invoke<WorkspaceEntry>('open_workspace', { path });
+  }
+
+  async closeWorkspace(id: string): Promise<void> {
+    return this.invoke<void>('close_workspace', { id });
+  }
+
+  async reorderWorkspaces(ids: string[]): Promise<void> {
+    return this.invoke<void>('reorder_workspaces', { ids });
+  }
+
+  async setWorkspaceNav(id: string, nav: string): Promise<void> {
+    return this.invoke<void>('set_workspace_nav', { id, nav });
+  }
+
+  async getRecentWorkspaces(): Promise<string[]> {
+    return this.invoke<string[]>('get_recent_workspaces');
+  }
+
+  async updateWorkspaceRunCount(id: string, count: number): Promise<void> {
+    return this.invoke<void>('update_workspace_run_count', { id, count });
+  }
+
+  // --- Run log streaming ---
+
+  async subscribeRunLogs(
+    runId: string,
+    repoPath: string,
+    worktreePath: string | null,
+  ): Promise<void> {
+    return this.invoke<void>('subscribe_run_logs', {
+      run_id: runId,
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+    });
+  }
+
+  async unsubscribeRunLogs(runId: string): Promise<void> {
+    return this.invoke<void>('unsubscribe_run_logs', { run_id: runId });
+  }
+
+  // --- Run changes / diff ---
+
+  async getRunChanges(
+    repoPath: string,
+    worktreePath: string | null,
+    iteration?: number,
+  ): Promise<RunChanges> {
+    return this.invoke<RunChanges>('get_run_changes', {
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+      iteration: iteration ?? null,
+    });
+  }
+
+  async cancelRun(repoPath: string, worktreePath: string | null): Promise<void> {
+    return this.invoke<void>('cancel_run', {
+      repo_path: repoPath,
+      worktree_path: worktreePath,
+    });
+  }
+
+  async getIterationHistory(runId: string): Promise<IterationSummary[]> {
+    return this.invoke<IterationSummary[]>('get_iteration_history', { run_id: runId });
+  }
+
+  async getReviewHistory(runId: string): Promise<ReviewSummary[]> {
+    return this.invoke<ReviewSummary[]>('get_review_history', { run_id: runId });
+  }
+
+  // --- GUI Preferences ---
+
+  async getGuiPreferences(): Promise<GuiPreferences> {
+    return this.invoke<GuiPreferences>('get_gui_preferences');
+  }
+
+  async saveGuiPreferences(prefs: GuiPreferences): Promise<void> {
+    return this.invoke<void>('save_gui_preferences', { prefs });
+  }
+
+  // --- Agent tools ---
+
+  async getAgentTools(): Promise<AgentToolInfo[]> {
+    return this.invoke<AgentToolInfo[]>('get_agent_tools');
+  }
+
+  async testAgentToolConnection(name: string): Promise<string> {
+    return this.invoke<string>('test_agent_tool_connection', { name });
+  }
+
+  // --- AI prompt assistance ---
+
+  async assistPromptDescribe(
+    description: string,
+    repoPath: string,
+    history: PromptAssistantMessage[] = [],
+  ): Promise<string> {
+    return this.invoke<string>('assist_prompt_describe', {
+      description,
+      repo_path: repoPath,
+      history,
+    });
+  }
+
+  async assistPromptRefine(currentPrompt: string, repoPath: string): Promise<PromptAnalysis> {
+    return this.invoke<PromptAnalysis>('assist_prompt_refine', {
+      current_prompt: currentPrompt,
+      repo_path: repoPath,
+    });
+  }
+
+  async getPlanningDrainAgent(repoPath: string): Promise<string | null> {
+    return this.invoke<string | null>('get_planning_drain_agent', { repo_path: repoPath });
+  }
+
+  // --- Prompt templates ---
+
+  async listTemplates(templatesDir: string): Promise<TemplateInfo[]> {
+    return this.invoke<TemplateInfo[]>('list_templates', { templates_dir: templatesDir });
+  }
+
+  async saveTemplate(
+    name: string,
+    description: string,
+    content: string,
+    tags: string[],
+    templatesDir: string,
+  ): Promise<void> {
+    return this.invoke<void>('save_template', {
+      name,
+      description,
+      content,
+      tags,
+      templates_dir: templatesDir,
+    });
+  }
+
+  async deleteTemplate(name: string, templatesDir: string): Promise<void> {
+    return this.invoke<void>('delete_template', { name, templates_dir: templatesDir });
+  }
+
+  // --- Resumable runs ---
+
+  async getResumableRunsForPath(repoPath: string): Promise<RunDetail[]> {
+    return this.invoke<RunDetail[]>('get_resumable_runs', { repo_path: repoPath });
+  }
+
+  // --- Config schema ---
+
+  async getConfigSchema(): Promise<ConfigSection[]> {
+    return this.invoke<ConfigSection[]>('get_config_schema');
+  }
+
+  // --- Agent tool management ---
+
+  async checkToolUpdates(): Promise<ToolUpdateInfo[]> {
+    return this.invoke<ToolUpdateInfo[]>('check_tool_updates');
+  }
+
+  async installAgentTool(name: string): Promise<void> {
+    return this.invoke<void>('install_agent_tool', { name });
+  }
+
+  async openToolSettings(name: string): Promise<void> {
+    return this.invoke<void>('open_tool_settings', { name });
+  }
+
+  async refreshToolModels(name: string): Promise<string[]> {
+    return this.invoke<string[]>('refresh_tool_models', { name });
+  }
+
+  // --- Batch session operations ---
+
+  async batchResumeSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_resume_sessions', { run_ids: runIds });
+  }
+
+  async batchCancelSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_cancel_sessions', { run_ids: runIds });
+  }
+
+  async batchDeleteSessions(runIds: string[]): Promise<BatchOperationResult> {
+    return this.invoke<BatchOperationResult>('batch_delete_sessions', { run_ids: runIds });
+  }
+
+  // --- Lifecycle actions (AC-5.6) ---
+
+  async openInFileManager(path: string): Promise<void> {
+    return this.invoke<void>('open_in_file_manager', { path });
+  }
+
+  async openInTerminal(path: string): Promise<void> {
+    return this.invoke<void>('open_in_terminal', { path });
+  }
+
 }

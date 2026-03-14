@@ -1,8 +1,21 @@
-<div class="card" style="padding: 18px 20px;" [style.border-bottom]="accent && value > 0 ? '2px solid var(--accent)' : '2px solid transparent'">
-  <div [style]="valueStyle()">
-    {{ value }}
+<div [class]="containerClassesValue">
+  <div [class]="valueClassesValue">
+    {{ valueValue }}
   </div>
-  <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-ui); text-transform: uppercase; letter-spacing: 0.06em;">
-    {{ label }}
+  @if (subtitleValue) {
+    <div class="text-sm text-text-secondary font-ui mb-1">
+      {{ subtitleValue }}
+    </div>
+  }
+  <div class="text-xs text-text-muted font-ui uppercase tracking-wider flex items-center gap-1.5">
+    {{ labelValue }}
+    @if (hasTrendValue) {
+      <span class="flex items-center gap-0.5" [class]="trendColorValue">
+        <span>{{ trendIconValue }}</span>
+        @if (trendLabelValue) {
+          <span class="normal-case font-sans">{{ trendLabelValue }}</span>
+        }
+      </span>
+    }
   </div>
 </div>

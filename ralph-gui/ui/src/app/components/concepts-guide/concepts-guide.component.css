@@ -1,0 +1,157 @@
+.concepts-guide {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.concepts-guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.concepts-guide-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-overlay);
+}
+
+.toggle-icon {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.concepts-guide-body {
+  padding: var(--space-2) 0;
+  background: var(--bg-surface);
+}
+
+.guide-section {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.guide-section:last-child {
+  border-bottom: none;
+}
+
+.guide-section-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+}
+
+.guide-section-title:hover {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.guide-section-title::before {
+  content: '▸';
+  font-size: 10px;
+  margin-right: var(--space-2);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+details[open] .guide-section-title::before {
+  content: '▾';
+}
+
+.guide-section-body {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.guide-section-body p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
+}
+
+.guide-link {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.guide-link:hover {
+  text-decoration: underline;
+}
+
+.pipeline-phases {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.phase-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.phase-badge {
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  min-width: 64px;
+  text-align: center;
+}
+
+.phase-plan { background: rgba(139,92,246,0.15); color: var(--phase-plan); }
+.phase-develop { background: rgba(59,130,246,0.15); color: var(--phase-develop); }
+.phase-review { background: rgba(245,158,11,0.15); color: var(--phase-review); }
+.phase-commit { background: rgba(34,197,94,0.15); color: var(--phase-commit); }
+
+.phase-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.drains-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drain-item {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.drain-name {
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+}
+
+.drain-desc {
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.config-scopes {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  padding-left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

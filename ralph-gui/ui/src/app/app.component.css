@@ -1,3 +1,4 @@
+/* Required: host element sizing cannot be applied via Tailwind class */
 :host {
   display: block;
   height: 100vh;
@@ -5,16 +6,9 @@
   overflow: hidden;
 }
 
-.app-container {
-  display: flex;
-  height: 100%;
-  width: 100%;
-  background: var(--bg-base);
-}
-
+/* Required: sidebar uses dynamic width via NgStyle and complex layout */
 .sidebar {
-  width: var(--sidebar-width, 220px);
-  min-width: var(--sidebar-width, 220px);
+  min-width: 180px;
   height: 100%;
   background: var(--sidebar-bg, #1a1a1e);
   border-right: 1px solid var(--border-subtle, #2a2a30);
@@ -24,6 +18,7 @@
   position: relative;
 }
 
+/* Required: gradient pseudo-element cannot be expressed in Tailwind */
 .sidebar-accent {
   position: absolute;
   top: 0;
@@ -35,18 +30,7 @@
   pointer-events: none;
 }
 
-.brand {
-  padding: 22px 16px 16px;
-  border-bottom: 1px solid var(--border-subtle, #2a2a30);
-}
-
-.brand-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
+/* Required: brand icon glow effect */
 .brand-icon {
   width: 26px;
   height: 26px;
@@ -63,75 +47,7 @@
   box-shadow: 0 0 10px var(--accent-glow, rgba(245, 158, 11, 0.3));
 }
 
-.brand-name {
-  font-family: var(--font-display, system-ui);
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary, #fff);
-  letter-spacing: -0.02em;
-}
-
-.brand-subtitle {
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  color: var(--text-muted, #888);
-  padding-left: 34px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.context-section {
-  padding: 12px 8px 8px;
-}
-
-.context-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: var(--radius-md, 6px);
-  color: var(--text-secondary, #aaa);
-  font-size: 12px;
-  text-align: left;
-}
-
-.context-icon {
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-  color: var(--text-muted, #666);
-}
-
-.context-text {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.context-arrow {
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
-}
-
-.sidebar-divider {
-  height: 1px;
-  background: var(--border-subtle, #2a2a30);
-  margin: 0 8px;
-}
-
-.nav-section {
-  flex: 1;
-  padding: 8px 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
+/* Required: nav item complex hover/active states with pseudo-element */
 .nav-item {
   display: flex;
   align-items: center;
@@ -148,6 +64,7 @@
   position: relative;
   overflow: hidden;
   border: 1px solid transparent;
+  background: none;
 }
 
 .nav-item:hover {
@@ -162,6 +79,7 @@
   border: 1px solid var(--border-default, #3a3a40);
 }
 
+/* Required: active indicator pseudo-element cannot be expressed in Tailwind */
 .nav-accent {
   position: absolute;
   left: 0;
@@ -170,6 +88,10 @@
   width: 2px;
   background: var(--accent, #f59e0b);
   border-radius: 2px;
+}
+
+.nav-item.active .nav-accent {
+  display: block;
 }
 
 .nav-item mat-icon {
@@ -181,83 +103,90 @@
   flex-shrink: 0;
 }
 
-.nav-item mat-icon.active-icon {
+.nav-item.active mat-icon {
   color: var(--accent, #f59e0b);
 }
 
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-subtle, #2a2a30);
-  font-size: 10px;
-  color: var(--text-muted, #666);
-  font-family: var(--font-mono, monospace);
-  letter-spacing: 0.04em;
+/* Required: notification bell button styling */
+.notification-bell-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
 }
 
-.main-content {
-  flex: 1;
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+/* Required: collapse button complex positioning */
+.sidebar-collapse-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  width: 18px;
+  height: 40px;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 11;
+  align-self: center;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
 }
 
-.modal-content {
-  background: var(--bg-surface, #1e1e22);
-  border-radius: var(--radius-lg, 8px);
-  border: 1px solid var(--border-default, #3a3a40);
-  max-width: 400px;
-  width: 90%;
+.sidebar-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-raised);
 }
 
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle, #2a2a30);
-}
-
-.modal-header h2 {
-  font-family: var(--font-display, system-ui);
+.sidebar-collapse-btn mat-icon {
   font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary, #fff);
-  margin: 0;
+  width: 16px;
+  height: 16px;
 }
 
-.modal-body {
-  padding: 16px 20px;
+.sidebar-collapse-btn--collapsed {
+  border-left: 1px solid var(--border-default);
 }
 
-.shortcut-row {
+/* Required: resize handle cursor and hover state */
+.sidebar-resize-handle {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  transition: background var(--transition-fast, 150ms);
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent, #f59e0b);
+  opacity: 0.5;
+}
+
+/* Required: concepts guide panel with animation */
+.concepts-guide-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 28px;
+  width: 340px;
+  background: var(--bg-surface, #1e1e24);
+  border-left: 1px solid var(--border-default, #3a3a40);
+  z-index: 100;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  flex-direction: column;
+  animation: slideInRight 150ms ease;
 }
 
-.shortcut-row kbd {
-  background: var(--bg-elevated, #252530);
-  border: 1px solid var(--border-default, #3a3a40);
-  border-radius: var(--radius-sm, 4px);
-  padding: 2px 8px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: var(--text-secondary, #aaa);
-}
-
-.shortcut-row span {
-  color: var(--text-secondary, #aaa);
-  font-size: 13px;
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }

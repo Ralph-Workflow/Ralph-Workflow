@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { TauriService } from './tauri.service';
-import type { RunDetail, RunStatus, RunStatusSummary } from '../types';
+import type { IterationSummary, ReviewSummary, RunDetail, RunStatus, RunStatusSummary } from '../types';
 
 export type LoadingStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
 
@@ -20,6 +20,8 @@ export class RunsService {
   readonly status = signal<LoadingStatus>('idle');
   readonly error = signal<string | null>(null);
   readonly pollingStatus = signal<RunStatusSummary | null>(null);
+  readonly iterationHistory = signal<IterationSummary[]>([]);
+  readonly reviewHistory = signal<ReviewSummary[]>([]);
 
   // Computed signals
   readonly isLoading = computed(() => this.status() === 'loading');
@@ -36,9 +38,35 @@ export class RunsService {
       const detail = await this.tauri.getRunDetail(runId);
       this.runDetail.set(detail);
       this.status.set('succeeded');
+
+      // Also fetch iteration and review history in parallel
+      void Promise.all([
+        this.fetchIterationHistory(runId),
+        this.fetchReviewHistory(runId),
+      ]);
     } catch (e) {
       this.status.set('failed');
       this.error.set(e instanceof Error ? e.message : 'Unknown error');
+    }
+  }
+
+  async fetchIterationHistory(runId: string): Promise<void> {
+    try {
+      const history = await this.tauri.getIterationHistory(runId);
+      this.iterationHistory.set(history);
+    } catch {
+      // Iteration history is non-critical — silently ignore errors
+      this.iterationHistory.set([]);
+    }
+  }
+
+  async fetchReviewHistory(runId: string): Promise<void> {
+    try {
+      const history = await this.tauri.getReviewHistory(runId);
+      this.reviewHistory.set(history);
+    } catch {
+      // Review history is non-critical — silently ignore errors
+      this.reviewHistory.set([]);
     }
   }
 

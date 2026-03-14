@@ -1,0 +1,40 @@
+<div
+  class="dialog-backdrop"
+  role="presentation"
+  (click)="onBackdropClick($event)"
+>
+  <div
+    class="dialog"
+    role="dialog"
+    [attr.aria-modal]="true"
+    [attr.aria-labelledby]="'dialog-title'"
+    data-testid="dialog"
+    (keydown)="onDialogKeydown($event)"
+    tabindex="-1"
+  >
+    <div class="dialog__header">
+      <h2 class="dialog__title" id="dialog-title">{{ title_ }}</h2>
+    </div>
+    <div class="dialog__body">
+      <p class="dialog__message">{{ message_ }}</p>
+    </div>
+    <div class="dialog__footer">
+      <button
+        class="btn btn-ghost"
+        data-testid="cancel-btn"
+        (click)="onCancel()"
+        type="button"
+      >
+        {{ cancelLabel_ }}
+      </button>
+      <button
+        [class]="confirmBtnClass"
+        data-testid="confirm-btn"
+        (click)="onConfirm()"
+        type="button"
+      >
+        {{ confirmLabel_ }}
+      </button>
+    </div>
+  </div>
+</div>

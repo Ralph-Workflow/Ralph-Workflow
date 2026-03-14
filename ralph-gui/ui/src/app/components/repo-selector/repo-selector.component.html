@@ -4,7 +4,7 @@
       data-testid="repo-path-input"
       class="input input-mono"
       style="flex: 1;"
-      [value]="repoPath()"
+      [value]="repoPath"
       (input)="onInput($event)"
       (keydown)="onKeydown($event)"
       placeholder="/path/to/your/git/repository"
@@ -14,17 +14,17 @@
       class="btn btn-primary"
       style="flex-shrink: 0;"
       (click)="handleConfirm()"
-      [disabled]="loading() || !repoPath().trim()"
+      [disabled]="loading || !repoPathTrimmed"
     >
-      {{ loading() ? 'Opening…' : 'Open' }}
+      {{ loading ? 'Opening…' : 'Open' }}
     </button>
   </div>
-  @if (error()) {
+  @if (error) {
     <div
       data-testid="repo-error"
       style="padding: 8px 12px; background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.2); border-radius: var(--radius-md); color: var(--status-failed); font-size: 12px; font-family: var(--font-mono);"
     >
-      {{ error() }}
+      {{ error }}
     </div>
   }
 </div>

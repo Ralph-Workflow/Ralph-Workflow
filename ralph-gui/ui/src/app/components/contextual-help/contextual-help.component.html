@@ -1,0 +1,24 @@
+<div class="contextual-help" [class.contextual-help--open]="isOpen_">
+  <button
+    type="button"
+    class="contextual-help__btn"
+    [attr.aria-label]="ariaLabel_"
+    [attr.aria-expanded]="isOpen_"
+    aria-haspopup="true"
+    data-testid="contextual-help-btn"
+    (click)="toggle()"
+    (mouseenter)="open()"
+    (mouseleave)="close()"
+  >
+    ?
+  </button>
+  @if (isOpen_) {
+    <div
+      class="contextual-help__popover"
+      role="tooltip"
+      data-testid="contextual-help-popover"
+    >
+      {{ helpText_ }}
+    </div>
+  }
+</div>

@@ -18,32 +18,37 @@ export class PromptReviewPanelComponent {
   @Input() promptContent = '';
   @Output() applyImprovedPrompt = new EventEmitter<string>();
 
-  readonly panelState = signal<PanelState>('idle');
-  readonly result = signal<PromptReviewResult | null>(null);
-  readonly errorMsg = signal<string | null>(null);
+  private readonly _panelState = signal<PanelState>('idle');
+  private readonly _result = signal<PromptReviewResult | null>(null);
+  private readonly _errorMsg = signal<string | null>(null);
+
+  /** Getters so the template accesses state without calling signals directly. */
+  get panelState() { return this._panelState(); }
+  get result() { return this._result(); }
+  get errorMsg() { return this._errorMsg(); }
 
   async handleReview(): Promise<void> {
-    this.panelState.set('loading');
-    this.result.set(null);
-    this.errorMsg.set(null);
+    this._panelState.set('loading');
+    this._result.set(null);
+    this._errorMsg.set(null);
 
     try {
       const res = await this.tauri.reviewPromptWithAi(this.promptContent);
-      this.result.set(res);
-      this.panelState.set('success');
+      this._result.set(res);
+      this._panelState.set('success');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes('ANTHROPIC_API_KEY')) {
-        this.panelState.set('no-key');
+        this._panelState.set('no-key');
       } else {
-        this.panelState.set('error');
-        this.errorMsg.set(msg);
+        this._panelState.set('error');
+        this._errorMsg.set(msg);
       }
     }
   }
 
   applyImproved(): void {
-    const improved = this.result()?.improved_prompt;
+    const improved = this._result()?.improved_prompt;
     if (improved) {
       this.applyImprovedPrompt.emit(improved);
     }

@@ -2,20 +2,18 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { TauriService } from './tauri.service';
 import type { WorktreeInfo } from '../types';
 
-const LAST_REPO_KEY = 'ralph_gui_last_repo';
-
 export type LoadingStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
 
 @Injectable({ providedIn: 'root' })
 export class WorktreesService {
   private readonly tauri = inject(TauriService);
 
-  // State signals
+  // State signals — no localStorage; persistence handled by WorkspaceService via Tauri
   readonly worktrees = signal<WorktreeInfo[]>([]);
   readonly status = signal<LoadingStatus>('idle');
   readonly error = signal<string | null>(null);
   readonly activeWorktreePath = signal<string | null>(null);
-  readonly lastRepoPath = signal<string | null>(this.loadLastRepo());
+  readonly lastRepoPath = signal<string | null>(null);
 
   // Computed signals
   readonly isLoading = computed(() => this.status() === 'loading');
@@ -28,11 +26,6 @@ export class WorktreesService {
   readonly nonMainWorktrees = computed(() =>
     this.worktrees().filter(wt => !wt.is_main)
   );
-
-  private loadLastRepo(): string | null {
-    if (typeof localStorage === 'undefined') return null;
-    return localStorage.getItem(LAST_REPO_KEY);
-  }
 
   async fetchWorktrees(repoPath: string): Promise<void> {
     this.status.set('loading');
@@ -78,10 +71,6 @@ export class WorktreesService {
       this.worktrees.set(worktrees);
       this.lastRepoPath.set(repoPath);
       this.status.set('succeeded');
-
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(LAST_REPO_KEY, repoPath);
-      }
     } catch (e) {
       this.status.set('failed');
       this.error.set(e instanceof Error ? e.message : 'Unknown error');

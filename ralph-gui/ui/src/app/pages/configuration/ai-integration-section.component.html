@@ -11,15 +11,15 @@
 
   <div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3);">
     <input
-      [type]="showKey() ? 'text' : 'password'"
+      [type]="showKey ? 'text' : 'password'"
       class="form-input input-mono"
-      [value]="localKey()"
+      [value]="localKey"
       (input)="onKeyInput($event)"
       placeholder="Enter Anthropic API key (sk-ant-...)"
       style="flex: 1;"
     />
     <button class="btn btn-ghost" (click)="toggleShowKey()" style="flex-shrink: 0; min-width: 52px;">
-      {{ showKey() ? 'Hide' : 'Show' }}
+      {{ showKey ? 'Hide' : 'Show' }}
     </button>
   </div>
 
@@ -27,18 +27,18 @@
     <button
       class="btn btn-primary"
       (click)="handleSave()"
-      [disabled]="configService.aiApiKeySaveStatus() === 'saving'"
+      [disabled]="aiApiKeySaveStatus === 'saving'"
     >
-      {{ configService.aiApiKeySaveStatus() === 'saving' ? 'Saving...' : 'Save API Key' }}
+      {{ aiApiKeySaveStatus === 'saving' ? 'Saving...' : 'Save API Key' }}
     </button>
-    @if (configService.aiApiKeySaveStatus() === 'saved') {
+    @if (aiApiKeySaveStatus === 'saved') {
       <span style="font-size: 12px; color: var(--status-completed); font-family: var(--font-mono);">
         Saved
       </span>
     }
-    @if (configService.aiApiKeySaveStatus() === 'failed' && configService.aiApiKeyError()) {
+    @if (aiApiKeySaveStatus === 'failed' && aiApiKeyError) {
       <span style="font-size: 12px; color: var(--status-failed); font-family: var(--font-mono);">
-        {{ configService.aiApiKeyError() }}
+        {{ aiApiKeyError }}
       </span>
     }
   </div>

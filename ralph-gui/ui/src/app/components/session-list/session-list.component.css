@@ -1,12 +1,14 @@
-:host div[role="button"]:hover {
+.session-row:hover:not(.session-row-selected) {
   background: var(--bg-elevated);
   border-color: var(--border-default);
 }
-:host div[role="button"].selected {
+
+.session-row-selected {
   background: var(--accent-bg);
-  border-color: var(--accent-dim)30;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
-:host div[role="button"]:focus {
+
+.session-row:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

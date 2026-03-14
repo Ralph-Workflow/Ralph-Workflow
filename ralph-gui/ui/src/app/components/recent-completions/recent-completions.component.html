@@ -1,0 +1,59 @@
+@if (completionsCount === 0) {
+  <div class="text-xs text-text-muted text-center py-4">
+    No completed runs yet
+  </div>
+} @else {
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-sm font-medium text-text-primary">Recent completions</h3>
+    @if (showViewAllValue) {
+      <a
+        routerLink="/sessions"
+        [queryParams]="{status: 'completed'}"
+        class="text-xs text-accent hover:text-accent-hover transition-colors"
+      >
+        View all
+      </a>
+    }
+  </div>
+
+  <div class="flex flex-col gap-1">
+    @for (completion of displayCompletionsValue; track completion.run_id) {
+      <div
+        class="flex items-center gap-3 py-2 px-3 rounded hover:bg-bg-surface transition-colors cursor-pointer"
+        (click)="viewRun.emit(completion.run_id)"
+        (keydown.enter)="viewRun.emit(completion.run_id)"
+        (keydown.space)="viewRun.emit(completion.run_id); $event.preventDefault()"
+        tabindex="0"
+        role="button"
+        [attr.aria-label]="'View completed run ' + completion.run_id_short"
+      >
+        <span class="w-2 h-2 rounded-full bg-status-success shrink-0"></span>
+
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-xs text-text-primary truncate">
+              {{ completion.run_id_short }}
+            </span>
+          </div>
+          <div class="text-xs text-text-muted truncate">
+            {{ completion.description || 'No description' }}
+          </div>
+          <div class="text-xs text-text-secondary mt-0.5">
+            {{ formatMetrics(completion) }}
+          </div>
+        </div>
+
+        <div class="text-xs text-text-muted shrink-0">
+          {{ completion.relativeTime }}
+        </div>
+
+        <button
+          class="text-xs text-accent hover:text-accent-hover transition-colors px-2 py-1"
+          (click)="viewRun.emit(completion.run_id); $event.stopPropagation()"
+        >
+          View
+        </button>
+      </div>
+    }
+  </div>
+}

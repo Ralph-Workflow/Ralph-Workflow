@@ -1,0 +1,133 @@
+<div class="flex items-center justify-center min-h-full p-8 bg-bg-base">
+  <div class="w-full max-w-[520px] bg-bg-surface border border-border-default rounded-xl p-8 shadow-lg">
+    <!-- Progress indicator -->
+    <div class="flex justify-center gap-2 mb-8" [attr.aria-label]="'Step ' + currentStepValue + ' of ' + totalSteps">
+      @for (step of stepNumbers; track step) {
+        <div
+          class="w-2 h-2 rounded-full bg-border-default transition-all duration-200 ease-out"
+          [class.bg-accent]="step === currentStepValue"
+          [class.scale-125]="step === currentStepValue"
+          [class.bg-status-success]="step < currentStepValue"
+        ></div>
+      }
+    </div>
+
+    <!-- Step 1: Welcome -->
+    @if (currentStepValue === 1) {
+      <div class="flex flex-col items-center gap-4 text-center">
+        <div class="w-[72px] h-[72px] bg-accent rounded-lg flex items-center justify-center text-3xl font-bold text-bg-base font-mono shadow-[0_0_24px_var(--accent-subtle)] mb-2" aria-hidden="true">R</div>
+        <h1 class="text-xl font-semibold text-text-primary">Welcome to Ralph Workflow</h1>
+        <p class="text-base text-text-secondary leading-normal max-w-[400px]">Get started with Ralph Workflow — an automated AI coding assistant pipeline for your projects.</p>
+        <div class="flex gap-3 justify-center mt-4 flex-wrap">
+          <button type="button" class="btn btn-primary" (click)="next()">
+            Get Started
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Step 2: Agent Tools -->
+    @if (currentStepValue === 2) {
+      <div class="flex flex-col items-center gap-4 text-center">
+        <h2 class="text-lg font-semibold text-text-primary self-start">Agent Tools</h2>
+        <p class="text-sm text-text-secondary self-start text-left">Ralph works with these AI coding agents. At least one must be installed to proceed.</p>
+
+        @if (isLoadingToolsValue) {
+          <div class="p-4 text-text-secondary text-sm">Loading agent tools...</div>
+        } @else {
+          <div class="w-full flex flex-col gap-2" data-testid="agent-tools-list">
+            @for (tool of agentToolsList; track tool.name) {
+              <div class="tool-item flex items-center gap-3 p-3 px-4 bg-bg-raised border border-border-default rounded-md" [class.border-status-success]="tool.installed" [attr.data-testid]="'tool-item-' + tool.name">
+                <div class="text-base text-text-muted shrink-0">
+                  {{ tool.installed ? '✓' : '○' }}
+                </div>
+                <div class="flex flex-col gap-0.5 flex-1 text-left">
+                  <span class="text-sm font-medium text-text-primary">{{ tool.name }}</span>
+                  <span class="font-mono text-xs text-text-muted">{{ tool.binary }}</span>
+                </div>
+                <div class="flex flex-col items-end gap-0.5">
+                  @if (tool.installed) {
+                    <span class="text-[11px] px-2 py-0.5 rounded font-medium" [class.bg-green-500/12]="tool.health === 'healthy'" [class.text-status-success]="tool.health === 'healthy'" [class.bg-yellow-500/12]="tool.health === 'degraded'" [class.text-status-warning]="tool.health === 'degraded'">{{ tool.health }}</span>
+                    @if (tool.version) {
+                      <span class="font-mono text-xs text-text-muted">v{{ tool.version }}</span>
+                    }
+                  } @else {
+                    <span class="text-[11px] px-2 py-0.5 rounded font-medium bg-bg-overlay text-text-muted">not installed</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="flex gap-3 justify-center mt-4 flex-wrap">
+          <button type="button" class="btn btn-ghost" (click)="back()">
+            Back
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!hasInstalledToolValue"
+            (click)="next()"
+          >
+            Continue
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Step 3: Open Workspace -->
+    @if (currentStepValue === 3) {
+      <div class="flex flex-col items-center gap-4 text-center">
+        <h2 class="text-lg font-semibold text-text-primary self-start">Open a Workspace</h2>
+        <p class="text-sm text-text-secondary self-start text-left">Select a git repository to use as your workspace.</p>
+
+        <div class="w-full flex flex-col gap-3 items-start">
+          @if (selectedDirectoryValue) {
+            <div class="flex items-center gap-2 p-3 bg-bg-raised rounded-md w-full">
+              <span>📁</span>
+              <span class="font-mono text-xs text-text-secondary break-all">{{ selectedDirectoryValue }}</span>
+            </div>
+          } @else {
+            <p class="text-text-muted text-sm">No directory selected</p>
+          }
+          <button
+            type="button"
+            class="btn btn-secondary"
+            (click)="browseDirectory()"
+            [disabled]="isOpeningWorkspaceValue"
+          >
+            Browse...
+          </button>
+        </div>
+
+        @if (openWorkspaceErrorValue) {
+          <p class="text-status-error text-sm self-start">{{ openWorkspaceErrorValue }}</p>
+        }
+
+        <div class="flex gap-3 justify-center mt-4 flex-wrap">
+          <button type="button" class="btn btn-ghost" (click)="back()">
+            Back
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            [disabled]="!selectedDirectoryValue || isOpeningWorkspaceValue"
+            (click)="openWorkspace()"
+          >
+            {{ isOpeningWorkspaceValue ? 'Opening...' : 'Open Workspace' }}
+          </button>
+          <button type="button" class="btn btn-ghost" (click)="skip()">
+            Skip
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

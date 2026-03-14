@@ -14,18 +14,21 @@ export class RepoSelectorComponent {
 
   @Output() repoSelected = new EventEmitter<string>();
 
-  readonly repoPath = signal(this.loadLastRepo());
-  readonly loading = signal(false);
-  readonly error = signal<string | null>(null);
+  // Use service signal for last repo path (backed by Tauri via workspace service)
+  private readonly _repoPath = signal(this.worktreesService.lastRepoPath() ?? '');
+  private readonly _loading = signal(false);
+  private readonly _error = signal<string | null>(null);
 
-  private loadLastRepo(): string {
-    if (typeof localStorage === 'undefined') return '';
-    return localStorage.getItem('ralph_gui_last_repo') ?? '';
-  }
+  /** Getters so the template accesses state without calling signals directly. */
+  get repoPath() { return this._repoPath(); }
+  get loading() { return this._loading(); }
+  get error() { return this._error(); }
+  /** Pre-trimmed path for use in template conditions — avoids calling .trim() in template. */
+  get repoPathTrimmed() { return this._repoPath().trim(); }
 
   onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
-    this.repoPath.set(input.value);
+    this._repoPath.set(input.value);
   }
 
   onKeydown(event: KeyboardEvent): void {
@@ -35,23 +38,20 @@ export class RepoSelectorComponent {
   }
 
   async handleConfirm(): Promise<void> {
-    const path = this.repoPath().trim();
+    const path = this._repoPath().trim();
     if (!path) return;
 
-    this.loading.set(true);
-    this.error.set(null);
+    this._loading.set(true);
+    this._error.set(null);
 
     try {
       await this.worktreesService.initializeRepo(path);
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('ralph_gui_last_repo', path);
-      }
       this.repoSelected.emit(path);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.error.set(msg);
+      this._error.set(msg);
     } finally {
-      this.loading.set(false);
+      this._loading.set(false);
     }
   }
 }

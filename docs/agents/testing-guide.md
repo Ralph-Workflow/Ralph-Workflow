@@ -36,6 +36,49 @@ Read before writing or modifying any test.
 
 ---
 
+## Angular GUI Tests
+
+The Angular GUI uses the Angular v21 CLI Vitest path, not Karma.
+
+### Official references
+
+- Unit testing: <https://angular.dev/guide/testing>
+- Migrating from Karma to Vitest: <https://angular.dev/guide/testing/migrating-to-vitest>
+- Angular testing utility APIs: <https://angular.dev/guide/testing/utility-apis>
+
+### Current repo setup
+
+The canonical frontend unit-test entrypoint is `bun --cwd ralph-gui/ui run test`, which runs `ng test --watch=false` from `ralph-gui/ui/package.json`.
+
+Our Angular CLI test target lives in `ralph-gui/ui/angular.json` and uses:
+
+- `@angular/build:unit-test`
+- `tsconfig.spec.json`
+- `buildTarget: "ralph-workflow-ui:build:development"`
+- `setupFiles: ["src/test-setup.ts"]`
+
+The GUI workspace currently depends on `vitest` and `jsdom`, which matches Angular's documented default Vitest runner model for new CLI projects.
+
+### Required guidance for GUI test changes
+
+- Prefer the Angular CLI-managed Vitest setup over custom runner configuration.
+- Keep test configuration in `angular.json`, `tsconfig.spec.json`, and `src/test-setup.ts` unless a documented Angular option requires a separate file.
+- Prefer `setupFiles` and `providersFile` only for truly global test concerns; keep ordinary setup local to the spec that needs it.
+- If advanced Vitest configuration is required, document why Angular's built-in options were insufficient before introducing `runnerConfig`.
+- Use `bun --cwd ralph-gui/ui run test` for local verification and `bun --cwd ralph-gui/ui run test:coverage` when coverage output is needed.
+
+### Legacy migration note
+
+Angular's Vitest docs explicitly state that Zone-based helpers such as `fakeAsync`, `waitForAsync`, and `flush` are not supported in the Vitest setup. The current GUI suite still contains legacy Jasmine- and Zone-style patterns carried forward from earlier tests. When touching those specs, treat the Angular docs as the target state:
+
+- prefer native `async` / `await`
+- prefer Vitest spies and matchers over Jasmine APIs
+- do not add new Jasmine-only or Zone-only patterns unless there is a documented Angular requirement
+
+When documenting or reviewing frontend tests, describe the repository as using Angular's Vitest runner with some legacy test code still pending migration, not as a custom or Karma-based setup.
+
+---
+
 ## Parallelism Rules
 
 **All tests are parallel by default.**

@@ -1,36 +1,63 @@
-<div class="workspace-tab-bar">
-  @if (workspaces().length === 0) {
-    <div class="empty-state">
-      <span class="empty-text">No workspaces open</span>
-    </div>
-  }
-
-  @for (ws of workspaces(); track ws.id) {
-    <div 
-      class="tab" 
-      [class.active]="activeWorkspaceId() === ws.id"
-      (click)="switchTo(ws.id)"
-      (auxclick)="close(ws.id)"
-    >
-      <span class="tab-label">{{ ws.label }}</span>
-      @if (ws.runSummary.running > 0) {
-        <span class="tab-badge">{{ ws.runSummary.running }}</span>
-      }
-      <button 
-        class="tab-close"
-        (click)="close(ws.id); $event.stopPropagation()"
-        aria-label="Close workspace"
+<div class="flex items-center bg-bg-surface border-b border-border-default min-h-[36px] px-2">
+  <div
+    class="flex items-center gap-0.5 flex-1 overflow-x-auto"
+    cdkDropList
+    cdkDropListOrientation="horizontal"
+    (cdkDropListDropped)="onDrop($event)"
+  >
+    @for (ws of workspaces; track ws.id) {
+      @let isActiveTab = activeWorkspaceId === ws.id;
+      <div
+        class="tab flex items-center gap-2 px-3 py-1.5 bg-transparent border-none rounded-sm cursor-pointer text-xs relative transition-all duration-[150ms] ease-out"
+        [class.active]="isActiveTab"
+        [class.text-accent]="isActiveTab"
+        [class.bg-accent-subtle]="isActiveTab"
+        [class.text-text-secondary]="!isActiveTab"
+        [class.hover:bg-white/5]="!isActiveTab"
+        [class.hover:text-text-primary]="!isActiveTab"
+        [title]="ws.path"
+        (click)="switchTo(ws.id)"
+        (mouseup)="onTabMouseUp($event, ws.id)"
+        cdkDrag
       >
-        <span class="close-icon">&times;</span>
-      </button>
-    </div>
-  }
+        <span class="max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">{{ ws.label }}</span>
+        @if (ws.runSummary.running > 0) {
+          <span class="tab-badge flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-accent text-bg-base rounded-[9px] text-[10px] font-semibold">{{ ws.runSummary.running }}</span>
+        }
+        <button
+          class="flex items-center justify-center w-4 h-4 rounded-sm bg-transparent border-none cursor-pointer text-text-muted transition-all duration-[150ms] ease-out hover:bg-white/10 hover:text-text-primary"
+          (click)="close(ws.id); $event.stopPropagation()"
+          aria-label="Close workspace"
+        >
+          <span>&times;</span>
+        </button>
+      </div>
+    }
 
-  <button 
-    class="add-tab-btn" 
+    @if (workspaces.length === 0) {
+      <div class="empty-state flex items-center gap-2 px-3 py-1.5 text-text-muted text-xs">
+        <span>No workspaces open</span>
+      </div>
+    }
+  </div>
+
+  <button
+    class="flex items-center justify-center w-7 h-7 bg-transparent border-none rounded-sm cursor-pointer text-text-muted ml-1 transition-all duration-[150ms] ease-out hover:bg-white/5 hover:text-text-primary"
     (click)="addWorkspace()"
     aria-label="Add workspace"
+    title="Open Workspace (Ctrl+O)"
   >
-    <span class="plus-icon">+</span>
+    <span>+</span>
   </button>
 </div>
+
+@if (closeConfirmIdValue !== null) {
+  <app-cancel-confirmation
+    [title]="'Close Workspace?'"
+    [message]="closeConfirmMessageValue"
+    [confirmLabel]="'Close Workspace'"
+    [cancelLabel]="'Keep Open'"
+    [confirmVariant]="'warning'"
+    (confirmed)="onCloseConfirmed($event, closeConfirmIdValue)"
+  />
+}

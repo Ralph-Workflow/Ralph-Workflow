@@ -1,5 +1,8 @@
 # Ralph Workflow - UX Principles & Ongoing Quality Standards
 
+Terminology in this document follows `ralph-gui/docs/glossary.md` so UX review
+language matches the product, acceptance, and architecture docs.
+
 UX is not a phase. It's not something you "do" and then you're done. It is a
 continuous discipline that shapes every design decision, every new feature, every
 iteration of this product. This document is a **living reference** — not a punch
@@ -17,6 +20,27 @@ The goal is not to check every box once. The goal is to internalize these
 principles so deeply that they become the default way we think about every
 design decision.
 
+Apple's Human Interface Guidelines are also an explicit acceptance lens for
+Ralph GUI work. Their foundational guidance should be applied directly to page
+structure, writing, accessibility, feedback, motion, and adaptable layout.
+
+## Wireframe References
+
+Use the wireframe system as the concrete screen reference when applying these
+principles:
+
+| UX review area | Primary wireframe reference |
+|---|---|
+| App orientation, workspace switching, shell clarity | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |
+| Dashboard scanning, session management, batch flows | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| Prompting, wizard flow, launch setup, preflight review | `ralph-gui/docs/wireframes/03-new-session-wizard.md` |
+| Live monitoring, degraded states, pause/fail recovery, diff review | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| Worktrees, settings, preferences, raw TOML fallback | `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md` |
+| Onboarding, search, notifications, templates, help, agent tools | `ralph-gui/docs/wireframes/06-supporting-flows.md` |
+
+When a UX review calls for a concrete screen check, inspect the corresponding
+wireframe file above instead of looking for layout guidance in `gui-design.md`.
+
 ---
 
 ## How to Use This Document
@@ -28,7 +52,9 @@ sketching. Let them shape the design from the start — retrofitting good UX is
 **When reviewing a change:** Use the specific criteria as a lens. Does this
 change make the experience better, worse, or neutral for each applicable
 principle? A feature that adds functionality but violates UX-1 (self-evidence)
-or UX-6 (cognitive load) is not a net improvement.
+or UX-6 (cognitive load) is not a net improvement. The same is true for work
+that breaks Apple HIG foundations around clarity, hierarchy, accessibility,
+feedback, or restrained motion.
 
 **When something feels "off" but you can't articulate why:** Walk through
 the principles systematically. The language here gives you vocabulary to
@@ -53,6 +79,51 @@ poor self-evidence is worse than a rough app that's immediately understandable.
 8. *100 Things Every Designer Needs to Know About People* — Susan Weinschenk
 9. *Google Material Design Guidelines*
 10. *Apple Human Interface Guidelines*
+
+---
+
+## Apple HIG Foundation Criteria
+
+Apply these criteria alongside the numbered UX principles below. For Ralph
+Workflow, prioritize Apple HIG foundational guidance over macOS-specific chrome
+or platform-only presentation rules unless a screen is intentionally
+platform-specific.
+
+### HIG-1: Clarity & Plain Language
+- Primary actions use direct, action-oriented labels that tell the user what happens next
+- Navigation, headings, and status labels avoid unnecessary shorthand or internal jargon
+- Helper text explains what to do or why something matters, not just what is wrong
+- A new user can identify the page purpose and next likely action from visible labels alone
+
+### HIG-2: Hierarchy, Layout & Progressive Disclosure
+- The most important information appears first and has the strongest visual emphasis
+- Related content is grouped clearly, and controls are visually distinct from content
+- Advanced and secondary options stay available but do not compete with the primary task
+- Loading and transition states preserve spatial continuity so users do not have to re-orient
+
+### HIG-3: Perceivable Status & Accessibility
+- Status, selection, and severity never rely on color alone; they also use text, iconography, shape, or placement
+- Text and controls remain legible under normal, large-text, and high-contrast conditions
+- Focus, keyboard access, and live updates remain perceivable without requiring hover
+- Empty, loading, offline, error, and disabled states explain what is happening and what the user can still do
+
+### HIG-4: Controls, Feedback & Predictability
+- Interactive elements look interactive and have adequate target size and spacing
+- Every user action produces immediate, proportional feedback without surprising side effects
+- Destructive actions are explicit, separated from primary actions, and confirmed when consequences are meaningful
+- Common actions stay visible, while infrequent or advanced actions can move into secondary surfaces
+
+### HIG-5: Motion, Color & Visual Restraint
+- Motion communicates change or feedback; it is never decorative noise
+- Motion is brief, subtle, and reduced or removed when the user prefers reduced motion
+- Color is used consistently to reinforce meaning, not to create ambiguous signals
+- Typography, spacing, and contrast support scanning before reading
+
+### HIG-6: Adaptability & Cross-Context Robustness
+- Core flows remain understandable when space is constrained or content becomes dense
+- The same conceptual destinations remain available across shortcuts, responsive states, and alternate navigation paths
+- Light/dark appearance, contrast changes, and stale/live data states do not break comprehension
+- A screen remains usable when only partial data is available or connectivity is interrupted
 
 ---
 
@@ -509,12 +580,14 @@ conversation, not a post-hoc audit.
 3. Does this serve a user goal or just expose a feature? (UX-4, Cooper)
 4. Am I showing the right amount of information? (UX-5, Tidwell)
 5. Am I adding to cognitive load? (UX-6, Yablonski)
+6. Does this meet Apple HIG foundations for clarity, hierarchy, accessibility, feedback, and motion restraint?
 
 **After every UI change, ask:**
 1. Can someone who didn't design this figure it out instantly?
 2. Did I introduce any inconsistency with the rest of the app?
 3. What happens when this goes wrong — is the error path designed too?
 4. Would I notice if this was live-updating vs. stale?
+5. Does the screen still work without relying on color, hover, or animation?
 
 ### The Krug Test (Do This Regularly)
 
@@ -588,16 +661,16 @@ These tasks represent what users actually want to accomplish. Every design
 decision should be tested against these — not just once, but every time the
 relevant screens change.
 
-| # | Task | Relevant Principles |
-|---|------|---------------------|
-| T1 | First-time user opens app and starts a session | UX-1.3, UX-4.1, UX-6.1, UX-10.1 |
-| T2 | Check status of all running sessions | UX-2.4, UX-3.1, UX-4.1, UX-5.2 |
-| T3 | Investigate a failed run and resume it | UX-3.9, UX-4.1, UX-11.2, UX-13.1 |
-| T4 | Change a configuration setting | UX-3.6, UX-4.1, UX-5.1, UX-6.1 |
-| T5 | Monitor a run's progress in real-time | UX-2.4, UX-6.4, UX-9.4, UX-13.3 |
-| T6 | Switch between workspaces | UX-4.2, UX-6.4, UX-6.5, UX-10.2 |
-| T7 | Find and resume a session from yesterday | UX-3.6, UX-5.3, UX-8.2, UX-8.4 |
-| T8 | Understand why a run is in degraded state | UX-2.1, UX-3.2, UX-11.2, UX-13.3 |
+| # | Task | Relevant Principles | Wireframe |
+|---|------|---------------------|-----------|
+| T1 | First-time user opens app and starts a session | HIG-1, HIG-2, HIG-3, UX-1.3, UX-4.1, UX-6.1, UX-10.1 | `ralph-gui/docs/wireframes/06-supporting-flows.md` |
+| T2 | Check status of all running sessions | HIG-2, HIG-3, HIG-5, UX-2.4, UX-3.1, UX-4.1, UX-5.2 | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| T3 | Investigate a failed run and resume it | HIG-1, HIG-3, HIG-4, UX-3.9, UX-4.1, UX-11.2, UX-13.1 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| T4 | Change a configuration setting | HIG-1, HIG-2, HIG-4, UX-3.6, UX-4.1, UX-5.1, UX-6.1 | `ralph-gui/docs/wireframes/05-worktrees-configuration-and-preferences.md` |
+| T5 | Monitor a run's progress in real-time | HIG-3, HIG-4, HIG-5, UX-2.4, UX-6.4, UX-9.4, UX-13.3 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
+| T6 | Switch between workspaces | HIG-1, HIG-2, HIG-6, UX-4.2, UX-6.4, UX-6.5, UX-10.2 | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |
+| T7 | Find and resume a session from yesterday | HIG-1, HIG-2, HIG-4, UX-3.6, UX-5.3, UX-8.2, UX-8.4 | `ralph-gui/docs/wireframes/02-dashboard-and-sessions.md` |
+| T8 | Understand why a run is in degraded state | HIG-1, HIG-3, HIG-6, UX-2.1, UX-3.2, UX-11.2, UX-13.3 | `ralph-gui/docs/wireframes/04-run-monitoring.md` |
 
 These tasks should grow as the product grows. When a new feature is added,
 ask: "What user task does this serve?" and add it to this list. If you can't
@@ -612,8 +685,8 @@ revisited as the product evolves.
 
 | Focus | Principles | Why Now |
 |-------|-----------|--------|
-| **Foundation** | UX-1 (Self-Evidence), UX-2 (Mental Model), UX-3.3 (User Control), UX-3.9 (Error Recovery) | Without these, users can't effectively use the tool at all. Everything else is premature optimization. |
+| **Foundation** | HIG-1, HIG-2, HIG-3, UX-1 (Self-Evidence), UX-2 (Mental Model), UX-3.3 (User Control), UX-3.9 (Error Recovery) | Without these, users can't effectively use the tool at all. Apple HIG foundations keep the basics clear, legible, and predictable before feature density increases. |
 | **Effectiveness** | UX-4 (Goal-Directed), UX-5 (Progressive Disclosure), UX-6 (Cognitive Load), UX-9 (Feedback & States) | These determine whether using the tool daily is pleasant or painful. |
 | **Quality** | UX-7 (Visual Design), UX-8 (Attention & Memory), UX-10 (Platform Conventions) | These elevate the tool from functional to polished — from "it works" to "it feels good." |
 | **Excellence** | UX-13 (Emotional Design), UX-12 (Deep Accessibility) | These make the tool feel world-class — something users recommend, not just use. |
-| **Always** | UX-3 (Heuristics), UX-11 (Error Handling), UX-12.1 (Basic Accessibility) | Non-negotiable at every stage. Never deprioritize these. |
+| **Always** | HIG-3, HIG-4, HIG-5, UX-3 (Heuristics), UX-11 (Error Handling), UX-12.1 (Basic Accessibility) | Non-negotiable at every stage. Never deprioritize these. |

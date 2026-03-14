@@ -71,16 +71,16 @@
   </mat-accordion>
   
   <div class="form-actions">
-    @if (saveMsg()) {
-      <span class="save-message">{{ saveMsg() }}</span>
+    @if (saveMsg) {
+      <span class="save-message">{{ saveMsg }}</span>
     }
     <button
       mat-raised-button
       color="primary"
       type="submit"
-      [disabled]="form.invalid || saving()"
+      [disabled]="form.invalid || saving"
     >
-      @if (saving()) {
+      @if (saving) {
         Saving...
       } @else {
         Save

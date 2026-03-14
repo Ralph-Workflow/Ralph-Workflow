@@ -1,234 +1,419 @@
 import { TestBed } from '@angular/core/testing';
-import { WorkspaceService, Workspace } from './workspace.service';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { WorkspaceService } from './workspace.service';
+import { TAURI_INVOKE } from './tauri.service';
+import { PreferencesService } from './preferences.service';
+import { signal } from '@angular/core';
+import type { WorkspaceEntry } from '../types';
+import type { GuiPreferences } from '../types';
+
+const mockEntry1: WorkspaceEntry = {
+  id: 'ws-1',
+  repo_path: '/path/to/repo1',
+  display_name: 'repo1',
+  last_nav: '/sessions',
+  active_run_count: 0,
+};
+
+const mockEntry2: WorkspaceEntry = {
+  id: 'ws-2',
+  repo_path: '/path/to/repo2',
+  display_name: 'repo2',
+  last_nav: '',
+  active_run_count: 1,
+};
+
+function createMockInvoke(entries: WorkspaceEntry[] = []) {
+  const mockInvoke = vi.fn().mockImplementation((cmd: string) => {
+    switch (cmd) {
+      case 'get_workspaces':
+        return Promise.resolve(entries);
+      case 'open_workspace':
+        return Promise.resolve(mockEntry1);
+      case 'close_workspace':
+        return Promise.resolve(undefined);
+      case 'reorder_workspaces':
+        return Promise.resolve(undefined);
+      case 'set_workspace_nav':
+        return Promise.resolve(undefined);
+      case 'get_recent_workspaces':
+        return Promise.resolve(['/path/to/repo1']);
+      case 'update_workspace_run_count':
+        return Promise.resolve(undefined);
+      default:
+        return Promise.reject(new Error(`Unknown command: ${cmd}`));
+    }
+  });
+  return mockInvoke;
+}
+
+const defaultPrefs: GuiPreferences = {
+  theme: 'dark',
+  accentColor: '#f59e0b',
+  sidebarWidth: 240,
+  sidebarCollapsed: false,
+  fontSize: 14,
+  monospaceFont: 'JetBrains Mono',
+  runPollIntervalMs: 2000,
+  logBufferSize: 10000,
+  defaultView: 'home',
+  checkUpdates: true,
+  notifications: {
+    showPhaseNotifications: true,
+    desktopNotifications: false,
+    notifyPhaseChange: false,
+    triggers: { notifyCompletion: true, notifyFailure: true, notifyDegraded: true },
+  },
+  session: { logAutoscroll: true, confirmCancel: true, restoreWorkspaces: true },
+};
+
+function createMockPreferencesService(restoreWorkspaces = true) {
+  const prefs = { ...defaultPrefs, session: { ...defaultPrefs.session, restoreWorkspaces } };
+  return {
+    preferences: signal(prefs).asReadonly(),
+    isLoading: signal(false).asReadonly(),
+    isFirstRun: signal(false).asReadonly(),
+    save: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({});
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke([mockEntry1]);
+
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: TAURI_INVOKE, useValue: mockInvoke },
+        { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+      ],
+    });
     service = TestBed.inject(WorkspaceService);
-    
-    spyOn(localStorage, 'getItem').and.returnValue(null);
-    spyOn(localStorage, 'setItem');
+    await Promise.resolve();
+    await Promise.resolve();
   });
 
   it('should be created', () => {
     expect(service).toBeTruthy();
   });
 
+  it('should load workspaces from backend on init', () => {
+    const calledCommands = mockInvoke.mock.calls.map(args => args[0]);
+    expect(calledCommands).toContain('get_workspaces');
+    expect(service.workspaces().length).toBe(1);
+    expect(service.workspaces()[0]!.path).toBe('/path/to/repo1');
+  });
+
+  it('should NOT use localStorage', () => {
+    const localStorageSpy = vi.spyOn(localStorage, 'getItem');
+    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+    expect(localStorageSpy).not.toHaveBeenCalled();
+    expect(setItemSpy).not.toHaveBeenCalled();
+  });
+
+  it('should set first workspace as active on load', () => {
+    expect(service.activeWorkspaceId()).toBe('ws-1');
+    expect(service.activeWorkspace()?.id).toBe('ws-1');
+  });
+
   describe('openWorkspace', () => {
-    it('should create a new workspace', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      
-      expect(ws.path).toBe('/path/to/repo');
-      expect(ws.label).toBe('repo');
-      expect(ws.id).toBeDefined();
-      expect(service.workspaces().length).toBe(1);
+    it('should call backend and add workspace to list', async () => {
+      const newEntry: WorkspaceEntry = {
+        id: 'ws-new',
+        repo_path: '/new/repo',
+        display_name: 'repo',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(newEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
+
+      const ws = await service.openWorkspace('/new/repo');
+      await Promise.resolve();
+
+      expect(mockInvoke).toHaveBeenCalledWith('open_workspace', { path: '/new/repo' });
+      expect(ws.id).toBe('ws-new');
     });
 
-    it('should set the new workspace as active', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      
-      expect(service.activeWorkspaceId()).toBe(ws.id);
-      expect(service.activeWorkspace()?.id).toBe(ws.id);
-    });
+    it('should set opened workspace as active', async () => {
+      const newEntry: WorkspaceEntry = {
+        id: 'ws-new',
+        repo_path: '/new/repo',
+        display_name: 'repo',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(newEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
 
-    it('should reuse existing workspace if path already exists', () => {
-      const ws1 = service.openWorkspace('/path/to/repo');
-      const ws2 = service.openWorkspace('/path/to/repo');
-      
-      expect(ws1.id).toBe(ws2.id);
-      expect(service.workspaces().length).toBe(1);
-    });
+      await service.openWorkspace('/new/repo');
+      await Promise.resolve();
 
-    it('should switch to existing workspace if path already exists', () => {
-      const ws1 = service.openWorkspace('/path/to/repo1');
-      service.openWorkspace('/path/to/repo2');
-      
-      service.openWorkspace('/path/to/repo1');
-      
-      expect(service.activeWorkspaceId()).toBe(ws1.id);
-      expect(service.workspaces().length).toBe(2);
-    });
-
-    it('should extract label from path correctly', () => {
-      const ws = service.openWorkspace('/Users/test/projects/my-cool-project');
-      expect(ws.label).toBe('my-cool-project');
+      expect(service.activeWorkspaceId()).toBe('ws-new');
     });
   });
 
   describe('closeWorkspace', () => {
-    it('should remove workspace from list', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      service.closeWorkspace(ws.id);
-      
-      expect(service.workspaces().length).toBe(0);
+    it('should call backend and remove workspace from list', async () => {
+      const safeEntry: WorkspaceEntry = { ...mockEntry1, active_run_count: 0 };
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.resolve([safeEntry]);
+        if (cmd === 'close_workspace') return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await svc.closeWorkspace('ws-1');
+      await Promise.resolve();
+
+      expect(mockInvoke).toHaveBeenCalledWith('close_workspace', { id: 'ws-1' });
+      expect(svc.workspaces().length).toBe(0);
     });
 
-    it('should switch to first remaining workspace when closing active', () => {
-      const ws1 = service.openWorkspace('/path/to/repo1');
-      const ws2 = service.openWorkspace('/path/to/repo2');
-      
-      service.closeWorkspace(ws2.id);
-      
-      expect(service.activeWorkspaceId()).toBe(ws1.id);
+    it('should throw when workspace has active runs', async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await expect(async () => svc.closeWorkspace('ws-2')).rejects.toThrow(/active run/i);
     });
 
-    it('should clear active workspace id when closing last workspace', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      service.closeWorkspace(ws.id);
-      
-      expect(service.activeWorkspaceId()).toBeNull();
+    it('should bypass active-runs guard when force=true', async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
+        if (cmd === 'close_workspace') return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await svc.closeWorkspace('ws-2', true);
+      expect(svc.workspaces().length).toBe(0);
     });
 
-    it('should not affect other workspaces', () => {
-      const ws1 = service.openWorkspace('/path/to/repo1');
-      const ws2 = service.openWorkspace('/path/to/repo2');
-      const ws3 = service.openWorkspace('/path/to/repo3');
-      
-      service.closeWorkspace(ws2.id);
-      
-      expect(service.workspaces().length).toBe(2);
-      expect(service.workspaces().find(w => w.id === ws1.id)).toBeDefined();
-      expect(service.workspaces().find(w => w.id === ws3.id)).toBeDefined();
+    it('should surface backend error on close rejection', async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        if (cmd === 'close_workspace') return Promise.reject(new Error('Cannot close: backend error'));
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      await expect(async () => svc.closeWorkspace('ws-1')).rejects.toThrow(/backend error/i);
     });
   });
 
   describe('switchWorkspace', () => {
-    it('should switch active workspace', () => {
-      const ws1 = service.openWorkspace('/path/to/repo1');
-      service.openWorkspace('/path/to/repo2');
-      
-      service.switchWorkspace(ws1.id);
-      
-      expect(service.activeWorkspaceId()).toBe(ws1.id);
+    it('should update activeWorkspaceId', () => {
+      service.workspaces.set([
+        { id: 'ws-1', path: '/a', label: 'a', activeWorktree: null, runSummary: { running: 0, failed: 0, paused: 0 }, navigationState: null, activeRunCount: 0 },
+        { id: 'ws-2', path: '/b', label: 'b', activeWorktree: null, runSummary: { running: 0, failed: 0, paused: 0 }, navigationState: null, activeRunCount: 0 },
+      ]);
+      service.activeWorkspaceId.set('ws-1');
+
+      service.switchWorkspace('ws-2');
+
+      expect(service.activeWorkspaceId()).toBe('ws-2');
     });
 
     it('should not switch to non-existent workspace', () => {
-      service.openWorkspace('/path/to/repo1');
-      
-      service.switchWorkspace('non-existent-id');
-      
-      expect(service.activeWorkspace()?.path).toBe('/path/to/repo1');
+      service.activeWorkspaceId.set('ws-1');
+      service.switchWorkspace('non-existent');
+      expect(service.activeWorkspaceId()).toBe('ws-1');
+    });
+  });
+
+  describe('reorderWorkspaces', () => {
+    it('should call backend with ordered ids', async () => {
+      await service.reorderWorkspaces(['ws-2', 'ws-1']);
+      await Promise.resolve();
+      expect(mockInvoke).toHaveBeenCalledWith('reorder_workspaces', { ids: ['ws-2', 'ws-1'] });
+    });
+  });
+
+  describe('getRecentWorkspaces', () => {
+    it('should return recent paths from backend', async () => {
+      const result = await service.getRecentWorkspaces();
+      await Promise.resolve();
+      expect(result).toEqual(['/path/to/repo1']);
     });
   });
 
   describe('updateWorkspaceRunSummary', () => {
-    it('should update run summary', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      
-      service.updateWorkspaceRunSummary(ws.id, { running: 3, failed: 1 });
-      
-      const updated = service.workspaces().find(w => w.id === ws.id);
-      expect(updated?.runSummary.running).toBe(3);
-      expect(updated?.runSummary.failed).toBe(1);
-      expect(updated?.runSummary.paused).toBe(0);
+    it('should update run summary in signal', () => {
+      service.workspaces.set([
+        { id: 'ws-1', path: '/a', label: 'a', activeWorktree: null, runSummary: { running: 0, failed: 0, paused: 0 }, navigationState: null, activeRunCount: 0 },
+      ]);
+      service.updateWorkspaceRunSummary('ws-1', { running: 3, failed: 1 });
+
+      const ws = service.workspaces().find(w => w.id === 'ws-1');
+      expect(ws?.runSummary.running).toBe(3);
+      expect(ws?.runSummary.failed).toBe(1);
     });
   });
 
-  describe('setActiveWorktree', () => {
-    it('should set active worktree', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      
-      service.setActiveWorktree(ws.id, '/path/to/repo/wt-1');
-      
-      const updated = service.workspaces().find(w => w.id === ws.id);
-      expect(updated?.activeWorktree).toBe('/path/to/repo/wt-1');
-    });
-
-    it('should clear active worktree when null', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      service.setActiveWorktree(ws.id, '/path/to/repo/wt-1');
-      
-      service.setActiveWorktree(ws.id, null);
-      
-      const updated = service.workspaces().find(w => w.id === ws.id);
-      expect(updated?.activeWorktree).toBeNull();
-    });
-  });
-
-  describe('setNavigationState', () => {
-    it('should set navigation state', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      
-      service.setNavigationState(ws.id, '/sessions');
-      
-      const updated = service.workspaces().find(w => w.id === ws.id);
-      expect(updated?.navigationState).toBe('/sessions');
-    });
-
-    it('should clear navigation state when null', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      service.setNavigationState(ws.id, '/sessions');
-      
-      service.setNavigationState(ws.id, null);
-      
-      const updated = service.workspaces().find(w => w.id === ws.id);
-      expect(updated?.navigationState).toBeNull();
-    });
-  });
-
-  describe('computed activeWorkspace', () => {
-    it('should return null when no workspaces', () => {
-      expect(service.activeWorkspace()).toBeNull();
-    });
-
-    it('should return active workspace', () => {
-      const ws = service.openWorkspace('/path/to/repo');
-      expect(service.activeWorkspace()?.id).toBe(ws.id);
-    });
-
-    it('should update when switching workspaces', () => {
-      const ws1 = service.openWorkspace('/path/to/repo1');
-      const ws2 = service.openWorkspace('/path/to/repo2');
-      
-      service.switchWorkspace(ws1.id);
-      expect(service.activeWorkspace()?.id).toBe(ws1.id);
-      
-      service.switchWorkspace(ws2.id);
-      expect(service.activeWorkspace()?.id).toBe(ws2.id);
-    });
-  });
-
-  describe('persistence', () => {
-    it('should load workspaces from localStorage', () => {
-      const mockData: Workspace[] = [
-        {
-          id: 'ws-1',
-          path: '/path/to/repo1',
-          label: 'repo1',
-          activeWorktree: null,
-          runSummary: { running: 1, failed: 0, paused: 0 },
-          navigationState: null,
-        },
-      ];
-      
-      (localStorage.getItem as jasmine.Spy).and.returnValue(JSON.stringify(mockData));
-      
+  describe('startup workspace restoration', () => {
+    it('should load workspaces from backend when restoreWorkspaces is true', async () => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
       TestBed.resetTestingModule();
-      TestBed.configureTestingModule({});
-      const newService = TestBed.inject(WorkspaceService);
-      
-      expect(newService.workspaces().length).toBe(1);
-      expect(newService.workspaces()[0]!.path).toBe('/path/to/repo1');
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(svc.workspaces().length).toBe(2);
+      const calls = invoke.mock.calls.map(args => args[0]);
+      expect(calls).toContain('get_workspaces');
     });
 
-    it('should save workspaces to localStorage on change', (done) => {
-      service.openWorkspace('/path/to/repo');
-      
-      setTimeout(() => {
-        expect(localStorage.setItem).toHaveBeenCalledWith(
-          'ralph-workspaces',
-          jasmine.any(String)
-        );
-        done();
-      }, 10);
+    it('should NOT load workspaces from backend when restoreWorkspaces is false', async () => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(false) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(svc.workspaces().length).toBe(0);
     });
 
-    it('should handle localStorage errors gracefully', () => {
-      (localStorage.getItem as jasmine.Spy).and.throwError('Storage error');
-      
-      expect(() => TestBed.inject(WorkspaceService)).not.toThrow();
+    it('should auto-activate first workspace when restoring', async () => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(svc.activeWorkspaceId()).toBe('ws-1');
+    });
+
+    it('should handle backend error gracefully and return empty workspaces', async () => {
+      const failingInvoke = vi.fn().mockImplementation((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.reject(new Error('Backend unreachable'));
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: failingInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(svc.workspaces().length).toBe(0);
+      expect(svc.isLoading()).toBe(false);
+    });
+  });
+
+  describe('openWorkspace - duplicate prevention', () => {
+    it('should switch to existing workspace instead of creating duplicate when same path is opened', async () => {
+      expect(service.workspaces().length).toBe(1);
+
+      const existingEntry: WorkspaceEntry = {
+        id: 'ws-1-dup',
+        repo_path: '/path/to/repo1',
+        display_name: 'repo1',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(existingEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
+
+      await service.openWorkspace('/path/to/repo1');
+      await Promise.resolve();
+
+      expect(service.workspaces().length).toBe(1);
+      expect(service.activeWorkspaceId()).toBe('ws-1');
+    });
+
+    it('should create new workspace when path is not already open', async () => {
+      expect(service.workspaces().length).toBe(1);
+
+      const newEntry: WorkspaceEntry = {
+        id: 'ws-new',
+        repo_path: '/path/to/new-repo',
+        display_name: 'new-repo',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(newEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
+
+      await service.openWorkspace('/path/to/new-repo');
+      await Promise.resolve();
+
+      expect(service.workspaces().length).toBe(2);
+      expect(service.activeWorkspaceId()).toBe('ws-new');
     });
   });
 });

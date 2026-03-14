@@ -62,7 +62,14 @@ export default tseslint.config(
     files: ["**/*.html"],
     extends: [...angular.configs.templateRecommended],
     rules: {
-      "@angular-eslint/template/no-call-expression": "warn",
+      // Turn off no-call-expression for Angular 17+ signals. The rule was designed
+      // for pre-signals Angular where function calls in templates could cause
+      // performance issues due to change detection. With Angular signals (v17+),
+      // calling signal getters in templates is the official recommended pattern.
+      // Signals are optimized for template usage with fine-grained reactivity.
+      // Keeping this rule would generate false-positive warnings for all signal
+      // calls like `mySignal()`, `computedSignal()`, `input()`, etc.
+      "@angular-eslint/template/no-call-expression": "off",
       "@angular-eslint/template/eqeqeq": "error",
       // i18n is not needed for this internal tool
       "@angular-eslint/template/i18n": "off",

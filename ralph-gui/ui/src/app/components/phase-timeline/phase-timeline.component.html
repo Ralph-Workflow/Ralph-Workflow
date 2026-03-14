@@ -1,0 +1,44 @@
+<div class="flex items-start w-full gap-0">
+  @for (item of currentDisplayPhases; track item.phase.name; let idx = $index; let last = $last) {
+    <div
+      class="flex items-start flex-1 last:flex-none"
+      [class.cursor-pointer]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-2]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-accent]="item.phase.status === 'completed'"
+      [class.focus-visible:outline-offset-2]="item.phase.status === 'completed'"
+      [class.focus-visible:rounded-sm]="item.phase.status === 'completed'"
+      [attr.data-testid]="'phase-node'"
+      [attr.data-status]="item.phase.status"
+      (click)="onPhaseClick(item.phase)"
+      [attr.role]="item.phase.status === 'completed' ? 'button' : null"
+      [attr.tabindex]="item.phase.status === 'completed' ? '0' : null"
+      [attr.aria-label]="item.phase.status === 'completed' ? 'View ' + item.phase.name + ' phase details' : null"
+      (keydown.enter)="onPhaseClick(item.phase)"
+    >
+      <div class="flex flex-col items-center gap-1 shrink-0">
+        <div
+          [class]="getDotClasses(item.phase)"
+          [class.animate-phase-pulse]="item.phase.status === 'active'"
+          [attr.data-testid]="item.dotTestId"
+        >{{ item.dotSymbol }}</div>
+        <div [class]="getLabelClasses(item.phase)">
+          {{ item.phase.name }}
+        </div>
+        @if (item.phase.duration) {
+          <div
+            class="font-mono text-[10px] text-text-muted text-center whitespace-nowrap"
+            data-testid="phase-duration"
+          >
+            {{ item.phase.duration }}
+          </div>
+        }
+        @if (item.phase.statusLabel) {
+          <div class="font-ui text-[10px] text-text-muted text-center whitespace-nowrap">{{ item.phase.statusLabel }}</div>
+        }
+      </div>
+      @if (!last) {
+        <div [class]="getConnectorClasses(item.phase)"></div>
+      }
+    </div>
+  }
+</div>

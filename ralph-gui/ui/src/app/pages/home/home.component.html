@@ -1,15 +1,17 @@
-@if (!hasContent()) {
-  <div class="page-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-    <div style="max-width: 480px; text-align: center; animation: fadeIn 300ms ease;">
-      <div style="font-size: 40px; margin-bottom: 20px; opacity: 0.15; font-family: var(--font-mono); color: var(--accent); letter-spacing: -0.05em;">◈</div>
-      <h1 style="font-family: var(--font-display); font-size: 24px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.02em; margin-bottom: 10px;">
+@if (!hasContentValue) {
+  <div class="flex flex-col items-center justify-center min-h-[60vh]">
+    <div class="max-w-lg text-center animate-fade-in">
+      <div class="text-5xl mb-5 opacity-15 font-mono text-accent tracking-tight">
+        ◈
+      </div>
+      <h1 class="font-ui text-2xl font-semibold text-text-primary tracking-tight mb-2.5">
         Welcome to Ralph Workflow
       </h1>
-      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 28px;">
+      <p class="text-sm text-text-secondary leading-relaxed mb-7">
         An unattended AI orchestration platform for long-running development and review cycles.
       </p>
-      <div style="text-align: left; margin-bottom: 16px;">
-        <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em;">
+      <div class="text-left mb-4">
+        <div class="text-xs text-text-muted font-mono uppercase tracking-wider mb-2">
           Enter your repository path to get started
         </div>
         <app-repo-selector (repoSelected)="onRepoSelected()" />
@@ -18,29 +20,107 @@
   </div>
 } @else {
   <div class="page-content">
-    <h1 class="page-title" style="animation: fadeIn 200ms ease;">Home</h1>
+    <h1 class="page-title animate-fade-in">Dashboard</h1>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; animation: fadeIn 200ms ease 40ms both;">
-      <app-stat-card label="Active worktrees" [value]="activeWorktreeCount()" />
-      <app-stat-card label="Resumable runs" [value]="resumableRunsCount()" [accent]="resumableRunsCount() > 0" />
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-fade-in-40">
+      <app-stat-card
+        label="Active worktrees"
+        [value]="activeWorktreeCountValue"
+        [trend]="dashboardTrendsValue.activeWorktrees"
+        trendLabel="vs yesterday"
+      />
+      <app-stat-card
+        label="Resumable runs"
+        [value]="resumableRunsCountValue"
+        [accent]="resumableRunsCountValue > 0"
+        [trend]="dashboardTrendsValue.resumableRuns"
+        trendLabel="vs yesterday"
+      />
+      <app-stat-card
+        label="Completed today"
+        [value]="completedTodayStatsValue.count"
+        [subtitle]="completedTodayStatsValue.successRate + ' success'"
+        [trend]="dashboardTrendsValue.completedToday"
+        trendLabel="vs yesterday"
+      />
+      <app-stat-card
+        label="Success rate"
+        [value]="0"
+        [subtitle]="completedTodayStatsValue.successRate"
+        [trend]="dashboardTrendsValue.successRate"
+        trendLabel="vs yesterday"
+      />
     </div>
 
-    @if (resumableRunsCount() > 0) {
-      <section style="margin-bottom: 24px; animation: fadeIn 200ms ease 80ms both;">
-        <div class="section-label">Interrupted runs — action needed</div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          @for (run of runsService.resumableRuns(); track run.run_id) {
-            <div class="card card-elevated" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px;">
-              <app-run-status-badge status="Paused" [showLabel]="false" [isDegraded]="run.is_degraded ?? false" />
-              <div style="flex: 1; min-width: 0;">
-                <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-primary);">
-                  {{ run.run_id.slice(0, 16) }}
+    @if (activeRunsCountValue > 0) {
+      <section class="mb-6 animate-fade-in-80">
+        <app-active-runs-list
+          [runs]="activeRunsValue"
+          (viewRun)="navigateToRun($event)"
+        />
+      </section>
+    }
+
+    @if (needsAttentionRunsValue.length > 0) {
+      <section class="mb-6 animate-fade-in-120">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-medium text-text-primary">Needs attention</h3>
+            <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-medium rounded-full bg-status-warning/20 text-status-warning">
+              {{ needsAttentionRunsValue.length }}
+            </span>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          @for (run of needsAttentionWithDetailsValue; track run.run_id) {
+            <div
+              class="flex items-center gap-3 p-3 rounded-md bg-bg-surface border border-status-warning/30 hover:bg-bg-raised hover:border-status-warning/50 transition-colors cursor-pointer"
+              [class.border-l-4]="run.status === 'failed'"
+              [class.border-l-status-error]="run.status === 'failed'"
+              (click)="navigateToRun(run.run_id)"
+              (keydown.enter)="navigateToRun(run.run_id)"
+              (keydown.space)="navigateToRun(run.run_id); $event.preventDefault()"
+              tabindex="0"
+              role="button"
+              [attr.aria-label]="'View run ' + run.run_id_short"
+            >
+              <app-run-status-badge
+                [status]="run.status === 'failed' ? 'Failed' : 'Paused'"
+                [showLabel]="false"
+                [isDegraded]="run.is_degraded ?? false"
+              />
+
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono text-xs text-text-primary truncate">
+                    {{ run.run_id_short }}
+                  </span>
+                  <span class="text-xs text-text-muted">
+                    {{ run.relativeTime }}
+                  </span>
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  {{ run.current_phase }} · {{ run.agent_profile }}
+                <div class="text-xs text-text-muted truncate">
+                  {{ run.description || run.phase }}
                 </div>
+                @if (run.status === 'failed') {
+                  <div class="text-xs text-status-error truncate mt-0.5">
+                    Click to view error details and recovery options
+                  </div>
+                }
               </div>
-              <button class="btn btn-secondary" style="font-size: 12px;" (click)="navigateToRun(run.run_id)">
+
+              <button
+                class="btn btn-primary text-xs px-3 py-1.5"
+                (click)="resumeSession(run.run_id, $event)"
+              >
+                Resume
+              </button>
+
+              <button
+                class="btn btn-secondary text-xs px-3 py-1.5"
+                (click)="navigateToRun(run.run_id); $event.stopPropagation()"
+              >
                 View
               </button>
             </div>
@@ -49,13 +129,38 @@
       </section>
     }
 
-    <section style="animation: fadeIn 200ms ease 120ms both;">
-      <div class="section-label" style="display: flex; justify-content: space-between; align-items: center;">
-        <span>Quick actions</span>
+    @if (recentCompletionsValue.length > 0) {
+      <section class="mb-6 animate-fade-in-160">
+        <app-recent-completions
+          [completions]="recentCompletionsValue"
+          (viewRun)="navigateToRun($event)"
+        />
+      </section>
+    }
+
+    <section class="animate-fade-in-200">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-medium text-text-primary">Quick actions</h3>
       </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-        <app-quick-action icon="▶" label="New session" desc="Start an unattended run" (action)="navigateToSessions()" />
-        <app-quick-action icon="⎇" label="Worktrees" desc="Manage git worktrees" (action)="navigateToWorktrees()" />
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <app-quick-action
+          icon="▶"
+          label="New session"
+          desc="Start an unattended run"
+          (action)="navigateToSessions()"
+        />
+        <app-quick-action
+          icon="⎇"
+          label="Create worktree"
+          desc="Manage git worktrees"
+          (action)="navigateToWorktrees()"
+        />
+        <app-quick-action
+          icon="⚙"
+          label="Open configuration"
+          desc="Edit project settings"
+          (action)="navigateToConfiguration()"
+        />
       </div>
     </section>
   </div>

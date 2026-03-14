@@ -24,6 +24,9 @@ export interface SessionSummary {
   reviewer_agent: string;
   phase: string;
   is_degraded?: boolean;
+  iteration_count?: number;
+  review_count?: number;
+  total_files_changed?: number;
 }
 
 export interface CreateSessionRequest {
@@ -57,6 +60,24 @@ export interface ConfigView {
   interactive: boolean;
   review_depth: string;
   max_dev_continuations: number;
+  // General path settings
+  prompt_path?: string;
+  templates_dir?: string;
+  // Execution context settings
+  developer_context?: string;
+  reviewer_context?: string;
+  force_universal_prompt?: boolean;
+  auto_detect_stack?: boolean;
+  // Retry and Fallback settings
+  max_retries?: number;
+  max_same_agent_retries?: number;
+  retry_delay_ms?: number;
+  backoff_multiplier?: number;
+  max_backoff_ms?: number;
+  max_fallback_cycles?: number;
+  // Git identity settings
+  git_user_name?: string;
+  git_user_email?: string;
 }
 
 export type RunStatus =
@@ -86,6 +107,12 @@ export interface RunDetail {
   iteration_count?: number;
   last_error?: string | null;
   is_degraded?: boolean;
+  phase_durations?: PhaseDuration[];
+  degraded_info?: DegradedInfo | null;
+  total_duration_secs?: number | null;
+  total_files_changed?: number;
+  total_tests_passed?: number | null;
+  review_count?: number;
 }
 
 export interface AgentProfile {
@@ -107,4 +134,214 @@ export interface LaunchSessionArgs {
   reviewer_passes: number;
   developer_agent: string | null;
   reviewer_agent: string | null;
+}
+
+// Workspace types
+export interface WorkspaceEntry {
+  id: string;
+  repo_path: string;
+  display_name: string;
+  last_nav: string;
+  active_run_count: number;
+}
+
+// GUI Preferences – booleans are split into sub-types to satisfy the Rust
+// pedantic `struct_excessive_bools` lint (max 3 bools per struct).
+
+/** Which run events trigger a desktop notification. */
+export interface GuiNotificationTriggers {
+  notifyCompletion: boolean;
+  notifyFailure: boolean;
+  notifyDegraded: boolean;
+}
+
+/** Notification-related preferences. */
+export interface GuiNotificationSettings {
+  showPhaseNotifications: boolean;
+  desktopNotifications: boolean;
+  notifyPhaseChange: boolean;
+  triggers: GuiNotificationTriggers;
+}
+
+/** Session and log behaviour preferences. */
+export interface GuiSessionSettings {
+  logAutoscroll: boolean;
+  confirmCancel: boolean;
+  restoreWorkspaces: boolean;
+}
+
+export interface GuiPreferences {
+  theme: string;
+  accentColor: string;
+  sidebarWidth: number;
+  /** Whether the sidebar is collapsed. Persisted across sessions. */
+  sidebarCollapsed: boolean;
+  fontSize: number;
+  monospaceFont: string;
+  runPollIntervalMs: number;
+  logBufferSize: number;
+  defaultView: string;
+  checkUpdates: boolean;
+  session: GuiSessionSettings;
+  notifications: GuiNotificationSettings;
+}
+
+// Run log streaming
+export interface RunLogLine {
+  run_id: string;
+  line: string;
+  sequence: number;
+}
+
+// Run diff / changes
+export interface FileDiff {
+  path: string;
+  additions: number;
+  deletions: number;
+  diff_text: string;
+}
+
+export interface RunChanges {
+  files: FileDiff[];
+  total_additions: number;
+  total_deletions: number;
+  iteration: number | null;
+}
+
+// Agent tools
+export interface AgentToolInfo {
+  name: string;
+  binary: string;
+  installed: boolean;
+  version: string | null;
+  auth_status: string;
+  health: string;
+  description: string;
+  available_models: string[];
+  binary_location: string | null;
+}
+
+export interface ToolUpdateInfo {
+  name: string;
+  current_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  message: string;
+}
+
+// Config schema types for dynamic form rendering
+export interface ConfigFieldSchema {
+  name: string;
+  label: string;
+  description: string;
+  field_type: string; // "number" | "boolean" | "string" | "enum" | "path"
+  default_value: string;
+  min_value: number | null;
+  max_value: number | null;
+  enum_options: string[];
+  section: string;
+}
+
+export interface ConfigSection {
+  name: string;
+  label: string;
+  description: string;
+  fields: ConfigFieldSchema[];
+}
+
+// Batch session operation result
+export interface BatchOperationResult {
+  succeeded: number;
+  failed: number;
+  errors: Record<string, string>;
+}
+
+// AI prompt assistant types
+export interface PromptAssistantMessage {
+  role: string; // "user" | "assistant"
+  content: string;
+}
+
+export interface PromptAnalysis {
+  issues: string[];
+  suggestions: string[];
+  quality_rating: number; // 1-10
+  improved_prompt: string | null;
+}
+
+// Prompt templates
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  content: string;
+  tags: string[];
+}
+
+// Iteration history types
+export type IterationStatus = 'Complete' | 'Running' | 'Failed';
+
+export interface IterationSummary {
+  iteration_number: number;
+  status: IterationStatus;
+  duration_secs: number | null;
+  files_changed: number;
+  tests_passed: number | null;
+  tests_total: number | null;
+}
+
+// Review history types
+export type ReviewStatus = 'Complete' | 'Running' | 'Failed';
+
+export interface ReviewSummary {
+  review_number: number;
+  status: ReviewStatus;
+  duration_secs: number | null;
+  findings_count: number;
+}
+
+// Phase duration info for timeline
+export interface PhaseDuration {
+  phase_name: string;
+  duration_secs: number | null;
+  status: string;
+}
+
+// Degradation details
+export interface DegradedInfo {
+  retry_count: number;
+  fallback_agent: string | null;
+  reason: string | null;
+}
+
+// Agent chain/drain types for wizard Step 2
+export interface AgentInfo {
+  name: string;
+  tool: string;
+  model: string;
+}
+
+export interface ChainInfo {
+  name: string;
+  agents: string[];
+}
+
+export interface EffectiveChainsConfig {
+  chains: ChainInfo[];
+  drains: Record<string, string>;
+  agents: AgentInfo[];
+  has_configured_chains: boolean;
+  has_configured_drains: boolean;
+}
+
+// Config source tracking (for Effective tab source indicators)
+export type ConfigSource = 'default' | 'global' | 'project';
+
+export interface ConfigFieldWithSource {
+  field_name: string;
+  source: ConfigSource;
+}
+
+export interface EffectiveConfigWithSources {
+  config: ConfigView;
+  sources: ConfigFieldWithSource[];
 }
