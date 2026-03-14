@@ -18,21 +18,23 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | |                                |                                     |
 | +--------------------------------+                                     |
 |                                                                        |
-| Characters: 1842  Words: 312  Template: [Feature v] [Save As Template] |
-| Prompt is required. Clear goals and acceptance notes improve outcomes. |
+| Template: [Feature v] [Save As Template]                               |
+| Characters: 1842  Words: 312                                            |
+| Describe the goal, key constraints, and acceptance notes.              |
 |                                                [Cancel] [Next ->]      |
 +------------------------------------------------------------------------+
 ```
 
 - The assistant is closed by default so the prompt editor remains the primary task surface
-- Counts, templates, preview, and history support recognition over recall without forcing extra pages
+- Templates, preview, and history support recognition over recall without forcing extra pages
+- Helper text focuses on what to include, while counts stay present but visually secondary
 
 ## Step 1 - AI Assist Open: Describe What To Build
 
 ```
 +--------------------------------------------------------------------------------+
 | Prompt                          [Preview] [History] [AI Assist ^]              |
-|                                                 Using: planner-chain via Planning drain |
+|                                                 Planning helper available       |
 | +--------------------------------+ +-----------------------------------------+ |
 | | # Feature: Add auth            | | [Describe what to build *] [Refine current prompt] | |
 | | Add session auth middleware... | | Conversation                              | |
@@ -52,7 +54,7 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | AI Assist                                                                      |
 | [Describe what to build] [Refine current prompt *]                             |
 +--------------------------------------------------------------------------------+
-| Analyzing current editor content...                                            |
+| Reviewing the current prompt...                                                |
 | [Loading indicator]                                                            |
 +--------------------------------------------------------------------------------+
 ```
@@ -69,7 +71,7 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | Suggested improved prompt                                                      |
 | "Implement auth middleware with token-expiry acceptance criteria..."           |
 |                                                                                |
-| [Apply Suggestion] [Edit And Apply] [Analyze Again]                            |
+| [Apply Suggestion] [Edit Before Applying] [Review Again]                       |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -83,7 +85,8 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | |                                |                                    |
 | |                                |                                    |
 | +--------------------------------+                                    |
-| Prompt is required before you can continue.                           |
+| Enter a prompt to continue. Start with the goal, then add constraints |
+| or acceptance notes if needed.                                        |
 |                                                [Cancel] [Next -> disabled] |
 +------------------------------------------------------------------------+
 ```
@@ -102,8 +105,8 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | AI Assist                                                                      |
 | [Describe what to build disabled] [Refine current prompt disabled]             |
 +--------------------------------------------------------------------------------+
-| No Planning agent configured. Set one up in Configuration to enable AI help.   |
-| [Go To Configuration ->]                                                       |
+| AI Assist is unavailable because no Planning helper is configured yet.         |
+| [Open Configuration ->]                                                        |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -116,6 +119,7 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 +-------------------------------------------------------------------+
 | Worktree [add-auth v]   [Create New Worktree]                     |
 |                                                                   |
+| Session defaults                                                  |
 | Developer (planner -> developer -> reviewer) · 5 iterations ·     |
 | 2 reviews · Standard review depth                                 |
 | Inline: Iterations [5] Reviews [2]   Value source: Global + Project |
@@ -129,6 +133,7 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 
 - The default configured view is collapsed so repeat launches stay fast
 - Inline iterations and reviews keep the most common edits within one click
+- Advanced choices stay behind `Customize` so the default path emphasizes the few settings most people change
 
 ## Step 2 - Expanded Configuration
 
@@ -139,6 +144,8 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | Worktree [add-auth v]                                             |
 | Review depth [Standard (recommended) v]                           |
 | Iterations [5]   Reviews [2]                                      |
+|                                                                   |
+| Session roles                                                     |
 | Planning    [planner v]        Analysis [analyzer v]              |
 | Development [developer v]      Review   [reviewer v]              |
 | Fix         [developer v]      Commit   [commit v]                |
@@ -158,7 +165,8 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | Configure                                                       |
 +----------------------------------------------------------------+
 | Worktree [none selected v]                                      |
-| Select a worktree before continuing.                            |
+| Select a worktree before continuing. This keeps the run scoped  |
+| to the correct workspace.                                       |
 |                                                [Next -> disabled] |
 +----------------------------------------------------------------+
 ```
@@ -168,9 +176,9 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | Configure                                                       |
 +----------------------------------------------------------------+
 | Iterations [25]                                                 |
-| Iterations must be between 1 and 20.                            |
+| Enter a value from 1 to 20.                                     |
 | Reviews [-1]                                                    |
-| Reviews must be between 0 and 10.                               |
+| Enter a value from 0 to 10.                                     |
 |                                                [Next -> disabled] |
 +----------------------------------------------------------------+
 ```
@@ -190,9 +198,9 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 +---------------------------------------------------------------+
 | No agent chains are configured for this workspace.            |
 |                                                               |
-| You need at least one configured chain before launching.      |
+| Add at least one configured chain before launching.           |
 |                                                               |
-| [Go To Configuration]                                         |
+| [Open Configuration]                                          |
 |                                                               |
 | [Back] [Cancel]                           [Next -> disabled]   |
 +---------------------------------------------------------------+
@@ -205,19 +213,20 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 | New Session                                                       |
 | [1 Prompt]----[2 Configure]----[3 Review And Launch *]            |
 +-------------------------------------------------------------------+
-| Preflight summary                                   [Edit Prompt] |
+| Review before launch                               [Edit Prompt]  |
 | Worktree: add-auth     Iterations: 5     Reviews: 2 [Edit Config] |
-| Planning: planner      Dev: developer    Review: reviewer         |
+| Planning: planner      Development: developer Review: reviewer    |
 | Effective configuration preview                                   |
 | review_depth=standard · checkpoint=on · isolation=on             |
 | planning=planner · development=developer · review=reviewer       |
 | Effective config source: project + session override               |
 |                                                                   |
 | Preflight checks                                                   |
-| [ok] workspace available                                           |
-| [ok] agent chain configured                                        |
-| [warn] prompt mentions token expiry but no acceptance note         |
-|                                                [Review Again]      |
+| [OK] Workspace available                                           |
+| [OK] Agent chain configured                                        |
+| [Needs attention] Prompt mentions token expiry but no             |
+|                  acceptance note                                   |
+|                                                [Review Prompt]     |
 | Estimated resource usage: medium · 1 planning pass · up to 5 dev iterations |
 |                                                                   |
 | Launch opens the new run detail page immediately.                  |
@@ -231,8 +240,8 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 +----------------------------------------------------------------+
 | Review And Launch                                              |
 +----------------------------------------------------------------+
-| [error] Missing authentication for `claude-opus`               |
-| [error] Selected worktree no longer exists                     |
+| [Blocking] Missing authentication for `claude-opus`           |
+| [Blocking] Selected worktree no longer exists                 |
 |                                                                |
 | Fix the blocking issues before launching.                      |
 | [Edit Configuration]   [Choose Worktree]   [Back]              |
@@ -256,10 +265,10 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 +----------------------------------------------------------------+
 | Missing authentication for `claude-opus`.                      |
 |                                                                |
-| Open Configuration to change the chain, or fix the tool auth.  |
+| Open Configuration to change the chain or fix the tool auth.   |
 | Your draft choices are preserved.                              |
 |                                                                |
-| [Go To Configuration]                  [Close]                 |
+| [Open Configuration]                  [Close]                 |
 +----------------------------------------------------------------+
 ```
 
@@ -276,9 +285,15 @@ Focus: `AC-4.3`, `AC-4.3.1`, `AC-4.3.2`, `AC-4.3.3`, UX-3.5, UX-4.2, UX-5.1, UX-
 ## Interaction, Keyboard, And Accessibility Notes
 
 - `Back` is always available after step 1; returning to an earlier step preserves entered values
-- Step changes, validation errors, and launch failures are announced through a live region
+- Step changes, validation errors, helper updates, and launch failures are announced through a live region
 - Focus lands on the page title on entry, then the first invalid field when validation fails
 - `Enter` advances only when the current step is valid; `Esc` closes dialogs, not the whole wizard
-- Compact controls like `Preview`, `History`, and `AI Assist` require text labels and tooltips
+- The stepper, preflight states, and validation states use text labels and icons so meaning does not depend on color alone
+- Compact controls like `Preview`, `History`, and `AI Assist` keep visible text labels; tooltips stay supplemental
+- Primary actions remain visually dominant, while counts, source metadata, and secondary utilities stay de-emphasized
+- Status and error copy stays close to the affected field and tells the user what to do next
+- Target sizes and spacing should support comfortable pointer and keyboard use, especially for small utility controls
 - Long worktree and role lists should support search to keep choices manageable
 - `Escape` closes the AI Assist panel without clearing its wizard-session conversation history
+- Motion stays restrained: use subtle transitions between steps, avoid auto-advancing content, and provide a reduced-motion fallback
+- Loading and failure states should persist until dismissed or resolved; do not rely on timed disappearance

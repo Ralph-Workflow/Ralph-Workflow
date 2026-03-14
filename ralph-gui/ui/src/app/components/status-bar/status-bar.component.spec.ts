@@ -95,7 +95,10 @@ describe('StatusBarComponent', () => {
       mockActiveWorkspace.set(createMockWorkspace({ label: 'my-project' }));
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('.workspace-label')?.textContent?.trim()).toBe('my-project');
+      // Template uses Tailwind classes — match by text content in the left-section span
+      const spans = el.querySelectorAll('span');
+      const labelSpan = Array.from(spans).find(s => s.textContent?.trim() === 'my-project');
+      expect(labelSpan).toBeTruthy();
     });
   });
 
@@ -146,7 +149,10 @@ describe('StatusBarComponent', () => {
       ]);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('.run-summary')?.textContent?.trim()).toBe('3 running');
+      // Template uses Tailwind classes — match by text content
+      const spans = el.querySelectorAll('span');
+      const runSpan = Array.from(spans).find(s => s.textContent?.trim() === '3 running');
+      expect(runSpan).toBeTruthy();
     });
   });
 
@@ -160,13 +166,14 @@ describe('StatusBarComponent', () => {
     it('should render bell button in DOM', () => {
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('.notification-bell')).toBeTruthy();
+      // Template uses aria-label="Notifications" on the bell button
+      expect(el.querySelector('[aria-label="Notifications"]')).toBeTruthy();
     });
 
     it('should call NotificationService.togglePanel when bell is clicked', () => {
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      const bell = el.querySelector<HTMLElement>('.notification-bell');
+      const bell = el.querySelector<HTMLElement>('[aria-label="Notifications"]');
       bell?.click();
       expect(togglePanelSpy).toHaveBeenCalled();
     });
@@ -175,7 +182,10 @@ describe('StatusBarComponent', () => {
       mockUnreadCount.set(5);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('.notification-badge')).toBeTruthy();
+      // Badge is a span inside the bell button with the count
+      const bell = el.querySelector('[aria-label="Notifications"]');
+      const badge = bell?.querySelector('span[aria-label]');
+      expect(badge).toBeTruthy();
     });
 
     it('should hide badge when unreadCount is 0', () => {
@@ -216,7 +226,10 @@ describe('StatusBarComponent', () => {
       mockActiveWorktreePath.set('/repo');
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('.branch-label')?.textContent?.trim()).toBe('develop');
+      // Template uses Tailwind classes — match by text content
+      const spans = el.querySelectorAll('span');
+      const branchSpan = Array.from(spans).find(s => s.textContent?.trim() === 'develop');
+      expect(branchSpan).toBeTruthy();
     });
   });
 

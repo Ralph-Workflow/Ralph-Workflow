@@ -8,24 +8,24 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 +-------------------------------------------------------------------+
 | Onboarding                                          [Skip For Now] |
 +-------------------------------------------------------------------+
-| [1 Welcome *]----[2 Agent Tools]----[3 Open Workspace]             |
+| Step 1 of 3  [1 Welcome *]----[2 Agent Tools]----[3 Open Workspace]|
 |                                                                   |
-| Ralph Workflow helps you plan, develop, review, and commit.       |
-| You can finish setup now or come back later from Help.            |
-|                                                [Get Started]      |
+| Set up Ralph Workflow so you can start work in a repository.      |
+| You can finish setup now or reopen it later from Help.            |
+|                                                [Start Setup]      |
 +-------------------------------------------------------------------+
 ```
 
 ```
 +-------------------------------------------------------------------+
 | Onboarding                                                        |
-| [1 Welcome]----[2 Agent Tools *]----[3 Open Workspace]            |
+| Step 2 of 3  [1 Welcome]----[2 Agent Tools *]----[3 Open Workspace]|
 +-------------------------------------------------------------------+
-| Claude Code   Ready                                               |
-| Codex         Not installed     [Install] [Skip]                  |
-| OpenCode      Not installed     [Install] [Skip]                  |
+| Claude Code   Ready to use                                        |
+| Codex         Not installed     [Install] [Skip For Now]          |
+| OpenCode      Not installed     [Install] [Skip For Now]          |
 |                                                                   |
-| Skipped tools can be installed later from Agent Tools.            |
+| Install what you need now. You can add or remove tools later.     |
 |                                [Back] [Continue]                  |
 +-------------------------------------------------------------------+
 ```
@@ -33,12 +33,13 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 ```
 +-------------------------------------------------------------------+
 | Onboarding                                                        |
-| [1 Welcome]----[2 Agent Tools *]----[3 Open Workspace]            |
+| Step 2 of 3  [1 Welcome]----[2 Agent Tools *]----[3 Open Workspace]|
 +-------------------------------------------------------------------+
-| Claude Code   Installed but not authenticated [Open Settings]     |
-| Codex         Not installed                   [Install]            |
+| Claude Code   Needs sign-in                    [Open Settings]     |
+| Codex         Not installed                    [Install]           |
 |                                                                   |
-| At least one installed tool must be authenticated to continue.    |
+| Sign in to at least one installed tool to continue.               |
+| Continue is unavailable until one tool is ready to use.           |
 |                                [Back] [Continue disabled]         |
 +-------------------------------------------------------------------+
 ```
@@ -46,9 +47,10 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 ```
 +-------------------------------------------------------------------+
 | Onboarding                                                        |
-| [1 Welcome]----[2 Agent Tools]----[3 Open Workspace *]            |
+| Step 3 of 3  [1 Welcome]----[2 Agent Tools]----[3 Open Workspace *]|
 +-------------------------------------------------------------------+
-| Drop a repository here or [Browse For Repository]                 |
+| Open a Git repository to finish setup.                            |
+| Drop a folder here or [Browse For Repository]                     |
 | Recent workspaces: my-repo, api-service                           |
 |                                [Back] [Open And Finish]           |
 +-------------------------------------------------------------------+
@@ -61,7 +63,7 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 | Agent Tools                                                       |
 +-------------------------------------------------------------------+
 | Installing Codex...                                               |
-| [Progress indicator]                                              |
+| 45% complete  [Progress indicator]                                |
 |                                                    [Skip]         |
 +-------------------------------------------------------------------+
 ```
@@ -70,7 +72,8 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 +-------------------------------------------------------------------+
 | Open Workspace                                                    |
 +-------------------------------------------------------------------+
-| `/tmp/project-copy` is not a git repository.                      |
+| `/tmp/project-copy` is not a Git repository.                      |
+| Open a folder with a `.git` directory, or choose another folder.  |
 | [Choose Another Folder]                           [Back]          |
 +-------------------------------------------------------------------+
 ```
@@ -88,7 +91,7 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 +-------------------------------------------------------------------+
 | Welcome                                                           |
 +-------------------------------------------------------------------+
-| Open a git repository to get started, or reopen onboarding from   |
+| Open a Git repository to get started, or reopen onboarding from   |
 | Help if you want the guided setup again.                          |
 | [Open Workspace]                              [Open Onboarding]   |
 +-------------------------------------------------------------------+
@@ -104,8 +107,9 @@ Focus: `AC-9` to `AC-14`, plus supporting UX acceptance checks.
 
 Annotation:
 
-- Onboarding stays short, task-oriented, and recoverable instead of turning into documentation
-- `Back`, `Skip`, blocked-continue states, and finish states prevent the first-run flow from feeling like a trap
+- Onboarding uses explicit step labels, short explanations, and action-first button text so first-run choices are easy to scan
+- `Back`, `Skip For Now`, blocked-continue guidance, and finish states keep setup recoverable instead of feeling like a trap
+- Disabled actions explain why they are unavailable so status does not rely on dimming or color alone
 
 ## Global Search / Command Palette
 
@@ -119,7 +123,7 @@ Annotation:
 | Open Preferences                                              |
 |                                                               |
 | Sessions                                                      |
-| add-auth            Running      Dev 3 of 5                   |
+| add-auth            Running      Develop 3 of 5               |
 |                                                               |
 | Runs                                                          |
 | run-2026-03-13-001  Attached     Develop 3 of 5               |
@@ -200,9 +204,12 @@ Annotation:
 | Notifications                                  [Mark All Read] [x]|
 +----------------------------------------------------------------+
 | Today                                                          |
-| [check] [unread] add-auth completed 2m ago   [View Session] [Dismiss] |
-| [error] [unread] login-flow failed  2h ago   [Resume] [Dismiss]       |
-| [pause] [read] cache-layer paused   1d ago   [Resume] [Dismiss]       |
+| [Completed] [Unread] add-auth completed 2m ago                   |
+| [View Session] [Dismiss]                                         |
+| [Needs Attention] [Unread] login-flow failed 2h ago             |
+| [Resume] [Dismiss]                                               |
+| [Paused] [Read] cache-layer paused 1d ago                       |
+| [Resume] [Dismiss]                                               |
 |                                                                |
 | [Dismiss Completed]                                             |
 +----------------------------------------------------------------+
@@ -265,9 +272,9 @@ Annotation:
 | Create Template                                                   |
 +-------------------------------------------------------------------+
 | Name [ ]                                                          |
-| Name is required.                                                 |
+| Name is required to save this template.                           |
 | feature_name [ ]                                                  |
-| Required variable missing.                                        |
+| Enter each required variable to continue.                         |
 |                                                 [Save disabled]   |
 +-------------------------------------------------------------------+
 ```
@@ -287,7 +294,7 @@ Annotation:
 +---------------------------------------------------------------+
 | Keyboard Shortcuts                                        [x] |
 +---------------------------------------------------------------+
-| Search: [type to filter shortcuts]                         |
+| Search shortcuts: [type to filter shortcuts]               |
 | Navigation: g h, g s, g w, g c, g p                        |
 | Actions: Cmd/Ctrl+N, Cmd/Ctrl+K, Cmd/Ctrl+F, Cmd/Ctrl+,    |
 | Workspaces: Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+W               |
@@ -305,8 +312,8 @@ Annotation:
 +-------------------------------------------------------------------+
 | Review Depth [?]                                                  |
 +-------------------------------------------------------------------+
-| Controls how thorough review passes should be.                    |
-| Use `Standard` for most work; choose `Security` for auth or risk. |
+| Choose how thorough review passes should be.                      |
+| Use `Standard` for most work. Choose `Security` for auth or risk. |
 +-------------------------------------------------------------------+
 ```
 
@@ -314,8 +321,8 @@ Annotation:
 +-------------------------------------------------------------------+
 | Analysis Drain [?]                                                |
 +-------------------------------------------------------------------+
-| Checks code against the plan after each dev iteration. GPT-style  |
-| models are usually the best fit here.                             |
+| Check code against the plan after each dev iteration.             |
+| GPT-style models are usually the best fit here.                   |
 +-------------------------------------------------------------------+
 ```
 
@@ -354,12 +361,12 @@ Annotation:
 +--------------------------------------------------------------------------------+
 | Agent Tools                                                                    |
 +--------------------------------------------------------------------------------+
-| Claude Code         Developer agent CLI  Ready  v1.3.0  /usr/local/bin/claude  |
+| Claude Code         Developer agent CLI  Ready to use  v1.3.0  /usr/local/bin/claude |
 |                     Models: opus, sonnet  [Open CLI Settings] [Test Connection] |
 |                     [Check Updates] [Refresh Models]                            |
 | Claude Code Switch  Model switch helper  Needs setup  /usr/local/bin/cc-switch |
 |                     [Open CLI Settings] [Test Connection]                       |
-| Codex               OpenAI coding CLI  Auth required  /usr/local/bin/codex     |
+| Codex               OpenAI coding CLI  Needs sign-in  /usr/local/bin/codex     |
 |                     Models: o3, gpt-4.1  [Open CLI Settings] [Test Connection]  |
 | OpenCode            Multi-provider CLI  Not installed                           |
 |                     [Install]                                                   |
@@ -407,6 +414,7 @@ Annotation:
 
 - Tool cards stay organized around readiness and next action, not backend implementation detail
 - Recovery is always adjacent to the failing tool so users do not have to hunt for the next step
+- Status labels use plain language such as `Ready to use`, `Needs sign-in`, and `Not installed` so state is understandable without icons or color cues
 
 ## Interaction, Keyboard, And Accessibility Notes
 
@@ -414,3 +422,5 @@ Annotation:
 - Search result counts, install progress, and tool test results are announced through a live region
 - Icon buttons require labels or tooltips; unread/read notification state uses text in addition to visual treatment
 - Supporting flows always define `loading`, `empty`, `error`, and `disabled` states so secondary UI feels as polished as core screens
+- Step indicators, statuses, and validation messages use words and structure in addition to visual treatment, not color alone
+- Writing stays action-oriented, specific, and brief so people can decide quickly without reading dense help text

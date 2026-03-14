@@ -6,7 +6,7 @@
     "outDir": "./out-tsc/spec",
     "types": ["jasmine", "node"]
   },
-  "files": ["src/test-setup.ts"],
+  "files": ["src/test-main.ts", "src/test-setup.ts"],
   "include": ["src/**/*.spec.ts", "src/**/*.d.ts"],
   "exclude": ["node_modules"]
 }

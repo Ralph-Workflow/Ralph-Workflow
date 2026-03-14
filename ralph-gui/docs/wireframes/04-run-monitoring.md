@@ -6,44 +6,46 @@ Focus: `AC-5`, UX-2.4, UX-3.1, UX-3.9, UX-4.1, UX-9.4, UX-11.1, UX-13.3.
 
 ```
 +------------------------------------------------------------------------+
-| <- Sessions   Run Monitoring: add-auth     [Pause] [Cancel Session] [More] |
-|                Add user authentication                                  |
+| <- Runs   Run Monitoring: add-auth         [Pause Run] [Cancel Run] [More] |
+|          Add user authentication                                        |
 +------------------------------------------------------------------------+
 | [Plan]====[Develop 3 of 5 *]----[Review]----[Commit]                    |
-|  1m20s     Running now         Waiting          Waiting                  |
-| Workflow: Running in Develop 3 of 5                                    |
-| Transport: Live connected | last update just now | auto-scroll on       |
+|  1m20s     Running now           Waiting        Waiting                  |
+| Current phase: Develop iteration 3 of 5                                 |
+| Connection: Live | Updated just now | Auto-scroll on                    |
 |                                                                        |
 | [Log *] [Changes] [Info]                                               |
-| [Search] [Level: All v] [Auto-scroll: On] [Download]                   |
+| [Search logs] [Level: All v] [Auto-scroll: On] [Export]                |
 |                                                                        |
 | 14:23:01 Starting iteration 3                                           |
 | 14:23:05 Reading PLAN.md                                                |
-| 14:23:20 8 tests passing                                                |
-| 14:23:30 Writing changes...                                             |
+| 14:23:20 Tests passing: 8                                               |
+| 14:23:30 Writing changes                                                |
 |                                                                        |
-| Session info                                                           |
-| Worktree wt-62-auth  Agent claude  Duration 12m34s  Checkpoint yes     |
+| Run details                                                            |
+| Worktree wt-62-auth  Agent claude  Elapsed 12m34s  Checkpoint saved    |
 |                                                                        |
-| Iteration History                                                      |
-| 1  [3 files]  4m12s  8 of 8 pass   complete                            |
-| 2  [2 files]  3m45s 10 of 10 pass  complete                            |
-| 3  running                                                             |
+| Iteration history                                                      |
+| 1  [3 files]  4m12s  Tests: 8 of 8 passed   Completed                  |
+| 2  [2 files]  3m45s  Tests: 10 of 10 passed Completed                  |
+| 3  Running                                                             |
 |                                                                        |
-| Review History                                                         |
-| 1  45s  2 findings   complete                                          |
-| 2  running  1 finding so far                                           |
+| Review history                                                         |
+| 1  45s  Findings: 2  Completed                                         |
+| 2  Running  Findings so far: 1                                         |
 +------------------------------------------------------------------------+
 ```
 
-- The page title names the screen and the subject run together for faster orientation
-- Workflow state and transport state stay separate so stale transport does not imply failed workflow state
+- The page title names the screen and the current run together for fast orientation
+- Current phase and connection status stay separate so a stale connection does not imply a failed run
 
 Annotation:
 
 - The timeline stays above everything else because it answers the primary monitoring question first: where is the run right now
+- The run subtitle gives plain-language context so users do not need to infer meaning from the run name alone
 - Log tools remain close to the log stream because they change how the same evidence is inspected, not what the run is doing
-- Completed phases are clickable and open a phase summary panel; phase colors remain fixed: Plan=purple, Develop=blue, Review=amber, Commit=green
+- Completed phases are clickable and open a phase summary panel; labels, icons, and status text communicate meaning even when color is unavailable
+- Destructive actions stay explicit and separate from progress information; confirmation remains required before cancellation
 - The global status bar remains visible on this page and continues to show aggregate run count and connection health
 
 ## Stream Interrupted / Reconnecting State
@@ -53,8 +55,8 @@ Annotation:
 | Run Monitoring: add-auth                                              |
 +------------------------------------------------------------------------+
 | [Plan]====[Develop 3 of 5 *]----[Review]----[Commit]                  |
-| Workflow: Running in Develop 3 of 5                                   |
-| Transport: Reconnecting - showing cached output from 18s ago          |
+| Current phase: Develop iteration 3 of 5                               |
+| Connection issue: Reconnecting. Showing cached output from 18s ago.   |
 | [Retry Now]                                                           |
 +------------------------------------------------------------------------+
 ```
@@ -74,23 +76,23 @@ Annotation:
 ```
 +------------------------------------------------------------------------+
 | [Log *] [Changes] [Info]                                              |
-| No logs yet. Output will appear here after the run starts producing.  |
+| No log output yet. Activity appears here when the run starts writing. |
 +------------------------------------------------------------------------+
 ```
 
 ```
 +------------------------------------------------------------------------+
 | [Changes *] [Info]                                                    |
-| No code changes yet. This panel will show files and diffs as the AI   |
-| develops the run.                                                     |
+| No code changes yet. Files and diffs appear here after the run        |
+| writes changes.                                                       |
 +------------------------------------------------------------------------+
 ```
 
 ```
 +------------------------------------------------------------------------+
-| Session info                                                          |
-| Some metadata could not be loaded. Showing the run status and logs    |
-| that are still available.                              [Retry]         |
+| Run details                                                           |
+| Some details could not be loaded. Showing run status and logs that    |
+| are still available.                                   [Retry]         |
 +------------------------------------------------------------------------+
 ```
 
@@ -98,12 +100,12 @@ Annotation:
 
 ```
 +-------------------------------------------------------------------+
-| <- Sessions   Run Monitoring: add-auth                     [More]  |
+| <- Runs   Run Monitoring: add-auth                         [More]  |
 +-------------------------------------------------------------------+
 | [Plan]====[Develop]====[Review]====[Commit]                       |
-|   ok          ok            ok            ok                       |
+| Completed   Completed    Completed    Completed                   |
 |                                                                   |
-| [Success] Session completed successfully                 25m 30s   |
+| [Completed] Run finished successfully                   25m 30s   |
 | [3 iterations] [2 reviews] [7 files changed] [18 tests passed]    |
 |                                                                   |
 | [Log] [Changes *] [Info]                                          |
@@ -118,15 +120,15 @@ Annotation:
 
 ```
 +-------------------------------------------------------------------+
-| <- Sessions   Run Monitoring: login-flow [Resume] [Retry] [More]  |
+| <- Runs   Run Monitoring: login-flow   [Resume Run] [Retry] [More] |
 +-------------------------------------------------------------------+
 | [Plan]====[Develop X 2 of 5]----[Review]----[Commit]              |
 |                                                                   |
-| [Error] Session failed during Development                         |
+| [Error] Run stopped during Develop                                |
 | API rate limit exceeded                                           |
-| What happened: provider stopped accepting requests                |
-| What you can do: wait and resume, switch agent, or retry later    |
-| [Resume Session] [Retry From Beginning] [Go To Config]            |
+| What happened: the provider stopped accepting requests            |
+| Next step: resume when capacity returns, switch agent, or retry   |
+| [Resume Run] [Retry From Start] [Go To Config]                    |
 |                                                                   |
 | [Log *] [Changes] [Info]                                          |
 | ... last live output and stderr context ...                       |
@@ -137,12 +139,12 @@ Annotation:
 
 ```
 +-------------------------------------------------------------------+
-| <- Sessions   Run Monitoring: add-auth      [Pause] [More]        |
+| <- Runs   Run Monitoring: add-auth          [Pause Run] [More]    |
 +-------------------------------------------------------------------+
 | [Plan]====[Develop 4 of 5 *]----[Review]----[Commit]              |
 | [Degraded] Fallback agent active after 2 retry attempts           |
 | Current agent: codex  Previous agent: claude                      |
-| [View Reason] [Open Configuration]                                |
+| [Why This Changed] [Open Configuration]                           |
 +-------------------------------------------------------------------+
 ```
 
@@ -150,13 +152,13 @@ Annotation:
 
 ```
 +-------------------------------------------------------------------+
-| <- Sessions   Run Monitoring: cache-layer [Resume] [More]         |
+| <- Runs   Run Monitoring: cache-layer      [Resume Run] [More]    |
 +-------------------------------------------------------------------+
 | [Plan]====[Develop || 3 of 5]----[Review]----[Commit]             |
 |                                                                   |
 | [Paused] Checkpoint saved                                         |
 | Paused 6m ago. Resume will continue from iteration 3.             |
-| [Resume Session]                              [Cancel Session]     |
+| [Resume Run]                                  [Cancel Run]         |
 |                                                                   |
 | [Log *] [Changes] [Info]                                          |
 | ... output up to pause point ...                                  |
@@ -167,12 +169,12 @@ Annotation:
 
 ```
 +-------------------------------------------------------------------+
-| Cancel Session?                                                   |
+| Cancel Run?                                                       |
 +-------------------------------------------------------------------+
 | `add-auth` will stop now. Completed changes stay on disk, but the |
 | run will no longer continue automatically.                        |
 |                                                                   |
-| [Keep Running]                              [Cancel Session]       |
+| [Keep Running]                                [Cancel Run]         |
 +-------------------------------------------------------------------+
 ```
 
@@ -195,9 +197,11 @@ Annotation:
 
 - Auto-scroll pauses when the user scrolls up and exposes a `Scroll To Bottom` recovery control
 - Phase changes, failures, pauses, and reconnect states are announced in a live region
-- Status is always shown with text plus badge, not color alone
-- `More` expands secondary actions including `Open in Terminal`, `Open Worktree`, and repeat-safe detach/close actions; primary recovery actions stay visible in the header
-- Log rendering uses a monospace font, supports ANSI colors, virtualizes large logs, and resumes replay from the last acknowledged sequence boundary after reconnect
-- Clicking the files-changed count in Iteration History opens the Changes tab filtered to that iteration
-- Relative timing should appear alongside timestamps where useful, for example `2m ago` and `14:23:01`
-- Animations respect `prefers-reduced-motion`; pulse/live indicators fall back to static badges
+- Status always appears with text plus shape or badge, not color alone
+- The screen keeps one dominant action per state; secondary and infrequent actions stay under `More`
+- Log rendering uses a monospace font, supports ANSI colors as a supplement only, virtualizes large logs, and resumes replay from the last acknowledged sequence boundary after reconnect
+- Clicking the files-changed count in Iteration history opens the Changes tab filtered to that iteration
+- Relative timing appears alongside timestamps where useful, for example `2m ago` and `14:23:01`
+- Empty and partial-data states explain what is unavailable and what the user can still do
+- Animations stay subtle, communicate state only when needed, and respect `prefers-reduced-motion`; pulse/live indicators fall back to static badges
+- Typography should preserve clear contrast between page title, current phase, metadata, and log content; avoid compressing dense status text into one visual weight

@@ -40,6 +40,7 @@
           routerLinkActive="active"
           [routerLinkActiveOptions]="{exact: item.path === '/'}"
           class="nav-item"
+          [attr.title]="item.tooltip"
           [attr.aria-label]="item.label + (item.path === '/sessions' && failedPausedCountValue > 0 ? ': ' + failedPausedCountValue + ' need attention' : '')"
         >
           <mat-icon>{{ item.icon }}</mat-icon>
@@ -68,6 +69,7 @@
           [routerLink]="item.path"
           routerLinkActive="active"
           class="nav-item"
+          [attr.title]="item.tooltip"
         >
           <mat-icon>{{ item.icon }}</mat-icon>
           <span>{{ item.label }}</span>
@@ -86,6 +88,16 @@
       <div class="sidebar-footer">v0.1.0</div>
     </div>
   </aside>
+  <button
+    type="button"
+    class="sidebar-collapse-btn"
+    [class.sidebar-collapse-btn--collapsed]="isSidebarCollapsed"
+    (click)="toggleSidebar()"
+    [attr.aria-label]="isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+    [attr.title]="isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+  >
+    <mat-icon>{{ isSidebarCollapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+  </button>
   <div
     class="sidebar-resize-handle"
     role="separator"
@@ -111,12 +123,27 @@
     </div>
   }
     <main class="main-content">
-      <router-outlet></router-outlet>
+      @if (isSwitchingWorkspaceValue) {
+        <app-workspace-loading-skeleton />
+      } @else {
+        <router-outlet></router-outlet>
+      }
     </main>
   </div>
   <app-status-bar />
   <app-notification-center />
 </div>
+
+@if (closeActiveConfirmIdValue !== null) {
+  <app-cancel-confirmation
+    [title]="'Close Workspace?'"
+    [message]="closeActiveConfirmMessageValue"
+    [confirmLabel]="'Close Workspace'"
+    [cancelLabel]="'Keep Open'"
+    [confirmVariant]="'warning'"
+    (confirmed)="onCloseActiveConfirmed($event)"
+  />
+}
 
 @if (isShowHelp) {
   <div class="modal-overlay" (click)="closeHelp()">

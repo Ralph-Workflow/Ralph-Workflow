@@ -57,6 +57,7 @@ describe('ConfigFormComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [HostComponent, RouterModule.forRoot([])],
+      providers: [],
     }).compileComponents();
 
     hostFixture = TestBed.createComponent(HostComponent);

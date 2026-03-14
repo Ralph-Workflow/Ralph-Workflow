@@ -1,5 +1,6 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { TauriService } from './tauri.service';
+import { PreferencesService } from './preferences.service';
 import type { WorkspaceEntry } from '../types';
 
 export interface WorkspaceRunSummary {
@@ -39,6 +40,7 @@ function entryToWorkspace(entry: WorkspaceEntry): Workspace {
 })
 export class WorkspaceService {
   private readonly tauri = inject(TauriService);
+  private readonly preferencesService = inject(PreferencesService);
 
   readonly workspaces = signal<Workspace[]>([]);
   readonly activeWorkspaceId = signal<string | null>(null);
@@ -57,6 +59,14 @@ export class WorkspaceService {
   private async loadFromBackend(): Promise<void> {
     this.isLoading.set(true);
     try {
+      const restoreWorkspaces = this.preferencesService.preferences().session?.restoreWorkspaces ?? true;
+
+      if (!restoreWorkspaces) {
+        // User has opted out of workspace restoration; start fresh.
+        this.workspaces.set([]);
+        return;
+      }
+
       const entries = await this.tauri.getWorkspaces();
       const workspaces = entries.map(entryToWorkspace);
       this.workspaces.set(workspaces);
@@ -76,6 +86,13 @@ export class WorkspaceService {
   }
 
   async openWorkspace(path: string): Promise<Workspace> {
+    // Check for existing workspace with the same path to prevent duplicates.
+    const existingByPath = this.workspaces().find(w => w.path === path);
+    if (existingByPath) {
+      this.activeWorkspaceId.set(existingByPath.id);
+      return existingByPath;
+    }
+
     try {
       const entry = await this.tauri.openWorkspace(path);
       const workspace = entryToWorkspace(entry);
@@ -93,11 +110,20 @@ export class WorkspaceService {
     }
   }
 
-  async closeWorkspace(id: string): Promise<void> {
+  /**
+   * Close a workspace.
+   *
+   * @param id       - The workspace ID to close.
+   * @param force    - When true, skip the active-runs guard and close regardless.
+   *                   Use this when the caller has already confirmed with the user
+   *                   (e.g. after the CancelConfirmationComponent dialog).
+   *                   When false (the default), throws if the workspace has active runs.
+   */
+  async closeWorkspace(id: string, force = false): Promise<void> {
     const workspace = this.workspaces().find(w => w.id === id);
     if (!workspace) return;
 
-    if (workspace.runSummary.running > 0) {
+    if (!force && workspace.runSummary.running > 0) {
       throw new Error(
         `Cannot close workspace "${workspace.label}" with ${workspace.runSummary.running} active run(s)`,
       );

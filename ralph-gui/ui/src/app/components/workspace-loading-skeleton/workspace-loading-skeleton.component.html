@@ -1,0 +1,38 @@
+<div class="flex flex-col gap-4 p-4 w-full animate-pulse" aria-busy="true" aria-label="Loading workspace">
+  <!-- Page header skeleton -->
+  <div class="flex items-center gap-3 mb-2">
+    <div class="h-6 w-48 bg-white/10 rounded"></div>
+    <div class="h-5 w-24 bg-white/6 rounded"></div>
+  </div>
+
+  <!-- Dashboard summary cards skeleton (mirrors dashboard card layout) -->
+  <div class="flex gap-3 mb-4">
+    @for (card of skeletonCards; track card) {
+      <div class="flex-1 h-[72px] bg-white/8 rounded-md border border-white/8 flex flex-col justify-between p-3">
+        <div class="h-3 w-16 bg-white/12 rounded"></div>
+        <div class="h-6 w-10 bg-white/10 rounded"></div>
+      </div>
+    }
+  </div>
+
+  <!-- Sessions/worktrees list rows skeleton (mirrors list layout) -->
+  <div class="flex flex-col gap-2">
+    @for (row of skeletonRows; track row) {
+      <div class="flex items-center gap-3 px-3 py-2.5 bg-white/5 rounded-md border border-white/6">
+        <!-- Status indicator dot -->
+        <div class="w-2.5 h-2.5 rounded-full bg-white/15 flex-shrink-0"></div>
+        <!-- Main content area -->
+        <div class="flex-1 flex flex-col gap-1.5">
+          <!-- Title row -->
+          <div class="h-3.5 rounded bg-white/12" [style.width.%]="row % 2 === 0 ? 55 : 70"></div>
+          <!-- Subtitle row -->
+          <div class="h-2.5 rounded bg-white/8" [style.width.%]="row % 3 === 0 ? 40 : 30"></div>
+        </div>
+        <!-- Right side metadata -->
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <div class="h-3 w-12 bg-white/8 rounded"></div>
+        </div>
+      </div>
+    }
+  </div>
+</div>

@@ -8,6 +8,7 @@ describe('PreflightSummaryComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [PreflightSummaryComponent],
+      providers: [],
     }).compileComponents();
     
     fixture = TestBed.createComponent(PreflightSummaryComponent);

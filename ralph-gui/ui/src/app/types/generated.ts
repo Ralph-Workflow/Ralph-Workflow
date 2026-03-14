@@ -171,6 +171,8 @@ export interface GuiPreferences {
   theme: string;
   accentColor: string;
   sidebarWidth: number;
+  /** Whether the sidebar is collapsed. Persisted across sessions. */
+  sidebarCollapsed: boolean;
   fontSize: number;
   monospaceFont: string;
   runPollIntervalMs: number;

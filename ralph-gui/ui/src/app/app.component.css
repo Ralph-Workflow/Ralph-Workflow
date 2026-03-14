@@ -232,6 +232,42 @@
   display: inline-block;
 }
 
+.sidebar-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 40px;
+  padding: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 11;
+  align-self: center;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-raised);
+}
+
+.sidebar-collapse-btn mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-collapse-btn--collapsed {
+  border-left: 1px solid var(--border-default);
+}
+
 .sidebar-resize-handle {
   width: 4px;
   height: 100%;

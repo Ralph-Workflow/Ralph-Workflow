@@ -9,6 +9,7 @@ const DEFAULT_PREFS: GuiPreferences = {
   theme: 'dark',
   accentColor: '#f59e0b',
   sidebarWidth: 240,
+  sidebarCollapsed: false,
   fontSize: 14,
   monospaceFont: 'JetBrains Mono',
   runPollIntervalMs: 2000,

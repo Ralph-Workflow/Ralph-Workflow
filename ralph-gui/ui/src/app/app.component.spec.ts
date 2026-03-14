@@ -1,12 +1,14 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { Router, NavigationEnd } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { AppComponent } from './app.component';
 import { WorktreesService } from './services/worktrees.service';
 import { WorkspaceService } from './services/workspace.service';
+import { SessionsService } from './services/sessions.service';
 import { NotificationService, NOTIFICATION_LISTEN_TOKEN } from './services/notification.service';
 import { PreferencesService } from './services/preferences.service';
 import { signal, WritableSignal } from '@angular/core';
+import { Subject } from 'rxjs';
 import type { WorktreeInfo } from './types';
 import type { Workspace } from './services/workspace.service';
 
@@ -18,28 +20,36 @@ describe('AppComponent', () => {
   let lastRepoPathSignal: WritableSignal<string | null>;
   let notificationIsPanelOpenSignal: WritableSignal<boolean>;
   let workspacesSignal: WritableSignal<Workspace[]>;
+  let activeWorkspaceSignal: WritableSignal<Workspace | null>;
+  let activeWorkspaceIdSignal: WritableSignal<string | null>;
   let isLoadingSignal: WritableSignal<boolean>;
   let prefsIsLoadingSignal: WritableSignal<boolean>;
   let prefsIsFirstRunSignal: WritableSignal<boolean>;
+  let initializeRepoSpy: jasmine.Spy;
+  let fetchSessionsSpy: jasmine.Spy;
+  let persistNavigationSpy: jasmine.Spy;
 
   const createMockWorktreesService = () => ({
     worktrees: worktreesSignal.asReadonly(),
     activeWorktreePath: activeWorktreePathSignal.asReadonly(),
     lastRepoPath: lastRepoPathSignal.asReadonly(),
     switchContext: jasmine.createSpy('switchContext'),
+    initializeRepo: initializeRepoSpy,
   });
 
   const createMockWorkspaceService = () => ({
     workspaces: workspacesSignal.asReadonly(),
-    activeWorkspaceId: signal<string | null>(null).asReadonly(),
-    activeWorkspace: signal<Workspace | null>(null).asReadonly(),
+    activeWorkspaceId: activeWorkspaceIdSignal.asReadonly(),
+    activeWorkspace: activeWorkspaceSignal.asReadonly(),
     isLoading: isLoadingSignal.asReadonly(),
     switchWorkspace: jasmine.createSpy('switchWorkspace'),
     closeWorkspace: jasmine.createSpy('closeWorkspace').and.returnValue(Promise.resolve()),
+    persistNavigation: persistNavigationSpy,
+    setNavigationState: jasmine.createSpy('setNavigationState'),
   });
 
   const createMockPreferencesService = () => ({
-    preferences: signal({ theme: 'dark', accentColor: '#f59e0b' } as unknown as ReturnType<PreferencesService['preferences']>).asReadonly(),
+    preferences: signal({ theme: 'dark', accentColor: '#f59e0b', sidebarWidth: 220 } as unknown as ReturnType<PreferencesService['preferences']>).asReadonly(),
     isLoading: prefsIsLoadingSignal.asReadonly(),
     isFirstRun: prefsIsFirstRunSignal.asReadonly(),
     save: jasmine.createSpy('save').and.returnValue(Promise.resolve()),
@@ -57,15 +67,38 @@ describe('AppComponent', () => {
     add: jasmine.createSpy('add'),
   });
 
+  const createMockSessionsService = () => ({
+    sessions: signal([]).asReadonly(),
+    status: signal('idle').asReadonly(),
+    isLoading: signal(false).asReadonly(),
+    fetchSessions: fetchSessionsSpy,
+  });
+
+  const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
+    id: 'ws-1',
+    path: '/path/to/repo',
+    label: 'repo',
+    activeWorktree: null,
+    runSummary: { running: 0, failed: 0, paused: 0 },
+    navigationState: null,
+    activeRunCount: 0,
+    ...overrides,
+  });
+
   beforeEach(async () => {
     worktreesSignal = signal<WorktreeInfo[]>([]);
     activeWorktreePathSignal = signal<string | null>(null);
     lastRepoPathSignal = signal<string | null>(null);
     notificationIsPanelOpenSignal = signal<boolean>(false);
     workspacesSignal = signal<Workspace[]>([]);
+    activeWorkspaceSignal = signal<Workspace | null>(null);
+    activeWorkspaceIdSignal = signal<string | null>(null);
     isLoadingSignal = signal<boolean>(true);
     prefsIsLoadingSignal = signal<boolean>(true);
     prefsIsFirstRunSignal = signal<boolean>(false);
+    initializeRepoSpy = jasmine.createSpy('initializeRepo').and.returnValue(Promise.resolve());
+    fetchSessionsSpy = jasmine.createSpy('fetchSessions').and.returnValue(Promise.resolve());
+    persistNavigationSpy = jasmine.createSpy('persistNavigation').and.returnValue(Promise.resolve());
 
     await TestBed.configureTestingModule({
       imports: [AppComponent, RouterModule.forRoot([])],
@@ -74,6 +107,7 @@ describe('AppComponent', () => {
         { provide: WorkspaceService, useFactory: createMockWorkspaceService },
         { provide: NotificationService, useFactory: createMockNotificationService },
         { provide: PreferencesService, useFactory: createMockPreferencesService },
+        { provide: SessionsService, useFactory: createMockSessionsService },
         {
           provide: NOTIFICATION_LISTEN_TOKEN,
           useValue: jasmine.createSpy('listen').and.returnValue(
@@ -351,6 +385,148 @@ describe('AppComponent', () => {
     });
   });
 
+  describe('activity bar tooltips', () => {
+    it('should have tooltips on nav items with keyboard shortcuts', () => {
+      expect(component.navItems).toBeTruthy();
+      const homeItem = component.navItems.find(i => i.path === '/');
+      expect(homeItem?.tooltip).toContain('Home');
+      expect(homeItem?.tooltip).toContain('g');
+    });
+
+    it('should include keyboard shortcut in Home tooltip', () => {
+      const homeItem = component.navItems.find(i => i.path === '/');
+      expect(homeItem?.tooltip).toContain('g then h');
+    });
+
+    it('should include keyboard shortcut in Sessions tooltip', () => {
+      const sessionsItem = component.navItems.find(i => i.path === '/sessions');
+      expect(sessionsItem?.tooltip).toContain('g then s');
+    });
+
+    it('should include keyboard shortcut in Preferences bottom nav tooltip', () => {
+      const prefItem = component.navItemsBottom.find(i => i.path === '/preferences');
+      expect(prefItem?.tooltip).toContain('Preferences');
+      expect(prefItem?.tooltip).toContain('g then p');
+    });
+  });
+
+  describe('workspace context switching', () => {
+    it('should call initializeRepo when activeWorkspace changes', fakeAsync(() => {
+      fixture.detectChanges();
+
+      const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1' });
+      activeWorkspaceSignal.set(ws);
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      expect(initializeRepoSpy).toHaveBeenCalledWith('/path/to/repo-1');
+    }));
+
+    it('should call fetchSessions when activeWorkspace changes', fakeAsync(() => {
+      fixture.detectChanges();
+
+      const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1' });
+      activeWorkspaceSignal.set(ws);
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      expect(fetchSessionsSpy).toHaveBeenCalledWith('/path/to/repo-1');
+    }));
+
+    it('should navigate to saved navigationState when workspace changes after initial load', fakeAsync(() => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+
+      // Initial load
+      fixture.detectChanges();
+      tick();
+
+      // Set initial workspace (triggers initialLoadComplete flag)
+      const ws1 = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1', navigationState: '/sessions' });
+      activeWorkspaceSignal.set(ws1);
+      workspacesSignal.set([ws1]);
+      fixture.detectChanges();
+      tick();
+
+      // Switch to ws2 with different nav state
+      const ws2 = createMockWorkspace({ id: 'ws-2', path: '/path/to/repo-2', navigationState: '/worktrees' });
+      activeWorkspaceSignal.set(ws2);
+      fixture.detectChanges();
+      tick();
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/worktrees']);
+    }));
+
+    it('should not initializeRepo when activeWorkspace is null', fakeAsync(() => {
+      fixture.detectChanges();
+      activeWorkspaceSignal.set(null);
+      fixture.detectChanges();
+      tick();
+      expect(initializeRepoSpy).not.toHaveBeenCalled();
+    }));
+  });
+
+  describe('navigation state persistence', () => {
+    it('should persist navigation state on NavigationEnd events', fakeAsync(() => {
+      const router = TestBed.inject(Router);
+      const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
+
+      const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo-1' });
+      activeWorkspaceSignal.set(ws);
+      activeWorkspaceIdSignal.set('ws-1');
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      // Emit a NavigationEnd event
+      routerEvents$.next(new NavigationEnd(1, '/sessions', '/sessions'));
+      tick(350); // past debounce
+
+      expect(persistNavigationSpy).toHaveBeenCalledWith('ws-1', '/sessions');
+    }));
+
+    it('should not persist navigation state for exempt routes (/welcome)', fakeAsync(() => {
+      const router = TestBed.inject(Router);
+      const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
+
+      const ws = createMockWorkspace({ id: 'ws-1' });
+      activeWorkspaceSignal.set(ws);
+      activeWorkspaceIdSignal.set('ws-1');
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      routerEvents$.next(new NavigationEnd(1, '/welcome', '/welcome'));
+      tick(350);
+
+      expect(persistNavigationSpy).not.toHaveBeenCalled();
+    }));
+
+    it('should not persist navigation state for exempt routes (/onboarding)', fakeAsync(() => {
+      const router = TestBed.inject(Router);
+      const routerEvents$ = (router as unknown as { events: Subject<NavigationEnd> }).events;
+
+      const ws = createMockWorkspace({ id: 'ws-1' });
+      activeWorkspaceSignal.set(ws);
+      activeWorkspaceIdSignal.set('ws-1');
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      routerEvents$.next(new NavigationEnd(1, '/onboarding', '/onboarding'));
+      tick(350);
+
+      expect(persistNavigationSpy).not.toHaveBeenCalled();
+    }));
+  });
+
   describe('sidebar resize', () => {
     beforeEach(() => {
       fixture.detectChanges();
@@ -414,6 +590,171 @@ describe('AppComponent', () => {
       await fixture.whenStable();
 
       expect(saveSpy).toHaveBeenCalledWith(jasmine.objectContaining({ sidebarWidth: 300 }));
+    }));
+  });
+
+  describe('close active workspace (Ctrl+W)', () => {
+    it('should show close confirmation dialog when Ctrl+W is pressed and workspace has active runs', fakeAsync(() => {
+      const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 2 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Initially no dialog
+      expect(component.closeActiveConfirmId()).toBeNull();
+
+      // Trigger Ctrl+W
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      // Dialog should be shown
+      expect(component.closeActiveConfirmId()).toBe('ws-1');
+    }));
+
+    it('should NOT show dialog when Ctrl+W is pressed and workspace has no active runs', fakeAsync(async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 0 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Trigger Ctrl+W
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      tick();
+      await fixture.whenStable();
+
+      // No dialog shown; workspace should be closed directly
+      expect(component.closeActiveConfirmId()).toBeNull();
+      expect(workspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', false);
+    }));
+
+    it('should close workspace with force=true when dialog is confirmed', fakeAsync(async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 1 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Trigger Ctrl+W to show dialog
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      // Confirm the dialog
+      component.onCloseActiveConfirmed(true);
+
+      tick();
+      await fixture.whenStable();
+
+      expect(component.closeActiveConfirmId()).toBeNull();
+      expect(workspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', true);
+    }));
+
+    it('should not close workspace when dialog is cancelled', fakeAsync(async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 1 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Trigger Ctrl+W to show dialog
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      // Cancel the dialog
+      component.onCloseActiveConfirmed(false);
+
+      tick();
+      await fixture.whenStable();
+
+      expect(component.closeActiveConfirmId()).toBeNull();
+      expect(workspaceService.closeWorkspace).not.toHaveBeenCalled();
+    }));
+
+    it('should show error notification when workspace close fails', fakeAsync(() => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const notificationService = TestBed.inject(NotificationService);
+      // Use callFake to create the rejected promise lazily (at call time, not setup time)
+      // so zone.js can track it correctly from the moment it's consumed by the await.
+      (workspaceService.closeWorkspace as jasmine.Spy).and.callFake(
+        (): Promise<void> => Promise.reject(new Error('Close failed')),
+      );
+
+      const ws = createMockWorkspace({ id: 'ws-1', activeRunCount: 0 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Trigger Ctrl+W (no active runs, closes directly)
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      tick();
+
+      expect(notificationService.add).toHaveBeenCalledWith(jasmine.objectContaining({ type: 'error' }));
+    }));
+
+    it('should include workspace label and run count in dialog message', fakeAsync(() => {
+      const ws = createMockWorkspace({ id: 'ws-1', label: 'my-project', activeRunCount: 3 });
+      workspacesSignal.set([ws]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws);
+
+      fixture.detectChanges();
+      tick();
+
+      // Trigger Ctrl+W to show dialog
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w', ctrlKey: true }));
+
+      const msg = component.closeActiveConfirmMessageValue;
+      expect(msg).toContain('my-project');
+      expect(msg).toContain('3');
+    }));
+  });
+
+  describe('workspace switching loading state', () => {
+    it('should be false initially before any workspace activates', () => {
+      fixture.detectChanges();
+      expect(component.isSwitchingWorkspace()).toBe(false);
+    });
+
+    it('should set isSwitchingWorkspace to true during workspace switch', fakeAsync(() => {
+      // Make initializeRepo and fetchSessions return pending promises
+      let resolveInit!: () => void;
+      let resolveFetch!: () => void;
+      initializeRepoSpy.and.returnValue(new Promise<void>(r => { resolveInit = r; }));
+      fetchSessionsSpy.and.returnValue(new Promise<void>(r => { resolveFetch = r; }));
+
+      fixture.detectChanges();
+
+      const ws = createMockWorkspace({ id: 'ws-1', path: '/path/to/repo' });
+      activeWorkspaceSignal.set(ws);
+      workspacesSignal.set([ws]);
+
+      fixture.detectChanges();
+      tick();
+
+      // Still switching while promises pending
+      expect(component.isSwitchingWorkspace()).toBe(true);
+
+      // Resolve both
+      resolveInit();
+      resolveFetch();
+      tick();
+      fixture.detectChanges();
+
+      expect(component.isSwitchingWorkspace()).toBe(false);
     }));
   });
 });

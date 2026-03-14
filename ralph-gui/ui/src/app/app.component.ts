@@ -1,12 +1,13 @@
-import { Component, ChangeDetectionStrategy, effect, inject, signal, computed, DOCUMENT } from '@angular/core';
+import { Component, ChangeDetectionStrategy, effect, inject, signal, computed, DOCUMENT, untracked } from '@angular/core';
 import { NgStyle } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
+import { filter, debounceTime } from 'rxjs/operators';
 import { WorktreesService } from './services/worktrees.service';
 import { WorkspaceService } from './services/workspace.service';
 import { NotificationService } from './services/notification.service';
@@ -16,11 +17,14 @@ import { WorkspaceTabBarComponent } from './components/workspace-tab-bar/workspa
 import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { NotificationCenterComponent } from './components/notification-center/notification-center.component';
 import { ConceptsGuideComponent } from './components/concepts-guide/concepts-guide.component';
+import { CancelConfirmationComponent } from './components/cancel-confirmation/cancel-confirmation.component';
+import { WorkspaceLoadingSkeletonComponent } from './components/workspace-loading-skeleton/workspace-loading-skeleton.component';
 
 interface NavItem {
   path: string;
   label: string;
   icon: string;
+  tooltip: string;
 }
 
 interface ShortcutEntry {
@@ -70,15 +74,17 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 ];
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: 'Home', icon: 'home' },
-  { path: '/sessions', label: 'Sessions', icon: 'play_arrow' },
-  { path: '/worktrees', label: 'Worktrees', icon: 'account_tree' },
-  { path: '/configuration', label: 'Configuration', icon: 'settings' },
+  { path: '/', label: 'Home', icon: 'home', tooltip: 'Home (g then h)' },
+  { path: '/sessions', label: 'Sessions', icon: 'play_arrow', tooltip: 'Sessions (g then s)' },
+  { path: '/worktrees', label: 'Worktrees', icon: 'account_tree', tooltip: 'Worktrees (g then w)' },
+  { path: '/configuration', label: 'Configuration', icon: 'settings', tooltip: 'Configuration (g then c)' },
 ];
 
 const NAV_ITEMS_BOTTOM: NavItem[] = [
-  { path: '/preferences', label: 'Preferences', icon: 'settings' },
+  { path: '/preferences', label: 'Preferences', icon: 'settings', tooltip: 'Preferences (g then p, Ctrl+,)' },
 ];
+
+const NAV_PERSIST_EXEMPT_ROUTES = ['/welcome', '/onboarding'];
 
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 400;
@@ -101,6 +107,8 @@ const DEFAULT_SIDEBAR_WIDTH = 220;
     StatusBarComponent,
     NotificationCenterComponent,
     ConceptsGuideComponent,
+    CancelConfirmationComponent,
+    WorkspaceLoadingSkeletonComponent,
   ],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css'],
@@ -135,19 +143,46 @@ export class AppComponent {
   /** Sidebar width in px — set from preferences on load, adjustable via drag handle. */
   readonly sidebarWidth = signal(DEFAULT_SIDEBAR_WIDTH);
 
+  /** Whether the sidebar is currently collapsed. Persisted to preferences. */
+  readonly sidebarCollapsed = signal(false);
+
   /** Computed NgStyle object for the sidebar element. */
   readonly sidebarStyle = computed(() => {
+    if (this.sidebarCollapsed()) {
+      return { width: '0px', 'min-width': '0px', overflow: 'hidden' };
+    }
     const width = this.sidebarWidth();
     return { width: `${width}px`, 'min-width': `${width}px` };
   });
 
+  /** Flag: true after the first workspace has been activated, used to gate navigation restore. */
+  private readonly initialLoadComplete = signal(false);
+
+  /** Flag: true while workspace-switch nav restoration is in progress, suppresses re-persisting. */
+  private isRestoringNavState = false;
+
+  /**
+   * True while the workspace context switch is in progress (initializeRepo / fetchSessions
+   * calls are outstanding). The loading skeleton is rendered over the main content area
+   * during this period to prevent a blank or stale screen.
+   */
+  readonly isSwitchingWorkspace = signal(false);
+
+  /**
+   * When set to a non-null workspace ID, the close-active-workspace confirmation dialog
+   * is rendered for Ctrl+W closes that have active runs.
+   */
+  readonly closeActiveConfirmId = signal<string | null>(null);
+
   get sidebarStyleValue() { return this.sidebarStyle(); }
+  get isSidebarCollapsed() { return this.sidebarCollapsed(); }
   get worktrees() { return this.worktreesService.worktrees(); }
   get unreadCount() { return this.notificationService.unreadCount(); }
   get isShowHelp() { return this.showHelp(); }
   get isShowCommandPalette() { return this.showCommandPalette(); }
   get isShowConceptsGuide() { return this.showConceptsGuide(); }
   get failedPausedCountValue(): number { return this.failedPausedCount(); }
+  get isSwitchingWorkspaceValue(): boolean { return this.isSwitchingWorkspace(); }
 
   private pendingNavKey: string | null = null;
   private keyTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -159,7 +194,7 @@ export class AppComponent {
   private readonly onSidebarResizeEndRef = () => this.onSidebarResizeEnd();
 
   constructor() {
-    // Sync sidebar width from persisted preferences on load.
+    // Sync sidebar width and collapsed state from persisted preferences on load.
     effect(() => {
       const prefs = this.preferencesService.preferences();
       if (!this.isDraggingSidebar) {
@@ -167,6 +202,46 @@ export class AppComponent {
           Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, prefs.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH)),
         );
       }
+      this.sidebarCollapsed.set(prefs.sidebarCollapsed ?? false);
+    });
+
+    // Workspace context switching effect:
+    // When the active workspace changes, reload worktrees and sessions for the new context.
+    // On subsequent switches (not the very first load), also restore the workspace's saved nav state.
+    // While the switch is in progress, set isSwitchingWorkspace=true so the loading skeleton renders.
+    effect(() => {
+      const ws = this.workspaceService.activeWorkspace();
+      if (!ws) return;
+
+      // Use untracked() so that async side-effects don't create reactive dependencies
+      // on anything inside worktreesService or sessionsService.
+      untracked(() => {
+        this.isSwitchingWorkspace.set(true);
+
+        const switchDone = Promise.all([
+          this.worktreesService.initializeRepo(ws.path),
+          this.sessionsService.fetchSessions(ws.path),
+        ]);
+
+        void switchDone.then(() => {
+          this.isSwitchingWorkspace.set(false);
+        }).catch(() => {
+          this.isSwitchingWorkspace.set(false);
+        });
+
+        if (this.initialLoadComplete()) {
+          // Restore saved navigation state on workspace switch
+          const nav = ws.navigationState;
+          if (nav) {
+            this.isRestoringNavState = true;
+            void this.router.navigate([nav]).then(() => {
+              this.isRestoringNavState = false;
+            });
+          }
+        } else {
+          this.initialLoadComplete.set(true);
+        }
+      });
     });
 
     // Redirect to /welcome (or /onboarding on first run) when no workspaces
@@ -193,6 +268,24 @@ export class AppComponent {
           }
         }
       }
+    });
+
+    // Navigation state persistence:
+    // Subscribe to NavigationEnd events and persist the current URL to the active workspace.
+    // Debounce to avoid excessive backend calls. Skip exempt routes and restoring nav state.
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      debounceTime(300),
+    ).subscribe((event) => {
+      if (this.isRestoringNavState) return;
+      const url = event.urlAfterRedirects;
+      const isExempt = NAV_PERSIST_EXEMPT_ROUTES.some(r => url.startsWith(r));
+      if (isExempt) return;
+
+      const activeId = this.workspaceService.activeWorkspaceId();
+      if (!activeId) return;
+
+      void this.workspaceService.persistNavigation(activeId, url);
     });
   }
 
@@ -266,7 +359,7 @@ export class AppComponent {
     }
 
     if (event.ctrlKey && (event.key === 'w' || event.key === 'W')) {
-      void this.closeActiveWorkspace();
+      this.closeActiveWorkspace();
       event.preventDefault();
       return;
     }
@@ -306,6 +399,14 @@ export class AppComponent {
     }
   }
 
+  /** Toggle sidebar collapsed state and persist to preferences. */
+  toggleSidebar(): void {
+    const collapsed = !this.sidebarCollapsed();
+    this.sidebarCollapsed.set(collapsed);
+    const current = this.preferencesService.preferences();
+    void this.preferencesService.save({ ...current, sidebarCollapsed: collapsed });
+  }
+
   onSidebarResizeStart(event: MouseEvent): void {
     event.preventDefault();
     this.isDraggingSidebar = true;
@@ -343,25 +444,59 @@ export class AppComponent {
     }
   }
 
-  private async closeActiveWorkspace(): Promise<void> {
+  /**
+   * Close the active workspace (triggered by Ctrl+W).
+   *
+   * If the workspace has active runs, a non-blocking CancelConfirmationComponent dialog
+   * is shown instead of the blocking window.confirm. The dialog result is handled by
+   * onCloseActiveConfirmed().
+   */
+  private closeActiveWorkspace(): void {
     const activeId = this.workspaceService.activeWorkspaceId();
     if (!activeId) return;
 
     const workspace = this.workspaceService.workspaces().find(w => w.id === activeId);
     if (!workspace) return;
 
-    const hasActiveRuns = workspace.activeRunCount > 0;
-    if (hasActiveRuns) {
-      const confirmed = window.confirm(
-        `Workspace "${workspace.label}" has active runs. Close anyway?`,
-      );
-      if (!confirmed) return;
+    if (workspace.activeRunCount > 0) {
+      // Show non-blocking dialog instead of window.confirm
+      this.closeActiveConfirmId.set(activeId);
+      return;
     }
 
+    void this.executeCloseWorkspace(activeId, false);
+  }
+
+  /** Called when the user responds to the close-active-workspace confirmation dialog. */
+  onCloseActiveConfirmed(confirmed: boolean): void {
+    const id = this.closeActiveConfirmId();
+    this.closeActiveConfirmId.set(null);
+    if (confirmed && id) {
+      void this.executeCloseWorkspace(id, true);
+    }
+  }
+
+  /** Getter proxy to avoid calling signal in template. */
+  get closeActiveConfirmIdValue(): string | null { return this.closeActiveConfirmId(); }
+
+  /** Computed message for the close-active-workspace dialog. */
+  readonly closeActiveConfirmMessage = computed(() => {
+    const id = this.closeActiveConfirmId();
+    if (!id) return '';
+    const ws = this.workspaceService.workspaces().find(w => w.id === id);
+    if (!ws) return 'This workspace has active runs. Close anyway?';
+    return `Workspace "${ws.label}" has ${ws.activeRunCount} active run(s). Closing will not stop them. Close anyway?`;
+  });
+
+  /** Getter proxy to avoid calling computed in template. */
+  get closeActiveConfirmMessageValue(): string { return this.closeActiveConfirmMessage(); }
+
+  private async executeCloseWorkspace(id: string, force: boolean): Promise<void> {
     try {
-      await this.workspaceService.closeWorkspace(activeId);
+      await this.workspaceService.closeWorkspace(id, force);
     } catch (err) {
-      console.error('Failed to close workspace:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      this.notificationService.add({ type: 'error', message: msg });
     }
   }
 

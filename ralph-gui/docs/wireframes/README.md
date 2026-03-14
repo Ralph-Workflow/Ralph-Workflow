@@ -2,6 +2,10 @@
 
 This folder is the canonical wireframe system for Ralph GUI.
 
+Treat these wireframes as living documents. They should be updated as product
+understanding improves and as new UX findings change what users need from the
+interface.
+
 It replaces the old monolithic layout spec with focused, task-based wireframe
 documents, and it has now been reviewed in two passes against both
 `ralph-gui/docs/designs/acceptance-criteria.md` and
@@ -41,6 +45,7 @@ were still missing after the initial reorganization.
 ## How To Use This Folder
 
 - Use these files as the canonical screen/layout reference instead of `ralph-gui/docs/designs/gui-design.md`
+- Treat the wireframes in this folder as living UX artifacts; if new UX findings change the right interaction, flow, state, or explanation, update the affected wireframe as part of that work
 - When a product rule, acceptance criterion, or UX principle changes, update the affected wireframe here rather than adding a new monolithic spec elsewhere
 - When reviewing UI work, check both the relevant acceptance criteria and the corresponding wireframe in this folder
 - If a screen gains a new loading, error, empty, or degraded state, add it to the wireframe as part of the same change rather than deferring it

@@ -480,7 +480,9 @@ mod tests {
     fn test_review_prompt_errors_without_api_key() {
         // Acquire mutex to prevent race conditions with other env-var-mutating tests.
         // Use unwrap_or_else to recover from poisoned mutex (another test panicked while holding it).
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Remove both env var and ensure no config fallback path is reachable.
         // We temporarily remove ANTHROPIC_API_KEY to simulate absence.
         let old_val = std::env::var("ANTHROPIC_API_KEY").ok();
@@ -511,7 +513,9 @@ mod tests {
     #[test]
     fn test_review_prompt_dry_run_returns_placeholder() {
         // Acquire mutex to prevent race conditions with other env-var-mutating tests.
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
         let result = review_prompt_with_ai("# Test prompt".to_string());
@@ -564,7 +568,9 @@ mod tests {
     fn test_review_prompt_dry_run_with_empty_prompt_returns_suggestions() {
         // AI review with an empty prompt string in dry-run mode must still return suggestions.
         // This verifies that the dry-run path does not silently fail on empty input.
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
         let result = review_prompt_with_ai(String::new());
@@ -588,7 +594,9 @@ mod tests {
 
     #[test]
     fn test_assist_prompt_describe_dry_run_with_history_returns_ok() {
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
 
@@ -625,7 +633,9 @@ mod tests {
 
     #[test]
     fn test_assist_prompt_describe_dry_run_with_empty_history_returns_ok() {
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
 
@@ -651,7 +661,9 @@ mod tests {
 
     #[test]
     fn test_assist_prompt_refine_dry_run_returns_prompt_analysis() {
-        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let old_val = std::env::var("RALPH_GUI_DRY_RUN").ok();
         std::env::set_var("RALPH_GUI_DRY_RUN", "1");
 

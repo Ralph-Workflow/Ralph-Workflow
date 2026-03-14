@@ -12,7 +12,7 @@ should use the same vocabulary.
    - Canonical terms for workspace, worktree, session, run, checkpoint, and
      backend ownership.
 2. `ralph-gui/docs/wireframes/README.md`
-   - Canonical screen-by-screen wireframes, UX coverage notes, and state layouts.
+   - Canonical screen-by-screen wireframes, UX coverage notes, state layouts, and living updates as UX findings grow.
 3. `ralph-gui/docs/designs/gui-design.md`
    - Lightweight pointer document for the wireframe system.
 4. `ralph-gui/docs/designs/design-criteria.md`
@@ -32,7 +32,7 @@ should use the same vocabulary.
 - `glossary.md`
   - Shared language. If docs disagree on a term, update the glossary first.
 - `wireframes/README.md`
-  - Canonical wireframe entry point with organized screen documents.
+  - Canonical wireframe entry point with organized screen documents that should be updated as UX findings evolve.
 - `designs/gui-design.md`
   - Redirect/reference doc pointing readers to the wireframe system.
 - `designs/design-criteria.md`
@@ -57,4 +57,5 @@ should use the same vocabulary.
   terminology changes.
 - When adding a new GUI doc, link it here and make it reference the glossary.
 - Keep detailed ASCII wireframes in `ralph-gui/docs/wireframes/`.
+- Treat wireframes as living documents; update them when new UX findings refine the right flow, state, or explanation.
 - Do not reintroduce large inline wireframe specs into `designs/gui-design.md`.

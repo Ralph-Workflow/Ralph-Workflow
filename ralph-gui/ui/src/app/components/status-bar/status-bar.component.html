@@ -1,29 +1,29 @@
-<div class="status-bar">
+<div class="flex items-center justify-between h-status-bar px-3 bg-bg-surface border-t border-border-default text-xs text-text-secondary">
   <!-- Left: active workspace label + branch -->
-  <div class="status-left">
-    <span class="workspace-label">{{ currentWorkspaceLabel }}</span>
+  <div class="flex items-center flex-1 justify-start gap-2 min-w-0 overflow-hidden">
+    <span class="font-medium text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">{{ currentWorkspaceLabel }}</span>
     @if (currentBranch) {
-      <span class="branch-label">{{ currentBranch }}</span>
+      <span class="text-text-secondary">{{ currentBranch }}</span>
     }
   </div>
 
   <!-- Center: aggregated run status -->
-  <div class="status-center">
+  <div class="flex items-center flex-1 justify-center min-w-0">
     @if (currentRunSummaryText) {
-      <span class="run-summary">{{ currentRunSummaryText }}</span>
+      <span class="text-text-secondary">{{ currentRunSummaryText }}</span>
     }
   </div>
 
   <!-- Right: notification bell + connection status -->
-  <div class="status-right">
+  <div class="flex items-center flex-1 justify-end gap-2 min-w-0">
     <button
-      class="notification-bell"
+      class="relative inline-flex items-center justify-center w-5 h-5 p-0 bg-transparent border-none rounded-sm text-text-secondary cursor-pointer transition-colors duration-fast ease-out hover:text-text-primary hover:bg-bg-raised"
       type="button"
       aria-label="Notifications"
       (click)="onNotificationsClick()"
     >
       <svg
-        class="bell-icon"
+        class="w-3 h-3"
         aria-hidden="true"
         viewBox="0 0 16 16"
         fill="currentColor"
@@ -31,7 +31,10 @@
         <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm6.39-4.79C13.5 10.24 12 9.12 12 5.5c0-2.49-1.75-4.56-4.12-4.93C7.93.38 7.97.2 8 0a.5.5 0 0 0-1 0c.03.2.07.38.12.57C4.75.94 3 3.01 3 5.5c0 3.62-1.5 4.74-2.39 5.71A.5.5 0 0 0 1 12h14a.5.5 0 0 0 .39-.79z"/>
       </svg>
       @if (currentNotificationCount > 0) {
-        <span class="notification-badge" aria-label="{{ currentNotificationCount }} unread notifications">
+        <span
+          class="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] text-[9px] font-semibold leading-[14px] text-center text-black bg-accent rounded-[7px]"
+          aria-label="{{ currentNotificationCount }} unread notifications"
+        >
           {{ currentNotificationCount }}
         </span>
       }

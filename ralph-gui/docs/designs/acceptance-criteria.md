@@ -20,6 +20,9 @@ architecture document explicitly changes that model.
 Use these wireframe documents as the visual/layout reference for the acceptance
 sections below:
 
+All user-facing acceptance in this document must also satisfy the cross-cutting
+Apple HIG foundation criteria in `ralph-gui/docs/designs/ux-acceptance-criteria.md`.
+
 | Acceptance area | Wireframe reference |
 |---|---|
 | `AC-1`, `AC-2` | `ralph-gui/docs/wireframes/01-shell-and-workspaces.md` |

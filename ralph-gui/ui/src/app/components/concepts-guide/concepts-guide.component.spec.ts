@@ -9,6 +9,7 @@ describe('ConceptsGuideComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ConceptsGuideComponent, RouterModule.forRoot([])],
+      providers: [],
     }).compileComponents();
 
     fixture = TestBed.createComponent(ConceptsGuideComponent);

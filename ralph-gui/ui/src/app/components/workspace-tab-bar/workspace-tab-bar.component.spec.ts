@@ -1,6 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { WorkspaceTabBarComponent } from './workspace-tab-bar.component';
 import { WorkspaceService } from '../../services/workspace.service';
+import { NotificationService, NOTIFICATION_LISTEN_TOKEN } from '../../services/notification.service';
 import { TauriService, TAURI_INVOKE } from '../../services/tauri.service';
 import { signal } from '@angular/core';
 import type { Workspace } from '../../services/workspace.service';
@@ -10,6 +11,7 @@ describe('WorkspaceTabBarComponent', () => {
   let fixture: ComponentFixture<WorkspaceTabBarComponent>;
   let mockWorkspaceService: jasmine.SpyObj<WorkspaceService>;
   let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockNotificationService: jasmine.SpyObj<NotificationService>;
 
   const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
     id: `ws-${Math.random().toString(36).substr(2, 9)}`,
@@ -43,6 +45,16 @@ describe('WorkspaceTabBarComponent', () => {
     );
     mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve(null));
 
+    mockNotificationService = jasmine.createSpyObj(
+      'NotificationService',
+      ['add', 'togglePanel', 'closePanel'],
+      {
+        isPanelOpen: signal(false).asReadonly(),
+        unreadCount: () => 0,
+        notifications: signal([]).asReadonly(),
+      },
+    );
+
     const mockInvoke = jasmine.createSpy('invoke').and.returnValue(Promise.resolve([]));
 
     await TestBed.configureTestingModule({
@@ -50,7 +62,12 @@ describe('WorkspaceTabBarComponent', () => {
       providers: [
         { provide: WorkspaceService, useValue: mockWorkspaceService },
         { provide: TauriService, useValue: mockTauriService },
+        { provide: NotificationService, useValue: mockNotificationService },
         { provide: TAURI_INVOKE, useValue: mockInvoke },
+        {
+          provide: NOTIFICATION_LISTEN_TOKEN,
+          useValue: jasmine.createSpy('listen').and.returnValue(Promise.resolve(jasmine.createSpy('unlisten'))),
+        },
       ],
     }).compileComponents();
 
@@ -123,7 +140,8 @@ describe('WorkspaceTabBarComponent', () => {
     it('should show plus button', () => {
       fixture.detectChanges();
 
-      const plusButton = fixture.nativeElement.querySelector('.add-tab-btn');
+      // Plus button is identified by aria-label after Tailwind CSS conversion.
+      const plusButton = fixture.nativeElement.querySelector('[aria-label="Add workspace"]');
       expect(plusButton).toBeTruthy();
     });
   });
@@ -147,11 +165,13 @@ describe('WorkspaceTabBarComponent', () => {
 
       fixture.detectChanges();
 
-      const closeBtn = fixture.nativeElement.querySelector('.tab-close');
+      // Close button identified by aria-label after Tailwind CSS conversion.
+      const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]');
       closeBtn.click();
 
       await fixture.whenStable();
-      expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1');
+      // closeWorkspace is called with (id, force=false) — default non-forced close.
+      expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', false);
     });
 
     it('should close on middle-click (button === 1)', async () => {
@@ -165,7 +185,8 @@ describe('WorkspaceTabBarComponent', () => {
       tab.dispatchEvent(mouseupEvent);
 
       await fixture.whenStable();
-      expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1');
+      // Middle-click close also calls with (id, force=false).
+      expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', false);
     });
 
     it('should not close on left-click mouseup (button === 0)', async () => {
@@ -185,7 +206,8 @@ describe('WorkspaceTabBarComponent', () => {
     it('should call openDirectoryDialog when plus button clicked', async () => {
       fixture.detectChanges();
 
-      const plusBtn = fixture.nativeElement.querySelector('.add-tab-btn');
+      // Plus button identified by aria-label after Tailwind CSS conversion.
+      const plusBtn = fixture.nativeElement.querySelector('[aria-label="Add workspace"]');
       plusBtn.click();
 
       await fixture.whenStable();
@@ -197,7 +219,7 @@ describe('WorkspaceTabBarComponent', () => {
 
       fixture.detectChanges();
 
-      const plusBtn = fixture.nativeElement.querySelector('.add-tab-btn');
+      const plusBtn = fixture.nativeElement.querySelector('[aria-label="Add workspace"]');
       plusBtn.click();
 
       await fixture.whenStable();
@@ -209,12 +231,104 @@ describe('WorkspaceTabBarComponent', () => {
 
       fixture.detectChanges();
 
-      const plusBtn = fixture.nativeElement.querySelector('.add-tab-btn');
+      const plusBtn = fixture.nativeElement.querySelector('[aria-label="Add workspace"]');
       plusBtn.click();
 
       await fixture.whenStable();
       expect(mockWorkspaceService.openWorkspace).not.toHaveBeenCalled();
     });
+  });
+
+  describe('workspace tab tooltips', () => {
+    it('should show full path in title attribute of each tab', () => {
+      const ws1 = createMockWorkspace({ id: 'ws-1', label: 'alpha', path: '/projects/alpha' });
+      mockWorkspaceService.workspaces.set([ws1]);
+
+      fixture.detectChanges();
+
+      // Query by [title] attribute for robustness — survives future CSS class changes
+      const tab = fixture.nativeElement.querySelector('[title="/projects/alpha"]') as HTMLElement;
+      expect(tab).toBeTruthy();
+      expect(tab.getAttribute('title')).toBe('/projects/alpha');
+    });
+  });
+
+  describe('close with active runs', () => {
+    it('should show confirmation dialog (not window.confirm) when closing workspace with active runs', fakeAsync(async () => {
+      const ws1 = createMockWorkspace({
+        id: 'ws-1',
+        label: 'busy-repo',
+        runSummary: { running: 2, failed: 0, paused: 0 },
+      });
+      mockWorkspaceService.workspaces.set([ws1]);
+      fixture.detectChanges();
+
+      // Close button identified by aria-label after Tailwind CSS conversion.
+      const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
+      closeBtn.click();
+      tick();
+      fixture.detectChanges();
+
+      // Should show the CancelConfirmation dialog, NOT call closeWorkspace yet
+      const dialog = fixture.nativeElement.querySelector('app-cancel-confirmation');
+      expect(dialog).toBeTruthy();
+      expect(mockWorkspaceService.closeWorkspace).not.toHaveBeenCalled();
+    }));
+
+    it('should call closeWorkspace with force=true when confirmation is confirmed', fakeAsync(async () => {
+      const ws1 = createMockWorkspace({
+        id: 'ws-1',
+        label: 'busy-repo',
+        runSummary: { running: 1, failed: 0, paused: 0 },
+      });
+      mockWorkspaceService.workspaces.set([ws1]);
+      fixture.detectChanges();
+
+      // Trigger close which shows dialog
+      const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
+      closeBtn.click();
+      tick();
+      fixture.detectChanges();
+
+      // Simulate confirmation — should call with force=true to bypass active-runs guard.
+      component.onCloseConfirmed(true, 'ws-1');
+      tick();
+
+      expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', true);
+    }));
+
+    it('should NOT call closeWorkspace when confirmation is cancelled', fakeAsync(async () => {
+      const ws1 = createMockWorkspace({
+        id: 'ws-1',
+        label: 'busy-repo',
+        runSummary: { running: 1, failed: 0, paused: 0 },
+      });
+      mockWorkspaceService.workspaces.set([ws1]);
+      fixture.detectChanges();
+
+      const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
+      closeBtn.click();
+      tick();
+      fixture.detectChanges();
+
+      component.onCloseConfirmed(false, 'ws-1');
+      tick();
+
+      expect(mockWorkspaceService.closeWorkspace).not.toHaveBeenCalled();
+    }));
+
+    it('should use notification service instead of alert on error', fakeAsync(async () => {
+      const ws1 = createMockWorkspace({ id: 'ws-1', label: 'repo' });
+      mockWorkspaceService.workspaces.set([ws1]);
+      mockWorkspaceService.closeWorkspace.and.returnValue(Promise.reject(new Error('Backend fail')));
+      fixture.detectChanges();
+
+      const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
+      closeBtn.click();
+      tick();
+
+      expect(mockNotificationService.add).toHaveBeenCalledWith(jasmine.objectContaining({ type: 'error' }));
+    }));
   });
 
   describe('drag-drop reordering', () => {

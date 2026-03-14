@@ -7,7 +7,9 @@ This file replaces the former monolithic GUI design document.
 The canonical screen and layout source is now the wireframe system in
 `ralph-gui/docs/wireframes/`. Product behavior, UX review, acceptance criteria,
 visual rules, and backend contracts should all point to those focused wireframe
-documents instead of maintaining duplicate layout specs here.
+documents instead of maintaining duplicate layout specs here. Those wireframes
+are living documents and should be updated whenever new UX findings change the
+best screen structure, state coverage, or guidance.
 
 ## Canonical Wireframe Entry Point
 
@@ -36,5 +38,6 @@ documents instead of maintaining duplicate layout specs here.
 - Use the relevant file in `ralph-gui/docs/wireframes/` for layout, structure,
   states, and annotations
 
-If a layout needs to change, update the applicable wireframe file rather than
-expanding this reference document.
+If a layout needs to change, or if new UX findings change the right design
+guidance, update the applicable wireframe file rather than expanding this
+reference document.

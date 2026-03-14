@@ -15,6 +15,7 @@ const mockPreferences: GuiPreferences = {
   theme: 'dark',
   accentColor: '#f59e0b',
   sidebarWidth: 220,
+  sidebarCollapsed: false,
   fontSize: 14,
   monospaceFont: 'JetBrains Mono',
   runPollIntervalMs: 2000,

@@ -1,7 +1,10 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { WorkspaceService } from './workspace.service';
 import { TAURI_INVOKE } from './tauri.service';
+import { PreferencesService } from './preferences.service';
+import { signal } from '@angular/core';
 import type { WorkspaceEntry } from '../types';
+import type { GuiPreferences } from '../types';
 
 const mockEntry1: WorkspaceEntry = {
   id: 'ws-1',
@@ -43,6 +46,36 @@ function createMockInvoke(entries: WorkspaceEntry[] = []) {
   return mockInvoke;
 }
 
+const defaultPrefs: GuiPreferences = {
+  theme: 'dark',
+  accentColor: '#f59e0b',
+  sidebarWidth: 240,
+  sidebarCollapsed: false,
+  fontSize: 14,
+  monospaceFont: 'JetBrains Mono',
+  runPollIntervalMs: 2000,
+  logBufferSize: 10000,
+  defaultView: 'home',
+  checkUpdates: true,
+  notifications: {
+    showPhaseNotifications: true,
+    desktopNotifications: false,
+    notifyPhaseChange: false,
+    triggers: { notifyCompletion: true, notifyFailure: true, notifyDegraded: true },
+  },
+  session: { logAutoscroll: true, confirmCancel: true, restoreWorkspaces: true },
+};
+
+function createMockPreferencesService(restoreWorkspaces = true) {
+  const prefs = { ...defaultPrefs, session: { ...defaultPrefs.session, restoreWorkspaces } };
+  return {
+    preferences: signal(prefs).asReadonly(),
+    isLoading: signal(false).asReadonly(),
+    isFirstRun: signal(false).asReadonly(),
+    save: jasmine.createSpy('save').and.returnValue(Promise.resolve()),
+  };
+}
+
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
   let mockInvoke: jasmine.Spy;
@@ -53,6 +86,7 @@ describe('WorkspaceService', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: TAURI_INVOKE, useValue: mockInvoke },
+        { provide: PreferencesService, useValue: createMockPreferencesService(true) },
       ],
     });
     service = TestBed.inject(WorkspaceService);
@@ -137,7 +171,10 @@ describe('WorkspaceService', () => {
       });
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [{ provide: TAURI_INVOKE, useValue: mockInvoke }],
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
       });
       const svc = TestBed.inject(WorkspaceService);
       tick();
@@ -157,12 +194,37 @@ describe('WorkspaceService', () => {
       });
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [{ provide: TAURI_INVOKE, useValue: mockInvoke }],
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
       });
       const svc = TestBed.inject(WorkspaceService);
       tick();
 
       await expectAsync(svc.closeWorkspace('ws-2')).toBeRejectedWithError(/active run/i);
+    }));
+
+    it('should bypass active-runs guard when force=true', fakeAsync(async () => {
+      // mockEntry2 has active_run_count: 1
+      mockInvoke.and.callFake((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
+        if (cmd === 'close_workspace') return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      tick();
+
+      // force=true should NOT throw even though workspace has active runs.
+      await expectAsync(svc.closeWorkspace('ws-2', true)).toBeResolved();
+      expect(svc.workspaces().length).toBe(0);
     }));
 
     it('should surface backend error on close rejection', fakeAsync(async () => {
@@ -173,7 +235,10 @@ describe('WorkspaceService', () => {
       });
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [{ provide: TAURI_INVOKE, useValue: mockInvoke }],
+        providers: [
+          { provide: TAURI_INVOKE, useValue: mockInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
       });
       const svc = TestBed.inject(WorkspaceService);
       tick();
@@ -229,5 +294,125 @@ describe('WorkspaceService', () => {
       expect(ws?.runSummary.running).toBe(3);
       expect(ws?.runSummary.failed).toBe(1);
     });
+  });
+
+  describe('startup workspace restoration', () => {
+    it('should load workspaces from backend when restoreWorkspaces is true', fakeAsync(() => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      tick();
+
+      expect(svc.workspaces().length).toBe(2);
+      const calls = (invoke.calls.allArgs() as unknown[][]).map(args => args[0]);
+      expect(calls).toContain('get_workspaces');
+    }));
+
+    it('should NOT load workspaces from backend when restoreWorkspaces is false', fakeAsync(() => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(false) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      tick();
+
+      expect(svc.workspaces().length).toBe(0);
+    }));
+
+    it('should auto-activate first workspace when restoring', fakeAsync(() => {
+      const invoke = createMockInvoke([mockEntry1, mockEntry2]);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: invoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      tick();
+
+      expect(svc.activeWorkspaceId()).toBe('ws-1');
+    }));
+
+    it('should handle backend error gracefully and return empty workspaces', fakeAsync(() => {
+      const failingInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+        if (cmd === 'get_workspaces') return Promise.reject(new Error('Backend unreachable'));
+        return Promise.resolve(undefined);
+      });
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: TAURI_INVOKE, useValue: failingInvoke },
+          { provide: PreferencesService, useValue: createMockPreferencesService(true) },
+        ],
+      });
+      const svc = TestBed.inject(WorkspaceService);
+      tick();
+
+      expect(svc.workspaces().length).toBe(0);
+      expect(svc.isLoading()).toBe(false);
+    }));
+  });
+
+  describe('openWorkspace - duplicate prevention', () => {
+    it('should switch to existing workspace instead of creating duplicate when same path is opened', fakeAsync(async () => {
+      // ws-1 is already loaded with path '/path/to/repo1'
+      expect(service.workspaces().length).toBe(1);
+
+      // Try opening a path for a workspace with different ID but same path
+      const existingEntry: WorkspaceEntry = {
+        id: 'ws-1-dup',
+        repo_path: '/path/to/repo1',
+        display_name: 'repo1',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.and.callFake((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(existingEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
+
+      await service.openWorkspace('/path/to/repo1');
+      tick();
+
+      // Should NOT create a duplicate tab
+      expect(service.workspaces().length).toBe(1);
+      // Should switch to the existing ws-1 by path match
+      expect(service.activeWorkspaceId()).toBe('ws-1');
+    }));
+
+    it('should create new workspace when path is not already open', fakeAsync(async () => {
+      expect(service.workspaces().length).toBe(1);
+
+      const newEntry: WorkspaceEntry = {
+        id: 'ws-new',
+        repo_path: '/path/to/new-repo',
+        display_name: 'new-repo',
+        last_nav: '',
+        active_run_count: 0,
+      };
+      mockInvoke.and.callFake((cmd: string) => {
+        if (cmd === 'open_workspace') return Promise.resolve(newEntry);
+        if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
+        return Promise.resolve(undefined);
+      });
+
+      await service.openWorkspace('/path/to/new-repo');
+      tick();
+
+      expect(service.workspaces().length).toBe(2);
+      expect(service.activeWorkspaceId()).toBe('ws-new');
+    }));
   });
 });
