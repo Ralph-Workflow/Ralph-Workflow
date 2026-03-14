@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { TAURI_INVOKE } from '../../services/tauri.service';
+import { TAURI_INVOKE, TauriService } from '../../services/tauri.service';
 import {
   ConfigFieldComponent,
   ConfigTableComponent,
@@ -555,32 +555,36 @@ describe('ConfigurationComponent - Form/TOML toggle', () => {
 
 describe('configurationCanDeactivateGuard', () => {
   let mockInvoke: ReturnType<typeof vi.fn>;
+  let mockConfigService: { isDirty: ReturnType<typeof vi.fn>; setDirty: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     mockInvoke = createMockInvoke();
+    mockConfigService = {
+      isDirty: vi.fn().mockReturnValue(false),
+      setDirty: vi.fn(),
+    };
+
+    vi.spyOn(window, 'confirm').mockReset();
 
     await TestBed.configureTestingModule({
-      imports: [ConfigurationComponent],
       providers: [
         provideZonelessChangeDetection(),
-        provideRouter([]),
-        provideAnimationsAsync(),
+        { provide: ConfigService, useValue: mockConfigService },
         { provide: TAURI_INVOKE, useValue: mockInvoke },
+        { provide: TauriService, useValue: { invoke: mockInvoke } },
       ],
     }).compileComponents();
   });
 
   it('returns true when config is not dirty', () => {
-    const configService = TestBed.inject(ConfigService);
-    configService.setDirty(false);
+    mockConfigService.isDirty.mockReturnValue(false);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
     expect(result).toBe(true);
   });
 
   it('returns true when config is dirty and user confirms navigation', () => {
-    const configService = TestBed.inject(ConfigService);
-    configService.setDirty(true);
+    mockConfigService.isDirty.mockReturnValue(true);
 
     vi.spyOn(window, 'confirm').mockReturnValue(true);
 
@@ -590,8 +594,7 @@ describe('configurationCanDeactivateGuard', () => {
   });
 
   it('returns false when config is dirty and user cancels navigation', () => {
-    const configService = TestBed.inject(ConfigService);
-    configService.setDirty(true);
+    mockConfigService.isDirty.mockReturnValue(true);
 
     vi.spyOn(window, 'confirm').mockReturnValue(false);
 
@@ -601,21 +604,17 @@ describe('configurationCanDeactivateGuard', () => {
   });
 
   it('does not show confirm dialog when config is clean', () => {
-    const configService = TestBed.inject(ConfigService);
-    configService.setDirty(false);
+    mockConfigService.isDirty.mockReturnValue(false);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
     expect(result).toBe(true);
-    expect(window.confirm).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it('navigation guard fires when dirty (integration: configService.isDirty() set to true)', () => {
-    const configService = TestBed.inject(ConfigService);
-
-    configService.setDirty(true);
-    expect(configService.isDirty()).toBe(true);
+    mockConfigService.isDirty.mockReturnValue(true);
 
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());

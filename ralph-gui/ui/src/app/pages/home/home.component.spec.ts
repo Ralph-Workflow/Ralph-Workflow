@@ -1,5 +1,6 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, RouterModule } from '@angular/router';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HomeComponent } from './home.component';
 import { StatCardComponent } from './stat-card.component';
 import { QuickActionComponent } from './quick-action.component';
@@ -68,22 +69,22 @@ describe('HomeComponent', () => {
         worktrees: worktreesSignal.asReadonly(),
         mainWorktree: mainWorktreeSignal.asReadonly(),
         lastRepoPath: signal<string | null>(null).asReadonly(),
-        fetchWorktrees: jasmine.createSpy('fetchWorktrees'),
-        activeWorktreePath: signal<string | null>(null).asReadonly(),
-      },
-      sessionsService: {
-        sessions: sessionsSignal.asReadonly(),
-        fetchSessions: jasmine.createSpy('fetchSessions').and.returnValue(Promise.resolve()),
-        needsAttentionRuns,
-        activeRuns,
-        recentCompletions,
-        completedToday,
-      },
-      workspaceService: {
-        activeWorkspace: activeWorkspaceSignal.asReadonly(),
-        workspaces: signal<Workspace[]>([]).asReadonly(),
-      },
-    };
+      fetchWorktrees: vi.fn().mockReturnValue(Promise.resolve()),
+      activeWorktreePath: signal<string | null>(null).asReadonly(),
+    },
+    sessionsService: {
+      sessions: sessionsSignal.asReadonly(),
+      fetchSessions: vi.fn().mockReturnValue(Promise.resolve()),
+      needsAttentionRuns,
+      activeRuns,
+      recentCompletions,
+      completedToday,
+    },
+    workspaceService: {
+      activeWorkspace: activeWorkspaceSignal.asReadonly(),
+      workspaces: signal<Workspace[]>([]).asReadonly(),
+    },
+  };
   };
 
   beforeEach(async () => {
@@ -417,7 +418,7 @@ describe('HomeComponent', () => {
   });
 
   describe('workspace change', () => {
-    it('should re-fetch sessions when workspace changes', fakeAsync(() => {
+    it('should re-fetch sessions when workspace changes', async () => {
       const mockWorkspace: Workspace = {
         id: 'ws-1',
         path: '/repo',
@@ -431,11 +432,11 @@ describe('HomeComponent', () => {
       worktreesSignal.set([createMockWorktree()]);
       activeWorkspaceSignal.set(mockWorkspace);
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
 
       const sessionsService = TestBed.inject(SessionsService);
       expect(sessionsService.fetchSessions).toHaveBeenCalledWith('/repo');
-    }));
+    });
   });
 });
 

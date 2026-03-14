@@ -12,13 +12,13 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { RunsService } from '../../services/runs.service';
 import { TauriService } from '../../services/tauri.service';
-import { RunStatusBadgeComponent } from '../../components/run-status-badge/run-status-badge.component';
 import { RunLogComponent } from '../../components/run-log/run-log.component';
 import { ChangesViewerComponent } from '../../components/changes-viewer/changes-viewer.component';
 import { PhaseTimelineComponent, PhaseInfo } from '../../components/phase-timeline/phase-timeline.component';
 import { IterationHistoryComponent } from '../../components/iteration-history/iteration-history.component';
 import { ReviewHistoryComponent } from '../../components/review-history/review-history.component';
 import { CancelConfirmationComponent } from '../../components/cancel-confirmation/cancel-confirmation.component';
+import { formatDuration } from '../../pipes/format-duration.pipe';
 
 export type DetailTab = 'log' | 'changes' | 'info';
 
@@ -29,7 +29,6 @@ export type DetailTab = 'log' | 'changes' | 'info';
   imports: [
     CommonModule,
     RouterModule,
-    RunStatusBadgeComponent,
     RunLogComponent,
     ChangesViewerComponent,
     PhaseTimelineComponent,
@@ -64,9 +63,64 @@ export class RunDetailComponent {
   // Iteration filter for changes tab (set when iterationClick is received)
   readonly changesFilterIteration = signal<number | null>(null);
 
-  readonly canResume = computed(() => {
+ readonly canResume = computed(() => {
     const detail = this.runDetail();
     return detail && (detail.status === 'Paused' || detail.status === 'Failed');
+  });
+
+  readonly worktreeName = computed(() => {
+    const detail = this.runDetail();
+    if (!detail) return '';
+    const path = detail.worktree_path;
+    if (path) {
+      const parts = path.split('/');
+      return parts[parts.length - 1] ?? '';
+    }
+    return detail.description ?? '';
+  });
+
+  readonly failedPhaseLabel = computed(() => {
+    const detail = this.runDetail();
+    if (!detail) return '';
+    const phase = detail.current_phase.toLowerCase();
+    const phaseNames = ['plan', 'develop', 'review', 'commit'];
+    const matchedPhase = phaseNames.find(p => phase.includes(p));
+    return matchedPhase ? matchedPhase.charAt(0).toUpperCase() + matchedPhase.slice(1) : '';
+  });
+
+  readonly formattedTotalDuration = computed(() => {
+    const detail = this.runDetail();
+    if (detail?.total_duration_secs == null || detail?.total_duration_secs === undefined) {
+      return '';
+    }
+    return formatDuration(detail.total_duration_secs);
+  });
+
+  readonly pausedAgo = computed(() => {
+    const detail = this.runDetail();
+    if (!detail?.last_checkpoint) return '';
+    try {
+      const checkpointTime = new Date(detail.last_checkpoint);
+      const now = new Date();
+      const diffMs = now.getTime() - checkpointTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins < 60) {
+        return `${diffMins}m ago`;
+      }
+      const diffHours = Math.floor(diffMins / 60);
+      const remainingMins = diffMins % 60;
+      return `${diffHours}h ${remainingMins}m ago`;
+    } catch {
+      return '';
+    }
+  });
+
+  readonly formattedPhaseDurations = computed(() => {
+    const detail = this.runDetail();
+    if (!detail?.phase_durations) return new Map();
+    return new Map(
+      detail.phase_durations.map(pd => [pd.phase_name.toLowerCase(), pd])
+    );
   });
 
   readonly iterationCount = computed(() => {
@@ -83,9 +137,13 @@ export class RunDetailComponent {
     const isDone = ['commit', 'done', 'completed'].some(p => currentPhase.includes(p));
     const phaseOrder = ['plan', 'develop', 'review', 'commit'];
     const currentIdx = phaseOrder.indexOf(currentPhase.split('_')[0] ?? '');
+    const phaseDurations = this.formattedPhaseDurations();
 
     return phases.map((name, idx) => {
       let status: PhaseInfo['status'];
+      let duration: string | undefined;
+      let statusLabel: string | undefined;
+
       if (isDone || idx < currentIdx) {
         status = 'completed';
       } else if (idx === currentIdx && !isDone) {
@@ -93,7 +151,26 @@ export class RunDetailComponent {
       } else {
         status = 'pending';
       }
-      return { name, status };
+
+      // Add duration for completed and active phases
+      if (status === 'completed' || status === 'active' || status === 'failed') {
+        const phaseKey = name.toLowerCase();
+        const durationData = phaseDurations.get(phaseKey);
+        if (durationData?.duration_secs != null && durationData.duration_secs !== undefined) {
+          duration = formatDuration(durationData.duration_secs);
+        }
+      }
+
+      // Add status label based on phase status
+      if (status === 'active') {
+        statusLabel = 'Running now';
+      } else if (status === 'pending') {
+        statusLabel = 'Waiting';
+      } else if (status === 'failed') {
+        statusLabel = 'Failed';
+      }
+
+      return { name, status, duration, statusLabel };
     });
   });
 
@@ -244,6 +321,7 @@ export class RunDetailComponent {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   templateUrl: './detail-row.component.html',
+  styleUrl: './detail-row.component.css',
 })
 export class DetailRowComponent {
   readonly label = input<string>('');
@@ -252,15 +330,4 @@ export class DetailRowComponent {
 
   get labelValue(): string { return this.label(); }
   get valueValue(): string | null { return this.value(); }
-
-  get valueStyle(): string {
-    const isMono = this.mono();
-    return `
-      flex: 1;
-      font-size: ${isMono ? 12 : 13}px;
-      color: ${this.value() ? 'var(--text-primary)' : 'var(--text-muted)'};
-      font-family: ${isMono ? 'var(--font-mono)' : 'var(--font-ui)'};
-      word-break: break-all;
-    `.replace(/\n/g, ' ');
-  }
 }

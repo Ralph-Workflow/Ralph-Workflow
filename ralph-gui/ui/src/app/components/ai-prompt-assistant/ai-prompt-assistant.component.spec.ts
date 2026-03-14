@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
@@ -14,6 +14,9 @@ describe('AiPromptAssistantComponent', () => {
 
   beforeEach(async () => {
     mockInvoke = vi.fn((cmd: string) => {
+      if (cmd === 'get_planning_drain_agent') {
+        return Promise.resolve(null);
+      }
       if (cmd === 'assist_prompt_describe') {
         return Promise.resolve('Suggested prompt from AI');
       }
@@ -74,12 +77,12 @@ describe('AiPromptAssistantComponent', () => {
   });
 
   describe('describe mode', () => {
-    it('should submit description and show AI response', fakeAsync(async () => {
+    it('should submit description and show AI response', async () => {
       component.toggle();
       component.describeInput.set('I need a login feature');
 
       await component.submitDescribe();
-      tick();
+      await fixture.whenStable();
 
       const messages = component.describeMessages();
       expect(messages.length).toBe(2);
@@ -87,18 +90,18 @@ describe('AiPromptAssistantComponent', () => {
       expect(messages[0]?.text).toBe('I need a login feature');
       expect(messages[1]?.role).toBe('ai');
       expect(messages[1]?.text).toBe('Suggested prompt from AI');
-    }));
+    });
 
-    it('should clear input after submitting', fakeAsync(async () => {
+    it('should clear input after submitting', async () => {
       component.describeInput.set('Some feature');
 
       await component.submitDescribe();
-      tick();
+      await fixture.whenStable();
 
       expect(component.describeInput()).toBe('');
-    }));
+    });
 
-    it('should set loading state while pending', fakeAsync(async () => {
+    it('should set loading state while pending', async () => {
       let resolveInvoke!: (value: unknown) => void;
       mockInvoke.mockImplementation(() => new Promise(res => { resolveInvoke = res; }));
 
@@ -109,36 +112,36 @@ describe('AiPromptAssistantComponent', () => {
 
       resolveInvoke('result');
       await promise;
-      tick();
+      await fixture.whenStable();
 
       expect(component.describeLoading()).toBe(false);
-    }));
+    });
 
-    it('should not submit when input is empty', fakeAsync(async () => {
+    it('should not submit when input is empty', async () => {
       component.describeInput.set('');
       mockInvoke.mockClear();
 
       await component.submitDescribe();
 
       expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_describe', expect.any(Object));
-    }));
+    });
   });
 
   describe('refine mode', () => {
-    it('should trigger analysis when switching to refine tab with non-empty prompt', fakeAsync(async () => {
+    it('should trigger analysis when switching to refine tab with non-empty prompt', async () => {
       // Set up component with a non-empty prompt via inputs
       fixture.componentRef.setInput('currentPrompt', 'My current prompt');
       fixture.componentRef.setInput('repoPath', '/repo/a');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
 
       component.setTab('refine');
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       await fixture.whenStable();
 
       expect(mockInvoke).toHaveBeenCalledWith('assist_prompt_refine', expect.any(Object));
-    }));
+    });
 
     it('should show "Enter a prompt" message when currentPrompt is empty', () => {
       fixture.componentRef.setInput('currentPrompt', '');
@@ -149,81 +152,81 @@ describe('AiPromptAssistantComponent', () => {
       expect(component.refineEmptyState()).toBe(true);
     });
 
-    it('should not trigger analysis when currentPrompt is empty', fakeAsync(async () => {
+    it('should not trigger analysis when currentPrompt is empty', async () => {
       fixture.componentRef.setInput('currentPrompt', '');
       fixture.detectChanges();
 
       component.setTab('refine');
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       await fixture.whenStable();
 
       expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_refine', expect.any(Object));
-    }));
+    });
 
-    it('should populate refine result after analysis', fakeAsync(async () => {
+    it('should populate refine result after analysis', async () => {
       fixture.componentRef.setInput('currentPrompt', 'My prompt');
       fixture.componentRef.setInput('repoPath', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
 
       component.setTab('refine');
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       await fixture.whenStable();
 
       const result = component.refineResult();
       expect(result).not.toBeNull();
       expect(result!.suggestions).toEqual(['Be more specific', 'Add context']);
       expect(result!.improved_prompt).toBe('Improved prompt text');
-    }));
+    });
   });
 
   describe('apply to editor', () => {
-    it('should emit applyPrompt with correct text from describe mode', fakeAsync(async () => {
+    it('should emit applyPrompt with correct text from describe mode', async () => {
       const emittedValues: string[] = [];
       component.applyPrompt.subscribe((v: string) => emittedValues.push(v));
 
       component.describeInput.set('Feature request');
       await component.submitDescribe();
-      tick();
+      await fixture.whenStable();
 
       component.applyFromDescribe('Suggested prompt from AI');
 
       expect(emittedValues).toEqual(['Suggested prompt from AI']);
-    }));
+    });
 
-    it('should emit applyPrompt with refined prompt text', fakeAsync(async () => {
+    it('should emit applyPrompt with refined prompt text', async () => {
       const emittedValues: string[] = [];
       component.applyPrompt.subscribe((v: string) => emittedValues.push(v));
 
       fixture.componentRef.setInput('currentPrompt', 'My prompt');
       fixture.componentRef.setInput('repoPath', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
 
       component.setTab('refine');
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       await fixture.whenStable();
 
       component.applyRefineResult();
 
       expect(emittedValues).toEqual(['Improved prompt text']);
-    }));
+    });
   });
 
   describe('unconfigured agent state', () => {
-    it('should show unconfigured state when planning drain agent returns null', fakeAsync(async () => {
+    it('should show unconfigured state when planning drain agent returns null', async () => {
       // The component's planningDrainAgent is already null after ngOnInit (default mock returns null)
       // so isUnconfigured should be true.
-      tick(50);
+      await new Promise(r => setTimeout(r, 50));
       await fixture.whenStable();
       fixture.detectChanges();
 
       expect(component.isUnconfigured()).toBe(true);
-    }));
+    });
 
-    it('should not show unconfigured state when planning drain agent is configured', fakeAsync(async () => {
+    it('should not show unconfigured state when planning drain agent is configured', async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_planning_drain_agent') return Promise.resolve('planner');
         if (cmd === 'assist_prompt_describe') return Promise.resolve('result');
@@ -245,11 +248,11 @@ describe('AiPromptAssistantComponent', () => {
       const newFixture = TestBed.createComponent(AiPromptAssistantComponent);
       const newComponent = newFixture.componentInstance;
       newFixture.detectChanges();
-      tick(50);
+      await new Promise(r => setTimeout(r, 50));
       await newFixture.whenStable();
 
       expect(newComponent.isUnconfigured()).toBe(false);
       expect(newComponent.planningDrainAgent()).toBe('planner');
-    }));
+    });
   });
 });

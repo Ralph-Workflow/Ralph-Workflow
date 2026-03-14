@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SessionsService } from './sessions.service';
 import { TauriService } from './tauri.service';
@@ -288,7 +288,7 @@ describe('SessionsService', () => {
   });
 
   describe('fetchSessions', () => {
-    it('should set loading status and fetch sessions', fakeAsync(() => {
+    it('should set loading status and fetch sessions', async () => {
       const mockSessions: SessionSummary[] = [
         createMockSession({ run_id: 'run-1' }),
         createMockSession({ run_id: 'run-2' }),
@@ -298,20 +298,23 @@ describe('SessionsService', () => {
       service.fetchSessions('/repo');
       expect(service.status()).toBe('loading');
 
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
+
       expect(service.sessions()).toEqual(mockSessions);
       expect(service.status()).toBe('succeeded');
-    }));
+    });
 
-    it('should set failed status on error', fakeAsync(() => {
+    it('should set failed status on error', async () => {
       tauriServiceSpy.getSessions.mockRejectedValue(new Error('Network error'));
 
       service.fetchSessions('/repo');
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(service.status()).toBe('failed');
       expect(service.error()).toBe('Network error');
-    }));
+    });
   });
 
   describe('state signals', () => {

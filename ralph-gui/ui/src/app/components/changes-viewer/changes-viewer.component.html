@@ -1,7 +1,7 @@
 @if (!repoPath_) {
   <div class="changes-empty" data-testid="changes-empty">
     <div class="changes-empty__icon">⌥</div>
-    <div class="changes-empty__text">Code changes will appear here as the AI develops</div>
+    <div class="changes-empty__text">No code changes yet. Files and diffs appear here after the run writes changes.</div>
   </div>
 } @else if (isLoading_) {
   <div class="changes-loading">
@@ -10,7 +10,7 @@
 } @else if (files_.length === 0) {
   <div class="changes-empty" data-testid="changes-empty">
     <div class="changes-empty__icon">⌥</div>
-    <div class="changes-empty__text">Code changes will appear here as the AI develops</div>
+    <div class="changes-empty__text">No code changes yet. Files and diffs appear here after the run writes changes.</div>
   </div>
 } @else {
   <div class="changes-viewer">
@@ -60,23 +60,39 @@
 
     <!-- Main content: file tree + diff view -->
     <div class="changes-body">
-      <!-- Left panel: file tree -->
+      <!-- Left panel: file tree (directory-grouped) -->
       <div class="changes-file-tree" role="list" aria-label="Changed files">
-        @for (file of files_; track file.path) {
-          <button
-            class="changes-file-item"
-            [class.changes-file-item--selected]="selectedFile_?.path === file.path"
-            role="listitem"
-            (click)="selectFile(file)"
-            [attr.aria-pressed]="selectedFile_?.path === file.path"
-            [attr.aria-label]="file.path + ' +' + file.additions + ' -' + file.deletions"
-          >
-            <span class="changes-file-item__path">{{ file.path }}</span>
-            <span class="changes-file-item__stats">
-              <span class="changes-file-item__additions">+{{ file.additions }}</span>
-              <span class="changes-file-item__deletions">-{{ file.deletions }}</span>
-            </span>
-          </button>
+        @for (group of fileGroups_; track group.directory) {
+          <div class="changes-file-group" data-testid="file-group">
+            <button
+              class="changes-file-group__header"
+              (click)="toggleGroup(group.directory)"
+              [attr.aria-expanded]="group.expanded"
+              [attr.data-testid]="'group-header-' + group.directory"
+            >
+              <span class="changes-file-group__toggle">{{ group.expanded ? '▼' : '▶' }}</span>
+              <span class="changes-file-group__name">{{ group.directory }}</span>
+              <span class="changes-file-group__count">{{ group.files.length }}</span>
+            </button>
+            @if (group.expanded) {
+              @for (file of group.files; track file.path) {
+                <button
+                  class="changes-file-item"
+                  [class.changes-file-item--selected]="selectedFile_?.path === file.path"
+                  role="listitem"
+                  (click)="selectFile(file)"
+                  [attr.aria-pressed]="selectedFile_?.path === file.path"
+                  [attr.aria-label]="file.path + ' +' + file.additions + ' -' + file.deletions"
+                >
+                  <span class="changes-file-item__path">{{ getBasename(file.path) }}</span>
+                  <span class="changes-file-item__stats">
+                    <span class="changes-file-item__additions">+{{ file.additions }}</span>
+                    <span class="changes-file-item__deletions">-{{ file.deletions }}</span>
+                  </span>
+                </button>
+              }
+            }
+          </div>
         }
       </div>
 

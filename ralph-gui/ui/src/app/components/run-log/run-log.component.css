@@ -40,6 +40,21 @@
   white-space: nowrap;
 }
 
+.run-log-level-select {
+  font-size: var(--text-xs);
+  padding: 3px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.run-log-filter-count {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+}
+
 .run-log-viewport {
   flex: 1;
   min-height: 300px;

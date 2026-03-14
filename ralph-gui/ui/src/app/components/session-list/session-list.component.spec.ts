@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -307,7 +307,7 @@ describe('SessionListComponent', () => {
   });
 
   describe('batchResume', () => {
-    it('should call resumeSession for each paused/failed session in selection', fakeAsync(async () => {
+    it('should call resumeSession for each paused/failed session in selection', async () => {
       mockSessionsService.sessions.set(makeSessions());
       mockSessionsService.resumeSession.mockResolvedValue(undefined);
       component.toggleSelect('run-001'); // paused
@@ -315,11 +315,11 @@ describe('SessionListComponent', () => {
       component.toggleSelect('run-003'); // failed
 
       await component.batchResume();
-      tick();
+      await fixture.whenStable();
 
       expect(mockSessionsService.resumeSession).toHaveBeenCalledWith('run-001', '/repo/a');
       expect(mockSessionsService.resumeSession).toHaveBeenCalledWith('run-003', '/repo/a');
       expect(mockSessionsService.resumeSession).not.toHaveBeenCalledWith('run-002', '/repo/a');
-    }));
+    });
   });
 });

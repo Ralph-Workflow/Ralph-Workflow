@@ -6,9 +6,23 @@
   animation: fadeIn 200ms ease;
 }
 
+.run-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
 .run-header__title {
   margin-bottom: 0;
-  flex: 1;
+}
+.run-header__subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.run-header__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .run-loading {
@@ -260,6 +274,22 @@
   margin-bottom: 6px;
 }
 
+.state-summary__guidance-section {
+  margin-bottom: 8px;
+}
+
+.state-summary__guidance-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.state-summary__guidance-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .state-summary__subtitle {
   font-size: 12px;
   color: var(--text-secondary);
@@ -305,6 +335,11 @@
 
 .state-info__value--connected {
   color: var(--status-success);
+}
+
+.state-info__separator {
+  color: var(--text-muted);
+  margin: 0 6px;
 }
 
 /* Info section spacing */

@@ -7,6 +7,7 @@ import { Router, NavigationEnd } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { signal } from '@angular/core';
 import { Subject } from 'rxjs';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WorkspaceService } from './services/workspace.service';
 import { WorktreesService } from './services/worktrees.service';
@@ -52,11 +53,11 @@ describe('Workspace Lifecycle Integration', () => {
   let activeWorkspaceSignal: ReturnType<typeof signal<Workspace | null>>;
   let activeWorkspaceIdSignal: ReturnType<typeof signal<string | null>>;
   let isLoadingSignal: ReturnType<typeof signal<boolean>>;
-  let initializeRepoSpy: jasmine.Spy;
-  let fetchSessionsSpy: jasmine.Spy;
-  let persistNavigationSpy: jasmine.Spy;
-  let switchWorkspaceSpy: jasmine.Spy;
-  let closeWorkspaceSpy: jasmine.Spy;
+  let initializeRepoSpy: ReturnType<typeof vi.fn>;
+  let fetchSessionsSpy: ReturnType<typeof vi.fn>;
+  let persistNavigationSpy: ReturnType<typeof vi.fn>;
+  let switchWorkspaceSpy: ReturnType<typeof vi.fn>;
+  let closeWorkspaceSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     workspacesSignal = signal<Workspace[]>([]);
@@ -64,11 +65,11 @@ describe('Workspace Lifecycle Integration', () => {
     activeWorkspaceIdSignal = signal<string | null>(null);
     // Start loading=true so the redirect effect doesn't fire before workspaces are set.
     isLoadingSignal = signal<boolean>(true);
-    initializeRepoSpy = jasmine.createSpy('initializeRepo').and.returnValue(Promise.resolve());
-    fetchSessionsSpy = jasmine.createSpy('fetchSessions').and.returnValue(Promise.resolve());
-    persistNavigationSpy = jasmine.createSpy('persistNavigation').and.returnValue(Promise.resolve());
-    switchWorkspaceSpy = jasmine.createSpy('switchWorkspace');
-    closeWorkspaceSpy = jasmine.createSpy('closeWorkspace').and.returnValue(Promise.resolve());
+    initializeRepoSpy = vi.fn().mockReturnValue(Promise.resolve());
+    fetchSessionsSpy = vi.fn().mockReturnValue(Promise.resolve());
+    persistNavigationSpy = vi.fn().mockReturnValue(Promise.resolve());
+    switchWorkspaceSpy = vi.fn();
+    closeWorkspaceSpy = vi.fn().mockReturnValue(Promise.resolve());
 
     await TestBed.configureTestingModule({
       imports: [AppComponent, RouterModule.forRoot([])],
@@ -83,7 +84,7 @@ describe('Workspace Lifecycle Integration', () => {
             switchWorkspace: switchWorkspaceSpy,
             closeWorkspace: closeWorkspaceSpy,
             persistNavigation: persistNavigationSpy,
-            setNavigationState: jasmine.createSpy('setNavigationState'),
+            setNavigationState: vi.fn(),
           },
         },
         {
@@ -92,7 +93,7 @@ describe('Workspace Lifecycle Integration', () => {
             worktrees: signal([]).asReadonly(),
             activeWorktreePath: signal(null).asReadonly(),
             lastRepoPath: signal(null).asReadonly(),
-            switchContext: jasmine.createSpy('switchContext'),
+            switchContext: vi.fn(),
             initializeRepo: initializeRepoSpy,
           },
         },
@@ -111,7 +112,7 @@ describe('Workspace Lifecycle Integration', () => {
             preferences: signal(defaultPrefs).asReadonly(),
             isLoading: signal(false).asReadonly(),
             isFirstRun: signal(false).asReadonly(),
-            save: jasmine.createSpy('save').and.returnValue(Promise.resolve()),
+            save: vi.fn().mockReturnValue(Promise.resolve()),
           },
         },
         {
@@ -120,18 +121,18 @@ describe('Workspace Lifecycle Integration', () => {
             isPanelOpen: signal(false).asReadonly(),
             unreadCount: () => 0,
             notifications: signal([]).asReadonly(),
-            togglePanel: jasmine.createSpy('togglePanel'),
-            closePanel: jasmine.createSpy('closePanel'),
-            dismiss: jasmine.createSpy('dismiss'),
-            dismissAll: jasmine.createSpy('dismissAll'),
-            markAllRead: jasmine.createSpy('markAllRead'),
-            add: jasmine.createSpy('add'),
+            togglePanel: vi.fn(),
+            closePanel: vi.fn(),
+            dismiss: vi.fn(),
+            dismissAll: vi.fn(),
+            markAllRead: vi.fn(),
+            add: vi.fn(),
           },
         },
         {
           provide: NOTIFICATION_LISTEN_TOKEN,
-          useValue: jasmine.createSpy('listen').and.returnValue(
-            Promise.resolve(jasmine.createSpy('unlisten'))
+          useValue: vi.fn().mockReturnValue(
+            Promise.resolve(vi.fn())
           ),
         },
       ],

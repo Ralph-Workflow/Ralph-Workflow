@@ -1,3 +1,4 @@
+import 'zone.js';
 import 'zone.js/testing';
 
 const originalWarn = console.warn;

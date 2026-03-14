@@ -1,7 +1,8 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { OnboardingComponent } from './onboarding.component';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { WorkspaceService } from '../../services/workspace.service';
 import { TAURI_INVOKE } from '../../services/tauri.service';
@@ -18,21 +19,21 @@ describe('OnboardingComponent', () => {
     { name: 'OpenCode', binary: 'opencode', installed: false, version: null, auth_status: 'unknown', health: 'not-installed', description: 'OpenCode AI CLI', available_models: [], binary_location: null },
   ];
 
-  const mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+  const mockInvoke = vi.fn().mockImplementation((cmd: string) => {
     if (cmd === 'get_agent_tools') return Promise.resolve(mockTools);
     if (cmd === 'open_workspace') return Promise.resolve({ id: '1', repo_path: '/test', display_name: 'test', last_nav: '', active_run_count: 0 });
     return Promise.resolve(null);
   });
 
   const mockWorkspaceService = {
-    openWorkspace: jasmine.createSpy('openWorkspace').and.returnValue(
+    openWorkspace: vi.fn().mockReturnValue(
       Promise.resolve({ id: '1', path: '/test', label: 'test', activeWorktree: null, runSummary: { running: 0, failed: 0, paused: 0 }, navigationState: null, activeRunCount: 0 }),
     ),
   };
 
   beforeEach(async () => {
-    mockInvoke.calls.reset();
-    (mockWorkspaceService.openWorkspace as jasmine.Spy).calls.reset();
+    mockInvoke.mockClear();
+    (mockWorkspaceService.openWorkspace as ReturnType<typeof vi.fn>).mockClear();
 
     await TestBed.configureTestingModule({
       imports: [OnboardingComponent, RouterModule.forRoot([])],
@@ -72,19 +73,19 @@ describe('OnboardingComponent', () => {
       expect(buttonTexts.some(t => t?.toLowerCase().includes('skip'))).toBe(true);
     });
 
-    it('should advance to step 2 when "Get Started" is clicked', fakeAsync(() => {
+    it('should advance to step 2 when "Get Started" is clicked', async () => {
       fixture.detectChanges();
       const getStartedBtn = Array.from(
         fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
       ).find(b => b.textContent?.trim() === 'Get Started');
       expect(getStartedBtn).not.toBeUndefined();
       getStartedBtn!.click();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       expect(component.currentStep()).toBe(2);
-    }));
+    });
 
-    it('should navigate to "/" when Skip is clicked on step 1', fakeAsync(() => {
+    it('should navigate to "/" when Skip is clicked on step 1', async () => {
       const navigateSpy = spyOn(router, 'navigate');
       fixture.detectChanges();
       const skipBtn = Array.from(
@@ -92,9 +93,9 @@ describe('OnboardingComponent', () => {
       ).find(b => b.textContent?.toLowerCase().includes('skip'));
       expect(skipBtn).not.toBeUndefined();
       skipBtn!.click();
-      tick();
+      await fixture.whenStable();
       expect(navigateSpy).toHaveBeenCalledWith(['/']);
-    }));
+    });
 
     it('should show progress indicator for step 1/3', () => {
       fixture.detectChanges();
@@ -104,54 +105,54 @@ describe('OnboardingComponent', () => {
   });
 
   describe('step 2 - Agent Tools', () => {
-    beforeEach(fakeAsync(() => {
+    beforeEach(async () => {
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
-    }));
+    });
 
     it('should show step 2 content', () => {
       expect(component.currentStep()).toBe(2);
     });
 
-    it('should call getAgentTools on entering step 2', fakeAsync(() => {
+    it('should call getAgentTools on entering step 2', async () => {
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
-      const calledCommands = (mockInvoke.calls.allArgs() as unknown[][]).map(args => args[0]);
+      const calledCommands = mockInvoke.mock.calls.map(args => args[0]);
       expect(calledCommands).toContain('get_agent_tools');
-    }));
+    });
 
-    it('should display agent tools after loading', fakeAsync(() => {
+    it('should display agent tools after loading', async () => {
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const toolItems = fixture.nativeElement.querySelectorAll('.tool-item, .agent-tool');
       expect(toolItems.length).toBeGreaterThan(0);
-    }));
+    });
 
-    it('should show tool health/installed status', fakeAsync(() => {
+    it('should show tool health/installed status', async () => {
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const nativeEl = fixture.nativeElement as HTMLElement;
       // Check that "healthy" or "installed" text appears
       expect(nativeEl.textContent).toMatch(/healthy|installed/i);
-    }));
+    });
 
-    it('should navigate to "/" when Skip is clicked on step 2', fakeAsync(() => {
+    it('should navigate to "/" when Skip is clicked on step 2', async () => {
       const navigateSpy = spyOn(router, 'navigate');
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const skipBtn = Array.from(
         fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
       ).find(b => b.textContent?.toLowerCase().includes('skip'));
       expect(skipBtn).not.toBeUndefined();
       skipBtn!.click();
-      tick();
+      await fixture.whenStable();
       expect(navigateSpy).toHaveBeenCalledWith(['/']);
-    }));
+    });
   });
 
   describe('step 3 - Open Workspace', () => {
@@ -173,7 +174,7 @@ describe('OnboardingComponent', () => {
       expect(openBtn).not.toBeUndefined();
     });
 
-    it('should navigate to "/" when Skip is clicked on step 3', fakeAsync(() => {
+    it('should navigate to "/" when Skip is clicked on step 3', async () => {
       const navigateSpy = spyOn(router, 'navigate');
       fixture.detectChanges();
       const skipBtn = Array.from(
@@ -181,15 +182,15 @@ describe('OnboardingComponent', () => {
       ).find(b => b.textContent?.toLowerCase().includes('skip'));
       expect(skipBtn).not.toBeUndefined();
       skipBtn!.click();
-      tick();
+      await fixture.whenStable();
       expect(navigateSpy).toHaveBeenCalledWith(['/']);
-    }));
+    });
   });
 
   describe('navigation', () => {
-    it('should go back from step 2 to step 1 with Back button', fakeAsync(() => {
+    it('should go back from step 2 to step 1 with Back button', async () => {
       component.goToStep(2);
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const backBtn = Array.from(
         fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
@@ -198,6 +199,6 @@ describe('OnboardingComponent', () => {
       backBtn!.click();
       fixture.detectChanges();
       expect(component.currentStep()).toBe(1);
-    }));
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
@@ -377,7 +377,7 @@ describe('AgentChainsEditorComponent', () => {
     const toml = '[agent_chains]\ndeveloper = ["claude-code"]\n[agent_drains]\ndevelopment = "developer"\n';
     fixture.componentRef.setInput('toml', toml);
 
-    const changeSpy = jasmine.createSpy('tomlChange');
+    const changeSpy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(changeSpy);
     fixture.detectChanges();
 
@@ -406,12 +406,12 @@ describe('AgentChainsEditorComponent', () => {
   it('addChain() emits tomlChange with the new chain', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '');
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.detectChanges();
     fixture.componentInstance.addChain('new-chain');
     expect(spy).toHaveBeenCalled();
-    expect(spy.calls.mostRecent().args[0]).toContain('new-chain');
+    expect(spy.mock.calls[spy.mock.calls.length - 1]![0]).toContain('new-chain');
   });
 
   it('addChain() with duplicate name does not add a duplicate', () => {
@@ -425,7 +425,7 @@ describe('AgentChainsEditorComponent', () => {
   it('addChain() with empty name does nothing', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '');
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.detectChanges();
     fixture.componentInstance.addChain('  ');
@@ -454,7 +454,7 @@ describe('AgentChainsEditorComponent', () => {
   it('removeChain() emits tomlChange', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = []\n');
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.detectChanges();
     fixture.componentInstance.removeChain('developer');
@@ -533,7 +533,7 @@ describe('AgentChainsEditorComponent', () => {
       distance: { x: 0, y: 0 },
       dropPoint: { x: 0, y: 0 },
     } as unknown as CdkDragDrop<string[]>;
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.componentInstance.onAgentDrop('developer', dropEvent);
     const agents = fixture.componentInstance.getChainAgents('developer');
@@ -546,7 +546,7 @@ describe('AgentChainsEditorComponent', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = ["agent-a", "agent-b"]\n');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     const dropEvent = {
       previousIndex: 1,
@@ -562,7 +562,7 @@ describe('AgentChainsEditorComponent', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = ["a", "b"]\n');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     const dropEvent = {
       previousIndex: 1,
@@ -572,7 +572,7 @@ describe('AgentChainsEditorComponent', () => {
     } as unknown as CdkDragDrop<string[]>;
     fixture.componentInstance.onAgentDrop('developer', dropEvent);
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     // b should come before a now
     const bIdx = emittedToml.indexOf('"b"');
     const aIdx = emittedToml.indexOf('"a"');
@@ -627,7 +627,7 @@ describe('AgentChainsEditorComponent', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = ["claude-code"]\n');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.componentInstance.removeAgentFromAllChains('claude-code');
     expect(spy).toHaveBeenCalled();
@@ -685,7 +685,7 @@ describe('AgentChainsEditorComponent', () => {
     // Agent "standalone-agent" is not in any chain
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = ["claude-code"]\n');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     // This agent isn't in chains so it should remove immediately (no confirmation needed)
     fixture.componentInstance.requestRemoveAgent('standalone-agent');
@@ -721,7 +721,7 @@ describe('AgentChainsEditorComponent', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '[agent_chains]\ndeveloper = ["claude-code"]\n');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
     fixture.componentInstance.requestRemoveAgent('claude-code');
     expect(fixture.componentInstance.pendingRemoveAgentName).toBe('claude-code');
@@ -759,13 +759,13 @@ describe('AgentChainsEditorComponent', () => {
     const fixture = TestBed.createComponent(AgentChainsEditorComponent);
     fixture.componentRef.setInput('toml', '');
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.persistAgentDefinition({ name: 'my-agent', tool: 'claude-code', model: 'claude-opus-4' });
 
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).toContain('[agents.my-agent]');
     expect(emittedToml).toContain('tool = "claude-code"');
     expect(emittedToml).toContain('model = "claude-opus-4"');
@@ -776,13 +776,13 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[agent_chains]\ndeveloper = ["claude-code"]\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.persistAgentDefinition({ name: 'new-agent', tool: 'codex', model: '' });
 
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).toContain('[agents.new-agent]');
     // Existing chains still present
     expect(emittedToml).toContain('[agent_chains]');
@@ -794,13 +794,13 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[agents.my-agent]\ntool = "old-tool"\nmodel = "old-model"\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.persistAgentDefinition({ name: 'my-agent', tool: 'new-tool', model: 'new-model' });
 
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).toContain('tool = "new-tool"');
     expect(emittedToml).not.toContain('old-tool');
     // Only one [agents.my-agent] section
@@ -815,13 +815,13 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[agents.my-agent]\ntool = "claude-code"\nmodel = "model-x"\n[agent_chains]\ndeveloper = []\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.removeAgentDefinitionFromToml('my-agent');
 
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).not.toContain('[agents.my-agent]');
     // Other content preserved
     expect(emittedToml).toContain('[agent_chains]');
@@ -832,14 +832,14 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[defaults]\nverbosity = 2\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.removeAgentDefinitionFromToml('nonexistent');
 
     // Should still emit (to allow callers to update consistently)
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).toContain('[defaults]');
   });
 
@@ -850,7 +850,7 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[agents.claude-code]\ntool = "claude-code"\nmodel = "model-x"\n[agent_chains]\ndeveloper = ["claude-code"]\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     // Request and confirm removal
@@ -859,7 +859,7 @@ describe('AgentChainsEditorComponent', () => {
 
     // The last emitted TOML should have no [agents.claude-code] section
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).not.toContain('[agents.claude-code]');
     expect(emittedToml).not.toContain('claude-code');
   });
@@ -869,13 +869,13 @@ describe('AgentChainsEditorComponent', () => {
     const initialToml = '[agents.claude-code]\ntool = "claude-code"\n[agent_chains]\nchain1 = ["claude-code"]\n';
     fixture.componentRef.setInput('toml', initialToml);
     fixture.detectChanges();
-    const spy = jasmine.createSpy('tomlChange');
+    const spy = vi.fn();
     fixture.componentInstance.tomlChange.subscribe(spy);
 
     fixture.componentInstance.removeAgentFromAllChains('claude-code');
 
     expect(spy).toHaveBeenCalled();
-    const emittedToml: string = spy.calls.mostRecent().args[0];
+    const emittedToml: string = spy.mock.calls[spy.mock.calls.length - 1]![0];
     expect(emittedToml).not.toContain('[agents.claude-code]');
   });
 });

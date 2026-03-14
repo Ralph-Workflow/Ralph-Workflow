@@ -15,10 +15,10 @@
         <div
           class="phase-timeline__dot"
           [class.animate-pulse]="item.phase.status === 'active'"
+          [class]="'phase-timeline__dot--' + item.phase.status + ' phase-timeline__dot--' + item.phase.name.toLowerCase()"
           [attr.data-testid]="item.dotTestId"
-          [style]="item.dotStyle"
         >{{ item.dotSymbol }}</div>
-        <div class="phase-timeline__label" [style]="item.labelStyle">
+        <div [class]="'phase-timeline__label phase-timeline__label--' + item.phase.status + ' phase-timeline__label--' + item.phase.name.toLowerCase()">
           {{ item.phase.name }}
         </div>
         @if (item.phase.duration) {
@@ -28,6 +28,9 @@
           >
             {{ item.phase.duration }}
           </div>
+        }
+        @if (item.phase.statusLabel) {
+          <div class="phase-timeline__status-label">{{ item.phase.statusLabel }}</div>
         }
       </div>
       @if (!last) {

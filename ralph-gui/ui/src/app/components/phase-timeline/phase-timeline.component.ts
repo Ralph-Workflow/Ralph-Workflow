@@ -5,6 +5,7 @@ export interface PhaseInfo {
   status: 'pending' | 'active' | 'completed' | 'failed';
   duration?: string; // e.g. "2m 34s"
   summary?: string;
+  statusLabel?: string; // e.g. "Running now", "Waiting", "Failed"
 }
 
 /** Enriched phase data computed for the template — avoids parameterized method calls. */
@@ -12,8 +13,6 @@ export interface PhaseDisplayItem {
   phase: PhaseInfo;
   dotTestId: string;
   dotSymbol: string;
-  dotStyle: string;
-  labelStyle: string;
 }
 
 interface PhaseColorConfig {
@@ -68,8 +67,6 @@ export class PhaseTimelineComponent {
       phase,
       dotTestId: this.getDotTestId(phase),
       dotSymbol: this.getDotSymbol(phase),
-      dotStyle: this.getDotStyle(phase),
-      labelStyle: this.getLabelStyle(phase),
     }))
   );
 
@@ -91,51 +88,6 @@ export class PhaseTimelineComponent {
       case 'pending': return '○';
       case 'active': return '●';
     }
-  }
-
-  getDotStyle(phase: PhaseInfo): string {
-    const cfg = this.getPhaseColor(phase);
-    const isActive = phase.status === 'active';
-    const isCompleted = phase.status === 'completed';
-    const isFailed = phase.status === 'failed';
-    const isPending = phase.status === 'pending';
-
-    let bg = 'var(--bg-raised)';
-    let border = '2px solid var(--border-default)';
-    let color = 'var(--text-muted)';
-
-    if (isActive) {
-      bg = cfg.bg;
-      border = `2px solid ${cfg.color}`;
-      color = cfg.color;
-    } else if (isCompleted) {
-      bg = cfg.bg;
-      border = `2px solid ${cfg.color}`;
-      color = cfg.color;
-    } else if (isFailed) {
-      bg = 'rgba(239,68,68,0.15)';
-      border = '2px solid var(--status-error)';
-      color = 'var(--status-error)';
-    } else if (isPending) {
-      bg = 'var(--bg-raised)';
-      border = '2px solid var(--border-default)';
-      color = 'var(--text-muted)';
-    }
-
-    return `background:${bg};border:${border};color:${color};`;
-  }
-
-  getLabelStyle(phase: PhaseInfo): string {
-    const cfg = this.getPhaseColor(phase);
-    let color = 'var(--text-muted)';
-
-    if (phase.status === 'active' || phase.status === 'completed') {
-      color = cfg.color;
-    } else if (phase.status === 'failed') {
-      color = 'var(--status-error)';
-    }
-
-    return `color:${color};`;
   }
 
   onPhaseClick(phase: PhaseInfo): void {

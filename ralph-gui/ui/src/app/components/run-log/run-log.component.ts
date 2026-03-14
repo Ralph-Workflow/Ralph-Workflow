@@ -16,6 +16,7 @@ import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrollin
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import type { RunLogLine } from '../../types';
 import { TauriService } from '../../services/tauri.service';
+import { LogLevel, classifyLogLevel } from '../../pipes/format-duration.pipe';
 
 // Injection token for the Tauri listen function — allows mocking in tests.
 export const LISTEN_TOKEN = new InjectionToken<typeof tauriListen>('LISTEN_TOKEN', {
@@ -133,6 +134,7 @@ export class RunLogComponent implements OnInit, OnDestroy {
   readonly logLines = signal<string[]>([]);
   readonly autoScroll = signal(true);
   readonly searchTerm = signal('');
+  readonly selectedLogLevel = signal<LogLevel>('all');
 
   /** Exposed for template use: fixed line height for virtual scroller. */
   readonly itemSize = VIRTUAL_SCROLL_ITEM_SIZE;
@@ -149,9 +151,21 @@ export class RunLogComponent implements OnInit, OnDestroy {
 
   readonly filteredLines = computed(() => {
     const term = this.searchTerm().toLowerCase();
+    const level = this.selectedLogLevel();
     const lines = this.logLines();
-    if (!term) return lines;
-    return lines.filter(line => line.toLowerCase().includes(term));
+
+    return lines.filter(line => {
+      // First, filter by log level
+      if (level !== 'all') {
+        const lineLevel = classifyLogLevel(line);
+        // Include lines at or above the selected level (error > warning > info)
+        if (level === 'error' && lineLevel !== 'error') return false;
+        if (level === 'warning' && lineLevel === 'info') return false;
+      }
+      // Then, filter by search term
+      if (!term) return true;
+      return line.toLowerCase().includes(term);
+    });
   });
 
   readonly parsedLines = computed((): SafeHtml[] => {
@@ -242,5 +256,9 @@ export class RunLogComponent implements OnInit, OnDestroy {
     if (!isAtBottom && this.autoScroll()) {
       this.autoScroll.set(false);
     }
+  }
+
+  onLogLevelChange(value: string): void {
+    this.selectedLogLevel.set(value as LogLevel);
   }
 }

@@ -43,12 +43,15 @@ export class ChangesViewerComponent implements OnInit {
   readonly copySuccess = signal(false);
   /** Whether side-by-side view is active (default: unified). */
   readonly sideBySide = signal(false);
+  /** Track expanded state of each directory group. */
+  readonly expandedGroups = signal<Set<string>>(new Set());
 
   readonly files = computed(() => this.runChanges()?.files ?? []);
 
   /** Files grouped by parent directory for the file tree layout. */
   readonly fileGroups = computed<FileGroup[]>(() => {
     const files = this.files();
+    const expanded = this.expandedGroups();
     const groupMap = new Map<string, FileDiff[]>();
 
     for (const file of files) {
@@ -62,7 +65,7 @@ export class ChangesViewerComponent implements OnInit {
     return Array.from(groupMap.entries()).map(([directory, groupFiles]) => ({
       directory,
       files: groupFiles,
-      expanded: true,
+      expanded: expanded.has(directory) || expanded.size === 0, // Default all expanded on first load
     }));
   });
 
@@ -180,6 +183,23 @@ export class ChangesViewerComponent implements OnInit {
 
   toggleViewMode(): void {
     this.sideBySide.update(v => !v);
+  }
+
+  toggleGroup(directory: string): void {
+    this.expandedGroups.update(expanded => {
+      const newSet = new Set(expanded);
+      if (newSet.has(directory)) {
+        newSet.delete(directory);
+      } else {
+        newSet.add(directory);
+      }
+      return newSet;
+    });
+  }
+
+  getBasename(path: string): string {
+    const parts = path.split('/');
+    return parts[parts.length - 1] ?? path;
   }
 
   /**

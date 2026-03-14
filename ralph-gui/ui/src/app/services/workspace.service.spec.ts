@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorkspaceService } from './workspace.service';
 import { TAURI_INVOKE } from './tauri.service';
@@ -81,7 +81,7 @@ describe('WorkspaceService', () => {
   let service: WorkspaceService;
   let mockInvoke: ReturnType<typeof vi.fn>;
 
-  beforeEach(fakeAsync(() => {
+  beforeEach(async () => {
     mockInvoke = createMockInvoke([mockEntry1]);
 
     TestBed.configureTestingModule({
@@ -91,8 +91,9 @@ describe('WorkspaceService', () => {
       ],
     });
     service = TestBed.inject(WorkspaceService);
-    tick();
-  }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 
   it('should be created', () => {
     expect(service).toBeTruthy();
@@ -118,7 +119,7 @@ describe('WorkspaceService', () => {
   });
 
   describe('openWorkspace', () => {
-    it('should call backend and add workspace to list', fakeAsync(async () => {
+    it('should call backend and add workspace to list', async () => {
       const newEntry: WorkspaceEntry = {
         id: 'ws-new',
         repo_path: '/new/repo',
@@ -133,13 +134,13 @@ describe('WorkspaceService', () => {
       });
 
       const ws = await service.openWorkspace('/new/repo');
-      tick();
+      await Promise.resolve();
 
       expect(mockInvoke).toHaveBeenCalledWith('open_workspace', { path: '/new/repo' });
       expect(ws.id).toBe('ws-new');
-    }));
+    });
 
-    it('should set opened workspace as active', fakeAsync(async () => {
+    it('should set opened workspace as active', async () => {
       const newEntry: WorkspaceEntry = {
         id: 'ws-new',
         repo_path: '/new/repo',
@@ -154,14 +155,14 @@ describe('WorkspaceService', () => {
       });
 
       await service.openWorkspace('/new/repo');
-      tick();
+      await Promise.resolve();
 
       expect(service.activeWorkspaceId()).toBe('ws-new');
-    }));
+    });
   });
 
   describe('closeWorkspace', () => {
-    it('should call backend and remove workspace from list', fakeAsync(async () => {
+    it('should call backend and remove workspace from list', async () => {
       const safeEntry: WorkspaceEntry = { ...mockEntry1, active_run_count: 0 };
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([safeEntry]);
@@ -176,16 +177,17 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       await svc.closeWorkspace('ws-1');
-      tick();
+      await Promise.resolve();
 
       expect(mockInvoke).toHaveBeenCalledWith('close_workspace', { id: 'ws-1' });
       expect(svc.workspaces().length).toBe(0);
-    }));
+    });
 
-    it('should throw when workspace has active runs', fakeAsync(async () => {
+    it('should throw when workspace has active runs', async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
         return Promise.resolve(undefined);
@@ -198,12 +200,13 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       await expect(async () => svc.closeWorkspace('ws-2')).rejects.toThrow(/active run/i);
-    }));
+    });
 
-    it('should bypass active-runs guard when force=true', fakeAsync(async () => {
+    it('should bypass active-runs guard when force=true', async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
         if (cmd === 'close_workspace') return Promise.resolve(undefined);
@@ -217,13 +220,14 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       await svc.closeWorkspace('ws-2', true);
       expect(svc.workspaces().length).toBe(0);
-    }));
+    });
 
-    it('should surface backend error on close rejection', fakeAsync(async () => {
+    it('should surface backend error on close rejection', async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         if (cmd === 'close_workspace') return Promise.reject(new Error('Cannot close: backend error'));
@@ -237,10 +241,11 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       await expect(async () => svc.closeWorkspace('ws-1')).rejects.toThrow(/backend error/i);
-    }));
+    });
   });
 
   describe('switchWorkspace', () => {
@@ -264,19 +269,19 @@ describe('WorkspaceService', () => {
   });
 
   describe('reorderWorkspaces', () => {
-    it('should call backend with ordered ids', fakeAsync(async () => {
+    it('should call backend with ordered ids', async () => {
       await service.reorderWorkspaces(['ws-2', 'ws-1']);
-      tick();
+      await Promise.resolve();
       expect(mockInvoke).toHaveBeenCalledWith('reorder_workspaces', { ids: ['ws-2', 'ws-1'] });
-    }));
+    });
   });
 
   describe('getRecentWorkspaces', () => {
-    it('should return recent paths from backend', fakeAsync(async () => {
+    it('should return recent paths from backend', async () => {
       const result = await service.getRecentWorkspaces();
-      tick();
+      await Promise.resolve();
       expect(result).toEqual(['/path/to/repo1']);
-    }));
+    });
   });
 
   describe('updateWorkspaceRunSummary', () => {
@@ -293,7 +298,7 @@ describe('WorkspaceService', () => {
   });
 
   describe('startup workspace restoration', () => {
-    it('should load workspaces from backend when restoreWorkspaces is true', fakeAsync(() => {
+    it('should load workspaces from backend when restoreWorkspaces is true', async () => {
       const invoke = createMockInvoke([mockEntry1, mockEntry2]);
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
@@ -303,14 +308,15 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(svc.workspaces().length).toBe(2);
       const calls = invoke.mock.calls.map(args => args[0]);
       expect(calls).toContain('get_workspaces');
-    }));
+    });
 
-    it('should NOT load workspaces from backend when restoreWorkspaces is false', fakeAsync(() => {
+    it('should NOT load workspaces from backend when restoreWorkspaces is false', async () => {
       const invoke = createMockInvoke([mockEntry1, mockEntry2]);
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
@@ -320,12 +326,13 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(svc.workspaces().length).toBe(0);
-    }));
+    });
 
-    it('should auto-activate first workspace when restoring', fakeAsync(() => {
+    it('should auto-activate first workspace when restoring', async () => {
       const invoke = createMockInvoke([mockEntry1, mockEntry2]);
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
@@ -335,12 +342,13 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(svc.activeWorkspaceId()).toBe('ws-1');
-    }));
+    });
 
-    it('should handle backend error gracefully and return empty workspaces', fakeAsync(() => {
+    it('should handle backend error gracefully and return empty workspaces', async () => {
       const failingInvoke = vi.fn().mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.reject(new Error('Backend unreachable'));
         return Promise.resolve(undefined);
@@ -353,15 +361,16 @@ describe('WorkspaceService', () => {
         ],
       });
       const svc = TestBed.inject(WorkspaceService);
-      tick();
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(svc.workspaces().length).toBe(0);
       expect(svc.isLoading()).toBe(false);
-    }));
+    });
   });
 
   describe('openWorkspace - duplicate prevention', () => {
-    it('should switch to existing workspace instead of creating duplicate when same path is opened', fakeAsync(async () => {
+    it('should switch to existing workspace instead of creating duplicate when same path is opened', async () => {
       expect(service.workspaces().length).toBe(1);
 
       const existingEntry: WorkspaceEntry = {
@@ -378,13 +387,13 @@ describe('WorkspaceService', () => {
       });
 
       await service.openWorkspace('/path/to/repo1');
-      tick();
+      await Promise.resolve();
 
       expect(service.workspaces().length).toBe(1);
       expect(service.activeWorkspaceId()).toBe('ws-1');
-    }));
+    });
 
-    it('should create new workspace when path is not already open', fakeAsync(async () => {
+    it('should create new workspace when path is not already open', async () => {
       expect(service.workspaces().length).toBe(1);
 
       const newEntry: WorkspaceEntry = {
@@ -401,10 +410,10 @@ describe('WorkspaceService', () => {
       });
 
       await service.openWorkspace('/path/to/new-repo');
-      tick();
+      await Promise.resolve();
 
       expect(service.workspaces().length).toBe(2);
       expect(service.activeWorkspaceId()).toBe('ws-new');
-    }));
+    });
   });
 });

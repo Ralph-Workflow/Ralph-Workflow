@@ -1,4 +1,5 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WelcomeComponent } from './welcome.component';
 import { WorkspaceService } from '../../services/workspace.service';
 import { TauriService, TAURI_INVOKE } from '../../services/tauri.service';
@@ -8,36 +9,43 @@ import type { Workspace } from '../../services/workspace.service';
 describe('WelcomeComponent', () => {
   let component: WelcomeComponent;
   let fixture: ComponentFixture<WelcomeComponent>;
-  let mockWorkspaceService: jasmine.SpyObj<WorkspaceService>;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockWorkspaceService: ReturnType<typeof createMockWorkspaceService>;
+  let mockTauriService: ReturnType<typeof createMockTauriService>;
+
+  function createMockWorkspaceService() {
+    return {
+      openWorkspace: vi.fn().mockReturnValue(
+        Promise.resolve({
+          id: 'ws-new',
+          path: '/home/user/projects/repo1',
+          label: 'repo1',
+          activeWorktree: null,
+          runSummary: { running: 0, failed: 0, paused: 0 },
+          navigationState: null,
+          activeRunCount: 0,
+        }),
+      ),
+      getRecentWorkspaces: vi.fn().mockReturnValue(
+        Promise.resolve(['/home/user/projects/repo1', '/home/user/projects/repo2']),
+      ),
+      workspaces: signal<Workspace[]>([]),
+      activeWorkspaceId: signal<string | null>(null),
+      activeWorkspace: signal<Workspace | null>(null),
+      isLoading: signal<boolean>(false),
+    };
+  }
+
+  function createMockTauriService() {
+    return {
+      openDirectoryDialog: vi.fn().mockReturnValue(Promise.resolve(null)),
+    };
+  }
 
   beforeEach(async () => {
-    mockWorkspaceService = jasmine.createSpyObj(
-      'WorkspaceService',
-      ['openWorkspace', 'getRecentWorkspaces'],
-      {
-        workspaces: signal<Workspace[]>([]),
-        activeWorkspaceId: signal<string | null>(null),
-        activeWorkspace: signal<Workspace | null>(null),
-        isLoading: signal<boolean>(false),
-      },
-    );
-    mockWorkspaceService.getRecentWorkspaces.and.returnValue(
-      Promise.resolve(['/home/user/projects/repo1', '/home/user/projects/repo2']),
-    );
-    mockWorkspaceService.openWorkspace.and.returnValue(
-      Promise.resolve({
-        id: 'ws-new', path: '/home/user/projects/repo1',
-        label: 'repo1', activeWorktree: null,
-        runSummary: { running: 0, failed: 0, paused: 0 },
-        navigationState: null, activeRunCount: 0,
-      }),
-    );
+    mockWorkspaceService = createMockWorkspaceService();
+    mockTauriService = createMockTauriService();
 
-    mockTauriService = jasmine.createSpyObj('TauriService', ['openDirectoryDialog']);
-    mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve(null));
-
-    const mockInvoke = jasmine.createSpy('invoke').and.returnValue(Promise.resolve([]));
+    const mockInvoke = vi.fn().mockReturnValue(Promise.resolve([]));
 
     await TestBed.configureTestingModule({
       imports: [WelcomeComponent],
@@ -57,62 +65,63 @@ describe('WelcomeComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should load recent workspaces on init', fakeAsync(() => {
+  it('should load recent workspaces on init', async () => {
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(mockWorkspaceService.getRecentWorkspaces).toHaveBeenCalled();
     expect(component.recentWorkspaces().length).toBe(2);
-  }));
+  });
 
-  it('should render recent workspaces list', fakeAsync(() => {
+  it('should render recent workspaces list', async () => {
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const items = fixture.nativeElement.querySelectorAll('.recent-item');
     expect(items.length).toBe(2);
     expect(items[0].textContent).toContain('repo1');
-  }));
+  });
 
-  it('should open workspace dialog on button click', fakeAsync(async () => {
-    mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve('/new/path'));
+  it('should open workspace dialog on button click', async () => {
+    mockTauriService.openDirectoryDialog.mockReturnValue(Promise.resolve('/new/path'));
 
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
 
     const btn = fixture.nativeElement.querySelector('.open-workspace-btn');
     btn.click();
 
     await fixture.whenStable();
-    tick();
+    await fixture.whenStable();
 
     expect(mockTauriService.openDirectoryDialog).toHaveBeenCalled();
     expect(mockWorkspaceService.openWorkspace).toHaveBeenCalledWith('/new/path');
-  }));
+  });
 
-  it('should open recent workspace on item click', fakeAsync(async () => {
+  it('should open recent workspace on item click', async () => {
     fixture.detectChanges();
-    tick();
+    await fixture.whenStable();
     fixture.detectChanges();
 
     const item = fixture.nativeElement.querySelector('.recent-item');
     item.click();
 
     await fixture.whenStable();
-    tick();
+    await fixture.whenStable();
 
     expect(mockWorkspaceService.openWorkspace).toHaveBeenCalledWith(
       '/home/user/projects/repo1',
     );
-  }));
+  });
 
   it('should show error message on failed open', async () => {
-    mockTauriService.openDirectoryDialog.and.resolveTo('/bad/path');
-    // The component's try/catch handles this rejection; return a pre-resolved rejection
-    mockWorkspaceService.openWorkspace.and.callFake(() =>
-      Promise.resolve().then(() => { throw new Error('Not a git repo'); }),
+    mockTauriService.openDirectoryDialog.mockResolvedValue('/bad/path');
+    mockWorkspaceService.openWorkspace.mockImplementation(() =>
+      Promise.resolve().then(() => {
+        throw new Error('Not a git repo');
+      }),
     );
 
     fixture.detectChanges();

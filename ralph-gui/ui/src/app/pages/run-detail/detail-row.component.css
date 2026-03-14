@@ -1,0 +1,34 @@
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-row__label {
+  width: 160px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  padding-top: 1px;
+}
+
+.detail-row__value {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  word-break: break-all;
+}
+
+.detail-row__value--mono {
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.detail-row__value:empty::before {
+  content: '—';
+  color: var(--text-muted);
+}

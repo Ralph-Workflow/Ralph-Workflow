@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { RouterTestingModule } from '@angular/router/testing';
 import { PreferencesComponent } from './preferences.component';
@@ -106,85 +106,85 @@ describe('PreferencesComponent', () => {
   });
 
   describe('field changes trigger save', () => {
-    it('should call save when logAutoscroll toggle changes', fakeAsync(() => {
+    it('should call save when logAutoscroll toggle changes', async () => {
       component.updateSession('logAutoscroll', false);
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({
           session: jasmine.objectContaining({ logAutoscroll: false }),
         })
       );
-    }));
+    });
 
-    it('should call save when confirmCancel toggle changes', fakeAsync(() => {
+    it('should call save when confirmCancel toggle changes', async () => {
       component.updateSession('confirmCancel', false);
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({
           session: jasmine.objectContaining({ confirmCancel: false }),
         })
       );
-    }));
+    });
 
-    it('should call save when desktopNotifications toggle changes', fakeAsync(() => {
+    it('should call save when desktopNotifications toggle changes', async () => {
       component.updateNotification('desktopNotifications', true);
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({
           notifications: jasmine.objectContaining({ desktopNotifications: true }),
         })
       );
-    }));
+    });
 
-    it('should call save when restoreWorkspaces toggle changes', fakeAsync(() => {
+    it('should call save when restoreWorkspaces toggle changes', async () => {
       component.updateSession('restoreWorkspaces', false);
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({
           session: jasmine.objectContaining({ restoreWorkspaces: false }),
         })
       );
-    }));
+    });
 
-    it('should call save when fontSize changes', fakeAsync(() => {
+    it('should call save when fontSize changes', async () => {
       component.updatePref('fontSize', 16);
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({ fontSize: 16 })
       );
-    }));
+    });
 
-    it('should call save when theme changes', fakeAsync(() => {
+    it('should call save when theme changes', async () => {
       component.updatePref('theme', 'dark');
-      tick();
+      await fixture.whenStable();
       expect(mockPreferencesService.save).toHaveBeenCalledWith(
         jasmine.objectContaining({ theme: 'dark' })
       );
-    }));
+    });
 
-    it('should update localPrefs immediately on change', fakeAsync(() => {
+    it('should update localPrefs immediately on change', async () => {
       component.updatePref('fontSize', 16);
-      tick();
+      await fixture.whenStable();
       expect(component.localPrefs().fontSize).toBe(16);
-    }));
+    });
 
-    it('should update session in localPrefs on updateSession', fakeAsync(() => {
+    it('should update session in localPrefs on updateSession', async () => {
       component.updateSession('logAutoscroll', false);
-      tick();
+      await fixture.whenStable();
       expect(component.localPrefs().session.logAutoscroll).toBe(false);
-    }));
+    });
 
-    it('should update notifications in localPrefs on updateNotification', fakeAsync(() => {
+    it('should update notifications in localPrefs on updateNotification', async () => {
       component.updateNotification('desktopNotifications', true);
-      tick();
+      await fixture.whenStable();
       expect(component.localPrefs().notifications.desktopNotifications).toBe(true);
-    }));
+    });
 
-    it('should update triggers in localPrefs on updateTrigger', fakeAsync(() => {
+    it('should update triggers in localPrefs on updateTrigger', async () => {
       component.updateTrigger('notifyCompletion', false);
-      tick();
+      await fixture.whenStable();
       expect(component.localPrefs().notifications.triggers.notifyCompletion).toBe(false);
-    }));
+    });
   });
 
   describe('reset to defaults', () => {
@@ -193,28 +193,28 @@ describe('PreferencesComponent', () => {
       expect(compiled.textContent).toContain('Reset');
     });
 
-    it('should revert localPrefs to defaults when reset is called', fakeAsync(() => {
+    it('should revert localPrefs to defaults when reset is called', async () => {
       component.updatePref('fontSize', 18);
-      tick();
+      await fixture.whenStable();
 
       component.resetToDefaults();
-      tick();
+      await fixture.whenStable();
 
       expect(component.localPrefs().fontSize).toBe(DEFAULT_PREFS.fontSize);
       expect(component.localPrefs().session.logAutoscroll).toBe(DEFAULT_PREFS.session.logAutoscroll);
       expect(component.localPrefs().accentColor).toBe(DEFAULT_PREFS.accentColor);
-    }));
+    });
 
-    it('should call save with default values when reset is clicked', fakeAsync(() => {
+    it('should call save with default values when reset is clicked', async () => {
       component.updatePref('fontSize', 18);
-      tick();
+      await fixture.whenStable();
 
       mockPreferencesService.save.calls.reset();
       component.resetToDefaults();
-      tick();
+      await fixture.whenStable();
 
       expect(mockPreferencesService.save).toHaveBeenCalledWith(DEFAULT_PREFS);
-    }));
+    });
   });
 
   describe('keyboard shortcuts section', () => {

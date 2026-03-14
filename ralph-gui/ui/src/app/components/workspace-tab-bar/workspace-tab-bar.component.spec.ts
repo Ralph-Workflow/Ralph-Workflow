@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorkspaceTabBarComponent } from './workspace-tab-bar.component';
 import { WorkspaceService } from '../../services/workspace.service';
@@ -265,7 +265,7 @@ describe('WorkspaceTabBarComponent', () => {
   });
 
   describe('close with active runs', () => {
-    it('should show confirmation dialog (not window.confirm) when closing workspace with active runs', fakeAsync(async () => {
+    it('should show confirmation dialog (not window.confirm) when closing workspace with active runs', async () => {
       const ws1 = createMockWorkspace({
         id: 'ws-1',
         label: 'busy-repo',
@@ -277,16 +277,16 @@ describe('WorkspaceTabBarComponent', () => {
       // Close button identified by aria-label after Tailwind CSS conversion.
       const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
       closeBtn.click();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       // Should show the CancelConfirmation dialog, NOT call closeWorkspace yet
       const dialog = fixture.nativeElement.querySelector('app-cancel-confirmation');
       expect(dialog).toBeTruthy();
       expect(mockWorkspaceService.closeWorkspace).not.toHaveBeenCalled();
-    }));
+    });
 
-    it('should call closeWorkspace with force=true when confirmation is confirmed', fakeAsync(async () => {
+    it('should call closeWorkspace with force=true when confirmation is confirmed', async () => {
       const ws1 = createMockWorkspace({
         id: 'ws-1',
         label: 'busy-repo',
@@ -298,17 +298,17 @@ describe('WorkspaceTabBarComponent', () => {
       // Trigger close which shows dialog
       const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
       closeBtn.click();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       // Simulate confirmation — should call with force=true to bypass active-runs guard.
       component.onCloseConfirmed(true, 'ws-1');
-      tick();
+      await fixture.whenStable();
 
       expect(mockWorkspaceService.closeWorkspace).toHaveBeenCalledWith('ws-1', true);
-    }));
+    });
 
-    it('should NOT call closeWorkspace when confirmation is cancelled', fakeAsync(async () => {
+    it('should NOT call closeWorkspace when confirmation is cancelled', async () => {
       const ws1 = createMockWorkspace({
         id: 'ws-1',
         label: 'busy-repo',
@@ -319,16 +319,16 @@ describe('WorkspaceTabBarComponent', () => {
 
       const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
       closeBtn.click();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       component.onCloseConfirmed(false, 'ws-1');
-      tick();
+      await fixture.whenStable();
 
       expect(mockWorkspaceService.closeWorkspace).not.toHaveBeenCalled();
-    }));
+    });
 
-    it('should use notification service instead of alert on error', fakeAsync(async () => {
+    it('should use notification service instead of alert on error', async () => {
       const ws1 = createMockWorkspace({ id: 'ws-1', label: 'repo' });
       mockWorkspaceService.workspaces.set([ws1]);
       mockWorkspaceService.closeWorkspace.mockReturnValue(Promise.reject(new Error('Backend fail')));
@@ -336,10 +336,10 @@ describe('WorkspaceTabBarComponent', () => {
 
       const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
       closeBtn.click();
-      tick();
+      await fixture.whenStable();
 
       expect(mockNotificationService.add).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
-    }));
+    });
   });
 
   describe('drag-drop reordering', () => {

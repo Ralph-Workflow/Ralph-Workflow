@@ -182,52 +182,50 @@ describe('PhaseTimelineComponent', () => {
     });
   });
 
-  describe('phase-specific colors in dot style', () => {
-    it('should use purple color (--phase-plan) for Plan phase when completed', () => {
-      const { component } = createComponent([
+  describe('phase-specific colors in CSS classes', () => {
+    it('should apply phase-plan class for Plan phase when completed', () => {
+      const { fixture } = createComponent([
         { name: 'Plan', status: 'completed' },
       ]);
-      const planPhase: PhaseInfo = { name: 'Plan', status: 'completed' };
-      const style = component.getDotStyle(planPhase);
-      // Should reference phase-plan CSS variable
-      expect(style).toContain('var(--phase-plan)');
+      const el: HTMLElement = fixture.nativeElement;
+      const dot = el.querySelector('[data-testid="phase-dot-completed"]');
+      expect(dot?.classList).toContain('phase-timeline__dot--plan');
     });
 
-    it('should use blue color (--phase-develop) for Develop phase when active', () => {
-      const { component } = createComponent([
+    it('should apply phase-develop class for Develop phase when active', () => {
+      const { fixture } = createComponent([
         { name: 'Develop', status: 'active' },
       ]);
-      const developPhase: PhaseInfo = { name: 'Develop', status: 'active' };
-      const style = component.getDotStyle(developPhase);
-      expect(style).toContain('var(--phase-develop)');
+      const el: HTMLElement = fixture.nativeElement;
+      const dot = el.querySelector('[data-testid="phase-dot-active"]');
+      expect(dot?.classList).toContain('phase-timeline__dot--develop');
     });
 
-    it('should use amber color (--phase-review) for Review phase when completed', () => {
-      const { component } = createComponent([
+    it('should apply phase-review class for Review phase when completed', () => {
+      const { fixture } = createComponent([
         { name: 'Review', status: 'completed' },
       ]);
-      const reviewPhase: PhaseInfo = { name: 'Review', status: 'completed' };
-      const style = component.getDotStyle(reviewPhase);
-      expect(style).toContain('var(--phase-review)');
+      const el: HTMLElement = fixture.nativeElement;
+      const dot = el.querySelector('[data-testid="phase-dot-completed"]');
+      expect(dot?.classList).toContain('phase-timeline__dot--review');
     });
 
-    it('should use green color (--phase-commit) for Commit phase when completed', () => {
-      const { component } = createComponent([
+    it('should apply phase-commit class for Commit phase when completed', () => {
+      const { fixture } = createComponent([
         { name: 'Commit', status: 'completed' },
       ]);
-      const commitPhase: PhaseInfo = { name: 'Commit', status: 'completed' };
-      const style = component.getDotStyle(commitPhase);
-      expect(style).toContain('var(--phase-commit)');
+      const el: HTMLElement = fixture.nativeElement;
+      const dot = el.querySelector('[data-testid="phase-dot-completed"]');
+      expect(dot?.classList).toContain('phase-timeline__dot--commit');
     });
 
-    it('should use muted color for pending phases', () => {
-      const { component } = createComponent([
+    it('should apply pending status class for pending phases', () => {
+      const { fixture } = createComponent([
         { name: 'Plan', status: 'pending' },
       ]);
-      const pendingPhase: PhaseInfo = { name: 'Plan', status: 'pending' };
-      const style = component.getDotStyle(pendingPhase);
-      // Pending phases use default muted colors, not phase-specific
-      expect(style).toContain('var(--border-default)');
+      const el: HTMLElement = fixture.nativeElement;
+      const dot = el.querySelector('[data-testid="phase-dot-pending"]');
+      expect(dot?.classList).toContain('phase-timeline__dot--pending');
     });
   });
 

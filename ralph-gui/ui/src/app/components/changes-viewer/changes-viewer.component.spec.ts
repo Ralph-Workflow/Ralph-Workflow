@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ChangesViewerComponent } from './changes-viewer.component';
@@ -76,33 +76,33 @@ describe('ChangesViewerComponent', () => {
   });
 
   describe('file tree renders from input data', () => {
-    it('should render file list from RunChanges.files', fakeAsync(async () => {
+    it('should render file list from RunChanges.files', async () => {
       const { fixture } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
       expect(el.textContent).toContain('src/main.rs');
       expect(el.textContent).toContain('src/lib.rs');
-    }));
+    });
 
-    it('should show additions and deletions counts per file', fakeAsync(async () => {
+    it('should show additions and deletions counts per file', async () => {
       const { fixture } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
       // main.rs has +5 -2
       expect(el.textContent).toContain('+5');
       expect(el.textContent).toContain('-2');
-    }));
+    });
 
-    it('should show summary bar with total additions and deletions', fakeAsync(async () => {
+    it('should show summary bar with total additions and deletions', async () => {
       const { fixture } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
@@ -110,41 +110,41 @@ describe('ChangesViewerComponent', () => {
       expect(summaryBar).toBeTruthy();
       expect(summaryBar?.textContent).toContain('+6');
       expect(summaryBar?.textContent).toContain('-2');
-    }));
+    });
 
-    it('should show total files changed in summary', fakeAsync(async () => {
+    it('should show total files changed in summary', async () => {
       const { fixture } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
       const summaryBar = el.querySelector('[data-testid="changes-summary"]');
       expect(summaryBar?.textContent).toContain('2');
-    }));
+    });
   });
 
   describe('file selection and diff view', () => {
-    it('should select first file by default after loading', fakeAsync(async () => {
+    it('should select first file by default after loading', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       expect(component.selectedFile()).toBe(MOCK_FILE_DIFF_A);
-    }));
+    });
 
-    it('should update selected file when another is clicked', fakeAsync(async () => {
+    it('should update selected file when another is clicked', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       component.selectFile(MOCK_FILE_DIFF_B);
       fixture.detectChanges();
 
       expect(component.selectedFile()).toBe(MOCK_FILE_DIFF_B);
-    }));
+    });
   });
 
   describe('diff line coloring', () => {
@@ -184,19 +184,19 @@ describe('ChangesViewerComponent', () => {
       expect(typeof component.copyAsPatch).toBe('function');
     });
 
-    it('should call navigator.clipboard.writeText with all diff_text when copying', fakeAsync(async () => {
+    it('should call navigator.clipboard.writeText with all diff_text when copying', async () => {
       const clipboardSpy = vi.spyOn(navigator.clipboard, 'writeText').mockReturnValue(Promise.resolve());
 
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       await component.copyAsPatch();
 
       const expectedText = MOCK_FILE_DIFF_A.diff_text + '\n' + MOCK_FILE_DIFF_B.diff_text;
       expect(clipboardSpy).toHaveBeenCalledWith(expectedText);
-    }));
+    });
   });
 
   describe('iteration filter', () => {
@@ -206,53 +206,53 @@ describe('ChangesViewerComponent', () => {
       expect(component.selectedIteration()).toBeNull();
     });
 
-    it('should refetch changes when iteration changes', fakeAsync(async () => {
+    it('should refetch changes when iteration changes', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick(); // initial load
+      await fixture.whenStable();
 
       const callCountBefore = tauriInvokeSpy.mock.calls.length;
       component.setIteration(2);
-      tick();
+      await fixture.whenStable();
 
       expect(tauriInvokeSpy.mock.calls.length).toBeGreaterThan(callCountBefore);
-    }));
+    });
   });
 
   describe('file tree grouping by directory', () => {
-    it('should group files by their parent directory', fakeAsync(async () => {
+    it('should group files by their parent directory', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       // Both files are in 'src/' directory
       const groups = component.fileGroups();
       expect(groups.length).toBe(1);
       expect(groups[0]?.directory).toBe('src');
-    }));
+    });
 
-    it('should include all files in the correct group', fakeAsync(async () => {
+    it('should include all files in the correct group', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const groups = component.fileGroups();
       expect(groups[0]?.files.length).toBe(2);
-    }));
+    });
   });
 
   describe('filterIteration input', () => {
-    it('should pre-select filter iteration when filterIteration input is set', fakeAsync(async () => {
+    it('should pre-select filter iteration when filterIteration input is set', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.componentRef.setInput('filterIteration', 2);
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       expect(component.selectedIteration()).toBe(2);
-    }));
+    });
   });
 
   describe('unified/side-by-side toggle', () => {
@@ -283,21 +283,21 @@ describe('ChangesViewerComponent', () => {
       expect(component.sideBySide()).toBe(false);
     });
 
-    it('should render the toggle button in the summary bar', fakeAsync(async () => {
+    it('should render the toggle button in the summary bar', async () => {
       const { fixture } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       const el: HTMLElement = fixture.nativeElement;
       const toggleBtn = el.querySelector('[data-testid="view-mode-toggle"]');
       expect(toggleBtn).toBeTruthy();
-    }));
+    });
 
-    it('should show "Side-by-side" label when in unified mode', fakeAsync(async () => {
+    it('should show "Side-by-side" label when in unified mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       // Default unified mode
@@ -305,12 +305,12 @@ describe('ChangesViewerComponent', () => {
       const el: HTMLElement = fixture.nativeElement;
       const toggleBtn = el.querySelector('[data-testid="view-mode-toggle"]');
       expect(toggleBtn?.textContent?.trim()).toBe('Side-by-side');
-    }));
+    });
 
-    it('should show "Unified" label when in side-by-side mode', fakeAsync(async () => {
+    it('should show "Unified" label when in side-by-side mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       component.toggleViewMode();
@@ -320,12 +320,12 @@ describe('ChangesViewerComponent', () => {
       const el: HTMLElement = fixture.nativeElement;
       const toggleBtn = el.querySelector('[data-testid="view-mode-toggle"]');
       expect(toggleBtn?.textContent?.trim()).toBe('Unified');
-    }));
+    });
 
-    it('should show unified diff panel when in unified mode', fakeAsync(async () => {
+    it('should show unified diff panel when in unified mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       expect(component.sideBySide()).toBe(false);
@@ -334,12 +334,12 @@ describe('ChangesViewerComponent', () => {
       const sideBySideView = el.querySelector('[data-testid="diff-side-by-side"]');
       expect(unifiedView).toBeTruthy();
       expect(sideBySideView).toBeFalsy();
-    }));
+    });
 
-    it('should show side-by-side panels when in side-by-side mode', fakeAsync(async () => {
+    it('should show side-by-side panels when in side-by-side mode', async () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
       fixture.detectChanges();
 
       component.toggleViewMode();
@@ -351,6 +351,6 @@ describe('ChangesViewerComponent', () => {
       const sideBySideView = el.querySelector('[data-testid="diff-side-by-side"]');
       expect(unifiedView).toBeFalsy();
       expect(sideBySideView).toBeTruthy();
-    }));
+    });
   });
 });

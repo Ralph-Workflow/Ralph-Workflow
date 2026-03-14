@@ -115,11 +115,62 @@
   gap: 1px;
 }
 
+/* Directory group */
+.changes-file-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.changes-file-group__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  text-align: left;
+  width: 100%;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.changes-file-group__header:hover {
+  background: var(--bg-raised);
+}
+
+.changes-file-group__toggle {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.changes-file-group__name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changes-file-group__count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
 .changes-file-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 24px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   background: transparent;

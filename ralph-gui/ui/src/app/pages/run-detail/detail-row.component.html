@@ -1,8 +1,6 @@
-<div style="display: flex; align-items: flex-start; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border-subtle);">
-  <div style="width: 160px; flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); padding-top: 1px;">
-    {{ labelValue }}
-  </div>
-  <div [style]="valueStyle">
+<div class="detail-row">
+  <div class="detail-row__label">{{ labelValue }}</div>
+  <div [class.detail-row__value--mono]="mono()" class="detail-row__value">
     {{ valueValue ?? '—' }}
   </div>
 </div>

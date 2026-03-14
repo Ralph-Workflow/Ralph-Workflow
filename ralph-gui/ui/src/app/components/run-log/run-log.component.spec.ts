@@ -1,12 +1,8 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { RunLogComponent, parseAnsiToHtml, VIRTUAL_SCROLL_ITEM_SIZE } from './run-log.component';
 import { TAURI_INVOKE } from '../../services/tauri.service';
-
-// We must mock the @tauri-apps/api/event listen function at module level.
-// Jest or Jasmine spy won't capture ES module exports directly, so we inject
-// a LISTEN token instead (see component implementation).
 import { LISTEN_TOKEN } from './run-log.component';
 
 describe('parseAnsiToHtml (pure function)', () => {
@@ -104,258 +100,293 @@ describe('RunLogComponent', () => {
   let unlistenSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    tauriInvokeSpy = vi.fn().mockReturnValue(Promise.resolve());
+    tauriInvokeSpy = vi.fn().mockResolvedValue(undefined);
     unlistenSpy = vi.fn();
-    listenSpy = vi.fn().mockReturnValue(Promise.resolve(unlistenSpy));
+    listenSpy = vi.fn().mockResolvedValue(unlistenSpy);
 
-    await TestBed.configureTestingModule({
+    TestBed.configureTestingModule({
       imports: [RunLogComponent],
       providers: [
         provideZonelessChangeDetection(),
         { provide: TAURI_INVOKE, useValue: tauriInvokeSpy },
         { provide: LISTEN_TOKEN, useValue: listenSpy },
       ],
-    }).compileComponents();
+    });
   });
 
-  function createComponent(runId = 'run-123', repoPath = '/repo', worktreePath: string | null = null) {
+  async function createComponent(runId = 'run-123', repoPath = '/repo', worktreePath: string | null = null) {
     const fixture = TestBed.createComponent(RunLogComponent);
-    const component = fixture.componentInstance;
-    // Set required input via TestBed's setInput
     fixture.componentRef.setInput('runId', runId);
     fixture.componentRef.setInput('repoPath', repoPath);
     fixture.componentRef.setInput('worktreePath', worktreePath);
-    return { fixture, component };
+    await fixture.whenStable();
+    return { fixture, component: fixture.componentInstance };
   }
 
-  it('should create', () => {
-    const { fixture, component } = createComponent();
-    fixture.detectChanges();
+  it('should create', async () => {
+    const { component } = await createComponent();
     expect(component).toBeTruthy();
   });
 
-  it('should call subscribeRunLogs on init', fakeAsync(async () => {
-    const { fixture } = createComponent('run-abc', '/repo/path', '/wt/path');
-    fixture.detectChanges();
-    tick();
+  it('should call subscribeRunLogs on init', async () => {
+    await createComponent('run-abc', '/repo/path', '/wt/path');
     expect(tauriInvokeSpy).toHaveBeenCalledWith('subscribe_run_logs', expect.objectContaining({
       run_id: 'run-abc',
     }));
-  }));
+  });
 
-  it('should call listen with run-log-{runId} event name on init', fakeAsync(async () => {
-    const { fixture } = createComponent('run-abc', '/repo', null);
-    fixture.detectChanges();
-    tick();
+  it('should call listen with run-log-{runId} event name on init', async () => {
+    await createComponent('run-abc', '/repo', null);
     expect(listenSpy).toHaveBeenCalledWith('run-log-run-abc', expect.any(Function));
-  }));
+  });
 
-  it('should call unsubscribeRunLogs and unlisten on destroy', fakeAsync(async () => {
-    const { fixture } = createComponent('run-xyz');
-    fixture.detectChanges();
-    tick();
+  it('should call unsubscribeRunLogs and unlisten on destroy', async () => {
+    const { fixture } = await createComponent('run-xyz');
     fixture.destroy();
     expect(tauriInvokeSpy).toHaveBeenCalledWith('unsubscribe_run_logs', expect.objectContaining({
       run_id: 'run-xyz',
     }));
     expect(unlistenSpy).toHaveBeenCalled();
-  }));
+  });
 
   describe('autoScroll', () => {
-    it('should default autoScroll to true', () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      expect(component.autoScroll()).toBe(true);
-    });
+    it('should default autoScroll to true', async () => {
+        const { component } = await createComponent();
+        expect(component.autoScroll()).toBe(true);
+      });
 
-    it('should toggle autoScroll off', () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      component.setAutoScroll(false);
-      expect(component.autoScroll()).toBe(false);
-    });
+    it('should toggle autoScroll off', async () => {
+        const { component } = await createComponent();
+        component.setAutoScroll(false);
+        expect(component.autoScroll()).toBe(false);
+      });
 
-    it('should show Resume auto-scroll button when autoScroll is false', () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      component.setAutoScroll(false);
-      fixture.detectChanges();
-      const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeTruthy();
-    });
+    it('should show Resume auto-scroll button when autoScroll is false', async () => {
+        const { fixture, component } = await createComponent();
+        component.setAutoScroll(false);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        const el: HTMLElement = fixture.nativeElement;
+        expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeTruthy();
+      });
 
-    it('should NOT show Resume auto-scroll button when autoScroll is true', () => {
-      const { fixture } = createComponent();
-      fixture.detectChanges();
-      // autoScroll is true by default
-      const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeNull();
-    });
+    it('should NOT show Resume auto-scroll button when autoScroll is true', async () => {
+        const { fixture } = await createComponent();
+        await fixture.whenStable();
+        // autoScroll is true by default
+        const el: HTMLElement = fixture.nativeElement;
+        expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeNull();
+      });
 
-    it('should re-enable autoScroll when resume button is clicked', () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      component.setAutoScroll(false);
-      fixture.detectChanges();
-      const el: HTMLElement = fixture.nativeElement;
-      const btn = el.querySelector<HTMLElement>('[data-testid="resume-autoscroll"]');
-      btn?.click();
-      expect(component.autoScroll()).toBe(true);
-    });
+    it('should re-enable autoScroll when resume button is clicked', async () => {
+        const { fixture, component } = await createComponent();
+        component.setAutoScroll(false);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        const el: HTMLElement = fixture.nativeElement;
+        const btn = el.querySelector<HTMLElement>('[data-testid="resume-autoscroll"]');
+        btn?.click();
+        expect(component.autoScroll()).toBe(true);
+      });
   });
 
   describe('search filter', () => {
-    it('should show all lines when search term is empty', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should show all lines when search term is empty', async () => {
+        const { fixture, component } = await createComponent();
 
-      // Simulate receiving log lines
-      component.addLogLine('line one');
-      component.addLogLine('line two');
-      component.addLogLine('line three');
-      fixture.detectChanges();
+        component.addLogLine('line one');
+        component.addLogLine('line two');
+        component.addLogLine('line three');
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      expect(component.filteredLines().length).toBe(3);
-    }));
+        expect(component.filteredLines().length).toBe(3);
+      });
 
-    it('should filter lines matching search term', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should filter lines matching search term', async () => {
+        const { fixture, component } = await createComponent();
 
-      component.addLogLine('hello world');
-      component.addLogLine('goodbye world');
-      component.addLogLine('something else');
-      component.searchTerm.set('world');
-      fixture.detectChanges();
+        component.addLogLine('hello world');
+        component.addLogLine('goodbye world');
+        component.addLogLine('something else');
+        component.searchTerm.set('world');
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      expect(component.filteredLines().length).toBe(2);
-    }));
+        expect(component.filteredLines().length).toBe(2);
+      });
 
-    it('should be case-insensitive in search', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should be case-insensitive in search', async () => {
+        const { fixture, component } = await createComponent();
 
-      component.addLogLine('Hello World');
-      component.searchTerm.set('hello');
-      fixture.detectChanges();
+        component.addLogLine('Hello World');
+        component.searchTerm.set('hello');
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      expect(component.filteredLines().length).toBe(1);
-    }));
+        expect(component.filteredLines().length).toBe(1);
+      });
 
-    it('should return empty when no lines match search term', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should return empty when no lines match search term', async () => {
+        const { fixture, component } = await createComponent();
 
-      component.addLogLine('hello world');
-      component.searchTerm.set('xyz-not-found');
-      fixture.detectChanges();
+        component.addLogLine('hello world');
+        component.searchTerm.set('xyz-not-found');
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      expect(component.filteredLines().length).toBe(0);
-    }));
+        expect(component.filteredLines().length).toBe(0);
+      });
   });
 
   describe('max line limit (5000)', () => {
-    it('should keep at most 5000 lines', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should keep at most 5000 lines', async () => {
+        const { fixture, component } = await createComponent();
 
-      for (let i = 0; i < 5100; i++) {
-        component.addLogLine(`line ${i}`);
-      }
-      fixture.detectChanges();
+        for (let i = 0; i < 5100; i++) {
+          component.addLogLine(`line ${i}`);
+        }
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      expect(component.logLines().length).toBe(5000);
-    }));
+        expect(component.logLines().length).toBe(5000);
+      });
 
-    it('should keep the most recent lines when over limit', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should keep the most recent lines when over limit', async () => {
+        const { fixture, component } = await createComponent();
 
-      for (let i = 0; i < 5001; i++) {
-        component.addLogLine(`line ${i}`);
-      }
-      fixture.detectChanges();
+        for (let i = 0; i < 5001; i++) {
+          component.addLogLine(`line ${i}`);
+        }
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      // The first line should have been dropped; last line should remain
-      const lines = component.logLines();
-      expect(lines[lines.length - 1]).toBe('line 5000');
-      expect(lines[0]).toBe('line 1'); // line 0 was dropped
-    }));
+        // The first line should have been dropped; last line should remain
+        const lines = component.logLines();
+        expect(lines[lines.length - 1]).toBe('line 5000');
+        expect(lines[0]).toBe('line 1'); // line 0 was dropped
+      });
   });
 
   describe('download', () => {
-    it('should expose a downloadLogs method', () => {
-      const { fixture, component: dlComponent } = createComponent();
-      fixture.detectChanges();
-      expect(typeof dlComponent.downloadLogs).toBe('function');
-    });
+    it('should expose a downloadLogs method', async () => {
+        const { component } = await createComponent();
+        expect(typeof component.downloadLogs).toBe('function');
+      });
   });
 
   describe('virtual scroll', () => {
-    it('should use VIRTUAL_SCROLL_ITEM_SIZE constant of 20px for line height', () => {
+    it('should use VIRTUAL_SCROLL_ITEM_SIZE constant (20px) for line height', () => {
       expect(VIRTUAL_SCROLL_ITEM_SIZE).toBe(20);
     });
 
-    it('should expose itemSize property matching VIRTUAL_SCROLL_ITEM_SIZE', () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      expect(component.itemSize).toBe(VIRTUAL_SCROLL_ITEM_SIZE);
-    });
+    it('should expose itemSize property matching VIRTUAL_SCROLL_ITEM_SIZE', async () => {
+        const { component } = await createComponent();
+        expect(component.itemSize).toBe(VIRTUAL_SCROLL_ITEM_SIZE);
+      });
 
-    it('should handle large datasets (5000 lines) without exceeding MAX_LINES', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should handle large datasets (5000 lines) without exceeding MAX_LINES', async () => {
+        const { fixture, component } = await createComponent();
 
-      for (let i = 0; i < 5000; i++) {
-        component.addLogLine(`log line ${i}`);
-      }
-      fixture.detectChanges();
+        for (let i = 0; i < 5000; i++) {
+          component.addLogLine(`log line ${i}`);
+        }
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      // Should cap at 5000 lines (MAX_LINES)
-      expect(component.logLines().length).toBe(5000);
-      // parsedLines computed should also have 5000 items
-      expect(component.parsedLines().length).toBe(5000);
-    }));
+        // Should cap at 5000 lines (MAX_LINES)
+        expect(component.logLines().length).toBe(5000);
+        // parsedLines computed should also have 5000 items
+        expect(component.parsedLines().length).toBe(5000);
+      });
 
-    it('should render cdk-virtual-scroll-viewport in the DOM when lines present', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
-      fixture.detectChanges();
-      tick();
+    it('should render cdk-virtual-scroll-viewport in the DOM when lines present', async () => {
+        const { fixture, component } = await createComponent();
 
-      component.addLogLine('hello virtual scroll');
-      fixture.detectChanges();
+        component.addLogLine('hello virtual scroll');
+        fixture.detectChanges();
+        await fixture.whenStable();
 
-      const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('cdk-virtual-scroll-viewport')).toBeTruthy();
-    }));
+        const el: HTMLElement = fixture.nativeElement;
+        expect(el.querySelector('cdk-virtual-scroll-viewport')).toBeTruthy();
+      });
   });
 
   describe('ANSI rendering in DOM', () => {
-    it('should render empty state when no lines', () => {
-      const { fixture } = createComponent();
+    it('should render empty state when no lines', async () => {
+        const { fixture } = await createComponent();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        const el: HTMLElement = fixture.nativeElement;
+        expect(el.querySelector('[data-testid="run-log-empty"]')).toBeTruthy();
+      });
+
+    it('should render log lines when lines are present', async () => {
+        const { fixture, component } = await createComponent();
+
+        component.addLogLine('test log line');
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const el: HTMLElement = fixture.nativeElement;
+        expect(el.querySelector('[data-testid="run-log-content"]')).toBeTruthy();
+        expect(el.textContent).toContain('test log line');
+      });
+  });
+
+  describe('log level filtering', () => {
+    it('should have log level filter dropdown', async () => {
+      const { fixture } = await createComponent();
       fixture.detectChanges();
+      await fixture.whenStable();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('[data-testid="run-log-empty"]')).toBeTruthy();
+      expect(el.querySelector('[data-testid="log-level-filter"]')).toBeTruthy();
     });
 
-    it('should render log lines when lines are present', fakeAsync(async () => {
-      const { fixture, component } = createComponent();
+    it('should show all lines when "all" is selected', async () => {
+      const { fixture, component } = await createComponent();
+      component.addLogLine('[INFO] message');
+      component.addLogLine('[WARNING] message');
+      component.addLogLine('[ERROR] message');
+      component.selectedLogLevel.set('all');
       fixture.detectChanges();
-      tick();
+      await fixture.whenStable();
+      expect(component.filteredLines().length).toBe(3);
+    });
 
-      component.addLogLine('test log line');
+    it('should filter to errors only when "error" is selected', async () => {
+      const { fixture, component } = await createComponent();
+      component.addLogLine('[INFO] message');
+      component.addLogLine('[WARNING] message');
+      component.addLogLine('[ERROR] message');
+      component.selectedLogLevel.set('error');
       fixture.detectChanges();
+      await fixture.whenStable();
+      expect(component.filteredLines().length).toBe(1);
+      expect(component.filteredLines()[0]).toContain('[ERROR]');
+    });
 
+    it('should show warnings and errors when "warning" is selected', async () => {
+      const { fixture, component } = await createComponent();
+      component.addLogLine('[INFO] message');
+      component.addLogLine('[WARNING] message');
+      component.addLogLine('[ERROR] message');
+      component.selectedLogLevel.set('warning');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(component.filteredLines().length).toBe(2);
+    });
+
+    it('should show filter count when filtering is active', async () => {
+      const { fixture, component } = await createComponent();
+      component.addLogLine('[INFO] message');
+      component.addLogLine('[WARNING] message');
+      component.addLogLine('[ERROR] message');
+      component.selectedLogLevel.set('error');
+      fixture.detectChanges();
+      await fixture.whenStable();
       const el: HTMLElement = fixture.nativeElement;
-      expect(el.querySelector('[data-testid="run-log-content"]')).toBeTruthy();
-      expect(el.textContent).toContain('test log line');
-    }));
+      expect(el.querySelector('[data-testid="log-filter-count"]')).toBeTruthy();
+    });
   });
 });

@@ -42,39 +42,46 @@
       />
     }
 
-    <!-- Page header -->
+    <!-- Page header per wireframe -->
     <div class="run-header">
-      <button class="btn btn-ghost" (click)="goBack()">← Back</button>
-      <h1 class="page-title run-header__title">Run Detail</h1>
-      <app-run-status-badge
-        [status]="runDetailValue!.status"
-        [showLabel]="true"
-        [isDegraded]="runDetailValue!.is_degraded ?? false"
-      />
-      @if (runDetailValue!.status === 'Running') {
-        <button
-          class="btn btn-ghost btn-danger"
-          data-testid="cancel-btn"
-          (click)="handleCancel()"
-        >
-          Cancel
-        </button>
-      }
-      @if (canResumeValue) {
-        <button
-          class="btn btn-primary"
-          data-testid="resume-btn"
-          (click)="handleResume()"
-        >
-          Resume
-        </button>
-      }
+      <button class="btn btn-ghost" (click)="goBack()">← Runs</button>
+      <div class="run-header__titles">
+        <h1 class="page-title run-header__title">Run Monitoring: {{ worktreeName() }}</h1>
+        @if (runDetailValue!.description) {
+          <div class="run-header__subtitle">{{ runDetailValue!.description }}</div>
+        }
+      </div>
+      <div class="run-header__actions">
+        @if (runDetailValue!.status === 'Running') {
+          <button
+            class="btn btn-ghost btn-danger"
+            data-testid="cancel-btn"
+            (click)="handleCancel()"
+          >
+            Cancel Run
+          </button>
+        }
+        @if (canResumeValue) {
+          <button
+            class="btn btn-primary"
+            data-testid="resume-btn"
+            (click)="handleResume()"
+          >
+            Resume Run
+          </button>
+          @if (runDetailValue!.status === 'Failed') {
+            <button
+              class="btn btn-ghost"
+              (click)="handleRetry()"
+            >
+              Retry
+            </button>
+          }
+        }
+      </div>
     </div>
 
     <div class="run-detail-body">
-      <!-- Run ID badge -->
-      <div class="run-id-badge">{{ runDetailValue!.run_id }}</div>
-
       <!-- Degraded banner -->
       @if (runDetailValue!.is_degraded) {
         <div class="banner banner--warning" data-testid="degraded-banner">
@@ -107,8 +114,8 @@
           <div class="state-summary__header">
             <span class="state-summary__icon">✓</span>
             <strong class="state-summary__title">Completed</strong>
-            @if (runDetailValue!.total_duration_secs !== null && runDetailValue!.total_duration_secs !== undefined) {
-              <span class="state-summary__duration">{{ runDetailValue!.total_duration_secs | number:'1.0-0' }}s</span>
+            @if (formattedTotalDuration()) {
+              <span class="state-summary__duration">{{ formattedTotalDuration() }}</span>
             }
           </div>
           <div class="metric-grid">
@@ -139,16 +146,23 @@
         <div class="state-summary state-summary--failed" data-testid="failed-banner">
           <div class="state-summary__header">
             <span class="state-summary__icon">✗</span>
-            <strong class="state-summary__title">Failed</strong>
+            <strong class="state-summary__title">Run stopped during {{ failedPhaseLabel() }}</strong>
           </div>
           @if (runDetailValue!.last_error) {
             <div class="state-summary__error-msg" data-testid="failed-error-msg">{{ runDetailValue!.last_error }}</div>
           }
-          <div class="state-summary__guidance">What you can do:</div>
+          <div class="state-summary__guidance-section">
+            <div class="state-summary__guidance-label">What happened:</div>
+            <div class="state-summary__guidance-text">The run encountered an error and stopped. Check the log for details.</div>
+          </div>
+          <div class="state-summary__guidance-section">
+            <div class="state-summary__guidance-label">Next step:</div>
+            <div class="state-summary__guidance-text">Resume when capacity returns, switch agent, or retry from the beginning.</div>
+          </div>
           <div class="banner__actions">
-            <button class="btn btn-primary btn-sm" data-testid="resume-action-btn" (click)="handleResume()">Resume Session</button>
-            <button class="btn btn-ghost btn-sm" data-testid="retry-action-btn" (click)="handleRetry()">Retry from Beginning</button>
-            <button class="btn btn-ghost btn-sm" (click)="goToConfiguration()">Go to Config →</button>
+            <button class="btn btn-primary btn-sm" data-testid="resume-action-btn" (click)="handleResume()">Resume Run</button>
+            <button class="btn btn-ghost btn-sm" data-testid="retry-action-btn" (click)="handleRetry()">Retry from Start</button>
+            <button class="btn btn-ghost btn-sm" (click)="goToConfiguration()">Go to Config</button>
           </div>
         </div>
       }
@@ -158,13 +172,10 @@
         <div class="state-summary state-summary--paused" data-testid="paused-banner">
           <div class="state-summary__header">
             <span class="state-summary__icon">⏸</span>
-            <strong class="state-summary__title">Paused at checkpoint</strong>
+            <strong class="state-summary__title">Checkpoint saved</strong>
           </div>
           <div class="state-summary__subtitle">
-            Will resume from iteration {{ runDetailValue!.iteration_count ?? 0 }}
-            @if (runDetailValue!.last_checkpoint) {
-              · saved {{ runDetailValue!.last_checkpoint }}
-            }
+            Paused {{ pausedAgo() || 'recently' }}. Resume will continue from iteration {{ runDetailValue!.iteration_count ?? 0 }}.
           </div>
           <div class="banner__actions">
             <button
@@ -174,7 +185,7 @@
             >
               ▶ Resume Session
             </button>
-            <button class="btn btn-ghost btn-sm" (click)="handleCancel()">Cancel Session</button>
+            <button class="btn btn-ghost btn-sm" (click)="handleCancel()">Cancel Run</button>
           </div>
         </div>
       }
@@ -183,12 +194,18 @@
       @if (runDetailValue!.status === 'Running') {
         <div class="state-info state-info--running" data-testid="running-info">
           <div class="state-info__row">
-            <span class="state-info__label">Workflow:</span>
-            <span class="state-info__value">Running in {{ runDetailValue!.current_phase }} · Iteration {{ runDetailValue!.iteration_count ?? 0 }}</span>
+            <span class="state-info__label">Current phase:</span>
+            <span class="state-info__value">{{ runDetailValue!.current_phase }} · Iteration {{ runDetailValue!.iteration_count ?? 0 }}</span>
           </div>
           <div class="state-info__row">
-            <span class="state-info__label">Transport:</span>
-            <span class="state-info__value state-info__value--connected">Live connected</span>
+            <span class="state-info__label">Connection:</span>
+            <span class="state-info__value">
+              <span class="state-info__value--connected">Live</span>
+              <span class="state-info__separator">|</span>
+              <span>Updated just now</span>
+              <span class="state-info__separator">|</span>
+              <span>Auto-scroll on</span>
+            </span>
           </div>
         </div>
       }

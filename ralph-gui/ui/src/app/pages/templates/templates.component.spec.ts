@@ -1,4 +1,5 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TemplatesComponent } from './templates.component';
 import { TAURI_INVOKE } from '../../services/tauri.service';
 import type { TemplateInfo } from '../../types';
@@ -6,7 +7,7 @@ import type { TemplateInfo } from '../../types';
 describe('TemplatesComponent', () => {
   let component: TemplatesComponent;
   let fixture: ComponentFixture<TemplatesComponent>;
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   const sampleTemplates: TemplateInfo[] = [
     {
@@ -30,7 +31,7 @@ describe('TemplatesComponent', () => {
   ];
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+    mockInvoke = vi.fn().mockImplementation((cmd: string) => {
       if (cmd === 'list_templates') return Promise.resolve(sampleTemplates);
       if (cmd === 'delete_template') return Promise.resolve();
       if (cmd === 'save_template') return Promise.resolve();
@@ -53,14 +54,14 @@ describe('TemplatesComponent', () => {
   });
 
   describe('template list', () => {
-    beforeEach(fakeAsync(() => {
+    beforeEach(async () => {
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
-    }));
+    });
 
     it('should call list_templates on init', () => {
-      expect(mockInvoke).toHaveBeenCalledWith('list_templates', jasmine.objectContaining({ templates_dir: '' }));
+      expect(mockInvoke).toHaveBeenCalledWith('list_templates', expect.objectContaining({ templates_dir: '' }));
     });
 
     it('should render template items after loading', () => {
@@ -88,11 +89,11 @@ describe('TemplatesComponent', () => {
   });
 
   describe('search filtering', () => {
-    beforeEach(fakeAsync(() => {
+    beforeEach(async () => {
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
-    }));
+    });
 
     it('should filter templates by name when search is entered', () => {
       component.searchQuery.set('bug');
@@ -124,27 +125,27 @@ describe('TemplatesComponent', () => {
   });
 
   describe('empty state', () => {
-    it('should show empty state when no templates are loaded', fakeAsync(() => {
-      mockInvoke.and.callFake((cmd: string) => {
+    it('should show empty state when no templates are loaded', async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'list_templates') return Promise.resolve([]);
         return Promise.resolve(null);
       });
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const emptyState = fixture.nativeElement.querySelector('.empty-state');
       expect(emptyState).not.toBeNull();
-    }));
+    });
 
-    it('should show empty state when search has no matches', fakeAsync(() => {
+    it('should show empty state when search has no matches', async () => {
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       component.searchQuery.set('nonexistenttemplate12345');
       fixture.detectChanges();
       const emptyState = fixture.nativeElement.querySelector('.empty-state');
       expect(emptyState).not.toBeNull();
-    }));
+    });
   });
 
   describe('variable detection', () => {
@@ -164,22 +165,22 @@ describe('TemplatesComponent', () => {
       expect(count).toBeGreaterThanOrEqual(2);
     });
 
-    it('should show variable count in the template list', fakeAsync(() => {
+    it('should show variable count in the template list', async () => {
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
       const nativeEl = fixture.nativeElement as HTMLElement;
       // bug-fix has {{bug_description}} and {{context}} = 2 variables
       expect(nativeEl.textContent).toContain('2');
-    }));
+    });
   });
 
   describe('template detail panel', () => {
-    beforeEach(fakeAsync(() => {
+    beforeEach(async () => {
       fixture.detectChanges();
-      tick(100);
+      await new Promise(r => setTimeout(r, 100));
       fixture.detectChanges();
-    }));
+    });
 
     it('should show detail panel when a template is selected', () => {
       component.selectTemplate(sampleTemplates[0]!);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -47,7 +47,7 @@ const MOCK_TOOL_UNINSTALLED: AgentToolInfo = {
 
 function makeDialogRef(): Partial<MatDialogRef<AddAgentDialogComponent>> {
   return {
-    close: jasmine.createSpy('close'),
+    close: vi.fn(),
   };
 }
 
@@ -64,7 +64,7 @@ async function createDialog(
   tools: AgentToolInfo[] = [MOCK_TOOL_CLAUDE, MOCK_TOOL_CODEX, MOCK_TOOL_UNINSTALLED],
 ) {
   const dialogRef = makeDialogRef();
-  const mockInvoke = jasmine.createSpy('invoke').and.callFake(makeInvoke(tools));
+  const mockInvoke = vi.fn().mockImplementation(makeInvoke(tools));
 
   await TestBed.configureTestingModule({
     imports: [AddAgentDialogComponent],
