@@ -1,13 +1,16 @@
 <button
-  class="card"
-  style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border-subtle); text-align: left; width: 100%; transition: border-color var(--transition-fast), background var(--transition-fast);"
+  class="flex items-start gap-3 p-3.5 rounded-md bg-bg-surface border border-border-subtle text-left w-full transition-colors duration-fast hover:border-border-default hover:bg-bg-raised cursor-pointer"
   (click)="action.emit()"
-  (mouseenter)="onHover($event)"
-  (mouseleave)="onLeave($event)"
 >
-  <span style="font-size: 16px; color: var(--accent); flex-shrink: 0; margin-top: 2px; opacity: 0.9;">{{ icon }}</span>
+  <span class="text-base text-accent/90 flex-shrink-0 mt-0.5">
+    {{ iconValue }}
+  </span>
   <div>
-    <div style="font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">{{ label }}</div>
-    <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5;">{{ desc }}</div>
+    <div class="text-sm font-medium text-text-primary mb-0.5">
+      {{ labelValue }}
+    </div>
+    <div class="text-xs text-text-muted leading-relaxed">
+      {{ descValue }}
+    </div>
   </div>
 </button>

@@ -17,6 +17,41 @@ export class SessionsService {
   // Computed signals
   readonly isLoading = computed(() => this.status() === 'loading');
 
+  readonly activeRuns = computed(() => {
+    const all = this.sessions();
+    return all
+      .filter(s => s.status === 'running')
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  });
+
+  readonly completedToday = computed(() => {
+    const all = this.sessions();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+    return all.filter(s => {
+      if (s.status !== 'completed') return false;
+      const created = new Date(s.created_at);
+      created.setHours(0, 0, 0, 0);
+      return created.getTime() === todayMs;
+    }).length;
+  });
+
+  readonly recentCompletions = computed(() => {
+    const all = this.sessions();
+    return all
+      .filter(s => s.status === 'completed')
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, 10);
+  });
+
+  readonly needsAttentionRuns = computed(() => {
+    const all = this.sessions();
+    return all
+      .filter(s => s.status === 'failed' || s.status === 'paused' || s.status === 'interrupted')
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  });
+
   async fetchSessions(repoPath: string): Promise<void> {
     this.status.set('loading');
     this.error.set(null);
