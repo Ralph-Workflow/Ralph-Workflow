@@ -38,6 +38,34 @@
   </div>
 }
 
+<!-- Session context menu -->
+<mat-menu #sessionContextMenu="matMenu" class="bg-bg-overlay border border-border-default">
+  <button mat-menu-item (click)="onContextMenuOpenDetail()" data-testid="ctx-open-detail">
+    <mat-icon>visibility</mat-icon>
+    <span>Open Run Detail</span>
+  </button>
+  <button mat-menu-item (click)="onContextMenuResume()" [disabled]="!contextMenuCanResume" data-testid="ctx-resume">
+    <mat-icon>play_arrow</mat-icon>
+    <span>Resume</span>
+  </button>
+  <button mat-menu-item (click)="onContextMenuCancel()" [disabled]="!contextMenuCanCancel" data-testid="ctx-cancel">
+    <mat-icon>stop</mat-icon>
+    <span>Cancel</span>
+  </button>
+  <mat-divider></mat-divider>
+  <button mat-menu-item (click)="onContextMenuToggleSelect()" data-testid="ctx-toggle-select">
+    <mat-icon>{{ contextMenuIsSelected ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+    <span>{{ contextMenuIsSelected ? 'Deselect' : 'Select' }}</span>
+  </button>
+</mat-menu>
+<!-- Hidden trigger for programmatic context menu -->
+<button
+  #contextMenuTrigger
+  class="hidden"
+  [matMenuTriggerFor]="sessionContextMenu"
+  [matMenuTriggerData]="{ session: contextMenuSession() }"
+></button>
+
 @if (serviceStatus === 'loading') {
   <div class="p-6 text-text-muted text-[13px] font-mono">
     Loading sessions…
@@ -102,6 +130,7 @@
         tabindex="0"
         (click)="onSelect(row.session)"
         (keydown)="onKeyDown($event, row.session)"
+        (contextmenu)="onContextMenu($event, row.session)"
         [class.session-row-selected]="row.isActive"
         class="session-row grid grid-cols-[28px_32px_1fr_100px_160px_100px_80px_80px] gap-2 items-center px-3.5 py-2.5 rounded-md border border-border-default cursor-pointer transition-all duration-fast"
         [attr.data-testid]="'session-row-' + row.session.run_id"

@@ -467,4 +467,71 @@ describe('SessionListComponent', () => {
       expect(component.batchInProgress()).toBe(false);
     });
   });
+
+  describe('context menu', () => {
+    it('should set contextMenuSession on right-click', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      fixture.detectChanges();
+
+      const session = makeSessions()[0]!;
+      const event = new MouseEvent('contextmenu', { bubbles: true });
+      
+      // Mock the contextMenuTrigger ViewChild
+      component.contextMenuTrigger = { openMenu: vi.fn() } as unknown as typeof component.contextMenuTrigger;
+      
+      component.onContextMenu(event, session);
+
+      expect(component.contextMenuSession()).toBe(session);
+    });
+
+    it('should open run detail from context menu', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      const session = makeSessions()[0]!;
+      component.contextMenuSession.set(session);
+
+      component.onContextMenuOpenDetail();
+
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/runs', session.run_id]);
+    });
+
+    it('contextMenuCanResume should be true for paused session', () => {
+      const session = { ...makeSessions()[0]!, status: 'paused' as const };
+      component.contextMenuSession.set(session);
+
+      expect(component.contextMenuCanResume).toBe(true);
+    });
+
+    it('contextMenuCanResume should be false for running session', () => {
+      const session = { ...makeSessions()[0]!, status: 'running' as const };
+      component.contextMenuSession.set(session);
+
+      expect(component.contextMenuCanResume).toBe(false);
+    });
+
+    it('contextMenuCanCancel should be true for running session', () => {
+      const session = { ...makeSessions()[0]!, status: 'running' as const };
+      component.contextMenuSession.set(session);
+
+      expect(component.contextMenuCanCancel).toBe(true);
+    });
+
+    it('contextMenuCanCancel should be false for paused session', () => {
+      const session = { ...makeSessions()[0]!, status: 'paused' as const };
+      component.contextMenuSession.set(session);
+
+      expect(component.contextMenuCanCancel).toBe(false);
+    });
+
+    it('contextMenuIsSelected should reflect selection state', () => {
+      mockSessionsService.sessions.set(makeSessions());
+      const session = makeSessions()[0]!;
+      component.contextMenuSession.set(session);
+
+      expect(component.contextMenuIsSelected).toBe(false);
+
+      component.toggleSelect(session.run_id);
+
+      expect(component.contextMenuIsSelected).toBe(true);
+    });
+  });
 });

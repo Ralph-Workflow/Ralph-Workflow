@@ -102,6 +102,11 @@ module.exports = {
       animation: {
         'fade-in': 'fadeIn 200ms ease',
         'fade-in-delayed': 'fadeIn 200ms ease 40ms both',
+        'fade-in-40': 'fadeIn 200ms ease 40ms both',
+        'fade-in-80': 'fadeIn 200ms ease 80ms both',
+        'fade-in-120': 'fadeIn 200ms ease 120ms both',
+        'fade-in-160': 'fadeIn 200ms ease 160ms both',
+        'fade-in-200': 'fadeIn 200ms ease 200ms both',
         'phase-pulse': 'phasePulse 2s ease-in-out infinite',
         'status-pulse': 'statusPulse 2s ease-in-out infinite',
       },

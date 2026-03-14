@@ -1,13 +1,13 @@
 <div class="page-content">
-  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); animation: fadeIn 200ms ease;">
-    <h1 class="page-title" style="margin-bottom: 0;">Configuration</h1>
+  <div class="flex items-center justify-between mb-6 animate-fade-in">
+    <h1 class="page-title mb-0">Configuration</h1>
     @if (repoPath) {
-      <span class="chip-mono" style="font-size: 11px;">{{ repoPath }}</span>
+      <span class="chip-mono text-[11px]">{{ repoPath }}</span>
     }
   </div>
 
-  <div style="animation: fadeIn 200ms ease 40ms both;">
-    <div class="tab-bar" style="margin-bottom: var(--space-5);">
+  <div class="animate-fade-in-delayed">
+    <div class="tab-bar mb-5">
       @for (tab of tabs; track tab.id) {
         <button
           class="tab-item{{ activeTab === tab.id ? ' tab-item--active' : '' }}"
@@ -20,18 +20,18 @@
 
     @if (activeTab === 'effective') {
       <div class="card">
-        <div style="margin-bottom: 12px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
+        <div class="mb-3 text-[11px] text-text-muted font-mono">
           Merged view: project overrides global defaults
         </div>
 
         @if (globalStatus === 'loading') {
-          <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+          <div class="p-6 text-center text-text-muted text-[13px] font-mono">
             Loading...
           </div>
         } @else if (displayConfig) {
           <app-config-table [config]="displayConfig" [sources]="effectiveWithSources?.sources ?? null" />
         } @else {
-          <div style="padding: var(--space-6); text-align: center; color: var(--text-muted); font-size: 13px; font-family: var(--font-mono);">
+          <div class="p-6 text-center text-text-muted text-[13px] font-mono">
             @if (!repoPath) {
               Select a repository to see effective config.
             } @else {
@@ -44,14 +44,14 @@
 
     @if (activeTab === 'global') {
       <div class="card">
-        <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-          <div style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-            Global config stored at <span style="color: var(--text-secondary);">~/.config/ralph-workflow.toml</span>
+        <div class="mb-4 flex justify-between items-center">
+          <div class="text-[11px] text-text-muted font-mono">
+            Global config stored at <span class="text-text-secondary">~/.config/ralph-workflow.toml</span>
           </div>
           <button
             mat-stroked-button
             (click)="toggleViewMode()"
-            style="font-size: 11px; min-width: auto;"
+            class="text-[11px] min-w-0"
           >
             {{ viewMode === 'form' ? 'Raw TOML' : 'Form View' }}
           </button>
@@ -61,9 +61,9 @@
             [config]="formPendingConfig ?? globalConfig"
             (configChange)="onFormConfigChange($event)"
           />
-          <div style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--border-subtle);">
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: var(--space-3); color: var(--text-secondary);">Agent Chains and Drains</div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: var(--space-4);">
+          <div class="mt-5 pt-5 border-t border-border-subtle">
+            <div class="text-[13px] font-semibold mb-3 text-text-secondary">Agent Chains and Drains</div>
+            <div class="text-xs text-text-muted mb-4">
               Configure named agent chains and bind them to pipeline drain phases.
             </div>
             <app-agent-chains-editor
@@ -97,12 +97,12 @@
           <app-toml-editor label="Global" scope="global" [repoPath]="null" />
         }
         <app-ai-integration-section />
-        <div style="margin-top: var(--space-5); padding-top: var(--space-5); border-top: 1px solid var(--border-subtle);">
-          <div style="font-size: 13px; font-weight: 600; margin-bottom: var(--space-3); color: var(--text-secondary);">Agent Tools</div>
-          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: var(--space-3);">
+        <div class="mt-5 pt-5 border-t border-border-subtle">
+          <div class="text-[13px] font-semibold mb-3 text-text-secondary">Agent Tools</div>
+          <div class="text-xs text-text-muted mb-3">
             View installed CLI tools (Claude Code, Codex, OpenCode), their versions, and authentication status.
           </div>
-          <a [routerLink]="['/agent-tools']" class="btn btn-secondary" style="font-size: 12px;">
+          <a [routerLink]="['/agent-tools']" class="btn btn-secondary text-xs">
             Open Agent Tools Manager
           </a>
         </div>
@@ -111,11 +111,11 @@
 
     @if (activeTab === 'project') {
       <div class="card">
-        <div style="margin-bottom: 16px; font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">
-          Project-level config stored at <span style="color: var(--text-secondary);">{{ projectConfigPath }}</span>
+        <div class="mb-4 text-[11px] text-text-muted font-mono">
+          Project-level config stored at <span class="text-text-secondary">{{ projectConfigPath }}</span>
         </div>
         @if (!repoPath) {
-          <div style="padding: 10px 12px; background: rgba(232,168,56,0.08); border: 1px solid rgba(232,168,56,0.2); border-radius: var(--radius-md); color: var(--accent); font-size: 12px; font-family: var(--font-mono); margin-bottom: 12px;">
+          <div class="px-3 py-2.5 bg-status-warning/8 border border-status-warning/20 rounded-md text-accent text-xs font-mono mb-3">
             Select a repository context to edit project config.
           </div>
         }

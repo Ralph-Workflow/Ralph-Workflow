@@ -1,25 +1,26 @@
 @if (isOpen_) {
-  <div class="assistant-panel" data-testid="assistant-panel">
+  <div class="flex flex-col bg-bg-surface border border-border-default rounded-lg overflow-hidden shadow-md" data-testid="assistant-panel">
 
     <!-- Unconfigured state -->
     @if (isUnconfigured_) {
-      <div class="unconfigured-state" data-testid="unconfigured-state">
-        <div class="unconfigured-icon" aria-hidden="true">⚙</div>
-        <p class="unconfigured-message">
+      <div class="unconfigured-state flex flex-col items-center justify-center p-6 gap-4 text-center" data-testid="unconfigured-state">
+        <div class="text-4xl text-text-muted" aria-hidden="true">⚙</div>
+        <p class="text-sm text-text-secondary max-w-[280px]">
           No Planning drain agent configured. The AI Prompt Assistant requires a Planning drain to be set up.
         </p>
-        <a routerLink="/configuration" class="btn btn-secondary unconfigured-link" data-testid="go-to-config-link">
+        <a routerLink="/configuration" class="btn btn-secondary" data-testid="go-to-config-link">
           Go to Configuration
         </a>
       </div>
     } @else {
 
     <!-- Tab bar -->
-    <div class="tab-bar" role="tablist">
+    <div class="flex border-b border-border-default bg-bg-raised" role="tablist">
       <button
         role="tab"
-        class="tab-btn"
-        [class.active]="activeTab_ === 'describe'"
+        class="flex-1 px-3 py-2 font-ui text-[13px] font-medium text-text-muted bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all duration-[150ms] ease-out hover:text-text-primary hover:bg-bg-overlay aria-selected:text-accent aria-selected:border-b-accent"
+        [class.text-accent]="activeTab_ === 'describe'"
+        [class.border-b-accent]="activeTab_ === 'describe'"
         [attr.aria-selected]="activeTab_ === 'describe'"
         (click)="setTab('describe')"
         [disabled]="isUnconfigured_"
@@ -29,8 +30,9 @@
       </button>
       <button
         role="tab"
-        class="tab-btn"
-        [class.active]="activeTab_ === 'refine'"
+        class="flex-1 px-3 py-2 font-ui text-[13px] font-medium text-text-muted bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all duration-[150ms] ease-out hover:text-text-primary hover:bg-bg-overlay aria-selected:text-accent aria-selected:border-b-accent"
+        [class.text-accent]="activeTab_ === 'refine'"
+        [class.border-b-accent]="activeTab_ === 'refine'"
         [attr.aria-selected]="activeTab_ === 'refine'"
         (click)="setTab('refine')"
         [disabled]="isUnconfigured_"
@@ -42,26 +44,26 @@
 
     <!-- Describe mode -->
     @if (activeTab_ === 'describe') {
-      <div class="tab-content" data-testid="describe-panel">
+      <div class="flex-1 flex flex-col min-h-0" data-testid="describe-panel">
         <!-- Message list -->
-        <div class="message-list" aria-live="polite" aria-label="Conversation">
+        <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-[160px] max-h-[320px]" aria-live="polite" aria-label="Conversation">
           @if (describeMessages_.length === 0 && !describeLoading_) {
-            <div class="empty-hint">
+            <div class="p-6 text-center text-sm text-text-muted">
               Describe a feature or problem and AI will suggest a prompt.
             </div>
           }
           @for (msg of describeMessages_; track $index) {
             @if (msg.role === 'user') {
-              <div class="msg-user" data-testid="msg-user">
-                <span class="msg-label">You</span>
-                <p>{{ msg.text }}</p>
+              <div class="self-end max-w-[85%] p-2 px-3 bg-bg-overlay rounded-md border border-border-default" data-testid="msg-user">
+                <span class="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-0.5">You</span>
+                <p class="text-sm text-text-primary leading-normal whitespace-pre-wrap break-words m-0">{{ msg.text }}</p>
               </div>
             } @else {
-              <div class="msg-ai" data-testid="msg-ai">
-                <span class="msg-label">Suggested Prompt</span>
-                <p>{{ msg.text }}</p>
+              <div class="self-start max-w-[95%] p-2 px-3 bg-bg-raised rounded-md border border-border-strong flex flex-col gap-2" data-testid="msg-ai">
+                <span class="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-0.5">Suggested Prompt</span>
+                <p class="text-sm text-text-primary leading-normal whitespace-pre-wrap break-words m-0">{{ msg.text }}</p>
                 <button
-                  class="btn btn-secondary apply-btn"
+                  class="btn btn-secondary self-start px-2.5 py-0.5 text-[11px]"
                   (click)="applyFromDescribe(msg.text)"
                   data-testid="apply-describe-btn"
                 >
@@ -71,17 +73,17 @@
             }
           }
           @if (describeLoading_) {
-            <div class="loading-row" data-testid="describe-loading">
-              <span class="spinner animate-spin">⟳</span>
-              <span style="font-size: 12px; color: var(--text-muted);">Generating suggestion…</span>
+            <div class="flex items-center gap-2 p-2" data-testid="describe-loading">
+              <span class="inline-block text-base text-accent animate-spin">⟳</span>
+              <span class="text-xs text-text-muted">Generating suggestion…</span>
             </div>
           }
         </div>
 
         <!-- Input area -->
-        <div class="input-row">
+        <div class="flex gap-2 p-3 border-t border-border-default items-end">
           <textarea
-            class="input input-mono describe-input"
+            class="input input-mono flex-1 resize-none text-xs"
             rows="2"
             placeholder="Describe the feature or problem…"
             [value]="describeInput_"
@@ -91,7 +93,7 @@
             data-testid="describe-input"
           ></textarea>
           <button
-            class="btn btn-primary send-btn"
+            class="btn btn-primary px-3 py-1.5 shrink-0"
             (click)="submitDescribe()"
             [disabled]="isDescribeInputEmpty || describeLoading_"
             aria-label="Send"
@@ -105,27 +107,27 @@
 
     <!-- Refine mode -->
     @if (activeTab_ === 'refine') {
-      <div class="tab-content" data-testid="refine-panel">
+      <div class="flex-1 flex flex-col min-h-0" data-testid="refine-panel">
         @if (refineEmptyState_) {
-          <div class="empty-hint" data-testid="refine-empty-state">
+          <div class="p-6 text-center text-sm text-text-muted" data-testid="refine-empty-state">
             Enter a prompt in the editor to analyze it.
           </div>
         } @else if (refineLoading_) {
-          <div class="loading-row" data-testid="refine-loading">
-            <span class="spinner animate-spin">⟳</span>
-            <span style="font-size: 12px; color: var(--text-muted);">Analyzing prompt…</span>
+          <div class="flex items-center gap-2 p-2" data-testid="refine-loading">
+            <span class="inline-block text-base text-accent animate-spin">⟳</span>
+            <span class="text-xs text-text-muted">Analyzing prompt…</span>
           </div>
         } @else if (refineError_) {
-          <div class="error-box" data-testid="refine-error">
+          <div class="p-3 flex flex-col gap-2 text-status-error text-sm" data-testid="refine-error">
             <p>{{ refineError_ }}</p>
             <button class="btn btn-secondary" (click)="reAnalyze()">Retry</button>
           </div>
         } @else if (refineResult_) {
           <div data-testid="refine-result">
             @if (refineResult_!.suggestions.length > 0) {
-              <div class="issues-section">
-                <h4 class="section-title">Issues identified</h4>
-                <ul class="issues-list">
+              <div class="p-3">
+                <h4 class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Issues identified</h4>
+                <ul class="pl-4 text-sm text-text-secondary leading-normal flex flex-col gap-1">
                   @for (s of refineResult_!.suggestions; track $index) {
                     <li>{{ s }}</li>
                   }
@@ -133,10 +135,10 @@
               </div>
             }
             @if (refineResult_!.improved_prompt) {
-              <div class="improved-section">
-                <h4 class="section-title">Suggested improved prompt</h4>
-                <pre class="improved-prompt">{{ refineResult_!.improved_prompt }}</pre>
-                <div class="refine-actions">
+              <div class="p-3">
+                <h4 class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Suggested improved prompt</h4>
+                <pre class="font-mono text-xs text-text-primary bg-bg-overlay border border-border-default rounded-md p-3 whitespace-pre-wrap break-words mb-3">{{ refineResult_!.improved_prompt }}</pre>
+                <div class="flex gap-2">
                   <button
                     class="btn btn-primary"
                     (click)="applyRefineResult()"
@@ -160,11 +162,11 @@
     }
 
     <!-- Footer -->
-    <div class="panel-footer">
+    <div class="border-t border-border-default px-3 py-2 bg-bg-raised">
       @if (planningDrainAgent_) {
-        <span class="footer-label">Using: {{ planningDrainAgent_ }} via Planning drain</span>
+        <span class="text-[11px] text-text-muted font-mono">Using: {{ planningDrainAgent_ }} via Planning drain</span>
       } @else {
-        <span class="footer-label">Planning drain</span>
+        <span class="text-[11px] text-text-muted font-mono">Planning drain</span>
       }
     </div>
     } <!-- end @else (configured) -->

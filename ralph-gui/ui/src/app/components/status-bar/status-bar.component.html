@@ -40,7 +40,11 @@
       }
     </button>
 
-    <span class="connection-indicator {{ currentConnectionStatusClass }}">
+    <span
+      class="connection-indicator {{ currentConnectionStatusClass }}"
+      [attr.aria-label]="currentConnectionAriaLabel"
+      role="status"
+    >
       {{ currentConnectionStatus }}
     </span>
   </div>

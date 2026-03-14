@@ -8,9 +8,13 @@ import {
   computed,
   signal,
   ChangeDetectionStrategy,
+  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDividerModule } from '@angular/material/divider';
 import { SessionsService } from '../../services/sessions.service';
 import { TauriService } from '../../services/tauri.service';
 import { RunStatusBadgeComponent } from '../run-status-badge/run-status-badge.component';
@@ -66,11 +70,13 @@ function formatPipelineStep(phase: string): string {
   selector: 'app-session-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, RunStatusBadgeComponent, CancelConfirmationComponent, BatchProgressOverlayComponent, SessionStatusPipe],
+  imports: [CommonModule, MatMenuModule, MatIconModule, MatDividerModule, RunStatusBadgeComponent, CancelConfirmationComponent, BatchProgressOverlayComponent, SessionStatusPipe],
   templateUrl: './session-list.component.html',
   styleUrls: ['./session-list.component.css'],
 })
 export class SessionListComponent {
+  @ViewChild('contextMenuTrigger') contextMenuTrigger!: MatMenuTrigger;
+
   readonly sessionsService = inject(SessionsService);
   readonly tauriService = inject(TauriService);
   private readonly router = inject(Router);
@@ -90,6 +96,8 @@ export class SessionListComponent {
   readonly sortDirection = signal<SortDir>('desc');
 
   readonly selectedIds = signal<Set<string>>(new Set());
+
+  readonly contextMenuSession = signal<SessionSummary | null>(null);
 
   readonly showBatchCancelDialog = signal(false);
   readonly showBatchDeleteDialog = signal(false);
@@ -470,5 +478,58 @@ export class SessionListComponent {
 
   clearSelection(): void {
     this.selectedIds.set(new Set());
+  }
+
+  onContextMenu(event: MouseEvent, session: SessionSummary): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.contextMenuSession.set(session);
+    this.contextMenuTrigger.openMenu();
+  }
+
+  onContextMenuOpenDetail(): void {
+    const session = this.contextMenuSession();
+    if (session) {
+      this.onSelect(session);
+    }
+    this.contextMenuSession.set(null);
+  }
+
+  onContextMenuResume(): void {
+    const session = this.contextMenuSession();
+    if (session && (session.status === 'paused' || session.status === 'failed' || session.status === 'interrupted')) {
+      this.resumeRun.emit(session.run_id);
+    }
+    this.contextMenuSession.set(null);
+  }
+
+  onContextMenuCancel(): void {
+    const session = this.contextMenuSession();
+    if (session && session.status === 'running') {
+      this.cancelRun.emit(session.run_id);
+    }
+    this.contextMenuSession.set(null);
+  }
+
+  onContextMenuToggleSelect(): void {
+    const session = this.contextMenuSession();
+    if (session) {
+      this.toggleSelect(session.run_id);
+    }
+    this.contextMenuSession.set(null);
+  }
+
+  get contextMenuSessionValue(): SessionSummary | null { return this.contextMenuSession(); }
+  get contextMenuCanResume(): boolean {
+    const s = this.contextMenuSession();
+    return s !== null && (s.status === 'paused' || s.status === 'failed' || s.status === 'interrupted');
+  }
+  get contextMenuCanCancel(): boolean {
+    const s = this.contextMenuSession();
+    return s !== null && s.status === 'running';
+  }
+  get contextMenuIsSelected(): boolean {
+    const s = this.contextMenuSession();
+    return s !== null && this.selectedIds().has(s.run_id);
   }
 }

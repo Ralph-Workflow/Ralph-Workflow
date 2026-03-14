@@ -3,6 +3,8 @@ import { WorkspaceService } from '../../services/workspace.service';
 import { NotificationService } from '../../services/notification.service';
 import { WorktreesService } from '../../services/worktrees.service';
 
+export type ConnectionState = 'connected' | 'connecting' | 'disconnected';
+
 @Component({
   selector: 'app-status-bar',
   standalone: true,
@@ -55,9 +57,54 @@ export class StatusBarComponent {
     return main?.branch ?? '';
   });
 
-  /** Connection status — always "Connected" until real detection is implemented. */
-  readonly connectionStatus = computed(() => 'Connected');
-  readonly connectionStatusClass = computed(() => 'status-connected');
+  /**
+   * Connection state derived from workspace loading state.
+   * - 'connecting': workspace is loading
+   * - 'connected': workspace loaded successfully and active workspace exists
+   * - 'disconnected': no workspaces or loading failed
+   */
+  readonly connectionState = computed<ConnectionState>(() => {
+    const isLoading = this.workspaceService.isLoading();
+    const workspaces = this.workspaceService.workspaces();
+    const activeWorkspace = this.workspaceService.activeWorkspace();
+
+    if (isLoading) {
+      return 'connecting';
+    }
+
+    if (workspaces.length === 0) {
+      return 'disconnected';
+    }
+
+    return activeWorkspace ? 'connected' : 'disconnected';
+  });
+
+  readonly connectionStatus = computed(() => {
+    const state = this.connectionState();
+    switch (state) {
+      case 'connecting': return 'Connecting';
+      case 'connected': return 'Connected';
+      case 'disconnected': return 'Disconnected';
+    }
+  });
+
+  readonly connectionStatusClass = computed(() => {
+    const state = this.connectionState();
+    switch (state) {
+      case 'connecting': return 'status-connecting';
+      case 'connected': return 'status-connected';
+      case 'disconnected': return 'status-disconnected';
+    }
+  });
+
+  readonly connectionAriaLabel = computed(() => {
+    const state = this.connectionState();
+    switch (state) {
+      case 'connecting': return 'Connection status: connecting';
+      case 'connected': return 'Connection status: connected';
+      case 'disconnected': return 'Connection status: disconnected';
+    }
+  });
 
   /** Getters for template read access (avoids calling signals/computed with () in templates). */
   get currentWorkspaceLabel() { return this.workspaceLabel(); }
@@ -66,6 +113,7 @@ export class StatusBarComponent {
   get currentBranch() { return this.currentBranchSignal(); }
   get currentConnectionStatus() { return this.connectionStatus(); }
   get currentConnectionStatusClass() { return this.connectionStatusClass(); }
+  get currentConnectionAriaLabel() { return this.connectionAriaLabel(); }
 
   onNotificationsClick(): void {
     this.notificationService.togglePanel();

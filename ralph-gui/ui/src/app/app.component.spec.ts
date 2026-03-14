@@ -207,6 +207,46 @@ describe('AppComponent', () => {
       expect(navigateSpy).toHaveBeenCalledWith(['/preferences']);
     });
 
+    it('should navigate to / on g+h', () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'g' }));
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'h' }));
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/']);
+    });
+
+    it('should navigate to /sessions on g+s', () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'g' }));
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 's' }));
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/sessions']);
+    });
+
+    it('should navigate to /worktrees on g+w', () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'g' }));
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'w' }));
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/worktrees']);
+    });
+
+    it('should navigate to /configuration on g+c', () => {
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate');
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'g' }));
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'c' }));
+
+      expect(navigateSpy).toHaveBeenCalledWith(['/configuration']);
+    });
+
     it('should navigate to /preferences on Ctrl+,', () => {
       const router = TestBed.inject(Router);
       const navigateSpy = vi.spyOn(router, 'navigate');
@@ -727,6 +767,142 @@ describe('AppComponent', () => {
       const msg = component.closeActiveConfirmMessageValue;
       expect(msg).toContain('my-project');
       expect(msg).toContain('3');
+    });
+  });
+
+  describe('Ctrl+Tab workspace cycling', () => {
+    it('should cycle forward through workspaces with Ctrl+Tab', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      const ws2 = createMockWorkspace({ id: 'ws-2' });
+      workspacesSignal.set([ws1, ws2]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws1);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }));
+
+      expect(workspaceService.switchWorkspace).toHaveBeenCalledWith('ws-2');
+    });
+
+    it('should cycle backward through workspaces with Ctrl+Shift+Tab', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      const ws2 = createMockWorkspace({ id: 'ws-2' });
+      workspacesSignal.set([ws1, ws2]);
+      activeWorkspaceIdSignal.set('ws-2');
+      activeWorkspaceSignal.set(ws2);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, shiftKey: true }));
+
+      expect(workspaceService.switchWorkspace).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('should wrap around to first workspace when cycling forward from last', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      const ws2 = createMockWorkspace({ id: 'ws-2' });
+      const ws3 = createMockWorkspace({ id: 'ws-3' });
+      workspacesSignal.set([ws1, ws2, ws3]);
+      activeWorkspaceIdSignal.set('ws-3');
+      activeWorkspaceSignal.set(ws3);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }));
+
+      expect(workspaceService.switchWorkspace).toHaveBeenCalledWith('ws-1');
+    });
+
+    it('should wrap around to last workspace when cycling backward from first', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      const ws2 = createMockWorkspace({ id: 'ws-2' });
+      const ws3 = createMockWorkspace({ id: 'ws-3' });
+      workspacesSignal.set([ws1, ws2, ws3]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws1);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, shiftKey: true }));
+
+      expect(workspaceService.switchWorkspace).toHaveBeenCalledWith('ws-3');
+    });
+
+    it('should do nothing when only one workspace exists', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      workspacesSignal.set([ws1]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws1);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }));
+
+      expect(workspaceService.switchWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing when no workspaces exist', async () => {
+      const workspaceService = TestBed.inject(WorkspaceService);
+      workspacesSignal.set([]);
+      activeWorkspaceIdSignal.set(null);
+      activeWorkspaceSignal.set(null);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true }));
+
+      expect(workspaceService.switchWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('should prevent default on Ctrl+Tab', async () => {
+      const event = new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true });
+      const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+
+      const ws1 = createMockWorkspace({ id: 'ws-1' });
+      const ws2 = createMockWorkspace({ id: 'ws-2' });
+      workspacesSignal.set([ws1, ws2]);
+      activeWorkspaceIdSignal.set('ws-1');
+      activeWorkspaceSignal.set(ws1);
+
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      component.handleKeyboard(event);
+
+      expect(preventDefaultSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('sidebar collapse toggle', () => {
+    it('should toggle sidebarCollapsed signal and persist to preferences', async () => {
+      const mockPreferencesService = TestBed.inject(PreferencesService);
+      const saveSpy = vi.spyOn(mockPreferencesService, 'save');
+
+      fixture.detectChanges();
+
+      expect(component.sidebarCollapsed()).toBe(false);
+
+      component.toggleSidebar();
+
+      expect(component.sidebarCollapsed()).toBe(true);
+      expect(saveSpy).toHaveBeenCalledWith(expect.objectContaining({ sidebarCollapsed: true }));
+
+      component.toggleSidebar();
+
+      expect(component.sidebarCollapsed()).toBe(false);
+      expect(saveSpy).toHaveBeenCalledWith(expect.objectContaining({ sidebarCollapsed: false }));
     });
   });
 

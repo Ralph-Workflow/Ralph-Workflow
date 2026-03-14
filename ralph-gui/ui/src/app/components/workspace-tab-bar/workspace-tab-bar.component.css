@@ -1,9 +1,4 @@
-:host {
-  display: block;
-  width: 100%;
-}
-
-/* Active tab bottom indicator — pseudo-element cannot be expressed in Tailwind utilities */
+/* Required: pseudo-element cannot be expressed in Tailwind utilities */
 .tab.active::after {
   content: '';
   position: absolute;

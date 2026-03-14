@@ -14,6 +14,7 @@ describe('StatusBarComponent', () => {
   let component: StatusBarComponent;
   let mockWorkspaces: WritableSignal<Workspace[]>;
   let mockActiveWorkspace: WritableSignal<Workspace | null>;
+  let mockIsLoading: WritableSignal<boolean>;
   let mockUnreadCount: WritableSignal<number>;
   let mockWorktrees: WritableSignal<WorktreeInfo[]>;
   let mockActiveWorktreePath: WritableSignal<string | null>;
@@ -42,6 +43,7 @@ describe('StatusBarComponent', () => {
   beforeEach(async () => {
     mockWorkspaces = signal<Workspace[]>([]);
     mockActiveWorkspace = signal<Workspace | null>(null);
+    mockIsLoading = signal<boolean>(false);
     mockUnreadCount = signal<number>(0);
     mockWorktrees = signal<WorktreeInfo[]>([]);
     mockActiveWorktreePath = signal<string | null>(null);
@@ -51,6 +53,7 @@ describe('StatusBarComponent', () => {
       workspaces: mockWorkspaces.asReadonly(),
       activeWorkspaceId: signal<string | null>(null),
       activeWorkspace: mockActiveWorkspace,
+      isLoading: mockIsLoading,
     };
 
     const notificationServiceSpy = {
@@ -232,20 +235,95 @@ describe('StatusBarComponent', () => {
   });
 
   describe('connection status (right section)', () => {
-    it('should expose connectionStatus signal as "Connected"', () => {
+    it('should show "Connecting" when workspace is loading', () => {
+      mockIsLoading.set(true);
+      mockWorkspaces.set([]);
+      mockActiveWorkspace.set(null);
       fixture.detectChanges();
-      expect(component.connectionStatus()).toBe('Connected');
+      expect(component.connectionState()).toBe('connecting');
+      expect(component.connectionStatus()).toBe('Connecting');
+      expect(component.connectionStatusClass()).toBe('status-connecting');
     });
 
-    it('should expose connectionStatusClass as "status-connected"', () => {
+    it('should show "Disconnected" when no workspaces exist', () => {
+      mockIsLoading.set(false);
+      mockWorkspaces.set([]);
+      mockActiveWorkspace.set(null);
       fixture.detectChanges();
+      expect(component.connectionState()).toBe('disconnected');
+      expect(component.connectionStatus()).toBe('Disconnected');
+      expect(component.connectionStatusClass()).toBe('status-disconnected');
+    });
+
+    it('should show "Disconnected" when workspaces exist but no active workspace', () => {
+      mockIsLoading.set(false);
+      mockWorkspaces.set([createMockWorkspace({ id: 'ws-1' })]);
+      mockActiveWorkspace.set(null);
+      fixture.detectChanges();
+      expect(component.connectionState()).toBe('disconnected');
+      expect(component.connectionStatus()).toBe('Disconnected');
+      expect(component.connectionStatusClass()).toBe('status-disconnected');
+    });
+
+    it('should show "Connected" when active workspace exists', () => {
+      mockIsLoading.set(false);
+      mockWorkspaces.set([createMockWorkspace({ id: 'ws-1' })]);
+      mockActiveWorkspace.set(createMockWorkspace({ id: 'ws-1' }));
+      fixture.detectChanges();
+      expect(component.connectionState()).toBe('connected');
+      expect(component.connectionStatus()).toBe('Connected');
       expect(component.connectionStatusClass()).toBe('status-connected');
+    });
+
+    it('should prioritize connecting state over other states', () => {
+      mockIsLoading.set(true);
+      mockWorkspaces.set([createMockWorkspace({ id: 'ws-1' })]);
+      mockActiveWorkspace.set(createMockWorkspace({ id: 'ws-1' }));
+      fixture.detectChanges();
+      expect(component.connectionState()).toBe('connecting');
     });
 
     it('should render connection indicator in DOM', () => {
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('.connection-indicator')).toBeTruthy();
+    });
+
+    it('should render connection indicator with role="status"', () => {
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const indicator = el.querySelector('.connection-indicator');
+      expect(indicator?.getAttribute('role')).toBe('status');
+    });
+
+    it('should render connection indicator with aria-label', () => {
+      mockIsLoading.set(false);
+      mockWorkspaces.set([createMockWorkspace({ id: 'ws-1' })]);
+      mockActiveWorkspace.set(createMockWorkspace({ id: 'ws-1' }));
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const indicator = el.querySelector('.connection-indicator');
+      expect(indicator?.getAttribute('aria-label')).toBe('Connection status: connected');
+    });
+
+    it('should show disconnected aria-label when disconnected', () => {
+      mockIsLoading.set(false);
+      mockWorkspaces.set([]);
+      mockActiveWorkspace.set(null);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const indicator = el.querySelector('.connection-indicator');
+      expect(indicator?.getAttribute('aria-label')).toBe('Connection status: disconnected');
+    });
+
+    it('should show connecting aria-label when connecting', () => {
+      mockIsLoading.set(true);
+      mockWorkspaces.set([]);
+      mockActiveWorkspace.set(null);
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const indicator = el.querySelector('.connection-indicator');
+      expect(indicator?.getAttribute('aria-label')).toBe('Connection status: connecting');
     });
   });
 });

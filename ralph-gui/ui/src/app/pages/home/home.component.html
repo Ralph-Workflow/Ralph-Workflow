@@ -22,7 +22,7 @@
   <div class="page-content">
     <h1 class="page-title animate-fade-in">Dashboard</h1>
 
-    <div class="grid grid-cols-3 gap-4 mb-6 animate-fade-in" style="animation-delay: 40ms;">
+    <div class="grid grid-cols-3 gap-4 mb-6 animate-fade-in-40">
       <app-stat-card label="Active worktrees" [value]="activeWorktreeCountValue" />
       <app-stat-card
         label="Resumable runs"
@@ -36,7 +36,7 @@
     </div>
 
     @if (activeRunsValue.length > 0) {
-      <section class="mb-6 animate-fade-in" style="animation-delay: 80ms;">
+      <section class="mb-6 animate-fade-in-80">
         <app-active-runs-list
           [runs]="activeRunsValue"
           (viewRun)="navigateToRun($event)"
@@ -45,7 +45,7 @@
     }
 
     @if (needsAttentionRunsValue.length > 0) {
-      <section class="mb-6 animate-fade-in" style="animation-delay: 120ms;">
+      <section class="mb-6 animate-fade-in-120">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <h3 class="text-sm font-medium text-text-primary">Needs attention</h3>
@@ -105,7 +105,7 @@
     }
 
     @if (recentCompletionsValue.length > 0) {
-      <section class="mb-6 animate-fade-in" style="animation-delay: 160ms;">
+      <section class="mb-6 animate-fade-in-160">
         <app-recent-completions
           [completions]="recentCompletionsValue"
           (viewRun)="navigateToRun($event)"
@@ -113,7 +113,7 @@
       </section>
     }
 
-    <section class="animate-fade-in" style="animation-delay: 200ms;">
+    <section class="animate-fade-in-200">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-medium text-text-primary">Quick actions</h3>
       </div>
