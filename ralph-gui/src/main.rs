@@ -27,6 +27,7 @@ fn build_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         config::get_project_config,
         config::get_effective_config,
         config::get_effective_config_with_sources,
+        config::get_effective_chains_config,
         config::save_global_config,
         config::save_project_config,
         config::get_raw_global_config_toml,
@@ -97,6 +98,9 @@ fn register_extra_types(
         .typ::<ralph_gui::commands::config::ConfigFieldSchema>()
         .typ::<ralph_gui::commands::config::ConfigSection>()
         .typ::<ralph_gui::commands::config::ToolUpdateInfo>()
+        .typ::<ralph_gui::commands::config::AgentInfo>()
+        .typ::<ralph_gui::commands::config::ChainInfo>()
+        .typ::<ralph_gui::commands::config::EffectiveChainsConfig>()
         .typ::<ralph_gui::commands::preferences::GuiPreferences>()
         .typ::<ralph_gui::commands::run_management::RunStatus>()
         .typ::<ralph_gui::commands::run_management::RunDetail>()

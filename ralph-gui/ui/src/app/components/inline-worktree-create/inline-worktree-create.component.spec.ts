@@ -108,7 +108,8 @@ describe('InlineWorktreeCreateComponent', () => {
       component.name.set('wt-1');
       fixture.detectChanges();
 
-      const createdSpy = spyOn(component.created, 'emit');
+      const emittedWorktree: WorktreeInfo[] = [];
+      component.created.subscribe((wt) => emittedWorktree.push(wt));
       await component.handleCreate();
 
       expect(mockWorktreesService.createWorktree).toHaveBeenCalledWith(
@@ -117,7 +118,8 @@ describe('InlineWorktreeCreateComponent', () => {
         'wt-1'
       );
       expect(mockWorktreesService.fetchWorktrees).toHaveBeenCalledWith('/repo');
-      expect(createdSpy).toHaveBeenCalledWith(newWorktree);
+      expect(emittedWorktree.length).toBe(1);
+      expect(emittedWorktree[0]).toEqual(newWorktree);
     });
 
     it('should display error on failure', async () => {

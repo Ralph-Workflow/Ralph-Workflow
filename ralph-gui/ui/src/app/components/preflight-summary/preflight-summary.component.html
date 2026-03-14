@@ -1,51 +1,195 @@
-<div style="display: flex; flex-direction: column; gap: 20px;">
+<div class="flex flex-col gap-5">
+  <!-- Header section -->
+  <div class="flex items-center justify-between">
+    <h3 class="text-sm font-semibold text-[var(--text-primary)]">Review before launch</h3>
+    <div class="flex gap-2">
+      <button
+        class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+        (click)="editPrompt.emit()"
+        data-testid="edit-prompt-btn"
+      >
+        Edit Prompt
+      </button>
+      <button
+        class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+        (click)="editConfig.emit()"
+        data-testid="edit-config-btn"
+      >
+        Edit Config
+      </button>
+    </div>
+  </div>
+
+  <!-- Summary row -->
+  <div class="flex items-center gap-4 text-xs text-[var(--text-secondary)]">
+    <span data-testid="summary-worktree">
+      <span class="text-[var(--text-muted)]">Worktree:</span>
+      <span class="font-mono ml-1">{{ worktreeName() }}</span>
+    </span>
+    <span data-testid="summary-iterations">
+      <span class="text-[var(--text-muted)]">Iterations:</span>
+      <span class="font-mono ml-1">{{ developerIterations() }}</span>
+    </span>
+    <span data-testid="summary-reviews">
+      <span class="text-[var(--text-muted)]">Reviews:</span>
+      <span class="font-mono ml-1">{{ reviewerPasses() }}</span>
+    </span>
+  </div>
+
+  <!-- Session roles section -->
   <div>
-    <div class="section-label">Pre-flight summary</div>
-    <div style="background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden;">
-      <!-- Context rows -->
-      @for (row of contextRows; track row.label) {
-        <div style="display: flex; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface);">
-          <span style="font-size: 12px; color: var(--text-secondary); width: 110px; flex-shrink: 0; font-weight: 500;">
-            {{ row.label }}
-          </span>
-          <span class="chip-mono" style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary);">
-            {{ row.value }}
+    <div class="text-xs font-semibold text-[var(--text-primary)] mb-2">Session roles</div>
+    <div class="grid grid-cols-3 gap-3" data-testid="session-roles">
+      @for (role of sessionRoles(); track role.phase) {
+        <div class="flex flex-col gap-0.5">
+          <span class="text-[11px] text-[var(--text-muted)]">{{ role.phase }}</span>
+          <span class="text-xs font-mono text-[var(--text-secondary)] truncate" [title]="role.agents">
+            {{ role.agents }}
           </span>
         </div>
       }
-      <!-- Prompt row (less prominent) -->
-      <div style="display: flex; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--border-subtle);">
-        <span style="font-size: 12px; color: var(--text-muted); width: 110px; flex-shrink: 0;">
-          Prompt
-        </span>
-        <span class="chip-mono" style="max-width: 100%; overflow: hidden; text-overflow: ellipsis;">
-          {{ promptPath }}
-        </span>
-      </div>
-      <!-- Config rows — two-column grid -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr;">
-        <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-right: 1px solid var(--border-subtle);">
-          <span style="font-size: 11px; color: var(--text-muted);">Dev iterations</span>
-          <span class="chip-mono" style="font-size: 14px; font-weight: 600; color: var(--accent);">{{ developerIterations }}</span>
+    </div>
+  </div>
+
+  <!-- Effective configuration preview section -->
+  <div>
+    <div class="text-xs font-semibold text-[var(--text-primary)] mb-2">Effective configuration preview</div>
+    <div
+      class="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-md p-3 font-mono text-[11px]"
+      data-testid="config-preview"
+    >
+      @for (row of configPreviewRows(); track row.label) {
+        <div class="flex gap-2">
+          <span class="text-[var(--accent)]">{{ row.label }}</span>
+          <span class="text-[var(--text-muted)]">=</span>
+          <span class="text-[var(--text-secondary)]">{{ row.value }}</span>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 14px;">
-          <span style="font-size: 11px; color: var(--text-muted);">Review passes</span>
-          <span class="chip-mono" style="font-size: 14px; font-weight: 600; color: var(--accent);">{{ reviewerPasses }}</span>
-        </div>
+      }
+      <div class="mt-2 pt-2 border-t border-[var(--border-subtle)] text-[var(--text-muted)]">
+        Effective config source: {{ configSourceLabel() }}
       </div>
     </div>
   </div>
 
-  <div style="padding: 12px; background: var(--accent-bg); border: 1px solid var(--accent-dim)40; border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
-    This will launch an unattended Ralph session. The pipeline will run autonomously. You can monitor progress from the Run Dashboard.
+  <!-- Preflight checks section -->
+  <div>
+    <div class="text-xs font-semibold text-[var(--text-primary)] mb-2">Preflight checks</div>
+    <div class="flex flex-col gap-1.5" data-testid="preflight-checks">
+      @for (check of preflightChecks(); track check.label) {
+        <div
+          class="flex items-center justify-between px-3 py-2 rounded-md text-xs"
+          [class.bg-green-500/10]="check.status === 'ok'"
+          [class.border]="check.status === 'ok'"
+          [class.border-green-500/30]="check.status === 'ok'"
+          [class.bg-amber-500/10]="check.status === 'warning'"
+          [class.border]="check.status === 'warning'"
+          [class.border-amber-500/30]="check.status === 'warning'"
+          [class.bg-red-500/10]="check.status === 'error'"
+          [class.border]="check.status === 'error'"
+          [class.border-red-500/30]="check.status === 'error'"
+          [attr.data-testid]="'check-' + check.label.toLowerCase().replace(/\s+/g, '-')"
+        >
+          <div class="flex items-center gap-2">
+            @if (check.status === 'ok') {
+              <span class="text-green-500 font-semibold" aria-label="OK">[OK]</span>
+            } @else if (check.status === 'warning') {
+              <span class="text-amber-500 font-semibold" aria-label="Needs attention">[!]</span>
+            } @else {
+              <span class="text-red-500 font-semibold" aria-label="Error">[X]</span>
+            }
+            <span class="text-[var(--text-primary)]">{{ check.label }}</span>
+            @if (check.detail) {
+              <span class="text-[var(--text-muted)]">— {{ check.detail }}</span>
+            }
+          </div>
+          @if (check.action === 'reviewPrompt') {
+            <button
+              class="btn btn-ghost text-[10px] px-2 py-0.5"
+              (click)="editPrompt.emit()"
+              [attr.data-testid]="'action-' + check.label.toLowerCase().replace(/\s+/g, '-')"
+            >
+              Review Prompt
+            </button>
+          }
+          @if (check.action === 'goToConfig') {
+            <button
+              class="btn btn-ghost text-[10px] px-2 py-0.5"
+              (click)="goToConfiguration.emit()"
+              [attr.data-testid]="'action-' + check.label.toLowerCase().replace(/\s+/g, '-')"
+            >
+              Go to Configuration
+            </button>
+          }
+        </div>
+      }
+    </div>
   </div>
 
-  <div style="display: flex; gap: 8px; justify-content: flex-end;">
-    <button class="btn btn-secondary" (click)="goBack.emit()" [disabled]="isLaunching">
+  <!-- Resource estimation line -->
+  <div class="text-xs text-[var(--text-muted)]" data-testid="resource-estimate">
+    Estimated resource usage: <span class="text-[var(--text-secondary)]">{{ resourceEstimate().summary }}</span>
+  </div>
+
+  <!-- Launch error display -->
+  @if (launchError()) {
+    <div
+      class="px-4 py-3 bg-red-500/10 border border-red-500/40 rounded-md"
+      data-testid="launch-error-card"
+    >
+      <div class="text-sm font-semibold text-red-400 mb-1">Session Launch Failed</div>
+      <div class="text-xs text-[var(--text-secondary)] mb-2">{{ launchError() }}</div>
+      <div class="text-xs text-[var(--text-muted)] mb-3">
+        Open Configuration to change the chain or fix the tool auth. Your draft choices are preserved.
+      </div>
+      <div class="flex gap-2">
+        <button
+          class="btn btn-secondary text-xs"
+          (click)="goToConfiguration.emit()"
+          data-testid="open-configuration-btn"
+        >
+          Open Configuration
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Launch footer -->
+  <div class="px-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-md text-xs text-[var(--text-muted)]">
+    Launch opens the new run detail page immediately.
+  </div>
+
+  <!-- Buttons -->
+  <div class="flex gap-2 justify-end">
+    <button
+      class="btn btn-ghost"
+      (click)="goBack.emit()"
+      [disabled]="isLaunching()"
+      data-testid="back-btn"
+    >
       Back
     </button>
-    <button class="btn btn-primary" (click)="confirmLaunch.emit()" [disabled]="isLaunching">
-      {{ isLaunching ? 'Launching…' : 'Launch session' }}
+    <button
+      class="btn btn-ghost"
+      (click)="editConfig.emit()"
+      [disabled]="isLaunching()"
+      data-testid="cancel-btn"
+    >
+      Cancel
+    </button>
+    <button
+      class="btn btn-primary"
+      (click)="confirmLaunch.emit()"
+      [disabled]="isLaunching() || !canLaunch()"
+      [attr.title]="!canLaunch() ? 'Fix blocking issues before launching' : ''"
+      data-testid="launch-btn"
+    >
+      @if (isLaunching()) {
+        Launching…
+      } @else if (launchError()) {
+        Retry Launch
+      } @else {
+        Launch
+      }
     </button>
   </div>
 </div>

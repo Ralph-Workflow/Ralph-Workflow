@@ -310,6 +310,26 @@ export interface DegradedInfo {
   reason: string | null;
 }
 
+// Agent chain/drain types for wizard Step 2
+export interface AgentInfo {
+  name: string;
+  tool: string;
+  model: string;
+}
+
+export interface ChainInfo {
+  name: string;
+  agents: string[];
+}
+
+export interface EffectiveChainsConfig {
+  chains: ChainInfo[];
+  drains: Record<string, string>;
+  agents: AgentInfo[];
+  has_configured_chains: boolean;
+  has_configured_drains: boolean;
+}
+
 // Config source tracking (for Effective tab source indicators)
 export type ConfigSource = 'default' | 'global' | 'project';
 

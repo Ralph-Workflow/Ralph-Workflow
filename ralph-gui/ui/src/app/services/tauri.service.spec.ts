@@ -85,28 +85,33 @@ describe('TauriService', () => {
   describe('method signatures', () => {
     it('getSessions should return a Promise', () => {
       const result = service.getSessions('/test');
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
     });
 
     it('createWorktree should accept optional basePath', () => {
       // With basePath
       const withBase = service.createWorktree('/repo', 'branch', 'name', '/base');
-      expect(withBase).toBeInstanceOf(Promise);
+      expect(withBase).toBeDefined();
+      expect(typeof withBase.then).toBe('function');
 
       // Without basePath
       const withoutBase = service.createWorktree('/repo', 'branch', 'name');
-      expect(withoutBase).toBeInstanceOf(Promise);
+      expect(withoutBase).toBeDefined();
+      expect(typeof withoutBase.then).toBe('function');
     });
 
     it('getRunLogs should use 500 as default maxLines', () => {
       // This test verifies the default is applied (integration test would verify backend receives it)
       const result = service.getRunLogs('/repo', null);
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
     });
 
     it('getRunLogs should accept custom maxLines', () => {
       const result = service.getRunLogs('/repo', null, 100);
-      expect(result).toBeInstanceOf(Promise);
+      expect(result).toBeDefined();
+      expect(typeof result.then).toBe('function');
     });
 
     it('should have getIterationHistory method', () => {

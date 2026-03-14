@@ -8,6 +8,7 @@ import type {
   ConfigView,
   CreateSessionRequest,
   CreateWorktreeResult,
+  EffectiveChainsConfig,
   EffectiveConfigWithSources,
   GuiPreferences,
   IterationSummary,
@@ -104,6 +105,12 @@ export class TauriService {
 
   async getEffectiveConfigWithSources(repoPath: string): Promise<EffectiveConfigWithSources> {
     return this.invoke<EffectiveConfigWithSources>('get_effective_config_with_sources', {
+      repo_path: repoPath,
+    });
+  }
+
+  async getEffectiveChainsConfig(repoPath: string): Promise<EffectiveChainsConfig> {
+    return this.invoke<EffectiveChainsConfig>('get_effective_chains_config', {
       repo_path: repoPath,
     });
   }

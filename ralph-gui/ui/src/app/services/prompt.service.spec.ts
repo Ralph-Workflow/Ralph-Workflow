@@ -35,7 +35,13 @@ describe('PromptService', () => {
 
     it('should handle load error', async () => {
       mockTauriService.readPromptFile.and.rejectWith(new Error('Failed to load'));
-      await expectAsync(service.loadFile('/path/to/prompt.md')).toBeRejectedWithError('Failed to load');
+      let error: Error | undefined;
+      try {
+        await service.loadFile('/path/to/prompt.md');
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error?.message).toBe('Failed to load');
     });
   });
 

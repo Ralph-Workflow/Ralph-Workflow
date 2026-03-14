@@ -12,6 +12,7 @@ For commit handling and leftover files:
 
 ## Non-Negotiables
 
+- **FIRST RULE: EVERY issue surfaced during your work MUST be fixed NOW.** There is no carve-out for "pre-existing," "not mine," or "unrelated." The moment a failure, warning, broken test, lint violation, regression, or other issue is surfaced, it becomes the top priority and OVERRIDES the current prompt until it is fixed.
 - **Verification is required for ANY code change** (prod code or tests): run `docs/agents/verification.md` before PR/completion.
 - **Architecture reading is REQUIRED** before any pipeline/reducer/behavioral change: `CODE_STYLE.md` (Architecture), `docs/architecture/event-loop-and-reducers.md`, `docs/architecture/effect-system.md`.
 - **Testing guide is REQUIRED reading** before writing/changing tests: `docs/agents/testing-guide.md`.
@@ -245,28 +246,28 @@ Run the commands in `docs/agents/verification.md`. Verification passes when requ
 
 ### YOU MUST FIX ALL FAILURES - NOT JUST YOUR OWN
 
-**CRITICAL:** When verification fails, you MUST fix ALL failures before committing - even if they are pre-existing issues you did not introduce.
+**CRITICAL:** There is no such thing as a merely "pre-existing" failure. If verification or investigation surfaces an issue, that issue is now YOUR issue and you MUST fix it before completion.
 
-**Pre-existing failures become YOUR TOP PRIORITY.** Drop whatever you were doing. The user's original prompt is now secondary. Fix the verification failures FIRST.
+**The instant an issue is surfaced, it becomes YOUR TOP PRIORITY.** Drop whatever you were doing. The user's original prompt is now secondary. The surfaced issue OVERRIDES the current prompt until it is fixed.
 
-**Why pre-existing failures are MORE urgent:**
-- They've been rotting longer - every day they exist makes them harder to fix
-- Someone else skipped verification - you must not perpetuate the failure
-- If you don't fix it now, the next contributor inherits the mess
-- **The longer a failure exists, the more urgent it becomes**
+**Why surfaced issues override everything else:**
+- A known failure left unfixed poisons every task that follows
+- The moment you see it, continuing past it is an explicit decision to ship brokenness
+- "Pre-existing" is not a valid category for deferral; it is only proof the issue has already been tolerated too long
+- **The longer an issue has existed, the more urgently it MUST be fixed now**
 
 **The rule is simple:**
 1. Run verification
 2. If any command fails or emits ERROR/WARNING diagnostics → STOP EVERYTHING
-3. Fixing failures is now your #1 priority - above the user's original request
-4. Do not rationalize ("not my change", "pre-existing", "unrelated to my task")
+3. Fixing the surfaced issue is now your #1 priority - above the user's original request
+4. Treat "pre-existing," "not my change," and "unrelated to my task" as forbidden rationalizations, not explanations
 5. Do not defer ("I'll file an issue", "someone else should fix it")
 6. FIX IT NOW, then return to the original task
 
-**If you encounter pre-existing failures:**
-- Fix them as part of your commit (note in commit message: "Also fixes pre-existing...")
-- This is not optional. This is not extra credit. This is the job.
-- **Investigate thoroughly** - if you didn't make the change, look even harder because it's been broken longer
+**If you encounter already-existing failures:**
+- Fix them in the same work cycle as soon as they are surfaced
+- This is not optional. This is not extra credit. This is the first rule.
+- **Investigate thoroughly** - if you did not cause the issue, that is even less reason to leave it behind for someone else
 
 **Additional verification for metrics changes:**
 

@@ -1,13 +1,13 @@
 <!-- Template Step -->
 @if (step_ === 'template') {
-  <div data-testid="wizard-template-step" style="display: flex; flex-direction: column; gap: 20px;">
+  <div data-testid="wizard-template-step" class="flex flex-col gap-5">
     <app-step-indicator [currentStep]="step_" />
     <app-prompt-template-picker
       [currentPrompt]="promptContent_"
       (selectTemplate)="onTemplateSelect($event)"
       (saveAsTemplate)="onSaveAsTemplate($event)"
     />
-    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+    <div class="flex gap-2 justify-end">
       <button class="btn btn-ghost" (click)="closeWizard.emit(); wizardClosed.emit()">Cancel</button>
     </div>
   </div>
@@ -15,55 +15,38 @@
 
 <!-- Preflight Step -->
 @if (step_ === 'preflight') {
-  <div style="display: flex; flex-direction: column; gap: 12px;">
+  <div class="flex flex-col gap-3">
     <app-step-indicator [currentStep]="step_" />
-    @if (launchError_) {
-      <div
-        data-testid="launch-error"
-        style="padding: 8px 12px; background: var(--error-bg, #fee); border: 1px solid var(--error-border, #f99); border-radius: var(--radius-md); font-size: 12px; color: var(--error-text, #c00);"
-      >
-        {{ launchError_ }}
-      </div>
-    }
     <app-preflight-summary
       [repoPath]="repoPath_"
       [worktreePath]="worktreePath_"
       [promptPath]="promptPath_"
+      [promptContent]="promptContent_"
       [developerIterations]="developerIterations_"
       [reviewerPasses]="reviewerPasses_"
+      [reviewDepth]="reviewDepth_"
+      [drainBindings]="drainBindings_"
+      [checkpointEnabled]="checkpointEnabled_"
+      [isolationMode]="isolationMode_"
+      [developerContext]="developerContext_"
+      [reviewerContext]="reviewerContext_"
+      [effectiveChainsConfig]="effectiveChainsConfig_"
+      [configSourceLabel]="valueSourceLabel_"
+      [launchError]="launchError_"
       [isLaunching]="isLaunching_"
       (confirmLaunch)="handleLaunch()"
       (goBack)="step.set('config')"
+      (editPrompt)="step.set('template')"
+      (editConfig)="step.set('config')"
+      (goToConfiguration)="navigateToConfiguration()"
     />
   </div>
 }
 
 <!-- Config Step -->
 @if (step_ === 'config') {
-  <div data-testid="wizard-config-step" style="display: flex; flex-direction: column; gap: 16px;">
+  <div data-testid="wizard-config-step" class="flex flex-col gap-4">
     <app-step-indicator [currentStep]="step_" />
-
-    <!-- Unconfigured state: no agent profiles -->
-    @if (!hasAgentProfiles_) {
-      <div
-        data-testid="unconfigured-callout"
-        style="padding: 12px 16px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.4); border-radius: var(--radius-md);"
-      >
-        <div style="font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 4px;">
-          ⚠ Setup Required
-        </div>
-        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
-          Agent chains not configured
-        </div>
-        <a
-          href="#/settings/agents"
-          style="font-size: 12px; color: var(--accent); text-decoration: none;"
-          data-testid="go-to-config-link"
-        >
-          Go to Configuration →
-        </a>
-      </div>
-    }
 
     <!-- Repo path -->
     <div>
@@ -80,12 +63,11 @@
     <!-- Worktree selection -->
     @if (worktrees_.length > 0) {
       <div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <label class="section-label" for="worktree-select" style="margin-bottom: 0;">Context</label>
+        <div class="flex justify-between items-center mb-1.5">
+          <label class="section-label mb-0" for="worktree-select">Context</label>
           <button
             data-testid="create-worktree-toggle"
-            class="btn btn-ghost"
-            style="font-size: 11px; padding: 2px 10px;"
+            class="btn btn-ghost text-[11px] px-2.5 py-0.5"
             (click)="toggleCreateWorktree()"
           >
             {{ showCreateWorktree_ ? '← Select existing' : '+ Create new worktree' }}
@@ -94,10 +76,9 @@
         @if (!showCreateWorktree_) {
           <select
             id="worktree-select"
-            class="input"
+            class="input font-mono text-xs"
             [value]="worktreePath_ ?? ''"
             (change)="onWorktreeChange($event)"
-            style="font-family: var(--font-mono); font-size: 12px;"
           >
             <option value="">Direct repository (no worktree)</option>
             @for (wt of nonMainWorktrees_; track wt.path) {
@@ -114,139 +95,273 @@
       </div>
     }
 
-    <!-- Agent profile selection -->
-    @if (agentProfiles_.length > 0) {
-      <div>
-        <label class="section-label" for="agent-profile">Agent profile</label>
-        <select
-          id="agent-profile"
-          data-testid="agent-profile-select"
-          class="input"
-          [value]="selectedProfile_ ?? ''"
-          (change)="onAgentProfileChange($event)"
-          style="font-family: var(--font-mono); font-size: 12px;"
+    <!-- Unconfigured state: no agent chains -->
+    @if (!hasConfiguredChains_) {
+      <div
+        data-testid="unconfigured-callout"
+        class="px-4 py-3 bg-amber-500/10 border border-amber-500/40 rounded-md"
+      >
+        <div class="text-sm font-semibold text-[var(--accent)] mb-1">
+          ⚠ Setup Required
+        </div>
+        <div class="text-xs text-[var(--text-secondary)] mb-2">
+          No agent chains are configured for this workspace. Add at least one configured chain before launching.
+        </div>
+        <a
+          href="#/settings/agents"
+          class="text-xs text-[var(--accent)] no-underline"
+          data-testid="go-to-config-link"
         >
-          <option value="">Default (from config)</option>
-          @for (p of agentProfiles_; track p.name) {
-            <option [value]="p.name">{{ p.name }} — dev: {{ p.developer_agent }} / reviewer: {{ p.reviewer_agent }}</option>
-          }
-        </select>
+          Go to Configuration →
+        </a>
       </div>
     }
 
-    <!-- Session config panel (collapsed/expanded) -->
-    <div style="border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden;">
-      <!-- Summary / header row -->
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-surface);">
-        <span style="font-size: 12px; color: var(--text-secondary); font-family: var(--font-mono);" data-testid="config-summary-line">
-          {{ configSummaryLine_ }}
-        </span>
-        <button
-          class="btn btn-ghost"
-          style="font-size: 11px; padding: 2px 10px;"
-          (click)="configPanelExpanded.set(!configPanelExpanded_)"
-          data-testid="customize-config-toggle"
-        >
-          {{ configPanelExpanded_ ? 'Collapse' : 'Customize' }}
-        </button>
+    <!-- Session defaults panel (only when chains are configured) -->
+    @if (hasConfiguredChains_) {
+      <div class="border border-[var(--border-default)] rounded-md overflow-hidden">
+
+        <!-- Collapsed summary row -->
+        @if (!configPanelExpanded_) {
+          <div
+            data-testid="collapsed-summary-panel"
+            class="flex flex-col gap-2 px-3.5 py-2.5 bg-[var(--bg-surface)]"
+          >
+            <div class="flex items-center justify-between">
+              <span
+                class="text-xs text-[var(--text-secondary)] font-mono"
+                data-testid="config-summary-line"
+              >
+                {{ configSummaryLine_ }}
+              </span>
+              <button
+                class="btn btn-ghost text-[11px] px-2.5 py-0.5 shrink-0"
+                (click)="configPanelExpanded.set(true)"
+                data-testid="customize-config-toggle"
+              >
+                Customize ▾
+              </button>
+            </div>
+
+            <!-- Inline spinners for collapsed view -->
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                Iterations
+                <input
+                  data-testid="inline-dev-iters"
+                  class="input w-16 text-center text-xs"
+                  type="number"
+                  min="1"
+                  max="20"
+                  [value]="developerIterations_"
+                  (input)="onDevItersChange($event)"
+                />
+              </label>
+              <label class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                Reviews
+                <input
+                  data-testid="inline-rev-passes"
+                  class="input w-16 text-center text-xs"
+                  type="number"
+                  min="0"
+                  max="10"
+                  [value]="reviewerPasses_"
+                  (input)="onRevPassesChange($event)"
+                />
+              </label>
+              <span class="text-[11px] text-[var(--text-muted)] ml-auto">
+                Value source: {{ valueSourceLabel_ }}
+              </span>
+            </div>
+          </div>
+        }
+
+        <!-- Expanded configuration panel -->
+        @if (configPanelExpanded_) {
+          <div
+            data-testid="config-full-panel"
+            class="px-3.5 py-3.5 border-t border-[var(--border-default)] flex flex-col gap-3"
+          >
+            <!-- Iterations and Reviews -->
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="section-label" for="dev-iters">Dev iterations (1–20)</label>
+                <input
+                  id="dev-iters"
+                  class="input"
+                  type="number"
+                  min="1"
+                  max="20"
+                  [value]="developerIterations_"
+                  (input)="onDevItersChange($event)"
+                  data-testid="dev-iters-input"
+                />
+              </div>
+              <div>
+                <label class="section-label" for="rev-passes">Review passes (0–10)</label>
+                <input
+                  id="rev-passes"
+                  class="input"
+                  type="number"
+                  min="0"
+                  max="10"
+                  [value]="reviewerPasses_"
+                  (input)="onRevPassesChange($event)"
+                  data-testid="rev-passes-input"
+                />
+              </div>
+            </div>
+
+            <!-- Review depth -->
+            <div>
+              <label class="section-label" for="review-depth">Review depth</label>
+              <select
+                id="review-depth"
+                class="input"
+                [value]="reviewDepth_"
+                (change)="onReviewDepthChange($event)"
+                data-testid="review-depth-select"
+              >
+                @for (opt of reviewDepthOptions_; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+            </div>
+
+            <!-- Session roles (drain-to-chain bindings) -->
+            <div>
+              <div class="text-xs font-semibold text-[var(--text-primary)] mb-2">Session roles</div>
+              <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                @for (phase of drainPhases_; track phase) {
+                  <div class="flex items-center gap-2">
+                    <label
+                      class="text-xs text-[var(--text-secondary)] w-24 shrink-0"
+                      [for]="'drain-' + phase"
+                    >
+                      {{ drainLabels_[phase] }}
+                    </label>
+                    <select
+                      [id]="'drain-' + phase"
+                      class="input text-xs font-mono flex-1"
+                      (change)="onDrainChange(phase, $event)"
+                      [attr.data-testid]="'drain-select-' + phase"
+                    >
+                      <option value="" [selected]="!drainBindings_[phase]">— none —</option>
+                      @for (chain of chainNames_; track chain) {
+                        <option [value]="chain" [selected]="drainBindings_[phase] === chain">{{ chain }}</option>
+                      }
+                    </select>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Advanced subsection -->
+            <div class="border border-[var(--border-subtle)] rounded-md overflow-hidden">
+              <button
+                class="w-full flex items-center justify-between px-3 py-2 bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+                (click)="toggleAdvanced()"
+                data-testid="advanced-toggle"
+              >
+                <span class="font-semibold">Advanced</span>
+                <span>{{ advancedExpanded_ ? '▲' : '▾' }}</span>
+              </button>
+              @if (advancedExpanded_) {
+                <div
+                  class="px-3 py-3 border-t border-[var(--border-subtle)] flex flex-col gap-3"
+                  data-testid="advanced-section"
+                >
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="section-label" for="dev-context">Developer context</label>
+                      <select
+                        id="dev-context"
+                        class="input text-xs"
+                        [value]="developerContext_"
+                        (change)="onDevContextChange($event)"
+                        data-testid="dev-context-select"
+                      >
+                        <option value="minimal">Minimal</option>
+                        <option value="normal">Normal</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="section-label" for="rev-context">Reviewer context</label>
+                      <select
+                        id="rev-context"
+                        class="input text-xs"
+                        [value]="reviewerContext_"
+                        (change)="onRevContextChange($event)"
+                        data-testid="rev-context-select"
+                      >
+                        <option value="minimal">Minimal</option>
+                        <option value="normal">Normal</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="flex gap-4 flex-wrap">
+                    <label class="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-secondary)]">
+                      <input
+                        type="checkbox"
+                        [checked]="checkpointEnabled_"
+                        (change)="checkpointEnabled.set(!checkpointEnabled_)"
+                        data-testid="checkpoint-toggle"
+                      />
+                      Checkpoint enabled
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-xs text-[var(--text-secondary)]">
+                      <input
+                        type="checkbox"
+                        [checked]="isolationMode_"
+                        (change)="isolationMode.set(!isolationMode_)"
+                        data-testid="isolation-toggle"
+                      />
+                      Isolation mode
+                    </label>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <!-- Reset / note -->
+            <div class="flex items-center justify-between mt-1">
+              <span class="text-[11px] text-[var(--text-muted)] italic">
+                Changes here apply to this session only and are not saved to your configuration files
+              </span>
+              <button
+                class="btn btn-ghost text-[11px] px-2.5 py-0.5 shrink-0"
+                (click)="resetToDefaults()"
+                data-testid="reset-config-btn"
+              >
+                Reset to defaults
+              </button>
+            </div>
+
+            <!-- Collapse button -->
+            <div class="flex justify-end">
+              <button
+                class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+                (click)="configPanelExpanded.set(false)"
+                data-testid="collapse-config-toggle"
+              >
+                Customize ▲
+              </button>
+            </div>
+          </div>
+        }
       </div>
-
-      @if (configPanelExpanded_) {
-        <div style="padding: 14px; border-top: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 12px;" data-testid="config-full-panel">
-          <!-- Iteration config -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-            <div>
-              <label class="section-label" for="dev-iters">Dev iterations (1–20)</label>
-              <input
-                id="dev-iters"
-                class="input"
-                type="number"
-                min="1"
-                max="20"
-                [value]="developerIterations_"
-                (input)="onDevItersChange($event)"
-              />
-            </div>
-            <div>
-              <label class="section-label" for="rev-passes">Review passes (0–10)</label>
-              <input
-                id="rev-passes"
-                class="input"
-                type="number"
-                min="0"
-                max="10"
-                [value]="reviewerPasses_"
-                (input)="onRevPassesChange($event)"
-              />
-            </div>
-          </div>
-
-          <!-- Review depth -->
-          <div>
-            <label class="section-label" for="review-depth">Review depth</label>
-            <select
-              id="review-depth"
-              class="input"
-              [value]="reviewDepth_"
-              (change)="onReviewDepthChange($event)"
-              data-testid="review-depth-select"
-            >
-              <option value="light">Light</option>
-              <option value="standard">Standard</option>
-              <option value="thorough">Thorough</option>
-            </select>
-          </div>
-
-          <!-- Toggles -->
-          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-secondary);">
-              <input
-                type="checkbox"
-                [checked]="checkpointEnabled_"
-                (change)="checkpointEnabled.set(!checkpointEnabled_)"
-                data-testid="checkpoint-toggle"
-              />
-              Checkpoint enabled
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text-secondary);">
-              <input
-                type="checkbox"
-                [checked]="isolationMode_"
-                (change)="isolationMode.set(!isolationMode_)"
-                data-testid="isolation-toggle"
-              />
-              Isolation mode
-            </label>
-          </div>
-
-          <!-- Reset / note -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
-            <span style="font-size: 11px; color: var(--text-muted); font-style: italic;">
-              Changes here apply to this session only and are not saved to your configuration files
-            </span>
-            <button
-              class="btn btn-ghost"
-              style="font-size: 11px; padding: 2px 10px; flex-shrink: 0;"
-              (click)="resetToDefaults()"
-              data-testid="reset-config-btn"
-            >
-              Reset to defaults
-            </button>
-          </div>
-        </div>
-      }
-    </div>
+    }
 
     <!-- Preset picker -->
     @if (presets_.length > 0) {
       <div>
         <label class="section-label">Load preset</label>
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="flex items-center gap-2">
           <select
             data-testid="load-preset-select"
-            class="input"
+            class="input font-mono text-xs"
             (change)="onPresetLoad($event)"
-            style="font-family: var(--font-mono); font-size: 12px;"
           >
             <option value="">— select a preset —</option>
             @for (p of presets_; track p.name) {
@@ -255,14 +370,14 @@
           </select>
         </div>
         <!-- Saved preset list with delete buttons -->
-        <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px;">
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
           @for (p of presets_; track p.name) {
-            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 100px; background: var(--bg-elevated); border: 1px solid var(--border-subtle); font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] font-mono">
               {{ p.name }}
               <button
                 [attr.data-testid]="'delete-preset-' + p.name"
                 (click)="deletePreset(p.name)"
-                style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 10px; padding: 0; line-height: 1;"
+                class="bg-transparent border-none cursor-pointer text-[var(--text-muted)] text-[10px] p-0 leading-none"
                 [title]="'Delete preset ' + p.name + ''"
               >
                 ✕
@@ -276,21 +391,19 @@
     <!-- Save as preset -->
     <div>
       <label class="section-label">Save current config as preset</label>
-      <div style="display: flex; gap: 8px;">
+      <div class="flex gap-2">
         <input
           data-testid="preset-name-input"
-          class="input input-mono"
+          class="input input-mono flex-1"
           [value]="presetNameInput_"
           (input)="onPresetNameInput($event)"
           placeholder="Preset name…"
-          style="flex: 1;"
         />
         <button
           data-testid="save-preset-button"
-          class="btn btn-secondary"
+          class="btn btn-secondary shrink-0"
           (click)="savePreset()"
           [disabled]="isPresetNameEmpty"
-          style="flex-shrink: 0;"
         >
           Save
         </button>
@@ -299,20 +412,18 @@
 
     <!-- Prompt editor with optional AI assistant panel -->
     <div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-        <label class="section-label" style="margin-bottom: 0;">PROMPT.md</label>
-        <div style="display: flex; gap: 6px;">
+      <div class="flex justify-between items-center mb-1.5">
+        <label class="section-label mb-0">PROMPT.md</label>
+        <div class="flex gap-1.5">
           <button
-            class="btn btn-ghost"
-            style="font-size: 11px; padding: 2px 10px;"
+            class="btn btn-ghost text-[11px] px-2.5 py-0.5"
             (click)="showReviewPanel.set(!showReviewPanel_)"
             data-testid="toggle-review-panel"
           >
             {{ showReviewPanel_ ? 'Hide AI review' : 'Review with AI' }}
           </button>
           <button
-            class="btn btn-ghost"
-            style="font-size: 11px; padding: 2px 10px;"
+            class="btn btn-ghost text-[11px] px-2.5 py-0.5"
             (click)="showAiAssistant.set(!showAiAssistant_)"
             data-testid="toggle-ai-assistant"
           >
@@ -322,14 +433,13 @@
       </div>
       <textarea
         id="prompt-editor"
-        class="input input-mono"
+        class="input input-mono resize-y leading-relaxed"
         rows="10"
         [value]="promptContent_"
         (input)="onPromptChange($event)"
-        style="resize: vertical; line-height: 1.6;"
       ></textarea>
       @if (showReviewPanel_) {
-        <div style="margin-top: 10px;">
+        <div class="mt-2.5">
           <app-prompt-review-panel
             [promptContent]="promptContent_"
             (applyImprovedPrompt)="applyImprovedPrompt($event)"
@@ -337,7 +447,7 @@
         </div>
       }
       @if (showAiAssistant_) {
-        <div style="margin-top: 10px;" data-testid="ai-assistant-panel">
+        <div class="mt-2.5" data-testid="ai-assistant-panel">
           <app-ai-prompt-assistant
             [currentPrompt]="promptContent_"
             [repoPath]="repoPath_"
@@ -347,14 +457,14 @@
       }
     </div>
 
-    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+    <div class="flex gap-2 justify-end">
       <button class="btn btn-ghost" (click)="step.set('template')">← Templates</button>
       <button class="btn btn-ghost" (click)="closeWizard.emit(); wizardClosed.emit()">Cancel</button>
       <button
         class="btn btn-primary"
         (click)="handleNext()"
         [disabled]="!canProceedToLaunch_"
-        [title]="!hasAgentProfiles_ ? 'Agent chains must be configured before launching' : ''"
+        [title]="!hasConfiguredChains_ ? 'Agent chains must be configured before launching' : ''"
         data-testid="review-launch-button"
       >
         Review & launch →

@@ -2,6 +2,31 @@ use ralph_workflow::config::unified::UnifiedConfig;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// Information about a single configured agent from `[agents.NAME]` TOML sections.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct AgentInfo {
+    pub name: String,
+    pub tool: String,
+    pub model: String,
+}
+
+/// Information about a single configured agent chain from `[agent_chains]` TOML section.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct ChainInfo {
+    pub name: String,
+    pub agents: Vec<String>,
+}
+
+/// Effective (merged global + project) chain and drain configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct EffectiveChainsConfig {
+    pub chains: Vec<ChainInfo>,
+    pub drains: std::collections::HashMap<String, String>,
+    pub agents: Vec<AgentInfo>,
+    pub has_configured_chains: bool,
+    pub has_configured_drains: bool,
+}
+
 /// Where a config field's value originates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -227,6 +252,280 @@ pub fn get_effective_config_with_sources(
     Ok(EffectiveConfigWithSources {
         config: effective_view,
         sources,
+    })
+}
+
+/// Parse `[agent_chains]` section from a TOML string.
+///
+/// Returns a map of chain name → list of agent names.
+fn parse_chains_from_toml(toml: &str) -> std::collections::HashMap<String, Vec<String>> {
+    let mut chains: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut in_chains = false;
+
+    for raw_line in toml.lines() {
+        let line = raw_line.trim();
+
+        if line == "[agent_chains]" {
+            in_chains = true;
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_chains = false;
+            continue;
+        }
+        if !in_chains || line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some(eq_idx) = line.find('=') else {
+            continue;
+        };
+        let key = line[..eq_idx].trim().to_string();
+        let value_str = line[eq_idx + 1..].trim();
+
+        // Parse an array like ["agent1", "agent2"]
+        if let Some(agents) = parse_toml_string_array(value_str) {
+            chains.insert(key, agents);
+        }
+    }
+
+    chains
+}
+
+/// Parse `[agent_drains]` section from a TOML string.
+///
+/// Returns a map of drain phase → chain name.
+fn parse_drains_from_toml(toml: &str) -> std::collections::HashMap<String, String> {
+    let mut drains: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut in_drains = false;
+
+    for raw_line in toml.lines() {
+        let line = raw_line.trim();
+
+        if line == "[agent_drains]" {
+            in_drains = true;
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_drains = false;
+            continue;
+        }
+        if !in_drains || line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some(eq_idx) = line.find('=') else {
+            continue;
+        };
+        let key = line[..eq_idx].trim().to_string();
+        let value_str = line[eq_idx + 1..].trim();
+
+        if let Some(chain_name) = parse_toml_quoted_string(value_str) {
+            drains.insert(key, chain_name);
+        }
+    }
+
+    drains
+}
+
+/// Parse `[agents.NAME]` sections from a TOML string.
+///
+/// Returns a list of `AgentInfo` structs with name, tool, and model.
+fn parse_agents_from_toml(toml: &str) -> Vec<AgentInfo> {
+    let mut agents: Vec<AgentInfo> = Vec::new();
+    let mut current_name: Option<String> = None;
+    let mut current_tool = String::new();
+    let mut current_model = String::new();
+
+    let flush_agent = |name: &Option<String>, tool: &str, model: &str, out: &mut Vec<AgentInfo>| {
+        if let Some(n) = name {
+            out.push(AgentInfo {
+                name: n.clone(),
+                tool: tool.to_string(),
+                model: model.to_string(),
+            });
+        }
+    };
+
+    for raw_line in toml.lines() {
+        let line = raw_line.trim();
+
+        if line.starts_with('[') && line.ends_with(']') {
+            flush_agent(&current_name, &current_tool, &current_model, &mut agents);
+            current_name = None;
+            current_tool = String::new();
+            current_model = String::new();
+
+            // Match [agents.NAME]
+            if let Some(caps) = line
+                .strip_prefix("[agents.")
+                .and_then(|s| s.strip_suffix(']'))
+            {
+                current_name = Some(caps.to_string());
+            }
+            continue;
+        }
+
+        if current_name.is_none() || line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let Some(eq_idx) = line.find('=') else {
+            continue;
+        };
+        let key = line[..eq_idx].trim();
+        let value_str = line[eq_idx + 1..].trim();
+
+        if let Some(v) = parse_toml_quoted_string(value_str) {
+            match key {
+                "tool" => current_tool = v,
+                "model" => current_model = v,
+                _ => {}
+            }
+        }
+    }
+
+    flush_agent(&current_name, &current_tool, &current_model, &mut agents);
+    agents
+}
+
+/// Parse a TOML quoted string like `"value"`. Returns `None` on failure.
+fn parse_toml_quoted_string(value: &str) -> Option<String> {
+    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        Some(value[1..value.len() - 1].to_string())
+    } else {
+        None
+    }
+}
+
+/// Parse a TOML array like `["a", "b"]`. Returns `None` on failure.
+fn parse_toml_string_array(value: &str) -> Option<Vec<String>> {
+    let value = value.trim();
+    if !value.starts_with('[') || !value.ends_with(']') {
+        return None;
+    }
+    let inner = value[1..value.len() - 1].trim();
+    if inner.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let mut items = Vec::new();
+    for part in inner.split(',') {
+        let item = parse_toml_quoted_string(part.trim())?;
+        items.push(item);
+    }
+    Some(items)
+}
+
+/// Merge two chain maps: project takes precedence over global.
+fn merge_chains(
+    global: std::collections::HashMap<String, Vec<String>>,
+    project: std::collections::HashMap<String, Vec<String>>,
+) -> std::collections::HashMap<String, Vec<String>> {
+    let mut merged = global;
+    for (k, v) in project {
+        merged.insert(k, v);
+    }
+    merged
+}
+
+/// Merge two drain maps: project takes precedence over global.
+fn merge_drains(
+    global: std::collections::HashMap<String, String>,
+    project: std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String> {
+    let mut merged = global;
+    for (k, v) in project {
+        merged.insert(k, v);
+    }
+    merged
+}
+
+/// Get the effective (merged global + project) agent chain and drain configuration.
+///
+/// Reads both `~/.config/ralph-workflow.toml` and `.agent/ralph-workflow.toml`,
+/// then merges them with project values taking precedence over global values.
+/// Also parses `[agents.NAME]` sections for agent metadata.
+///
+/// # Errors
+///
+/// Returns an error if either config file exists but cannot be read.
+#[tauri::command]
+#[specta::specta]
+pub fn get_effective_chains_config(repo_path: String) -> Result<EffectiveChainsConfig, String> {
+    // Read global config
+    let global_toml = {
+        let path = dirs::home_dir()
+            .map(|h| h.join(".config").join("ralph-workflow.toml"))
+            .filter(|p| p.exists());
+        match path {
+            Some(p) => std::fs::read_to_string(&p)
+                .map_err(|e| format!("Failed to read global config: {e}"))?,
+            None => String::new(),
+        }
+    };
+
+    // Read project config
+    let project_toml = {
+        let path = std::path::PathBuf::from(&repo_path)
+            .join(".agent")
+            .join("ralph-workflow.toml");
+        if path.exists() {
+            Some(
+                std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read project config: {e}"))?,
+            )
+        } else {
+            None
+        }
+    };
+
+    // Parse from global
+    let global_chains = parse_chains_from_toml(&global_toml);
+    let global_drains = parse_drains_from_toml(&global_toml);
+    let global_agents = parse_agents_from_toml(&global_toml);
+
+    // Parse from project and merge
+    let (merged_chains_map, merged_drains, merged_agents) = if let Some(ref project) = project_toml
+    {
+        let project_chains = parse_chains_from_toml(project);
+        let project_drains = parse_drains_from_toml(project);
+        let project_agents = parse_agents_from_toml(project);
+
+        // Merge: project overrides global
+        let merged_chains_map = merge_chains(global_chains, project_chains);
+        let merged_drains = merge_drains(global_drains, project_drains);
+
+        // Merge agents: project agents override global by name
+        let mut agents_map: std::collections::HashMap<String, AgentInfo> = global_agents
+            .into_iter()
+            .map(|a| (a.name.clone(), a))
+            .collect();
+        for agent in project_agents {
+            agents_map.insert(agent.name.clone(), agent);
+        }
+        let merged_agents: Vec<AgentInfo> = agents_map.into_values().collect();
+
+        (merged_chains_map, merged_drains, merged_agents)
+    } else {
+        (global_chains, global_drains, global_agents)
+    };
+
+    let chains: Vec<ChainInfo> = merged_chains_map
+        .into_iter()
+        .map(|(name, agents)| ChainInfo { name, agents })
+        .collect();
+
+    let has_configured_chains = !chains.is_empty();
+    let has_configured_drains = !merged_drains.is_empty();
+
+    Ok(EffectiveChainsConfig {
+        chains,
+        drains: merged_drains,
+        agents: merged_agents,
+        has_configured_chains,
+        has_configured_drains,
     })
 }
 
@@ -1944,6 +2243,201 @@ reviewer_agent = "codex"
                 }
             }
         }
+    }
+
+    // --- get_effective_chains_config tests ---
+
+    #[test]
+    fn test_parse_chains_from_toml_parses_chains() {
+        let toml = "[agent_chains]\nmychain = [\"agent1\", \"agent2\"]\n";
+        let chains = parse_chains_from_toml(toml);
+        assert_eq!(chains.len(), 1);
+        assert_eq!(chains["mychain"], vec!["agent1", "agent2"]);
+    }
+
+    #[test]
+    fn test_parse_chains_from_toml_returns_empty_when_no_section() {
+        let toml = "[general]\nverbosity = 1\n";
+        let chains = parse_chains_from_toml(toml);
+        assert!(chains.is_empty());
+    }
+
+    #[test]
+    fn test_parse_drains_from_toml_parses_drains() {
+        let toml = "[agent_drains]\ndevelopment = \"mychain\"\nreview = \"reviewer-chain\"\n";
+        let drains = parse_drains_from_toml(toml);
+        assert_eq!(drains.len(), 2);
+        assert_eq!(drains["development"], "mychain");
+        assert_eq!(drains["review"], "reviewer-chain");
+    }
+
+    #[test]
+    fn test_parse_drains_from_toml_returns_empty_when_no_section() {
+        let toml = "[general]\nverbosity = 1\n";
+        let drains = parse_drains_from_toml(toml);
+        assert!(drains.is_empty());
+    }
+
+    #[test]
+    fn test_parse_agents_from_toml_parses_agent_sections() {
+        let toml =
+            "[agents.claude-code]\ntool = \"claude\"\nmodel = \"claude-sonnet-4-6\"\n\n[agents.gpt]\ntool = \"openai\"\nmodel = \"gpt-4o\"\n";
+        let agents = parse_agents_from_toml(toml);
+        assert_eq!(agents.len(), 2);
+        let claude = agents.iter().find(|a| a.name == "claude-code").unwrap();
+        assert_eq!(claude.tool, "claude");
+        assert_eq!(claude.model, "claude-sonnet-4-6");
+        let gpt = agents.iter().find(|a| a.name == "gpt").unwrap();
+        assert_eq!(gpt.tool, "openai");
+    }
+
+    #[test]
+    fn test_parse_agents_from_toml_returns_empty_when_no_sections() {
+        let toml = "[general]\nverbosity = 1\n";
+        let agents = parse_agents_from_toml(toml);
+        assert!(agents.is_empty());
+    }
+
+    #[test]
+    fn test_merge_chains_project_overrides_global() {
+        let mut global = std::collections::HashMap::new();
+        global.insert("chain-a".to_string(), vec!["agent1".to_string()]);
+        global.insert("chain-b".to_string(), vec!["agent2".to_string()]);
+
+        let mut project = std::collections::HashMap::new();
+        project.insert("chain-a".to_string(), vec!["agent-override".to_string()]);
+        project.insert("chain-c".to_string(), vec!["agent3".to_string()]);
+
+        let merged = merge_chains(global, project);
+        // chain-a is overridden by project
+        assert_eq!(merged["chain-a"], vec!["agent-override"]);
+        // chain-b is from global only
+        assert_eq!(merged["chain-b"], vec!["agent2"]);
+        // chain-c is from project only
+        assert_eq!(merged["chain-c"], vec!["agent3"]);
+    }
+
+    #[test]
+    fn test_merge_drains_project_overrides_global() {
+        let mut global = std::collections::HashMap::new();
+        global.insert("development".to_string(), "chain-a".to_string());
+        global.insert("review".to_string(), "chain-b".to_string());
+
+        let mut project = std::collections::HashMap::new();
+        project.insert("development".to_string(), "chain-override".to_string());
+
+        let merged = merge_drains(global, project);
+        assert_eq!(merged["development"], "chain-override");
+        assert_eq!(merged["review"], "chain-b");
+    }
+
+    #[test]
+    fn test_get_effective_chains_config_returns_empty_when_no_files() {
+        let dir = TempDir::new().unwrap();
+        let result = get_effective_chains_config(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        // When no project config exists, chains and drains come from the global config
+        // (which may or may not exist on the test machine). We only verify Ok is returned.
+        let config = result.unwrap();
+        // has_configured_chains reflects whether any chains exist
+        assert_eq!(config.has_configured_chains, !config.chains.is_empty());
+        assert_eq!(config.has_configured_drains, !config.drains.is_empty());
+    }
+
+    #[test]
+    fn test_get_effective_chains_config_parses_project_chains() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let config_path = agent_dir.join("ralph-workflow.toml");
+        let toml = "[agent_chains]\nmychain = [\"agent1\", \"agent2\"]\n\n[agent_drains]\ndevelopment = \"mychain\"\n\n[agents.agent1]\ntool = \"claude\"\nmodel = \"claude-sonnet-4-6\"\n";
+        std::fs::write(&config_path, toml).unwrap();
+
+        let result = get_effective_chains_config(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let config = result.unwrap();
+        assert!(
+            config.has_configured_chains,
+            "Should have configured chains"
+        );
+        assert!(
+            config.has_configured_drains,
+            "Should have configured drains"
+        );
+
+        let mychain = config.chains.iter().find(|c| c.name == "mychain");
+        assert!(mychain.is_some(), "mychain should be present");
+        assert_eq!(mychain.unwrap().agents, vec!["agent1", "agent2"]);
+
+        assert_eq!(
+            config.drains.get("development"),
+            Some(&"mychain".to_string())
+        );
+
+        let agent = config.agents.iter().find(|a| a.name == "agent1");
+        assert!(agent.is_some(), "agent1 should be present");
+        assert_eq!(agent.unwrap().tool, "claude");
+    }
+
+    #[test]
+    fn test_get_effective_chains_config_project_chains_override_global() {
+        // We can't inject a global config file in tests, but we can verify project-only data.
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        let project_toml = "[agent_chains]\nproject-chain = [\"proj-agent\"]\n\n[agent_drains]\nreview = \"project-chain\"\n";
+        std::fs::write(agent_dir.join("ralph-workflow.toml"), project_toml).unwrap();
+
+        let result = get_effective_chains_config(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let config = result.unwrap();
+        // Project chain must appear in merged result
+        let found = config.chains.iter().any(|c| c.name == "project-chain");
+        assert!(found, "project-chain should appear in merged chains");
+        assert_eq!(
+            config.drains.get("review"),
+            Some(&"project-chain".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_effective_chains_config_has_configured_flags_false_when_empty() {
+        let dir = TempDir::new().unwrap();
+        let agent_dir = dir.path().join(".agent");
+        std::fs::create_dir(&agent_dir).unwrap();
+        // Write a config with no chains or drains sections
+        std::fs::write(
+            agent_dir.join("ralph-workflow.toml"),
+            "[general]\nverbosity = 1\n",
+        )
+        .unwrap();
+
+        let result = get_effective_chains_config(dir.path().to_string_lossy().to_string());
+        assert!(result.is_ok(), "Expected Ok: {result:?}");
+        let config = result.unwrap();
+        // No chains from project config. Global may provide some — we only check the flag matches reality.
+        assert_eq!(config.has_configured_chains, !config.chains.is_empty());
+        assert_eq!(config.has_configured_drains, !config.drains.is_empty());
+    }
+
+    #[test]
+    fn test_parse_toml_string_array_parses_correctly() {
+        assert_eq!(
+            parse_toml_string_array(r#"["a", "b", "c"]"#),
+            Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
+        );
+        assert_eq!(parse_toml_string_array(r"[]"), Some(vec![]));
+        assert_eq!(parse_toml_string_array("not-an-array"), None);
+    }
+
+    #[test]
+    fn test_parse_toml_quoted_string_parses_correctly() {
+        assert_eq!(
+            parse_toml_quoted_string(r#""hello""#),
+            Some("hello".to_string())
+        );
+        assert_eq!(parse_toml_quoted_string("not-quoted"), None);
+        assert_eq!(parse_toml_quoted_string(r#""""#), Some(String::new()));
     }
 
     // --- ToolUpdateInfo tests ---

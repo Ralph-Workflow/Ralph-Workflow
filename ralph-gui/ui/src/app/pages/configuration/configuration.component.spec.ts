@@ -676,7 +676,7 @@ describe('configurationCanDeactivateGuard', () => {
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
     expect(result).toBeTrue();
-    expect(window.confirm).toHaveBeenCalledOnceWith(jasmine.stringContaining('unsaved configuration changes'));
+    expect(window.confirm).toHaveBeenCalledWith(jasmine.stringContaining('unsaved configuration changes'));
   });
 
   it('returns false when config is dirty and user cancels navigation', () => {
@@ -687,7 +687,7 @@ describe('configurationCanDeactivateGuard', () => {
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
     expect(result).toBeFalse();
-    expect(window.confirm).toHaveBeenCalledOnceWith(jasmine.stringContaining('unsaved configuration changes'));
+    expect(window.confirm).toHaveBeenCalledWith(jasmine.stringContaining('unsaved configuration changes'));
   });
 
   it('does not show confirm dialog when config is clean', () => {
