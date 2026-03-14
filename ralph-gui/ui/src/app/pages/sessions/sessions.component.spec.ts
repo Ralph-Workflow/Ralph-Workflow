@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SessionsComponent } from './sessions.component';
 import { WorktreesService } from '../../services/worktrees.service';
@@ -10,22 +11,23 @@ import type { WorktreeInfo } from '../../types';
 describe('SessionsComponent', () => {
   let component: SessionsComponent;
   let fixture: ComponentFixture<SessionsComponent>;
-  let mockWorktreesService: jasmine.SpyObj<WorktreesService>;
-  let mockRouter: jasmine.SpyObj<Router>;
+  let mockWorktreesService: {
+    worktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+    mainWorktree: ReturnType<typeof signal<WorktreeInfo | null>>;
+    repoPath: ReturnType<typeof signal<string>>;
+    nonMainWorktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+  };
+  let mockRouter: { navigate: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    mockWorktreesService = jasmine.createSpyObj(
-      'WorktreesService',
-      [],
-      {
-        worktrees: signal<WorktreeInfo[]>([]),
-        mainWorktree: signal<WorktreeInfo | null>(null),
-        repoPath: signal(''),
-        nonMainWorktrees: signal<WorktreeInfo[]>([]),
-      },
-    );
+    mockWorktreesService = {
+      worktrees: signal<WorktreeInfo[]>([]),
+      mainWorktree: signal<WorktreeInfo | null>(null),
+      repoPath: signal(''),
+      nonMainWorktrees: signal<WorktreeInfo[]>([]),
+    };
 
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter = { navigate: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [
@@ -192,19 +194,20 @@ describe('SessionsComponent', () => {
 describe('SessionsComponent query param handling', () => {
   let component: SessionsComponent;
   let fixture: ComponentFixture<SessionsComponent>;
-  let mockWorktreesService: jasmine.SpyObj<WorktreesService>;
+  let mockWorktreesService: {
+    worktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+    mainWorktree: ReturnType<typeof signal<WorktreeInfo | null>>;
+    repoPath: ReturnType<typeof signal<string>>;
+    nonMainWorktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
+  };
 
   const createComponentWithQueryParams = async (queryParams: Record<string, string>) => {
-    mockWorktreesService = jasmine.createSpyObj(
-      'WorktreesService',
-      [],
-      {
-        worktrees: signal<WorktreeInfo[]>([]),
-        mainWorktree: signal<WorktreeInfo | null>(null),
-        repoPath: signal(''),
-        nonMainWorktrees: signal<WorktreeInfo[]>([]),
-      },
-    );
+    mockWorktreesService = {
+      worktrees: signal<WorktreeInfo[]>([]),
+      mainWorktree: signal<WorktreeInfo | null>(null),
+      repoPath: signal(''),
+      nonMainWorktrees: signal<WorktreeInfo[]>([]),
+    };
 
     await TestBed.configureTestingModule({
       imports: [
@@ -213,7 +216,7 @@ describe('SessionsComponent query param handling', () => {
       ],
       providers: [
         { provide: WorktreesService, useValue: mockWorktreesService },
-        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: Router, useValue: { navigate: vi.fn() } },
         {
           provide: ActivatedRoute,
           useValue: {

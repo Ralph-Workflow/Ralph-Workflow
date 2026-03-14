@@ -307,6 +307,10 @@ pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
         name: "audit-no-shell-scripts",
         run: crate::compliance::check_no_shell_scripts,
     },
+    NativeCheck {
+        name: "tailwind4-removed-angular-classes",
+        run: crate::compliance::check_tailwind4_removed_angular_classes,
+    },
 ];
 
 const FRONTEND_TEST_CHECK_NAME: &str = "ralph-gui-frontend-test";
@@ -1043,14 +1047,14 @@ pub const FRONTEND_POST_INSTALL_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-lint",
         program: "bun",
-        args: &["--cwd", "ralph-gui/ui", "run", "lint"],
+        args: &["run", "--cwd", "ralph-gui/ui", "lint"],
         success_exit_codes: &[0],
         extra_env: &[],
     },
     CommandSpec {
         name: "ralph-gui-frontend-test",
         program: "bun",
-        args: &["--cwd", "ralph-gui/ui", "run", "test"],
+        args: &["run", "--cwd", "ralph-gui/ui", "test"],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -1069,14 +1073,14 @@ pub const FRONTEND_CHECKS: &[CommandSpec] = &[
     CommandSpec {
         name: "ralph-gui-frontend-lint",
         program: "bun",
-        args: &["--cwd", "ralph-gui/ui", "run", "lint"],
+        args: &["run", "--cwd", "ralph-gui/ui", "lint"],
         success_exit_codes: &[0],
         extra_env: &[],
     },
     CommandSpec {
         name: "ralph-gui-frontend-test",
         program: "bun",
-        args: &["--cwd", "ralph-gui/ui", "run", "test"],
+        args: &["run", "--cwd", "ralph-gui/ui", "test"],
         success_exit_codes: &[0],
         extra_env: &[],
     },
@@ -2097,6 +2101,36 @@ mod tests {
     }
 
     #[test]
+    fn test_ralph_gui_frontend_lint_runs_bun_script_from_ui_dir() {
+        let spec = FRONTEND_POST_INSTALL_CHECKS
+            .iter()
+            .find(|c| c.name == "ralph-gui-frontend-lint")
+            .expect("FRONTEND_POST_INSTALL_CHECKS must include ralph-gui-frontend-lint");
+
+        assert_eq!(spec.program, "bun");
+        assert_eq!(
+            spec.args,
+            ["run", "--cwd", "ralph-gui/ui", "lint"],
+            "frontend lint must execute the package.json lint script from the Angular UI workspace"
+        );
+    }
+
+    #[test]
+    fn test_ralph_gui_frontend_test_runs_bun_script_from_ui_dir() {
+        let spec = FRONTEND_POST_INSTALL_CHECKS
+            .iter()
+            .find(|c| c.name == "ralph-gui-frontend-test")
+            .expect("FRONTEND_POST_INSTALL_CHECKS must include ralph-gui-frontend-test");
+
+        assert_eq!(spec.program, "bun");
+        assert_eq!(
+            spec.args,
+            ["run", "--cwd", "ralph-gui/ui", "test"],
+            "frontend test must execute the package.json test script from the Angular UI workspace"
+        );
+    }
+
+    #[test]
     fn test_dylint_check_uses_repo_local_writable_cache_dirs() {
         let spec = RELEASE_CHECKS
             .iter()
@@ -2223,6 +2257,66 @@ mod tests {
                 .any(|c| c.name == "audit-no-shell-scripts"),
             "NATIVE_REQUIRED_CHECKS must include the audit-no-shell-scripts regression guard"
         );
+    }
+
+    #[test]
+    fn test_tailwind4_removed_angular_classes_check_is_in_native_required_checks() {
+        assert!(
+            NATIVE_REQUIRED_CHECKS
+                .iter()
+                .any(|c| c.name == "tailwind4-removed-angular-classes"),
+            "NATIVE_REQUIRED_CHECKS must include the Tailwind 4 Angular class migration guard"
+        );
+    }
+
+    #[test]
+    fn test_verify_surfaces_tailwind4_removed_angular_class_warning() {
+        let unique = format!(
+            "xtask-tailwind4-warning-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after epoch")
+                .as_nanos()
+        );
+        let repo_root = std::env::temp_dir().join(unique);
+        let template =
+            repo_root.join("ralph-gui/ui/src/app/components/example/example.component.html");
+        std::fs::create_dir_all(template.parent().expect("template parent"))
+            .expect("create template dir");
+        std::fs::write(
+            &template,
+            r#"<div class="flex items-center flex-shrink-0">Example</div>"#,
+        )
+        .expect("write template");
+
+        let runner = std::sync::Arc::new(RecordingRunner::default());
+        let report = verify(runner, &repo_root, NATIVE_REQUIRED_CHECKS, &[])
+            .expect("verify should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+        let failure = report.failure.expect("expected failure details");
+        assert_eq!(failure.name, "tailwind4-removed-angular-classes");
+        assert_eq!(failure.status, CheckStatus::Warning);
+        assert!(
+            failure.stdout.contains("flex-shrink-0"),
+            "warning output must include the outdated class: {}",
+            failure.stdout
+        );
+        assert!(
+            failure.stdout.contains("needs rework"),
+            "warning output must include the rework guidance: {}",
+            failure.stdout
+        );
+        assert!(
+            failure
+                .stdout
+                .contains("Tailwind CSS v4 documentation and upgrade guide"),
+            "warning output must point the engineer to current Tailwind v4 docs: {}",
+            failure.stdout
+        );
+
+        fs::remove_dir_all(&repo_root).expect("remove temp repo root");
     }
 
     #[test]

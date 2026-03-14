@@ -1,17 +1,34 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorkspaceTabBarComponent } from './workspace-tab-bar.component';
 import { WorkspaceService } from '../../services/workspace.service';
 import { NotificationService, NOTIFICATION_LISTEN_TOKEN } from '../../services/notification.service';
 import { TauriService, TAURI_INVOKE } from '../../services/tauri.service';
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
 import type { Workspace } from '../../services/workspace.service';
 
 describe('WorkspaceTabBarComponent', () => {
   let component: WorkspaceTabBarComponent;
   let fixture: ComponentFixture<WorkspaceTabBarComponent>;
-  let mockWorkspaceService: jasmine.SpyObj<WorkspaceService>;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
-  let mockNotificationService: jasmine.SpyObj<NotificationService>;
+  let mockWorkspaceService: {
+    openWorkspace: ReturnType<typeof vi.fn>;
+    closeWorkspace: ReturnType<typeof vi.fn>;
+    switchWorkspace: ReturnType<typeof vi.fn>;
+    reorderWorkspaces: ReturnType<typeof vi.fn>;
+    workspaces: ReturnType<typeof signal<Workspace[]>>;
+    activeWorkspaceId: ReturnType<typeof signal<string | null>>;
+    activeWorkspace: ReturnType<typeof signal<Workspace | null>>;
+    isLoading: ReturnType<typeof signal<boolean>>;
+  };
+  let mockTauriService: { openDirectoryDialog: ReturnType<typeof vi.fn> };
+  let mockNotificationService: {
+    add: ReturnType<typeof vi.fn>;
+    togglePanel: ReturnType<typeof vi.fn>;
+    closePanel: ReturnType<typeof vi.fn>;
+    isPanelOpen: Signal<boolean>;
+    unreadCount: () => number;
+    notifications: Signal<unknown[]>;
+  };
 
   const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
     id: `ws-${Math.random().toString(36).substr(2, 9)}`,
@@ -25,37 +42,31 @@ describe('WorkspaceTabBarComponent', () => {
   });
 
   beforeEach(async () => {
-    mockWorkspaceService = jasmine.createSpyObj(
-      'WorkspaceService',
-      ['openWorkspace', 'closeWorkspace', 'switchWorkspace', 'reorderWorkspaces'],
-      {
-        workspaces: signal<Workspace[]>([]),
-        activeWorkspaceId: signal<string | null>(null),
-        activeWorkspace: signal<Workspace | null>(null),
-        isLoading: signal<boolean>(false),
-      },
-    );
-    mockWorkspaceService.openWorkspace.and.returnValue(Promise.resolve(createMockWorkspace()));
-    mockWorkspaceService.closeWorkspace.and.returnValue(Promise.resolve());
-    mockWorkspaceService.reorderWorkspaces.and.returnValue(Promise.resolve());
+    mockWorkspaceService = {
+      openWorkspace: vi.fn().mockReturnValue(Promise.resolve(createMockWorkspace())),
+      closeWorkspace: vi.fn().mockReturnValue(Promise.resolve()),
+      switchWorkspace: vi.fn(),
+      reorderWorkspaces: vi.fn().mockReturnValue(Promise.resolve()),
+      workspaces: signal<Workspace[]>([]),
+      activeWorkspaceId: signal<string | null>(null),
+      activeWorkspace: signal<Workspace | null>(null),
+      isLoading: signal<boolean>(false),
+    };
 
-    mockTauriService = jasmine.createSpyObj(
-      'TauriService',
-      ['openDirectoryDialog'],
-    );
-    mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve(null));
+    mockTauriService = {
+      openDirectoryDialog: vi.fn().mockReturnValue(Promise.resolve(null)),
+    };
 
-    mockNotificationService = jasmine.createSpyObj(
-      'NotificationService',
-      ['add', 'togglePanel', 'closePanel'],
-      {
-        isPanelOpen: signal(false).asReadonly(),
-        unreadCount: () => 0,
-        notifications: signal([]).asReadonly(),
-      },
-    );
+    mockNotificationService = {
+      add: vi.fn(),
+      togglePanel: vi.fn(),
+      closePanel: vi.fn(),
+      isPanelOpen: signal(false).asReadonly(),
+      unreadCount: () => 1,
+      notifications: signal([]).asReadonly(),
+    };
 
-    const mockInvoke = jasmine.createSpy('invoke').and.returnValue(Promise.resolve([]));
+    const mockInvoke = vi.fn().mockReturnValue(Promise.resolve([]));
 
     await TestBed.configureTestingModule({
       imports: [WorkspaceTabBarComponent],
@@ -66,7 +77,7 @@ describe('WorkspaceTabBarComponent', () => {
         { provide: TAURI_INVOKE, useValue: mockInvoke },
         {
           provide: NOTIFICATION_LISTEN_TOKEN,
-          useValue: jasmine.createSpy('listen').and.returnValue(Promise.resolve(jasmine.createSpy('unlisten'))),
+          useValue: vi.fn().mockReturnValue(Promise.resolve(vi.fn())),
         },
       ],
     }).compileComponents();
@@ -215,7 +226,7 @@ describe('WorkspaceTabBarComponent', () => {
     });
 
     it('should open workspace after dialog returns path', async () => {
-      mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve('/new/workspace'));
+      mockTauriService.openDirectoryDialog.mockReturnValue(Promise.resolve('/new/workspace'));
 
       fixture.detectChanges();
 
@@ -227,7 +238,7 @@ describe('WorkspaceTabBarComponent', () => {
     });
 
     it('should not open workspace if dialog cancelled', async () => {
-      mockTauriService.openDirectoryDialog.and.returnValue(Promise.resolve(null));
+      mockTauriService.openDirectoryDialog.mockReturnValue(Promise.resolve(null));
 
       fixture.detectChanges();
 
@@ -320,14 +331,14 @@ describe('WorkspaceTabBarComponent', () => {
     it('should use notification service instead of alert on error', fakeAsync(async () => {
       const ws1 = createMockWorkspace({ id: 'ws-1', label: 'repo' });
       mockWorkspaceService.workspaces.set([ws1]);
-      mockWorkspaceService.closeWorkspace.and.returnValue(Promise.reject(new Error('Backend fail')));
+      mockWorkspaceService.closeWorkspace.mockReturnValue(Promise.reject(new Error('Backend fail')));
       fixture.detectChanges();
 
       const closeBtn = fixture.nativeElement.querySelector('[aria-label="Close workspace"]') as HTMLButtonElement;
       closeBtn.click();
       tick();
 
-      expect(mockNotificationService.add).toHaveBeenCalledWith(jasmine.objectContaining({ type: 'error' }));
+      expect(mockNotificationService.add).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     }));
   });
 

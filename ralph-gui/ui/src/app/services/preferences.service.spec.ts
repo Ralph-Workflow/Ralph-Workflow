@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   PreferencesService,
   DEFAULT_PREFERENCES,
@@ -8,8 +9,6 @@ import {
 } from './preferences.service';
 import { TAURI_INVOKE } from './tauri.service';
 import type { GuiPreferences } from '../types';
-
-// NOTE: TestBed.flushEffects() is used to synchronously flush Angular effects.
 
 const mockPreferences: GuiPreferences = {
   theme: 'dark',
@@ -41,10 +40,10 @@ const mockPreferences: GuiPreferences = {
 
 describe('PreferencesService', () => {
   let service: PreferencesService;
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+    mockInvoke = vi.fn().mockImplementation((cmd: string) => {
       switch (cmd) {
         case 'get_gui_preferences':
           return Promise.resolve(mockPreferences);
@@ -66,7 +65,6 @@ describe('PreferencesService', () => {
   }
 
   afterEach(() => {
-    // Clean up any CSS variables applied to document.documentElement
     document.documentElement.style.removeProperty('--accent');
     document.documentElement.style.removeProperty('--font-size-base');
   });
@@ -79,7 +77,6 @@ describe('PreferencesService', () => {
 
   describe('initial state', () => {
     it('should start with isLoading true before backend returns', () => {
-      // Don't tick - preferences load is async
       service = createService();
       expect(service.isLoading()).toBe(true);
     });
@@ -100,7 +97,6 @@ describe('PreferencesService', () => {
     it('should call get_gui_preferences on init', fakeAsync(() => {
       service = createService();
       tick();
-      // TauriService.getGuiPreferences() calls invoke with only the command name (no args object).
       expect(mockInvoke).toHaveBeenCalledWith('get_gui_preferences');
     }));
 
@@ -111,7 +107,7 @@ describe('PreferencesService', () => {
     }));
 
     it('should fall back to defaults when backend call fails', fakeAsync(() => {
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_gui_preferences') return Promise.reject(new Error('Backend unavailable'));
         return Promise.resolve(undefined);
       });
@@ -122,8 +118,8 @@ describe('PreferencesService', () => {
     }));
 
     it('should NOT use localStorage', fakeAsync(() => {
-      const getItemSpy = spyOn(localStorage, 'getItem');
-      const setItemSpy = spyOn(localStorage, 'setItem');
+      const getItemSpy = vi.spyOn(localStorage, 'getItem');
+      const setItemSpy = vi.spyOn(localStorage, 'setItem');
       service = createService();
       tick();
       expect(getItemSpy).not.toHaveBeenCalled();
@@ -146,7 +142,6 @@ describe('PreferencesService', () => {
 
     it('should apply default CSS variables before backend responds', fakeAsync(() => {
       service = createService();
-      // Flush effects to apply the initial CSS variables from default preferences.
       TestBed.flushEffects();
       expect(document.documentElement.style.getPropertyValue('--accent')).toBe(DEFAULT_PREFERENCES.accentColor);
     }));
@@ -184,12 +179,12 @@ describe('PreferencesService', () => {
     it('should throw when backend save fails', fakeAsync(async () => {
       service = createService();
       tick();
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'save_gui_preferences') return Promise.reject(new Error('Save failed'));
         return Promise.resolve(undefined);
       });
       const updated: GuiPreferences = { ...mockPreferences };
-      await expectAsync(service.save(updated)).toBeRejectedWithError('Save failed');
+      await expect(async () => service.save(updated)).rejects.toThrow('Save failed');
     }));
   });
 

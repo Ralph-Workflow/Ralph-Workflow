@@ -1,11 +1,16 @@
 import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorktreesService } from './worktrees.service';
 import { TauriService } from './tauri.service';
 import type { WorktreeInfo } from '../types';
 
 describe('WorktreesService', () => {
   let service: WorktreesService;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockTauriService: {
+    listWorktrees: ReturnType<typeof vi.fn>;
+    createWorktree: ReturnType<typeof vi.fn>;
+    switchContext: ReturnType<typeof vi.fn>;
+  };
 
   const createMockWorktree = (overrides: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
     path: '/repo',
@@ -17,10 +22,11 @@ describe('WorktreesService', () => {
   });
 
   beforeEach(() => {
-    mockTauriService = jasmine.createSpyObj(
-      'TauriService',
-      ['listWorktrees', 'createWorktree', 'switchContext'],
-    );
+    mockTauriService = {
+      listWorktrees: vi.fn(),
+      createWorktree: vi.fn(),
+      switchContext: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -37,7 +43,7 @@ describe('WorktreesService', () => {
   describe('fetchWorktrees', () => {
     it('should fetch worktrees and update signal', async () => {
       const mockWorktrees = [createMockWorktree()];
-      mockTauriService.listWorktrees.and.resolveTo(mockWorktrees);
+      mockTauriService.listWorktrees.mockResolvedValue(mockWorktrees);
       await service.fetchWorktrees('/repo');
 
       expect(mockTauriService.listWorktrees).toHaveBeenCalledWith('/repo');
@@ -46,7 +52,7 @@ describe('WorktreesService', () => {
     });
 
     it('should handle fetch error', async () => {
-      mockTauriService.listWorktrees.and.rejectWith(new Error('Failed to fetch'));
+      mockTauriService.listWorktrees.mockRejectedValue(new Error('Failed to fetch'));
       await service.fetchWorktrees('/repo');
 
       expect(service.status()).toBe('failed');
@@ -58,7 +64,7 @@ describe('WorktreesService', () => {
     it('should create worktree and add to list', async () => {
       const newWorktree = createMockWorktree({ path: '/repo/wt-1', name: 'wt-1', is_main: false });
       const createResult = { worktree: newWorktree };
-      mockTauriService.createWorktree.and.resolveTo(createResult);
+      mockTauriService.createWorktree.mockResolvedValue(createResult);
       
       const result = await service.createWorktree('/repo', 'feature-branch', 'wt-1', 'basePath');
       
@@ -70,7 +76,7 @@ describe('WorktreesService', () => {
 
   describe('switchContext', () => {
     it('should switch context', async () => {
-      mockTauriService.switchContext.and.resolveTo();
+      mockTauriService.switchContext.mockResolvedValue(undefined);
       await service.switchContext('/repo', '/worktree');
       
       expect(mockTauriService.switchContext).toHaveBeenCalledWith('/repo', '/worktree');
@@ -81,7 +87,7 @@ describe('WorktreesService', () => {
   describe('initializeRepo', () => {
     it('should initialize repo and update lastRepoPath signal', async () => {
       const mockWorktrees = [createMockWorktree()];
-      mockTauriService.listWorktrees.and.resolveTo(mockWorktrees);
+      mockTauriService.listWorktrees.mockResolvedValue(mockWorktrees);
 
       await service.initializeRepo('/repo');
 
@@ -90,7 +96,7 @@ describe('WorktreesService', () => {
     });
 
     it('should handle initialize error', async () => {
-      mockTauriService.listWorktrees.and.rejectWith(new Error('Failed to initialize'));
+      mockTauriService.listWorktrees.mockRejectedValue(new Error('Failed to initialize'));
       await service.initializeRepo('/repo');
       
       expect(service.status()).toBe('failed');

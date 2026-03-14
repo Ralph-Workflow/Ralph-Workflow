@@ -1,11 +1,14 @@
 import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AgentProfileService } from './agent-profile.service';
 import { TauriService } from './tauri.service';
 import type { AgentProfile } from '../types';
 
 describe('AgentProfileService', () => {
   let service: AgentProfileService;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockTauriService: {
+    listAgentProfiles: ReturnType<typeof vi.fn>;
+  };
 
   const createMockProfile = (overrides: Partial<AgentProfile> = {}): AgentProfile => ({
     name: 'default',
@@ -15,10 +18,9 @@ describe('AgentProfileService', () => {
   });
 
   beforeEach(() => {
-    mockTauriService = jasmine.createSpyObj(
-      'TauriService',
-      ['listAgentProfiles'],
-    );
+    mockTauriService = {
+      listAgentProfiles: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -35,7 +37,7 @@ describe('AgentProfileService', () => {
   describe('fetchProfiles', () => {
     it('should fetch profiles and update signal', async () => {
       const mockProfiles = [createMockProfile()];
-      mockTauriService.listAgentProfiles.and.resolveTo(mockProfiles);
+      mockTauriService.listAgentProfiles.mockResolvedValue(mockProfiles);
       await service.fetchProfiles('/repo');
       expect(mockTauriService.listAgentProfiles).toHaveBeenCalledWith('/repo');
       expect(service.profiles()).toEqual(mockProfiles);
@@ -43,7 +45,7 @@ describe('AgentProfileService', () => {
     });
 
     it('should handle fetch error', async () => {
-      mockTauriService.listAgentProfiles.and.rejectWith(new Error('Failed to fetch'));
+      mockTauriService.listAgentProfiles.mockRejectedValue(new Error('Failed to fetch'));
       await service.fetchProfiles('/repo');
       expect(service.status()).toBe('failed');
       expect(service.error()).toBe('Failed to fetch');

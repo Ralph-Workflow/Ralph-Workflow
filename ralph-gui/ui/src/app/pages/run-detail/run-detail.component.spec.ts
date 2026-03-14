@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideZonelessChangeDetection, signal, Signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
@@ -272,7 +273,7 @@ describe('RunDetailComponent', () => {
       fixture.detectChanges();
       tick();
       fixture.detectChanges();
-      expect(component.showCancelDialog()).toBeFalse();
+      expect(component.showCancelDialog()).toBe(false);
     }));
 
     it('should show cancel dialog when cancel button is clicked', fakeAsync(() => {
@@ -284,7 +285,7 @@ describe('RunDetailComponent', () => {
       component.handleCancel();
       fixture.detectChanges();
 
-      expect(component.showCancelDialog()).toBeTrue();
+      expect(component.showCancelDialog()).toBe(true);
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('[data-testid="cancel-dialog"]')).toBeTruthy();
     }));
@@ -296,11 +297,11 @@ describe('RunDetailComponent', () => {
 
       component.handleCancel();
       fixture.detectChanges();
-      expect(component.showCancelDialog()).toBeTrue();
+      expect(component.showCancelDialog()).toBe(true);
 
       await component.onCancelConfirmed(false);
       fixture.detectChanges();
-      expect(component.showCancelDialog()).toBeFalse();
+      expect(component.showCancelDialog()).toBe(false);
     }));
   });
 
@@ -314,7 +315,7 @@ describe('RunDetailComponent', () => {
       component.handleRetry();
       fixture.detectChanges();
 
-      expect(component.showRetryDialog()).toBeTrue();
+      expect(component.showRetryDialog()).toBe(true);
     }));
   });
 

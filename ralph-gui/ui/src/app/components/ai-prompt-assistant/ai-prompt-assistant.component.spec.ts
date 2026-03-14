@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -9,10 +10,10 @@ import type { PromptReviewResult } from '../../types';
 describe('AiPromptAssistantComponent', () => {
   let component: AiPromptAssistantComponent;
   let fixture: ComponentFixture<AiPromptAssistantComponent>;
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+    mockInvoke = vi.fn((cmd: string) => {
       if (cmd === 'assist_prompt_describe') {
         return Promise.resolve('Suggested prompt from AI');
       }
@@ -43,20 +44,20 @@ describe('AiPromptAssistantComponent', () => {
 
   describe('panel show/hide', () => {
     it('should start closed', () => {
-      expect(component.isOpen()).toBeFalse();
+      expect(component.isOpen()).toBe(false);
     });
 
     it('should open when toggle() called', () => {
       component.toggle();
 
-      expect(component.isOpen()).toBeTrue();
+      expect(component.isOpen()).toBe(true);
     });
 
     it('should close when toggle() called twice', () => {
       component.toggle();
       component.toggle();
 
-      expect(component.isOpen()).toBeFalse();
+      expect(component.isOpen()).toBe(false);
     });
   });
 
@@ -99,27 +100,27 @@ describe('AiPromptAssistantComponent', () => {
 
     it('should set loading state while pending', fakeAsync(async () => {
       let resolveInvoke!: (value: unknown) => void;
-      mockInvoke.and.callFake(() => new Promise(res => { resolveInvoke = res; }));
+      mockInvoke.mockImplementation(() => new Promise(res => { resolveInvoke = res; }));
 
       component.describeInput.set('test');
       const promise = component.submitDescribe();
 
-      expect(component.describeLoading()).toBeTrue();
+      expect(component.describeLoading()).toBe(true);
 
       resolveInvoke('result');
       await promise;
       tick();
 
-      expect(component.describeLoading()).toBeFalse();
+      expect(component.describeLoading()).toBe(false);
     }));
 
     it('should not submit when input is empty', fakeAsync(async () => {
       component.describeInput.set('');
-      mockInvoke.calls.reset();
+      mockInvoke.mockClear();
 
       await component.submitDescribe();
 
-      expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_describe', jasmine.any(Object));
+      expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_describe', expect.any(Object));
     }));
   });
 
@@ -136,7 +137,7 @@ describe('AiPromptAssistantComponent', () => {
       tick(100);
       await fixture.whenStable();
 
-      expect(mockInvoke).toHaveBeenCalledWith('assist_prompt_refine', jasmine.any(Object));
+      expect(mockInvoke).toHaveBeenCalledWith('assist_prompt_refine', expect.any(Object));
     }));
 
     it('should show "Enter a prompt" message when currentPrompt is empty', () => {
@@ -145,7 +146,7 @@ describe('AiPromptAssistantComponent', () => {
       component.setTab('refine');
       fixture.detectChanges();
 
-      expect(component.refineEmptyState()).toBeTrue();
+      expect(component.refineEmptyState()).toBe(true);
     });
 
     it('should not trigger analysis when currentPrompt is empty', fakeAsync(async () => {
@@ -156,7 +157,7 @@ describe('AiPromptAssistantComponent', () => {
       tick(100);
       await fixture.whenStable();
 
-      expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_refine', jasmine.any(Object));
+      expect(mockInvoke).not.toHaveBeenCalledWith('assist_prompt_refine', expect.any(Object));
     }));
 
     it('should populate refine result after analysis', fakeAsync(async () => {
@@ -219,11 +220,11 @@ describe('AiPromptAssistantComponent', () => {
       await fixture.whenStable();
       fixture.detectChanges();
 
-      expect(component.isUnconfigured()).toBeTrue();
+      expect(component.isUnconfigured()).toBe(true);
     }));
 
     it('should not show unconfigured state when planning drain agent is configured', fakeAsync(async () => {
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_planning_drain_agent') return Promise.resolve('planner');
         if (cmd === 'assist_prompt_describe') return Promise.resolve('result');
         if (cmd === 'assist_prompt_refine') return Promise.resolve({ suggestions: [], improved_prompt: null });
@@ -247,7 +248,7 @@ describe('AiPromptAssistantComponent', () => {
       tick(50);
       await newFixture.whenStable();
 
-      expect(newComponent.isUnconfigured()).toBeFalse();
+      expect(newComponent.isUnconfigured()).toBe(false);
       expect(newComponent.planningDrainAgent()).toBe('planner');
     }));
   });

@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { RunLogComponent, parseAnsiToHtml, VIRTUAL_SCROLL_ITEM_SIZE } from './run-log.component';
 import { TAURI_INVOKE } from '../../services/tauri.service';
@@ -98,14 +99,14 @@ describe('parseAnsiToHtml (pure function)', () => {
 });
 
 describe('RunLogComponent', () => {
-  let tauriInvokeSpy: jasmine.Spy;
-  let listenSpy: jasmine.Spy;
-  let unlistenSpy: jasmine.Spy;
+  let tauriInvokeSpy: ReturnType<typeof vi.fn>;
+  let listenSpy: ReturnType<typeof vi.fn>;
+  let unlistenSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    tauriInvokeSpy = jasmine.createSpy('invoke').and.returnValue(Promise.resolve());
-    unlistenSpy = jasmine.createSpy('unlisten');
-    listenSpy = jasmine.createSpy('listen').and.returnValue(Promise.resolve(unlistenSpy));
+    tauriInvokeSpy = vi.fn().mockReturnValue(Promise.resolve());
+    unlistenSpy = vi.fn();
+    listenSpy = vi.fn().mockReturnValue(Promise.resolve(unlistenSpy));
 
     await TestBed.configureTestingModule({
       imports: [RunLogComponent],
@@ -137,7 +138,7 @@ describe('RunLogComponent', () => {
     const { fixture } = createComponent('run-abc', '/repo/path', '/wt/path');
     fixture.detectChanges();
     tick();
-    expect(tauriInvokeSpy).toHaveBeenCalledWith('subscribe_run_logs', jasmine.objectContaining({
+    expect(tauriInvokeSpy).toHaveBeenCalledWith('subscribe_run_logs', expect.objectContaining({
       run_id: 'run-abc',
     }));
   }));
@@ -146,7 +147,7 @@ describe('RunLogComponent', () => {
     const { fixture } = createComponent('run-abc', '/repo', null);
     fixture.detectChanges();
     tick();
-    expect(listenSpy).toHaveBeenCalledWith('run-log-run-abc', jasmine.any(Function));
+    expect(listenSpy).toHaveBeenCalledWith('run-log-run-abc', expect.any(Function));
   }));
 
   it('should call unsubscribeRunLogs and unlisten on destroy', fakeAsync(async () => {
@@ -154,7 +155,7 @@ describe('RunLogComponent', () => {
     fixture.detectChanges();
     tick();
     fixture.destroy();
-    expect(tauriInvokeSpy).toHaveBeenCalledWith('unsubscribe_run_logs', jasmine.objectContaining({
+    expect(tauriInvokeSpy).toHaveBeenCalledWith('unsubscribe_run_logs', expect.objectContaining({
       run_id: 'run-xyz',
     }));
     expect(unlistenSpy).toHaveBeenCalled();

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SessionListComponent } from './session-list.component';
@@ -57,26 +58,34 @@ const makeSessions = (): SessionSummary[] => [
 describe('SessionListComponent', () => {
   let component: SessionListComponent;
   let fixture: ComponentFixture<SessionListComponent>;
-  let mockSessionsService: jasmine.SpyObj<SessionsService>;
-  let mockRouter: jasmine.SpyObj<Router>;
-  let mockInvoke: jasmine.Spy;
+  let mockSessionsService: {
+    fetchSessions: ReturnType<typeof vi.fn>;
+    setActiveSession: ReturnType<typeof vi.fn>;
+    resumeSession: ReturnType<typeof vi.fn>;
+    sessions: ReturnType<typeof signal<SessionSummary[]>>;
+    status: ReturnType<typeof signal<'idle' | 'loading' | 'succeeded' | 'failed'>>;
+    error: ReturnType<typeof signal<string | null>>;
+    selectedRunId: ReturnType<typeof signal<string | null>>;
+    isLoading: ReturnType<typeof signal<boolean>>;
+  };
+  let mockRouter: { navigate: ReturnType<typeof vi.fn> };
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.resolveTo([]);
+    mockInvoke = vi.fn().mockResolvedValue([]);
 
-    mockSessionsService = jasmine.createSpyObj(
-      'SessionsService',
-      ['fetchSessions', 'setActiveSession', 'resumeSession'],
-      {
-        sessions: signal<SessionSummary[]>([]),
-        status: signal<'idle' | 'loading' | 'succeeded' | 'failed'>('idle'),
-        error: signal<string | null>(null),
-        selectedRunId: signal<string | null>(null),
-        isLoading: signal(false),
-      },
-    );
+    mockSessionsService = {
+      fetchSessions: vi.fn(),
+      setActiveSession: vi.fn(),
+      resumeSession: vi.fn(),
+      sessions: signal<SessionSummary[]>([]),
+      status: signal<'idle' | 'loading' | 'succeeded' | 'failed'>('idle'),
+      error: signal<string | null>(null),
+      selectedRunId: signal<string | null>(null),
+      isLoading: signal(false),
+    };
 
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter = { navigate: vi.fn() };
 
     await TestBed.configureTestingModule({
       imports: [SessionListComponent],
@@ -149,8 +158,8 @@ describe('SessionListComponent', () => {
       const options = component.worktreeFilterOptions();
 
       expect(options[0]).toEqual({ label: 'All Worktrees', value: '__all__' });
-      expect(options.some(o => o.value === '/repo/a/wt-1')).toBeTrue();
-      expect(options.some(o => o.value === '/repo/a/wt-2')).toBeTrue();
+      expect(options.some(o => o.value === '/repo/a/wt-1')).toBe(true);
+      expect(options.some(o => o.value === '/repo/a/wt-2')).toBe(true);
     });
 
     it('should filter sessions by worktree when selected', () => {
@@ -159,7 +168,7 @@ describe('SessionListComponent', () => {
 
       const visible = component.visibleSessions();
 
-      expect(visible.every(s => s.worktree_path === '/repo/a/wt-1')).toBeTrue();
+      expect(visible.every(s => s.worktree_path === '/repo/a/wt-1')).toBe(true);
     });
 
     it('should show all sessions when "All Worktrees" selected', () => {
@@ -217,14 +226,14 @@ describe('SessionListComponent', () => {
     it('should select a session by id', () => {
       component.toggleSelect('run-001');
 
-      expect(component.selectedIds().has('run-001')).toBeTrue();
+      expect(component.selectedIds().has('run-001')).toBe(true);
     });
 
     it('should deselect already selected session', () => {
       component.toggleSelect('run-001');
       component.toggleSelect('run-001');
 
-      expect(component.selectedIds().has('run-001')).toBeFalse();
+      expect(component.selectedIds().has('run-001')).toBe(false);
     });
 
     it('should select all visible sessions', () => {
@@ -247,13 +256,13 @@ describe('SessionListComponent', () => {
       mockSessionsService.sessions.set(makeSessions());
       component.selectAll();
 
-      expect(component.isAllSelected()).toBeTrue();
+      expect(component.isAllSelected()).toBe(true);
     });
 
     it('isAllSelected returns false when no sessions selected', () => {
       mockSessionsService.sessions.set(makeSessions());
 
-      expect(component.isAllSelected()).toBeFalse();
+      expect(component.isAllSelected()).toBe(false);
     });
   });
 
@@ -261,46 +270,46 @@ describe('SessionListComponent', () => {
     it('should show batch bar when selection is non-empty', () => {
       component.toggleSelect('run-001');
 
-      expect(component.showBatchBar()).toBeTrue();
+      expect(component.showBatchBar()).toBe(true);
     });
 
     it('should hide batch bar when selection is empty', () => {
-      expect(component.showBatchBar()).toBeFalse();
+      expect(component.showBatchBar()).toBe(false);
     });
 
     it('canBatchResume is true when selection contains paused/failed session', () => {
       mockSessionsService.sessions.set(makeSessions());
       component.toggleSelect('run-001'); // paused
 
-      expect(component.canBatchResume()).toBeTrue();
+      expect(component.canBatchResume()).toBe(true);
     });
 
     it('canBatchResume is false when selection only contains running sessions', () => {
       mockSessionsService.sessions.set(makeSessions());
       component.toggleSelect('run-002'); // running
 
-      expect(component.canBatchResume()).toBeFalse();
+      expect(component.canBatchResume()).toBe(false);
     });
 
     it('canBatchCancel is true when selection contains running session', () => {
       mockSessionsService.sessions.set(makeSessions());
       component.toggleSelect('run-002'); // running
 
-      expect(component.canBatchCancel()).toBeTrue();
+      expect(component.canBatchCancel()).toBe(true);
     });
 
     it('canBatchCancel is false when selection has no running sessions', () => {
       mockSessionsService.sessions.set(makeSessions());
       component.toggleSelect('run-001'); // paused
 
-      expect(component.canBatchCancel()).toBeFalse();
+      expect(component.canBatchCancel()).toBe(false);
     });
   });
 
   describe('batchResume', () => {
     it('should call resumeSession for each paused/failed session in selection', fakeAsync(async () => {
       mockSessionsService.sessions.set(makeSessions());
-      mockSessionsService.resumeSession.and.resolveTo();
+      mockSessionsService.resumeSession.mockResolvedValue(undefined);
       component.toggleSelect('run-001'); // paused
       component.toggleSelect('run-002'); // running - should be skipped
       component.toggleSelect('run-003'); // failed

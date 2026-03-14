@@ -208,7 +208,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('verbosity')?.invalid).toBeTrue();
+      expect(configForm.form.get('verbosity')?.invalid).toBe(true);
     }));
 
     it('should mark verbosity invalid when below min (0)', fakeAsync(() => {
@@ -221,7 +221,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('verbosity')?.invalid).toBeTrue();
+      expect(configForm.form.get('verbosity')?.invalid).toBe(true);
     }));
 
     it('should mark developer_iters invalid when above max (20)', fakeAsync(() => {
@@ -234,7 +234,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('developer_iters')?.invalid).toBeTrue();
+      expect(configForm.form.get('developer_iters')?.invalid).toBe(true);
     }));
 
     it('should mark reviewer_reviews invalid when above max (10)', fakeAsync(() => {
@@ -247,7 +247,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('reviewer_reviews')?.invalid).toBeTrue();
+      expect(configForm.form.get('reviewer_reviews')?.invalid).toBe(true);
     }));
 
     it('should mark max_dev_continuations invalid when above max (10)', fakeAsync(() => {
@@ -260,7 +260,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('max_dev_continuations')?.invalid).toBeTrue();
+      expect(configForm.form.get('max_dev_continuations')?.invalid).toBe(true);
     }));
   });
 
@@ -275,7 +275,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('verbosity')).toBeTrue();
+      expect(configForm.isFieldDirty('verbosity')).toBe(true);
     }));
 
     it('should not mark isDirty for verbosity when same as default', fakeAsync(() => {
@@ -284,7 +284,7 @@ describe('ConfigFormComponent', () => {
       configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('verbosity')).toBeFalse();
+      expect(configForm.isFieldDirty('verbosity')).toBe(false);
     }));
 
     it('should mark isDirty for developer_iters when different from default', fakeAsync(() => {
@@ -297,7 +297,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('developer_iters')).toBeTrue();
+      expect(configForm.isFieldDirty('developer_iters')).toBe(true);
     }));
 
     it('should mark isDirty for checkpoint_enabled when different from default', fakeAsync(() => {
@@ -310,7 +310,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('checkpoint_enabled')).toBeTrue();
+      expect(configForm.isFieldDirty('checkpoint_enabled')).toBe(true);
     }));
 
     it('should mark isDirty for max_retries when different from default', fakeAsync(() => {
@@ -323,7 +323,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('max_retries')).toBeTrue();
+      expect(configForm.isFieldDirty('max_retries')).toBe(true);
     }));
 
     it('should not mark isDirty for max_retries when same as default', fakeAsync(() => {
@@ -332,7 +332,7 @@ describe('ConfigFormComponent', () => {
       configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('max_retries')).toBeFalse();
+      expect(configForm.isFieldDirty('max_retries')).toBe(false);
     }));
 
     it('should mark isDirty for git_user_email when different from default', fakeAsync(() => {
@@ -345,7 +345,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.isFieldDirty('git_user_email')).toBeTrue();
+      expect(configForm.isFieldDirty('git_user_email')).toBe(true);
     }));
   });
 
@@ -360,7 +360,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('max_retries')?.invalid).toBeTrue();
+      expect(configForm.form.get('max_retries')?.invalid).toBe(true);
     }));
 
     it('should mark max_retries invalid when below min (1)', fakeAsync(() => {
@@ -373,7 +373,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('max_retries')?.invalid).toBeTrue();
+      expect(configForm.form.get('max_retries')?.invalid).toBe(true);
     }));
 
     it('should mark max_same_agent_retries invalid when above max (5)', fakeAsync(() => {
@@ -386,7 +386,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('max_same_agent_retries')?.invalid).toBeTrue();
+      expect(configForm.form.get('max_same_agent_retries')?.invalid).toBe(true);
     }));
 
     it('should mark retry_delay_ms invalid when below min (100)', fakeAsync(() => {
@@ -399,7 +399,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('retry_delay_ms')?.invalid).toBeTrue();
+      expect(configForm.form.get('retry_delay_ms')?.invalid).toBe(true);
     }));
 
     it('should mark backoff_multiplier invalid when above max (5.0)', fakeAsync(() => {
@@ -412,7 +412,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('backoff_multiplier')?.invalid).toBeTrue();
+      expect(configForm.form.get('backoff_multiplier')?.invalid).toBe(true);
     }));
 
     it('should mark max_fallback_cycles invalid when above max (20)', fakeAsync(() => {
@@ -425,7 +425,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('max_fallback_cycles')?.invalid).toBeTrue();
+      expect(configForm.form.get('max_fallback_cycles')?.invalid).toBe(true);
     }));
   });
 
@@ -440,7 +440,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('git_user_email')?.invalid).toBeTrue();
+      expect(configForm.form.get('git_user_email')?.invalid).toBe(true);
     }));
 
     it('should mark git_user_email valid when it is a proper email', fakeAsync(() => {
@@ -453,7 +453,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('git_user_email')?.valid).toBeTrue();
+      expect(configForm.form.get('git_user_email')?.valid).toBe(true);
     }));
 
     it('should mark git_user_email valid when empty (optional field)', fakeAsync(() => {
@@ -466,7 +466,7 @@ describe('ConfigFormComponent', () => {
       tick();
       configFormFixture.detectChanges();
 
-      expect(configForm.form.get('git_user_email')?.valid).toBeTrue();
+      expect(configForm.form.get('git_user_email')?.valid).toBe(true);
     }));
   });
 

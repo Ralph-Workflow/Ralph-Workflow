@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ChangesViewerComponent } from './changes-viewer.component';
 import { TAURI_INVOKE } from '../../services/tauri.service';
@@ -26,10 +27,10 @@ const MOCK_RUN_CHANGES: RunChanges = {
 };
 
 describe('ChangesViewerComponent', () => {
-  let tauriInvokeSpy: jasmine.Spy;
+  let tauriInvokeSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    tauriInvokeSpy = jasmine.createSpy('invoke').and.returnValue(
+    tauriInvokeSpy = vi.fn().mockReturnValue(
       Promise.resolve(MOCK_RUN_CHANGES)
     );
 
@@ -184,7 +185,7 @@ describe('ChangesViewerComponent', () => {
     });
 
     it('should call navigator.clipboard.writeText with all diff_text when copying', fakeAsync(async () => {
-      const clipboardSpy = spyOn(navigator.clipboard, 'writeText').and.returnValue(Promise.resolve());
+      const clipboardSpy = vi.spyOn(navigator.clipboard, 'writeText').mockReturnValue(Promise.resolve());
 
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
@@ -210,11 +211,11 @@ describe('ChangesViewerComponent', () => {
       fixture.detectChanges();
       tick(); // initial load
 
-      const callCountBefore = tauriInvokeSpy.calls.count();
+      const callCountBefore = tauriInvokeSpy.mock.calls.length;
       component.setIteration(2);
       tick();
 
-      expect(tauriInvokeSpy.calls.count()).toBeGreaterThan(callCountBefore);
+      expect(tauriInvokeSpy.mock.calls.length).toBeGreaterThan(callCountBefore);
     }));
   });
 
@@ -258,7 +259,7 @@ describe('ChangesViewerComponent', () => {
     it('should start in unified view mode (sideBySide = false)', () => {
       const { fixture, component } = createComponent('run-1', '/repo');
       fixture.detectChanges();
-      expect(component.sideBySide()).toBeFalse();
+      expect(component.sideBySide()).toBe(false);
     });
 
     it('should switch to side-by-side view when toggleViewMode is called', () => {
@@ -268,7 +269,7 @@ describe('ChangesViewerComponent', () => {
       component.toggleViewMode();
       fixture.detectChanges();
 
-      expect(component.sideBySide()).toBeTrue();
+      expect(component.sideBySide()).toBe(true);
     });
 
     it('should switch back to unified view when toggleViewMode is called again', () => {
@@ -279,7 +280,7 @@ describe('ChangesViewerComponent', () => {
       component.toggleViewMode();
       fixture.detectChanges();
 
-      expect(component.sideBySide()).toBeFalse();
+      expect(component.sideBySide()).toBe(false);
     });
 
     it('should render the toggle button in the summary bar', fakeAsync(async () => {
@@ -300,7 +301,7 @@ describe('ChangesViewerComponent', () => {
       fixture.detectChanges();
 
       // Default unified mode
-      expect(component.sideBySide()).toBeFalse();
+      expect(component.sideBySide()).toBe(false);
       const el: HTMLElement = fixture.nativeElement;
       const toggleBtn = el.querySelector('[data-testid="view-mode-toggle"]');
       expect(toggleBtn?.textContent?.trim()).toBe('Side-by-side');
@@ -315,7 +316,7 @@ describe('ChangesViewerComponent', () => {
       component.toggleViewMode();
       fixture.detectChanges();
 
-      expect(component.sideBySide()).toBeTrue();
+      expect(component.sideBySide()).toBe(true);
       const el: HTMLElement = fixture.nativeElement;
       const toggleBtn = el.querySelector('[data-testid="view-mode-toggle"]');
       expect(toggleBtn?.textContent?.trim()).toBe('Unified');
@@ -327,7 +328,7 @@ describe('ChangesViewerComponent', () => {
       tick();
       fixture.detectChanges();
 
-      expect(component.sideBySide()).toBeFalse();
+      expect(component.sideBySide()).toBe(false);
       const el: HTMLElement = fixture.nativeElement;
       const unifiedView = el.querySelector('[data-testid="diff-unified"]');
       const sideBySideView = el.querySelector('[data-testid="diff-side-by-side"]');
@@ -344,7 +345,7 @@ describe('ChangesViewerComponent', () => {
       component.toggleViewMode();
       fixture.detectChanges();
 
-      expect(component.sideBySide()).toBeTrue();
+      expect(component.sideBySide()).toBe(true);
       const el: HTMLElement = fixture.nativeElement;
       const unifiedView = el.querySelector('[data-testid="diff-unified"]');
       const sideBySideView = el.querySelector('[data-testid="diff-side-by-side"]');

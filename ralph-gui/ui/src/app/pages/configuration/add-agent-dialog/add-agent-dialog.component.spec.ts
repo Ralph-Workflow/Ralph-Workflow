@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -120,7 +121,7 @@ describe('AddAgentDialogComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     const btn: HTMLButtonElement | null = fixture.nativeElement.querySelector('button[data-testid="submit-btn"]');
-    expect(btn?.disabled).toBeTrue();
+    expect(btn?.disabled).toBe(true);
   });
 
   it('should disable submit button when no tool is selected', async () => {
@@ -131,7 +132,7 @@ describe('AddAgentDialogComponent', () => {
     comp.agentName.set('my-agent');
     fixture.detectChanges();
     const btn: HTMLButtonElement | null = fixture.nativeElement.querySelector('button[data-testid="submit-btn"]');
-    expect(btn?.disabled).toBeTrue();
+    expect(btn?.disabled).toBe(true);
   });
 
   it('should enable submit button when name and tool are both set', async () => {
@@ -144,7 +145,7 @@ describe('AddAgentDialogComponent', () => {
     comp.selectedModel.set(MOCK_TOOL_CLAUDE.available_models[0] ?? 'claude-opus-4-5');
     fixture.detectChanges();
     const btn: HTMLButtonElement | null = fixture.nativeElement.querySelector('button[data-testid="submit-btn"]');
-    expect(btn?.disabled).toBeFalse();
+    expect(btn?.disabled).toBe(false);
   });
 
   it('should close dialog without emitting when cancel is clicked', async () => {

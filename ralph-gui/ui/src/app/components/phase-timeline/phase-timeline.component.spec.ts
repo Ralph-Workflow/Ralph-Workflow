@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { PhaseTimelineComponent, PhaseInfo } from './phase-timeline.component';
 
@@ -120,13 +121,13 @@ describe('PhaseTimelineComponent', () => {
         { name: 'Commit', status: 'pending' },
       ]);
 
-      spyOn(component.phaseClick, 'emit');
+      const emitSpy = vi.spyOn(component.phaseClick, 'emit');
 
       const el: HTMLElement = fixture.nativeElement;
       const completedNode = el.querySelector<HTMLElement>('[data-testid="phase-node"][data-status="completed"]');
       completedNode?.click();
 
-      expect(component.phaseClick.emit).toHaveBeenCalledWith(planPhase);
+      expect(emitSpy).toHaveBeenCalledWith(planPhase);
     });
 
     it('should NOT emit phaseClick when a pending phase is clicked', () => {
@@ -137,13 +138,13 @@ describe('PhaseTimelineComponent', () => {
         { name: 'Commit', status: 'pending' },
       ]);
 
-      spyOn(component.phaseClick, 'emit');
+      const emitSpy = vi.spyOn(component.phaseClick, 'emit');
 
       const el: HTMLElement = fixture.nativeElement;
       const pendingNode = el.querySelector<HTMLElement>('[data-testid="phase-node"][data-status="pending"]');
       pendingNode?.click();
 
-      expect(component.phaseClick.emit).not.toHaveBeenCalled();
+      expect(emitSpy).not.toHaveBeenCalled();
     });
   });
 

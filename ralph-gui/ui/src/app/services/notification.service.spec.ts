@@ -1,15 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotificationService, NOTIFICATION_LISTEN_TOKEN } from './notification.service';
 
 describe('NotificationService', () => {
   let service: NotificationService;
-  let listenSpy: jasmine.Spy;
+  let listenSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    // Mock the Tauri listen function to prevent real IPC calls during tests
-    listenSpy = jasmine.createSpy('listen').and.returnValue(
-      Promise.resolve(jasmine.createSpy('unlisten'))
-    );
+    listenSpy = vi.fn().mockReturnValue(Promise.resolve(vi.fn()));
 
     TestBed.configureTestingModule({
       providers: [
@@ -50,10 +48,8 @@ describe('NotificationService', () => {
       for (let i = 0; i < 51; i++) {
         service.add({ type: 'info', message: `msg ${i}` });
       }
-      // The last added (msg 50) should still be present
       const messages = service.notifications().map(n => n.message);
       expect(messages).toContain('msg 50');
-      // The oldest (msg 0) should have been dropped
       expect(messages).not.toContain('msg 0');
     });
   });
@@ -69,8 +65,6 @@ describe('NotificationService', () => {
     it('should not affect other notifications when dismissing one', () => {
       service.add({ type: 'info', message: 'First' });
       service.add({ type: 'error', message: 'Second' });
-      // Newest first: [Second(0), First(1)]
-      // Dismiss "Second" (index 0), "First" should remain
       const secondId = service.notifications()[0]!.id;
       service.dismiss(secondId);
       expect(service.notifications().length).toBe(1);
@@ -133,12 +127,11 @@ describe('NotificationService', () => {
 
   describe('Tauri event subscription', () => {
     it('should call listenFn with run-status-change event on construction', () => {
-      expect(listenSpy).toHaveBeenCalledWith('run-status-change', jasmine.any(Function));
+      expect(listenSpy).toHaveBeenCalledWith('run-status-change', expect.any(Function));
     });
 
     it('should add a success notification when run-status-change with completed status fires', async () => {
-      // Get the event handler registered by the service
-      const callArgs = listenSpy.calls.mostRecent().args as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
+      const callArgs = listenSpy.mock.calls[listenSpy.mock.calls.length - 1] as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
       const handler = callArgs[1];
 
       handler({ payload: { run_id: 'abc123', status: 'completed' } });
@@ -149,7 +142,7 @@ describe('NotificationService', () => {
     });
 
     it('should add an error notification when run-status-change with failed status fires', () => {
-      const callArgs = listenSpy.calls.mostRecent().args as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
+      const callArgs = listenSpy.mock.calls[listenSpy.mock.calls.length - 1] as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
       const handler = callArgs[1];
 
       handler({ payload: { run_id: 'xyz987', status: 'failed', context: 'build error' } });
@@ -159,7 +152,7 @@ describe('NotificationService', () => {
     });
 
     it('should NOT add a notification for Running status', () => {
-      const callArgs = listenSpy.calls.mostRecent().args as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
+      const callArgs = listenSpy.mock.calls[listenSpy.mock.calls.length - 1] as [string, (event: { payload: { run_id: string; status: string; context?: string } }) => void];
       const handler = callArgs[1];
 
       handler({ payload: { run_id: 'run1', status: 'running' } });

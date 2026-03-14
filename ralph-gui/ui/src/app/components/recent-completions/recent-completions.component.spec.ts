@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RouterTestingModule } from '@angular/router/testing';
 import { RecentCompletionsComponent } from './recent-completions.component';
 import type { SessionSummary } from '../../types';
@@ -152,25 +153,25 @@ describe('RecentCompletionsComponent', () => {
 
   describe('viewRun event', () => {
     it('should emit viewRun event on row click', () => {
-      spyOn(component.viewRun, 'emit');
+      const emitSpy = vi.spyOn(component.viewRun, 'emit');
       componentRef.setInput('completions', [createMockCompletion({ run_id: 'test-run-id' })]);
       fixture.detectChanges();
 
       const row = (fixture.nativeElement as HTMLElement).querySelector('[role="button"]') as HTMLElement | null;
       row?.click();
 
-      expect(component.viewRun.emit).toHaveBeenCalledWith('test-run-id');
+      expect(emitSpy).toHaveBeenCalledWith('test-run-id');
     });
 
     it('should emit viewRun event on View button click', () => {
-      spyOn(component.viewRun, 'emit');
+      const emitSpy = vi.spyOn(component.viewRun, 'emit');
       componentRef.setInput('completions', [createMockCompletion({ run_id: 'test-run-id' })]);
       fixture.detectChanges();
 
       const viewButton = (fixture.nativeElement as HTMLElement).querySelector('button');
       viewButton?.click();
 
-      expect(component.viewRun.emit).toHaveBeenCalledWith('test-run-id');
+      expect(emitSpy).toHaveBeenCalledWith('test-run-id');
     });
   });
 

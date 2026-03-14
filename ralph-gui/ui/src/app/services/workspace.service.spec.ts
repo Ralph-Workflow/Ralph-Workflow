@@ -1,4 +1,5 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WorkspaceService } from './workspace.service';
 import { TAURI_INVOKE } from './tauri.service';
 import { PreferencesService } from './preferences.service';
@@ -23,7 +24,7 @@ const mockEntry2: WorkspaceEntry = {
 };
 
 function createMockInvoke(entries: WorkspaceEntry[] = []) {
-  const mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+  const mockInvoke = vi.fn().mockImplementation((cmd: string) => {
     switch (cmd) {
       case 'get_workspaces':
         return Promise.resolve(entries);
@@ -72,13 +73,13 @@ function createMockPreferencesService(restoreWorkspaces = true) {
     preferences: signal(prefs).asReadonly(),
     isLoading: signal(false).asReadonly(),
     isFirstRun: signal(false).asReadonly(),
-    save: jasmine.createSpy('save').and.returnValue(Promise.resolve()),
+    save: vi.fn().mockResolvedValue(undefined),
   };
 }
 
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(fakeAsync(() => {
     mockInvoke = createMockInvoke([mockEntry1]);
@@ -90,7 +91,7 @@ describe('WorkspaceService', () => {
       ],
     });
     service = TestBed.inject(WorkspaceService);
-    tick(); // flush async loadFromBackend
+    tick();
   }));
 
   it('should be created', () => {
@@ -98,16 +99,15 @@ describe('WorkspaceService', () => {
   });
 
   it('should load workspaces from backend on init', () => {
-    const calledCommands = (mockInvoke.calls.allArgs() as unknown[][]).map(args => args[0]);
+    const calledCommands = mockInvoke.mock.calls.map(args => args[0]);
     expect(calledCommands).toContain('get_workspaces');
     expect(service.workspaces().length).toBe(1);
     expect(service.workspaces()[0]!.path).toBe('/path/to/repo1');
   });
 
   it('should NOT use localStorage', () => {
-    const localStorageSpy = spyOn(localStorage, 'getItem');
-    const setItemSpy = spyOn(localStorage, 'setItem');
-    // Verify no localStorage calls happened
+    const localStorageSpy = vi.spyOn(localStorage, 'getItem');
+    const setItemSpy = vi.spyOn(localStorage, 'setItem');
     expect(localStorageSpy).not.toHaveBeenCalled();
     expect(setItemSpy).not.toHaveBeenCalled();
   });
@@ -126,7 +126,7 @@ describe('WorkspaceService', () => {
         last_nav: '',
         active_run_count: 0,
       };
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'open_workspace') return Promise.resolve(newEntry);
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         return Promise.resolve(undefined);
@@ -147,7 +147,7 @@ describe('WorkspaceService', () => {
         last_nav: '',
         active_run_count: 0,
       };
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'open_workspace') return Promise.resolve(newEntry);
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         return Promise.resolve(undefined);
@@ -162,9 +162,8 @@ describe('WorkspaceService', () => {
 
   describe('closeWorkspace', () => {
     it('should call backend and remove workspace from list', fakeAsync(async () => {
-      // workspace with no active runs
       const safeEntry: WorkspaceEntry = { ...mockEntry1, active_run_count: 0 };
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([safeEntry]);
         if (cmd === 'close_workspace') return Promise.resolve(undefined);
         return Promise.resolve(undefined);
@@ -187,8 +186,7 @@ describe('WorkspaceService', () => {
     }));
 
     it('should throw when workspace has active runs', fakeAsync(async () => {
-      // mockEntry2 has active_run_count: 1
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
         return Promise.resolve(undefined);
       });
@@ -202,12 +200,11 @@ describe('WorkspaceService', () => {
       const svc = TestBed.inject(WorkspaceService);
       tick();
 
-      await expectAsync(svc.closeWorkspace('ws-2')).toBeRejectedWithError(/active run/i);
+      await expect(async () => svc.closeWorkspace('ws-2')).rejects.toThrow(/active run/i);
     }));
 
     it('should bypass active-runs guard when force=true', fakeAsync(async () => {
-      // mockEntry2 has active_run_count: 1
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry2]);
         if (cmd === 'close_workspace') return Promise.resolve(undefined);
         return Promise.resolve(undefined);
@@ -222,13 +219,12 @@ describe('WorkspaceService', () => {
       const svc = TestBed.inject(WorkspaceService);
       tick();
 
-      // force=true should NOT throw even though workspace has active runs.
-      await expectAsync(svc.closeWorkspace('ws-2', true)).toBeResolved();
+      await svc.closeWorkspace('ws-2', true);
       expect(svc.workspaces().length).toBe(0);
     }));
 
     it('should surface backend error on close rejection', fakeAsync(async () => {
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         if (cmd === 'close_workspace') return Promise.reject(new Error('Cannot close: backend error'));
         return Promise.resolve(undefined);
@@ -243,7 +239,7 @@ describe('WorkspaceService', () => {
       const svc = TestBed.inject(WorkspaceService);
       tick();
 
-      await expectAsync(svc.closeWorkspace('ws-1')).toBeRejectedWithError(/backend error/i);
+      await expect(async () => svc.closeWorkspace('ws-1')).rejects.toThrow(/backend error/i);
     }));
   });
 
@@ -310,7 +306,7 @@ describe('WorkspaceService', () => {
       tick();
 
       expect(svc.workspaces().length).toBe(2);
-      const calls = (invoke.calls.allArgs() as unknown[][]).map(args => args[0]);
+      const calls = invoke.mock.calls.map(args => args[0]);
       expect(calls).toContain('get_workspaces');
     }));
 
@@ -345,7 +341,7 @@ describe('WorkspaceService', () => {
     }));
 
     it('should handle backend error gracefully and return empty workspaces', fakeAsync(() => {
-      const failingInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
+      const failingInvoke = vi.fn().mockImplementation((cmd: string) => {
         if (cmd === 'get_workspaces') return Promise.reject(new Error('Backend unreachable'));
         return Promise.resolve(undefined);
       });
@@ -366,10 +362,8 @@ describe('WorkspaceService', () => {
 
   describe('openWorkspace - duplicate prevention', () => {
     it('should switch to existing workspace instead of creating duplicate when same path is opened', fakeAsync(async () => {
-      // ws-1 is already loaded with path '/path/to/repo1'
       expect(service.workspaces().length).toBe(1);
 
-      // Try opening a path for a workspace with different ID but same path
       const existingEntry: WorkspaceEntry = {
         id: 'ws-1-dup',
         repo_path: '/path/to/repo1',
@@ -377,7 +371,7 @@ describe('WorkspaceService', () => {
         last_nav: '',
         active_run_count: 0,
       };
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'open_workspace') return Promise.resolve(existingEntry);
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         return Promise.resolve(undefined);
@@ -386,9 +380,7 @@ describe('WorkspaceService', () => {
       await service.openWorkspace('/path/to/repo1');
       tick();
 
-      // Should NOT create a duplicate tab
       expect(service.workspaces().length).toBe(1);
-      // Should switch to the existing ws-1 by path match
       expect(service.activeWorkspaceId()).toBe('ws-1');
     }));
 
@@ -402,7 +394,7 @@ describe('WorkspaceService', () => {
         last_nav: '',
         active_run_count: 0,
       };
-      mockInvoke.and.callFake((cmd: string) => {
+      mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === 'open_workspace') return Promise.resolve(newEntry);
         if (cmd === 'get_workspaces') return Promise.resolve([mockEntry1]);
         return Promise.resolve(undefined);

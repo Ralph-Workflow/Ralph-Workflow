@@ -1,11 +1,19 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RunsService } from './runs.service';
 import { TauriService } from './tauri.service';
 import type { IterationSummary, ReviewSummary, RunDetail, RunStatusSummary } from '../types';
 
 describe('RunsService', () => {
   let service: RunsService;
-  let mockTauriService: jasmine.SpyObj<TauriService>;
+  let mockTauriService: {
+    getRunDetail: ReturnType<typeof vi.fn>;
+    getResumableRuns: ReturnType<typeof vi.fn>;
+    getRunStatus: ReturnType<typeof vi.fn>;
+    notifyRunStatusChange: ReturnType<typeof vi.fn>;
+    getIterationHistory: ReturnType<typeof vi.fn>;
+    getReviewHistory: ReturnType<typeof vi.fn>;
+  };
 
   const createMockRunDetail = (overrides: Partial<RunDetail> = {}): RunDetail => ({
     run_id: 'run-123',
@@ -29,10 +37,14 @@ describe('RunsService', () => {
   });
 
   beforeEach(() => {
-    mockTauriService = jasmine.createSpyObj(
-      'TauriService',
-      ['getRunDetail', 'getResumableRuns', 'getRunStatus', 'notifyRunStatusChange', 'getIterationHistory', 'getReviewHistory'],
-    );
+    mockTauriService = {
+      getRunDetail: vi.fn(),
+      getResumableRuns: vi.fn(),
+      getRunStatus: vi.fn(),
+      notifyRunStatusChange: vi.fn(),
+      getIterationHistory: vi.fn(),
+      getReviewHistory: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -49,9 +61,9 @@ describe('RunsService', () => {
   describe('fetchRunDetail', () => {
     it('should fetch run detail and update signal', async () => {
       const mockDetail = createMockRunDetail();
-      mockTauriService.getRunDetail.and.resolveTo(mockDetail);
-      mockTauriService.getIterationHistory.and.resolveTo([]);
-      mockTauriService.getReviewHistory.and.resolveTo([]);
+      mockTauriService.getRunDetail.mockResolvedValue(mockDetail);
+      mockTauriService.getIterationHistory.mockResolvedValue([]);
+      mockTauriService.getReviewHistory.mockResolvedValue([]);
       await service.fetchRunDetail('run-123');
 
       expect(mockTauriService.getRunDetail).toHaveBeenCalledWith('run-123');
@@ -60,7 +72,7 @@ describe('RunsService', () => {
     });
 
     it('should handle fetch error', async () => {
-      mockTauriService.getRunDetail.and.rejectWith(new Error('Failed to fetch'));
+      mockTauriService.getRunDetail.mockRejectedValue(new Error('Failed to fetch'));
       await service.fetchRunDetail('run-123');
 
       expect(service.status()).toBe('failed');
@@ -75,12 +87,11 @@ describe('RunsService', () => {
       const mockReviews: ReviewSummary[] = [
         { review_number: 1, status: 'Complete', duration_secs: 45, findings_count: 2 },
       ];
-      mockTauriService.getRunDetail.and.resolveTo(mockDetail);
-      mockTauriService.getIterationHistory.and.resolveTo(mockIterations);
-      mockTauriService.getReviewHistory.and.resolveTo(mockReviews);
+      mockTauriService.getRunDetail.mockResolvedValue(mockDetail);
+      mockTauriService.getIterationHistory.mockResolvedValue(mockIterations);
+      mockTauriService.getReviewHistory.mockResolvedValue(mockReviews);
 
       await service.fetchRunDetail('run-123');
-      // Wait for parallel promises to settle
       await Promise.resolve();
 
       expect(mockTauriService.getIterationHistory).toHaveBeenCalledWith('run-123');
@@ -94,7 +105,7 @@ describe('RunsService', () => {
         { iteration_number: 1, status: 'Complete', duration_secs: 60, files_changed: 2, tests_passed: 3, tests_total: 3 },
         { iteration_number: 2, status: 'Running', duration_secs: null, files_changed: 0, tests_passed: null, tests_total: null },
       ];
-      mockTauriService.getIterationHistory.and.resolveTo(mockIterations);
+      mockTauriService.getIterationHistory.mockResolvedValue(mockIterations);
 
       await service.fetchIterationHistory('run-abc');
 
@@ -102,7 +113,7 @@ describe('RunsService', () => {
     });
 
     it('should set iterationHistory to empty array on error', async () => {
-      mockTauriService.getIterationHistory.and.rejectWith(new Error('Not found'));
+      mockTauriService.getIterationHistory.mockRejectedValue(new Error('Not found'));
       service.iterationHistory.set([
         { iteration_number: 1, status: 'Complete', duration_secs: null, files_changed: 0, tests_passed: null, tests_total: null },
       ]);
@@ -118,7 +129,7 @@ describe('RunsService', () => {
       const mockReviews: ReviewSummary[] = [
         { review_number: 1, status: 'Complete', duration_secs: 30, findings_count: 1 },
       ];
-      mockTauriService.getReviewHistory.and.resolveTo(mockReviews);
+      mockTauriService.getReviewHistory.mockResolvedValue(mockReviews);
 
       await service.fetchReviewHistory('run-abc');
 
@@ -126,7 +137,7 @@ describe('RunsService', () => {
     });
 
     it('should set reviewHistory to empty array on error', async () => {
-      mockTauriService.getReviewHistory.and.rejectWith(new Error('Not found'));
+      mockTauriService.getReviewHistory.mockRejectedValue(new Error('Not found'));
       service.reviewHistory.set([
         { review_number: 1, status: 'Complete', duration_secs: null, findings_count: 0 },
       ]);
@@ -140,7 +151,7 @@ describe('RunsService', () => {
   describe('fetchResumableRuns', () => {
     it('should fetch resumable runs', async () => {
       const mockRuns = [createMockRunDetail({ status: 'Paused' })];
-      mockTauriService.getResumableRuns.and.resolveTo(mockRuns);
+      mockTauriService.getResumableRuns.mockResolvedValue(mockRuns);
       await service.fetchResumableRuns('/repo');
 
       expect(mockTauriService.getResumableRuns).toHaveBeenCalledWith('/repo');
@@ -151,7 +162,7 @@ describe('RunsService', () => {
   describe('pollRunStatus', () => {
     it('should poll run status and update signal', async () => {
       const mockSummary = createMockStatusSummary();
-      mockTauriService.getRunStatus.and.resolveTo(mockSummary);
+      mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       await service.pollRunStatus('/repo', null);
 
       expect(mockTauriService.getRunStatus).toHaveBeenCalledWith('/repo', null);
@@ -160,7 +171,7 @@ describe('RunsService', () => {
 
     it('should notify on transition from Running to Paused', async () => {
       const mockSummary = createMockStatusSummary({ status: 'Paused' });
-      mockTauriService.getRunStatus.and.resolveTo(mockSummary);
+      mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.runDetail.set(createMockRunDetail());
       (service as unknown as { previousPollingStatus: string }).previousPollingStatus = 'Running';
       await service.pollRunStatus('/repo', null);
@@ -172,7 +183,7 @@ describe('RunsService', () => {
   describe('startPolling/stopPolling', () => {
     it('should start polling interval', fakeAsync(() => {
       const mockSummary = createMockStatusSummary();
-      mockTauriService.getRunStatus.and.resolveTo(mockSummary);
+      mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
       tick(6000);
 
@@ -181,7 +192,7 @@ describe('RunsService', () => {
 
     it('should not start polling twice (double-start guard)', fakeAsync(() => {
       const mockSummary = createMockStatusSummary();
-      mockTauriService.getRunStatus.and.resolveTo(mockSummary);
+      mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
       service.startPolling('/repo', null);
       tick(6000);
@@ -191,7 +202,7 @@ describe('RunsService', () => {
 
     it('should stop polling', fakeAsync(() => {
       const mockSummary = createMockStatusSummary();
-      mockTauriService.getRunStatus.and.resolveTo(mockSummary);
+      mockTauriService.getRunStatus.mockResolvedValue(mockSummary);
       service.startPolling('/repo', null);
       tick(5000);
       service.stopPolling();

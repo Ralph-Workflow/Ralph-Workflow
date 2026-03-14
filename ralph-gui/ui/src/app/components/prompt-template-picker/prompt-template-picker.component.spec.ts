@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { PromptTemplatePickerComponent } from './prompt-template-picker.component';
 import { PROMPT_TEMPLATES } from '../../pages/sessions/prompt-templates';
@@ -28,12 +29,12 @@ describe('PromptTemplatePickerComponent', () => {
     it('should render all templates from PROMPT_TEMPLATES', () => {
       for (const tpl of PROMPT_TEMPLATES) {
         const btn = compiled.querySelector(`[data-testid="template-${tpl.id}"]`);
-        expect(btn).withContext(`Template "${tpl.id}" button should exist`).toBeTruthy();
+        expect(btn).toBeTruthy();
       }
     });
 
     it('should emit selectTemplate with template content when a template is clicked', () => {
-      const spy = jasmine.createSpy('selectTemplate');
+      const spy = vi.fn();
       component.selectTemplate.subscribe(spy);
 
       const firstTemplate = PROMPT_TEMPLATES[0]!;
@@ -70,14 +71,14 @@ describe('PromptTemplatePickerComponent', () => {
     });
 
     it('should emit selectTemplate when a recently used template is clicked', () => {
-      const spy = jasmine.createSpy('selectTemplate');
+      const spy = vi.fn();
       component.selectTemplate.subscribe(spy);
 
       const firstTemplate = PROMPT_TEMPLATES[0]!;
       component.onSelectTemplate(firstTemplate);
       fixture.detectChanges();
 
-      spy.calls.reset();
+      spy.mockClear();
 
       const recentBtn = compiled.querySelector(`[data-testid="recent-template-${firstTemplate.id}"]`) as HTMLButtonElement;
       recentBtn.click();
@@ -144,7 +145,7 @@ describe('PromptTemplatePickerComponent', () => {
     });
 
     it('should emit saveAsTemplate with current prompt content when button clicked', () => {
-      const spy = jasmine.createSpy('saveAsTemplate');
+      const spy = vi.fn();
       component.saveAsTemplate.subscribe(spy);
 
       const promptContent = 'My custom prompt content';
@@ -158,7 +159,7 @@ describe('PromptTemplatePickerComponent', () => {
     });
 
     it('should NOT emit saveAsTemplate when currentPrompt is only whitespace', () => {
-      const spy = jasmine.createSpy('saveAsTemplate');
+      const spy = vi.fn();
       component.saveAsTemplate.subscribe(spy);
 
       fixture.componentRef.setInput('currentPrompt', '   ');

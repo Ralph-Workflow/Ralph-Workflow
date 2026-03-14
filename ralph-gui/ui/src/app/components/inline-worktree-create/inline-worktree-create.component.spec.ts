@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { InlineWorktreeCreateComponent } from './inline-worktree-create.component';
 import { WorktreesService } from '../../services/worktrees.service';
 import type { WorktreeInfo } from '../../types';
@@ -6,7 +7,10 @@ import type { WorktreeInfo } from '../../types';
 describe('InlineWorktreeCreateComponent', () => {
   let component: InlineWorktreeCreateComponent;
   let fixture: ComponentFixture<InlineWorktreeCreateComponent>;
-  let mockWorktreesService: jasmine.SpyObj<WorktreesService>;
+  let mockWorktreesService: {
+    fetchWorktrees: ReturnType<typeof vi.fn>;
+    createWorktree: ReturnType<typeof vi.fn>;
+  };
 
   const createMockWorktree = (overrides: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
     path: '/repo',
@@ -18,10 +22,10 @@ describe('InlineWorktreeCreateComponent', () => {
   });
 
   beforeEach(async () => {
-    mockWorktreesService = jasmine.createSpyObj(
-      'WorktreesService',
-      ['fetchWorktrees', 'createWorktree'],
-    );
+    mockWorktreesService = {
+      fetchWorktrees: vi.fn(),
+      createWorktree: vi.fn(),
+    };
 
     await TestBed.configureTestingModule({
       imports: [InlineWorktreeCreateComponent],
@@ -100,8 +104,8 @@ describe('InlineWorktreeCreateComponent', () => {
   describe('submission', () => {
     it('should emit created event on create', async () => {
       const newWorktree = createMockWorktree({ path: '/repo/wt-1', name: 'wt-1' });
-      mockWorktreesService.createWorktree.and.resolveTo(newWorktree);
-      mockWorktreesService.fetchWorktrees.and.resolveTo();
+      mockWorktreesService.createWorktree.mockResolvedValue(newWorktree);
+      mockWorktreesService.fetchWorktrees.mockResolvedValue(undefined);
 
       component.repoPath = '/repo';
       component.branch.set('feature-branch');
@@ -123,7 +127,7 @@ describe('InlineWorktreeCreateComponent', () => {
     });
 
     it('should display error on failure', async () => {
-      mockWorktreesService.createWorktree.and.rejectWith(new Error('Failed to create'));
+      mockWorktreesService.createWorktree.mockRejectedValue(new Error('Failed to create'));
 
       component.repoPath = '/repo';
       component.branch.set('feature-branch');
@@ -140,8 +144,8 @@ describe('InlineWorktreeCreateComponent', () => {
 
     it('should set creating state during submission', async () => {
       const newWorktree = createMockWorktree({ path: '/repo/wt-1', name: 'wt-1' });
-      mockWorktreesService.createWorktree.and.resolveTo(newWorktree);
-      mockWorktreesService.fetchWorktrees.and.resolveTo();
+      mockWorktreesService.createWorktree.mockResolvedValue(newWorktree);
+      mockWorktreesService.fetchWorktrees.mockResolvedValue(undefined);
 
       component.repoPath = '/repo';
       component.branch.set('feature-branch');

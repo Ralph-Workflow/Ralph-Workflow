@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
 import { NotificationCenterComponent } from './notification-center.component';
 import { NotificationService, Notification } from '../../services/notification.service';
@@ -14,12 +15,12 @@ describe('NotificationCenterComponent', () => {
     notifications: notificationsSignal.asReadonly(),
     isPanelOpen: isPanelOpenSignal.asReadonly(),
     unreadCount: () => unreadCountValue,
-    dismiss: jasmine.createSpy('dismiss'),
-    dismissAll: jasmine.createSpy('dismissAll'),
-    markAllRead: jasmine.createSpy('markAllRead'),
-    togglePanel: jasmine.createSpy('togglePanel'),
-    closePanel: jasmine.createSpy('closePanel'),
-    add: jasmine.createSpy('add'),
+    dismiss: vi.fn(),
+    dismissAll: vi.fn(),
+    markAllRead: vi.fn(),
+    togglePanel: vi.fn(),
+    closePanel: vi.fn(),
+    add: vi.fn(),
   });
 
   const makeNotification = (overrides: Partial<Notification> = {}): Notification => ({

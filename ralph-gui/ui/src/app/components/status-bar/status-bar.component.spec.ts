@@ -1,20 +1,23 @@
 import { TestBed } from '@angular/core/testing';
-import { provideZonelessChangeDetection, signal } from '@angular/core';
+import { provideZonelessChangeDetection } from '@angular/core';
 import { StatusBarComponent } from './status-bar.component';
-import { WorkspaceService, Workspace } from '../../services/workspace.service';
+import { WorkspaceService, type Workspace } from '../../services/workspace.service';
 import { NotificationService } from '../../services/notification.service';
 import { WorktreesService } from '../../services/worktrees.service';
 import type { WorktreeInfo } from '../../types';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { WritableSignal } from '@angular/core';
+import { signal } from '@angular/core';
 
 describe('StatusBarComponent', () => {
   let fixture: ReturnType<typeof TestBed.createComponent<StatusBarComponent>>;
   let component: StatusBarComponent;
-  let mockWorkspaces: ReturnType<typeof signal<Workspace[]>>;
-  let mockActiveWorkspace: ReturnType<typeof signal<Workspace | null>>;
-  let mockUnreadCount: ReturnType<typeof signal<number>>;
-  let mockWorktrees: ReturnType<typeof signal<WorktreeInfo[]>>;
-  let mockActiveWorktreePath: ReturnType<typeof signal<string | null>>;
-  let togglePanelSpy: jasmine.Spy;
+  let mockWorkspaces: WritableSignal<Workspace[]>;
+  let mockActiveWorkspace: WritableSignal<Workspace | null>;
+  let mockUnreadCount: WritableSignal<number>;
+  let mockWorktrees: WritableSignal<WorktreeInfo[]>;
+  let mockActiveWorktreePath: WritableSignal<string | null>;
+  let togglePanelSpy: ReturnType<typeof vi.fn>;
 
   const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
     id: 'ws-1',
@@ -42,10 +45,10 @@ describe('StatusBarComponent', () => {
     mockUnreadCount = signal<number>(0);
     mockWorktrees = signal<WorktreeInfo[]>([]);
     mockActiveWorktreePath = signal<string | null>(null);
-    togglePanelSpy = jasmine.createSpy('togglePanel');
+    togglePanelSpy = vi.fn();
 
     const workspaceServiceSpy = {
-      workspaces: mockWorkspaces,
+      workspaces: mockWorkspaces.asReadonly(),
       activeWorkspaceId: signal<string | null>(null),
       activeWorkspace: mockActiveWorkspace,
     };
@@ -95,7 +98,6 @@ describe('StatusBarComponent', () => {
       mockActiveWorkspace.set(createMockWorkspace({ label: 'my-project' }));
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      // Template uses Tailwind classes — match by text content in the left-section span
       const spans = el.querySelectorAll('span');
       const labelSpan = Array.from(spans).find(s => s.textContent?.trim() === 'my-project');
       expect(labelSpan).toBeTruthy();
@@ -149,7 +151,6 @@ describe('StatusBarComponent', () => {
       ]);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      // Template uses Tailwind classes — match by text content
       const spans = el.querySelectorAll('span');
       const runSpan = Array.from(spans).find(s => s.textContent?.trim() === '3 running');
       expect(runSpan).toBeTruthy();
@@ -166,7 +167,6 @@ describe('StatusBarComponent', () => {
     it('should render bell button in DOM', () => {
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      // Template uses aria-label="Notifications" on the bell button
       expect(el.querySelector('[aria-label="Notifications"]')).toBeTruthy();
     });
 
@@ -182,7 +182,6 @@ describe('StatusBarComponent', () => {
       mockUnreadCount.set(5);
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      // Badge is a span inside the bell button with the count
       const bell = el.querySelector('[aria-label="Notifications"]');
       const badge = bell?.querySelector('span[aria-label]');
       expect(badge).toBeTruthy();
@@ -226,7 +225,6 @@ describe('StatusBarComponent', () => {
       mockActiveWorktreePath.set('/repo');
       fixture.detectChanges();
       const el: HTMLElement = fixture.nativeElement;
-      // Template uses Tailwind classes — match by text content
       const spans = el.querySelectorAll('span');
       const branchSpan = Array.from(spans).find(s => s.textContent?.trim() === 'develop');
       expect(branchSpan).toBeTruthy();

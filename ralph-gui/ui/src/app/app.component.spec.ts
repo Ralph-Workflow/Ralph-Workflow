@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Router, NavigationEnd } from '@angular/router';
 import { RouterModule } from '@angular/router';
 import { AppComponent } from './app.component';
@@ -25,15 +26,15 @@ describe('AppComponent', () => {
   let isLoadingSignal: WritableSignal<boolean>;
   let prefsIsLoadingSignal: WritableSignal<boolean>;
   let prefsIsFirstRunSignal: WritableSignal<boolean>;
-  let initializeRepoSpy: jasmine.Spy;
-  let fetchSessionsSpy: jasmine.Spy;
-  let persistNavigationSpy: jasmine.Spy;
+  let initializeRepoSpy: ReturnType<typeof vi.fn>;
+  let fetchSessionsSpy: ReturnType<typeof vi.fn>;
+  let persistNavigationSpy: ReturnType<typeof vi.fn>;
 
   const createMockWorktreesService = () => ({
     worktrees: worktreesSignal.asReadonly(),
     activeWorktreePath: activeWorktreePathSignal.asReadonly(),
     lastRepoPath: lastRepoPathSignal.asReadonly(),
-    switchContext: jasmine.createSpy('switchContext'),
+    switchContext: vi.fn(),
     initializeRepo: initializeRepoSpy,
   });
 
@@ -42,29 +43,29 @@ describe('AppComponent', () => {
     activeWorkspaceId: activeWorkspaceIdSignal.asReadonly(),
     activeWorkspace: activeWorkspaceSignal.asReadonly(),
     isLoading: isLoadingSignal.asReadonly(),
-    switchWorkspace: jasmine.createSpy('switchWorkspace'),
-    closeWorkspace: jasmine.createSpy('closeWorkspace').and.returnValue(Promise.resolve()),
+    switchWorkspace: vi.fn(),
+    closeWorkspace: vi.fn().mockReturnValue(Promise.resolve()),
     persistNavigation: persistNavigationSpy,
-    setNavigationState: jasmine.createSpy('setNavigationState'),
+    setNavigationState: vi.fn(),
   });
 
   const createMockPreferencesService = () => ({
     preferences: signal({ theme: 'dark', accentColor: '#f59e0b', sidebarWidth: 220 } as unknown as ReturnType<PreferencesService['preferences']>).asReadonly(),
     isLoading: prefsIsLoadingSignal.asReadonly(),
     isFirstRun: prefsIsFirstRunSignal.asReadonly(),
-    save: jasmine.createSpy('save').and.returnValue(Promise.resolve()),
+    save: vi.fn().mockReturnValue(Promise.resolve()),
   });
 
   const createMockNotificationService = () => ({
     isPanelOpen: notificationIsPanelOpenSignal.asReadonly(),
     unreadCount: () => 0,
     notifications: signal([]).asReadonly(),
-    togglePanel: jasmine.createSpy('togglePanel'),
-    closePanel: jasmine.createSpy('closePanel'),
-    dismiss: jasmine.createSpy('dismiss'),
-    dismissAll: jasmine.createSpy('dismissAll'),
-    markAllRead: jasmine.createSpy('markAllRead'),
-    add: jasmine.createSpy('add'),
+    togglePanel: vi.fn(),
+    closePanel: vi.fn(),
+    dismiss: vi.fn(),
+    dismissAll: vi.fn(),
+    markAllRead: vi.fn(),
+    add: vi.fn(),
   });
 
   const createMockSessionsService = () => ({
@@ -96,9 +97,9 @@ describe('AppComponent', () => {
     isLoadingSignal = signal<boolean>(true);
     prefsIsLoadingSignal = signal<boolean>(true);
     prefsIsFirstRunSignal = signal<boolean>(false);
-    initializeRepoSpy = jasmine.createSpy('initializeRepo').and.returnValue(Promise.resolve());
-    fetchSessionsSpy = jasmine.createSpy('fetchSessions').and.returnValue(Promise.resolve());
-    persistNavigationSpy = jasmine.createSpy('persistNavigation').and.returnValue(Promise.resolve());
+    initializeRepoSpy = vi.fn().mockReturnValue(Promise.resolve());
+    fetchSessionsSpy = vi.fn().mockReturnValue(Promise.resolve());
+    persistNavigationSpy = vi.fn().mockReturnValue(Promise.resolve());
 
     await TestBed.configureTestingModule({
       imports: [AppComponent, RouterModule.forRoot([])],
@@ -110,9 +111,7 @@ describe('AppComponent', () => {
         { provide: SessionsService, useFactory: createMockSessionsService },
         {
           provide: NOTIFICATION_LISTEN_TOKEN,
-          useValue: jasmine.createSpy('listen').and.returnValue(
-            Promise.resolve(jasmine.createSpy('unlisten'))
-          ),
+          useValue: vi.fn().mockReturnValue(Promise.resolve(vi.fn())),
         },
       ],
     }).compileComponents();
@@ -198,7 +197,7 @@ describe('AppComponent', () => {
 
     it('should navigate to /preferences on g+p', () => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       // Simulate g press
       component.handleKeyboard(new KeyboardEvent('keydown', { key: 'g' }));
@@ -210,7 +209,7 @@ describe('AppComponent', () => {
 
     it('should navigate to /preferences on Ctrl+,', () => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate');
+      const navigateSpy = vi.spyOn(router, 'navigate');
 
       component.handleKeyboard(new KeyboardEvent('keydown', { key: ',', ctrlKey: true }));
 
@@ -285,7 +284,7 @@ describe('AppComponent', () => {
   describe('welcome redirect', () => {
     it('should navigate to /welcome when loading completes with empty workspaces (returning user)', fakeAsync(() => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+      const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
       fixture.detectChanges();
 
@@ -303,7 +302,7 @@ describe('AppComponent', () => {
 
     it('should navigate to /onboarding when loading completes with empty workspaces on first run', fakeAsync(() => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+      const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
       fixture.detectChanges();
 
@@ -321,7 +320,7 @@ describe('AppComponent', () => {
 
     it('should not navigate to /welcome when workspaces exist after loading', fakeAsync(() => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+      const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
       fixture.detectChanges();
 
@@ -439,7 +438,7 @@ describe('AppComponent', () => {
 
     it('should navigate to saved navigationState when workspace changes after initial load', fakeAsync(() => {
       const router = TestBed.inject(Router);
-      const navigateSpy = spyOn(router, 'navigate').and.returnValue(Promise.resolve(true));
+      const navigateSpy = vi.spyOn(router, 'navigate').mockReturnValue(Promise.resolve(true));
 
       // Initial load
       fixture.detectChanges();
@@ -573,8 +572,8 @@ describe('AppComponent', () => {
     });
 
     it('should persist width to preferences on drag end', fakeAsync(async () => {
-      const mockPreferencesService = TestBed.inject(PreferencesService) as jasmine.SpyObj<PreferencesService>;
-      const saveSpy = mockPreferencesService.save as jasmine.Spy;
+      const mockPreferencesService = TestBed.inject(PreferencesService);
+      const saveSpy = vi.spyOn(mockPreferencesService, 'save');
 
       // Drag from 220 to 300
       const startEvent = new MouseEvent('mousedown', { clientX: 220, bubbles: true });
@@ -589,7 +588,7 @@ describe('AppComponent', () => {
       tick();
       await fixture.whenStable();
 
-      expect(saveSpy).toHaveBeenCalledWith(jasmine.objectContaining({ sidebarWidth: 300 }));
+      expect(saveSpy).toHaveBeenCalledWith(expect.objectContaining({ sidebarWidth: 300 }));
     }));
   });
 
@@ -683,9 +682,9 @@ describe('AppComponent', () => {
     it('should show error notification when workspace close fails', fakeAsync(() => {
       const workspaceService = TestBed.inject(WorkspaceService);
       const notificationService = TestBed.inject(NotificationService);
-      // Use callFake to create the rejected promise lazily (at call time, not setup time)
+      // Use mockImplementation to create the rejected promise lazily (at call time, not setup time)
       // so zone.js can track it correctly from the moment it's consumed by the await.
-      (workspaceService.closeWorkspace as jasmine.Spy).and.callFake(
+      vi.spyOn(workspaceService, 'closeWorkspace').mockImplementation(
         (): Promise<void> => Promise.reject(new Error('Close failed')),
       );
 
@@ -702,7 +701,7 @@ describe('AppComponent', () => {
 
       tick();
 
-      expect(notificationService.add).toHaveBeenCalledWith(jasmine.objectContaining({ type: 'error' }));
+      expect(notificationService.add).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
     }));
 
     it('should include workspace label and run count in dialog message', fakeAsync(() => {
@@ -733,8 +732,8 @@ describe('AppComponent', () => {
       // Make initializeRepo and fetchSessions return pending promises
       let resolveInit!: () => void;
       let resolveFetch!: () => void;
-      initializeRepoSpy.and.returnValue(new Promise<void>(r => { resolveInit = r; }));
-      fetchSessionsSpy.and.returnValue(new Promise<void>(r => { resolveFetch = r; }));
+      initializeRepoSpy.mockReturnValue(new Promise<void>(r => { resolveInit = r; }));
+      fetchSessionsSpy.mockReturnValue(new Promise<void>(r => { resolveFetch = r; }));
 
       fixture.detectChanges();
 

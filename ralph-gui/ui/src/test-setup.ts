@@ -1,3 +1,5 @@
+import 'zone.js/testing';
+
 const originalWarn = console.warn;
 
 console.warn = function (...args: unknown[]) {
@@ -9,5 +11,5 @@ console.warn = function (...args: unknown[]) {
     return;
   }
 
-  return originalWarn.apply(console, args as Parameters<typeof originalWarn>);
+  return originalWarn.apply(console, args);
 };

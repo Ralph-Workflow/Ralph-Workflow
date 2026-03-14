@@ -10,19 +10,14 @@ import {
 } from './configuration.component';
 import { configurationCanDeactivateGuard } from './configuration.guard';
 import { ConfigService } from '../../services/config.service';
-import { NotificationService } from '../../services/notification.service';
-import { NOTIFICATION_LISTEN_TOKEN } from '../../services/notification.service';
+import { NotificationService, NOTIFICATION_LISTEN_TOKEN } from '../../services/notification.service';
 import type { ConfigFieldWithSource, ConfigSource, ConfigView, EffectiveConfigWithSources } from '../../types';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Re-export the configViewToToml function for round-trip testing.
-// Since it's a module-private function, we test it via the ConfigurationComponent class.
-// We use an inline test helper that replicates the same logic to validate round-trips.
 function tomlContainsField(toml: string, field: string, value: string | number | boolean): boolean {
   const strValue = typeof value === 'string' ? `"${value}"` : String(value);
   return toml.includes(`${field} = ${strValue}`);
 }
-
-// ── Minimal mock invoke ─────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: ConfigView = {
   verbosity: 1,
@@ -51,7 +46,22 @@ const DEFAULT_EFF_WITH_SOURCES: EffectiveConfigWithSources = {
   sources: DEFAULT_SOURCES,
 };
 
-// ── ConfigFieldComponent unit tests ────────────────────────────────────────
+function createMockInvoke(overrides: Record<string, () => unknown> = {}) {
+  return vi.fn().mockImplementation((cmd: string) => {
+    if (overrides[cmd]) return overrides[cmd]();
+    if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
+    if (cmd === 'get_global_config' || cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
+    if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
+    if (cmd === 'get_workspaces') return Promise.resolve([]);
+    if (cmd === 'get_worktrees') return Promise.resolve([]);
+    if (cmd === 'list_worktrees') return Promise.resolve([]);
+    if (cmd === 'save_global_config') return Promise.resolve(undefined);
+    if (cmd === 'get_agent_tools') return Promise.resolve([]);
+    return Promise.resolve(null);
+  });
+}
+
+const noopListenFn = () => Promise.resolve(() => void 0);
 
 describe('ConfigFieldComponent', () => {
   beforeEach(async () => {
@@ -162,8 +172,6 @@ describe('ConfigFieldComponent', () => {
   });
 });
 
-// ── ConfigTableComponent unit tests ────────────────────────────────────────
-
 describe('ConfigTableComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -200,7 +208,6 @@ describe('ConfigTableComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const badges = fixture.nativeElement.querySelectorAll('.source-badge');
-    // One badge per field
     expect(badges.length).toBe(DEFAULT_SOURCES.length);
   });
 
@@ -248,25 +255,11 @@ describe('ConfigTableComponent', () => {
   });
 });
 
-// ── ConfigurationComponent integration tests (source indicators) ────────────
-
 describe('ConfigurationComponent - source indicators', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (cmd === 'get_effective_config_with_sources') {
-        return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      }
-      if (cmd === 'get_global_config' || cmd === 'get_effective_config') {
-        return Promise.resolve(DEFAULT_CONFIG);
-      }
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      return Promise.resolve(null);
-    });
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -287,7 +280,6 @@ describe('ConfigurationComponent - source indicators', () => {
   it('getFieldSource returns "default" when effectiveWithSources is null', () => {
     const fixture = TestBed.createComponent(ConfigurationComponent);
     fixture.detectChanges();
-    // No repo path set → effectiveWithSources stays null
     const source = fixture.componentInstance.getFieldSource('verbosity');
     expect(source).toBe('default');
   });
@@ -296,7 +288,6 @@ describe('ConfigurationComponent - source indicators', () => {
     const fixture = TestBed.createComponent(ConfigurationComponent);
     fixture.detectChanges();
     const comp = fixture.componentInstance;
-    // Access via bracket notation to bypass TypeScript private access
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_effectiveWithSources'].set(DEFAULT_EFF_WITH_SOURCES);
     fixture.detectChanges();
@@ -306,27 +297,11 @@ describe('ConfigurationComponent - source indicators', () => {
   });
 });
 
-// ── ConfigurationComponent save / revert flow tests ─────────────────────────
-
 describe('ConfigurationComponent - save and revert', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
-  const makeMockInvoke = (overrides: Record<string, () => unknown> = {}) => {
-    return jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (overrides[cmd]) return overrides[cmd]();
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config' || cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      if (cmd === 'save_global_config') return Promise.resolve(undefined);
-      return Promise.resolve(null);
-    });
-  };
-
-  it('saveFormConfig calls save_global_config and reloads config', async () => {
-    mockInvoke = makeMockInvoke();
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -337,12 +312,13 @@ describe('ConfigurationComponent - save and revert', () => {
         { provide: TAURI_INVOKE, useValue: mockInvoke },
       ],
     }).compileComponents();
+  });
 
+  it('saveFormConfig calls save_global_config and reloads config', async () => {
     const fixture = TestBed.createComponent(ConfigurationComponent);
     fixture.detectChanges();
     const comp = fixture.componentInstance;
 
-    // Set pending config
     const pendingConfig: ConfigView = { ...DEFAULT_CONFIG, verbosity: 3 };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_formPendingConfig'].set(pendingConfig);
@@ -351,45 +327,26 @@ describe('ConfigurationComponent - save and revert', () => {
     await comp.saveFormConfig();
     fixture.detectChanges();
 
-    // save_global_config should have been called with the serialized TOML
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const saveCalls = mockInvoke.calls.all().filter((c: any) => c.args[0] === 'save_global_config');
+    const saveCalls = mockInvoke.mock.calls.filter((c: unknown[]) => c[0] === 'save_global_config');
     expect(saveCalls.length).toBeGreaterThan(0);
 
-    // After save, formPendingConfig should be null
     expect(comp.formPendingConfig).toBeNull();
-
-    // formSaveMsg should be set
     expect(comp.formSaveMsg).toBe('Saved successfully.');
   });
 
   it('saveFormConfig does nothing when no pending config', async () => {
-    mockInvoke = makeMockInvoke();
-
-    await TestBed.configureTestingModule({
-      imports: [ConfigurationComponent],
-      providers: [
-        provideZonelessChangeDetection(),
-        provideRouter([]),
-        provideAnimationsAsync(),
-        { provide: TAURI_INVOKE, useValue: mockInvoke },
-      ],
-    }).compileComponents();
-
     const fixture = TestBed.createComponent(ConfigurationComponent);
     fixture.detectChanges();
     const comp = fixture.componentInstance;
 
-    // No pending config set → saveFormConfig should be no-op
     await comp.saveFormConfig();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const saveCalls = mockInvoke.calls.all().filter((c: any) => c.args[0] === 'save_global_config');
+    const saveCalls = mockInvoke.mock.calls.filter((c: unknown[]) => c[0] === 'save_global_config');
     expect(saveCalls.length).toBe(0);
   });
 
   it('saveFormConfig sets formSaveError when save_global_config rejects', async () => {
-    mockInvoke = makeMockInvoke({
+    mockInvoke = createMockInvoke({
       save_global_config: () => Promise.reject(new Error('disk full')),
     });
 
@@ -407,7 +364,6 @@ describe('ConfigurationComponent - save and revert', () => {
     fixture.detectChanges();
     const comp = fixture.componentInstance;
 
-    // Set pending config so save actually fires
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_formPendingConfig'].set({ ...DEFAULT_CONFIG });
     fixture.detectChanges();
@@ -415,14 +371,12 @@ describe('ConfigurationComponent - save and revert', () => {
     await comp.saveFormConfig();
     fixture.detectChanges();
 
-    // Error message should be populated
     expect(comp.formSaveError).toBe('disk full');
-    // Pending config should remain (no clear on failure)
-    expect(comp.formHasPendingChanges).toBeTrue();
+    expect(comp.formHasPendingChanges).toBe(true);
   });
 
   it('revertFormConfig clears pending config and dirty state', async () => {
-    mockInvoke = makeMockInvoke();
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -439,44 +393,29 @@ describe('ConfigurationComponent - save and revert', () => {
     const comp = fixture.componentInstance;
     const configService = comp.configService;
 
-    // Set a pending config and dirty
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_formPendingConfig'].set({ ...DEFAULT_CONFIG, verbosity: 3 });
     configService.setDirty(true);
     fixture.detectChanges();
 
-    expect(comp.formHasPendingChanges).toBeTrue();
-    expect(configService.isDirty()).toBeTrue();
+    expect(comp.formHasPendingChanges).toBe(true);
+    expect(configService.isDirty()).toBe(true);
 
-    // Revert should clear both
     comp.revertFormConfig();
     fixture.detectChanges();
 
-    expect(comp.formHasPendingChanges).toBeFalse();
-    expect(configService.isDirty()).toBeFalse();
+    expect(comp.formHasPendingChanges).toBe(false);
+    expect(configService.isDirty()).toBe(false);
     expect(comp.formSaveMsg).toBeNull();
     expect(comp.formSaveError).toBeNull();
   });
 });
 
-// ── ConfigurationComponent tab switching tests ───────────────────────────────
-
 describe('ConfigurationComponent - tab switching', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('[defaults]\nverbosity = 2\n');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      if (cmd === 'save_global_config') return Promise.resolve(undefined);
-      if (cmd === 'get_agent_tools') return Promise.resolve([]);
-      return Promise.resolve(null);
-    });
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -521,7 +460,6 @@ describe('ConfigurationComponent - tab switching', () => {
     await fixture.whenStable();
 
     const el: HTMLElement = fixture.nativeElement;
-    // Global tab content should be present
     expect(el.textContent).toContain('Global config stored at');
   });
 
@@ -551,27 +489,15 @@ describe('ConfigurationComponent - tab switching', () => {
       (btn: HTMLElement) => btn.textContent?.trim() === 'Global',
     ) ?? null;
 
-    expect(globalTabBtn?.classList.contains('tab-item--active')).toBeTrue();
+    expect(globalTabBtn?.classList.contains('tab-item--active')).toBe(true);
   });
 });
 
-// ── ConfigurationComponent - Form/TOML toggle tests ─────────────────────────
-
 describe('ConfigurationComponent - Form/TOML toggle', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      if (cmd === 'get_agent_tools') return Promise.resolve([]);
-      return Promise.resolve(null);
-    });
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -610,44 +536,28 @@ describe('ConfigurationComponent - Form/TOML toggle', () => {
     fixture.detectChanges();
     const comp = fixture.componentInstance;
 
-    // Set pending config as if user changed something
     const pendingConfig: ConfigView = { ...DEFAULT_CONFIG, verbosity: 4 };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_formPendingConfig'].set(pendingConfig);
 
-    // Toggle to TOML view
     comp.toggleViewMode();
     fixture.detectChanges();
 
-    // Pending config should still be present
     expect(comp.formPendingConfig?.verbosity).toBe(4);
-    expect(comp.formHasPendingChanges).toBeTrue();
+    expect(comp.formHasPendingChanges).toBe(true);
 
-    // Toggle back to form view
     comp.toggleViewMode();
     fixture.detectChanges();
 
-    // Pending config should still be present
     expect(comp.formPendingConfig?.verbosity).toBe(4);
   });
 });
 
-// ── Navigation guard tests ───────────────────────────────────────────────────
-
 describe('configurationCanDeactivateGuard', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      return Promise.resolve(null);
-    });
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -665,76 +575,61 @@ describe('configurationCanDeactivateGuard', () => {
     configService.setDirty(false);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
-    expect(result).toBeTrue();
+    expect(result).toBe(true);
   });
 
   it('returns true when config is dirty and user confirms navigation', () => {
     const configService = TestBed.inject(ConfigService);
     configService.setDirty(true);
 
-    spyOn(window, 'confirm').and.returnValue(true);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
-    expect(result).toBeTrue();
-    expect(window.confirm).toHaveBeenCalledWith(jasmine.stringContaining('unsaved configuration changes'));
+    expect(result).toBe(true);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved configuration changes'));
   });
 
   it('returns false when config is dirty and user cancels navigation', () => {
     const configService = TestBed.inject(ConfigService);
     configService.setDirty(true);
 
-    spyOn(window, 'confirm').and.returnValue(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
-    expect(result).toBeFalse();
-    expect(window.confirm).toHaveBeenCalledWith(jasmine.stringContaining('unsaved configuration changes'));
+    expect(result).toBe(false);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved configuration changes'));
   });
 
   it('does not show confirm dialog when config is clean', () => {
     const configService = TestBed.inject(ConfigService);
     configService.setDirty(false);
 
-    spyOn(window, 'confirm').and.returnValue(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
-    expect(result).toBeTrue();
+    expect(result).toBe(true);
     expect(window.confirm).not.toHaveBeenCalled();
   });
 
   it('navigation guard fires when dirty (integration: configService.isDirty() set to true)', () => {
     const configService = TestBed.inject(ConfigService);
 
-    // Simulate user editing the configuration form making it dirty
     configService.setDirty(true);
-    expect(configService.isDirty()).toBeTrue();
+    expect(configService.isDirty()).toBe(true);
 
-    // Guard should fire the confirm dialog
-    spyOn(window, 'confirm').and.returnValue(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
     const result = TestBed.runInInjectionContext(() => configurationCanDeactivateGuard());
 
-    // Guard should have called confirm and returned false (user chose not to navigate)
     expect(window.confirm).toHaveBeenCalled();
-    expect(result).toBeFalse();
+    expect(result).toBe(false);
   });
 });
 
-// ── configViewToToml round-trip test ────────────────────────────────────────
-
 describe('configViewToToml round-trip via ConfigurationComponent', () => {
-  let mockInvoke: jasmine.Spy;
+  let mockInvoke: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    mockInvoke = jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      if (cmd === 'save_global_config') return Promise.resolve(undefined);
-      return Promise.resolve(null);
-    });
+    mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -768,47 +663,25 @@ describe('configViewToToml round-trip via ConfigurationComponent', () => {
 
     await comp.saveFormConfig();
 
-    // Find the TOML that was passed to save_global_config
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const saveCalls = (mockInvoke.calls.all() as any[]).filter((c: any) => c.args[0] === 'save_global_config');
+    const saveCalls = mockInvoke.mock.calls.filter((c: unknown[]) => c[0] === 'save_global_config');
     expect(saveCalls.length).toBeGreaterThan(0);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    const toml = String((saveCalls[0] as any).args[1]['config_toml']);
+    const toml = String(((saveCalls[0] as unknown[])?.[1] as Record<string, unknown>)?.['config_toml']);
 
-    // Verify round-trip: the TOML should contain all key field values
-    expect(tomlContainsField(toml, 'verbosity', 2)).toBeTrue();
-    expect(tomlContainsField(toml, 'developer_iters', 5)).toBeTrue();
-    expect(tomlContainsField(toml, 'reviewer_reviews', 2)).toBeTrue();
-    expect(tomlContainsField(toml, 'checkpoint_enabled', false)).toBeTrue();
-    expect(tomlContainsField(toml, 'isolation_mode', true)).toBeTrue();
-    expect(tomlContainsField(toml, 'interactive', true)).toBeTrue();
-    expect(tomlContainsField(toml, 'review_depth', 'thorough')).toBeTrue();
-    expect(tomlContainsField(toml, 'max_dev_continuations', 4)).toBeTrue();
+    expect(tomlContainsField(toml, 'verbosity', 2)).toBe(true);
+    expect(tomlContainsField(toml, 'developer_iters', 5)).toBe(true);
+    expect(tomlContainsField(toml, 'reviewer_reviews', 2)).toBe(true);
+    expect(tomlContainsField(toml, 'checkpoint_enabled', false)).toBe(true);
+    expect(tomlContainsField(toml, 'isolation_mode', true)).toBe(true);
+    expect(tomlContainsField(toml, 'interactive', true)).toBe(true);
+    expect(tomlContainsField(toml, 'review_depth', 'thorough')).toBe(true);
+    expect(tomlContainsField(toml, 'max_dev_continuations', 4)).toBe(true);
   });
 });
 
-// ── AC-7.4: Success toast after save ─────────────────────────────────────────
-
-/** A no-op listen token so NotificationService doesn't try to subscribe to Tauri events. */
-const noopListenFn = () => Promise.resolve(() => void 0);
-
 describe('ConfigurationComponent - AC-7.4 success toast', () => {
-  const makeMockInvoke = (overrides: Record<string, () => unknown> = {}) => {
-    return jasmine.createSpy('invoke').and.callFake((cmd: string) => {
-      if (overrides[cmd]) return overrides[cmd]();
-      if (cmd === 'get_effective_config_with_sources') return Promise.resolve(DEFAULT_EFF_WITH_SOURCES);
-      if (cmd === 'get_global_config' || cmd === 'get_effective_config') return Promise.resolve(DEFAULT_CONFIG);
-      if (cmd === 'get_raw_global_config_toml') return Promise.resolve('');
-      if (cmd === 'get_workspaces') return Promise.resolve([]);
-      if (cmd === 'get_worktrees') return Promise.resolve([]);
-      if (cmd === 'list_worktrees') return Promise.resolve([]);
-      if (cmd === 'save_global_config') return Promise.resolve(undefined);
-      return Promise.resolve(null);
-    });
-  };
-
   it('saveFormConfig() adds a success notification via NotificationService', async () => {
-    const mockInvoke = makeMockInvoke();
+    const mockInvoke = createMockInvoke();
 
     await TestBed.configureTestingModule({
       imports: [ConfigurationComponent],
@@ -826,7 +699,6 @@ describe('ConfigurationComponent - AC-7.4 success toast', () => {
     const comp = fixture.componentInstance;
     const notificationService = TestBed.inject(NotificationService);
 
-    // Set a pending config
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (comp as any)['_formPendingConfig'].set({ ...DEFAULT_CONFIG, verbosity: 3 });
     fixture.detectChanges();
@@ -843,7 +715,7 @@ describe('ConfigurationComponent - AC-7.4 success toast', () => {
   });
 
   it('saveFormConfig() does NOT add notification when save fails', async () => {
-    const mockInvoke = makeMockInvoke({
+    const mockInvoke = createMockInvoke({
       save_global_config: () => Promise.reject(new Error('disk full')),
     });
 
@@ -871,7 +743,6 @@ describe('ConfigurationComponent - AC-7.4 success toast', () => {
     await comp.saveFormConfig();
     fixture.detectChanges();
 
-    // No success notification should have been added
     expect(notificationService.notifications().length).toBe(initialCount);
   });
 });

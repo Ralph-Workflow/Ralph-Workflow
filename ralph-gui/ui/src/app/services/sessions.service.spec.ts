@@ -1,11 +1,18 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SessionsService } from './sessions.service';
 import { TauriService } from './tauri.service';
 import type { SessionSummary } from '../types';
 
 describe('SessionsService', () => {
   let service: SessionsService;
-  let tauriServiceSpy: jasmine.SpyObj<TauriService>;
+  let tauriServiceSpy: {
+    getSessions: ReturnType<typeof vi.fn>;
+    createSession: ReturnType<typeof vi.fn>;
+    resumeRalphSession: ReturnType<typeof vi.fn>;
+    getSessionDetail: ReturnType<typeof vi.fn>;
+    notifyRunStatusChange: ReturnType<typeof vi.fn>;
+  };
 
   const createMockSession = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
     run_id: 'run-123',
@@ -21,13 +28,13 @@ describe('SessionsService', () => {
   });
 
   beforeEach(() => {
-    const spy = jasmine.createSpyObj('TauriService', [
-      'getSessions',
-      'createSession',
-      'resumeRalphSession',
-      'getSessionDetail',
-      'notifyRunStatusChange',
-    ]);
+    const spy = {
+      getSessions: vi.fn(),
+      createSession: vi.fn(),
+      resumeRalphSession: vi.fn(),
+      getSessionDetail: vi.fn(),
+      notifyRunStatusChange: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -37,7 +44,7 @@ describe('SessionsService', () => {
     });
 
     service = TestBed.inject(SessionsService);
-    tauriServiceSpy = TestBed.inject(TauriService) as jasmine.SpyObj<TauriService>;
+    tauriServiceSpy = spy;
   });
 
   it('should be created', () => {
@@ -286,7 +293,7 @@ describe('SessionsService', () => {
         createMockSession({ run_id: 'run-1' }),
         createMockSession({ run_id: 'run-2' }),
       ];
-      tauriServiceSpy.getSessions.and.returnValue(Promise.resolve(mockSessions));
+      tauriServiceSpy.getSessions.mockResolvedValue(mockSessions);
 
       service.fetchSessions('/repo');
       expect(service.status()).toBe('loading');
@@ -297,7 +304,7 @@ describe('SessionsService', () => {
     }));
 
     it('should set failed status on error', fakeAsync(() => {
-      tauriServiceSpy.getSessions.and.returnValue(Promise.reject(new Error('Network error')));
+      tauriServiceSpy.getSessions.mockRejectedValue(new Error('Network error'));
 
       service.fetchSessions('/repo');
       tick();
