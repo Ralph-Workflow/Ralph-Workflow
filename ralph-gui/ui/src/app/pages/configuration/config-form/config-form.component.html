@@ -2,19 +2,31 @@
   <mat-accordion multi>
 
     <!-- General Section -->
-    <mat-expansion-panel [expanded]="true">
+    <mat-expansion-panel [expanded]="true" [hidden]="!generalSectionVisible()">
       <mat-expansion-panel-header>
         <mat-panel-title>General</mat-panel-title>
         <mat-panel-description>Verbosity, iterations, reviews, depth</mat-panel-description>
       </mat-expansion-panel-header>
 
+      <p class="text-sm text-zinc-400 mb-4">
+        Common settings used during everyday setup.
+      </p>
+
       <div class="form-section">
-        <div class="form-field-wrapper" [class.field-dirty]="isVerbosityDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isVerbosityDirty" [class.field-overridden]="isFieldOverridden('verbosity')">
           <div class="form-label-row">
             <label class="form-label">Verbosity</label>
+            @if (getSource('verbosity')) {
+              <span [class]="getSourceBadgeClass('verbosity')" [title]="getSourceBadgeLabel('verbosity')">
+                {{ getSourceBadgeLabel('verbosity') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Controls log output level. 0=Silent, 1=Minimal, 2=Normal, 3=Verbose, 4=Debug. Use Normal for most workflows."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('verbosity') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Verbosity</mat-label>
@@ -28,12 +40,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isDeveloperItersDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isDeveloperItersDirty" [class.field-overridden]="isFieldOverridden('developer_iters')">
           <div class="form-label-row">
             <label class="form-label">Developer Iterations</label>
+            @if (getSource('developer_iters')) {
+              <span [class]="getSourceBadgeClass('developer_iters')" [title]="getSourceBadgeLabel('developer_iters')">
+                {{ getSourceBadgeLabel('developer_iters') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Number of times the developer agent attempts to implement the task. Higher values increase code quality at the cost of time. Recommended: 2–4."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: 1–20 · Current default: {{ getDefaultValueLabel('developer_iters') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Developer Iterations</mat-label>
@@ -43,14 +63,25 @@
               <mat-error>Value must be between 1 and 20</mat-error>
             }
           </mat-form-field>
+          @if (getValidationWarning('developer_iters'); as warning) {
+            <div class="validation-warning text-amber-400 text-xs mt-1">{{ warning }}</div>
+          }
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isReviewerReviewsDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isReviewerReviewsDirty" [class.field-overridden]="isFieldOverridden('reviewer_reviews')">
           <div class="form-label-row">
             <label class="form-label">Reviewer Reviews</label>
+            @if (getSource('reviewer_reviews')) {
+              <span [class]="getSourceBadgeClass('reviewer_reviews')" [title]="getSourceBadgeLabel('reviewer_reviews')">
+                {{ getSourceBadgeLabel('reviewer_reviews') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Number of review passes the reviewer agent makes per iteration. More passes improve quality but take longer. Recommended: 1–2."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: 0–10 · Current default: {{ getDefaultValueLabel('reviewer_reviews') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Reviewer Reviews</mat-label>
@@ -62,12 +93,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isMaxDevContinuationsDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isMaxDevContinuationsDirty" [class.field-overridden]="isFieldOverridden('max_dev_continuations')">
           <div class="form-label-row">
             <label class="form-label">Max Dev Continuations</label>
+            @if (getSource('max_dev_continuations')) {
+              <span [class]="getSourceBadgeClass('max_dev_continuations')" [title]="getSourceBadgeLabel('max_dev_continuations')">
+                {{ getSourceBadgeLabel('max_dev_continuations') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Maximum number of continuation passes for the developer agent when it exceeds token limits. Recommended: 3."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('max_dev_continuations') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Max Dev Continuations</mat-label>
@@ -79,12 +118,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isReviewDepthDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isReviewDepthDirty" [class.field-overridden]="isFieldOverridden('review_depth')">
           <div class="form-label-row">
             <label class="form-label">Review Depth</label>
+            @if (getSource('review_depth')) {
+              <span [class]="getSourceBadgeClass('review_depth')" [title]="getSourceBadgeLabel('review_depth')">
+                {{ getSourceBadgeLabel('review_depth') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Controls how thorough the reviewer's analysis is. Standard is good for most tasks. Comprehensive adds security and edge case checks. Incremental focuses on changed code only."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Recommended for most work
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Review Depth</mat-label>
@@ -97,83 +144,140 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isPromptPathDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isPromptPathDirty" [class.field-overridden]="isFieldOverridden('prompt_path')">
           <div class="form-label-row">
             <label class="form-label">Prompt Path</label>
+            @if (getSource('prompt_path')) {
+              <span [class]="getSourceBadgeClass('prompt_path')" [title]="getSourceBadgeLabel('prompt_path')">
+                {{ getSourceBadgeLabel('prompt_path') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Path to a default prompt file used when no explicit prompt is provided. Leave blank to require a prompt each session."
             />
           </div>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Prompt Path</mat-label>
-            <input matInput type="text" formControlName="prompt_path"
-                   placeholder="e.g. ~/.ralph/default-prompt.md" />
-          </mat-form-field>
+          <div class="flex gap-2 items-center">
+            <mat-form-field appearance="outline" class="flex-1">
+              <mat-label>Prompt Path</mat-label>
+              <input matInput type="text" formControlName="prompt_path"
+                     placeholder="e.g. ~/.ralph/default-prompt.md" />
+            </mat-form-field>
+            <button
+              type="button"
+              mat-stroked-button
+              (click)="browsePromptPath()"
+              class="btn btn-secondary btn-sm text-xs shrink-0"
+            >
+              Browse
+            </button>
+          </div>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isTemplatesDirDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isTemplatesDirDirty" [class.field-overridden]="isFieldOverridden('templates_dir')">
           <div class="form-label-row">
             <label class="form-label">Templates Directory</label>
+            @if (getSource('templates_dir')) {
+              <span [class]="getSourceBadgeClass('templates_dir')" [title]="getSourceBadgeLabel('templates_dir')">
+                {{ getSourceBadgeLabel('templates_dir') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Directory where prompt templates are stored. Defaults to ~/.ralph/templates/."
             />
           </div>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Templates Directory</mat-label>
-            <input matInput type="text" formControlName="templates_dir"
-                   placeholder="e.g. ~/.ralph/templates" />
-          </mat-form-field>
+          <div class="flex gap-2 items-center">
+            <mat-form-field appearance="outline" class="flex-1">
+              <mat-label>Templates Directory</mat-label>
+              <input matInput type="text" formControlName="templates_dir"
+                     placeholder="e.g. ~/.ralph/templates" />
+            </mat-form-field>
+            <button
+              type="button"
+              mat-stroked-button
+              (click)="browseTemplatesDir()"
+              class="btn btn-secondary btn-sm text-xs shrink-0"
+            >
+              Browse
+            </button>
+          </div>
         </div>
       </div>
     </mat-expansion-panel>
 
     <!-- Execution Section -->
-    <mat-expansion-panel [expanded]="true">
+    <mat-expansion-panel [expanded]="true" [hidden]="!executionSectionVisible()">
       <mat-expansion-panel-header>
         <mat-panel-title>Execution</mat-panel-title>
         <mat-panel-description>Checkpoint, isolation, interactive</mat-panel-description>
       </mat-expansion-panel-header>
 
+      <p class="text-sm text-zinc-400 mb-4">
+        Runtime behavior and safety defaults.
+      </p>
+
       <div class="form-section">
-        <div class="toggle-row" [class.field-dirty]="isCheckpointEnabledDirty">
+        <div class="toggle-row" [class.field-dirty]="isCheckpointEnabledDirty" [class.field-overridden]="isFieldOverridden('checkpoint_enabled')">
           <div class="toggle-label-row">
             <mat-slide-toggle formControlName="checkpoint_enabled">
               Checkpoint Enabled
             </mat-slide-toggle>
+            @if (getSource('checkpoint_enabled')) {
+              <span [class]="getSourceBadgeClass('checkpoint_enabled')" [title]="getSourceBadgeLabel('checkpoint_enabled')">
+                {{ getSourceBadgeLabel('checkpoint_enabled') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Saves progress at each phase so runs can be resumed after interruptions. Strongly recommended for long-running tasks."
             />
           </div>
         </div>
 
-        <div class="toggle-row" [class.field-dirty]="isIsolationModeDirty">
+        <div class="toggle-row" [class.field-dirty]="isIsolationModeDirty" [class.field-overridden]="isFieldOverridden('isolation_mode')">
           <div class="toggle-label-row">
             <mat-slide-toggle formControlName="isolation_mode">
               Isolation Mode
             </mat-slide-toggle>
+            @if (getSource('isolation_mode')) {
+              <span [class]="getSourceBadgeClass('isolation_mode')" [title]="getSourceBadgeLabel('isolation_mode')">
+                {{ getSourceBadgeLabel('isolation_mode') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Runs agents in a sandboxed environment for added security. May slow down some operations."
             />
           </div>
         </div>
 
-        <div class="toggle-row" [class.field-dirty]="isInteractiveDirty">
+        <div class="toggle-row" [class.field-dirty]="isInteractiveDirty" [class.field-overridden]="isFieldOverridden('interactive')">
           <div class="toggle-label-row">
             <mat-slide-toggle formControlName="interactive">
               Interactive
             </mat-slide-toggle>
+            @if (getSource('interactive')) {
+              <span [class]="getSourceBadgeClass('interactive')" [title]="getSourceBadgeLabel('interactive')">
+                {{ getSourceBadgeLabel('interactive') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Allow agents to prompt for interactive input when they need clarification. Disable for fully unattended pipeline runs."
             />
           </div>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isDeveloperContextDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isDeveloperContextDirty" [class.field-overridden]="isFieldOverridden('developer_context')">
           <div class="form-label-row">
             <label class="form-label">Developer Context</label>
+            @if (getSource('developer_context')) {
+              <span [class]="getSourceBadgeClass('developer_context')" [title]="getSourceBadgeLabel('developer_context')">
+                {{ getSourceBadgeLabel('developer_context') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Controls how much codebase context the developer agent receives per prompt. Minimal reduces token usage; Normal provides full context."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('developer_context') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Developer Context</mat-label>
@@ -184,12 +288,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isReviewerContextDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isReviewerContextDirty" [class.field-overridden]="isFieldOverridden('reviewer_context')">
           <div class="form-label-row">
             <label class="form-label">Reviewer Context</label>
+            @if (getSource('reviewer_context')) {
+              <span [class]="getSourceBadgeClass('reviewer_context')" [title]="getSourceBadgeLabel('reviewer_context')">
+                {{ getSourceBadgeLabel('reviewer_context') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Controls how much codebase context the reviewer agent receives. Minimal reduces token usage; Normal provides full context."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('reviewer_context') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Reviewer Context</mat-label>
@@ -200,22 +312,32 @@
           </mat-form-field>
         </div>
 
-        <div class="toggle-row" [class.field-dirty]="isForceUniversalPromptDirty">
+        <div class="toggle-row" [class.field-dirty]="isForceUniversalPromptDirty" [class.field-overridden]="isFieldOverridden('force_universal_prompt')">
           <div class="toggle-label-row">
             <mat-slide-toggle formControlName="force_universal_prompt">
               Force Universal Prompt
             </mat-slide-toggle>
+            @if (getSource('force_universal_prompt')) {
+              <span [class]="getSourceBadgeClass('force_universal_prompt')" [title]="getSourceBadgeLabel('force_universal_prompt')">
+                {{ getSourceBadgeLabel('force_universal_prompt') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Forces all agents to use the same universal prompt format instead of stack-specific templates. Useful for cross-stack consistency."
             />
           </div>
         </div>
 
-        <div class="toggle-row" [class.field-dirty]="isAutoDetectStackDirty">
+        <div class="toggle-row" [class.field-dirty]="isAutoDetectStackDirty" [class.field-overridden]="isFieldOverridden('auto_detect_stack')">
           <div class="toggle-label-row">
             <mat-slide-toggle formControlName="auto_detect_stack">
               Auto-detect Stack
             </mat-slide-toggle>
+            @if (getSource('auto_detect_stack')) {
+              <span [class]="getSourceBadgeClass('auto_detect_stack')" [title]="getSourceBadgeLabel('auto_detect_stack')">
+                {{ getSourceBadgeLabel('auto_detect_stack') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Automatically detects the project's tech stack and selects appropriate prompt templates. Disable to use the universal prompt format."
             />
@@ -225,19 +347,31 @@
     </mat-expansion-panel>
 
     <!-- Retry and Fallback Section -->
-    <mat-expansion-panel>
+    <mat-expansion-panel [hidden]="!retrySectionVisible()">
       <mat-expansion-panel-header>
         <mat-panel-title>Retry and Fallback</mat-panel-title>
         <mat-panel-description>Retry limits, delays, backoff, and fallback cycles</mat-panel-description>
       </mat-expansion-panel-header>
 
+      <p class="text-sm text-zinc-400 mb-4">
+        Controls for automatic retries, backoff timing, and fallback agent cycling.
+      </p>
+
       <div class="form-section">
-        <div class="form-field-wrapper" [class.field-dirty]="isMaxRetriesDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isMaxRetriesDirty" [class.field-overridden]="isFieldOverridden('max_retries')">
           <div class="form-label-row">
             <label class="form-label">Max Retries</label>
+            @if (getSource('max_retries')) {
+              <span [class]="getSourceBadgeClass('max_retries')" [title]="getSourceBadgeLabel('max_retries')">
+                {{ getSourceBadgeLabel('max_retries') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Maximum number of times an agent phase will be retried after failure before escalating to fallback. Range: 1–10."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('max_retries') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Max Retries</mat-label>
@@ -247,14 +381,25 @@
               <mat-error>Value must be between 1 and 10</mat-error>
             }
           </mat-form-field>
+          @if (getValidationWarning('max_retries'); as warning) {
+            <div class="validation-warning text-amber-400 text-xs mt-1">{{ warning }}</div>
+          }
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isMaxSameAgentRetriesDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isMaxSameAgentRetriesDirty" [class.field-overridden]="isFieldOverridden('max_same_agent_retries')">
           <div class="form-label-row">
             <label class="form-label">Max Same-Agent Retries</label>
+            @if (getSource('max_same_agent_retries')) {
+              <span [class]="getSourceBadgeClass('max_same_agent_retries')" [title]="getSourceBadgeLabel('max_same_agent_retries')">
+                {{ getSourceBadgeLabel('max_same_agent_retries') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Maximum retries before switching to a different agent (fallback). Range: 1–5."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('max_same_agent_retries') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Max Same-Agent Retries</mat-label>
@@ -266,12 +411,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isRetryDelayMsDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isRetryDelayMsDirty" [class.field-overridden]="isFieldOverridden('retry_delay_ms')">
           <div class="form-label-row">
             <label class="form-label">Retry Delay (ms)</label>
+            @if (getSource('retry_delay_ms')) {
+              <span [class]="getSourceBadgeClass('retry_delay_ms')" [title]="getSourceBadgeLabel('retry_delay_ms')">
+                {{ getSourceBadgeLabel('retry_delay_ms') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Initial delay in milliseconds between retry attempts. Range: 100–60000 ms."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('retry_delay_ms') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Retry Delay (ms)</mat-label>
@@ -281,14 +434,25 @@
               <mat-error>Value must be between 100 and 60000</mat-error>
             }
           </mat-form-field>
+          @if (getValidationWarning('retry_delay_ms'); as warning) {
+            <div class="validation-warning text-amber-400 text-xs mt-1">{{ warning }}</div>
+          }
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isBackoffMultiplierDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isBackoffMultiplierDirty" [class.field-overridden]="isFieldOverridden('backoff_multiplier')">
           <div class="form-label-row">
             <label class="form-label">Backoff Multiplier</label>
+            @if (getSource('backoff_multiplier')) {
+              <span [class]="getSourceBadgeClass('backoff_multiplier')" [title]="getSourceBadgeLabel('backoff_multiplier')">
+                {{ getSourceBadgeLabel('backoff_multiplier') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Exponential backoff factor applied to the retry delay on each successive retry. Range: 1.0–5.0."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('backoff_multiplier') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Backoff Multiplier</mat-label>
@@ -298,14 +462,25 @@
               <mat-error>Value must be between 1.0 and 5.0</mat-error>
             }
           </mat-form-field>
+          @if (getValidationWarning('backoff_multiplier'); as warning) {
+            <div class="validation-warning text-amber-400 text-xs mt-1">{{ warning }}</div>
+          }
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isMaxBackoffMsDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isMaxBackoffMsDirty" [class.field-overridden]="isFieldOverridden('max_backoff_ms')">
           <div class="form-label-row">
             <label class="form-label">Max Backoff (ms)</label>
+            @if (getSource('max_backoff_ms')) {
+              <span [class]="getSourceBadgeClass('max_backoff_ms')" [title]="getSourceBadgeLabel('max_backoff_ms')">
+                {{ getSourceBadgeLabel('max_backoff_ms') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Maximum delay cap in milliseconds for backoff. Range: 1000–120000 ms."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('max_backoff_ms') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Max Backoff (ms)</mat-label>
@@ -317,12 +492,20 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isMaxFallbackCyclesDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isMaxFallbackCyclesDirty" [class.field-overridden]="isFieldOverridden('max_fallback_cycles')">
           <div class="form-label-row">
             <label class="form-label">Max Fallback Cycles</label>
+            @if (getSource('max_fallback_cycles')) {
+              <span [class]="getSourceBadgeClass('max_fallback_cycles')" [title]="getSourceBadgeLabel('max_fallback_cycles')">
+                {{ getSourceBadgeLabel('max_fallback_cycles') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Maximum number of full fallback cycles before failing the run permanently. Range: 1–20."
             />
+          </div>
+          <div class="form-default-hint text-[10px] text-zinc-500 mb-1">
+            Default: {{ getDefaultValueLabel('max_fallback_cycles') }}
           </div>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Max Fallback Cycles</mat-label>
@@ -332,21 +515,33 @@
               <mat-error>Value must be between 1 and 20</mat-error>
             }
           </mat-form-field>
+          @if (getValidationWarning('max_fallback_cycles'); as warning) {
+            <div class="validation-warning text-amber-400 text-xs mt-1">{{ warning }}</div>
+          }
         </div>
       </div>
     </mat-expansion-panel>
 
     <!-- Git Section -->
-    <mat-expansion-panel>
+    <mat-expansion-panel [hidden]="!gitSectionVisible()">
       <mat-expansion-panel-header>
         <mat-panel-title>Git</mat-panel-title>
         <mat-panel-description>Git identity for commits made during runs</mat-panel-description>
       </mat-expansion-panel-header>
 
+      <p class="text-sm text-zinc-400 mb-4">
+        Git user identity used for commits made by Ralph.
+      </p>
+
       <div class="form-section">
-        <div class="form-field-wrapper" [class.field-dirty]="isGitUserNameDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isGitUserNameDirty" [class.field-overridden]="isFieldOverridden('git_user_name')">
           <div class="form-label-row">
             <label class="form-label">Git User Name</label>
+            @if (getSource('git_user_name')) {
+              <span [class]="getSourceBadgeClass('git_user_name')" [title]="getSourceBadgeLabel('git_user_name')">
+                {{ getSourceBadgeLabel('git_user_name') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Name used as the git author for commits made by Ralph agents. Leave empty to use the system git config."
             />
@@ -358,9 +553,14 @@
           </mat-form-field>
         </div>
 
-        <div class="form-field-wrapper" [class.field-dirty]="isGitUserEmailDirty">
+        <div class="form-field-wrapper" [class.field-dirty]="isGitUserEmailDirty" [class.field-overridden]="isFieldOverridden('git_user_email')">
           <div class="form-label-row">
             <label class="form-label">Git Email</label>
+            @if (getSource('git_user_email')) {
+              <span [class]="getSourceBadgeClass('git_user_email')" [title]="getSourceBadgeLabel('git_user_email')">
+                {{ getSourceBadgeLabel('git_user_email') }}
+              </span>
+            }
             <app-contextual-help
               helpText="Email address used as the git author for commits. Must be a valid email address."
             />
@@ -378,7 +578,7 @@
     </mat-expansion-panel>
 
     <!-- Agent Tools (placeholder) -->
-    <mat-expansion-panel>
+    <mat-expansion-panel [hidden]="!agentToolsSectionVisible()">
       <mat-expansion-panel-header>
         <mat-panel-title>Agent Tools</mat-panel-title>
       </mat-expansion-panel-header>
@@ -389,4 +589,10 @@
     </mat-expansion-panel>
 
   </mat-accordion>
+
+  @if (hasSearchQuery() && !hasVisibleSections()) {
+    <div class="p-6 text-center text-text-muted text-[13px] font-mono">
+      No matching settings found. Try a different search term.
+    </div>
+  }
 </form>

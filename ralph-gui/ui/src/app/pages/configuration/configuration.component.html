@@ -1,9 +1,35 @@
-<div class="page-content">
+<div class="page-content" #pageContainer>
   <div class="flex items-center justify-between mb-6 animate-fade-in">
     <h1 class="page-title mb-0">Configuration</h1>
     @if (repoPath) {
       <span class="chip-mono text-[11px]">{{ repoPath }}</span>
     }
+  </div>
+
+  <div class="flex items-center gap-3 mb-4 animate-fade-in">
+    <div class="flex-1 relative">
+      <input
+        #searchInput
+        type="text"
+        [value]="searchQuery"
+        (input)="setSearchQuery($any($event.target).value)"
+        placeholder="Search settings..."
+        class="w-full px-3 py-2 text-sm bg-zinc-900 border border-zinc-700 rounded-md text-text-primary placeholder-zinc-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+      />
+      @if (searchQuery) {
+        <button
+          type="button"
+          (click)="clearSearch()"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+          title="Clear search"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+          </svg>
+        </button>
+      }
+    </div>
+    <span class="text-[11px] text-zinc-500 font-mono">Ctrl+F</span>
   </div>
 
   <div class="animate-fade-in-delayed">
@@ -59,6 +85,9 @@
         @if (viewMode === 'form' && globalConfig) {
           <app-config-form
             [config]="formPendingConfig ?? globalConfig"
+            [searchQuery]="searchQuery"
+            [defaults]="defaultConfig()"
+            [sources]="effectiveWithSources?.sources ?? null"
             (configChange)="onFormConfigChange($event)"
           />
           <div class="mt-5 pt-5 border-t border-border-subtle">
@@ -99,27 +128,58 @@
         <app-ai-integration-section />
         <div class="mt-5 pt-5 border-t border-border-subtle">
           <div class="text-[13px] font-semibold mb-3 text-text-secondary">Agent Tools</div>
-          <div class="text-xs text-text-muted mb-3">
-            View installed CLI tools (Claude Code, Codex, OpenCode), their versions, and authentication status.
+          <div class="text-xs text-text-muted mb-4">
+            CLI tools Ralph delegates to for AI operations. Each tool handles its own authentication.
           </div>
-          <a [routerLink]="['/agent-tools']" class="btn btn-secondary text-xs">
-            Open Agent Tools Manager
-          </a>
+          <app-agent-tools-inline />
         </div>
       </div>
     }
 
     @if (activeTab === 'project') {
       <div class="card">
-        <div class="mb-4 text-[11px] text-text-muted font-mono">
-          Project-level config stored at <span class="text-text-secondary">{{ projectConfigPath }}</span>
+        <div class="mb-4 flex justify-between items-center">
+          <div class="text-[11px] text-text-muted font-mono">
+            Project-level config stored at <span class="text-text-secondary">{{ projectConfigPath }}</span>
+          </div>
+          <button
+            mat-stroked-button
+            (click)="toggleProjectViewMode()"
+            class="text-[11px] min-w-0"
+          >
+            {{ projectViewMode === 'form' ? 'Raw TOML' : 'Form View' }}
+          </button>
         </div>
         @if (!repoPath) {
           <div class="px-3 py-2.5 bg-status-warning/8 border border-status-warning/20 rounded-md text-accent text-xs font-mono mb-3">
             Select a repository context to edit project config.
           </div>
         }
-        <app-toml-editor label="Project" scope="project" [repoPath]="repoPath" />
+        @if (projectViewMode === 'form' && projectConfig) {
+          <app-config-form
+            [config]="formPendingProjectConfig ?? projectConfig"
+            [searchQuery]="searchQuery"
+            [defaults]="defaultConfig()"
+            [sources]="effectiveWithSources?.sources ?? null"
+            (configChange)="onProjectFormConfigChange($event)"
+          />
+          @if (hasProjectPendingChanges) {
+            <div class="form-save-bar">
+              <button
+                type="button"
+                class="btn btn-ghost"
+                (click)="revertProjectFormConfig()"
+              >Revert</button>
+              <button
+                type="button"
+                class="btn btn-primary"
+                (click)="saveProjectFormConfig()"
+              >Save</button>
+            </div>
+          }
+        } @else {
+          <app-toml-editor label="Project" scope="project" [repoPath]="repoPath" />
+        }
       </div>
     }
   </div>

@@ -745,3 +745,288 @@ describe('ConfigurationComponent - AC-7.4 success toast', () => {
     expect(notificationService.notifications().length).toBe(initialCount);
   });
 });
+
+describe('ConfigurationComponent - search/filter functionality', () => {
+  let mockInvoke: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke();
+
+    await TestBed.configureTestingModule({
+      imports: [ConfigurationComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideAnimationsAsync(),
+        { provide: TAURI_INVOKE, useValue: mockInvoke },
+      ],
+    }).compileComponents();
+  });
+
+  it('should start with empty search query', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.searchQuery).toBe('');
+  });
+
+  it('setSearchQuery updates the search query', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.setSearchQuery('verbosity');
+    expect(fixture.componentInstance.searchQuery).toBe('verbosity');
+  });
+
+  it('clearSearch resets the search query to empty', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.setSearchQuery('test');
+    fixture.componentInstance.clearSearch();
+    expect(fixture.componentInstance.searchQuery).toBe('');
+  });
+
+  it('hasSearchResults returns true when query matches a field', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (comp as any)['_effectiveWithSources'].set(DEFAULT_EFF_WITH_SOURCES);
+    fixture.detectChanges();
+    expect(comp.hasSearchResults()).toBe(true);
+  });
+
+  it('renders search input with placeholder text', async () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const searchInput = el.querySelector('input[placeholder*="Search"]');
+    expect(searchInput).toBeTruthy();
+  });
+
+  it('shows clear button when search query is set', async () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.setSearchQuery('test');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const clearBtn = el.querySelector('button[title="Clear search"]');
+    expect(clearBtn).toBeTruthy();
+  });
+
+  it('hides clear button when search query is empty', async () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const clearBtn = el.querySelector('button[title="Clear search"]');
+    expect(clearBtn).toBeNull();
+  });
+});
+
+describe('ConfigurationComponent - Project tab form view', () => {
+  let mockInvoke: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke();
+
+    await TestBed.configureTestingModule({
+      imports: [ConfigurationComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideAnimationsAsync(),
+        { provide: TAURI_INVOKE, useValue: mockInvoke },
+      ],
+    }).compileComponents();
+  });
+
+  it('should start in toml view mode for project tab', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.projectViewMode).toBe('toml');
+  });
+
+  it('toggleProjectViewMode switches from toml to form', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.toggleProjectViewMode();
+    expect(fixture.componentInstance.projectViewMode).toBe('form');
+  });
+
+  it('toggleProjectViewMode switches back from form to toml', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.toggleProjectViewMode();
+    fixture.componentInstance.toggleProjectViewMode();
+    expect(fixture.componentInstance.projectViewMode).toBe('toml');
+  });
+
+  it('setProjectViewMode sets the project view mode', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    fixture.componentInstance.setProjectViewMode('form');
+    expect(fixture.componentInstance.projectViewMode).toBe('form');
+  });
+
+  it('hasProjectPendingChanges is false initially', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.hasProjectPendingChanges).toBe(false);
+  });
+
+  it('onProjectFormConfigChange sets pending config and dirty state', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+    const configService = comp.configService;
+
+    comp.onProjectFormConfigChange({ ...DEFAULT_CONFIG, verbosity: 3 });
+    fixture.detectChanges();
+
+    expect(comp.hasProjectPendingChanges).toBe(true);
+    expect(configService.isDirty()).toBe(true);
+  });
+
+  it('revertProjectFormConfig clears pending config and dirty state', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+    const configService = comp.configService;
+
+    comp.onProjectFormConfigChange({ ...DEFAULT_CONFIG });
+    fixture.detectChanges();
+
+    comp.revertProjectFormConfig();
+    fixture.detectChanges();
+
+    expect(comp.hasProjectPendingChanges).toBe(false);
+    expect(configService.isDirty()).toBe(false);
+  });
+});
+
+describe('ConfigurationComponent - Form-TOML sync', () => {
+  let mockInvoke: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke();
+
+    await TestBed.configureTestingModule({
+      imports: [ConfigurationComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideAnimationsAsync(),
+        { provide: TAURI_INVOKE, useValue: mockInvoke },
+      ],
+    }).compileComponents();
+  });
+
+  it('toggleViewMode serializes pending form config to TOML when switching to toml view', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    const pendingConfig: ConfigView = { ...DEFAULT_CONFIG, verbosity: 3 };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (comp as any)['_formPendingConfig'].set(pendingConfig);
+    fixture.detectChanges();
+
+    comp.toggleViewMode();
+    fixture.detectChanges();
+
+    expect(comp.viewMode).toBe('toml');
+    expect(comp.syncedToml).toContain('verbosity = 3');
+  });
+
+  it('toggleViewMode parses raw TOML to form config when switching to form view', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    // First switch to toml mode
+    comp.toggleViewMode();
+    fixture.detectChanges();
+
+    // Set raw TOML content
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (comp as any)['_rawGlobalToml'].set('[defaults]\nverbosity = 2\ndeveloper_iters = 5');
+    fixture.detectChanges();
+
+    // Switch back to form mode
+    comp.toggleViewMode();
+    fixture.detectChanges();
+
+    expect(comp.viewMode).toBe('form');
+    expect(comp.formPendingConfig?.verbosity).toBe(2);
+    expect(comp.formPendingConfig?.developer_iters).toBe(5);
+  });
+
+  it('toggleProjectViewMode serializes pending project form config to TOML when switching to toml view', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    // First switch to form mode
+    comp.toggleProjectViewMode();
+    fixture.detectChanges();
+
+    const pendingConfig: ConfigView = { ...DEFAULT_CONFIG, verbosity: 2 };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (comp as any)['_formPendingProjectConfig'].set(pendingConfig);
+    fixture.detectChanges();
+
+    // Switch back to toml mode
+    comp.toggleProjectViewMode();
+    fixture.detectChanges();
+
+    expect(comp.projectViewMode).toBe('toml');
+    expect(comp.rawProjectToml).toContain('verbosity = 2');
+  });
+});
+
+describe('ConfigurationComponent - default values and override detection', () => {
+  let mockInvoke: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    mockInvoke = createMockInvoke();
+
+    await TestBed.configureTestingModule({
+      imports: [ConfigurationComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideAnimationsAsync(),
+        { provide: TAURI_INVOKE, useValue: mockInvoke },
+      ],
+    }).compileComponents();
+  });
+
+  it('getDefaultValue returns the default value for a known field', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    expect(comp.getDefaultValue('verbosity')).toBe(1);
+    expect(comp.getDefaultValue('developer_iters')).toBe(3);
+    expect(comp.getDefaultValue('checkpoint_enabled')).toBe(true);
+  });
+
+  it('isFieldOverridden returns true when value differs from default', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    expect(comp.isFieldOverridden('verbosity', 3)).toBe(true);
+    expect(comp.isFieldOverridden('checkpoint_enabled', false)).toBe(true);
+  });
+
+  it('isFieldOverridden returns false when value matches default', () => {
+    const fixture = TestBed.createComponent(ConfigurationComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance;
+
+    expect(comp.isFieldOverridden('verbosity', 1)).toBe(false);
+    expect(comp.isFieldOverridden('checkpoint_enabled', true)).toBe(false);
+  });
+});

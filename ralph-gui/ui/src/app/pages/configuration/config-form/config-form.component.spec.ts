@@ -636,4 +636,189 @@ describe('ConfigFormComponent', () => {
       );
     });
   });
+
+  describe('default indicators', () => {
+    it('should display default hint for verbosity field', () => {
+      const defaultHint = compiled.querySelector('.form-default-hint');
+      expect(defaultHint?.textContent).toContain('Default:');
+    });
+
+    it('should display default value for developer_iters', () => {
+      expect(compiled.textContent).toContain('Current default: 3');
+    });
+
+    it('should display default value for max_retries in Retry section', async () => {
+      hostComponent.config.set({ ...DEFAULT_CONFIG });
+      hostFixture.detectChanges();
+      await hostFixture.whenStable();
+      expect(compiled.textContent).toContain('Default: 3');
+    });
+  });
+
+  describe('override highlighting', () => {
+    it('should apply field-overridden class when value differs from default', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, verbosity: 3 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const overriddenEl = configFormFixture.nativeElement.querySelector('.field-overridden');
+      expect(overriddenEl).toBeTruthy();
+    });
+
+    it('should not apply field-overridden class when value matches default', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const overriddenEls = configFormFixture.nativeElement.querySelectorAll('.field-overridden');
+      expect(overriddenEls.length).toBe(0);
+    });
+  });
+
+  describe('section descriptions', () => {
+    it('should render General section description', () => {
+      expect(compiled.textContent).toContain('Common settings used during everyday setup');
+    });
+
+    it('should render Execution section description', () => {
+      expect(compiled.textContent).toContain('Runtime behavior and safety defaults');
+    });
+
+    it('should render Retry and Fallback section description', () => {
+      expect(compiled.textContent).toContain('Controls for automatic retries, backoff timing, and fallback agent cycling');
+    });
+
+    it('should render Git section description', () => {
+      expect(compiled.textContent).toContain('Git user identity used for commits made by Ralph');
+    });
+  });
+
+  describe('validation warnings', () => {
+    it('should show warning for high developer_iters (>10)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, developer_iters: 12 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const warningEl = configFormFixture.nativeElement.querySelector('.validation-warning');
+      expect(warningEl?.textContent).toContain('High iteration count');
+    });
+
+    it('should show warning for high max_retries (>5)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, max_retries: 7 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const warningEl = configFormFixture.nativeElement.querySelector('.validation-warning');
+      expect(warningEl?.textContent).toContain('High retry values');
+    });
+
+    it('should show warning for low retry_delay_ms (<500)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, retry_delay_ms: 200 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const warningEl = configFormFixture.nativeElement.querySelector('.validation-warning');
+      expect(warningEl?.textContent).toContain('Very short retry delays');
+    });
+
+    it('should show warning for high backoff_multiplier (>3.0)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, backoff_multiplier: 4.0 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const warningEl = configFormFixture.nativeElement.querySelector('.validation-warning');
+      expect(warningEl?.textContent).toContain('High backoff multiplier');
+    });
+
+    it('should show warning for high max_fallback_cycles (>10)', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG, max_fallback_cycles: 12 });
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const warningEl = configFormFixture.nativeElement.querySelector('.validation-warning');
+      expect(warningEl?.textContent).toContain('Many fallback cycles');
+    });
+  });
+
+  describe('browse buttons', () => {
+    it('should render Browse button for Prompt Path field', () => {
+      const browseButtons = compiled.querySelectorAll('button');
+      const browseForPrompt = Array.from(browseButtons).find(
+        btn => btn.textContent?.includes('Browse')
+      );
+      expect(browseForPrompt).toBeTruthy();
+    });
+
+    it('should render Browse button for Templates Directory field', () => {
+      const browseButtons = compiled.querySelectorAll('button');
+      const browseBtns = Array.from(browseButtons).filter(
+        btn => btn.textContent?.includes('Browse')
+      );
+      expect(browseBtns.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('search/filter functionality', () => {
+    it('should hide section when no fields match search query', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.componentRef.setInput('searchQuery', 'nonexistent');
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      expect(configForm.hasVisibleSections()).toBe(false);
+    });
+
+    it('should show sections when search query matches', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.componentRef.setInput('searchQuery', 'verbosity');
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      expect(configForm.generalSectionVisible()).toBe(true);
+    });
+
+    it('should show empty state when search has no results', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.componentRef.setInput('searchQuery', 'zzzzzzzz');
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      const emptyState = configFormFixture.nativeElement.textContent;
+      expect(emptyState).toContain('No matching settings');
+    });
+
+    it('hasSearchQuery returns true when search query is set', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.componentRef.setInput('searchQuery', 'test');
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      expect(configForm.hasSearchQuery()).toBe(true);
+    });
+
+    it('hasSearchQuery returns false when search query is empty', async () => {
+      const configFormFixture = TestBed.createComponent(ConfigFormComponent);
+      const configForm = configFormFixture.componentInstance;
+      configFormFixture.componentRef.setInput('config', { ...DEFAULT_CONFIG });
+      configFormFixture.componentRef.setInput('searchQuery', '');
+      configFormFixture.detectChanges();
+      await configFormFixture.whenStable();
+
+      expect(configForm.hasSearchQuery()).toBe(false);
+    });
+  });
 });

@@ -40,6 +40,18 @@
   border-left-color: var(--accent, #f59e0b);
 }
 
+/* Override field highlight: amber left border for non-default values */
+.form-field-wrapper.field-overridden {
+  border-left: 3px solid var(--status-warning, #f59e0b);
+  padding-left: var(--space-2, 8px);
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.toggle-row.field-overridden {
+  border-left-color: var(--status-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.04);
+}
+
 /* Placeholder cards for future sections */
 .placeholder-card {
   padding: var(--space-3, 12px) var(--space-4, 16px);

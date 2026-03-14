@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, computed, input, ChangeDetectionStrategy, forwardRef } from '@angular/core';
+import { Component, inject, signal, effect, computed, input, ChangeDetectionStrategy, forwardRef, HostListener, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { ReactiveFormsModule } from '@angular/forms';
@@ -17,6 +17,7 @@ import { NotificationService } from '../../services/notification.service';
 import type { ConfigFieldWithSource, ConfigSource, ConfigView, EffectiveConfigWithSources } from '../../types';
 import { ConfigFormComponent } from './config-form/config-form.component';
 import { AgentChainsEditorComponent } from './agent-chains-editor/agent-chains-editor.component';
+import { AgentToolsInlineComponent } from './agent-tools-inline/agent-tools-inline.component';
 
 type TabId = 'effective' | 'global' | 'project';
 type ViewMode = 'form' | 'toml';
@@ -25,6 +26,90 @@ const DEFAULT_TOML_TEMPLATE = (label: string) =>
   `# ${label} configuration (TOML)\n# Edit values below and save.\n\n[defaults]\n`;
 
 const VALIDATION_DEBOUNCE_MS = 300;
+
+function parseTomlToConfigView(toml: string): Partial<ConfigView> {
+  const result: Partial<ConfigView> = {};
+  const lines = toml.split('\n');
+  let currentSection = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      currentSection = trimmed.slice(1, -1);
+      continue;
+    }
+
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex === -1) continue;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    }
+
+    const numValue = Number(value);
+    const isNumber = !isNaN(numValue) && value !== '';
+
+    if (currentSection === 'defaults' || currentSection === '') {
+      if (key === 'verbosity') result.verbosity = isNumber ? numValue : 1;
+      else if (key === 'developer_iters') result.developer_iters = isNumber ? numValue : 3;
+      else if (key === 'reviewer_reviews') result.reviewer_reviews = isNumber ? numValue : 1;
+      else if (key === 'review_depth') result.review_depth = value as ConfigView['review_depth'];
+      else if (key === 'max_dev_continuations') result.max_dev_continuations = isNumber ? numValue : 3;
+      else if (key === 'checkpoint_enabled') result.checkpoint_enabled = value === 'true';
+      else if (key === 'isolation_mode') result.isolation_mode = value === 'true';
+      else if (key === 'interactive') result.interactive = value === 'true';
+      else if (key === 'prompt_path') result.prompt_path = value;
+      else if (key === 'templates_dir') result.templates_dir = value;
+      else if (key === 'developer_context') result.developer_context = value as ConfigView['developer_context'];
+      else if (key === 'reviewer_context') result.reviewer_context = value as ConfigView['reviewer_context'];
+      else if (key === 'force_universal_prompt') result.force_universal_prompt = value === 'true';
+      else if (key === 'auto_detect_stack') result.auto_detect_stack = value === 'true';
+    } else if (currentSection === 'retry') {
+      if (key === 'max_retries') result.max_retries = isNumber ? numValue : 3;
+      else if (key === 'max_same_agent_retries') result.max_same_agent_retries = isNumber ? numValue : 2;
+      else if (key === 'retry_delay_ms') result.retry_delay_ms = isNumber ? numValue : 1000;
+      else if (key === 'backoff_multiplier') result.backoff_multiplier = isNumber ? numValue : 2.0;
+      else if (key === 'max_backoff_ms') result.max_backoff_ms = isNumber ? numValue : 30000;
+      else if (key === 'max_fallback_cycles') result.max_fallback_cycles = isNumber ? numValue : 3;
+    } else if (currentSection === 'git') {
+      if (key === 'user_name') result.git_user_name = value;
+      else if (key === 'user_email') result.git_user_email = value;
+    }
+  }
+
+  return result;
+}
+
+const DEFAULT_CONFIG_VALUES: ConfigView = {
+  verbosity: 1,
+  developer_iters: 3,
+  reviewer_reviews: 1,
+  checkpoint_enabled: true,
+  isolation_mode: false,
+  interactive: false,
+  review_depth: 'standard',
+  max_dev_continuations: 3,
+  prompt_path: '',
+  templates_dir: '',
+  developer_context: 'normal',
+  reviewer_context: 'normal',
+  force_universal_prompt: false,
+  auto_detect_stack: true,
+  max_retries: 3,
+  max_same_agent_retries: 2,
+  retry_delay_ms: 1000,
+  backoff_multiplier: 2.0,
+  max_backoff_ms: 30000,
+  max_fallback_cycles: 3,
+  git_user_name: '',
+  git_user_email: '',
+};
 
 /**
  * Converts a ConfigView to a TOML string for the [defaults] section.
@@ -88,6 +173,7 @@ function configViewToToml(cfg: ConfigView): string {
     MatTooltipModule,
     ConfigFormComponent,
     AgentChainsEditorComponent,
+    AgentToolsInlineComponent,
     forwardRef(() => ConfigTableComponent),
     forwardRef(() => TomlEditorComponent),
     forwardRef(() => AiIntegrationSectionComponent),
@@ -99,6 +185,8 @@ export class ConfigurationComponent {
   readonly worktreesService = inject(WorktreesService);
   private readonly tauri = inject(TauriService);
   private readonly notifications = inject(NotificationService);
+
+  @ViewChild('searchInput') searchInputRef!: ElementRef<HTMLInputElement>;
 
   readonly tabs: { id: TabId; label: string }[] = [
     { id: 'effective', label: 'Effective' },
@@ -112,12 +200,28 @@ export class ConfigurationComponent {
   private readonly _formSaving = signal(false);
   private readonly _formSaveMsg = signal<string | null>(null);
   private readonly _formSaveError = signal<string | null>(null);
+  private readonly _syncedToml = signal<string>('');
 
   /** Raw TOML for the global config (used by the AgentChainsEditor in form view). */
   private readonly _rawGlobalToml = signal<string>('');
 
   /** Effective config with per-field source provenance (for Effective tab source badges). */
   private readonly _effectiveWithSources = signal<EffectiveConfigWithSources | null>(null);
+
+  /** Search query for filtering config settings. */
+  private readonly _searchQuery = signal<string>('');
+
+  /** Project view mode: 'form' or 'toml' */
+  private readonly _projectViewMode = signal<ViewMode>('toml');
+
+  /** Pending project config for form view dirty tracking. */
+  private readonly _formPendingProjectConfig = signal<ConfigView | null>(null);
+
+  /** Project config parsed from TOML. */
+  private readonly _projectConfig = signal<ConfigView | null>(null);
+
+  /** Raw TOML for the project config. */
+  private readonly _rawProjectToml = signal<string>('');
 
   private readonly _repoPath = computed(() => {
     const activePath = this.worktreesService.activeWorktreePath();
@@ -150,6 +254,60 @@ export class ConfigurationComponent {
   get formHasPendingChanges() { return this._formPendingConfig() !== null; }
   get rawGlobalToml() { return this._rawGlobalToml(); }
   get effectiveWithSources() { return this._effectiveWithSources(); }
+  get searchQuery() { return this._searchQuery(); }
+  get projectViewMode() { return this._projectViewMode(); }
+  get formPendingProjectConfig() { return this._formPendingProjectConfig(); }
+  get projectConfig() { return this._projectConfig(); }
+  get rawProjectToml() { return this._rawProjectToml(); }
+  get hasProjectPendingChanges() { return this._formPendingProjectConfig() !== null; }
+  get syncedToml() { return this._syncedToml(); }
+
+  /** Computed default config values for comparison. */
+  readonly defaultConfig = computed<ConfigView>(() => DEFAULT_CONFIG_VALUES);
+
+  /** Computed flag indicating whether search has results. */
+  readonly hasSearchResults = computed(() => {
+    const query = this._searchQuery().toLowerCase().trim();
+    if (!query) return true;
+    const config = this._displayConfig() ?? this.configService.globalConfig();
+    if (!config) return false;
+    return this._configMatchesQuery(config, query);
+  });
+
+  /** Check if any config field matches the search query. */
+  private _configMatchesQuery(config: ConfigView, query: string): boolean {
+    const fieldLabels: Record<keyof ConfigView, string> = {
+      verbosity: 'verbosity',
+      developer_iters: 'developer iterations',
+      reviewer_reviews: 'reviewer reviews',
+      review_depth: 'review depth',
+      max_dev_continuations: 'max dev continuations',
+      checkpoint_enabled: 'checkpoint enabled',
+      isolation_mode: 'isolation mode',
+      interactive: 'interactive',
+      prompt_path: 'prompt path',
+      templates_dir: 'templates directory',
+      developer_context: 'developer context',
+      reviewer_context: 'reviewer context',
+      force_universal_prompt: 'force universal prompt',
+      auto_detect_stack: 'auto detect stack',
+      max_retries: 'max retries',
+      max_same_agent_retries: 'max same agent retries',
+      retry_delay_ms: 'retry delay',
+      backoff_multiplier: 'backoff multiplier',
+      max_backoff_ms: 'max backoff',
+      max_fallback_cycles: 'max fallback cycles',
+      git_user_name: 'git user name',
+      git_user_email: 'git email',
+    };
+
+    for (const [key, label] of Object.entries(fieldLabels)) {
+      if (label.toLowerCase().includes(query)) return true;
+      const value = config[key as keyof ConfigView];
+      if (value !== undefined && String(value).toLowerCase().includes(query)) return true;
+    }
+    return false;
+  }
 
   constructor() {
     // Fetch global config on mount
@@ -166,6 +324,16 @@ export class ConfigurationComponent {
         void this.tauri.getEffectiveConfigWithSources(repo)
           .then(result => this._effectiveWithSources.set(result))
           .catch(() => this._effectiveWithSources.set(null));
+        void this.tauri.getRawProjectConfigToml(repo)
+          .then(toml => {
+            this._rawProjectToml.set(toml);
+            const parsed = parseTomlToConfigView(toml);
+            this._projectConfig.set({ ...DEFAULT_CONFIG_VALUES, ...parsed });
+          })
+          .catch(() => {
+            this._rawProjectToml.set('');
+            this._projectConfig.set(null);
+          });
       }
     });
 
@@ -185,7 +353,22 @@ export class ConfigurationComponent {
   }
 
   toggleViewMode(): void {
-    this._viewMode.update(mode => mode === 'form' ? 'toml' : 'form');
+    const currentMode = this._viewMode();
+    const newMode = currentMode === 'form' ? 'toml' : 'form';
+
+    if (newMode === 'toml' && this._formPendingConfig()) {
+      const toml = configViewToToml(this._formPendingConfig()!);
+      this._syncedToml.set(toml);
+    } else if (newMode === 'form') {
+      const tomlContent = this._rawGlobalToml();
+      if (tomlContent) {
+        const parsed = parseTomlToConfigView(tomlContent);
+        const merged: ConfigView = { ...DEFAULT_CONFIG_VALUES, ...parsed };
+        this._formPendingConfig.set(merged);
+      }
+    }
+
+    this._viewMode.set(newMode);
   }
 
   /** Returns the source (default/global/project) for a config field in the Effective tab. */
@@ -247,6 +430,96 @@ export class ConfigurationComponent {
     } catch (e) {
       console.error('Failed to save agent chains config:', e);
     }
+  }
+
+  /** Updates the search query. */
+  setSearchQuery(query: string): void {
+    this._searchQuery.set(query);
+  }
+
+  /** Clears the search query. */
+  clearSearch(): void {
+    this._searchQuery.set('');
+  }
+
+  /** Set project view mode. */
+  setProjectViewMode(mode: ViewMode): void {
+    this._projectViewMode.set(mode);
+  }
+
+  /** Toggle project view mode. */
+  toggleProjectViewMode(): void {
+    const currentMode = this._projectViewMode();
+    const newMode = currentMode === 'form' ? 'toml' : 'form';
+
+    if (newMode === 'toml' && this._formPendingProjectConfig()) {
+      const toml = configViewToToml(this._formPendingProjectConfig()!);
+      this._rawProjectToml.set(toml);
+    } else if (newMode === 'form') {
+      const tomlContent = this._rawProjectToml();
+      if (tomlContent) {
+        const parsed = parseTomlToConfigView(tomlContent);
+        const merged: ConfigView = { ...DEFAULT_CONFIG_VALUES, ...parsed };
+        this._formPendingProjectConfig.set(merged);
+      }
+    }
+
+    this._projectViewMode.set(newMode);
+  }
+
+  /** Called by the config form when project config changes. */
+  onProjectFormConfigChange(config: ConfigView): void {
+    this._formPendingProjectConfig.set(config);
+    this.configService.setDirty(true);
+  }
+
+  /** Save project form config. */
+  async saveProjectFormConfig(): Promise<void> {
+    const pending = this._formPendingProjectConfig();
+    if (!pending || !this._repoPath()) return;
+
+    this._formSaving.set(true);
+    this._formSaveMsg.set(null);
+    this._formSaveError.set(null);
+
+    try {
+      const toml = configViewToToml(pending);
+      await this.tauri.saveProjectConfig(this._repoPath()!, toml);
+      await this.configService.fetchEffectiveConfig(this._repoPath()!);
+      this._formPendingProjectConfig.set(null);
+      this._formSaveMsg.set('Saved project configuration successfully.');
+      this.configService.setDirty(false);
+      this.notifications.add({ type: 'success', message: 'Project configuration saved successfully.' });
+    } catch (e) {
+      this._formSaveError.set(e instanceof Error ? e.message : String(e));
+    } finally {
+      this._formSaving.set(false);
+    }
+  }
+
+  /** Revert project form changes. */
+  revertProjectFormConfig(): void {
+    this._formPendingProjectConfig.set(null);
+    this._formSaveMsg.set(null);
+    this._formSaveError.set(null);
+    this.configService.setDirty(false);
+  }
+
+  /** Get the default value for a config field. */
+  getDefaultValue(fieldName: string): string | number | boolean | undefined {
+    return (DEFAULT_CONFIG_VALUES as unknown as Record<string, unknown>)[fieldName] as string | number | boolean | undefined;
+  }
+
+  /** Check if a field value differs from its default. */
+  isFieldOverridden(fieldName: string, value: string | number | boolean | undefined): boolean {
+    const defaultVal = this.getDefaultValue(fieldName);
+    return value !== defaultVal;
+  }
+
+  @HostListener('window:keydown.control.f', ['$event'])
+  onFocusSearch(event: Event): void {
+    event.preventDefault();
+    this.searchInputRef?.nativeElement?.focus();
   }
 }
 
