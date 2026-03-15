@@ -15,6 +15,11 @@ path = "src/lib.rs"
 name = "ralph-gui"
 path = "src/main.rs"
 
+[[bin]]
+name = "e2e-server"
+path = "src/bin/e2e_server.rs"
+required-features = ["e2e-server"]
+
 [build-dependencies]
 tauri-build = { workspace = true }
 specta = { workspace = true }
@@ -40,6 +45,13 @@ which = "6"
 specta = { workspace = true }
 tauri-specta = { workspace = true }
 specta-typescript = { workspace = true }
+
+axum = { version = "0.7", features = ["macros"], optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+
+[features]
+default = []
+e2e-server = ["dep:axum", "dep:tower-http"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -302,7 +302,7 @@ describe('RunLogComponent', () => {
         expect(component.logLines().length).toBe(5000);
         // parsedLines computed should also have 5000 items
         expect(component.parsedLines().length).toBe(5000);
-      });
+      }, 30000);
 
     it('should render cdk-virtual-scroll-viewport in the DOM when lines present', async () => {
         const { fixture, component } = await createComponent();

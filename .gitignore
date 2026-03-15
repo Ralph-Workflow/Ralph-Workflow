@@ -58,3 +58,4 @@ lints/*/Cargo.lock
 ralph-gui/ui/node_modules/
 ralph-gui/ui/dist/
 ralph-gui/ui/coverage/
+ralph-gui/ui/e2e-results/

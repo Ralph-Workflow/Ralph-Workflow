@@ -1,3 +1,4 @@
+use crate::state::SharedState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -312,13 +313,20 @@ pub fn get_session_detail(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<SessionSummary, String> {
+    get_session_detail_impl(state.inner(), &run_id)
+}
+
+pub fn get_session_detail_impl(
+    state: &SharedState,
+    run_id: &str,
+) -> Result<SessionSummary, String> {
     let known_repos = {
         let locked = state
             .lock()
             .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
         locked.known_repos.clone()
     };
-    find_session_in_repos(&run_id, &known_repos)
+    find_session_in_repos(run_id, &known_repos)
         .ok_or_else(|| format!("Session not found: {run_id}"))
 }
 
@@ -348,6 +356,13 @@ pub fn batch_resume_sessions(
     run_ids: Vec<String>,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<BatchOperationResult, String> {
+    batch_resume_sessions_impl(state.inner(), run_ids)
+}
+
+pub fn batch_resume_sessions_impl(
+    state: &SharedState,
+    run_ids: Vec<String>,
+) -> Result<BatchOperationResult, String> {
     let known_repos = {
         let locked = state
             .lock()
@@ -363,8 +378,6 @@ pub fn batch_resume_sessions(
         let session = find_session_in_repos(&run_id, &known_repos);
         match session {
             Some(s) if s.status == "paused" || s.status == "failed" => {
-                // Queue the session for resume — actual resumption is handled by
-                // session_launch::resume_ralph_session; here we only validate eligibility.
                 succeeded += 1;
             }
             Some(s) => {
@@ -401,6 +414,13 @@ pub fn batch_cancel_sessions(
     run_ids: Vec<String>,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<BatchOperationResult, String> {
+    batch_cancel_sessions_impl(state.inner(), run_ids)
+}
+
+pub fn batch_cancel_sessions_impl(
+    state: &SharedState,
+    run_ids: Vec<String>,
+) -> Result<BatchOperationResult, String> {
     let known_repos = {
         let locked = state
             .lock()
@@ -416,7 +436,6 @@ pub fn batch_cancel_sessions(
         let session = find_session_in_repos(&run_id, &known_repos);
         match session {
             Some(s) if s.status == "running" => {
-                // Mark as cancellable — actual cancellation signal is sent via run_management.
                 succeeded += 1;
             }
             Some(s) => {
@@ -453,6 +472,13 @@ pub fn batch_delete_sessions(
     run_ids: Vec<String>,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<BatchOperationResult, String> {
+    batch_delete_sessions_impl(state.inner(), run_ids)
+}
+
+pub fn batch_delete_sessions_impl(
+    state: &SharedState,
+    run_ids: Vec<String>,
+) -> Result<BatchOperationResult, String> {
     let known_repos = {
         let locked = state
             .lock()
@@ -475,7 +501,6 @@ pub fn batch_delete_sessions(
                 );
             }
             Some(s) => {
-                // Remove the checkpoint file.
                 let checkpoint_path = std::path::PathBuf::from(&s.repo_path)
                     .join(".agent")
                     .join("checkpoint.json");
@@ -488,7 +513,7 @@ pub fn batch_delete_sessions(
                         }
                     }
                 } else {
-                    succeeded += 1; // Already gone, count as success
+                    succeeded += 1;
                 }
             }
             None => {

@@ -1,3 +1,4 @@
+use crate::state::SharedState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
@@ -320,6 +321,13 @@ pub fn get_resumable_runs(
     repo_path: String,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<Vec<RunDetail>, String> {
+    get_resumable_runs_impl(state.inner(), &repo_path)
+}
+
+pub fn get_resumable_runs_impl(
+    state: &SharedState,
+    repo_path: &str,
+) -> Result<Vec<RunDetail>, String> {
     let mut paths = {
         let locked = state
             .lock()
@@ -327,7 +335,7 @@ pub fn get_resumable_runs(
         locked.known_repos.clone()
     };
 
-    let primary = std::path::PathBuf::from(&repo_path);
+    let primary = std::path::PathBuf::from(repo_path);
     if !paths.contains(&primary) {
         paths.push(primary);
     }
@@ -546,13 +554,17 @@ pub fn get_run_detail(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<RunDetail, String> {
+    get_run_detail_impl(state.inner(), &run_id)
+}
+
+pub fn get_run_detail_impl(state: &SharedState, run_id: &str) -> Result<RunDetail, String> {
     let known_repos = {
         let locked = state
             .lock()
             .map_err(|e| format!("Failed to acquire state lock: {e}"))?;
         locked.known_repos.clone()
     };
-    find_run_in_repos(&run_id, &known_repos).ok_or_else(|| format!("Run not found: {run_id}"))
+    find_run_in_repos(run_id, &known_repos).ok_or_else(|| format!("Run not found: {run_id}"))
 }
 
 /// Determine the notification title and optional body for a given run status.
@@ -952,6 +964,13 @@ pub fn get_iteration_history(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<Vec<IterationSummary>, String> {
+    get_iteration_history_impl(state.inner(), &run_id)
+}
+
+pub fn get_iteration_history_impl(
+    state: &SharedState,
+    run_id: &str,
+) -> Result<Vec<IterationSummary>, String> {
     let known_repos = {
         let locked = state
             .lock()
@@ -1077,6 +1096,13 @@ fn parse_iteration_history(checkpoint: &serde_json::Value) -> Vec<IterationSumma
 pub fn get_review_history(
     run_id: String,
     state: tauri::State<'_, crate::state::SharedState>,
+) -> Result<Vec<ReviewSummary>, String> {
+    get_review_history_impl(state.inner(), &run_id)
+}
+
+pub fn get_review_history_impl(
+    state: &SharedState,
+    run_id: &str,
 ) -> Result<Vec<ReviewSummary>, String> {
     let known_repos = {
         let locked = state
