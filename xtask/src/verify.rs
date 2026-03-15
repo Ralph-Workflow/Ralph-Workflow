@@ -572,12 +572,13 @@ LINT POLICY: #[allow(...)] is PROHIBITED in this codebase.\n\
 The ONLY permitted #[allow] exception is a mod tests block with #[cfg(test)] on the line\n\
 above a #[allow(clippy::large_stack_frames)] attribute.\n\
 \n\
-[expect(...)] is permitted ONLY when ALL three conditions are met:\n\
+#[expect(...)] is permitted ONLY when ALL three conditions are met:\n\
 1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).\n\
 2. It includes reason = \"...\" naming the specific external source.\n\
 3. It is the narrowest possible scope (item attribute, not module/crate).\n\
 \n\
-[cfg_attr(test, allow(...))] is NOT a valid substitute for the canonical #[cfg(test)] form.\n\
+#[cfg_attr(..., expect(..., reason = \"...\"))] is allowed as the conditional form of the above.\n\
+#[cfg_attr(test, allow(...))] is NOT a valid substitute for the canonical #[cfg(test)] form.\n\
 If a lint fires on code you wrote, refactor the code instead of suppressing.";
 
 /// Format native scan violations in rg-compatible `path:line:content` format.

@@ -17,7 +17,14 @@ use std::sync::{
     OnceLock,
 };
 
-const LINT_SCAN_EXCLUDE_GLOBS: &[&str] = &["**/node_modules/**", "**/dist/**", "**/ui/**"];
+const LINT_SCAN_EXCLUDE_GLOBS: &[&str] = &[
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/ui/**",
+    // verify.rs contains FORBIDDEN_ALLOW_EXPECT_POLICY which documents the lint policy
+    // using literal examples of the forbidden patterns - these are not actual violations
+    "verify.rs",
+];
 
 /// Matching strategy for a native scan check.
 ///
