@@ -150,10 +150,22 @@ Writing XML that does not conform to the XSD schema is a FAILURE.
 
 For special characters, use CDATA: <![CDATA[a < b]]>
 
+For each `<ralph-issue>`, add all relevant skills and MCP suggestions to a
+`<skills-mcp>` child. Look through available skills before writing each issue.
+Consider whether any MCP or MCP-backed system would help fix this specific
+issue. Use `<skill>` and `<mcp>` entries with optional `reason=""`. Keep
+recommendations grounded in the specific issue. Do not assume the consumer
+is a developer or fixer.
+
 If issues found:
 <ralph-issues>
 <ralph-issue>[Severity] file:line - Description of the issue.
-Suggested fix: How to address it.</ralph-issue>
+Suggested fix: How to address it.
+<skills-mcp>
+<skill reason="Capture the regression with a failing test">test-driven-development</skill>
+<mcp reason="Use for dependency and library research">context7</mcp>
+</skills-mcp>
+</ralph-issue>
 <ralph-issue>Additional issues as needed...</ralph-issue>
 </ralph-issues>
 

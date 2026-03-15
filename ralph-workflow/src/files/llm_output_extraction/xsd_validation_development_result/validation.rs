@@ -99,6 +99,9 @@ pub fn validate_development_result_xml(
     // Parse child elements
     let mut status: Option<String> = None;
     let mut summary: Option<String> = None;
+    let mut skills_mcp_value: Option<
+        crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp,
+    > = None;
     let mut files_changed: Option<String> = None;
     let mut files_changed_present = false;
     let mut next_steps: Option<String> = None;
@@ -125,6 +128,10 @@ pub fn validate_development_result_xml(
                         ));
                     }
                     summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
+                }
+                b"skills-mcp" => {
+                    use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
+                    skills_mcp_value = Some(parse_skills_mcp(&mut reader));
                 }
                 b"ralph-files-changed" => {
                     if files_changed_present {
@@ -171,6 +178,14 @@ pub fn validate_development_result_xml(
                         ));
                     }
                     summary = Some(String::new());
+                }
+                b"skills-mcp" => {
+                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
+                    skills_mcp_value = Some(SkillsMcp {
+                        skills: Vec::new(),
+                        mcps: Vec::new(),
+                        raw_content: None,
+                    });
                 }
                 b"ralph-files-changed" => {
                     if files_changed_present {
@@ -284,6 +299,7 @@ pub fn validate_development_result_xml(
     Ok(DevelopmentResultElements {
         status,
         summary,
+        skills_mcp: skills_mcp_value,
         files_changed: files_changed.filter(|s| !s.is_empty()),
         files_changed_present,
         next_steps: next_steps.filter(|s| !s.is_empty()),

@@ -71,7 +71,7 @@ pub(super) fn validate_and_process_issues_xml(
 
             if !elements.issues.is_empty() {
                 return Ok(ParseResult::IssuesFound {
-                    issues: elements.issues,
+                    issues: elements.issue_texts(),
                     xml_content: xml_content.to_string(),
                 });
             }
@@ -107,14 +107,49 @@ fn render_issues_markdown(elements: &IssuesElements) -> String {
     }
 
     for issue in &elements.issues {
-        let trimmed = issue.trim();
+        let trimmed = issue.text.trim();
         if trimmed.is_empty() {
             continue;
         }
         output.push_str("- [ ] ");
         output.push_str(trimmed);
         output.push('\n');
+        // Render skills-mcp recommendations if present
+        if let Some(ref sm) = issue.skills_mcp {
+            render_skills_mcp_inline(&mut output, sm);
+        }
     }
 
     output
+}
+
+fn render_skills_mcp_inline(
+    output: &mut String,
+    sm: &crate::files::llm_output_extraction::SkillsMcp,
+) {
+    use std::fmt::Write as _;
+    let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+    if has_structured {
+        output.push_str("  - Skills & MCP:\n");
+        for skill in &sm.skills {
+            if let Some(ref reason) = skill.reason {
+                writeln!(output, "    - skill: {} \u{2014} {}", skill.name, reason).unwrap();
+            } else {
+                writeln!(output, "    - skill: {}", skill.name).unwrap();
+            }
+        }
+        for mcp in &sm.mcps {
+            if let Some(ref reason) = mcp.reason {
+                writeln!(output, "    - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
+            } else {
+                writeln!(output, "    - mcp: {}", mcp.name).unwrap();
+            }
+        }
+    }
+    if let Some(raw) = &sm.raw_content {
+        let trimmed: &str = raw.trim();
+        if !trimmed.is_empty() && !has_structured {
+            writeln!(output, "  - Skills & MCP: {trimmed}").unwrap();
+        }
+    }
 }

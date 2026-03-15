@@ -6,6 +6,22 @@
     </xs:choice>
   </xs:complexType>
 
+  <!-- Skills and MCP recommendations container -->
+  <xs:complexType name="SkillsMcpType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="skill">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="mcp">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:choice>
+  </xs:complexType>
+
   <xs:element name="ralph-development-result">
     <xs:complexType>
       <xs:sequence>
@@ -18,6 +34,7 @@
           </xs:simpleType>
         </xs:element>
         <xs:element name="ralph-summary" type="TextWithCodeType"/>
+        <xs:element name="skills-mcp" type="SkillsMcpType" minOccurs="0"/>
         <xs:element name="ralph-next-steps" type="TextWithCodeType"/>
       </xs:sequence>
     </xs:complexType>

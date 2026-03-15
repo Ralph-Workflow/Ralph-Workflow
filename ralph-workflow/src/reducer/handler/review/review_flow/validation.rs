@@ -39,9 +39,7 @@ impl MainEffectHandler {
         let content = ctx.workspace.read(issues_xml);
 
         match content {
-            Ok(_) => EffectResult::event(
-                PipelineEvent::review_issues_xml_extracted(pass),
-            ),
+            Ok(_) => EffectResult::event(PipelineEvent::review_issues_xml_extracted(pass)),
             Err(err) => {
                 let detail = if err.kind() == std::io::ErrorKind::NotFound {
                     None
@@ -53,13 +51,11 @@ impl MainEffectHandler {
                     ))
                 };
 
-                EffectResult::event(
-                    PipelineEvent::review_issues_xml_missing(
-                        pass,
-                        self.state.continuation.invalid_output_attempts,
-                        detail,
-                    ),
-                )
+                EffectResult::event(PipelineEvent::review_issues_xml_missing(
+                    pass,
+                    self.state.continuation.invalid_output_attempts,
+                    detail,
+                ))
             }
         }
     }
@@ -87,13 +83,11 @@ impl MainEffectHandler {
                     ))
                 };
 
-                return EffectResult::event(
-                    PipelineEvent::review_output_validation_failed(
-                        pass,
-                        self.state.continuation.invalid_output_attempts,
-                        detail,
-                    ),
-                );
+                return EffectResult::event(PipelineEvent::review_output_validation_failed(
+                    pass,
+                    self.state.continuation.invalid_output_attempts,
+                    detail,
+                ));
             }
         };
 
@@ -107,7 +101,7 @@ impl MainEffectHandler {
                         pass,
                         issues_found,
                         clean_no_issues,
-                        elements.issues,
+                        elements.issue_texts(),
                         elements.no_issues_found,
                     ),
                     vec![UIEvent::XmlOutput {
@@ -121,13 +115,11 @@ impl MainEffectHandler {
                     }],
                 )
             }
-            Err(err) => EffectResult::event(
-                PipelineEvent::review_output_validation_failed(
-                    pass,
-                    self.state.continuation.invalid_output_attempts,
-                    Some(err.format_for_ai_retry()),
-                ),
-            ),
+            Err(err) => EffectResult::event(PipelineEvent::review_output_validation_failed(
+                pass,
+                self.state.continuation.invalid_output_attempts,
+                Some(err.format_for_ai_retry()),
+            )),
         }
     }
 }

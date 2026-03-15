@@ -22,7 +22,9 @@
 ///
 /// Returns error if the operation fails.
 pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidationError> {
-    use crate::files::llm_output_extraction::xml_helpers::check_for_illegal_xml_characters;
+    use crate::files::llm_output_extraction::xml_helpers::{
+        check_for_illegal_xml_characters, parse_skills_mcp,
+    };
 
     let content = xml_content.trim();
 
@@ -38,6 +40,7 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
     let mut critical_files = None;
     let mut risks_mitigations = None;
     let mut verification_strategy = None;
+    let mut skills_mcp = None;
     let mut found_root = false;
 
     loop {
@@ -48,6 +51,9 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                 }
                 b"ralph-summary" if found_root => {
                     summary = Some(parse_summary(&mut reader)?);
+                }
+                b"skills-mcp" if found_root => {
+                    skills_mcp = Some(parse_skills_mcp(&mut reader));
                 }
                 b"ralph-implementation-steps" if found_root => {
                     steps = Some(parse_steps(&mut reader)?);
@@ -64,6 +70,20 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                 _ => {
                     // Skip unknown elements
                     let _ = skip_to_end(&mut reader, e.name().as_ref());
+                }
+            },
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"skills-mcp" if found_root => {
+                    // Self-closing <skills-mcp/> - empty skills-mcp
+                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
+                    skills_mcp = Some(SkillsMcp {
+                        skills: Vec::new(),
+                        mcps: Vec::new(),
+                        raw_content: None,
+                    });
+                }
+                _ => {
+                    // Skip unknown empty elements
                 }
             },
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-plan" => break,
@@ -152,5 +172,6 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
         critical_files,
         risks_mitigations,
         verification_strategy,
+        skills_mcp,
     })
 }

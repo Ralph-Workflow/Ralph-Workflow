@@ -45,12 +45,12 @@ fn test_review_xml_valid_issues() {
 
         // Verify issue content (array access implicitly verifies count of 2)
         assert_eq!(
-            elements.issues[0], "Variable unused in src/main.rs",
+            elements.issues[0].text, "Variable unused in src/main.rs",
             "Should extract first issue"
         );
 
         assert_eq!(
-            elements.issues[1], "Missing error handling in src/utils.rs",
+            elements.issues[1].text, "Missing error handling in src/utils.rs",
             "Should extract second issue"
         );
     });
@@ -265,10 +265,10 @@ fn test_review_xml_multiple_issues_all_extracted() {
         let elements = result.unwrap();
 
         // Verify each issue is present (testing observable behavior)
-        assert_eq!(elements.issues[0], "Error 1");
-        assert_eq!(elements.issues[1], "Warning 1");
-        assert_eq!(elements.issues[2], "Info 1");
-        assert_eq!(elements.issues[3], "Note 1");
+        assert_eq!(elements.issues[0].text, "Error 1");
+        assert_eq!(elements.issues[1].text, "Warning 1");
+        assert_eq!(elements.issues[2].text, "Info 1");
+        assert_eq!(elements.issues[3].text, "Note 1");
     });
 }
 
@@ -484,7 +484,7 @@ fn test_review_xml_whitespace_only_issues_are_filtered() {
         let elements = result.unwrap();
         // Verify the actual issue is present (testing observable behavior)
         assert_eq!(
-            elements.issues[0], "Actual issue",
+            elements.issues[0].text, "Actual issue",
             "Should keep actual issue and filter whitespace-only issues"
         );
     });

@@ -10,7 +10,7 @@ fn test_validate_valid_single_issue() {
     assert!(result.is_ok());
     let elements = result.unwrap();
     assert_eq!(elements.issues.len(), 1);
-    assert_eq!(elements.issues[0], "First issue description");
+    assert_eq!(elements.issues[0].text, "First issue description");
     assert!(elements.no_issues_found.is_none());
 }
 
@@ -106,9 +106,9 @@ fn test_validate_issue_with_code_element() {
     let elements = result.unwrap();
     assert_eq!(elements.issues.len(), 1);
     // The text from both outside and inside <code> should be collected
-    assert!(elements.issues[0].contains("Check if"));
-    assert!(elements.issues[0].contains("a < b"));
-    assert!(elements.issues[0].contains("is valid"));
+    assert!(elements.issues[0].text.contains("Check if"));
+    assert!(elements.issues[0].text.contains("a < b"));
+    assert!(elements.issues[0].text.contains("is valid"));
 }
 
 #[test]
@@ -139,7 +139,7 @@ Suggested fix: Add a check for empty input before parsing.</ralph-issue>
     let result = validate_issues_xml(xml);
     assert!(result.is_ok(), "Should parse escaped generic: {result:?}");
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("parse<T>"));
+    assert!(elements.issues[0].text.contains("parse<T>"));
 }
 
 #[test]
@@ -156,8 +156,8 @@ Suggested fix: Change the comparison operator.</ralph-issue>
         "Should parse escaped comparisons: {result:?}"
     );
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("count < 0"));
-    assert!(elements.issues[0].contains("count <= 0"));
+    assert!(elements.issues[0].text.contains("count < 0"));
+    assert!(elements.issues[0].text.contains("count <= 0"));
 }
 
 #[test]
@@ -172,7 +172,7 @@ Suggested fix: Add explicit parentheses.</ralph-issue></ralph-issues>";
         "Should parse escaped logical operators: {result:?}"
     );
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("a && b || c"));
+    assert!(elements.issues[0].text.contains("a && b || c"));
 }
 
 #[test]
@@ -184,7 +184,7 @@ Suggested fix: Ensure lifetime annotations are consistent.</ralph-issue></ralph-
     let result = validate_issues_xml(xml);
     assert!(result.is_ok(), "Should parse lifetime syntax: {result:?}");
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("&'a str"));
+    assert!(elements.issues[0].text.contains("&'a str"));
 }
 
 #[test]
@@ -196,7 +196,9 @@ Suggested fix: Replace with appropriate semantic HTML elements.</ralph-issue></r
     let result = validate_issues_xml(xml);
     assert!(result.is_ok(), "Should parse HTML in code: {result:?}");
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("<div class=\"container\">"));
+    assert!(elements.issues[0]
+        .text
+        .contains("<div class=\"container\">"));
 }
 
 #[test]
@@ -227,9 +229,9 @@ fn test_llm_realistic_multiple_issues_with_mixed_content() {
     );
     let elements = result.unwrap();
     assert_eq!(elements.issues.len(), 3);
-    assert!(elements.issues[0].contains("query && filter"));
-    assert!(elements.issues[1].contains("status < 200"));
-    assert!(elements.issues[2].contains("Option<Vec<T>>"));
+    assert!(elements.issues[0].text.contains("query && filter"));
+    assert!(elements.issues[1].text.contains("status < 200"));
+    assert!(elements.issues[2].text.contains("Option<Vec<T>>"));
 }
 
 #[test]
@@ -276,7 +278,7 @@ fn test_llm_uses_cdata_for_code_content() {
     let result = validate_issues_xml(xml);
     assert!(result.is_ok(), "CDATA should be valid: {result:?}");
     let elements = result.unwrap();
-    assert!(elements.issues[0].contains("a < b && c > d"));
+    assert!(elements.issues[0].text.contains("a < b && c > d"));
 }
 
 // =========================================================================
@@ -353,8 +355,8 @@ fn test_tolerant_issues_skips_self_closing_unknown_element() {
         2,
         "Issues should be parsed correctly despite self-closing unknown elements"
     );
-    assert_eq!(elements.issues[0], "First issue");
-    assert_eq!(elements.issues[1], "Second issue");
+    assert_eq!(elements.issues[0].text, "First issue");
+    assert_eq!(elements.issues[1].text, "Second issue");
 }
 
 #[test]
@@ -379,8 +381,8 @@ fn test_tolerant_issues_multiple_unknown_elements_interspersed() {
         2,
         "Only real issues should be collected, not unknown elements"
     );
-    assert_eq!(elements.issues[0], "Issue one");
-    assert_eq!(elements.issues[1], "Issue two");
+    assert_eq!(elements.issues[0].text, "Issue one");
+    assert_eq!(elements.issues[1].text, "Issue two");
 }
 
 #[test]
@@ -402,6 +404,164 @@ fn test_tolerant_no_issues_found_with_self_closing_unknown() {
         elements.no_issues_found,
         Some("No issues found during review".to_string())
     );
+}
+
+// =========================================================================
+// SKILLS-MCP FIELD TESTS
+// =========================================================================
+
+#[test]
+fn test_issue_with_skills_mcp_parses_entries() {
+    let xml = r#"<ralph-issues>
+<ralph-issue>Retry metrics are not updated on continuation attempts.
+<skills-mcp>
+<skill reason="Capture the regression with a failing test">test-driven-development</skill>
+<skill reason="Investigate first if the cause is not yet clear">systematic-debugging</skill>
+</skills-mcp>
+</ralph-issue>
+</ralph-issues>"#;
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Issue with skills-mcp should parse: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 1);
+
+    let issue = &elements.issues[0];
+    assert!(
+        issue.text.contains("Retry metrics"),
+        "Issue text should contain issue description"
+    );
+
+    let sm = issue
+        .skills_mcp
+        .as_ref()
+        .expect("skills_mcp should be present");
+    assert_eq!(sm.skills.len(), 2);
+    assert_eq!(sm.skills[0].name, "test-driven-development");
+    assert_eq!(
+        sm.skills[0].reason.as_deref(),
+        Some("Capture the regression with a failing test")
+    );
+    assert_eq!(sm.skills[1].name, "systematic-debugging");
+}
+
+#[test]
+fn test_issues_without_skills_mcp_still_work() {
+    let xml = r"<ralph-issues>
+<ralph-issue>First issue description</ralph-issue>
+<ralph-issue>Second issue description</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Issues without skills-mcp should parse: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 2);
+    assert!(
+        elements.issues[0].skills_mcp.is_none(),
+        "skills_mcp should be None when absent"
+    );
+    assert_eq!(elements.issues[0].text, "First issue description");
+}
+
+#[test]
+fn test_issue_with_mcp_entry_in_skills_mcp() {
+    let xml = r#"<ralph-issues>
+<ralph-issue>Need to fix dependency research.
+<skills-mcp>
+<mcp reason="Use for dependency and library research">context7</mcp>
+</skills-mcp>
+</ralph-issue>
+</ralph-issues>"#;
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Issue with mcp entry should parse: {result:?}"
+    );
+    let elements = result.unwrap();
+    let sm = elements.issues[0]
+        .skills_mcp
+        .as_ref()
+        .expect("skills_mcp should be present");
+    assert_eq!(sm.mcps.len(), 1);
+    assert_eq!(sm.mcps[0].name, "context7");
+    assert_eq!(
+        sm.mcps[0].reason.as_deref(),
+        Some("Use for dependency and library research")
+    );
+}
+
+#[test]
+fn test_issue_with_malformed_skills_mcp_preserved() {
+    let xml = r"<ralph-issues>
+<ralph-issue>Some issue with malformed guidance.
+<skills-mcp>Use systematic-debugging and test-driven-development</skills-mcp>
+</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Issue with malformed skills-mcp should not cause overall failure: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 1);
+    let sm = elements.issues[0]
+        .skills_mcp
+        .as_ref()
+        .expect("skills_mcp should be present even if malformed");
+    // Either raw_content or empty structured content - but must not fail
+    assert!(
+        sm.raw_content.is_some() || sm.skills.is_empty(),
+        "Malformed content should be preserved"
+    );
+}
+
+#[test]
+fn test_multiple_issues_each_with_own_skills_mcp() {
+    let xml = r#"<ralph-issues>
+<ralph-issue>First issue about testing.
+<skills-mcp>
+<skill reason="Write test first">test-driven-development</skill>
+</skills-mcp>
+</ralph-issue>
+<ralph-issue>Second issue about debugging.
+<skills-mcp>
+<skill reason="Investigate before coding">systematic-debugging</skill>
+<mcp reason="Research the API">context7</mcp>
+</skills-mcp>
+</ralph-issue>
+</ralph-issues>"#;
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Multiple issues each with skills-mcp should parse: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 2);
+
+    let sm0 = elements.issues[0]
+        .skills_mcp
+        .as_ref()
+        .expect("First issue should have skills_mcp");
+    assert_eq!(sm0.skills.len(), 1);
+    assert_eq!(sm0.skills[0].name, "test-driven-development");
+
+    let sm1 = elements.issues[1]
+        .skills_mcp
+        .as_ref()
+        .expect("Second issue should have skills_mcp");
+    assert_eq!(sm1.skills.len(), 1);
+    assert_eq!(sm1.mcps.len(), 1);
+    assert_eq!(sm1.skills[0].name, "systematic-debugging");
+    assert_eq!(sm1.mcps[0].name, "context7");
 }
 
 // =========================================================================

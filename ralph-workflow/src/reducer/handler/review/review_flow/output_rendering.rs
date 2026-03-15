@@ -239,7 +239,9 @@ fn extract_snippet_lines(content: &str, start: u32, end: u32) -> Option<String> 
     let end_idx = end_idx.min(lines.len().saturating_sub(1));
     let mut out = String::new();
     for (offset, line) in lines[start_idx..=end_idx].iter().enumerate() {
-        let line_no = u32::try_from(offset).ok().and_then(|o| start.checked_add(o))?;
+        let line_no = u32::try_from(offset)
+            .ok()
+            .and_then(|o| start.checked_add(o))?;
         writeln!(out, "{line_no} | {line}").unwrap();
     }
     Some(out.trim_end().to_string())
@@ -271,7 +273,7 @@ fn render_issues_markdown(
     }
 
     for issue in &elements.issues {
-        let trimmed = issue.trim();
+        let trimmed = issue.text.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -299,7 +301,14 @@ impl MainEffectHandler {
             .ok_or(ErrorEvent::ValidatedReviewOutcomeMissing { pass })?;
 
         let elements = crate::files::llm_output_extraction::IssuesElements {
-            issues: outcome.issues.to_vec(),
+            issues: outcome
+                .issues
+                .iter()
+                .map(|s| crate::files::llm_output_extraction::IssueEntry {
+                    text: s.clone(),
+                    skills_mcp: None,
+                })
+                .collect(),
             no_issues_found: outcome.no_issues_found.clone(),
         };
         let markdown = render_issues_markdown(&elements);
@@ -371,9 +380,7 @@ impl MainEffectHandler {
         use std::path::Path;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::ISSUES_XML));
-        EffectResult::event(
-            PipelineEvent::review_issues_xml_archived(pass),
-        )
+        EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
     pub(in crate::reducer::handler) const fn apply_review_outcome(
@@ -383,14 +390,9 @@ impl MainEffectHandler {
         clean_no_issues: bool,
     ) -> EffectResult {
         if clean_no_issues {
-            return EffectResult::event(
-                PipelineEvent::review_pass_completed_clean(pass),
-            );
+            return EffectResult::event(PipelineEvent::review_pass_completed_clean(pass));
         }
-        EffectResult::event(PipelineEvent::review_completed(
-            pass,
-            issues_found,
-        ))
+        EffectResult::event(PipelineEvent::review_completed(pass, issues_found))
     }
 }
 

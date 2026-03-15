@@ -63,5 +63,5 @@ pub use errors::{
     duplicate_element_error, format_content_preview, malformed_xml_error, missing_required_error,
     text_outside_tags_error,
 };
-pub use readers::{create_reader, read_text_until_end, skip_to_end};
+pub use readers::{create_reader, parse_skills_mcp, read_text_until_end, skip_to_end};
 pub use validation::check_for_illegal_xml_characters;

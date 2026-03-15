@@ -272,6 +272,43 @@ pub struct Verification {
 }
 
 // ===============================================================================
+// SKILLS AND MCP RECOMMENDATION TYPES
+// ===============================================================================
+
+/// A single skill recommendation entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillEntry {
+    /// The skill name (e.g., "frontend-angular", "test-driven-development")
+    pub name: String,
+    /// Optional reason explaining why this skill is relevant
+    pub reason: Option<String>,
+}
+
+/// A single MCP recommendation entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpEntry {
+    /// The MCP name (e.g., "context7", "angular-mcp")
+    pub name: String,
+    /// Optional reason explaining why this MCP is relevant
+    pub reason: Option<String>,
+}
+
+/// Container for skills and MCP recommendations.
+///
+/// When structured parsing succeeds, `skills` and `mcps` are populated.
+/// When content is malformed, `raw_content` preserves the original text
+/// so downstream consumers can still extract useful information.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillsMcp {
+    /// Parsed skill entries
+    pub skills: Vec<SkillEntry>,
+    /// Parsed MCP entries
+    pub mcps: Vec<McpEntry>,
+    /// Raw content preserved when parsing is imperfect or mixed content exists
+    pub raw_content: Option<String>,
+}
+
+// ===============================================================================
 // PLAN ELEMENTS (ROOT)
 // ===============================================================================
 
@@ -288,4 +325,6 @@ pub struct PlanElements {
     pub risks_mitigations: Vec<RiskPair>,
     /// Verification strategy
     pub verification_strategy: Vec<Verification>,
+    /// Optional skills and MCP recommendations for the next execution agent
+    pub skills_mcp: Option<SkillsMcp>,
 }
