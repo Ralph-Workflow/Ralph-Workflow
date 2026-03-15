@@ -9,10 +9,12 @@
 //!    b. Prepare fix prompt
 //!    c. Cleanup fix result XML
 //!    d. Invoke fix agent
-//!    e. Extract fix result XML
-//!    f. Validate fix result XML
-//!    g. Archive fix result XML
-//!    h. Apply fix outcome
+//!    e. Initialize the analysis drain chain
+//!    f. Invoke fix analysis agent (verifies fix changes vs review issues)
+//!    g. Extract fix result XML
+//!    h. Validate fix result XML
+//!    i. Archive fix result XML
+//!    j. Apply fix outcome
 //!
 //! 2. Review drain (`current_drain == Review`):
 //!    For each review pass (up to `total_reviewer_passes)`:

@@ -195,7 +195,7 @@ impl ContinuationState {
     /// Check if fix continuations are exhausted.
     ///
     /// Semantics match `continuations_exhausted()`: with default `max_fix_continue_count`
-    /// of 3, attempts 0, 1, 2 are allowed (3 total), attempt 3+ is exhausted.
+    /// of 10, attempts 0 through 9 are allowed (10 total), attempt 10+ is exhausted.
     #[must_use]
     pub const fn fix_continuations_exhausted(&self) -> bool {
         self.fix_continuation_attempt >= self.max_fix_continue_count

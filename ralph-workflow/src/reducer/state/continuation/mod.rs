@@ -15,7 +15,7 @@
 //!
 //! **Budget limits:**
 //! - Development: `max_continue_count` attempts (default 3)
-//! - Fix: `max_fix_continue_count` attempts (default 3)
+//! - Fix: `max_fix_continue_count` attempts (default 10)
 //!
 //! **Context tracking:**
 //! - Previous status, summary, files changed, next steps
