@@ -902,16 +902,6 @@ fn scan_group_collect(
             };
 
             if is_violation {
-                // Check for the special exception: #[cfg(test)] followed by
-                // #[allow(clippy::large_stack_frames)] on the next line.
-                if check.name == "forbidden-allow-expect-scan"
-                    && is_allowed_test_only_large_stack_frames_allow(
-                        &content, &line_idx, byte_start,
-                    )
-                {
-                    continue;
-                }
-
                 // Check for #[expect(..., reason = "...")] at item scope.
                 let matched_literal = all_patterns[mat.pattern().as_usize()];
                 if check.name == "forbidden-allow-expect-scan"
@@ -1099,60 +1089,6 @@ fn only_whitespace_before_on_line(
         .all(|&b| b == b' ' || b == b'\t')
 }
 
-fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
-    while let Some((first, rest)) = bytes.split_first() {
-        if !first.is_ascii_whitespace() {
-            break;
-        }
-        bytes = rest;
-    }
-
-    while let Some((last, rest)) = bytes.split_last() {
-        if !last.is_ascii_whitespace() {
-            break;
-        }
-        bytes = rest;
-    }
-
-    bytes
-}
-
-fn previous_nonempty_noncomment_line<'a>(
-    content: &'a [u8],
-    line_idx: &LineIndex,
-    line_number: usize,
-) -> Option<&'a [u8]> {
-    if line_number == 0 {
-        return None;
-    }
-
-    for prior_line in (0..line_number).rev() {
-        let start = line_idx.start_of_line(prior_line);
-        let line = trim_ascii_whitespace(line_idx.extract_line(content, start));
-        if line.is_empty() || line.starts_with(b"//") {
-            continue;
-        }
-        return Some(line);
-    }
-
-    None
-}
-
-fn is_allowed_test_only_large_stack_frames_allow(
-    content: &[u8],
-    line_idx: &LineIndex,
-    byte_offset: usize,
-) -> bool {
-    let current_line = trim_ascii_whitespace(line_idx.extract_line(content, byte_offset));
-    if current_line != b"#[allow(clippy::large_stack_frames)]" {
-        return false;
-    }
-
-    let current_line_number = line_idx.line_number(byte_offset);
-    previous_nonempty_noncomment_line(content, line_idx, current_line_number)
-        == Some(b"#[cfg(test)]".as_slice())
-}
-
 /// Return true when the line contains `reason = "..."` with a non-empty reason string.
 ///
 /// Accepts flexible whitespace around `=`: `reason = "..."`, `reason="..."`, `reason =  "..."`.
@@ -1200,8 +1136,32 @@ fn is_allowed_expect_with_reason(
     if matched_literal != "#[expect(" {
         return false;
     }
-    let line_bytes = line_idx.extract_line(content, byte_offset);
-    line_has_nonempty_reason(line_bytes)
+
+    // Check current and subsequent lines for reason (handles multi-line attributes)
+    let current_line_number = line_idx.line_number(byte_offset);
+    let max_lines_to_check = 10; // Reasonable limit for attribute continuation
+
+    for line_offset in 0..max_lines_to_check {
+        let check_line = current_line_number + line_offset;
+        if check_line >= line_idx.newlines.len() {
+            break;
+        }
+        let line_start = line_idx.start_of_line(check_line);
+        let line_bytes = line_idx.extract_line(content, line_start);
+        if line_has_nonempty_reason(line_bytes) {
+            return true;
+        }
+        // Stop if we've passed the attribute (no more continuation)
+        if line_offset > 0 && !line_bytes.iter().any(|&b| b == b')' || b == b']') {
+            // Line doesn't have closing, might be continuation - keep checking
+        }
+        // If line has closing without reason, stop checking
+        if line_offset > 0 && line_bytes.contains(&b')') && !line_has_nonempty_reason(line_bytes) {
+            break;
+        }
+    }
+
+    false
 }
 
 /// Return true when a `#[cfg_attr(..., expect(...))]` match is permitted because
@@ -1216,11 +1176,49 @@ fn is_allowed_cfg_attr_expect_with_reason(
     if matched_literal != "#[cfg_attr(" {
         return false;
     }
-    let line_bytes = line_idx.extract_line(content, byte_offset);
-    // Must contain expect( — if it only contains allow(, it's still blocked
-    line_bytes.windows(7).any(|w| w == b"expect(")
-        && !line_bytes.windows(6).any(|w| w == b"allow(")
-        && line_has_nonempty_reason(line_bytes)
+
+    // Check current and subsequent lines for the expect pattern and reason
+    let current_line_number = line_idx.line_number(byte_offset);
+    let max_lines_to_check = 10;
+    let mut has_expect = false;
+    let mut has_reason = false;
+
+    for line_offset in 0..max_lines_to_check {
+        let check_line = current_line_number + line_offset;
+        if check_line >= line_idx.newlines.len() {
+            break;
+        }
+        let line_start = line_idx.start_of_line(check_line);
+        let line_bytes = line_idx.extract_line(content, line_start);
+
+        // Check for expect( pattern (but not allow)
+        if line_bytes.windows(7).any(|w| w == b"expect(") {
+            has_expect = true;
+        }
+        if line_bytes.windows(6).any(|w| w == b"allow(") {
+            // If we find allow( without expect(, it's not valid
+            if !has_expect {
+                return false;
+            }
+        }
+
+        // Check for reason
+        if line_has_nonempty_reason(line_bytes) {
+            has_reason = true;
+        }
+
+        // If we have both expect and reason, we're good
+        if has_expect && has_reason {
+            return true;
+        }
+
+        // Stop if line has closing without both
+        if line_offset > 0 && line_bytes.contains(&b')') {
+            break;
+        }
+    }
+
+    has_expect && has_reason
 }
 
 /// Return true if the literal is a cfg_attr variant.
@@ -2628,7 +2626,7 @@ mod tests {
     }
 
     #[test]
-    fn test_forbidden_allow_expect_scan_allows_large_stack_frames_in_cfg_test_module() {
+    fn test_forbidden_allow_expect_scan_rejects_allow_even_with_cfg_test() {
         let dir = make_temp_dir("line-start-large-stack-test-allow");
         write_file(
             &dir,
@@ -2650,8 +2648,8 @@ mod tests {
         let results =
             run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
         assert!(
-            results[0].passed,
-            "test-only #[allow(clippy::large_stack_frames)] should be exempt from forbidden-allow-expect-scan"
+            !results[0].passed,
+            "#[allow(clippy::large_stack_frames)] must be rejected even when preceded by #[cfg(test)] — use #[expect(..., reason=...)] instead"
         );
 
         let _ = fs::remove_dir_all(&dir);

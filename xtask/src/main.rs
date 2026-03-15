@@ -346,8 +346,8 @@ mod tests {
 
         assert!(guidance.contains("#[allow(...)]"));
         assert!(guidance.contains("PROHIBITED"));
-        assert!(guidance.contains("#[cfg(test)]"));
-        assert!(guidance.contains("clippy::large_stack_frames"));
+        assert!(guidance.contains("NO permitted #[allow(...)] exceptions"));
+        assert!(guidance.contains("test harness"));
         assert!(guidance.contains("reason ="));
         assert!(guidance.contains("narrowest possible scope"));
     }
