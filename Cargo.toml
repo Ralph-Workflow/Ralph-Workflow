@@ -10,6 +10,10 @@ test-members = ["tests"]
 [workspace.metadata.dylint]
 libraries = [
     { path = "lints/file_too_long" },
+    { path = "lints/forbid_mut_binding" },
+    { path = "lints/forbid_imperative_loops" },
+    { path = "lints/forbid_mutating_receiver_methods" },
+    { path = "lints/forbid_interior_mutability" },
 ]
 
 [workspace.dependencies]

@@ -74,8 +74,8 @@ rg --pcre2 -n '#\[ignore\b(?!.*https://)' tests/ ralph-workflow/src/ --glob '*.r
 cargo fmt --all --check
 
 # Lint core crates (ralph-workflow + ralph-workflow-tests + test-helpers) in a single invocation
-# Note: Enforces clippy::all, clippy::pedantic, clippy::nursery
-# via #![deny(...)] attributes in lib.rs and main.rs
+# Note: Enforces clippy::all plus explicit deny rules (unwrap_used, panic, indexing_slicing, etc.)
+# via #![deny(...)] and #![forbid(unsafe_code)] attributes in lib.rs and main.rs
 # (clippy::cargo is not enabled as it flags ecosystem-level dependency conflicts)
 cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings
 

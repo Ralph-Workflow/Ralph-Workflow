@@ -176,54 +176,72 @@ All code (production and tests) must pass clippy with strict lint levels configu
 
 ### Required Lint Configuration
 
-**Library and test code** (`ralph-workflow/src/lib.rs`, `tests/*/main.rs`):
+All crate roots must carry the following lint attributes:
 
 ```rust
+#![deny(warnings)]
+#![deny(clippy::all)]
+#![forbid(unsafe_code)]
 #![deny(
-    warnings,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
+    // No explicit iterator loops when a more idiomatic form exists
+    clippy::explicit_iter_loop,
+    clippy::explicit_into_iter_loop,
+    // No implicit crashes / partial operations
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    // No casual side effects / debugging leftovers
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::dbg_macro,
+    // Treat unchecked arithmetic as suspicious
+    clippy::arithmetic_side_effects,
+    // Push toward combinators instead of hand-written control flow
+    clippy::manual_map,
+    clippy::manual_filter,
+    clippy::manual_find,
+    clippy::manual_filter_map,
+    clippy::manual_flatten,
+    clippy::needless_collect,
 )]
 ```
 
-**Binary target** (`ralph-workflow/src/main.rs`) adds `unsafe_code` denial:
-
-```rust
-#![deny(
-    warnings,
-    unsafe_code,      // Binary should contain no unsafe operations
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)]
-```
-
-**Custom lint crates** (`lints/file_too_long/src/lib.rs`):
-
-```rust
-#![deny(
-    warnings,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery
-)]
-```
+**`ralph-gui`** uses `[lints]` in `Cargo.toml` instead of source attributes to allow crate-specific exemptions (e.g., `needless_pass_by_value` for Tauri's `State<'_, T>`).
 
 **Note on `clippy::cargo`**: The `clippy::cargo` lint group is not enabled because it flags transitive dependency version conflicts (e.g., `bitflags 1.3.2` from `inotify` vs `2.10.0` from other crates) which are ecosystem-level issues outside our control and don't reflect code quality problems.
 
-### Why Pedantic and Nursery
+### Why Explicit Rules (not `pedantic`/`nursery`)
 
-- **`clippy::pedantic`**: Enforces idiomatic Rust patterns, API design, and documentation standards
-- **`clippy::nursery`**: Catches additional issues that may become pedantic in future releases
-- Both are configured as `deny` to maintain high code quality and catch issues early
+The lint policy uses hand-picked, individually named rules instead of the `clippy::pedantic` and `clippy::nursery` groups. This gives precise control over which checks are enforced and avoids surprise breakage when clippy adds new lints to those groups.
+
+### Clippy Configuration (`clippy.toml`)
+
+In addition to the source-level attributes, each `clippy.toml` configures:
+
+- **Test strictness**: `allow-unwrap-in-tests = false`, `allow-expect-in-tests = false`, `allow-panic-in-tests = false`, `allow-print-in-tests = false`, `allow-indexing-slicing-in-tests = false`
+- **Iterator loops**: `enforce-iter-loop-reborrow = true`
+- **Disallowed types**: Interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, `OnceLock`, `LazyLock`)
+- **Disallowed methods**: `unwrap`, `expect`, and mutating `Vec` methods (`push`, `append`, `insert`, `remove`, `retain`, `sort`, `sort_unstable`)
+- **Disallowed macros**: `println!`, `eprintln!`, `dbg!`
+
+### Custom Dylint Lints
+
+Beyond clippy, the repository enforces additional rules via [dylint](docs/tooling/dylint.md):
+
+| Lint | Description |
+|------|-------------|
+| `file_too_long` | Warns at 500+ lines, errors at 1000+ lines |
+| `forbid_mut_binding` | Rejects `let mut` outside boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`) |
+| `forbid_imperative_loops` | Rejects `while`, `loop`, `for` outside boundary modules |
+| `forbid_mutating_receiver_methods` | Rejects `&mut self` method calls unless receiver is an allowlisted boundary type |
+| `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, etc.) outside boundary modules |
 
 ### Unsafe Code Policy
 
-- **Library and tests**: Unsafe code is permitted for legitimate low-level operations (POSIX syscalls, FFI)
-- **Binary target**: No unsafe code allowed
+- **All crates**: `unsafe_code` is `forbid`-level — no unsafe code permitted anywhere
 - **All unsafe blocks**: Must have safety documentation explaining why they are safe
-- **Examples**: `fcntl`, `kill`, `setpgid` for process group management; `tzset` for timezone testing
 
 ### Common Lint Fixes
 

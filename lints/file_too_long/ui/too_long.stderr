@@ -1,4 +1,4 @@
-warning: file exceeds 1000 lines (1003 lines) - MUST refactor
+warning: file has 1001 lines (>= 1000) - MUST refactor
    |
    = help: this file is too large and MUST be split into smaller modules
    = note: see CODE_STYLE.md for design principles on module organization

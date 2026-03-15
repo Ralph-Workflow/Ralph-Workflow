@@ -1,4 +1,5 @@
-#![deny(unsafe_code)]
+// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint levels are configured in Cargo.toml [lints].
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ralph_gui::commands::{config, run_management, session, workspace, worktree};
