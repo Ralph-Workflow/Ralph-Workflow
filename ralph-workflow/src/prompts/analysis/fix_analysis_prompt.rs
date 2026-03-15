@@ -10,34 +10,35 @@ use crate::prompts::template_engine::Template;
 use std::collections::HashMap;
 use std::path::Path;
 
-#[cfg_attr(test, allow(clippy::large_stack_frames))]
-pub fn generate_fix_analysis_prompt(
+#[inline(never)]
+fn build_template_variables(
     issues_content: &str,
     diff_content: &str,
     fix_result_content: &str,
-    is_continuation: bool,
     workspace: &dyn crate::workspace::Workspace,
-) -> String {
-    // Use PlanContentReference for issues (same pattern as PLAN)
-    let issues_ref = PlanContentReference::from_plan(
-        issues_content.to_string(),
-        Path::new(".agent/ISSUES.md"),
-        None,
-    );
-    let diff_ref = DiffContentReference::from_diff(
+    is_continuation: bool,
+) -> HashMap<&'static str, String> {
+    let diff_for_template = DiffContentReference::from_diff(
         diff_content.to_string(),
         "",
         Path::new(".agent/DIFF.backup"),
-    );
+    )
+    .render_for_template()
+    .replace("git diff", "git\u{00A0}diff");
 
-    let partials = get_shared_partials();
-    let context = TemplateContext::default();
-    let template_content = context
-        .registry()
-        .get_template("fix_analysis_system_prompt")
-        .unwrap_or_else(|_| {
-            include_str!("../templates/fix_analysis_system_prompt.txt").to_string()
-        });
+    let plan_for_template = PlanContentReference::from_plan(
+        issues_content.to_string(),
+        Path::new(".agent/ISSUES.md"),
+        None,
+    )
+    .render_for_template();
+
+    let path_xml = workspace.absolute_str(".agent/tmp/development_result.xml");
+    let path_xsd = workspace.absolute_str(if is_continuation {
+        ".agent/tmp/development_continuation_result.xsd"
+    } else {
+        ".agent/tmp/development_result.xsd"
+    });
 
     let required_output = if is_continuation {
         r"<ralph-development-result>
@@ -54,41 +55,77 @@ pub fn generate_fix_analysis_prompt(
 </ralph-development-result>"
     };
 
-    let variables = HashMap::from([
-        ("PLAN", issues_ref.render_for_template()), // Reuse PLAN variable name for review issues
-        (
-            "DIFF",
-            diff_ref
-                .render_for_template()
-                .replace("git diff", "git\u{00A0}diff"),
-        ),
+    HashMap::from([
+        ("PLAN", plan_for_template),
+        ("DIFF", diff_for_template),
         ("FIX_RESULT", fix_result_content.to_string()),
-        (
-            "DEVELOPMENT_RESULT_XML_PATH",
-            workspace.absolute_str(".agent/tmp/development_result.xml"),
-        ),
-        (
-            "DEVELOPMENT_RESULT_XSD_PATH",
-            workspace.absolute_str(if is_continuation {
-                ".agent/tmp/development_continuation_result.xsd"
-            } else {
-                ".agent/tmp/development_result.xsd"
-            }),
-        ),
+        ("DEVELOPMENT_RESULT_XML_PATH", path_xml),
+        ("DEVELOPMENT_RESULT_XSD_PATH", path_xsd),
         ("REQUIRED_OUTPUT_XML", required_output.to_string()),
-    ]);
+    ])
+}
 
-    Template::new(&template_content)
-        .render_with_partials(&variables, &partials)
+pub fn generate_fix_analysis_prompt(
+    issues_content: &str,
+    diff_content: &str,
+    fix_result_content: &str,
+    is_continuation: bool,
+    workspace: &dyn crate::workspace::Workspace,
+) -> String {
+    let partials = get_shared_partials();
+    let context = TemplateContext::default();
+    let template_content = context
+        .registry()
+        .get_template("fix_analysis_system_prompt")
         .unwrap_or_else(|_| {
-            let issues = issues_ref.render_for_template();
-            let diff = diff_ref.render_for_template();
+            include_str!("../templates/fix_analysis_system_prompt.txt").to_string()
+        });
+
+    let variables = build_template_variables(
+        issues_content,
+        diff_content,
+        fix_result_content,
+        workspace,
+        is_continuation,
+    );
+
+    let result = Template::new(&template_content).render_with_partials(&variables, &partials);
+
+    match result {
+        Ok(output) => output,
+        Err(_) => {
+            let issues = PlanContentReference::from_plan(
+                issues_content.to_string(),
+                Path::new(".agent/ISSUES.md"),
+                None,
+            )
+            .render_for_template();
+            let diff = DiffContentReference::from_diff(
+                diff_content.to_string(),
+                "",
+                Path::new(".agent/DIFF.backup"),
+            )
+            .render_for_template();
             let out = workspace.absolute_str(".agent/tmp/development_result.xml");
             let xsd = workspace.absolute_str(if is_continuation {
                 ".agent/tmp/development_continuation_result.xsd"
             } else {
                 ".agent/tmp/development_result.xsd"
             });
+            let required_output = if is_continuation {
+                r"<ralph-development-result>
+  <ralph-status>partial|failed</ralph-status>
+  <ralph-summary>Brief factual blocker-focused explanation of why the fix did not address the review issues</ralph-summary>
+  <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks</ralph-next-steps>
+</ralph-development-result>"
+            } else {
+                r"<ralph-development-result>
+  <ralph-status>completed|partial|failed</ralph-status>
+  <ralph-summary>Brief factual summary of what was fixed vs what the review identified</ralph-summary>
+  <ralph-files-changed>Optional list of modified files (from DIFF)</ralph-files-changed>
+  <ralph-next-steps>comprehensive, detailed, ordered checklist of remaining work that should resolve the remaining issues when completed, including remaining non-issue follow-up work uncovered during verification and any failed verification commands or checks (optional when status is completed)</ralph-next-steps>
+</ralph-development-result>"
+            };
             format!(
                 "FIX ANALYSIS\n\
                 ============\n\
@@ -108,5 +145,6 @@ pub fn generate_fix_analysis_prompt(
                 REQUIRED OUTPUT FORMAT:\n\
                 {required_output}",
             )
-        })
+        }
+    }
 }

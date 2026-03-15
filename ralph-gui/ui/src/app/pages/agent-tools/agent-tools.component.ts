@@ -42,24 +42,24 @@ interface ToolViewModel {
 const INSTALL_COMMANDS: Record<string, Record<string, string>> = {
   claude: {
     homebrew: 'brew install claude',
-    npm: 'npm install -g @anthropic-ai/claude',
+    bun: 'bun install -g @anthropic-ai/claude',
     manual: 'https://docs.anthropic.com/en/docs/claude-cli',
   },
   opencode: {
     homebrew: 'brew install opencode',
-    npm: 'npm install -g opencode',
+    bun: 'bun install -g opencode',
     manual: 'https://github.com/opencode-ai/opencode',
   },
   aider: {
     homebrew: 'brew install aider',
-    npm: 'pip install aider-chat',
+    bun: 'pip install aider-chat',
     manual: 'https://aider.chat/docs/install.html',
   },
 };
 
 const DEFAULT_COMMANDS: Record<string, string> = {
   homebrew: 'brew install <tool>',
-  npm: 'npm install -g <tool>',
+  bun: 'bun install -g <tool>',
   manual: 'See documentation for installation instructions',
 };
 

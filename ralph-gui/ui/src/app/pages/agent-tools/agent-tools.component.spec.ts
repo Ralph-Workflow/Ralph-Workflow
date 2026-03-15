@@ -353,9 +353,9 @@ describe('AgentToolsComponent', () => {
     it('should change install method', async () => {
       const { fixture, component } = await createComponent();
       component.openInstallDialog('Codex');
-      component.setInstallMethod('npm');
+      component.setInstallMethod('bun');
       fixture.detectChanges();
-      expect(component.installMethod).toBe('npm');
+      expect(component.installMethod).toBe('bun');
     });
 
     it('should return correct install command for tool and method', async () => {

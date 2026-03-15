@@ -703,7 +703,7 @@ Overall: [████████████░░░░░░░░░] 60% (
               Self::CommandNotFound => ActionableAdvice {
                   message: "Agent binary not found",
                   fix_commands: vec![
-                      ("Install Claude Code", "npm install -g @anthropic-ai/claude-code"),
+                      ("Install Claude Code", "bun install -g @anthropic-ai/claude-code"),
                       ("Verify PATH", "echo $PATH"),
                   ],
                   docs_link: Some("docs/agents.md#installation"),
@@ -1103,7 +1103,7 @@ Recovery advice: Ensure the agent is installed and available in PATH
 ✗ Agent 'claude' not found
 
   Fix options:
-    npm install -g @anthropic-ai/claude-code
+    bun install -g @anthropic-ai/claude-code
 
   Diagnose:
     ralph --list-available-agents
@@ -1871,8 +1871,8 @@ impl AgentErrorKind {
             Self::CommandNotFound => ActionableAdvice {
                 message: "Agent binary not found",
                 fix_commands: vec![
-                    ("Install Claude Code", "npm install -g @anthropic-ai/claude-code"),
-                    ("Install Codex", "npm install -g @openai/codex"),
+                    ("Install Claude Code", "bun install -g @anthropic-ai/claude-code"),
+                    ("Install Codex", "bun install -g @openai/codex"),
                 ],
                 docs_link: Some("docs/agents.md#installation"),
                 diagnostic_command: Some("ralph --list-available-agents"),
@@ -1897,7 +1897,7 @@ Display format:
 ✗ Agent 'claude' not found
 
   Fix options:
-    npm install -g @anthropic-ai/claude-code
+    bun install -g @anthropic-ai/claude-code
 
   Diagnose:
     ralph --list-available-agents
@@ -3137,7 +3137,7 @@ impl AgentErrorKind {
             Self::CommandNotFound => ActionableAdvice {
                 message: "✗ Agent binary not found in PATH",
                 fix_commands: vec![
-                    ("Install Claude Code", "npm install -g @anthropic-ai/claude-code"),
+                    ("Install Claude Code", "bun install -g @anthropic-ai/claude-code"),
                     ("Verify PATH", "echo $PATH"),
                 ],
                 docs_link: Some("docs/agents.md#installation"),

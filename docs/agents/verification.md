@@ -85,9 +85,8 @@ cargo clippy -p xtask --all-targets -- -D warnings
 # Lint ralph-gui (runs in parallel group with separate target dir)
 cargo clippy -p ralph-gui --all-targets -- -D warnings
 
-# Frontend install (xtask forces devDependencies on even under production outer env)
-NODE_ENV=development NPM_CONFIG_PRODUCTION=false npm_config_production=false \
-  bun install --cwd ralph-gui/ui --frozen-lockfile
+# Frontend install
+bun install --cwd ralph-gui/ui --frozen-lockfile
 
 # Frontend checks
 bun --cwd ralph-gui/ui run lint

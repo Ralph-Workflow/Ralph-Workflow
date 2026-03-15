@@ -106,8 +106,8 @@ Key flows:
 1. Clone repository
 2. Install dependencies:
    ```bash
-   npm install
-   cd frontend && npm install
+   bun install
+   cd frontend && bun install
    ```
 3. Configure environment:
    ```bash
@@ -116,19 +116,19 @@ Key flows:
    ```
 4. Run database migrations:
    ```bash
-   npm run db:migrate
+   bun run db:migrate
    ```
 5. Start development servers:
    ```bash
-   npm run dev      # Backend
-   npm run dev:fe   # Frontend
+   bun run dev      # Backend
+   bun run dev:fe   # Frontend
    ```
 
 Tests:
 ```bash
-npm test           # All tests
-npm test:unit      # Unit tests only
-npm test:integration  # Integration tests only
+bun test           # All tests
+bun test:unit      # Unit tests only
+bun test:integration  # Integration tests only
 ```
 ```
 

@@ -39,7 +39,7 @@
 [Describe the update process]
 [EXAMPLE:
 1. Update package.json to react@18.2.0
-2. Run npm install to update lockfile
+2. Run bun install to update lockfile
 3. Update ReactDOM.createRoot() for new API
 4. Update type definitions if using TypeScript
 ]
@@ -112,7 +112,7 @@ Write clean, maintainable code:
 
 **Dependency Update Best Practices:**
 - **Read Changelog:** Always read the full changelog for breaking changes
-- **Check Security:** Use tools like `npm audit` or `cargo audit` for vulnerabilities
+- **Check Security:** Use tools like `bun pm audit` or `cargo audit` for vulnerabilities
 - **Update Lockfile:** Commit the updated lockfile (package-lock.json, Cargo.lock)
 - **One at a Time:** Update one major dependency at a time, not multiple
 - **Test Thoroughly:** Major version updates require extensive testing

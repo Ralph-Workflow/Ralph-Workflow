@@ -83,9 +83,7 @@ pub use types::{
     GeneralConfig, GeneralExecutionFlags, GeneralWorkflowFlags, UnifiedConfig,
 };
 
-// Clippy's `large_stack_frames` lint trips on the generated lib-test harness once this
-// module's unit suite is included. Keep the tests enabled under clippy and use a narrow,
-// test-only allow so production code still gets the lint.
+// Clippy's `large_stack_frames` lint no longer trips on the generated lib-test harness.
+// The lint is no longer fired in current Rust versions, so no suppression is needed.
 #[cfg(test)]
-#[allow(clippy::large_stack_frames)]
 mod tests;

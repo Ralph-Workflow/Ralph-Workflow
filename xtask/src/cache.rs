@@ -396,6 +396,10 @@ const FORBIDDEN_ALLOW_EXPECT_SCOPE_GLOBS: &[ScopeGlob] = &[
         dir: "ralph-gui/src",
         pattern: "*.rs",
     },
+    ScopeGlob {
+        dir: "lints",
+        pattern: "*.rs",
+    },
 ];
 const FORBIDDEN_ALLOW_EXPECT_SCOPE_FILES: &[&str] = &["ralph-gui/build.rs"];
 const SCOPE_HASH_VERSION: &[u8] = b"scope-v2";
@@ -1725,6 +1729,12 @@ mod tests {
                         .iter()
                         .any(|glob| glob.dir == "ralph-gui/src" && glob.pattern == "*.rs"),
                     "forbidden allow/expect scan must cover stable GUI Rust sources"
+                );
+                assert!(
+                    globs
+                        .iter()
+                        .any(|glob| glob.dir == "lints" && glob.pattern == "*.rs"),
+                    "forbidden allow/expect scan must cover lints"
                 );
                 assert!(
                     files.contains(&"ralph-gui/build.rs"),

@@ -22,5 +22,4 @@ include!("schema.rs");
 include!("validation.rs");
 
 #[cfg(test)]
-#[allow(clippy::large_stack_frames)]
 mod tests;

@@ -125,5 +125,4 @@ pub use content_reference::{
 };
 
 #[cfg(test)]
-#[allow(clippy::large_stack_frames)]
 mod tests;

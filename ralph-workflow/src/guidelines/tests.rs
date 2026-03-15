@@ -63,7 +63,7 @@ fn typescript_react_guidelines_include_ts_and_react_checks() {
         frameworks: vec!["React".to_string(), "Next.js".to_string()],
         has_tests: true,
         test_framework: Some("Jest".to_string()),
-        package_manager: Some("npm".to_string()),
+        package_manager: Some("Bun".to_string()),
     };
 
     let guidelines = ReviewGuidelines::for_stack(&stack);

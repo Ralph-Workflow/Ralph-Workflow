@@ -8,8 +8,8 @@
     "dev": "ng serve",
     "build": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "node ./scripts/run-angular-test.mjs --watch=false",
-    "test:coverage": "node ./scripts/run-angular-test.mjs --watch=false --coverage",
+    "test": "bun ./scripts/run-angular-test.mjs --watch=false",
+    "test:coverage": "bun ./scripts/run-angular-test.mjs --watch=false --coverage",
     "lint": "ng lint",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui"
@@ -25,6 +25,7 @@
     "@angular/platform-browser": "^21.2.4",
     "@angular/platform-browser-dynamic": "^21.2.4",
     "@angular/router": "^21.2.4",
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "2.6.0",
     "rxjs": "~7.8.0",

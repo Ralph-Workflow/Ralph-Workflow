@@ -34,7 +34,9 @@ disallowed-methods = []
 # NOTE: Allow eprintln for logging in a CLI application
 disallowed-macros = []
 
-# --- large_stack_frames: deliberate test-only code allowances ---
+# --- large_stack_frames: deliberate test-only code allowances via #[expect] ---
 # The test harness generates large stack frames that are unavoidable.
+# These are suppressed with #[expect(clippy::large_stack_frames, reason = "...")] at item scope.
+# The generated lib-test harness error is also filtered by the xtask verify strip step.
 # This is a deliberate exception documented in the lint policy.
 # See: CODE_STYLE.md and the lint policy exception table.

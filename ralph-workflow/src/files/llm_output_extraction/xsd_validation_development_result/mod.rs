@@ -19,7 +19,6 @@ pub use validation::validate_continuation_development_result_xml;
 pub use validation::validate_development_result_xml;
 
 #[cfg(test)]
-#[allow(clippy::large_stack_frames)]
 mod tests {
     use super::*;
 

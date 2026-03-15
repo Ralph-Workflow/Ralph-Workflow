@@ -246,8 +246,8 @@ cargo install --path ralph-workflow --locked
 ralph --init
 
 # 3. Install AI agents (choose one)
-npm install -g @anthropic/claude-code  # Claude Code
-npm install -g @openai/codex           # Codex
+bun install -g @anthropic/claude-code  # Claude Code
+bun install -g @openai/codex           # Codex
 # OR see opencode.ai for OpenCode
 
 # 4. Run Ralph
@@ -277,7 +277,7 @@ cat > PROMPT.md << 'EOF'
 Fix login timeout bug.
 Add regression test.
 EOF
-FULL_CHECK_CMD="npm test" ralph
+FULL_CHECK_CMD="bun test" ralph
 ```
 
 ### Iterative Development

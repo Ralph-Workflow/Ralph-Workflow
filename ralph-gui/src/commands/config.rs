@@ -1212,9 +1212,9 @@ pub fn check_tool_updates() -> Result<Vec<ToolUpdateInfo>, String> {
 #[specta::specta]
 pub fn install_agent_tool(name: String) -> Result<(), String> {
     let install_cmd = match name.as_str() {
-        "Claude Code" => Some("npm install -g @anthropic-ai/claude-code"),
-        "Codex" => Some("npm install -g @openai/codex"),
-        "OpenCode" => Some("npm install -g opencode-ai"),
+        "Claude Code" => Some("bun install -g @anthropic-ai/claude-code"),
+        "Codex" => Some("bun install -g @openai/codex"),
+        "OpenCode" => Some("bun install -g opencode-ai"),
         other => return Err(format!("Unknown tool: {other}")),
     };
 

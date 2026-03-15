@@ -156,7 +156,9 @@ pub(super) fn detect_javascript(
         results.push_package_manager("pnpm");
     } else if signatures.by_name_lower.contains_key("yarn.lock") {
         results.push_package_manager("Yarn");
-    } else if signatures.by_name_lower.contains_key("bun.lockb") {
+    } else if signatures.by_name_lower.contains_key("bun.lockb")
+        || signatures.by_name_lower.contains_key("bun.lock")
+    {
         results.push_package_manager("Bun");
     } else {
         results.push_package_manager("npm");

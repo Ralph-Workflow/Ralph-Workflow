@@ -185,7 +185,7 @@ mod tests {
             frameworks: vec![],
             has_tests: false,
             test_framework: None,
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -206,7 +206,7 @@ mod tests {
             frameworks: vec!["React".to_string(), "Next.js".to_string()],
             has_tests: true,
             test_framework: Some("Jest".to_string()),
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -234,7 +234,7 @@ mod tests {
             frameworks: vec!["Vue".to_string()],
             has_tests: false,
             test_framework: None,
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -254,7 +254,7 @@ mod tests {
             frameworks: vec!["Angular".to_string()],
             has_tests: false,
             test_framework: None,
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -274,7 +274,7 @@ mod tests {
             frameworks: vec!["Express".to_string()],
             has_tests: false,
             test_framework: None,
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -298,7 +298,7 @@ mod tests {
             frameworks: vec!["Next.js".to_string()],
             has_tests: true,
             test_framework: Some("Jest".to_string()),
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();
@@ -319,7 +319,7 @@ mod tests {
             frameworks: vec!["React".to_string(), "Express".to_string()],
             has_tests: true,
             test_framework: Some("Jest".to_string()),
-            package_manager: Some("npm".to_string()),
+            package_manager: Some("Bun".to_string()),
         };
 
         let mut guidelines = ReviewGuidelines::default();

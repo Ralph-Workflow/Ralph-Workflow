@@ -566,6 +566,22 @@ fn run_checks_with_heartbeat(
     })
 }
 
+pub(crate) const FORBIDDEN_ALLOW_EXPECT_POLICY: &str = "\
+LINT POLICY: #[allow(...)] is PROHIBITED in this codebase.\n\
+\n\
+There are NO permitted #[allow(...)] exceptions. If the lint fires on external code\n\
+(test harness, proc-macro output, external trait impls, build-script artifacts),\n\
+use #[expect(..., reason = \"...\")] instead.\n\
+\n\
+#[expect(...)] is permitted ONLY when ALL three conditions are met:\n\
+1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).\n\
+2. It includes reason = \"...\" naming the specific external source.\n\
+3. It is the narrowest possible scope (item attribute, not module or crate).\n\
+\n\
+#[cfg_attr(..., expect(..., reason = \"...\"))] is allowed as the conditional form of the above.\n\
+#[cfg_attr(test, allow(...))] is NOT a valid substitute for the expect() form.\n\
+If a lint fires on code you wrote, refactor the code instead of suppressing.";
+
 /// Format native scan violations in rg-compatible `path:line:content` format.
 fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) -> String {
     violations
@@ -714,7 +730,15 @@ pub fn verify_fast(
                 for result in &scan_results {
                     if !result.passed {
                         reporter.check_failed(result.check_name, scan_elapsed, CheckStatus::Error);
-                        let output = format_scan_violations(&result.violations);
+                        let output = if result.check_name == "forbidden-allow-expect-scan" {
+                            format!(
+                                "{}\n\n{}",
+                                FORBIDDEN_ALLOW_EXPECT_POLICY,
+                                format_scan_violations(&result.violations)
+                            )
+                        } else {
+                            format_scan_violations(&result.violations)
+                        };
                         cancel_scan.record_failure(FailurePriority::Scan);
                         *result_scan.lock().unwrap() = Some(Ok(VerifyReport {
                             exit: VerifyExitCode::Failure,
@@ -3967,5 +3991,80 @@ error: could not compile `ralph-workflow` (lib test) due to 1 previous error
 
         let status = classify(CLIPPY_CORE_CHECK_NAME, 101, "", stderr, &[0]);
         assert_eq!(status, CheckStatus::Error);
+    }
+
+    struct FailingScanRunner {
+        scan_results: Mutex<Vec<crate::scanner::NativeScanCheckResult>>,
+    }
+
+    impl FailingScanRunner {
+        fn with_forbidden_allow_expect_scan_failure() -> Self {
+            Self {
+                scan_results: Mutex::new(vec![crate::scanner::NativeScanCheckResult {
+                    check_name: "forbidden-allow-expect-scan",
+                    passed: false,
+                    violations: vec![crate::scanner::NativeScanViolation {
+                        file: PathBuf::from("/fake/file.rs"),
+                        line_number: 42,
+                        line: r#"    #[cfg_attr(test, allow(clippy::large_stack_frames))]"#
+                            .to_string(),
+                    }],
+                }]),
+            }
+        }
+    }
+
+    impl CommandRunner for FailingScanRunner {
+        fn run(&self, _spec: &CommandSpec) -> std::io::Result<CommandOutput> {
+            Ok(CommandOutput {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+
+        fn run_native_scan(
+            &self,
+            _repo_root: &std::path::Path,
+            _checks: &[crate::scanner::NativeScanCheck],
+            _progress: &(dyn Fn(&str, &str) + Sync),
+        ) -> std::io::Result<Vec<crate::scanner::NativeScanCheckResult>> {
+            let mut results = self.scan_results.lock().unwrap();
+            Ok(std::mem::take(&mut *results))
+        }
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_failure_includes_policy_in_output() {
+        let runner =
+            std::sync::Arc::new(FailingScanRunner::with_forbidden_allow_expect_scan_failure());
+        let groups = CheckGroups {
+            fmt: &[],
+            core_cargo: &[],
+            xtask_cargo: &[],
+            gui_cargo: &[],
+            frontend_install: &[],
+            frontend_post_install: &[],
+            release: &[],
+        };
+
+        let report = verify_fast(
+            runner.clone(),
+            std::path::Path::new("/fake"),
+            &[],
+            &groups,
+            &NoopProgressReporter,
+        )
+        .expect("verify_fast should not error");
+
+        assert_eq!(report.exit, VerifyExitCode::Failure);
+
+        let failure = report.failure.expect("expected failure");
+        assert_eq!(failure.name, "forbidden-allow-expect-scan");
+        assert!(
+            failure.stdout.starts_with(FORBIDDEN_ALLOW_EXPECT_POLICY),
+            "failure output should start with policy text, got: {}",
+            failure.stdout
+        );
     }
 }

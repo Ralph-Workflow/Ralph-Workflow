@@ -98,6 +98,10 @@ fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
         );
     }
 
+    if failure.name == "forbidden-allow-expect-scan" {
+        guidance.push_str(verify::FORBIDDEN_ALLOW_EXPECT_POLICY);
+    }
+
     Some(guidance)
 }
 
@@ -322,6 +326,30 @@ mod tests {
         assert!(guidance.contains("There is no such thing as a pre-existing failure"));
         assert!(guidance.contains("OVERRIDES the current prompt"));
         assert!(guidance.contains("priority over your original prompt"));
+    }
+
+    #[test]
+    fn test_failure_guidance_includes_lint_policy_for_forbidden_allow_expect_scan() {
+        let report = verify::VerifyReport {
+            exit: VerifyExitCode::Failure,
+            failure: Some(verify::CheckFailure {
+                name: "forbidden-allow-expect-scan",
+                status: verify::CheckStatus::Error,
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        let guidance = failure_guidance_message(&report)
+            .expect("forbidden-allow-expect-scan should emit guidance with lint policy");
+
+        assert!(guidance.contains("#[allow(...)]"));
+        assert!(guidance.contains("PROHIBITED"));
+        assert!(guidance.contains("NO permitted #[allow(...)] exceptions"));
+        assert!(guidance.contains("test harness"));
+        assert!(guidance.contains("reason ="));
+        assert!(guidance.contains("narrowest possible scope"));
     }
 
     #[test]

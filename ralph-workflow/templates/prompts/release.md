@@ -94,7 +94,7 @@ Before releasing, verify:
 ### Breaking Changes
 
 **Database Migration Required:**
-Run `npm run migrate` after deployment to update user_sessions table.
+Run `bun run migrate` after deployment to update user_sessions table.
 
 **API Changes:**
 - `/api/v1/users` is removed, use `/api/v2/users` instead
