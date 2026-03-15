@@ -110,32 +110,41 @@ ralph --init test                 # Test writing
 ralph --init bug-fix --force-overwrite
 ```
 
-**Note:** Work Guides (for PROMPT.md) are different from Agent Prompts (backend AI behavior). Run `ralph --extended-help` for details.
+**Note:** Work Guides should ideally define the end goal of the task you want to achieve.
 
 ## Writing Effective Specifications
 
-Your `PROMPT.md` should be detailed. Example:
+Your `PROMPT.md` should be detailed and product-focused. Describe WHAT to build, not HOW to build it.
 
 ```markdown
-# Task: Refactor Auth Module
+# Feature: Social Login
 
-## Description
-Refactor the authentication module to use OAuth2 instead of basic auth.
+## Goal
+Users can sign in with their GitHub or Google account instead of creating a new password.
 
-## Requirements
-1. Use passport-oauth2 library
-2. Support GitHub and Google providers
-3. Maintain backward compatibility with API keys
-4. Add comprehensive tests
+## User Stories
+- As a new user, I want to sign up using my GitHub account so I don't have to remember another password
+- As a returning user, I want to log in with Google so I can access my account quickly
+- As an existing user with an API key, I want my integrations to keep working without changes
 
-## Files to Update
-- src/auth/mod.rs
-- src/auth/oauth.rs (new)
-- tests/auth_test.rs
+## Acceptance Criteria
+- [ ] "Sign in with GitHub" button on login page
+- [ ] "Sign in with Google" button on login page
+- [ ] First-time social login creates account and links provider
+- [ ] Returning social login recognizes existing linked account
+- [ ] Existing API key auth continues to work unchanged
+- [ ] User profile shows which providers are linked
+- [ ] Error messages are clear when provider is unavailable
+
+## Edge Cases
+- User tries to link a provider already linked to another account
+- Provider returns an error or times out
+- User's email from provider matches existing unlinked account
 
 ## Constraints
-- No breaking changes to public API
+- No breaking changes to existing API authentication
 - All existing tests must pass
+- Follow our existing error handling patterns
 ```
 
 ## Common Commands
@@ -198,24 +207,18 @@ developer_iters = 5
 reviewer_reviews = 2
 
 [agent_chains]
-developer = ["claude", "codex", "opencode"]
-reviewer = ["codex", "claude"]
+planner   = ["claude", "codex"]
+developer = ["opencode"]                         # default opencode agent
+reviewer  = ["opencode/openai/gpt-5.2"]          # specify model for opencode
 
 [agent_drains]
-planning = "developer"
+planning    = "planner"   # use good model for planning
 development = "developer"
-review = "reviewer"
-fix = "reviewer"
-commit = "reviewer"
-analysis = "developer"
+review      = "reviewer"
+fix         = "developer"
+commit      = "reviewer"
+analysis    = "reviewer"  # runs after dev/fixer to review against plan
 ```
-
-Environment variables override config:
-- `RALPH_DEVELOPER_AGENT` - Developer agent
-- `RALPH_REVIEWER_AGENT` - Reviewer agent
-- `RALPH_DEVELOPER_ITERS` - Developer iterations
-- `RALPH_REVIEWER_REVIEWS` - Review cycles
-- `RALPH_VERBOSITY` - Output detail (0-4)
 
 ## Files Created by Ralph
 
