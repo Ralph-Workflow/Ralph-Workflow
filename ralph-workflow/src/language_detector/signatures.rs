@@ -40,6 +40,7 @@ fn collect_signature_files_with_workspace(
         "yarn.lock",
         "pnpm-lock.yaml",
         "bun.lockb",
+        "bun.lock",
         "gemfile",
         "go.mod",
         "pom.xml",

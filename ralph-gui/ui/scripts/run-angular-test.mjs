@@ -47,6 +47,6 @@ function resolveAngularBinary(uiRootPath) {
   }
 
   return process.platform === 'win32'
-    ? { command: 'npx.cmd', args: ['ng'] }
-    : { command: 'npx', args: ['ng'] };
+    ? { command: 'bunx.cmd', args: ['ng'] }
+    : { command: 'bunx', args: ['ng'] };
 }

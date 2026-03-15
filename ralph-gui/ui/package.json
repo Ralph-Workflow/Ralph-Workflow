@@ -8,8 +8,8 @@
     "dev": "ng serve",
     "build": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "node ./scripts/run-angular-test.mjs --watch=false",
-    "test:coverage": "node ./scripts/run-angular-test.mjs --watch=false --coverage",
+    "test": "bun ./scripts/run-angular-test.mjs --watch=false",
+    "test:coverage": "bun ./scripts/run-angular-test.mjs --watch=false --coverage",
     "lint": "ng lint",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui"

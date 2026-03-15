@@ -75,8 +75,8 @@ Install at least one AI agent:
 
 | Agent | Install | Recommended Role |
 |-------|---------|------------------|
-| **Claude Code** | `npm install -g @anthropic/claude-code` | Developer |
-| **Codex** | `npm install -g @openai/codex` | Reviewer |
+| **Claude Code** | `bun install -g @anthropic/claude-code` | Developer |
+| **Codex** | `bun install -g @openai/codex` | Reviewer |
 | **OpenCode** | See [opencode.ai](https://opencode.ai) | Either |
 
 ### 3. Run Ralph
