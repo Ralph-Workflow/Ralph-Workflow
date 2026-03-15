@@ -1,6 +1,6 @@
 # Ralph Workflow
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org/)
 
 **Ralph Workflow is an unattended AI agent orchestrator for long-running development tasks.** Write a detailed specification in `PROMPT.md`, start Ralph, and walk away. It coordinates AI agents through multiple development iterations and review cycles, producing commits automatically.
@@ -28,34 +28,29 @@ Inspired by [Geoffrey Huntley's Ralph Workflow concept](https://ghuntley.com/ral
 
 Ralph runs a multi-phase workflow:
 
-1. **Developer Phase**: AI agent implements your spec through multiple iterations
-   - Creates `PLAN.md` internally from your `PROMPT.md`
-   - Executes the plan and makes code changes
-   - Evaluate the code change and see if requires more work
-   - Goes back if necessary and then make more code change, repeat until the plan is met
+1. **Development Phase**: Runs for a configured number of iterations
+   - **Outer loop**: Runs N iterations (configured by `-D` or `developer_iters`)
+   - **Inner loop**: Plan → Develop → Analyze → Developer refines until satisfied
    - Auto-commits after each iteration
-   - Cleans up and repeats for configured iterations
 
-2. **Review Phase**: AI reviewer checks quality and fixes issues
-   - Reviews code and creates `ISSUES.md` with problems found
-   - Developer agent fixes the issues
-   - Repeats until no issues or max cycles reached
+2. **Review Phase**: Runs for a configured number of cycles
+   - **Outer loop**: Runs N cycles (configured by `-R` or `reviewer_reviews`)
+   - **Inner loop**: Analyzer → Fixer loops until issues are resolved
+   - Auto-commits after each cycle
 
-3. **Final Commit**: Generates a meaningful commit message via AI
+3. **Commit Phase**: Generates a meaningful commit message via AI
 
-Ralph workflow automatically cleans context of AI agent to ensure that no context pollution exists when AI agents is being ran. The idea
-behind this is to ensure that context pollution makes the code quality worse, so we ensure review agent has no context on what was done except
-for the diff and the current state of the code, same thing as dev agent vs planning agent.
+Ralph automatically cleans AI agent context between phases to prevent context pollution. Each phase operates with fresh context—the reviewer sees only the diff and current code state, not the development history.
 
-All orchestration files (PLAN.md, ISSUES.md) are controlled by Ralph, not the AI agents. This ensures deterministic, reliable operation.
+All orchestration is handled internally by Ralph, ensuring deterministic, reliable operation.
 
 ## Quick Start
 
 ### 1. Install
 
 ```bash
-git clone https://codeberg.org/mistlight/RalphWithReviewer.git
-cd RalphWithReviewer
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+cd Ralph-Workflow
 
 # Install from source
 cargo install --path ralph-workflow --locked
@@ -213,9 +208,6 @@ review = "reviewer"
 fix = "reviewer"
 commit = "reviewer"
 analysis = "developer"
-
-[agent_chain]
-max_retries = 3
 ```
 
 Environment variables override config:
@@ -229,24 +221,23 @@ Environment variables override config:
 
 ```
 .agent/
-├── PLAN.md            # Current iteration plan (orchestrator-written)
-├── ISSUES.md          # Review findings (orchestrator-written)
-├── STATUS.md          # Current status
 ├── commit-message.txt # Generated commit message
 ├── checkpoint.json    # For --resume
 ├── start_commit       # Baseline for diffs
 └── logs/              # Detailed per-phase logs
 ```
 
+Internal orchestration files are managed by Ralph and should not be edited manually.
+
 ## Documentation
 
-Full documentation is available on [Codeberg](https://codeberg.org/mistlight/RalphWithReviewer):
+Full documentation is available on [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow):
 
-- **[Quick Reference](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/quick-reference.md)** - Cheat sheet for commands and flags
-- **[Agent Compatibility](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/agent-compatibility.md)** - Supported AI agents and configuration
-- **[Git Workflow](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/git-workflow.md)** - How Ralph handles commits and diffs
-- **[Template Guide](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/template-guide.md)** - PROMPT.md Work Guides and agent prompt customization
-- **[Architecture](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/docs/architecture/README.md)** - Reducer/event-loop architecture and codebase tour
+- **[Quick Reference](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/quick-reference.md)** - Cheat sheet for commands and flags
+- **[Agent Compatibility](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/agent-compatibility.md)** - Supported AI agents and configuration
+- **[Git Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/git-workflow.md)** - How Ralph handles commits and diffs
+- **[Template Guide](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/template-guide.md)** - PROMPT.md Work Guides and agent prompt customization
+- **[Architecture](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/architecture/README.md)** - Reducer/event-loop architecture and codebase tour
 
 **Note:** When viewing on crates.io, these links point to the source repository on Codeberg.
 
@@ -291,4 +282,4 @@ Contributions welcome!
 
 ## License
 
-AGPL-3.0. See [LICENSE](https://codeberg.org/mistlight/RalphWithReviewer/src/branch/main/LICENSE).
+AGPL-3.0. See [LICENSE](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/LICENSE).

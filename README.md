@@ -9,20 +9,25 @@ You describe a feature in `PROMPT.md`, run `ralph`, and the system:
 1. **Plans** the implementation
 2. **Develops** the code
 3. **Verifies** against the plan
-4. Loops back to Develop → Verify until the plan is satisfied
-5. **Commits** the results
+4. **Inner loop**: Developer refines until the plan is satisfied
+5. Loops back to step 1 for next iteration
+6. **Commits** the results
 
 ```
-┌─────────┐     ┌──────────┐     ┌──────────┐
-│  Plan   │────▶│ Develop  │────▶│ Verify   │────┐
-└─────────┘     └──────────┘     └──────────┘    │
-                                               │
-     ┌─────────────────────────────────────────┘
-     │
-     ▼   (if verification fails, refine and continue)
-┌─────────┐
-│ Commit  │  (once plan is satisfied)
-└─────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Development Iteration                        │
+│  ┌─────────┐     ┌──────────┐     ┌──────────┐              │
+│  │  Plan   │────▶│ Develop  │────▶│ Analyze  │──┐           │
+│  └─────────┘     └──────────┘     └──────────┘  │           │
+│       ▲                                 │         │           │
+│       └─────────────────────────────────┘           │
+│              (refine until satisfied)                │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼ (next iteration)
+                    ┌─────────┐
+                    │ Commit  │
+                    └─────────┘
 ```
 
 You can configure different agents for each phase, enabling cost-effective strategies like using a powerful model for planning, a fast cheap model for development, and a reasoning model for verification.
