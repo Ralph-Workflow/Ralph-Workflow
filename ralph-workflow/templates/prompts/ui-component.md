@@ -1,100 +1,31 @@
-# UI Component: [Brief title]
+# UI Component: [Name of the component]
 
-> **How to use this template:** This template is for frontend UI component development. Fill in the goal and acceptance criteria below to guide the AI agent.
+## Purpose
+<!-- What user need does this serve? Where does it appear? -->
+[e.g., "Confirmation modal before destructive actions, used on delete buttons throughout the app"]
 
-## Goal
-[One-line description of the UI component or feature]
+## User Interaction
+<!-- How does a user interact with this component? -->
+1. [e.g., "User clicks a delete button somewhere in the app"]
+2. [e.g., "Modal appears with context about what will be deleted"]
+3. [e.g., "User confirms or cancels"]
+4. [e.g., "Action proceeds or modal closes"]
 
-## Questions to Consider
+## Appearance
+<!-- How should it look? -->
+[e.g., "Centered overlay, semi-transparent backdrop, title + message + two buttons"]
 
-**Component Design:**
-* What is the component's primary purpose and responsibility?
-* What props/inputs does the component accept?
-* What events/actions does the component emit?
-* Should the component be reusable or single-purpose?
+## States
+<!-- What states can this component be in? -->
+- [e.g., "Default: ready to confirm/cancel"]
+- [e.g., "Loading: action in progress, buttons disabled"]
+- [e.g., "Error: action failed, show retry option"]
 
-**User Experience:**
-* How should the component behave on user interaction?
-* Are there any loading, error, or empty states to handle?
-* Should the component support keyboard navigation?
-* How should the component respond to different screen sizes?
+## Behavior
+<!-- Interaction details -->
+- [e.g., "Escape key or backdrop click closes modal"]
+- [e.g., "Focus trapped inside modal while open"]
 
-**Accessibility:**
-* What ARIA roles and attributes are needed?
-* Should the component support screen readers?
-* Are there any keyboard shortcuts or focus management needs?
-* Does the component have sufficient color contrast?
-
-**Styling:**
-* Should the component use a specific design system or theme?
-* Are there any animation or transition requirements?
-* How should the component handle dark mode or theme switching?
-* Are there any responsive design considerations?
-
-## Acceptance Checks
-* [Component renders correctly with all prop combinations]
-* [User interactions trigger expected events]
-* [Component is accessible via keyboard and screen reader]
-* [Responsive design works on mobile and desktop]
-* [Error and loading states display appropriately]
-* [Component passes automated accessibility tests]
-* [Visual design matches mockups or design system]
-* [Component has storybook or example documentation]
-
-## Code Quality Specifications
-
-Write clean, maintainable code:
-- Single responsibility: one reason to change per function/class
-- Small units: functions < 30 lines, classes < 300 lines
-- Clear names that reveal intent
-- Early returns; minimize nesting depth
-- Explicit error handling; no silent failures
-- No magic numbers; extract constants
-- DRY: extract duplicated logic
-- Validate at boundaries; trust internal data
-- Test behavior, not implementation
-
-**Feature Implementation Best Practices:**
-- Start with the simplest working solution, optimize only if needed
-- Prefer standard library solutions over external dependencies
-- Add logging at key points (entry/exit of major functions, errors)
-- Use types to make invalid states unrepresentable
-- Document non-obvious design decisions in comments
-- Consider the API ergonomics - is it pleasant to use?
-
-**Security Considerations:**
-- Validate all user input at system boundaries
-- Sanitize data before display (prevent XSS)
-- Use parameterized queries to prevent injection attacks
-- Follow the principle of least privilege for permissions
-- Never log sensitive data (passwords, tokens, PII)
-- Consider CSP (Content Security Policy) for inline scripts
-
-**EXAMPLE:**
-```markdown
-# UI Component: Search Autocomplete
-
-## Goal
-Create a search input component that shows suggestions as the user types.
-
-## Questions to Consider
-**Component Design:**
-- Props: placeholder, minChars, debounceTime
-- Events: onSearch, onSelect
-- Reusable across the application
-
-**User Experience:**
-- Show loading indicator while fetching
-- Highlight matching text in suggestions
-- Close on Escape or click outside
-
-**Accessibility:**
-- ARIA role="combobox"
-- Arrow key navigation through suggestions
-- Enter to select, Escape to close
-
-**Acceptance Checks:**
-- [Shows suggestions after 3 characters]
-- [Keyboard navigation works correctly]
-- [Screen reader announces suggestion count]
-```
+## Context (optional)
+<!-- Design system, existing patterns to follow -->
+[e.g., "Should match existing Modal component styling"]

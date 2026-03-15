@@ -59,7 +59,8 @@ cargo install --path ralph-workflow --locked
 make install-local
 ```
 
-Alternatively you can use cargo crate
+Alternatively, you can install from crates.io:
+
 ```bash
 cargo install ralph-workflow --locked
 ```
@@ -110,7 +111,7 @@ ralph --init test                 # Test writing
 ralph --init bug-fix --force-overwrite
 ```
 
-**Note:** Work Guides should ideally define the end goal of the task you want to achieve.
+**Note:** Work Guides should define the end goal of your task.
 
 ## Writing Effective Specifications
 
