@@ -98,30 +98,47 @@ Ralph Workflow looks for config files in these locations:
 
 Local config overrides global config. Run `ralph --init-local-config` to create a project-local config.
 
-Here's a minimal config example using different models per phase:
+Here's a minimal config example using agent chains with fallback logic:
 
 ```toml
-[agents.planner]
-command = "claude --model claude-opus-4"
+[agent_chains]
+# Planner chain: Claude for high-quality architectural decisions
+planner = [
+  "claude",      # Primary: Claude Code (best for planning/verification)
+  "codex",       # Fallback
+]
 
-[agents.developer]
-command = "claude --model claude-sonnet-4"
+# Developer chain: cheaper models for implementation (plan already exists)
+# Uses opencode/provider/model syntax for provider-specific agents
+developer = [
+  "opencode/minimax/m2-5",          # Primary: MiniMax M2.5 (cheap, capable)
+  "opencode/zai-coding-plan/glm-5", # Fallback: GLM-5
+]
 
-[agents.verifier]
-command = "claude --model claude-opus-4"
+[agent_drains]
+planning = "planner"       # Uses planner chain (Claude)
+development = "developer"  # Uses developer chain (cheap models)
+analysis = "planner"       # Uses planner chain (Claude)
+review = "planner"         # Uses planner chain (Claude)
+fix = "developer"          # Uses developer chain
+commit = "planner"         # Uses planner chain (Claude)
 ```
 
 For a complete config with all options, see [ralph-workflow/examples/ralph-workflow.toml](ralph-workflow/examples/ralph-workflow.toml).
 
-## Currently Supported Clients
+## Supported Agents
+
+Ralph Workflow works with these CLI-based coding agents:
 
 * **Claude Code** (including [Claude Code Switch](https://github.com/smithjr/claude-code-switch) for profile management)
-* OpenAI Codex CLI
-* OpenCode
+* **OpenAI Codex CLI**
+* **OpenCode** — supports many providers (MiniMax, GLM, OpenAI, Anthropic, Google, open-source models, etc.)
+
+Since OpenCode is highly flexible, any model it supports is available through Ralph Workflow.
 
 ## Recommendations
 
-* **Use different models for different phases.** What I found works really well: use an expensive model like Claude Opus for *planning* (where quality matters most), a cheap fast model for *development* (where speed and cost matter), and an expensive reasoning model for *verification* (where analysis quality is critical). This gives you the best results while keeping costs down.
+* **Development is your biggest cost—use cheaper models there.** The development phase runs repeatedly but needs the least reasoning since the plan is already worked out. Use cheaper models like GLM-4, MiniMax, or open-source alternatives for development, and reserve top-tier models like Claude for planning and verification where architectural judgment actually matters. The cost savings compound quickly.
 * **Make sure your PROMPT.md describes outcomes, not implementations—unless you're a software architect who understands the trade-offs.** Focus on product definition: what the feature should do, acceptance criteria, edge cases, and how it should behave. Generally, avoid prescribing specific algorithms, data structures, or code patterns—the AI will make better architectural decisions when given clear goals without implementation constraints. However, if you have strong architectural opinions and understand the trade-offs involved, it's perfectly valid to specify implementation details like "use event sourcing" or "prefer immutability." The key is knowing *why* you're constraining the solution space.
 
 ## Design Philosophy
@@ -136,11 +153,13 @@ Software engineering skills are more important than ever. AI can generate code, 
 
 **Should I use this in production-level code?**
 
-If you thoroughly review the code it outputs, it depends on your risk tolerance. Any code change is risky, whether human- or AI-generated.
+Yes, with the same discipline you'd apply to any code review. Treat AI-generated code like code from a junior developer who works fast but needs supervision: review it thoroughly, run your test suite, check for edge cases, and verify it matches your architectural standards. The code isn't inherently worse than human-written code, but it requires the same scrutiny you'd give any pull request. If you wouldn't merge a human's PR without review, don't merge AI's either.
 
-**Should I use Claude Opus or Claude Sonnet?**
+**Why Claude over cheaper alternatives?**
 
-It depends on the phase. For planning and verification, I recommend using more capable models like Claude Opus or a reasoning model—the quality matters there. For development, use a faster, cheaper model since that phase runs many times. The beauty of Ralph Workflow is you can mix and match: expensive model for planning, cheap model for development, reasoning model for verification. This gives you quality where it counts without burning through your budget.
+Claude Code currently leads in coding benchmarks and, more importantly, in real-world agentic coding tasks where the model needs to navigate codebases, understand context, and make multi-step decisions. That said, Ralph Workflow supports OpenAI Codex CLI and OpenCode, and you can configure any CLI-based agent.
+
+The key insight: **development is your biggest cost driver** because it runs repeatedly in the loop, but it needs the *least* reasoning—the plan is already worked out. Use cheaper models like GLM-4, MiniMax, or open-source alternatives for development, and reserve Claude for planning and verification where architectural judgment matters. The cost savings on development compound quickly, while the quality difference on those phases is negligible when following a good plan.
 
 **What is the recommended workflow with this?**
 
