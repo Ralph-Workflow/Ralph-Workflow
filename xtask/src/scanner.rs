@@ -408,11 +408,20 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
         },
     },
     // ── forbidden-allow-expect-scan: replaces PCRE2 rg multiline pattern ──────
-    // Fails if #[allow(, #![allow(, #[expect(, or #![expect( appears at line
-    // start (possibly preceded by whitespace).  Comment lines are skipped.
+    // Fails if #[allow(, #![allow(, #[expect(, #![expect(, #[cfg_attr(, or #![cfg_attr(
+    // appears at line start (possibly preceded by whitespace). Comment lines are skipped.
+    // Note: #[cfg_attr( and #![cfg_attr( are detected but require allow( or expect( on the
+    // same line to be flagged as violations (to avoid false positives on regular cfg_attr usage).
     NativeScanCheck {
         name: "forbidden-allow-expect-scan",
-        literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+        literals: &[
+            "#[allow(",
+            "#![allow(",
+            "#[expect(",
+            "#![expect(",
+            "#[cfg_attr(",
+            "#![cfg_attr(",
+        ],
         directories: &[
             "ralph-workflow/src",
             "tests",
@@ -885,12 +894,27 @@ fn scan_group_collect(
             };
 
             if is_violation {
+                // Check for the special exception: #[cfg(test)] followed by
+                // #[allow(clippy::large_stack_frames)] on the next line.
                 if check.name == "forbidden-allow-expect-scan"
                     && is_allowed_test_only_large_stack_frames_allow(
                         &content, &line_idx, byte_start,
                     )
                 {
                     continue;
+                }
+
+                // For cfg_attr patterns, we need an additional check: the line must
+                // contain allow( or expect( to be a violation. This avoids false positives
+                // on regular cfg_attr usage like #[cfg_attr(test, derive(Debug))].
+                if check.name == "forbidden-allow-expect-scan" {
+                    let matched_literal = all_patterns[mat.pattern().as_usize()];
+                    if is_cfg_attr_literal(matched_literal) {
+                        let line_bytes = line_idx.extract_line(&content, byte_start);
+                        if !line_contains_allow_or_expect(line_bytes) {
+                            continue;
+                        }
+                    }
                 }
 
                 let line_number = line_idx.line_number(byte_start) + 1;
@@ -1097,6 +1121,17 @@ fn is_allowed_test_only_large_stack_frames_allow(
     let current_line_number = line_idx.line_number(byte_offset);
     previous_nonempty_noncomment_line(content, line_idx, current_line_number)
         == Some(b"#[cfg(test)]".as_slice())
+}
+
+/// Return true if the literal is a cfg_attr variant.
+fn is_cfg_attr_literal(lit: &str) -> bool {
+    lit == "#[cfg_attr(" || lit == "#![cfg_attr("
+}
+
+/// Return true if the line contains allow( or expect( (used to filter
+/// cfg_attr matches - only those with allow/expect are violations).
+fn line_contains_allow_or_expect(line: &[u8]) -> bool {
+    line.windows(6).any(|w| w == b"allow(") || line.windows(7).any(|w| w == b"expect(")
 }
 
 /// Return true when the character immediately after `end` is NOT an ASCII
@@ -2547,6 +2582,154 @@ mod tests {
         assert!(
             !results[0].passed,
             "file-scope large_stack_frames allow should not be exempt just because the file is under tests/"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_catches_cfg_attr_allow() {
+        let dir = make_temp_dir("cfg-attr-allow");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg_attr(test, allow(clippy::large_stack_frames))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "cfg_attr wrapping allow(...) must be detected as a violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_catches_crate_level_cfg_attr_allow() {
+        let dir = make_temp_dir("crate-cfg-attr-allow");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#![cfg_attr(test, allow(clippy::large_stack_frames))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "crate-level #![cfg_attr(..., allow(...))] must be detected as a violation"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_skips_cfg_attr_without_allow_or_expect() {
+        let dir = make_temp_dir("cfg-attr-no-allow");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg_attr(test, derive(Debug))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            results[0].passed,
+            "cfg_attr without allow/expect must NOT be flagged as a violation (false positive)"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_catches_cfg_attr_expect() {
+        let dir = make_temp_dir("cfg-attr-expect");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg_attr(test, expect(clippy::large_stack_frames))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "cfg_attr wrapping expect(...) must be detected as a violation"
         );
 
         let _ = fs::remove_dir_all(&dir);

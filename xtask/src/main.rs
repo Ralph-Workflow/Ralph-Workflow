@@ -98,6 +98,17 @@ fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
         );
     }
 
+    if failure.name == "forbidden-allow-expect-scan" {
+        guidance.push_str(
+            "\n\nLINT POLICY: #[allow] and #[expect] are PROHIBITED in this codebase.\n\
+            The ONLY permitted exception is a mod tests block with #[cfg(test)] on the line\n\
+            above a #[allow(clippy::large_stack_frames)] attribute.\n\
+            This requires #[cfg(test)] on the immediately preceding line.\n\
+            #[cfg_attr(test, allow)] is NOT a valid substitute for the canonical form.\n\
+            If a lint fires, refactor the code instead of suppressing it.",
+        );
+    }
+
     Some(guidance)
 }
 
@@ -322,6 +333,28 @@ mod tests {
         assert!(guidance.contains("There is no such thing as a pre-existing failure"));
         assert!(guidance.contains("OVERRIDES the current prompt"));
         assert!(guidance.contains("priority over your original prompt"));
+    }
+
+    #[test]
+    fn test_failure_guidance_includes_lint_policy_for_forbidden_allow_expect_scan() {
+        let report = verify::VerifyReport {
+            exit: VerifyExitCode::Failure,
+            failure: Some(verify::CheckFailure {
+                name: "forbidden-allow-expect-scan",
+                status: verify::CheckStatus::Error,
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        };
+
+        let guidance = failure_guidance_message(&report)
+            .expect("forbidden-allow-expect-scan should emit guidance with lint policy");
+
+        assert!(guidance.contains("#[allow] and #[expect]"));
+        assert!(guidance.contains("PROHIBITED"));
+        assert!(guidance.contains("#[cfg(test)]"));
+        assert!(guidance.contains("clippy::large_stack_frames"));
     }
 
     #[test]
