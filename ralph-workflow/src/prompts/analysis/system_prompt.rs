@@ -52,18 +52,26 @@ pub fn generate_analysis_prompt(
         .unwrap_or_else(|_| include_str!("../templates/analysis_system_prompt.txt").to_string());
 
     let required_output = if is_continuation {
-        r"<ralph-development-result>
+        r#"<ralph-development-result>
   <ralph-status>partial|failed</ralph-status>
   <ralph-summary>Brief factual blocker-focused explanation of why the full plan was not completed</ralph-summary>
+  <skills-mcp>
+    <skill reason="Explain why this skill is relevant to the fix">skill-name</skill>
+    <mcp reason="Explain why this MCP is relevant">mcp-name</mcp>
+  </skills-mcp>
   <ralph-next-steps>comprehensive, detailed, ordered checklist that should resolve the remaining plan when completed, including remaining non-plan follow-up work uncovered during verification and any failed verification commands or checks</ralph-next-steps>
-</ralph-development-result>"
+</ralph-development-result>"#
     } else {
-        r"<ralph-development-result>
+        r#"<ralph-development-result>
   <ralph-status>completed|partial|failed</ralph-status>
   <ralph-summary>Brief factual summary of what was implemented vs planned</ralph-summary>
+  <skills-mcp>
+    <skill reason="Explain why this skill is relevant">skill-name</skill>
+    <mcp reason="Explain why this MCP is relevant">mcp-name</mcp>
+  </skills-mcp>
   <ralph-files-changed>Optional list of modified files (from DIFF)</ralph-files-changed>
   <ralph-next-steps>comprehensive, detailed, ordered checklist of remaining work that should resolve the remaining plan when completed, including remaining non-plan follow-up work uncovered during verification and any failed verification commands or checks (optional when status is completed)</ralph-next-steps>
-</ralph-development-result>"
+</ralph-development-result>"#
     };
 
     let variables = HashMap::from([

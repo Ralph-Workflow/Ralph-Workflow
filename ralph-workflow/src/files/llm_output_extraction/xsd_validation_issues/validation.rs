@@ -20,10 +20,10 @@
 //! - Concrete examples of correct XML format
 //! - Suggestions for fixing the error
 
-use super::types::IssuesElements;
+use super::types::{IssueEntry, IssuesElements};
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    read_text_until_end, skip_to_end,
+    parse_skills_mcp, read_text_until_end, skip_to_end,
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -66,7 +66,7 @@ pub const EXAMPLE_NO_ISSUES_XML: &str = r"<ralph-issues>
 /// assert!(result.is_ok());
 /// let parsed = result.unwrap();
 /// assert_eq!(parsed.issues.len(), 1);
-/// assert_eq!(parsed.issues[0], "Missing error handling");
+/// assert_eq!(parsed.issues[0].text, "Missing error handling");
 /// assert_eq!(parsed.no_issues_found, None);
 ///
 /// // Valid XML with no issues
@@ -136,7 +136,7 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
     }
 
     // Parse child elements
-    let mut issues: Vec<String> = Vec::new();
+    let mut issues: Vec<IssueEntry> = Vec::new();
     let mut no_issues_found: Option<String> = None;
 
     loop {
@@ -156,8 +156,8 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
                                 example: Some(EXAMPLE_ISSUES_XML.into()),
                             });
                         }
-                        let issue_text = read_text_until_end(&mut reader, b"ralph-issue")?;
-                        issues.push(issue_text);
+                        let entry = parse_issue_entry(&mut reader)?;
+                        issues.push(entry);
                     }
                     b"ralph-no-issues-found" => {
                         // Cannot mix issues and no-issues-found
@@ -210,7 +210,8 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
     }
 
     // Filter out empty issues
-    let filtered_issues: Vec<String> = issues.into_iter().filter(|s| !s.is_empty()).collect();
+    let filtered_issues: Vec<IssueEntry> =
+        issues.into_iter().filter(|e| !e.text.is_empty()).collect();
     let filtered_no_issues = no_issues_found.filter(|s| !s.is_empty());
 
     // Must have either issues or no-issues-found
@@ -231,4 +232,81 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
         issues: filtered_issues,
         no_issues_found: filtered_no_issues,
     })
+}
+
+/// Parse the content of a `<ralph-issue>` element into an `IssueEntry`.
+///
+/// This handles mixed content: text content and optional `<code>` and `<skills-mcp>` child elements.
+/// Text content (including text from `<code>` children) is collected into `text`.
+/// A `<skills-mcp>` child is parsed into `skills_mcp`.
+/// Other unknown child elements are skipped tolerantly.
+fn parse_issue_entry(
+    reader: &mut quick_xml::Reader<&[u8]>,
+) -> Result<IssueEntry, XsdValidationError> {
+    let mut buf = Vec::new();
+    let mut text_parts: Vec<String> = Vec::new();
+    let mut skills_mcp = None;
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Text(e)) => {
+                let t = e.unescape().unwrap_or_default().to_string();
+                if !t.trim().is_empty() {
+                    text_parts.push(t);
+                }
+            }
+            Ok(Event::CData(e)) => {
+                let t = String::from_utf8_lossy(&e).to_string();
+                if !t.trim().is_empty() {
+                    text_parts.push(t);
+                }
+            }
+            Ok(Event::Start(e)) => match e.name().as_ref() {
+                b"code" => {
+                    // <code> children contribute to the text
+                    let code_text = read_text_until_end(reader, b"code")?;
+                    if !code_text.trim().is_empty() {
+                        text_parts.push(code_text);
+                    }
+                }
+                b"skills-mcp" => {
+                    skills_mcp = Some(parse_skills_mcp(reader));
+                }
+                other => {
+                    // Skip unknown child elements tolerantly
+                    let _ = skip_to_end(reader, other);
+                }
+            },
+            Ok(Event::Empty(e)) => {
+                if e.name().as_ref() == b"skills-mcp" {
+                    use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
+                    skills_mcp = Some(SkillsMcp {
+                        skills: Vec::new(),
+                        mcps: Vec::new(),
+                        raw_content: None,
+                    });
+                } else {
+                    // Skip unknown empty children
+                }
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issue" => break,
+            Ok(Event::Eof) => {
+                return Err(XsdValidationError {
+                    error_type: crate::files::llm_output_extraction::xsd_validation::XsdErrorType::MalformedXml,
+                    element_path: "ralph-issue".to_string(),
+                    expected: "closing </ralph-issue> tag".to_string(),
+                    found: "unexpected end of file".to_string(),
+                    suggestion: "Ensure the <ralph-issue> element has a matching closing tag."
+                        .to_string(),
+                    example: None,
+                });
+            }
+            Ok(_) => {} // Skip comments, PI, etc.
+            Err(e) => return Err(malformed_xml_error(&e)),
+        }
+    }
+
+    let text = text_parts.join("").trim().to_string();
+    Ok(IssueEntry { text, skills_mcp })
 }

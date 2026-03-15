@@ -31,6 +31,8 @@
 //
 // - `validation.rs` - XML validation that produces the input for rendering
 
+use crate::rendering::xml::render_skills_mcp_markdown;
+
 /// Extract code snippets from files referenced in issues.
 ///
 /// Parses issue text for file locations in standard (`file:line-line`) or GitHub
@@ -239,7 +241,9 @@ fn extract_snippet_lines(content: &str, start: u32, end: u32) -> Option<String> 
     let end_idx = end_idx.min(lines.len().saturating_sub(1));
     let mut out = String::new();
     for (offset, line) in lines[start_idx..=end_idx].iter().enumerate() {
-        let line_no = u32::try_from(offset).ok().and_then(|o| start.checked_add(o))?;
+        let line_no = u32::try_from(offset)
+            .ok()
+            .and_then(|o| start.checked_add(o))?;
         writeln!(out, "{line_no} | {line}").unwrap();
     }
     Some(out.trim_end().to_string())
@@ -271,13 +275,16 @@ fn render_issues_markdown(
     }
 
     for issue in &elements.issues {
-        let trimmed = issue.trim();
+        let trimmed = issue.text.trim();
         if trimmed.is_empty() {
             continue;
         }
         output.push_str("- [ ] ");
         output.push_str(trimmed);
         output.push('\n');
+
+        // Render skills-mcp for this issue if present
+        render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
     }
 
     output
@@ -289,6 +296,7 @@ impl MainEffectHandler {
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> Result<EffectResult> {
+        use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
         use std::path::Path;
 
         let outcome = self
@@ -298,10 +306,25 @@ impl MainEffectHandler {
             .filter(|outcome| outcome.pass == pass)
             .ok_or(ErrorEvent::ValidatedReviewOutcomeMissing { pass })?;
 
-        let elements = crate::files::llm_output_extraction::IssuesElements {
-            issues: outcome.issues.to_vec(),
-            no_issues_found: outcome.no_issues_found.clone(),
-        };
+        // Try to get structured issue data from XML for skills-mcp.
+        // Fall back to plain-string reconstruction if XML is unavailable.
+        let elements = ctx
+            .workspace
+            .read(Path::new(xml_paths::ISSUES_XML))
+            .ok()
+            .and_then(|xml| crate::files::llm_output_extraction::validate_issues_xml(&xml).ok())
+            .unwrap_or_else(|| crate::files::llm_output_extraction::IssuesElements {
+                issues: outcome
+                    .issues
+                    .iter()
+                    .map(|s| crate::files::llm_output_extraction::IssueEntry {
+                        text: s.clone(),
+                        skills_mcp: None,
+                    })
+                    .collect(),
+                no_issues_found: outcome.no_issues_found.clone(),
+            });
+
         let markdown = render_issues_markdown(&elements);
         ctx.workspace
             .write(Path::new(".agent/ISSUES.md"), &markdown)
@@ -371,9 +394,7 @@ impl MainEffectHandler {
         use std::path::Path;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::ISSUES_XML));
-        EffectResult::event(
-            PipelineEvent::review_issues_xml_archived(pass),
-        )
+        EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
     pub(in crate::reducer::handler) const fn apply_review_outcome(
@@ -383,20 +404,16 @@ impl MainEffectHandler {
         clean_no_issues: bool,
     ) -> EffectResult {
         if clean_no_issues {
-            return EffectResult::event(
-                PipelineEvent::review_pass_completed_clean(pass),
-            );
+            return EffectResult::event(PipelineEvent::review_pass_completed_clean(pass));
         }
-        EffectResult::event(PipelineEvent::review_completed(
-            pass,
-            issues_found,
-        ))
+        EffectResult::event(PipelineEvent::review_completed(pass, issues_found))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_issue_snippets, extract_snippet_lines};
+    use super::{extract_issue_snippets, extract_snippet_lines, render_issues_markdown};
+    use crate::files::llm_output_extraction::{IssueEntry, SkillsMcp};
     use crate::workspace::MemoryWorkspace;
 
     #[test]
@@ -433,5 +450,74 @@ mod tests {
     fn test_extract_snippet_lines_requires_one_based_start() {
         let content = "line1\n";
         assert!(extract_snippet_lines(content, 0, 1).is_none());
+    }
+
+    #[test]
+    fn test_render_issues_markdown_with_skills_mcp() {
+        let elements = crate::files::llm_output_extraction::IssuesElements {
+            issues: vec![
+                IssueEntry {
+                    text: "src/main.rs:42 - Variable unused".to_string(),
+                    skills_mcp: Some(SkillsMcp {
+                        skills: vec![crate::files::llm_output_extraction::SkillEntry {
+                            name: "test-driven-development".to_string(),
+                            reason: Some("Start with failing test".to_string()),
+                        }],
+                        mcps: vec![crate::files::llm_output_extraction::McpEntry {
+                            name: "context7".to_string(),
+                            reason: Some("Use for library research".to_string()),
+                        }],
+                        raw_content: None,
+                    }),
+                },
+                IssueEntry {
+                    text: "src/lib.rs:10 - Missing error handling".to_string(),
+                    skills_mcp: None,
+                },
+            ],
+            no_issues_found: None,
+        };
+
+        let output = render_issues_markdown(&elements);
+
+        assert!(
+            output.contains("Variable unused"),
+            "Should show first issue"
+        );
+        assert!(
+            output.contains("test-driven-development"),
+            "Should show skill name"
+        );
+        assert!(output.contains("context7"), "Should show mcp name");
+        assert!(
+            output.contains("Start with failing test"),
+            "Should show skill reason"
+        );
+        assert!(
+            output.contains("Missing error handling"),
+            "Should show second issue"
+        );
+    }
+
+    #[test]
+    fn test_render_issues_markdown_skills_mcp_raw_content() {
+        let elements = crate::files::llm_output_extraction::IssuesElements {
+            issues: vec![IssueEntry {
+                text: "Some issue".to_string(),
+                skills_mcp: Some(SkillsMcp {
+                    skills: vec![],
+                    mcps: vec![],
+                    raw_content: Some("some unstructured content".to_string()),
+                }),
+            }],
+            no_issues_found: None,
+        };
+
+        let output = render_issues_markdown(&elements);
+
+        assert!(
+            output.contains("some unstructured content"),
+            "Should show raw content"
+        );
     }
 }

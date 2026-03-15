@@ -16,6 +16,7 @@ mod real_world_plan;
 mod rich_content;
 mod risk_verification;
 mod scope_validation;
+mod skills_mcp;
 mod step_validation;
 mod structure_tests;
 mod tolerant_parsing;

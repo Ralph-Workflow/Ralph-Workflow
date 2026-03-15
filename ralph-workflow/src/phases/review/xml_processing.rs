@@ -4,8 +4,8 @@ use crate::files::llm_output_extraction::{
     archive_xml_file_with_workspace, try_extract_from_file_with_workspace, validate_issues_xml,
     xml_paths, IssuesElements,
 };
-
 use crate::phases::context::PhaseContext;
+use crate::rendering::xml::render_skills_mcp_markdown;
 use std::path::Path;
 
 /// Extract review output using XML extraction and validate with XSD.
@@ -71,7 +71,7 @@ pub(super) fn validate_and_process_issues_xml(
 
             if !elements.issues.is_empty() {
                 return Ok(ParseResult::IssuesFound {
-                    issues: elements.issues,
+                    issues: elements.issue_texts(),
                     xml_content: xml_content.to_string(),
                 });
             }
@@ -107,13 +107,15 @@ fn render_issues_markdown(elements: &IssuesElements) -> String {
     }
 
     for issue in &elements.issues {
-        let trimmed = issue.trim();
+        let trimmed = issue.text.trim();
         if trimmed.is_empty() {
             continue;
         }
         output.push_str("- [ ] ");
         output.push_str(trimmed);
         output.push('\n');
+        // Render skills-mcp recommendations if present
+        render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
     }
 
     output

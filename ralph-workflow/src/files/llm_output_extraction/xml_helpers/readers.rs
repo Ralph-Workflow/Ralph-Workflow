@@ -29,8 +29,10 @@
 //! The reader preserves CDATA content exactly as written, without entity escaping.
 
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
+use crate::files::llm_output_extraction::xsd_validation_plan::{McpEntry, SkillEntry, SkillsMcp};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use std::borrow::Cow;
 
 /// Create a configured `quick_xml` reader with whitespace trimming enabled.
 ///
@@ -159,6 +161,116 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
     }
 
     Ok(())
+}
+
+/// Parse a `<skills-mcp>` element's content into a `SkillsMcp` struct.
+///
+/// This function reads the content of a `<skills-mcp>` element, which may contain
+/// `<skill>` and `<mcp>` child elements with optional `reason` attributes.
+///
+/// The parser is tolerant of malformed content:
+/// - Unknown child elements are skipped
+/// - Stray text between child elements is captured in `raw_content`
+/// - Self-closing `<skill/>` and `<mcp/>` elements are skipped (no name)
+/// - If XML parsing encounters an error inside the element, available data is returned
+///
+/// # Arguments
+///
+/// * `reader` - The `quick_xml` reader positioned immediately after the opening `<skills-mcp>` tag
+///
+/// # Returns
+///
+/// A `SkillsMcp` struct with parsed entries.
+pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
+    let mut buf = Vec::new();
+    let mut skills: Vec<SkillEntry> = Vec::new();
+    let mut mcps: Vec<McpEntry> = Vec::new();
+    let mut raw_text_parts: Vec<String> = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let tag = e.name();
+                let tag_bytes = tag.as_ref();
+
+                // Extract optional reason attribute
+                let reason = e
+                    .attributes()
+                    .filter_map(std::result::Result::ok)
+                    .find(|a| a.key.as_ref() == b"reason")
+                    .and_then(|a| a.unescape_value().ok())
+                    .map(Cow::into_owned)
+                    .filter(|s| !s.is_empty());
+
+                match tag_bytes {
+                    b"skill" => {
+                        let name = read_text_until_end(reader, b"skill")
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string();
+                        if !name.is_empty() {
+                            skills.push(SkillEntry { name, reason });
+                        }
+                    }
+                    b"mcp" => {
+                        let name = read_text_until_end(reader, b"mcp")
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string();
+                        if !name.is_empty() {
+                            mcps.push(McpEntry { name, reason });
+                        }
+                    }
+                    other => {
+                        // Skip unknown elements tolerantly
+                        let _ = skip_to_end(reader, other);
+                    }
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                // Self-closing elements like <skill/> or <mcp/> have no name text - skip
+                let _tag_bytes = e.name().as_ref();
+                // No content → nothing to record
+            }
+            Ok(Event::Text(e)) => {
+                // Capture any stray text as raw content
+                let text = e.unescape().unwrap_or_default().to_string();
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    raw_text_parts.push(trimmed);
+                }
+            }
+            Ok(Event::CData(e)) => {
+                let text = String::from_utf8_lossy(&e).trim().to_string();
+                if !text.is_empty() {
+                    raw_text_parts.push(text);
+                }
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"skills-mcp" => break,
+            Ok(Event::Eof) => {
+                // Unexpected EOF - return what we have
+                break;
+            }
+            Ok(_) => {} // Skip comments, PI, etc.
+            Err(_) => {
+                // Parse error inside skills-mcp - return what we have so far
+                break;
+            }
+        }
+    }
+
+    let raw_content = if raw_text_parts.is_empty() {
+        None
+    } else {
+        Some(raw_text_parts.join(" "))
+    };
+
+    SkillsMcp {
+        skills,
+        mcps,
+        raw_content,
+    }
 }
 
 /// Create a parse error with CDATA suggestion if the element is code-related.

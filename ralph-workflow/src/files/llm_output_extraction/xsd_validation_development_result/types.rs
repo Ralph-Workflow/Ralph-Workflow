@@ -1,5 +1,7 @@
 //! Type definitions for parsed development result XML elements.
 
+use crate::files::llm_output_extraction::xsd_validation_plan::SkillsMcp;
+
 /// Parsed development result elements from valid XML.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DevelopmentResultElements {
@@ -15,6 +17,8 @@ pub struct DevelopmentResultElements {
     pub status: String,
     /// Summary of what was done (required)
     pub summary: String,
+    /// Optional skills and MCP recommendations for the next agent
+    pub skills_mcp: Option<SkillsMcp>,
     /// Optional list of files changed
     pub files_changed: Option<String>,
     /// Whether the files changed element was present, even if empty.

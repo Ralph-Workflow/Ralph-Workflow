@@ -28,7 +28,7 @@
 //!     Ok(elements) => {
 //!         println!("Found {} issues", elements.issues.len());
 //!         for issue in &elements.issues {
-//!             println!("  - {}", issue);
+//!             println!("  - {}", issue.text);
 //!         }
 //!     }
 //!     Err(e) => {
@@ -44,7 +44,7 @@ pub mod types;
 pub mod validation;
 
 // Re-export main types and functions for convenience
-pub use types::IssuesElements;
+pub use types::{IssueEntry, IssuesElements};
 pub use validation::validate_issues_xml;
 
 #[cfg(test)]

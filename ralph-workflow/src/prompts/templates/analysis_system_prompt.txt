@@ -157,5 +157,12 @@ Write your analysis using EXACTLY the following XML structure:
 
 {{REQUIRED_OUTPUT_XML}}
 
+Add all relevant skills and MCP suggestions to `<skills-mcp>`. Look through
+available skills before writing the XML. Consider whether any MCP or
+MCP-backed system should also be suggested based on the analysis outcome,
+missing work, or failed verification. Use `<skill>` and `<mcp>` entries,
+and add `reason=""` when helpful. Do not assume the consumer is a developer
+or fixer.
+
 Write the XML to:
 `{{DEVELOPMENT_RESULT_XML_PATH}}`

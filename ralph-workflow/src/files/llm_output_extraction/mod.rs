@@ -73,11 +73,11 @@ pub use xsd_validation::validate_xml_against_xsd;
 
 // Public exports for plan XML extraction and validation
 pub use xml_extraction_plan::extract_plan_xml;
-pub use xsd_validation_plan::{validate_plan_xml, PlanElements};
+pub use xsd_validation_plan::{validate_plan_xml, McpEntry, PlanElements, SkillEntry, SkillsMcp};
 
 // Public exports for issues XML extraction and validation
 pub use xml_extraction_issues::extract_issues_xml;
-pub use xsd_validation_issues::{validate_issues_xml, IssuesElements};
+pub use xsd_validation_issues::{validate_issues_xml, IssueEntry, IssuesElements};
 
 // Public exports for fix result XML extraction and validation (used by fix pass)
 pub use xml_extraction_fix_result::extract_fix_result_xml;

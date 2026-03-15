@@ -317,6 +317,26 @@
   </xs:complexType>
   
   <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+  <!-- SKILLS AND MCP RECOMMENDATION TYPES                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Skills and MCP recommendations container -->
+  <xs:complexType name="SkillsMcpType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="skill">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="mcp">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════ -->
   <!-- ROOT ELEMENT                                                                 -->
   <!-- ═══════════════════════════════════════════════════════════════════════════ -->
   
@@ -324,6 +344,7 @@
     <xs:complexType>
       <xs:sequence>
         <xs:element name="ralph-summary" type="SummaryType"/>
+        <xs:element name="skills-mcp" type="SkillsMcpType" minOccurs="0"/>
         <xs:element name="ralph-implementation-steps" type="ImplementationStepsType"/>
         <xs:element name="ralph-critical-files" type="CriticalFilesType"/>
         <xs:element name="ralph-risks-mitigations" type="RisksMitigationsType"/>

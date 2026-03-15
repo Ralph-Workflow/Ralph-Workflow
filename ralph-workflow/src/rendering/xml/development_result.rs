@@ -41,6 +41,34 @@ pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> Strin
             writeln!(output, "   {line}").unwrap();
         }
 
+        // Skills & MCP recommendations (if present)
+        if let Some(ref sm) = elements.skills_mcp {
+            let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+            if has_structured || sm.raw_content.is_some() {
+                output.push_str("\n🛠️  Skills & MCP Recommendations:\n");
+                for skill in &sm.skills {
+                    if let Some(ref reason) = skill.reason {
+                        writeln!(output, "   - skill: {} \u{2014} {}", skill.name, reason).unwrap();
+                    } else {
+                        writeln!(output, "   - skill: {}", skill.name).unwrap();
+                    }
+                }
+                for mcp in &sm.mcps {
+                    if let Some(ref reason) = mcp.reason {
+                        writeln!(output, "   - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
+                    } else {
+                        writeln!(output, "   - mcp: {}", mcp.name).unwrap();
+                    }
+                }
+                if let Some(ref raw) = sm.raw_content {
+                    let trimmed: &str = raw.trim();
+                    if !trimmed.is_empty() && !has_structured {
+                        writeln!(output, "   {trimmed}").unwrap();
+                    }
+                }
+            }
+        }
+
         // Files changed: prefer diff-like rendering when unified diff is present.
         if let Some(ref files) = elements.files_changed {
             output.push_str(&render_files_changed_as_diff_like_view(files));
@@ -269,6 +297,62 @@ src/old.rs (deleted)</ralph-files-changed>
         assert!(
             output.contains("src/existing.rs") && output.contains("Action: modified"),
             "Should show modified action for existing file"
+        );
+    }
+
+    #[test]
+    fn test_render_development_result_with_skills_mcp() {
+        let xml = "<ralph-development-result>\
+<ralph-status>partial</ralph-status>\
+<ralph-summary>Verification found a reproducible reducer failure.</ralph-summary>\
+<skills-mcp>\
+<skill reason=\"A concrete failure should be investigated before editing code\">systematic-debugging</skill>\
+<skill reason=\"The eventual fix should begin with a reproducing test\">test-driven-development</skill>\
+<mcp reason=\"Use when external dependency behavior needs confirmation\">context7</mcp>\
+</skills-mcp>\
+<ralph-files-changed>src/main.rs</ralph-files-changed>\
+</ralph-development-result>";
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp header"
+        );
+        assert!(
+            output.contains("systematic-debugging"),
+            "Should show first skill name"
+        );
+        assert!(
+            output.contains("test-driven-development"),
+            "Should show second skill name"
+        );
+        assert!(output.contains("context7"), "Should show mcp name");
+        assert!(
+            output.contains("A concrete failure should be investigated"),
+            "Should show reason for first skill"
+        );
+    }
+
+    #[test]
+    fn test_render_development_result_skills_mcp_raw_content_only() {
+        let xml = "<ralph-development-result>\
+<ralph-status>partial</ralph-status>\
+<ralph-summary>Some work done</ralph-summary>\
+<skills-mcp>\
+some raw unstructured skills content here\
+</skills-mcp>\
+</ralph-development-result>";
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp header"
+        );
+        assert!(
+            output.contains("some raw unstructured skills content here"),
+            "Should show raw content"
         );
     }
 }

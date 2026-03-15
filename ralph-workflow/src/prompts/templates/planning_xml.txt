@@ -161,9 +161,20 @@ Required sections:
 - ralph-risks-mitigations (at least 1 risk-pair)
 - ralph-verification-strategy (at least 1 verification)
 
+Skills and MCP guidance:
+Add all relevant skills and MCP suggestions to `<skills-mcp>`. Look through
+available skills before writing the XML. Consider whether any MCP or
+MCP-backed system should also be suggested. Use `<skill>` and `<mcp>` entries,
+and add `reason=""` when helpful. Keep recommendations grounded in the actual
+task. Do not assume the consumer is a developer or fixer.
+
 Minimum XML skeleton (must be valid per XSD):
 <ralph-plan>
   <ralph-summary>...</ralph-summary>
+  <skills-mcp>
+    <skill reason="Implementation should start with failing tests">test-driven-development</skill>
+    <mcp reason="Use for dependency and library research">context7</mcp>
+  </skills-mcp>
   <ralph-implementation-steps>...</ralph-implementation-steps>
   <ralph-critical-files>...</ralph-critical-files>
   <ralph-risks-mitigations>...</ralph-risks-mitigations>
