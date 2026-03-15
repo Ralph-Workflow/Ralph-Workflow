@@ -62,7 +62,7 @@ Then in your project, create a `PROMPT.md` file. Here's a simple example:
 ```markdown
 == Goal
 
-Add a `greet(name: &str) -> String` function to src/lib.rs that returns "Hello, {name}!"
+Users should be able to personalize greetings. Add a greeting feature that takes a name and returns a friendly hello message.
 ```
 
 **Important:** PROMPT.md should describe *what* you want, not *how* to implement it. Focus on product definition and desired outcomes—let the AI figure out the implementation details. The more you specify implementation, the more you constrain the AI's ability to find good solutions.
@@ -72,7 +72,7 @@ For more complex tasks, provide detailed product specifications:
 ```markdown
 == Goal
 
-* Find all tests that reimplement production code and replace it with tests that test black box behavior, refactor if the code is untestable
+The test suite has tests that are tightly coupled to implementation details. Refactor the test suite to focus on black-box behavior testing. If code is untestable from the outside, refactor it to be testable.
 ```
 
 Then run:
