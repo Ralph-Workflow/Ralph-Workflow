@@ -576,7 +576,7 @@ use #[expect(..., reason = \"...\")] instead.\n\
 #[expect(...)] is permitted ONLY when ALL three conditions are met:\n\
 1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).\n\
 2. It includes reason = \"...\" naming the specific external source.\n\
-3. It is the narrowest possible scope (item attribute, not module/crate).\n\
+3. It is the narrowest possible scope (item attribute, not module or crate).\n\
 \n\
 #[cfg_attr(..., expect(..., reason = \"...\"))] is allowed as the conditional form of the above.\n\
 #[cfg_attr(test, allow(...))] is NOT a valid substitute for the expect() form.\n\

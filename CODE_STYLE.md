@@ -351,7 +351,7 @@ This pattern — `#[allow(clippy::large_stack_frames)]` immediately preceded by 
 
 1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).
 2. It includes `reason = "..."` naming the specific external source.
-3. It is the narrowest possible scope (item attribute `#[expect]`, not module/crate `#![expect]`).
+3. It is the narrowest possible scope (item attribute, not module or crate).
 
 Example of correct usage:
 ```rust
