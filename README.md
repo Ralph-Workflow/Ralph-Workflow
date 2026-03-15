@@ -160,11 +160,11 @@ Software engineering skills are more important than ever. AI can generate code, 
 
 Yes, with the same discipline you'd apply to any code review. Treat AI-generated code like code from a junior developer who works fast but needs supervision: review it thoroughly, run your test suite, check for edge cases, and verify it matches your architectural standards. The code isn't inherently worse than human-written code, but it requires the same scrutiny you'd give any pull request. If you wouldn't merge a human's PR without review, don't merge AI's either.
 
-**Why Claude over cheaper alternatives?**
+**Should I use Claude models?**
 
-Claude Code currently leads in coding benchmarks and, more importantly, in real-world agentic coding tasks where the model needs to navigate codebases, understand context, and make multi-step decisions. That said, Ralph Workflow supports OpenAI Codex CLI and OpenCode, and you can configure any CLI-based agent.
+Yes—for planning and analysis. These phases need a model that can understand your entire codebase, reason through architectural trade-offs, and produce a solid plan. Claude's large context window and strong reasoning make it well-suited for this.
 
-The key insight: **development is your biggest cost driver** because it runs repeatedly in the loop, but it needs the *least* reasoning—the plan is already worked out. Use cheaper models like GLM-4, MiniMax, or open-source alternatives for development, and reserve Claude for planning and verification where architectural judgment matters. The cost savings on development compound quickly, while the quality difference on those phases is negligible when following a good plan.
+Development is different. Once a plan exists, cheaper models can follow it with minimal supervision—as long as your codebase has strong test suites, clear separation of concerns, and side effects contained to specific modules. Use Claude where reasoning matters (planning, analysis), and save money by using cheaper alternatives for development.
 
 **What is the recommended workflow with this?**
 
