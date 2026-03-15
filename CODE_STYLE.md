@@ -345,7 +345,20 @@ This pattern — `#[allow(clippy::large_stack_frames)]` immediately preceded by 
 2. If the lint is incorrect for the situation, open a discussion about changing the lint policy — do not suppress inline.
 3. "It's just temporary" and "it's annoying" are not reasons.
 
-`#[expect(...)]` is equally prohibited — it is syntactic sugar for suppression and carries the same ban.
+### `#[expect(...)]` — Permitted With Documented Reason
+
+**`#[expect(...)]` is permitted ONLY when ALL three conditions are met:**
+
+1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).
+2. It includes `reason = "..."` naming the specific external source.
+3. It is the narrowest possible scope (item attribute `#[expect]`, not module/crate `#![expect]`).
+
+Example of correct usage:
+```rust
+#[expect(clippy::some_lint, reason = "proc-macro output from derive_more")]
+```
+
+**`#![expect(...)]` (inner attribute) is ALWAYS prohibited**, regardless of reason.
 
 ### `.expect()` — Restricted to Documented Sites
 
@@ -400,7 +413,7 @@ See the **Functional Rust** section above for the full explanation and examples.
 
 **Absolutely Forbidden:**
 - `#[allow(...)]` or `#![allow(...)]` — see above; one narrow exception only
-- `#[expect(...)]` or `#![expect(...)]` — same prohibition
+- `#![expect(...)]` — module/crate scope always prohibited; `#[expect(...)]` without `reason = "..."` — see conditional rule above
 - `.unwrap()` or `.expect()` — outside documented sites only
 - `let mut` — use combinators; boundary modules only for genuine mutation
 - Imperative loops (`for`, `while`, `loop`) — use iterators; boundary modules only

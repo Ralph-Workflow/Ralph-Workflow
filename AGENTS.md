@@ -303,7 +303,20 @@ mod tests;
 
 This is the only permitted form. It exists because the Rust test harness generates stack frames that trip the lint. It requires `#[cfg(test)]` on the immediately preceding line and is verified by `xtask verify`. Any other `#[allow(...)]` will fail the `forbidden-allow-expect-scan` check.
 
-**`#[expect(...)]` is equally banned.** It is suppression syntax and carries the same prohibition.
+### `#[expect(...)]` — Conditional, With Reason
+
+**`#[expect(...)]` is permitted ONLY when ALL three conditions are met:**
+
+1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).
+2. It includes `reason = "..."` naming the specific external source.
+3. It is the narrowest possible scope (item attribute `#[expect]`, not module/crate `#![expect]`).
+
+Example of correct usage:
+```rust
+#[expect(clippy::some_lint, reason = "proc-macro output from derive_more")]
+```
+
+**`#![expect(...)]` (inner attribute) is ALWAYS prohibited**, regardless of reason.
 
 If a lint fires on your code:
 - **Refactor the code.** The lint is telling you something is wrong with the structure.

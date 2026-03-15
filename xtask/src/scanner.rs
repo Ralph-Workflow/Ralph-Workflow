@@ -17,7 +17,7 @@ use std::sync::{
     OnceLock,
 };
 
-const TRANSIENT_FRONTEND_EXCLUDE_GLOBS: &[&str] = &["**/node_modules/**", "**/dist/**"];
+const LINT_SCAN_EXCLUDE_GLOBS: &[&str] = &["**/node_modules/**", "**/dist/**", "**/ui/**"];
 
 /// Matching strategy for a native scan check.
 ///
@@ -428,9 +428,10 @@ pub const NATIVE_SCAN_CHECKS: &[NativeScanCheck] = &[
             "xtask/src",
             "test-helpers/src",
             "ralph-gui",
+            "lints",
         ],
         include_glob: "*.rs",
-        exclude_globs: TRANSIENT_FRONTEND_EXCLUDE_GLOBS,
+        exclude_globs: LINT_SCAN_EXCLUDE_GLOBS,
         mode: MatchMode::AnyLiteralAtLineStart {
             skip_comment_lines: true,
         },
@@ -904,16 +905,38 @@ fn scan_group_collect(
                     continue;
                 }
 
+                // Check for #[expect(..., reason = "...")] at item scope.
+                let matched_literal = all_patterns[mat.pattern().as_usize()];
+                if check.name == "forbidden-allow-expect-scan"
+                    && is_allowed_expect_with_reason(
+                        &content,
+                        &line_idx,
+                        byte_start,
+                        matched_literal,
+                    )
+                {
+                    continue;
+                }
+
                 // For cfg_attr patterns, we need an additional check: the line must
                 // contain allow( or expect( to be a violation. This avoids false positives
                 // on regular cfg_attr usage like #[cfg_attr(test, derive(Debug))].
-                if check.name == "forbidden-allow-expect-scan" {
-                    let matched_literal = all_patterns[mat.pattern().as_usize()];
-                    if is_cfg_attr_literal(matched_literal) {
-                        let line_bytes = line_idx.extract_line(&content, byte_start);
-                        if !line_contains_allow_or_expect(line_bytes) {
-                            continue;
-                        }
+                if check.name == "forbidden-allow-expect-scan"
+                    && is_cfg_attr_literal(matched_literal)
+                {
+                    let line_bytes = line_idx.extract_line(&content, byte_start);
+                    // cfg_attr wrapping expect-with-reason at item scope is allowed
+                    if is_allowed_cfg_attr_expect_with_reason(
+                        &content,
+                        &line_idx,
+                        byte_start,
+                        matched_literal,
+                    ) {
+                        continue;
+                    }
+                    // cfg_attr without allow or expect is not a violation
+                    if !line_contains_allow_or_expect(line_bytes) {
+                        continue;
                     }
                 }
 
@@ -1121,6 +1144,76 @@ fn is_allowed_test_only_large_stack_frames_allow(
     let current_line_number = line_idx.line_number(byte_offset);
     previous_nonempty_noncomment_line(content, line_idx, current_line_number)
         == Some(b"#[cfg(test)]".as_slice())
+}
+
+/// Return true when the line contains `reason = "..."` with a non-empty reason string.
+///
+/// Accepts flexible whitespace around `=`: `reason = "..."`, `reason="..."`, `reason =  "..."`.
+/// The reason must contain at least one character between the quotes.
+fn line_has_nonempty_reason(line: &[u8]) -> bool {
+    let Some(pos) = kmp_search(line, b"reason") else {
+        return false;
+    };
+    let rest = &line[pos + 6..];
+    let mut i = 0;
+    // skip whitespace
+    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+        i += 1;
+    }
+    // expect '='
+    if i >= rest.len() || rest[i] != b'=' {
+        return false;
+    }
+    i += 1;
+    // skip whitespace
+    while i < rest.len() && (rest[i] == b' ' || rest[i] == b'\t') {
+        i += 1;
+    }
+    // expect opening '"'
+    if i >= rest.len() || rest[i] != b'"' {
+        return false;
+    }
+    i += 1;
+    // next char must not be closing '"' (non-empty reason)
+    i < rest.len() && rest[i] != b'"'
+}
+
+/// Return true when an `#[expect(...)]` match is permitted because it has a
+/// non-empty `reason = "..."` and is an outer (item-scope) attribute.
+///
+/// Inner attributes (`#![expect(...)]`) are always violations regardless of reason,
+/// because item scope (not module or crate) is required.
+fn is_allowed_expect_with_reason(
+    content: &[u8],
+    line_idx: &LineIndex,
+    byte_offset: usize,
+    matched_literal: &str,
+) -> bool {
+    // Only outer #[expect( is conditionally allowed; #![expect( is always blocked
+    if matched_literal != "#[expect(" {
+        return false;
+    }
+    let line_bytes = line_idx.extract_line(content, byte_offset);
+    line_has_nonempty_reason(line_bytes)
+}
+
+/// Return true when a `#[cfg_attr(..., expect(...))]` match is permitted because
+/// it wraps an expect with a non-empty `reason = "..."` and is an outer attribute.
+fn is_allowed_cfg_attr_expect_with_reason(
+    content: &[u8],
+    line_idx: &LineIndex,
+    byte_offset: usize,
+    matched_literal: &str,
+) -> bool {
+    // Only outer #[cfg_attr( is conditionally allowed
+    if matched_literal != "#[cfg_attr(" {
+        return false;
+    }
+    let line_bytes = line_idx.extract_line(content, byte_offset);
+    // Must contain expect( — if it only contains allow(, it's still blocked
+    line_bytes.windows(7).any(|w| w == b"expect(")
+        && !line_bytes.windows(6).any(|w| w == b"allow(")
+        && line_has_nonempty_reason(line_bytes)
 }
 
 /// Return true if the literal is a cfg_attr variant.
@@ -2736,6 +2829,244 @@ mod tests {
     }
 
     #[test]
+    fn test_forbidden_allow_expect_scan_allows_expect_with_reason() {
+        let dir = make_temp_dir("expect-with-reason-allowed");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[expect(clippy::some_lint, reason = \"proc-macro output from derive_more\")]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            results[0].passed,
+            "#[expect(..., reason = \"...\")] at item scope should be allowed"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_blocks_expect_without_reason() {
+        let dir = make_temp_dir("expect-without-reason-blocked");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[expect(clippy::some_lint)]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "#[expect(...)] without reason should be blocked"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_blocks_inner_expect_with_reason() {
+        let dir = make_temp_dir("inner-expect-blocked");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#![expect(clippy::some_lint, reason = \"external\")]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "#![expect(...)] (inner attribute) should always be blocked regardless of reason"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_blocks_expect_with_empty_reason() {
+        let dir = make_temp_dir("empty-reason-blocked");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[expect(clippy::some_lint, reason = \"\")]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "#[expect(..., reason = \"\")] with empty reason should be blocked"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_allows_cfg_attr_expect_with_reason() {
+        let dir = make_temp_dir("cfg-attr-expect-reason-allowed");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg_attr(test, expect(clippy::some_lint, reason = \"proc-macro\"))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            results[0].passed,
+            "#[cfg_attr(..., expect(..., reason = \"...\"))] should be allowed"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_blocks_cfg_attr_expect_without_reason() {
+        let dir = make_temp_dir("cfg-attr-expect-no-reason-blocked");
+        write_file(
+            &dir,
+            "ralph-workflow/src/lib.rs",
+            "#[cfg_attr(test, expect(clippy::some_lint))]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &[
+                "#[allow(",
+                "#![allow(",
+                "#[expect(",
+                "#![expect(",
+                "#[cfg_attr(",
+                "#![cfg_attr(",
+            ],
+            directories: &["ralph-workflow/src"],
+            include_glob: "*.rs",
+            exclude_globs: &[],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            !results[0].passed,
+            "#[cfg_attr(..., expect(...))] without reason should be blocked"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_line_has_nonempty_reason() {
+        // Test cases for the line_has_nonempty_reason helper
+        use super::line_has_nonempty_reason;
+
+        // Valid cases with non-empty reason
+        assert!(
+            line_has_nonempty_reason(b"#[expect(clippy::foo, reason = \"proc-macro\")]"),
+            "reason = \"proc-macro\" should be valid"
+        );
+        assert!(
+            line_has_nonempty_reason(b"#[expect(clippy::foo, reason=\"proc-macro\")]"),
+            "reason=\"proc-macro\" should be valid (no space)"
+        );
+        assert!(
+            line_has_nonempty_reason(b"#[expect(clippy::foo, reason =  \"proc-macro\")]"),
+            "reason =  \"proc-macro\" should be valid (extra space)"
+        );
+
+        // Invalid cases - no reason
+        assert!(
+            !line_has_nonempty_reason(b"#[expect(clippy::foo)]"),
+            "no reason should be invalid"
+        );
+
+        // Invalid cases - empty reason
+        assert!(
+            !line_has_nonempty_reason(b"#[expect(clippy::foo, reason = \"\")]"),
+            "empty reason should be invalid"
+        );
+
+        // Invalid cases - no quote
+        assert!(
+            !line_has_nonempty_reason(b"#[expect(clippy::foo, reason = )]"),
+            "no quote should be invalid"
+        );
+
+        // Valid even with #[allow] prefix (helper doesn't filter)
+        assert!(
+            line_has_nonempty_reason(b"#[allow(clippy::foo, reason = \"test\")]"),
+            "reason in #[allow] should be detected by helper"
+        );
+    }
+
+    #[test]
     fn test_line_start_violation_contains_correct_line_number() {
         let dir = make_temp_dir("line-start-lineno");
         write_file(
@@ -2998,6 +3329,53 @@ mod tests {
             check.exclude_globs.contains(&"**/dist/**"),
             "forbidden-allow-expect-scan must exclude transient frontend build outputs"
         );
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_covers_lints_directory() {
+        let check = NATIVE_SCAN_CHECKS
+            .iter()
+            .find(|check| check.name == "forbidden-allow-expect-scan")
+            .expect("forbidden-allow-expect-scan must be present");
+
+        assert!(
+            check.directories.contains(&"lints"),
+            "forbidden-allow-expect-scan must cover lints/ directory"
+        );
+        assert!(
+            check.exclude_globs.contains(&"**/ui/**"),
+            "forbidden-allow-expect-scan must exclude lints/*/ui/ test fixtures"
+        );
+    }
+
+    #[test]
+    fn test_forbidden_allow_expect_scan_excludes_lints_ui_directory() {
+        let dir = make_temp_dir("lints-ui-exclusion");
+        write_file(
+            &dir,
+            "lints/fake_lint/ui/violating.rs",
+            "#![allow(clippy::large_stack_frames)]\nfn foo() {}\n",
+        );
+
+        let check = NativeScanCheck {
+            name: "forbidden-allow-expect-scan",
+            literals: &["#[allow(", "#![allow(", "#[expect(", "#![expect("],
+            directories: &["lints"],
+            include_glob: "*.rs",
+            exclude_globs: &["**/ui/**"],
+            mode: MatchMode::AnyLiteralAtLineStart {
+                skip_comment_lines: true,
+            },
+        };
+
+        let results =
+            run_native_scan_checks_reporting(&dir, std::slice::from_ref(&check), &|_, _| {});
+        assert!(
+            results[0].passed,
+            "forbidden-allow-expect-scan should NOT flag violations in lints/*/ui/ test fixtures"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     // ── NATIVE_SCAN_CHECKS sanity ─────────────────────────────────────────────

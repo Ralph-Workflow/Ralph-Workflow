@@ -99,14 +99,7 @@ fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
     }
 
     if failure.name == "forbidden-allow-expect-scan" {
-        guidance.push_str(
-            "\n\nLINT POLICY: #[allow] and #[expect] are PROHIBITED in this codebase.\n\
-            The ONLY permitted exception is a mod tests block with #[cfg(test)] on the line\n\
-            above a #[allow(clippy::large_stack_frames)] attribute.\n\
-            This requires #[cfg(test)] on the immediately preceding line.\n\
-            #[cfg_attr(test, allow)] is NOT a valid substitute for the canonical form.\n\
-            If a lint fires, refactor the code instead of suppressing it.",
-        );
+        guidance.push_str(verify::FORBIDDEN_ALLOW_EXPECT_POLICY);
     }
 
     Some(guidance)
@@ -351,10 +344,12 @@ mod tests {
         let guidance = failure_guidance_message(&report)
             .expect("forbidden-allow-expect-scan should emit guidance with lint policy");
 
-        assert!(guidance.contains("#[allow] and #[expect]"));
+        assert!(guidance.contains("#[allow(...)]"));
         assert!(guidance.contains("PROHIBITED"));
         assert!(guidance.contains("#[cfg(test)]"));
         assert!(guidance.contains("clippy::large_stack_frames"));
+        assert!(guidance.contains("reason ="));
+        assert!(guidance.contains("narrowest possible scope"));
     }
 
     #[test]

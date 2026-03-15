@@ -566,16 +566,19 @@ fn run_checks_with_heartbeat(
     })
 }
 
-const FORBIDDEN_ALLOW_EXPECT_POLICY: &str = "\
-LINT POLICY: #[allow] and #[expect] attributes are PROHIBITED in this codebase.\n\
+pub(crate) const FORBIDDEN_ALLOW_EXPECT_POLICY: &str = "\
+LINT POLICY: #[allow(...)] is PROHIBITED in this codebase.\n\
 \n\
-The ONLY permitted exception is a mod tests block with #[cfg(test)] on the line\n\
+The ONLY permitted #[allow] exception is a mod tests block with #[cfg(test)] on the line\n\
 above a #[allow(clippy::large_stack_frames)] attribute.\n\
 \n\
-This requires #[cfg(test)] on the immediately preceding line.\n\
-#[cfg_attr(test, allow)] is NOT a valid substitute for the canonical form.\n\
-#[expect] is equally prohibited as it is also suppression syntax.\n\
-If a lint fires, refactor the code to not trigger it instead of suppressing.";
+[expect(...)] is permitted ONLY when ALL three conditions are met:\n\
+1. The lint fires on code you cannot modify (proc-macro output, external trait impls, build-script artifacts).\n\
+2. It includes reason = \"...\" naming the specific external source.\n\
+3. It is the narrowest possible scope (item attribute, not module/crate).\n\
+\n\
+[cfg_attr(test, allow(...))] is NOT a valid substitute for the canonical #[cfg(test)] form.\n\
+If a lint fires on code you wrote, refactor the code instead of suppressing.";
 
 /// Format native scan violations in rg-compatible `path:line:content` format.
 fn format_scan_violations(violations: &[crate::scanner::NativeScanViolation]) -> String {
