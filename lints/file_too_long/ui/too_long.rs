@@ -997,3 +997,5 @@ fn main() {}
 // line 997
 // line 998
 // line 999
+// line 1000
+// line 1001

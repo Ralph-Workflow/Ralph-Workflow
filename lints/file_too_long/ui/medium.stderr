@@ -1,4 +1,4 @@
-warning: file exceeds 500 lines (601 lines) - consider refactoring
+warning: file has 501 lines (>= 500) - consider refactoring
    |
    = help: consider splitting this file into smaller, more focused modules
    = note: see CODE_STYLE.md for design principles on module organization

@@ -1,12 +1,35 @@
-// DO NOT CHANGE THESE CLIPPY SETTINGS, YOU MUST REFACTOR INSTEAD, EVEN IF IT TAKES YOU 100 YEARS
-// Note: unsafe_code is not denied in test code because tests may require unsafe blocks for
-// low-level testing (e.g., signal handling, timezone manipulation). All unsafe blocks must
-// have proper safety documentation explaining why they are safe.
+// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
 //
 // Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
 // (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
 // issues outside our control and don't reflect code quality problems.
-#![deny(warnings, clippy::all, clippy::pedantic, clippy::nursery)]
+#![deny(warnings)]
+#![deny(clippy::all)]
+#![forbid(unsafe_code)]
+#![deny(
+    // No explicit iterator loops when a more idiomatic form exists
+    clippy::explicit_iter_loop,
+    clippy::explicit_into_iter_loop,
+    // No implicit crashes / partial operations
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::indexing_slicing,
+    // No casual side effects / debugging leftovers
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::dbg_macro,
+    // Treat unchecked arithmetic as suspicious
+    clippy::arithmetic_side_effects,
+    // Push toward combinators instead of hand-written control flow
+    clippy::manual_map,
+    clippy::manual_filter,
+    clippy::manual_find,
+    clippy::manual_filter_map,
+    clippy::manual_flatten,
+    clippy::needless_collect
+)]
 //! git2-system-tests: real git repository operations.
 //!
 //! ALL tests in this binary use `git2::Repository` or `init_git_repo()`, which

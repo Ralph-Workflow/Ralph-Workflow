@@ -47,11 +47,32 @@ tauri = { version = "2", features = ["test"] }
 
 [lints.rust]
 warnings = "deny"
+unsafe_code = "forbid"
 
 [lints.clippy]
 all = "deny"
-pedantic = "deny"
-nursery = "deny"
 # tauri::State<'_, T> must be passed by value for Tauri's dependency injection;
 # this is a Tauri framework requirement that cannot use &State.
 needless_pass_by_value = "allow"
+# No explicit iterator loops when a more idiomatic form exists
+explicit_iter_loop = "deny"
+explicit_into_iter_loop = "deny"
+# No implicit crashes / partial operations
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+indexing_slicing = "deny"
+# No casual side effects / debugging leftovers
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
+# Treat unchecked arithmetic as suspicious
+arithmetic_side_effects = "deny"
+# Push toward combinators instead of hand-written control flow
+manual_map = "deny"
+manual_filter = "deny"
+manual_find = "deny"
+manual_filter_map = "deny"
+manual_flatten = "deny"
+needless_collect = "deny"

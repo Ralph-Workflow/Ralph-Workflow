@@ -1,3 +1,4 @@
+// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
 // Lint levels are configured in Cargo.toml [lints] to allow crate-specific
 // exemptions (e.g. needless_pass_by_value is required for tauri::State params).
 

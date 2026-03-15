@@ -58,10 +58,12 @@ fn make_dylint_target_forces_nightly_cargo_resolution() {
         );
 
         assert!(
-            dylint_body.contains(
-                "cargo dylint -q --path lints/file_too_long -p ralph-workflow -- --lib --quiet"
-            ),
-            "dylint target should lint the ralph-workflow library target only"
+            dylint_body.contains("cargo dylint -q --all -p ralph-workflow -- --lib --quiet"),
+            "dylint target should lint the ralph-workflow library target with workspace metadata"
+        );
+        assert!(
+            !dylint_body.contains("cargo dylint -q --path"),
+            "dylint target should not pass multiple --path arguments because cargo-dylint accepts at most one"
         );
 
         // We should not suppress rustup component installation failures.
