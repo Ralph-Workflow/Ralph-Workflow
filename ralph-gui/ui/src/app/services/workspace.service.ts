@@ -106,7 +106,7 @@ export class WorkspaceService {
       return workspace;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(`Failed to open workspace: ${msg}`);
+      throw new Error(`Failed to open workspace: ${msg}`, { cause: err });
     }
   }
 
@@ -133,7 +133,7 @@ export class WorkspaceService {
       await this.tauri.closeWorkspace(id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new Error(msg);
+      throw new Error(msg, { cause: err });
     }
 
     this.workspaces.update(list => list.filter(w => w.id !== id));

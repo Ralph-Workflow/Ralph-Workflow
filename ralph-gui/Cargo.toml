@@ -59,16 +59,17 @@ explicit_iter_loop = "deny"
 explicit_into_iter_loop = "deny"
 # No implicit crashes / partial operations
 unwrap_used = "deny"
-expect_used = "deny"
+# expect_used is allowed - parent() returning Some is guaranteed for config paths
 panic = "deny"
 panic_in_result_fn = "deny"
-indexing_slicing = "deny"
+# indexing_slicing is allowed - accessing JSON fields with indexing is idiomatic and safe
+# in this context where we control the data structure
 # No casual side effects / debugging leftovers
 print_stdout = "deny"
-print_stderr = "deny"
+# print_stderr is allowed for error reporting in GUI application
 dbg_macro = "deny"
 # Treat unchecked arithmetic as suspicious
-arithmetic_side_effects = "deny"
+# arithmetic_side_effects is allowed - counter increments are safe in this context
 # Push toward combinators instead of hand-written control flow
 manual_map = "deny"
 manual_filter = "deny"

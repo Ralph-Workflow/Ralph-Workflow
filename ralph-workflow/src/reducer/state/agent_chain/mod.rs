@@ -84,6 +84,12 @@ pub struct AgentChainState {
     /// that can be passed back for continuation.
     #[serde(default)]
     pub last_session_id: Option<String>,
+    /// Last failure reason from the most recent agent failure.
+    ///
+    /// Used to provide context in CLI output when a fallback agent is invoked.
+    /// Cleared on InvocationSucceeded or ChainInitialized.
+    #[serde(default)]
+    pub last_failure_reason: Option<String>,
 }
 
 /// Role-scoped continuation prompt captured from a rate limit (429).
@@ -163,6 +169,8 @@ impl<'de> Deserialize<'de> for AgentChainState {
             rate_limit_continuation_prompt: Option<RateLimitContinuationPromptRepr>,
             #[serde(default)]
             last_session_id: Option<String>,
+            #[serde(default)]
+            last_failure_reason: Option<String>,
         }
 
         let raw = AgentChainStateSerde::deserialize(deserializer)?;
@@ -216,6 +224,7 @@ impl<'de> Deserialize<'de> for AgentChainState {
             current_mode: raw.current_mode,
             rate_limit_continuation_prompt,
             last_session_id: raw.last_session_id,
+            last_failure_reason: raw.last_failure_reason,
         })
     }
 }
@@ -266,6 +275,7 @@ impl AgentChainState {
             current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
+            last_failure_reason: None,
         }
     }
 

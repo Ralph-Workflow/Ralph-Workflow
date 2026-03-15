@@ -36,7 +36,7 @@
 //!   - `reviewer_pass` > `total_reviewer_passes` (should not happen in normal flow)
 //!   - `total_reviewer_passes` == 0 (no review passes configured)
 
-use crate::agents::AgentDrain;
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::effect::Effect;
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{PipelineState, PromptMode};
@@ -57,61 +57,75 @@ pub const REQUIRED_FILES_FIX: &[&str] = &[
     ".agent/tmp/development_result.xml",
 ];
 
-fn has_legacy_loaded_mid_fix_chain(state: &PipelineState) -> bool {
-    let has_mid_fix_progress = state.fix_prompt_prepared_pass == Some(state.reviewer_pass)
-        || state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
-        || state.fix_agent_invoked_pass == Some(state.reviewer_pass)
-        || state.fix_analysis_agent_invoked_pass == Some(state.reviewer_pass)
-        || state.fix_result_xml_extracted_pass == Some(state.reviewer_pass)
-        || state
-            .fix_validated_outcome
-            .as_ref()
-            .is_some_and(|outcome| outcome.pass == state.reviewer_pass)
-        || state.fix_result_xml_archived_pass == Some(state.reviewer_pass);
-
-    // Accept mid-fix state if:
-    // 1. Normal case: not in Fix drain but in Fix-related progress, OR
-    // 2. Post-fix-analysis: in Analysis drain with fix_analysis_agent_invoked_pass set
-    let is_post_fix_analysis = state.agent_chain.current_drain == AgentDrain::Analysis
-        && state.fix_analysis_agent_invoked_pass.is_some();
-
-    has_mid_fix_progress
-        && !state.agent_chain.agents.is_empty()
-        && (state.agent_chain.current_drain != AgentDrain::Fix
-            && (state.agent_chain.current_drain.role() == AgentDrain::Fix.role()
-                || is_post_fix_analysis))
-}
-
 pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
     let runtime_drain = state.runtime_drain();
 
     // Enter fix chain if:
     // 1. runtime_drain is Fix (normal fix flow), OR
-    // 2. fix_analysis_agent_invoked_pass is set AND current_drain is Analysis (post-fix-analysis flow)
+    // 2. fix_analysis_agent_invoked_pass is set AND current_drain is Analysis (post-fix-analysis flow), OR
+    // 3. fix_agent_invoked_pass is set AND current_drain is Analysis AND fix_analysis_agent_invoked_pass is None
+    //    (transitioning from fix to analysis - after InvokeFixAgent but before FixAnalysisAgentInvoked)
+    let in_fix_to_analysis_transition = state.fix_agent_invoked_pass == Some(state.reviewer_pass)
+        && state.agent_chain.current_drain == AgentDrain::Analysis
+        && state.fix_analysis_agent_invoked_pass.is_none();
+
     let in_fix_flow = runtime_drain == AgentDrain::Fix
         || (state.fix_analysis_agent_invoked_pass.is_some()
-            && state.agent_chain.current_drain == AgentDrain::Analysis);
+            && state.agent_chain.current_drain == AgentDrain::Analysis)
+        || in_fix_to_analysis_transition;
 
     if in_fix_flow {
-        if state.agent_chain.agents.is_empty()
-            || (!state.agent_chain.matches_runtime_drain(AgentDrain::Fix)
-                && !has_legacy_loaded_mid_fix_chain(state))
-        {
-            // When transitioning from Analysis drain (after fix analysis) to Fix drain,
-            // we need to re-initialize the chain with Fix drain
-            if state.agent_chain.current_drain == AgentDrain::Analysis
-                && state.fix_analysis_agent_invoked_pass.is_some()
-            {
-                return Effect::InitializeAgentChain {
-                    drain: AgentDrain::Fix,
-                };
-            }
+        // Check if we need to initialize the fix chain.
+        // Skip if:
+        // 1. We're in the fix-to-analysis transition (current_drain is Analysis but
+        //    fix_analysis_agent_invoked_pass is not yet set), OR
+        // 2. Legacy checkpoint with fix progress (current_drain defaulted to Planning but fix was in progress)
+        let in_transition_to_analysis = state.agent_chain.current_drain == AgentDrain::Analysis
+            && state.fix_analysis_agent_invoked_pass.is_none();
+
+        let last_effect_was_fix_agent = state
+            .continuation
+            .last_effect_kind
+            .as_deref()
+            .is_some_and(|k| k.contains("InvokeFixAgent"));
+
+        // Check if this is a legacy checkpoint that should continue with fix flow
+        let current_drain_is_default = state.agent_chain.current_drain == AgentDrain::Planning;
+        let has_fix_progress = state.fix_prompt_prepared_pass.is_some()
+            || state.fix_agent_invoked_pass.is_some()
+            || state.fix_required_files_cleaned_pass.is_some();
+        let is_legacy_continue = current_drain_is_default && has_fix_progress;
+
+        // Initialize if:
+        // 1. Not in fix-to-analysis transition, AND
+        // 2. Not a legacy continue case, AND
+        // 3. Fix agent has NOT been invoked yet (we're starting the fix flow), AND
+        //    This checks both the explicit flag AND the last_effect_kind (to handle the bug scenario
+        //    where the flag isn't set yet but the fix was invoked)
+        // 4. Either agents are empty OR chain doesn't match runtime drain
+        let chain_matches = state.agent_chain.matches_runtime_drain(AgentDrain::Fix);
+        let fix_not_started = state.fix_agent_invoked_pass.is_none()
+            && !(last_effect_was_fix_agent
+                && state.fix_prompt_prepared_pass == Some(state.reviewer_pass)
+                && state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
+                && state.runtime_drain() == AgentDrain::Fix);
+
+        let should_initialize_fix_chain = !in_transition_to_analysis
+            && !is_legacy_continue
+            && fix_not_started
+            && (state.agent_chain.agents.is_empty() || !chain_matches);
+
+        if should_initialize_fix_chain {
             return Effect::InitializeAgentChain {
                 drain: AgentDrain::Fix,
             };
         }
 
-        if state.fix_prompt_prepared_pass != Some(state.reviewer_pass) {
+        // If we're in Analysis drain during fix flow, we're in the fix analysis phase.
+        // Don't re-enter fix preparation flow - continue with analysis steps.
+        if state.agent_chain.current_drain == AgentDrain::Analysis {
+            // Fall through to the fix analysis handling below
+        } else if state.fix_prompt_prepared_pass != Some(state.reviewer_pass) {
             let prompt_mode = if state.continuation.fix_continue_pending
                 || state.agent_chain.current_mode == crate::agents::DrainMode::Continuation
             {
@@ -131,7 +145,26 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
             };
         }
 
-        if state.fix_agent_invoked_pass != Some(state.reviewer_pass) {
+        // BUG FIX: Handle the case where InvocationSucceeded was processed but
+        // fix_agent_invoked_pass wasn't set yet. This mirrors the development
+        // phase fix in development.rs:82-95.
+        let last_effect_was_fix_agent = state
+            .continuation
+            .last_effect_kind
+            .as_deref()
+            .is_some_and(|k| k.contains("InvokeFixAgent"));
+
+        // Use runtime_drain() because Fix flow uses AgentRole::Reviewer which sets
+        // current_drain to Review, not Fix. The runtime_drain() correctly returns
+        // Fix when fix_drain_active() is true.
+        let effective_fix_agent_invoked = state.fix_agent_invoked_pass == Some(state.reviewer_pass)
+            || (last_effect_was_fix_agent
+                && state.fix_prompt_prepared_pass == Some(state.reviewer_pass)
+                && state.fix_required_files_cleaned_pass == Some(state.reviewer_pass)
+                && state.runtime_drain() == AgentDrain::Fix
+                && state.agent_chain.current_mode == DrainMode::Normal);
+
+        if !effective_fix_agent_invoked {
             return Effect::InvokeFixAgent {
                 pass: state.reviewer_pass,
             };
@@ -139,7 +172,9 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
 
         // Fix analysis: after fix agent completes, invoke analysis agent to verify the fix
         // This mirrors the development analysis step
-        if state.fix_analysis_agent_invoked_pass != Some(state.reviewer_pass) {
+        if effective_fix_agent_invoked
+            && state.fix_analysis_agent_invoked_pass != Some(state.reviewer_pass)
+        {
             // First, initialize the analysis drain
             if state.agent_chain.current_drain != AgentDrain::Analysis {
                 return Effect::InitializeAgentChain {
@@ -297,14 +332,16 @@ pub(super) fn determine_review_effect(state: &PipelineState) -> Effect {
             };
         }
 
-        let outcome = state
-            .review_validated_outcome
-            .as_ref()
-            .expect("validated outcome should exist before applying review outcome");
-        Effect::ApplyReviewOutcome {
-            pass: outcome.pass,
-            issues_found: outcome.issues_found,
-            clean_no_issues: outcome.clean_no_issues,
+        let outcome = state.review_validated_outcome.as_ref();
+        match outcome {
+            Some(outcome) => Effect::ApplyReviewOutcome {
+                pass: outcome.pass,
+                issues_found: outcome.issues_found,
+                clean_no_issues: outcome.clean_no_issues,
+            },
+            None => Effect::SaveCheckpoint {
+                trigger: CheckpointTrigger::PhaseTransition,
+            },
         }
     } else {
         Effect::SaveCheckpoint {

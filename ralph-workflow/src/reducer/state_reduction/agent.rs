@@ -18,7 +18,7 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
             },
             ..state
         },
-        // Clear continuation prompt on success
+        // Clear continuation prompt and failure reason on success
         AgentEvent::InvocationSucceeded { .. } => PipelineState {
             agent_chain: state
                 .agent_chain
@@ -46,7 +46,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .agent_chain
                     .switch_to_next_agent_with_prompt_for_role(active_role, prompt_context)
                     .clear_session_id()
-                    .with_mode(DrainMode::Normal),
+                    .with_mode(DrainMode::Normal)
+                    .with_failure_reason(Some("rate-limited".to_string())),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -68,7 +69,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .switch_to_next_agent()
                     .clear_session_id()
                     .clear_continuation_prompt()
-                    .with_mode(DrainMode::Normal),
+                    .with_mode(DrainMode::Normal)
+                    .with_failure_reason(Some("auth failed".to_string())),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -94,7 +96,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                     .agent_chain
                     .switch_to_next_agent()
                     .clear_session_id()
-                    .with_mode(DrainMode::Normal),
+                    .with_mode(DrainMode::Normal)
+                    .with_failure_reason(Some("timed out (no output)".to_string())),
                 continuation: ContinuationState {
                     xsd_retry_count: 0,
                     xsd_retry_pending: false,
@@ -162,7 +165,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                         .switch_to_next_agent()
                         .clear_session_id()
                         .clear_continuation_prompt()
-                        .with_mode(DrainMode::Normal),
+                        .with_mode(DrainMode::Normal)
+                        .with_failure_reason(Some("auth failed".to_string())),
                     continuation: ContinuationState {
                         xsd_retry_count: 0,
                         xsd_retry_pending: false,
@@ -182,7 +186,8 @@ pub(super) fn reduce_agent_event(state: PipelineState, event: AgentEvent) -> Pip
                         .agent_chain
                         .switch_to_next_agent_with_prompt_for_role(active_role, None)
                         .clear_session_id()
-                        .with_mode(DrainMode::Normal),
+                        .with_mode(DrainMode::Normal)
+                        .with_failure_reason(Some("rate-limited".to_string())),
                     continuation: ContinuationState {
                         xsd_retry_count: 0,
                         xsd_retry_pending: false,
@@ -348,12 +353,14 @@ fn reduce_same_agent_retryable_failure(
     let will_retry = new_retry_count < state.continuation.max_same_agent_retry_count;
 
     if new_retry_count >= state.continuation.max_same_agent_retry_count {
+        let max_count = state.continuation.max_same_agent_retry_count;
         PipelineState {
             agent_chain: state
                 .agent_chain
                 .switch_to_next_agent()
                 .clear_session_id()
-                .with_mode(DrainMode::Normal),
+                .with_mode(DrainMode::Normal)
+                .with_failure_reason(Some(format!("failed after {} retries", max_count))),
             continuation: ContinuationState {
                 xsd_retry_count: 0,
                 xsd_retry_pending: false,

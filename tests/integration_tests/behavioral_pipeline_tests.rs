@@ -360,19 +360,20 @@ fn test_agent_success_vs_failure_effect_sequences_differ() {
     });
 }
 
-/// Test 6: Drain transition after success is correct for all phases.
+/// Test 5: Drain transition after success is correct for every phase.
 ///
-/// This test verifies that for Development phase, agent success correctly
+/// This test verifies that for both Development and Fix phases, agent success correctly
 /// transitions to the Analysis drain. This is a regression test for the
 /// double-invocation bug.
 #[test]
-fn test_drain_transition_after_success_correct_for_development_phase() {
+fn test_drain_transition_after_success_correct_for_every_phase() {
     with_default_timeout(|| {
-        let state = dev_state_with_multi_agent_chain();
+        // === Development phase test ===
+        let dev_state = dev_state_with_multi_agent_chain();
 
         // Process success event
-        let (_, effect) = compose_reduce_orchestrate(
-            state,
+        let (_, dev_effect) = compose_reduce_orchestrate(
+            dev_state,
             PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
                 role: AgentRole::Developer,
                 agent: "primary-agent".to_string(),
@@ -380,7 +381,7 @@ fn test_drain_transition_after_success_correct_for_development_phase() {
         );
 
         // For Development phase, success MUST go to Analysis drain
-        match &effect {
+        match &dev_effect {
             Effect::InitializeAgentChain { drain } => {
                 assert_eq!(
                     drain,
@@ -398,6 +399,38 @@ fn test_drain_transition_after_success_correct_for_development_phase() {
                 panic!(
                     "Expected InitializeAgentChain(Analysis) after Development success, got {other:?}"
                 );
+            }
+        }
+
+        // === Fix phase test ===
+        let fix_state = review_state_with_fix_multi_agent_chain();
+
+        // Process success event for fix agent
+        let (_, fix_effect) = compose_reduce_orchestrate(
+            fix_state,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
+                role: AgentRole::Reviewer,
+                agent: "primary-fix-agent".to_string(),
+            }),
+        );
+
+        // For Fix phase, success MUST go to Analysis drain (for fix analysis)
+        match &fix_effect {
+            Effect::InitializeAgentChain { drain } => {
+                assert_eq!(
+                    drain,
+                    &AgentDrain::Analysis,
+                    "Fix phase success must transition to Analysis drain for fix analysis"
+                );
+            }
+            Effect::InvokeFixAgent { .. } => {
+                panic!(
+                    "BUG: Fix phase success transitioned to next agent! \
+                     This is the double-invocation bug for fix phase."
+                );
+            }
+            other => {
+                panic!("Expected InitializeAgentChain(Analysis) after Fix success, got {other:?}");
             }
         }
     });
@@ -459,6 +492,72 @@ fn test_fix_analysis_successful_fix_agent_to_analysis_drain() {
     });
 }
 
+/// Test 7b: Fix agent success via composed reducer+orchestrator (double-invocation bug).
+///
+/// This is THE test that would have caught the production bug for the fix phase:
+/// - A fix agent succeeds (InvocationSucceeded event processed by reducer)
+/// - The orchestrator should transition to Analysis drain
+/// - NOT invoke the next fix agent in the fallback chain
+///
+/// This differs from Test 7 above: it tests what happens when InvocationSucceeded
+/// is processed through the reducer (event ordering issue), rather than testing
+/// with the flag already set manually.
+#[test]
+fn test_fix_agent_success_transitions_to_analysis_via_composed_pipeline() {
+    with_default_timeout(|| {
+        // Create state with all pre-invocation steps complete but WITHOUT fix_agent_invoked_pass set
+        // This simulates the state right after InvocationSucceeded is processed but before
+        // the FixAgentInvoked event sets the flag
+        let mut state = review_state_with_fix_multi_agent_chain();
+
+        // All pre-invocation steps are done
+        assert_eq!(state.fix_prompt_prepared_pass, Some(1));
+        assert_eq!(state.fix_required_files_cleaned_pass, Some(1));
+
+        // The key: fix_agent_invoked_pass is NOT set (this is the bug scenario)
+        assert_eq!(state.fix_agent_invoked_pass, None);
+
+        // The last effect was InvokeFixAgent (simulating that the effect was just derived)
+        state.continuation.last_effect_kind = Some("InvokeFixAgent".to_string());
+
+        // Process InvocationSucceeded through reducer + orchestrator
+        let (_, effect) = compose_reduce_orchestrate(
+            state,
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded {
+                role: AgentRole::Reviewer,
+                agent: "primary-fix-agent".to_string(),
+            }),
+        );
+
+        // CRITICAL ASSERTION: After fix agent success, should transition to Analysis drain,
+        // NOT invoke the next fallback agent.
+        //
+        // The bug would be: this derives `InvokeFixAgent` (next agent in chain) instead of
+        // `InitializeAgentChain { drain: Analysis }`
+        match &effect {
+            Effect::InitializeAgentChain { drain } => {
+                assert_eq!(
+                    drain,
+                    &AgentDrain::Analysis,
+                    "After fix agent success, should transition to Analysis drain, not {drain}"
+                );
+            }
+            Effect::InvokeFixAgent { .. } => {
+                panic!(
+                    "BUG: After fix agent success, derived InvokeFixAgent instead of Analysis drain. \
+                     This is the double-invocation bug - the fallback chain advanced on success!"
+                );
+            }
+            other => {
+                panic!(
+                    "After fix agent success, expected InitializeAgentChain {{ drain: Analysis }}, \
+                     got {other:?}"
+                );
+            }
+        }
+    });
+}
+
 /// Test 8: Fix analysis - analysis reports partial triggers fix continuation.
 ///
 /// When the analysis agent reports `partial` or `failed`, the system should
@@ -467,7 +566,7 @@ fn test_fix_analysis_successful_fix_agent_to_analysis_drain() {
 fn test_fix_analysis_partial_triggers_fix_continuation() {
     with_default_timeout(|| {
         let mut state = review_state_with_fix_multi_agent_chain();
-        // Simulate: fix agent invoked, then fix analysis invoked
+        // Simulate: fix agent invoked, then fix analysis invoked, then all XML steps done
         state.fix_agent_invoked_pass = Some(1);
         state.fix_analysis_agent_invoked_pass = Some(1);
         state.fix_result_xml_extracted_pass = Some(1);
@@ -478,11 +577,27 @@ fn test_fix_analysis_partial_triggers_fix_continuation() {
         });
         state.fix_result_xml_archived_pass = Some(1);
 
-        // After analysis reports partial/failed, derive the next effect
-        // The exact effect depends on continuation budget availability
+        // After analysis reports partial/failed and all steps are done,
+        // the orchestrator should derive ApplyFixOutcome (the continuation
+        // decision is made by the reducer when processing FixOutcomeApplied)
         let effect = determine_next_effect(&state);
-        // Just verify an effect is derived without panicking
-        let _ = effect;
+
+        match &effect {
+            Effect::ApplyFixOutcome { pass } => {
+                assert_eq!(pass, &1, "Should apply fix outcome for pass 1");
+            }
+            Effect::InvokeFixAgent { .. } => {
+                panic!(
+                    "BUG: Analysis reported IssuesRemain but pipeline re-invokes fix agent \
+                     before applying outcome"
+                );
+            }
+            other => {
+                panic!(
+                    "Expected ApplyFixOutcome after fix analysis with IssuesRemain, got {other:?}"
+                );
+            }
+        }
     });
 }
 
@@ -532,8 +647,7 @@ fn test_fix_analysis_completed_proceeds_to_commit() {
 fn test_fix_analysis_continuation_budget_exhaustion() {
     with_default_timeout(|| {
         let mut state = review_state_with_fix_multi_agent_chain();
-        // Simulate: reached the continuation budget limit (10 attempts)
-        // The exact number depends on max_fix_continue_count config
+        // Simulate: all fix analysis steps complete, but continuation budget is exhausted
         state.fix_agent_invoked_pass = Some(1);
         state.fix_analysis_agent_invoked_pass = Some(1);
         state.fix_result_xml_extracted_pass = Some(1);
@@ -544,13 +658,30 @@ fn test_fix_analysis_continuation_budget_exhaustion() {
         });
         state.fix_result_xml_archived_pass = Some(1);
 
-        // Exhaust the continuation budget by setting continuation state to exhausted
+        // Exhaust the continuation budget by setting fix_continuation_attempt to max (10)
+        state.continuation.fix_continuation_attempt = 10;
+        state.continuation.max_fix_continue_count = 10;
+
         // When budget is exhausted, should still proceed to apply outcome (not block)
         let effect = determine_next_effect(&state);
 
         // The key invariant: even with IssuesRemain, when budget exhausted,
-        // the pipeline should NOT block - it should proceed with current state
-        // We just verify the effect is derived without panicking
-        let _ = effect;
+        // the pipeline should derive ApplyFixOutcome (proceed to commit)
+        match &effect {
+            Effect::ApplyFixOutcome { pass } => {
+                assert_eq!(pass, &1, "Should apply fix outcome for pass 1");
+            }
+            Effect::InvokeFixAgent { .. } => {
+                panic!(
+                    "BUG: Budget exhausted but pipeline still tries to invoke fix agent. \
+                     Should proceed to commit instead."
+                );
+            }
+            other => {
+                panic!(
+                    "Expected ApplyFixOutcome when budget exhausted with IssuesRemain, got {other:?}"
+                );
+            }
+        }
     });
 }

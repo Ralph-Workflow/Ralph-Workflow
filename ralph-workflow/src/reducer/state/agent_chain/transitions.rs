@@ -36,6 +36,7 @@ impl AgentChainState {
                         current_mode: self.current_mode,
                         rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                         last_session_id: self.last_session_id.clone(),
+                        last_failure_reason: self.last_failure_reason.clone(),
                     }
                 } else {
                     self.switch_to_next_agent()
@@ -71,6 +72,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
+                last_failure_reason: self.last_failure_reason.clone(),
             }
         } else {
             // Wrap around to first agent and increment retry cycle
@@ -95,6 +97,7 @@ impl AgentChainState {
                     current_mode: self.current_mode,
                     rate_limit_continuation_prompt: None,
                     last_session_id: None,
+                    last_failure_reason: None,
                 };
                 Some(temp.calculate_backoff_delay_ms_for_retry_cycle())
             };
@@ -115,6 +118,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
+                last_failure_reason: self.last_failure_reason.clone(),
             }
         }
     }
@@ -147,6 +151,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
+                last_failure_reason: self.last_failure_reason.clone(),
             };
         }
 
@@ -174,6 +179,7 @@ impl AgentChainState {
                     current_mode: self.current_mode,
                     rate_limit_continuation_prompt: None,
                     last_session_id: None,
+                    last_failure_reason: None,
                 };
                 Some(temp.calculate_backoff_delay_ms_for_retry_cycle())
             };
@@ -194,6 +200,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
+                last_failure_reason: self.last_failure_reason.clone(),
             }
         } else {
             // Advancing to later agent
@@ -213,6 +220,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
                 last_session_id: self.last_session_id.clone(),
+                last_failure_reason: self.last_failure_reason.clone(),
             }
         }
     }
@@ -247,6 +255,7 @@ impl AgentChainState {
                 prompt: p,
             }),
             last_session_id: base.last_session_id,
+            last_failure_reason: base.last_failure_reason.clone(),
         }
     }
 
@@ -278,6 +287,7 @@ impl AgentChainState {
                 prompt: p,
             }),
             last_session_id: base.last_session_id,
+            last_failure_reason: base.last_failure_reason.clone(),
         }
     }
 
@@ -303,6 +313,7 @@ impl AgentChainState {
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: None,
             last_session_id: self.last_session_id.clone(),
+            last_failure_reason: None,
         }
     }
 
@@ -324,6 +335,7 @@ impl AgentChainState {
             current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
+            last_failure_reason: None,
         }
     }
 
@@ -355,6 +367,7 @@ impl AgentChainState {
             current_mode: DrainMode::Normal,
             rate_limit_continuation_prompt: None,
             last_session_id: None,
+            last_failure_reason: None,
         }
     }
 
@@ -377,6 +390,30 @@ impl AgentChainState {
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: session_id,
+            last_failure_reason: self.last_failure_reason.clone(),
+        }
+    }
+
+    /// Store last failure reason for CLI output context.
+    #[must_use]
+    pub fn with_failure_reason(&self, reason: Option<String>) -> Self {
+        Self {
+            agents: Arc::clone(&self.agents),
+            current_agent_index: self.current_agent_index,
+            models_per_agent: Arc::clone(&self.models_per_agent),
+            current_model_index: self.current_model_index,
+            retry_cycle: self.retry_cycle,
+            max_cycles: self.max_cycles,
+            retry_delay_ms: self.retry_delay_ms,
+            backoff_multiplier: self.backoff_multiplier,
+            max_backoff_ms: self.max_backoff_ms,
+            backoff_pending_ms: self.backoff_pending_ms,
+            current_role: self.current_role,
+            current_drain: self.current_drain,
+            current_mode: self.current_mode,
+            rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
+            last_session_id: self.last_session_id.clone(),
+            last_failure_reason: reason,
         }
     }
 
@@ -399,6 +436,7 @@ impl AgentChainState {
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: None,
+            last_failure_reason: self.last_failure_reason.clone(),
         }
     }
 
@@ -425,6 +463,7 @@ impl AgentChainState {
                 current_mode: self.current_mode,
                 rate_limit_continuation_prompt: None,
                 last_session_id: None,
+                last_failure_reason: None,
             };
             Some(temp.calculate_backoff_delay_ms_for_retry_cycle())
         };
@@ -445,6 +484,7 @@ impl AgentChainState {
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: self.last_session_id.clone(),
+            last_failure_reason: self.last_failure_reason.clone(),
         }
     }
 
@@ -466,6 +506,7 @@ impl AgentChainState {
             current_mode: self.current_mode,
             rate_limit_continuation_prompt: self.rate_limit_continuation_prompt.clone(),
             last_session_id: self.last_session_id.clone(),
+            last_failure_reason: self.last_failure_reason.clone(),
         }
     }
 

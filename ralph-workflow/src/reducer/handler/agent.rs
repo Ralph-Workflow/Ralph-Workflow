@@ -87,8 +87,17 @@ impl MainEffectHandler {
             String::new()
         };
 
+        // Build failure reason context if present (from previous agent fallback)
+        let failure_context = self
+            .state
+            .agent_chain
+            .last_failure_reason
+            .as_ref()
+            .map(|reason| format!(" (previous agent {reason})"))
+            .unwrap_or_default();
+
         ctx.logger.info(&format!(
-            "Executing with agent: {effective_agent}{chain_position}, model: {model_name:?}"
+            "Executing with agent: {effective_agent}{chain_position}, model: {model_name:?}{failure_context}"
         ));
 
         // Get agent configuration from registry

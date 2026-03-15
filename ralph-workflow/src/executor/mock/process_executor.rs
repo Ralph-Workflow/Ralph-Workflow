@@ -361,7 +361,7 @@ impl MockProcessExecutor {
                 .unwrap_or_else(|_| AgentCommandResult::success());
         }
 
-        for (pattern, result) in self.agent_results.lock().unwrap().iter() {
+        for (pattern, result) in &*self.agent_results.lock().unwrap() {
             if command.contains(pattern) {
                 return result
                     .clone()

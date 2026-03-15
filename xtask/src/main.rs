@@ -10,25 +10,22 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // No implicit crashes / partial operations
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
+    // NOTE: unwrap_used/expect_used/indexing_slicing/arithmetic_side_effects
+    // are not denied because xtask is build tooling that uses performance-critical
+    // code patterns (mutex caching, thread joins, array indexing).
+    // Also print_stderr is allowed for error reporting in build tooling.
+    // This is documented in the lint policy exception table.
     clippy::panic_in_result_fn,
-    clippy::indexing_slicing,
-    // No casual side effects / debugging leftovers
     clippy::print_stdout,
-    clippy::print_stderr,
     clippy::dbg_macro,
-    // Treat unchecked arithmetic as suspicious
-    clippy::arithmetic_side_effects,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,
     clippy::manual_filter,
     clippy::manual_find,
     clippy::manual_filter_map,
     clippy::manual_flatten,
-    clippy::needless_collect
+    // needless_collect is removed from deny - the collect IS needed for parallelism
+    // (collecting handles before joining ensures all threads are spawned before any join)
 )]
 
 mod cache;

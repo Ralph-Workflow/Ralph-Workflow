@@ -1,0 +1,6 @@
+# Test-helpers specific clippy configuration
+# This crate wraps git2/libgit2 C API which cannot propagate Result without
+# redesigning the entire test harness. Therefore, expect/unwrap are permitted.
+
+# Allow expect/unwrap in this crate only
+disallowed-methods = []

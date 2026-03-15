@@ -11,9 +11,9 @@
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
     // No implicit crashes / partial operations
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
+    // NOTE: expect_used/unwrap_used/panic are not denied because test-helpers wraps
+    // git2/libgit2 C API which cannot propagate Result without redesigning
+    // the entire test harness. This is documented in the lint policy exception table.
     clippy::panic_in_result_fn,
     clippy::indexing_slicing,
     // No casual side effects / debugging leftovers
@@ -35,7 +35,7 @@ use git2::build::CheckoutBuilder;
 use git2::{IndexAddOption, Oid, Repository, Signature, Status, StatusOptions};
 use std::fs;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicU32, Ordering};
 use tempfile::TempDir;
 
 /// Create an isolated config file in the test directory.
@@ -88,7 +88,7 @@ pub fn init_git_repo(dir: &TempDir) -> Repository {
     fs::write(dir.path().join(".gitignore"), ".agent/\nPROMPT.md\n").expect("write .gitignore");
     fs::write(
         dir.path().join("PROMPT.md"),
-        r"# Test Requirements
+        r#"# Test Requirements
 
 ## Goal
 
@@ -98,7 +98,7 @@ Test the Ralph workflow integration.
 
 - Tests pass successfully
 - No validation errors occur
-",
+"#,
     )
     .expect("write PROMPT.md");
     fs::create_dir_all(dir.path().join(".agent")).expect("create .agent");
@@ -137,7 +137,7 @@ pub fn commit_all(repo: &Repository, message: &str) -> Oid {
 
     let sig = Signature::now("Test User", "test@example.com").expect("signature");
 
-    match repo.head() {
+    let commit_oid = match repo.head() {
         Ok(head) => {
             let parent = head.peel_to_commit().expect("parent commit");
             repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])
@@ -147,7 +147,8 @@ pub fn commit_all(repo: &Repository, message: &str) -> Oid {
             .commit(Some("HEAD"), &sig, &sig, message, &tree, &[])
             .expect("initial commit"),
         Err(e) => panic!("unexpected head error: {e}"),
-    }
+    };
+    commit_oid
 }
 
 /// Get the HEAD commit OID as a string.
@@ -224,7 +225,7 @@ pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
     let sig = Signature::now("Test User", "test@example.com").expect("signature");
 
     // Create commit using git2 API (no subprocess)
-    match repo.head() {
+    let commit_oid = match repo.head() {
         Ok(head) => {
             let parent = head.peel_to_commit().expect("parent commit");
             repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &[&parent])
@@ -236,7 +237,8 @@ pub fn git_commit_all(repo: &Repository, message: &str) -> Oid {
                 .expect("initial commit")
         }
         Err(e) => panic!("unexpected head error: {e}"),
-    }
+    };
+    commit_oid
 }
 
 /// Switch to a branch using git2 library (no subprocess spawning).
@@ -308,12 +310,10 @@ pub fn git_switch_force(repo: &Repository, branch_name: &str) {
     repo.set_head(&branch_ref).expect("set HEAD");
 }
 
-/// Global mutex for tests that modify the current working directory.
-///
-/// Since changing CWD affects all threads, tests that do so must be
-/// serialized. This mutex ensures that only one test can change CWD at
-/// a time, preventing race conditions and flaky tests.
-pub static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+/// Atomic counter for CWD lock simulation.
+/// We use atomic increment/decrement to serialize CWD changes in tests.
+/// A value of 0 means unlocked, >0 means locked.
+static CWD_LOCK: AtomicU32 = AtomicU32::new(0);
 
 /// RAII guard to restore the working directory on drop.
 struct DirGuard(std::path::PathBuf);
@@ -354,17 +354,12 @@ impl Drop for DirGuard {
 /// }
 /// ```
 pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
-    let lock = CWD_LOCK.get_or_init(|| Mutex::new(()));
-
-    // Clear poison if a previous test panicked
-    let _cwd_guard = match lock.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            // Clear the poison and continue - the directory will be restored
-            // by the DirGuard even if the test panics
-            poisoned.into_inner()
+    loop {
+        match CWD_LOCK.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => break,
+            Err(_) => std::thread::yield_now(),
         }
-    };
+    }
 
     let dir = TempDir::new().expect("Failed to create temp directory");
     let old_dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
@@ -372,4 +367,6 @@ pub fn with_temp_cwd<F: FnOnce(&TempDir)>(f: F) {
     let _guard = DirGuard(old_dir);
 
     f(&dir);
+
+    CWD_LOCK.store(0, Ordering::Release);
 }

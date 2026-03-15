@@ -1,6 +1,7 @@
 # Code Style Guide
 
 ## Important Rules for this Project
+
 - Pre-existing issues are fix-now work: if you find a broken test, warning, lint failure, stale docs, dead code, or other existing repo problem, stop and fix it instead of carrying it forward.
 - Production files should target 300 lines max (guideline), 500 lines recommended limit, 1000 lines hard limit (dylint enforces). Files 500-700 lines should be reviewed for cohesion (see guidelines below). Test files should stay under 1000 lines.
 - A file should do one conceptual job. If you need a paragraph to explain what the file does, it's doing too much.
@@ -31,6 +32,105 @@
 - **Example:** Handler implementations should group by phase (input/prompt/execution/validation/output)
 
 See `docs/contributing/refactoring-history.md` for detailed examples of good and bad splits.
+
+---
+
+## Functional Rust
+
+This codebase enforces a functional programming discipline through custom dylint lints. The goal is code that is easy to reason about, test, and compose. Mutation is a side effect — push it to the boundaries of the system.
+
+### The Core Rule
+
+**Outside boundary modules, code must be purely functional:**
+- No `let mut` bindings
+- No `while`, `loop`, or `for` constructs
+- No `&mut self` method calls on non-boundary types
+- No interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.)
+
+### Boundary Modules
+
+Low-level I/O, FFI, and runtime code sometimes genuinely requires mutation — byte-level parsing, process management, retries, OS interaction. That code belongs in a **boundary module**: any module whose path contains one of the following components:
+
+| Marker | Purpose |
+|--------|---------|
+| `io/` | Filesystem, network, stream I/O |
+| `runtime/` | Process execution, OS interaction |
+| `ffi/` | Foreign function interface |
+| `boundary/` | Any other explicit mutation boundary |
+
+Code inside these paths is excluded from all four functional-Rust lints. Code outside them is held to strict functional standards.
+
+**When to use a boundary module:** If you are writing code that inherently requires mutation (a process executor, a file writer, a byte-level parser), place it inside one of these paths. Do not fight the lints by workarounds in domain code — move the mutation to its proper home.
+
+### What to Write Instead
+
+Replace imperative patterns with combinators:
+
+```rust
+// Bad — imperative accumulation
+let mut result = Vec::new();
+for item in items {
+    if item.is_valid() {
+        result.push(item.transform());
+    }
+}
+
+// Good — declarative pipeline
+let result: Vec<_> = items
+    .into_iter()
+    .filter(|item| item.is_valid())
+    .map(|item| item.transform())
+    .collect();
+```
+
+```rust
+// Bad — mutable binding for reduction
+let mut total = 0u64;
+for item in items {
+    total += item.price;
+}
+
+// Good — combinator
+let total: u64 = items.iter().map(|item| item.price).sum();
+```
+
+```rust
+// Bad — in-place mutation via &mut self
+state.push_event(event);
+
+// Good — return a new value
+let state = state.with_event(event);
+```
+
+```rust
+// Bad — interior mutability hiding mutation
+struct Cache {
+    entries: RefCell<HashMap<String, String>>,
+}
+
+// Good — functional update returns new value
+fn with_entry(cache: &Cache, key: String, value: String) -> Cache {
+    let mut entries = cache.entries.clone();
+    entries.insert(key, value);
+    Cache { entries }
+}
+// Or use a boundary module if caching is genuinely a runtime concern
+```
+
+### The Four Functional-Rust Lints
+
+These are enforced by custom dylint lints in the `lints/` directory:
+
+| Lint | What it rejects | Boundary exception |
+|------|----------------|--------------------|
+| `forbid_mut_binding` | `let mut` bindings | `io/`, `runtime/`, `ffi/`, `boundary/` |
+| `forbid_imperative_loops` | `while`, `loop`, `for` | `io/`, `runtime/`, `ffi/`, `boundary/` |
+| `forbid_mutating_receiver_methods` | `&mut self` calls on non-allowlisted types | `io/`, `runtime/`, `ffi/`, `boundary/` |
+| `forbid_interior_mutability` | `Cell`, `RefCell`, `Mutex`, `RwLock`, `OnceLock`, `LazyLock`, `OnceCell` | `io/`, `runtime/`, `ffi/`, `boundary/` |
+
+**When a lint fires on domain code:** The lint is right. Refactor to combinators and immutable transforms. Do not argue with the lint, suppress it, or move code into a fake boundary module. If the code genuinely belongs at the system boundary, move it there.
+
+---
 
 ## Architecture
 
@@ -142,7 +242,7 @@ See `ralph-workflow/src/reducer/state/metrics.rs` for complete event-to-metric m
 | Abbreviations | Only universal (`ctx`, `cfg`) |
 
 - Early returns over nested conditionals
-- `Result` + `?` with context; no `unwrap()`/`expect()` in production
+- `Result` + `?` with context; no `unwrap()` or `.expect()` outside the documented exceptions (see Linting section)
 - DRY, but duplication beats wrong abstraction
 
 ---
@@ -226,6 +326,42 @@ In addition to the source-level attributes, each `clippy.toml` configures:
 - **Disallowed methods**: `unwrap`, `expect`, and mutating `Vec` methods (`push`, `append`, `insert`, `remove`, `retain`, `sort`, `sort_unstable`)
 - **Disallowed macros**: `println!`, `eprintln!`, `dbg!`
 
+### `#[allow(...)]` — Absolute Prohibition
+
+**`#[allow(...)]` and `#![allow(...)]` are never permitted** in any form, with one narrow, machine-verified exception:
+
+**The only allowed exception:**
+
+```rust
+#[cfg(test)]
+#[allow(clippy::large_stack_frames)]
+mod tests;
+```
+
+This pattern — `#[allow(clippy::large_stack_frames)]` immediately preceded by `#[cfg(test)]` — is permitted solely because the Rust test harness generates deeply-nested stack frames that trigger the lint. It is verified and enforced by `xtask verify`'s `forbidden-allow-expect-scan` check.
+
+**No other `#[allow(...)]` is ever acceptable**, regardless of context. If a lint fires:
+1. Refactor the code to not trigger it.
+2. If the lint is incorrect for the situation, open a discussion about changing the lint policy — do not suppress inline.
+3. "It's just temporary" and "it's annoying" are not reasons.
+
+`#[expect(...)]` is equally prohibited — it is syntactic sugar for suppression and carries the same ban.
+
+### `.expect()` — Restricted to Documented Sites
+
+`.expect()` is forbidden in production workflow code and integration tests. It is permitted only in the following specific cases:
+
+| Context | Why permitted | Examples |
+|---------|--------------|---------|
+| `test-helpers/src/lib.rs` | Library code wrapping git2/libgit2; these calls cannot return `Result` to callers without redesigning the entire harness API | `repo.index().expect("open index")`, `Signature::now(...).expect("signature")` |
+| `xtask/src/main.rs` entry point | Top-level binary entry that cannot propagate `Result` further | `.expect("xtask manifest dir has a parent")` |
+| `ralph-gui/src/main.rs` entry point | Tauri application entry; framework requires `main()` not return `Result` | `.expect("error while running tauri application")` |
+| `ralph-workflow/src/executor/real.rs` boundary code | OS-level process spawning in a boundary module; failures here are unrecoverable | `.expect("spawn sleep")` |
+
+**Everywhere else: use `?`, `map_err`, or proper `Result` propagation.** If you find `.expect()` outside the above contexts, treat it as a bug and fix it.
+
+`.unwrap()` carries the same prohibition as `.expect()` — no exceptions anywhere outside `test-helpers` and entry points.
+
 ### Custom Dylint Lints
 
 Beyond clippy, the repository enforces additional rules via [dylint](docs/tooling/dylint.md):
@@ -237,6 +373,8 @@ Beyond clippy, the repository enforces additional rules via [dylint](docs/toolin
 | `forbid_imperative_loops` | Rejects `while`, `loop`, `for` outside boundary modules |
 | `forbid_mutating_receiver_methods` | Rejects `&mut self` method calls unless receiver is an allowlisted boundary type |
 | `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, etc.) outside boundary modules |
+
+See the **Functional Rust** section above for the full explanation and examples.
 
 ### Unsafe Code Policy
 
@@ -260,9 +398,12 @@ Beyond clippy, the repository enforces additional rules via [dylint](docs/toolin
 - Use field init shorthand: `State { phase }` not `State { phase: phase }`
 - Remove unnecessary `mut` from parameters that aren't mutated
 
-**Forbidden:**
-- **Never** use `#[allow(..)]` or `#[expect(..)]` attributes (see [AGENTS.md](AGENTS.md))
-- If a lint fires incorrectly, refactor to avoid triggering it rather than suppressing it
+**Absolutely Forbidden:**
+- `#[allow(...)]` or `#![allow(...)]` — see above; one narrow exception only
+- `#[expect(...)]` or `#![expect(...)]` — same prohibition
+- `.unwrap()` or `.expect()` — outside documented sites only
+- `let mut` — use combinators; boundary modules only for genuine mutation
+- Imperative loops (`for`, `while`, `loop`) — use iterators; boundary modules only
 
 ### Verification
 
@@ -289,7 +430,7 @@ Dead code = not referenced by production, only by tests, "for future use", unuse
 
 Handle by: delete it, implement the feature now, gate behind active feature flag, move to `examples/`.
 
-**Never `#[allow(dead_code)]`** - see [AGENTS.md](AGENTS.md).
+**Never `#[allow(dead_code)]`** — this falls under the absolute prohibition on `#[allow(...)]`.
 
 ---
 

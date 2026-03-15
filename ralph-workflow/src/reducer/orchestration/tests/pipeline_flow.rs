@@ -4,7 +4,8 @@
 // and edge cases for zero iterations/reviews.
 
 use super::*;
-use crate::agents::AgentRole;
+use crate::agents::{AgentDrain, AgentRole};
+use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::event::ReviewEvent;
 
 #[test]
@@ -161,6 +162,18 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                 );
             }
             Effect::CleanupRequiredFiles { files }
+                if {
+                    let is_fix_flow = state.runtime_drain() == AgentDrain::Fix;
+                    let matches = files.iter().any(|f| {
+                        f.contains("fix_result.xml") || f.contains("development_result.xml")
+                    });
+                    is_fix_flow && matches
+                } =>
+            {
+                let pass = state.reviewer_pass;
+                state = reduce(state, PipelineEvent::fix_result_xml_cleaned(pass));
+            }
+            Effect::CleanupRequiredFiles { files }
                 if files.iter().any(|f| f.contains("development_result.xml")) =>
             {
                 let iteration = state.iteration;
@@ -290,17 +303,6 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                 );
             }
 
-            Effect::CleanupRequiredFiles { files }
-                if {
-                    let matches = files.iter().any(|f| {
-                        f.contains("fix_result.xml") || f.contains("development_result.xml")
-                    });
-                    matches
-                } =>
-            {
-                let pass = state.reviewer_pass;
-                state = reduce(state, PipelineEvent::fix_result_xml_cleaned(pass));
-            }
             Effect::PrepareFixPrompt { pass, .. } => {
                 state = reduce(state, PipelineEvent::fix_prompt_prepared(pass));
             }
@@ -410,6 +412,28 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
             }
             Effect::SaveCheckpoint { .. } => {
                 // Phase transition checkpoint - continue
+                // The handler emits checkpoint_saved and phase_completed events
+                // that need to be reduced to actually transition the phase
+                state = reduce(
+                    state,
+                    PipelineEvent::checkpoint_saved(CheckpointTrigger::PhaseTransition),
+                );
+
+                // After checkpoint is saved, check if we need to transition phases
+                // Development -> Review: after all iterations complete
+                if state.phase == PipelinePhase::Development
+                    && state.iteration >= state.total_iterations
+                {
+                    state = reduce(state, PipelineEvent::development_phase_completed());
+                }
+                // Review -> Commit: after all review passes complete
+                // Note: reviewer_pass is incremented after commit completes, so we check
+                // if reviewer_pass >= total_reviewer_passes (meaning all passes are done)
+                if state.phase == PipelinePhase::Review
+                    && state.reviewer_pass >= state.total_reviewer_passes
+                {
+                    state = reduce(state, PipelineEvent::review_phase_completed(false));
+                }
                 if state.phase == PipelinePhase::Complete {
                     break;
                 }

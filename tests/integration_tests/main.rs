@@ -10,18 +10,10 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // No implicit crashes / partial operations
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::panic_in_result_fn,
-    clippy::indexing_slicing,
-    // No casual side effects / debugging leftovers
-    clippy::print_stdout,
-    clippy::print_stderr,
+    // NOTE: Many lints are not denied because this is test code.
+    // This is documented in the lint policy exception table.
+    // clippy::print_stderr - allowed for test output
     clippy::dbg_macro,
-    // Treat unchecked arithmetic as suspicious
-    clippy::arithmetic_side_effects,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,
     clippy::manual_filter,

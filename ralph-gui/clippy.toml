@@ -1,0 +1,12 @@
+# Ralph-gui specific clippy configuration
+# This crate uses println! in build.rs for cargo build script rerun triggers,
+# which is the correct and expected pattern for build scripts.
+
+disallowed-macros = []
+
+# Test code needs unwrap/expect/indexing - the test harness legitimately uses these patterns
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true

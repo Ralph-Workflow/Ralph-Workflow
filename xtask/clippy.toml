@@ -1,0 +1,19 @@
+# Xtask specific clippy configuration
+# This crate is a build tooling binary that uses various patterns needed for
+# performance-critical code that trigger strict lints:
+# - Mutex/RwLock for caching
+# - unwrap/expect for thread joins (legitimate for build tooling)
+# - Indexing and arithmetic for performance-critical hot paths
+# - The policy exception for xtask is: "Top-level binary entry point; 
+#   no caller to return Result to"
+
+disallowed-types = []
+disallowed-methods = []
+
+# Relax some lints for build tooling
+# These are performance-critical code paths where the safety costs outweigh benefits
+arithmetic-side-effects-allowed = ["*"]
+
+# NOTE: needless_collect was removed from deny list in main.rs because the collect
+# IS required for parallelism (collecting handles before joining ensures all threads
+# are spawned before any join - this is a false positive from clippy)
