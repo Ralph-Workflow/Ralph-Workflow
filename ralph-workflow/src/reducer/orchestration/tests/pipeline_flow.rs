@@ -4,6 +4,8 @@
 // and edge cases for zero iterations/reviews.
 
 use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::event::ReviewEvent;
 
 #[test]
 fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
@@ -289,7 +291,12 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
             }
 
             Effect::CleanupRequiredFiles { files }
-                if files.iter().any(|f| f.contains("fix_result.xml")) =>
+                if {
+                    let matches = files.iter().any(|f| {
+                        f.contains("fix_result.xml") || f.contains("development_result.xml")
+                    });
+                    matches
+                } =>
             {
                 let pass = state.reviewer_pass;
                 state = reduce(state, PipelineEvent::fix_result_xml_cleaned(pass));
@@ -299,6 +306,12 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
             }
             Effect::InvokeFixAgent { pass } => {
                 state = reduce(state, PipelineEvent::fix_agent_invoked(pass));
+            }
+            Effect::InvokeFixAnalysisAgent { pass } => {
+                state = reduce(
+                    state,
+                    PipelineEvent::Review(ReviewEvent::FixAnalysisAgentInvoked { pass }),
+                );
             }
             Effect::ExtractFixResultXml { pass } => {
                 state = reduce(state, PipelineEvent::fix_result_xml_extracted(pass));
@@ -401,7 +414,9 @@ fn test_complete_pipeline_flow_with_planning_dev_review_commit() {
                     break;
                 }
             }
-            _ => panic!("Unexpected effect at step {step}: {effect:?}"),
+            _ => {
+                panic!("Unexpected effect at step {step}: {effect:?}")
+            }
         }
 
         if state.phase == PipelinePhase::Complete {

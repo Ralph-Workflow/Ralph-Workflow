@@ -121,6 +121,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("cloud/push_flow.rs"),
     },
     SourceFile {
+        path: "behavioral_pipeline_tests.rs",
+        contents: include_str!("behavioral_pipeline_tests.rs"),
+    },
+    SourceFile {
         path: "ccs_all_delta_types_spam_reproduction.rs",
         contents: include_str!("ccs_all_delta_types_spam_reproduction.rs"),
     },

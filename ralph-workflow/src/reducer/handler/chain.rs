@@ -23,6 +23,12 @@ impl MainEffectHandler {
             agents.join(", ")
         ));
 
+        // Log drain transition when switching to a different drain
+        let current_drain = self.state.agent_chain.current_drain;
+        if drain != current_drain {
+            ctx.logger.info(&format!("🔄 Switching to {drain} drain"));
+        }
+
         let event = PipelineEvent::agent_chain_initialized(
             drain,
             agents,

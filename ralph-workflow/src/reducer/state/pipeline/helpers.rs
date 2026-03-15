@@ -81,6 +81,7 @@ impl PipelineState {
             || self.fix_prompt_prepared_pass.is_some()
             || self.fix_required_files_cleaned_pass.is_some()
             || self.fix_agent_invoked_pass.is_some()
+            || self.fix_analysis_agent_invoked_pass.is_some()
             || self.fix_result_xml_extracted_pass.is_some()
             || self.fix_validated_outcome.is_some()
             || self.fix_result_xml_archived_pass.is_some()
@@ -103,7 +104,11 @@ impl PipelineState {
                 }
             }
             PipelinePhase::Review => {
-                if self.fix_drain_active() {
+                // If we're in Analysis drain during Review phase (fix analysis step),
+                // return Analysis drain
+                if self.agent_chain.current_drain == crate::agents::AgentDrain::Analysis {
+                    crate::agents::AgentDrain::Analysis
+                } else if self.fix_drain_active() {
                     crate::agents::AgentDrain::Fix
                 } else {
                     crate::agents::AgentDrain::Review
@@ -173,6 +178,7 @@ impl PipelineState {
             fix_prompt_prepared_pass: None,
             fix_required_files_cleaned_pass: None,
             fix_agent_invoked_pass: None,
+            fix_analysis_agent_invoked_pass: None,
             fix_result_xml_extracted_pass: None,
             fix_validated_outcome: None,
             fix_result_xml_archived_pass: None,

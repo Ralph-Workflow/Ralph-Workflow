@@ -4,7 +4,7 @@ use crate::agents::AgentRole;
 use crate::files::write_diff_backup_with_workspace;
 use crate::phases::PhaseContext;
 use crate::reducer::effect::EffectResult;
-use crate::reducer::event::{AgentEvent, DevelopmentEvent, PipelineEvent};
+use crate::reducer::event::{AgentEvent, DevelopmentEvent, PipelineEvent, ReviewEvent};
 use crate::reducer::handler::MainEffectHandler;
 use anyhow::Result;
 use std::path::Path;
@@ -141,6 +141,127 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         }) {
             result = result.with_additional_event(PipelineEvent::Development(
                 DevelopmentEvent::AnalysisAgentInvoked { iteration },
+            ));
+        }
+
+        Ok(result)
+    }
+
+    /// Invoke fix analysis agent to verify fix results.
+    ///
+    /// TIMING: This handler runs after EVERY fix agent invocation to verify
+    /// whether the fix addressed the review issues.
+    ///
+    /// This handler:
+    /// 1. Reads ISSUES.md (review issues)
+    /// 2. Generates git diff since HEAD
+    /// 3. Reads `fix_result.xml` (fix agent's self-assessment)
+    /// 4. Builds fix analysis prompt with all inputs
+    /// 5. Invokes agent to produce `development_result.xml`
+    /// 6. Emits `FixAnalysisAgentInvoked` event
+    ///
+    /// The fix analysis agent has NO context from fix agent execution,
+    /// ensuring an objective assessment based purely on observable changes.
+    pub(super) fn invoke_fix_analysis_agent(
+        &mut self,
+        ctx: &mut PhaseContext<'_>,
+        pass: u32,
+    ) -> Result<EffectResult> {
+        // Read ISSUES.md (review issues)
+        let issues_path = Path::new(".agent/ISSUES.md");
+        let issues_content = match ctx.workspace.read(issues_path) {
+            Ok(s) => s,
+            Err(err) => {
+                format!("[REVIEW ISSUES unavailable: failed to read .agent/ISSUES.md ({err})]")
+            }
+        };
+
+        // Generate git diff since HEAD
+        let diff_content = match crate::git_helpers::git_diff_in_repo(ctx.repo_root) {
+            Ok(diff) => {
+                let _ = write_diff_backup_with_workspace(ctx.workspace, &diff);
+                diff
+            }
+            Err(err) => {
+                let placeholder =
+                    format!("[DIFF unavailable: failed to generate git diff ({err})]");
+                let _ = write_diff_backup_with_workspace(ctx.workspace, &placeholder);
+                placeholder
+            }
+        };
+
+        // Read fix_result.xml (fix agent's self-assessment)
+        let fix_result_path = Path::new(".agent/tmp/fix_result.xml");
+        let fix_result_content = match ctx.workspace.read(fix_result_path) {
+            Ok(s) => s,
+            Err(err) => {
+                format!(
+                    "[FIX RESULT unavailable: failed to read .agent/tmp/fix_result.xml ({err})]"
+                )
+            }
+        };
+
+        // Generate fix analysis prompt
+        let mut prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
+            &issues_content,
+            &diff_content,
+            &fix_result_content,
+            self.state.continuation.fix_continue_pending,
+            ctx.workspace,
+        );
+
+        // XSD retry context: if the last analysis XML was invalid, instruct the agent to
+        // read the schema error and previous invalid output from workspace files.
+        if self.state.continuation.xsd_retry_pending {
+            let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
+            let last_output_path = ".agent/tmp/development_result.xml";
+            prompt = format!(
+                "## XSD Retry Note\n\n\
+Your previous XML output failed XSD validation.\
+- Read the validation error: {xsd_error_path}\n\
+- Read your previous invalid output: {last_output_path}\n\
+Then produce a corrected development_result.xml that conforms to the schema.\n\n\
+{prompt}"
+            );
+        }
+
+        // Same-agent retry context
+        if self.state.continuation.same_agent_retry_pending {
+            let retry_preamble =
+                super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
+            prompt = format!("{retry_preamble}\n{prompt}");
+        }
+
+        // Normalize agent chain state before invocation for determinism
+        self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
+
+        // Get current agent from chain
+        let agent = self
+            .state
+            .agent_chain
+            .current_agent()
+            .cloned()
+            .unwrap_or_else(|| ctx.developer_agent.to_string());
+
+        // Invoke agent with analysis role
+        let mut result = self.invoke_agent(
+            ctx,
+            crate::agents::AgentDrain::Analysis,
+            AgentRole::Analysis,
+            &agent,
+            None,
+            prompt,
+        )?;
+
+        // Emit FixAnalysisAgentInvoked event if agent invocation succeeded
+        if result.additional_events.iter().any(|e| {
+            matches!(
+                e,
+                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+            )
+        }) {
+            result = result.with_additional_event(PipelineEvent::Review(
+                ReviewEvent::FixAnalysisAgentInvoked { pass },
             ));
         }
 

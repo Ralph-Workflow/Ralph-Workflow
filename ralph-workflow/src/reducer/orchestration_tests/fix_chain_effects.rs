@@ -55,10 +55,11 @@ fn test_fix_chain_emits_extract_fix_result_xml_after_fix_agent_invoked() {
         fix_prompt_prepared_pass: Some(0),
         fix_required_files_cleaned_pass: Some(0),
         fix_agent_invoked_pass: Some(0),
+        fix_analysis_agent_invoked_pass: Some(0),
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(crate::agents::AgentDrain::Fix),
+            .with_drain(crate::agents::AgentDrain::Analysis),
         ..super::initial_with_locked_permissions(1, 1)
     };
 
@@ -76,11 +77,12 @@ fn test_fix_chain_emits_validate_fix_result_xml_after_extracted() {
         fix_prompt_prepared_pass: Some(0),
         fix_required_files_cleaned_pass: Some(0),
         fix_agent_invoked_pass: Some(0),
+        fix_analysis_agent_invoked_pass: Some(0),
         fix_result_xml_extracted_pass: Some(0),
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(crate::agents::AgentDrain::Fix),
+            .with_drain(crate::agents::AgentDrain::Analysis),
         ..super::initial_with_locked_permissions(1, 1)
     };
 
@@ -99,6 +101,7 @@ fn test_fix_chain_applies_all_issues_addressed_to_fix_attempt_completed() {
         fix_prompt_prepared_pass: Some(0),
         fix_required_files_cleaned_pass: Some(0),
         fix_agent_invoked_pass: Some(0),
+        fix_analysis_agent_invoked_pass: Some(0),
         fix_result_xml_extracted_pass: Some(0),
         fix_validated_outcome: Some(crate::reducer::state::FixValidatedOutcome {
             pass: 0,
@@ -109,7 +112,7 @@ fn test_fix_chain_applies_all_issues_addressed_to_fix_attempt_completed() {
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(crate::agents::AgentDrain::Fix),
+            .with_drain(crate::agents::AgentDrain::Analysis),
         ..super::initial_with_locked_permissions(1, 1)
     };
 
@@ -141,6 +144,7 @@ fn test_fix_chain_emits_archive_fix_result_xml_after_validated() {
         fix_prompt_prepared_pass: Some(0),
         fix_required_files_cleaned_pass: Some(0),
         fix_agent_invoked_pass: Some(0),
+        fix_analysis_agent_invoked_pass: Some(0),
         fix_result_xml_extracted_pass: Some(0),
         fix_validated_outcome: Some(crate::reducer::state::FixValidatedOutcome {
             pass: 0,
@@ -150,7 +154,7 @@ fn test_fix_chain_emits_archive_fix_result_xml_after_validated() {
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(crate::agents::AgentDrain::Fix),
+            .with_drain(crate::agents::AgentDrain::Analysis),
         ..super::initial_with_locked_permissions(1, 1)
     };
 
@@ -168,6 +172,7 @@ fn test_fix_chain_emits_apply_fix_outcome_after_fix_result_xml_archived() {
         fix_prompt_prepared_pass: Some(0),
         fix_required_files_cleaned_pass: Some(0),
         fix_agent_invoked_pass: Some(0),
+        fix_analysis_agent_invoked_pass: Some(0),
         fix_result_xml_extracted_pass: Some(0),
         fix_validated_outcome: Some(crate::reducer::state::FixValidatedOutcome {
             pass: 0,
@@ -178,7 +183,7 @@ fn test_fix_chain_emits_apply_fix_outcome_after_fix_result_xml_archived() {
         agent_chain: PipelineState::initial(1, 1)
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
-            .with_drain(crate::agents::AgentDrain::Fix),
+            .with_drain(crate::agents::AgentDrain::Analysis),
         ..super::initial_with_locked_permissions(1, 1)
     };
 

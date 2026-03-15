@@ -106,6 +106,14 @@ pub enum ReviewEvent {
         pass: u32,
     },
 
+    /// Fix analysis agent was invoked for a review pass.
+    ///
+    /// Emitted after `Effect::InvokeFixAnalysisAgent` completes.
+    /// This mirrors `DevelopmentEvent::AnalysisAgentInvoked` for the fix phase.
+    FixAnalysisAgentInvoked {
+        pass: u32,
+    },
+
     /// Fix result XML exists and was read successfully for the pass.
     FixResultXmlExtracted {
         pass: u32,

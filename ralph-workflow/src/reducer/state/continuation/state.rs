@@ -151,10 +151,10 @@ pub struct ContinuationState {
     /// Cleared when continuation attempt starts or max continuations exceeded.
     #[serde(default)]
     pub fix_continue_pending: bool,
-    /// Maximum fix continuation attempts (default 3).
+    /// Maximum fix continuation attempts (default 10).
     ///
     /// After this many continuations, proceeds to commit even if issues remain.
-    #[serde(default = "default_max_continue_count")]
+    #[serde(default = "default_max_fix_continue_count")]
     pub max_fix_continue_count: u32,
 
     // =========================================================================
@@ -203,6 +203,10 @@ const fn default_max_continue_count() -> u32 {
     3
 }
 
+const fn default_max_fix_continue_count() -> u32 {
+    10
+}
+
 /// Default threshold for consecutive identical effects before triggering loop recovery.
 ///
 /// When the same effect is executed this many times consecutively, the system triggers
@@ -244,7 +248,7 @@ impl Default for ContinuationState {
             fix_previous_summary: None,
             fix_continuation_attempt: 0,
             fix_continue_pending: false,
-            max_fix_continue_count: default_max_continue_count(),
+            max_fix_continue_count: default_max_fix_continue_count(),
             // Loop detection fields
             last_effect_kind: None,
             consecutive_same_effect_count: 0,
@@ -274,7 +278,7 @@ impl ContinuationState {
             max_xsd_retry_count,
             max_same_agent_retry_count,
             max_continue_count,
-            max_fix_continue_count: max_continue_count,
+            max_fix_continue_count: default_max_fix_continue_count(),
             ..Self::default()
         }
     }

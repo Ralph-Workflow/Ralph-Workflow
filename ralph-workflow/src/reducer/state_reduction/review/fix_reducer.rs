@@ -12,6 +12,7 @@ fn clear_fix_drain_progress(state: PipelineState) -> PipelineState {
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
         fix_agent_invoked_pass: None,
+        fix_analysis_agent_invoked_pass: None,
         fix_result_xml_extracted_pass: None,
         fix_validated_outcome: None,
         fix_result_xml_archived_pass: None,
@@ -89,6 +90,7 @@ pub(super) fn reduce_fix_attempt_started(state: PipelineState) -> PipelineState 
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
         fix_agent_invoked_pass: None,
+        fix_analysis_agent_invoked_pass: None,
         fix_result_xml_extracted_pass: None,
         fix_validated_outcome: None,
         fix_result_xml_archived_pass: None,
@@ -145,6 +147,26 @@ pub(super) fn reduce_fix_agent_invoked(state: PipelineState, pass: u32) -> Pipel
             ..state.continuation
         },
         metrics: state.metrics.increment_fix_runs_total(),
+        ..state
+    }
+}
+
+/// Handles `ReviewEvent::FixAnalysisAgentInvoked`.
+///
+/// Marks fix analysis agent as invoked for this pass and increments metrics.
+/// This is the fix verification step that mirrors development analysis.
+pub(super) fn reduce_fix_analysis_agent_invoked(state: PipelineState, pass: u32) -> PipelineState {
+    PipelineState {
+        agent_chain: state.agent_chain.with_drain(AgentDrain::Analysis),
+        fix_analysis_agent_invoked_pass: Some(pass),
+        continuation: ContinuationState {
+            xsd_retry_pending: false,
+            xsd_retry_session_reuse_pending: false,
+            same_agent_retry_pending: false,
+            same_agent_retry_reason: None,
+            ..state.continuation
+        },
+        metrics: state.metrics.increment_fix_analysis_runs_total(),
         ..state
     }
 }
@@ -262,6 +284,7 @@ pub(super) fn reduce_fix_continuation_triggered(
         fix_prompt_prepared_pass: None,
         fix_required_files_cleaned_pass: None,
         fix_agent_invoked_pass: None,
+        fix_analysis_agent_invoked_pass: None,
         fix_result_xml_extracted_pass: None,
         fix_validated_outcome: None,
         fix_result_xml_archived_pass: None,
@@ -347,6 +370,7 @@ pub(super) fn reduce_fix_output_validation_failed(
             // 3. Cleanup runs before invocation
             fix_prompt_prepared_pass: None,
             fix_agent_invoked_pass: None,
+            fix_analysis_agent_invoked_pass: None,
             fix_required_files_cleaned_pass: None,
             metrics: if will_retry {
                 state.metrics.increment_xsd_retry_fix()
@@ -382,6 +406,7 @@ pub(super) fn reduce_fix_output_validation_failed(
             // 3. Cleanup runs before re-invocation (fix_required_files_cleaned_pass = None)
             fix_prompt_prepared_pass: None,
             fix_agent_invoked_pass: None,
+            fix_analysis_agent_invoked_pass: None,
             fix_required_files_cleaned_pass: None,
             metrics: if will_retry {
                 state.metrics.increment_xsd_retry_fix()

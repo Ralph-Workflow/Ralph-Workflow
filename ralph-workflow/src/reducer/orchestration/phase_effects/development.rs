@@ -26,7 +26,7 @@
 //!   - iteration > `total_iterations` (abnormal: exceeds configured iterations)
 //!   - `total_iterations` == 0 (no iterations configured)
 
-use crate::agents::AgentDrain;
+use crate::agents::{AgentDrain, DrainMode};
 use crate::reducer::effect::{ContinuationContextData, Effect};
 use crate::reducer::event::CheckpointTrigger;
 use crate::reducer::state::{DevelopmentStatus, PipelineState, PromptMode};
@@ -69,9 +69,32 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
 
     // Development phase runs two runtime drains (Development then Analysis). Ensure
     // we are on the development drain before preparing/invoking the developer agent.
-    if state.development_agent_invoked_iteration != Some(state.iteration)
-        && state.agent_chain.current_drain != AgentDrain::Development
-    {
+    //
+    // BUG FIX: Handle the case where InvocationSucceeded was processed but
+    // development_agent_invoked_iteration wasn't set yet. This happens because
+    // InvocationSucceeded is an additional event processed AFTER the orchestrator
+    // runs.
+    //
+    // We detect this by checking:
+    // 1. The explicit flag is set (normal case), OR
+    // 2. All pre-invocation steps are done AND the last effect was InvokeDevelopmentAgent
+    //    (indicating we just completed an invocation and the flag wasn't set due to event ordering)
+    let last_effect_was_dev_agent = state
+        .continuation
+        .last_effect_kind
+        .as_deref()
+        .is_some_and(|k| k.contains("InvokeDevelopmentAgent"));
+
+    let effective_agent_invoked = state.development_agent_invoked_iteration
+        == Some(state.iteration)
+        || (last_effect_was_dev_agent
+            && state.development_context_prepared_iteration == Some(state.iteration)
+            && state.development_prompt_prepared_iteration == Some(state.iteration)
+            && state.development_required_files_cleaned_iteration == Some(state.iteration)
+            && state.agent_chain.current_drain == AgentDrain::Development
+            && state.agent_chain.current_mode == DrainMode::Normal);
+
+    if !effective_agent_invoked && state.agent_chain.current_drain != AgentDrain::Development {
         return Effect::InitializeAgentChain {
             drain: AgentDrain::Development,
         };
@@ -125,7 +148,7 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
             };
         }
 
-        if state.development_agent_invoked_iteration != Some(state.iteration) {
+        if !effective_agent_invoked {
             return Effect::InvokeDevelopmentAgent {
                 iteration: state.iteration,
             };
@@ -135,7 +158,7 @@ pub(super) fn determine_development_effect(state: &PipelineState) -> Effect {
         // Analysis agent produces development_result.xml by comparing git diff vs PLAN.md
         // This runs AFTER InvokeDevelopmentAgent completes (checked via development_agent_invoked_iteration)
         // and BEFORE ExtractDevelopmentXml (checked via analysis_agent_invoked_iteration)
-        if state.development_agent_invoked_iteration == Some(state.iteration)
+        if effective_agent_invoked
             && state.analysis_agent_invoked_iteration != Some(state.iteration)
         {
             if state.agent_chain.current_drain != AgentDrain::Analysis {

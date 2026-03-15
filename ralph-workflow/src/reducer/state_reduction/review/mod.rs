@@ -34,14 +34,14 @@ use crate::reducer::state::PipelineState;
 
 pub(super) fn reduce_review_event(state: PipelineState, event: ReviewEvent) -> PipelineState {
     use ReviewEvent::{
-        AgentInvoked, Completed, ContextPrepared, FixAgentInvoked, FixAttemptCompleted,
-        FixAttemptStarted, FixContinuationBudgetExhausted, FixContinuationSucceeded,
-        FixContinuationTriggered, FixOutcomeApplied, FixOutputValidationFailed, FixPromptPrepared,
-        FixResultXmlArchived, FixResultXmlCleaned, FixResultXmlExtracted, FixResultXmlMissing,
-        FixResultXmlValidated, IssueSnippetsExtracted, IssuesMarkdownWritten, IssuesXmlArchived,
-        IssuesXmlCleaned, IssuesXmlExtracted, IssuesXmlMissing, IssuesXmlValidated,
-        OutputValidationFailed, PassCompletedClean, PassStarted, PhaseCompleted, PhaseStarted,
-        PromptPrepared,
+        AgentInvoked, Completed, ContextPrepared, FixAgentInvoked, FixAnalysisAgentInvoked,
+        FixAttemptCompleted, FixAttemptStarted, FixContinuationBudgetExhausted,
+        FixContinuationSucceeded, FixContinuationTriggered, FixOutcomeApplied,
+        FixOutputValidationFailed, FixPromptPrepared, FixResultXmlArchived, FixResultXmlCleaned,
+        FixResultXmlExtracted, FixResultXmlMissing, FixResultXmlValidated, IssueSnippetsExtracted,
+        IssuesMarkdownWritten, IssuesXmlArchived, IssuesXmlCleaned, IssuesXmlExtracted,
+        IssuesXmlMissing, IssuesXmlValidated, OutputValidationFailed, PassCompletedClean,
+        PassStarted, PhaseCompleted, PhaseStarted, PromptPrepared,
     };
 
     match event {
@@ -95,6 +95,9 @@ pub(super) fn reduce_review_event(state: PipelineState, event: ReviewEvent) -> P
         FixPromptPrepared { pass } => fix_reducer::reduce_fix_prompt_prepared(state, pass),
         FixResultXmlCleaned { pass } => fix_reducer::reduce_fix_result_xml_cleaned(state, pass),
         FixAgentInvoked { pass } => fix_reducer::reduce_fix_agent_invoked(state, pass),
+        FixAnalysisAgentInvoked { pass } => {
+            fix_reducer::reduce_fix_analysis_agent_invoked(state, pass)
+        }
         FixResultXmlExtracted { pass } => fix_reducer::reduce_fix_result_xml_extracted(state, pass),
         FixResultXmlValidated {
             pass,

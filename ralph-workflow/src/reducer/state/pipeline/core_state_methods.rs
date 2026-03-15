@@ -92,6 +92,7 @@ impl PipelineState {
             fix_prompt_prepared_pass: None,
             fix_required_files_cleaned_pass: None,
             fix_agent_invoked_pass: None,
+            fix_analysis_agent_invoked_pass: None,
             fix_result_xml_extracted_pass: None,
             fix_validated_outcome: None,
             fix_result_xml_archived_pass: None,

@@ -126,6 +126,13 @@ pub struct PipelineState {
     #[serde(default)]
     pub fix_agent_invoked_pass: Option<u32>,
 
+    /// Tracks whether fix analysis agent was invoked for the current reviewer pass.
+    ///
+    /// This mirrors `analysis_agent_invoked_iteration` for development.
+    /// After every fix agent invocation, an analysis agent verifies the fix.
+    #[serde(default)]
+    pub fix_analysis_agent_invoked_pass: Option<u32>,
+
     #[serde(default)]
     pub fix_result_xml_extracted_pass: Option<u32>,
 

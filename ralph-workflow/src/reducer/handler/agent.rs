@@ -3,6 +3,7 @@ use crate::agents::{AgentDrain, AgentRole};
 use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
+use crate::reducer::event::AgentEvent;
 use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
@@ -76,8 +77,18 @@ impl MainEffectHandler {
             self.state.agent_chain.current_model()
         };
 
+        // Build chain position info for logging
+        let chain_position = if self.state.agent_chain.agents.len() > 1 {
+            let pos = self.state.agent_chain.current_agent_index + 1;
+            let total = self.state.agent_chain.agents.len();
+            let kind = if pos == 1 { "primary" } else { "fallback" };
+            format!(", {pos}/{total}, {kind}")
+        } else {
+            String::new()
+        };
+
         ctx.logger.info(&format!(
-            "Executing with agent: {effective_agent}, model: {model_name:?}"
+            "Executing with agent: {effective_agent}{chain_position}, model: {model_name:?}"
         ));
 
         // Get agent configuration from registry
@@ -253,10 +264,42 @@ impl MainEffectHandler {
         let AgentExecutionResult { event, session_id } =
             execute_agent_fault_tolerantly(config, &mut runtime)?;
 
-        // Emit UI event for agent activity
+        // Build chain position info for logging
+        let chain_position = if self.state.agent_chain.agents.len() > 1 {
+            let pos = self.state.agent_chain.current_agent_index + 1;
+            let total = self.state.agent_chain.agents.len();
+            let kind = if pos == 1 { "primary" } else { "fallback" };
+            format!(" ({pos}/{total}, {kind})")
+        } else {
+            String::new()
+        };
+
+        // Determine outcome message based on event type
+        let outcome_message = match &event {
+            PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. }) => {
+                format!("Completed {role} task successfully{chain_position}")
+            }
+            PipelineEvent::Agent(AgentEvent::RateLimited { .. }) => {
+                format!("Agent {effective_agent}{chain_position} rate-limited")
+            }
+            PipelineEvent::Agent(AgentEvent::AuthFailed { .. }) => {
+                format!("Agent {effective_agent}{chain_position} auth failed")
+            }
+            PipelineEvent::Agent(AgentEvent::TimedOut { .. }) => {
+                format!("Agent {effective_agent}{chain_position} timed out")
+            }
+            PipelineEvent::Agent(AgentEvent::InvocationFailed { error_kind, .. }) => {
+                format!("Agent {effective_agent}{chain_position} failed: {error_kind:?}")
+            }
+            _ => {
+                format!("Agent {effective_agent}{chain_position} completed")
+            }
+        };
+
+        // Emit UI event for agent activity with outcome
         let ui_event = UIEvent::AgentActivity {
             agent: effective_agent.clone(),
-            message: format!("Completed {role} task"),
+            message: outcome_message,
         };
 
         // Build result with started event first, then the execution result(s).

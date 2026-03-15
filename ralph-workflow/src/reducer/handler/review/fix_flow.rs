@@ -510,8 +510,15 @@ impl MainEffectHandler {
         use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
         use std::path::Path;
 
-        let fix_xml = Path::new(xml_paths::FIX_RESULT_XML);
-        match ctx.workspace.read(fix_xml) {
+        // When fix analysis ran, it writes development_result.xml (analysis output)
+        // Otherwise, it writes fix_result.xml (fix agent self-assessment)
+        let xml_path = if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
+            Path::new(".agent/tmp/development_result.xml")
+        } else {
+            Path::new(xml_paths::FIX_RESULT_XML)
+        };
+
+        match ctx.workspace.read(xml_path) {
             Ok(_) => EffectResult::event(PipelineEvent::fix_result_xml_extracted(pass)),
             Err(err) => {
                 let detail = if err.kind() == std::io::ErrorKind::NotFound {
@@ -541,7 +548,15 @@ impl MainEffectHandler {
         use crate::files::llm_output_extraction::validate_fix_result_xml;
         use std::path::Path;
 
-        let fix_xml = match ctx.workspace.read(Path::new(xml_paths::FIX_RESULT_XML)) {
+        // When fix analysis ran, validate development_result.xml (analysis output)
+        // Otherwise, validate fix_result.xml (fix agent self-assessment)
+        let xml_path = if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
+            Path::new(".agent/tmp/development_result.xml")
+        } else {
+            Path::new(xml_paths::FIX_RESULT_XML)
+        };
+
+        let xml_content = match ctx.workspace.read(xml_path) {
             Ok(s) => s,
             Err(err) => {
                 let detail = if err.kind() == std::io::ErrorKind::NotFound {
@@ -561,28 +576,65 @@ impl MainEffectHandler {
             }
         };
 
-        match validate_fix_result_xml(&fix_xml) {
-            Ok(elements) => {
-                let status = crate::reducer::state::FixStatus::parse(&elements.status)
-                    .unwrap_or(crate::reducer::state::FixStatus::Failed);
-                EffectResult::with_ui(
-                    PipelineEvent::fix_result_xml_validated(pass, status, elements.summary),
-                    vec![UIEvent::XmlOutput {
-                        xml_type: XmlOutputType::FixResult,
-                        content: fix_xml,
-                        context: Some(XmlOutputContext {
-                            iteration: None,
-                            pass: Some(pass),
-                            snippets: Vec::new(),
-                        }),
-                    }],
-                )
+        // When fix analysis ran, use development_result validation and map status
+        if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
+            use crate::files::llm_output_extraction::validate_development_result_xml;
+            match validate_development_result_xml(&xml_content) {
+                Ok(elements) => {
+                    // Map development result status to fix status:
+                    // completed -> AllIssuesAddressed
+                    // partial/failed -> IssuesRemain
+                    let status = match elements.status.as_str() {
+                        "completed" => crate::reducer::state::FixStatus::AllIssuesAddressed,
+                        _ => crate::reducer::state::FixStatus::IssuesRemain,
+                    };
+                    EffectResult::with_ui(
+                        PipelineEvent::fix_result_xml_validated(
+                            pass,
+                            status,
+                            Some(elements.summary),
+                        ),
+                        vec![UIEvent::XmlOutput {
+                            xml_type: XmlOutputType::DevelopmentResult,
+                            content: xml_content,
+                            context: Some(XmlOutputContext {
+                                iteration: None,
+                                pass: Some(pass),
+                                snippets: Vec::new(),
+                            }),
+                        }],
+                    )
+                }
+                Err(err) => EffectResult::event(PipelineEvent::fix_output_validation_failed(
+                    pass,
+                    self.state.continuation.invalid_output_attempts,
+                    Some(err.format_for_ai_retry()),
+                )),
             }
-            Err(err) => EffectResult::event(PipelineEvent::fix_output_validation_failed(
-                pass,
-                self.state.continuation.invalid_output_attempts,
-                Some(err.format_for_ai_retry()),
-            )),
+        } else {
+            match validate_fix_result_xml(&xml_content) {
+                Ok(elements) => {
+                    let status = crate::reducer::state::FixStatus::parse(&elements.status)
+                        .unwrap_or(crate::reducer::state::FixStatus::Failed);
+                    EffectResult::with_ui(
+                        PipelineEvent::fix_result_xml_validated(pass, status, elements.summary),
+                        vec![UIEvent::XmlOutput {
+                            xml_type: XmlOutputType::FixResult,
+                            content: xml_content,
+                            context: Some(XmlOutputContext {
+                                iteration: None,
+                                pass: Some(pass),
+                                snippets: Vec::new(),
+                            }),
+                        }],
+                    )
+                }
+                Err(err) => EffectResult::event(PipelineEvent::fix_output_validation_failed(
+                    pass,
+                    self.state.continuation.invalid_output_attempts,
+                    Some(err.format_for_ai_retry()),
+                )),
+            }
         }
     }
 
@@ -602,12 +654,20 @@ impl MainEffectHandler {
         )))
     }
 
-    pub(super) fn archive_fix_result_xml(ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
+    pub(super) fn archive_fix_result_xml(&self, ctx: &PhaseContext<'_>, pass: u32) -> EffectResult {
         use crate::files::llm_output_extraction::archive_xml_file_with_workspace;
         use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
         use std::path::Path;
 
         archive_xml_file_with_workspace(ctx.workspace, Path::new(xml_paths::FIX_RESULT_XML));
+
+        if self.state.fix_analysis_agent_invoked_pass == Some(pass) {
+            archive_xml_file_with_workspace(
+                ctx.workspace,
+                Path::new(".agent/tmp/development_result.xml"),
+            );
+        }
+
         EffectResult::event(PipelineEvent::fix_result_xml_archived(pass))
     }
 }

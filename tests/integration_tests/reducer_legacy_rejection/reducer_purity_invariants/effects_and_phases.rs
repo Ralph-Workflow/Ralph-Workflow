@@ -207,6 +207,7 @@ fn test_effects_are_single_task() {
                 | Effect::InvokeAnalysisAgent { .. }
                 | Effect::InvokeReviewAgent { .. }
                 | Effect::InvokeFixAgent { .. }
+                | Effect::InvokeFixAnalysisAgent { .. }
                 | Effect::InvokeCommitAgent => "invoke-agent",
                 Effect::InitializeAgentChain { .. } => "init-chain",
                 Effect::PreparePlanningPrompt { .. }

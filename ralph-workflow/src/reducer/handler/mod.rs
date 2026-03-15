@@ -344,13 +344,15 @@ impl MainEffectHandler {
 
             Effect::InvokeFixAgent { pass } => self.invoke_fix_agent(ctx, pass),
 
+            Effect::InvokeFixAnalysisAgent { pass } => self.invoke_fix_analysis_agent(ctx, pass),
+
             Effect::ExtractFixResultXml { pass } => Ok(self.extract_fix_result_xml(ctx, pass)),
 
             Effect::ValidateFixResultXml { pass } => Ok(self.validate_fix_result_xml(ctx, pass)),
 
             Effect::ApplyFixOutcome { pass } => self.apply_fix_outcome(ctx, pass),
 
-            Effect::ArchiveFixResultXml { pass } => Ok(Self::archive_fix_result_xml(ctx, pass)),
+            Effect::ArchiveFixResultXml { pass } => Ok(self.archive_fix_result_xml(ctx, pass)),
 
             Effect::RunRebase {
                 phase,

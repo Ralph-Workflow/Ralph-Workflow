@@ -197,6 +197,15 @@ pub enum Effect {
         pass: u32,
     },
 
+    /// Invoke the fix analysis agent to verify fix results (single-task).
+    ///
+    /// This runs after every fix agent invocation to independently verify
+    /// whether the fix addressed the review issues. Uses the same drain
+    /// as development analysis (`AgentDrain::Analysis`).
+    InvokeFixAnalysisAgent {
+        pass: u32,
+    },
+
     /// Verify that `.agent/tmp/fix_result.xml` exists and is readable (single-task).
     ExtractFixResultXml {
         pass: u32,
