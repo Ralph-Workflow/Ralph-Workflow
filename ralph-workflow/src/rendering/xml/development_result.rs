@@ -299,4 +299,60 @@ src/old.rs (deleted)</ralph-files-changed>
             "Should show modified action for existing file"
         );
     }
+
+    #[test]
+    fn test_render_development_result_with_skills_mcp() {
+        let xml = "<ralph-development-result>\
+<ralph-status>partial</ralph-status>\
+<ralph-summary>Verification found a reproducible reducer failure.</ralph-summary>\
+<skills-mcp>\
+<skill reason=\"A concrete failure should be investigated before editing code\">systematic-debugging</skill>\
+<skill reason=\"The eventual fix should begin with a reproducing test\">test-driven-development</skill>\
+<mcp reason=\"Use when external dependency behavior needs confirmation\">context7</mcp>\
+</skills-mcp>\
+<ralph-files-changed>src/main.rs</ralph-files-changed>\
+</ralph-development-result>";
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp header"
+        );
+        assert!(
+            output.contains("systematic-debugging"),
+            "Should show first skill name"
+        );
+        assert!(
+            output.contains("test-driven-development"),
+            "Should show second skill name"
+        );
+        assert!(output.contains("context7"), "Should show mcp name");
+        assert!(
+            output.contains("A concrete failure should be investigated"),
+            "Should show reason for first skill"
+        );
+    }
+
+    #[test]
+    fn test_render_development_result_skills_mcp_raw_content_only() {
+        let xml = "<ralph-development-result>\
+<ralph-status>partial</ralph-status>\
+<ralph-summary>Some work done</ralph-summary>\
+<skills-mcp>\
+some raw unstructured skills content here\
+</skills-mcp>\
+</ralph-development-result>";
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp header"
+        );
+        assert!(
+            output.contains("some raw unstructured skills content here"),
+            "Should show raw content"
+        );
+    }
 }

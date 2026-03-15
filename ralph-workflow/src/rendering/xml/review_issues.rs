@@ -7,6 +7,7 @@
 //! - Visual separators between issues
 
 use crate::files::llm_output_extraction::validate_issues_xml;
+use crate::files::llm_output_extraction::{IssueEntry, SkillsMcp};
 use crate::reducer::ui_event::{XmlCodeSnippet, XmlOutputContext};
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -44,8 +45,10 @@ pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> Strin
                 elements.issues.len()
             )
             .unwrap();
-            let issue_texts: Vec<String> = elements.issue_texts();
-            output.push_str(&render_issues_grouped_by_file(&issue_texts, output_context));
+            output.push_str(&render_issues_grouped_by_file(
+                &elements.issues,
+                output_context,
+            ));
         }
     } else {
         output.push_str("⚠️  Unable to parse issues XML\n\n");
@@ -63,10 +66,14 @@ struct ParsedIssue {
     severity: Option<String>,
     snippet: Option<String>,
     description: String,
+    skills_mcp: Option<SkillsMcp>,
 }
 
-fn render_issues_grouped_by_file(issues: &[String], context: Option<&XmlOutputContext>) -> String {
-    let parsed: Vec<ParsedIssue> = issues.iter().map(|i| parse_issue(i)).collect();
+fn render_issues_grouped_by_file(
+    issues: &[IssueEntry],
+    context: Option<&XmlOutputContext>,
+) -> String {
+    let parsed: Vec<ParsedIssue> = issues.iter().map(parse_issue_entry).collect();
     let mut grouped: BTreeMap<String, Vec<ParsedIssue>> = BTreeMap::new();
 
     for issue in parsed {
@@ -111,6 +118,9 @@ fn render_issues_grouped_by_file(issues: &[String], context: Option<&XmlOutputCo
                     writeln!(output, "      {line}").unwrap();
                 }
             }
+
+            // Render skills-mcp for this issue if present
+            render_skills_mcp_inline(&mut output, issue.skills_mcp.as_ref());
         }
         output.push('\n');
     }
@@ -185,6 +195,12 @@ static SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("invalid snippet regex pattern - this is a compile-time constant")
 });
 
+fn parse_issue_entry(issue: &IssueEntry) -> ParsedIssue {
+    let mut parsed = parse_issue(&issue.text);
+    parsed.skills_mcp.clone_from(&issue.skills_mcp);
+    parsed
+}
+
 fn parse_issue(issue: &str) -> ParsedIssue {
     let trimmed = issue.trim();
 
@@ -249,6 +265,36 @@ fn parse_issue(issue: &str) -> ParsedIssue {
         severity,
         snippet,
         description,
+        skills_mcp: None,
+    }
+}
+
+/// Render skills-mcp recommendations inline under an issue.
+fn render_skills_mcp_inline(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
+    if let Some(sm) = skills_mcp {
+        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+        if has_structured || sm.raw_content.is_some() {
+            for skill in &sm.skills {
+                if let Some(ref reason) = skill.reason {
+                    writeln!(output, "      - skill: {} \u{2014} {}", skill.name, reason).unwrap();
+                } else {
+                    writeln!(output, "      - skill: {}", skill.name).unwrap();
+                }
+            }
+            for mcp in &sm.mcps {
+                if let Some(ref reason) = mcp.reason {
+                    writeln!(output, "      - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
+                } else {
+                    writeln!(output, "      - mcp: {}", mcp.name).unwrap();
+                }
+            }
+            if let Some(ref raw) = sm.raw_content {
+                let trimmed: &str = raw.trim();
+                if !trimmed.is_empty() && !has_structured {
+                    writeln!(output, "      - {trimmed}").unwrap();
+                }
+            }
+        }
     }
 }
 
@@ -451,6 +497,60 @@ let x = foo().unwrap();
         assert!(
             output.contains("src/lib.rs"),
             "Should show file context: {output}"
+        );
+    }
+
+    #[test]
+    fn test_render_issues_with_per_issue_skills_mcp() {
+        let xml = r#"<ralph-issues>
+<ralph-issue>src/main.rs:42 - Variable unused
+<skills-mcp>
+<skill reason="Start with failing test">test-driven-development</skill>
+<mcp reason="Use for library docs">context7</mcp>
+</skills-mcp>
+</ralph-issue>
+<ralph-issue>src/lib.rs:10 - Missing error handling</ralph-issue>
+</ralph-issues>"#;
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("Variable unused"),
+            "Should show first issue"
+        );
+        assert!(
+            output.contains("test-driven-development"),
+            "Should show skill for first issue"
+        );
+        assert!(
+            output.contains("context7"),
+            "Should show mcp for first issue"
+        );
+        assert!(
+            output.contains("Missing error handling"),
+            "Should show second issue"
+        );
+        assert!(
+            output.contains("Start with failing test"),
+            "Should show skill reason"
+        );
+    }
+
+    #[test]
+    fn test_render_issues_skills_mcp_raw_content() {
+        let xml = r"<ralph-issues>
+<ralph-issue>src/main.rs:1 - Some issue
+<skills-mcp>
+some unstructured content
+</skills-mcp>
+</ralph-issue>
+</ralph-issues>";
+
+        let output = render(xml, None);
+
+        assert!(
+            output.contains("some unstructured content"),
+            "Should show raw content"
         );
     }
 }

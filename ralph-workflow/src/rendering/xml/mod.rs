@@ -18,7 +18,42 @@ mod fix_result;
 mod helpers;
 mod review_issues;
 
+use crate::files::llm_output_extraction::SkillsMcp;
 use crate::reducer::ui_event::{XmlOutputContext, XmlOutputType};
+
+/// Render skills-mcp recommendations in markdown format.
+///
+/// Renders structured skills and MCPs with optional reasons, or raw content if no structured data.
+pub fn render_skills_mcp_markdown(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
+    use std::fmt::Write as _;
+
+    if let Some(sm) = skills_mcp {
+        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+        if has_structured || sm.raw_content.is_some() {
+            output.push_str("  - Skills & MCP:\n");
+            for skill in &sm.skills {
+                if let Some(ref reason) = skill.reason {
+                    writeln!(output, "    - skill: {} \u{2014} {}", skill.name, reason).unwrap();
+                } else {
+                    writeln!(output, "    - skill: {}", skill.name).unwrap();
+                }
+            }
+            for mcp in &sm.mcps {
+                if let Some(ref reason) = mcp.reason {
+                    writeln!(output, "    - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
+                } else {
+                    writeln!(output, "    - mcp: {}", mcp.name).unwrap();
+                }
+            }
+            if let Some(ref raw) = sm.raw_content {
+                let trimmed: &str = raw.trim();
+                if !trimmed.is_empty() && !has_structured {
+                    writeln!(output, "    - {trimmed}").unwrap();
+                }
+            }
+        }
+    }
+}
 
 /// Render XML content based on its type.
 ///

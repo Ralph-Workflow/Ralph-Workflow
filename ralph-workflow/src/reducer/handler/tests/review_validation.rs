@@ -207,6 +207,61 @@ fn test_write_issues_markdown_renders_from_validated_issues() {
 }
 
 #[test]
+fn test_write_issues_markdown_includes_skills_mcp_from_xml() {
+    let issues_xml = r#"<ralph-issues>
+<ralph-issue>src/main.rs:42 - Variable unused
+<skills-mcp>
+<skill reason="Start with failing test">test-driven-development</skill>
+<mcp reason="Use for library research">context7</mcp>
+</skills-mcp>
+</ralph-issue>
+</ralph-issues>"#;
+
+    let workspace = MemoryWorkspace::new_test().with_file(xml_paths::ISSUES_XML, issues_xml);
+    let mut fixture = TestFixture::with_workspace(workspace);
+    let ctx = fixture.ctx();
+
+    let mut handler = MainEffectHandler::new(PipelineState::initial(0, 1));
+    handler.state.review_validated_outcome = Some(ReviewValidatedOutcome {
+        pass: 0,
+        issues_found: true,
+        clean_no_issues: false,
+        issues: vec!["src/main.rs:42 - Variable unused".to_string()].into_boxed_slice(),
+        no_issues_found: None,
+    });
+
+    let result = handler
+        .write_issues_markdown(&ctx, 0)
+        .expect("write_issues_markdown should succeed");
+
+    assert!(matches!(
+        result.event,
+        PipelineEvent::Review(crate::reducer::event::ReviewEvent::IssuesMarkdownWritten {
+            pass: 0
+        })
+    ));
+
+    let content = fixture
+        .workspace
+        .read(Path::new(".agent/ISSUES.md"))
+        .expect("ISSUES.md should be written");
+
+    assert!(
+        content.contains("Variable unused"),
+        "Should show issue text"
+    );
+    assert!(
+        content.contains("test-driven-development"),
+        "Should show skill name"
+    );
+    assert!(content.contains("context7"), "Should show mcp name");
+    assert!(
+        content.contains("Start with failing test"),
+        "Should show skill reason"
+    );
+}
+
+#[test]
 fn test_extract_review_issue_snippets_includes_snippets_for_locations() {
     let issues_xml = "<ralph-issues><ralph-issue>[high] src/lib.rs:2 - adjust logic</ralph-issue></ralph-issues>";
     let workspace = MemoryWorkspace::new_test()

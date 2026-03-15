@@ -11,7 +11,9 @@
 use std::fmt::Write;
 
 use crate::files::llm_output_extraction::validate_plan_xml;
-use crate::files::llm_output_extraction::xsd_validation_plan::{FileAction, Priority, Severity};
+use crate::files::llm_output_extraction::xsd_validation_plan::{
+    FileAction, Priority, Severity, SkillsMcp,
+};
 
 /// Render development plan XML with semantic formatting.
 pub fn render(content: &str) -> String {
@@ -39,6 +41,9 @@ pub fn render(content: &str) -> String {
             }
             output.push('\n');
         }
+
+        // Skills & MCP recommendations (if present)
+        render_skills_mcp(&mut output, elements.skills_mcp.as_ref());
 
         // Steps section with priorities and dependencies
         output.push_str("\n───────────────────────────────────\n");
@@ -117,6 +122,36 @@ pub fn render(content: &str) -> String {
     }
 
     output
+}
+
+/// Render skills-mcp recommendations to the output string.
+fn render_skills_mcp(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
+    if let Some(sm) = skills_mcp {
+        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+        if has_structured || sm.raw_content.is_some() {
+            output.push_str("\n🛠️  Skills & MCP Recommendations:\n");
+            for skill in &sm.skills {
+                if let Some(ref reason) = skill.reason {
+                    writeln!(output, "   - skill: {} \u{2014} {}", skill.name, reason).unwrap();
+                } else {
+                    writeln!(output, "   - skill: {}", skill.name).unwrap();
+                }
+            }
+            for mcp in &sm.mcps {
+                if let Some(ref reason) = mcp.reason {
+                    writeln!(output, "   - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
+                } else {
+                    writeln!(output, "   - mcp: {}", mcp.name).unwrap();
+                }
+            }
+            if let Some(ref raw) = sm.raw_content {
+                let trimmed: &str = raw.trim();
+                if !trimmed.is_empty() && !has_structured {
+                    writeln!(output, "   {trimmed}").unwrap();
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -365,5 +400,106 @@ mod tests {
         assert!(output.contains("➕"), "Should show create icon");
         assert!(output.contains("📝"), "Should show modify icon");
         assert!(output.contains("🗑️"), "Should show delete icon");
+    }
+
+    #[test]
+    fn test_render_plan_with_skills_mcp() {
+        let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Adding a new feature</context>
+<scope-items>
+<scope-item count="1">file to modify</scope-item>
+<scope-item count="1">file to create</scope-item>
+<scope-item count="1">test to add</scope-item>
+</scope-items>
+</ralph-summary>
+<skills-mcp>
+<skill reason="Start with failing tests">test-driven-development</skill>
+<skill reason="UI work requires visual design">frontend-design</skill>
+<mcp reason="Use for Angular documentation">angular-mcp</mcp>
+</skills-mcp>
+<ralph-implementation-steps>
+<step number="1" type="file-change">
+<title>Implement feature</title>
+<target-files><file path="src/main.rs" action="modify"/></target-files>
+<content><paragraph>Do the work</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files><file path="src/main.rs" action="modify"/></primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair><risk>None</risk><mitigation>N/A</mitigation></risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification><method>Test</method><expected-outcome>Pass</expected-outcome></verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+        let output = render(xml);
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp section"
+        );
+        assert!(
+            output.contains("test-driven-development"),
+            "Should show skill name"
+        );
+        assert!(
+            output.contains("frontend-design"),
+            "Should show second skill"
+        );
+        assert!(output.contains("angular-mcp"), "Should show mcp name");
+        assert!(
+            output.contains("Start with failing tests"),
+            "Should show skill reason"
+        );
+        assert!(
+            output.contains("Use for Angular documentation"),
+            "Should show mcp reason"
+        );
+    }
+
+    #[test]
+    fn test_render_plan_skills_mcp_raw_content_only() {
+        let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test</context>
+<scope-items>
+<scope-item>item1</scope-item>
+<scope-item>item2</scope-item>
+<scope-item>item3</scope-item>
+</scope-items>
+</ralph-summary>
+<skills-mcp>
+some raw unstructured content
+</skills-mcp>
+<ralph-implementation-steps>
+<step number="1" type="file-change">
+<title>Step</title>
+<target-files><file path="src/main.rs" action="modify"/></target-files>
+<content><paragraph>Do</paragraph></content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files><file path="src/main.rs" action="modify"/></primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair><risk>None</risk><mitigation>N/A</mitigation></risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification><method>Test</method><expected-outcome>Pass</expected-outcome></verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+        let output = render(xml);
+        assert!(
+            output.contains("Skills & MCP Recommendations"),
+            "Should show skills-mcp section"
+        );
+        assert!(
+            output.contains("some raw unstructured content"),
+            "Should show raw content"
+        );
     }
 }
