@@ -105,9 +105,10 @@ fn is_test_check(check_name: &str) -> bool {
 }
 
 fn main() -> ExitCode {
-    let mut args = std::env::args().skip(1);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let subcommand = args.first().map(|s| s.as_str());
 
-    match args.next().as_deref() {
+    match subcommand {
         Some("verify") => {
             // Total check count = native checks + 1 (native-scan) + all group checks.
             let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()

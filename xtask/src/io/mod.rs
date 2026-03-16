@@ -3,8 +3,13 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-// Boundary module for I/O operations in xtask.
-// This module exists to host code that inherently requires mutation (process handles, I/O).
-// The forbid_mutating_receiver_methods lint permits &mut self methods in boundary modules.
+//! Boundary module for I/O operations in xtask.
+//!
+//! This module exists to host code that inherently requires mutation
+//! (process handles, I/O, caching with interior mutability).
+//! The forbid_mutating_receiver_methods lint permits &mut self methods
+//! in boundary modules.
 
+pub mod cache;
 pub mod process;
+pub mod scanner;

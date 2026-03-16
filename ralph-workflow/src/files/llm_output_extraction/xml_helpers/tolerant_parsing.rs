@@ -171,8 +171,11 @@ pub const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
 ///
 /// # Examples
 ///
+<<<<<<< Updated upstream
 /// Internal usage example:
 ///
+=======
+>>>>>>> Stashed changes
 /// ```rust,ignore
 /// use ralph_workflow::files::llm_output_extraction::xml_helpers::tolerant_parsing::{
 ///     normalize_enum_value, DEVELOPMENT_STATUS_SYNONYMS,

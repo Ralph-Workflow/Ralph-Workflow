@@ -246,8 +246,14 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
 ///
 /// # Returns
 ///
+<<<<<<< Updated upstream
 /// A `SkillsMcp` struct with parsed entries.
 pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
+=======
+/// A `SkillsMcp` struct with parsed entries. Never returns `Err` for content issues
+/// inside the element (only for XML syntax errors that prevent reading).
+pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdValidationError> {
+>>>>>>> Stashed changes
     let mut buf = Vec::new();
     let mut skills: Vec<SkillEntry> = Vec::new();
     let mut mcps: Vec<McpEntry> = Vec::new();
@@ -263,10 +269,17 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
                 // Extract optional reason attribute
                 let reason = e
                     .attributes()
+<<<<<<< Updated upstream
                     .filter_map(std::result::Result::ok)
                     .find(|a| a.key.as_ref() == b"reason")
                     .and_then(|a| a.unescape_value().ok())
                     .map(Cow::into_owned)
+=======
+                    .filter_map(|a| a.ok())
+                    .find(|a| a.key.as_ref() == b"reason")
+                    .and_then(|a| a.unescape_value().ok())
+                    .map(|v| v.into_owned())
+>>>>>>> Stashed changes
                     .filter(|s| !s.is_empty());
 
                 match tag_bytes {
@@ -296,8 +309,21 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
             }
             Ok(Event::Empty(e)) => {
                 // Self-closing elements like <skill/> or <mcp/> have no name text - skip
+<<<<<<< Updated upstream
                 let _tag_bytes = e.name().as_ref();
                 // No content → nothing to record
+=======
+                let tag = e.name();
+                let tag_bytes = tag.as_ref();
+                match tag_bytes {
+                    b"skill" | b"mcp" => {
+                        // No content → nothing to record
+                    }
+                    _ => {
+                        // Unknown self-closing element - ignore
+                    }
+                }
+>>>>>>> Stashed changes
             }
             Ok(Event::Text(e)) => {
                 // Capture any stray text as raw content
@@ -332,11 +358,19 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
         Some(raw_text_parts.join(" "))
     };
 
+<<<<<<< Updated upstream
     SkillsMcp {
         skills,
         mcps,
         raw_content,
     }
+=======
+    Ok(SkillsMcp {
+        skills,
+        mcps,
+        raw_content,
+    })
+>>>>>>> Stashed changes
 }
 
 /// Create a parse error with CDATA suggestion if the element is code-related.
