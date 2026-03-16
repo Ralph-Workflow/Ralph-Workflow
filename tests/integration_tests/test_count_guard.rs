@@ -56,7 +56,7 @@ use std::collections::HashSet;
 /// - Tests were accidentally removed
 /// - A test module is not being compiled
 /// - The test discovery is not working correctly
-pub const MINIMUM_EXPECTED_TESTS: usize = 400;
+pub const MINIMUM_EXPECTED_TESTS: usize = 1115;
 
 struct SourceFile {
     path: &'static str,

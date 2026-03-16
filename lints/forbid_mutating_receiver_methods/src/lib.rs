@@ -75,7 +75,7 @@ dylint_linting::impl_late_lint! {
     /// let config = config.with_value("key", "value"); // returns new Config
     /// ```
     pub FORBID_MUTATING_RECEIVER_METHODS,
-    Warn,
+    Deny,
     "calls to `&mut self` methods are forbidden outside boundary modules and types",
     ForbidMutatingReceiverMethods
 }

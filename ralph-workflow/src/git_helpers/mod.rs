@@ -48,10 +48,7 @@ fn git2_to_io_error_impl(err: &git2::Error) -> io::Error {
 }
 
 pub mod branch;
-#[cfg(any(test, feature = "test-utils"))]
-pub mod hooks;
-#[cfg(not(any(test, feature = "test-utils")))]
-mod hooks;
+// hooks module moved to runtime/ for dylint boundary exemption
 pub mod identity;
 mod rebase;
 
@@ -62,6 +59,9 @@ pub mod rebase_checkpoint;
 pub mod rebase_state_machine;
 
 mod repo;
+
+// Runtime module - contains OS-boundary code (interior mutability for signal handlers)
+pub mod runtime;
 
 /// # Errors
 ///
@@ -75,22 +75,23 @@ pub(crate) fn get_hooks_dir_in_repo(repo_root: &std::path::Path) -> io::Result<s
 }
 mod review_baseline;
 mod start_commit;
-mod wrapper;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use branch::get_default_branch_at;
 pub use branch::{get_default_branch, is_main_or_master_branch};
-#[cfg(any(test, feature = "test-utils"))]
-pub use hooks::{file_contains_marker_with_workspace, verify_hook_integrity_with_workspace};
-pub use hooks::{
-    install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
-    uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
-};
-pub use hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 pub use rebase::{
     abort_rebase, continue_rebase, get_conflict_markers_for_file, get_conflicted_files,
     rebase_in_progress, rebase_onto, RebaseResult,
 };
+#[cfg(any(test, feature = "test-utils"))]
+pub use runtime::hooks::{
+    file_contains_marker_with_workspace, verify_hook_integrity_with_workspace,
+};
+pub use runtime::hooks::{
+    install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
+    uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
+};
+pub use runtime::hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 
 // Types that are part of the public API but not used in binary
 #[cfg(any(test, feature = "test-utils"))]
@@ -126,13 +127,7 @@ pub use review_baseline::{
     get_baseline_summary, get_review_baseline_info, load_review_baseline, update_review_baseline,
     ReviewBaseline,
 };
-#[cfg(any(test, feature = "test-utils"))]
-pub use start_commit::load_start_point_with_workspace;
-pub use start_commit::{
-    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
-    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
-};
-pub use wrapper::{
+pub use runtime::wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,
     cleanup_agent_phase_silent_at, cleanup_orphaned_marker, cleanup_orphaned_wrapper_at,
     clear_agent_phase_global_state, detect_unauthorized_commit, disable_git_wrapper,
@@ -140,16 +135,22 @@ pub use wrapper::{
     start_agent_phase_in_repo, try_remove_ralph_dir, verify_ralph_dir_removed,
     verify_wrapper_cleaned, GitHelpers, ProtectionCheckResult,
 };
+#[cfg(any(test, feature = "test-utils"))]
+pub use start_commit::load_start_point_with_workspace;
+pub use start_commit::{
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
+    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
+};
 
 // Workspace-aware variants (used by tests and by code paths that must operate
 // without requiring a real git repository).
-pub use wrapper::{
+pub use runtime::wrapper::{
     cleanup_orphaned_marker_with_workspace, create_marker_with_workspace,
     marker_exists_with_workspace, remove_marker_with_workspace,
 };
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use wrapper::{
+pub use runtime::wrapper::{
     agent_phase_test_lock, get_agent_phase_paths_for_test, set_agent_phase_paths_for_test,
 };
 

@@ -3,7 +3,7 @@ use crate::pipeline::prompt::PipelineRuntime;
 use std::io;
 use std::sync::Arc;
 
-pub(super) fn wait_for_completion_and_collect_stderr(
+pub(crate) fn wait_for_completion_and_collect_stderr(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
     monitor_handle: &mut Option<std::thread::JoinHandle<MonitorResult>>,
@@ -114,7 +114,7 @@ pub(super) fn wait_for_completion_and_collect_stderr(
         WaitOutcome::TimedOut(monitor_result) => {
             let stderr_output = try_take_stderr_output(stderr_join_handle, runtime);
             return Ok((
-                super::SIGTERM_EXIT_CODE,
+                crate::pipeline::prompt::SIGTERM_EXIT_CODE,
                 stderr_output,
                 Some(monitor_result),
             ));
@@ -125,7 +125,11 @@ pub(super) fn wait_for_completion_and_collect_stderr(
         // must still see it to drive the Interrupted state transition.
         WaitOutcome::UserInterrupted => {
             let stderr_output = try_take_stderr_output(stderr_join_handle, runtime);
-            return Ok((super::SIGTERM_EXIT_CODE, stderr_output, None));
+            return Ok((
+                crate::pipeline::prompt::SIGTERM_EXIT_CODE,
+                stderr_output,
+                None,
+            ));
         }
     };
 
@@ -356,7 +360,7 @@ mod tests {
 
             let (exit_code, _stderr, monitor_result) =
                 result.expect("expected wait_for_completion to return Ok");
-            assert_eq!(exit_code, super::super::SIGTERM_EXIT_CODE);
+            assert_eq!(exit_code, crate::pipeline::prompt::SIGTERM_EXIT_CODE);
             assert!(matches!(
                 monitor_result,
                 Some(MonitorResult::TimedOut { .. })

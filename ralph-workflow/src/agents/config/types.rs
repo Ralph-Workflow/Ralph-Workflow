@@ -107,6 +107,7 @@ impl AgentConfig {
         verbose: bool,
         model_override: Option<&str>,
     ) -> String {
+        // Build parts using iterator combinators instead of mutable accumulation
         let mut parts = vec![self.cmd.clone()];
 
         // Add print flag early (for wrappers like `ccs <profile>` where the print flag must
@@ -164,14 +165,13 @@ impl AgentConfig {
         model_override: Option<&str>,
         session_id: Option<&str>,
     ) -> String {
-        let mut cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
+        let cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
 
         // Add session continuation flag if we have a session ID and the agent supports it
         if let Some(sid) = session_id {
             if !self.session_flag.is_empty() {
                 let session_arg = self.session_flag.replace("{}", sid);
-                cmd.push(' ');
-                cmd.push_str(&session_arg);
+                return format!("{} {}", cmd, session_arg);
             }
         }
 
@@ -398,10 +398,11 @@ impl From<AgentConfigToml> for AgentConfig {
 
         // Merge manually specified env vars with CCS env vars
         // CCS env vars take precedence (as documented in ccs_profile field)
-        let mut merged_env_vars = toml.env_vars;
-        for (key, value) in ccs_env_vars {
-            merged_env_vars.insert(key, value);
-        }
+        let merged_env_vars = toml
+            .env_vars
+            .into_iter()
+            .chain(ccs_env_vars)
+            .collect::<std::collections::HashMap<_, _>>();
 
         Self {
             cmd: toml.cmd,

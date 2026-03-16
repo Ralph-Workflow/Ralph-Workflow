@@ -314,6 +314,40 @@ fn run_dylint(verbose: bool) -> ExitCode {
     let dylint_driver =
         std::env::var("DYLINT_DRIVER_PATH").unwrap_or_else(|_| format!("{}/.dylint_drivers", home));
 
+    // Convert relative DYLINT_DRIVER_PATH to absolute to ensure cargo-dylint
+    // can find pre-built drivers. Without this, cargo-dylint may try to rebuild
+    // the driver from source, which fails because RUSTUP_TOOLCHAIN is unset by
+    // the cargo-dylint wrapper (it needs RUSTUP_TOOLCHAIN at compile time).
+    //
+    // If the resolved path doesn't have a built driver, fall back to the default
+    // location (~/.dylint_drivers) to avoid rebuild failures.
+    let dylint_driver = if std::path::Path::new(&dylint_driver).is_relative() {
+        let absolute_path = std::env::current_dir()
+            .map(|cwd| cwd.join(&dylint_driver).to_string_lossy().to_string())
+            .unwrap_or_else(|_| dylint_driver.clone());
+
+        // Check if the driver exists in this location
+        let driver_exists = std::path::Path::new(&absolute_path)
+            .join("nightly-aarch64-apple-darwin")
+            .join("dylint-driver")
+            .exists();
+
+        if driver_exists {
+            absolute_path
+        } else {
+            // Fall back to default location
+            if verbose {
+                eprintln!(
+                    "  Note: No driver found at {}, falling back to default",
+                    absolute_path
+                );
+            }
+            format!("{}/.dylint_drivers", home)
+        }
+    } else {
+        dylint_driver
+    };
+
     // Validate required environment
     if cargo_home.is_empty() {
         eprintln!(
@@ -817,7 +851,6 @@ fn run_dylint(verbose: bool) -> ExitCode {
     cmd.env("DYLINT_DRIVER_PATH", &dylint_driver);
     cmd.env("RUSTUP_TOOLCHAIN", &nightly_toolchain);
     cmd.env("RUSTC", &nightly_rustc);
-    cmd.env("RUSTFLAGS", "--cap-lints=allow");
     cmd.env("CARGO_TERM_QUIET", dylint_quiet);
 
     if force_offline {

@@ -3,7 +3,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use super::ConfigEnvironment;
+use crate::config::ConfigEnvironment;
 
 /// In-memory implementation of [`ConfigEnvironment`] for testing.
 ///

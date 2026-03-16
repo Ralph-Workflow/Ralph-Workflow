@@ -89,7 +89,7 @@ fn test_cancel_and_join_stderr_collector_does_not_drop_handle_on_timeout() {
         Ok(String::new())
     }));
 
-    super::super::stderr_collector::cancel_and_join_stderr_collector(
+    super::super::runtime::stderr_collector::cancel_and_join_stderr_collector(
         &cancel,
         &mut join_handle,
         std::time::Duration::from_millis(10),

@@ -3,8 +3,11 @@
 use super::kill::{
     force_kill_best_effort, kill_process, KillConfig, KillResult, DEFAULT_KILL_CONFIG,
 };
-use super::{is_idle_timeout_exceeded, SharedActivityTimestamp, SharedFileActivityTracker};
 use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};
+use crate::pipeline::idle_timeout::{
+    is_idle_timeout_exceeded, time_since_activity, SharedActivityTimestamp,
+    SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
+};
 use crate::workspace::Workspace;
 use std::sync::Arc;
 use std::time::Duration;
@@ -52,7 +55,7 @@ pub struct MonitorConfig {
 impl Default for MonitorConfig {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(super::IDLE_TIMEOUT_SECS),
+            timeout: Duration::from_secs(IDLE_TIMEOUT_SECS),
             check_interval: DEFAULT_CHECK_INTERVAL,
             kill_config: DEFAULT_KILL_CONFIG,
             required_idle_confirmations: 2,
@@ -331,7 +334,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         }
 
         // Log diagnostic information about timeout trigger
-        let time_since_output = super::time_since_activity(activity_timestamp);
+        let time_since_output = time_since_activity(activity_timestamp);
         eprintln!(
             "Idle timeout exceeded: no output activity for {} seconds",
             time_since_output.as_secs()
@@ -365,7 +368,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             //     indefinitely prevent a correct kill.
             let scan_overhead_buffer = Duration::from_secs(1);
             let cap = timeout + check_interval + scan_overhead_buffer;
-            let actual_idle = super::time_since_activity(activity_timestamp);
+            let actual_idle = time_since_activity(activity_timestamp);
             let file_window = (actual_idle + scan_overhead_buffer).min(cap);
 
             let locked_tracker = config

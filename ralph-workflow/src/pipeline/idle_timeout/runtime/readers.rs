@@ -1,4 +1,4 @@
-use super::{touch_activity, SharedActivityTimestamp};
+use crate::pipeline::idle_timeout::{touch_activity, SharedActivityTimestamp};
 use std::io::{self, Read};
 
 /// A reader wrapper that updates an activity timestamp on every read.

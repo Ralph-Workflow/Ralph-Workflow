@@ -24,6 +24,7 @@
     clippy::manual_flatten,
     clippy::needless_collect
 )]
+
 //! Ralph workflow library for AI agent orchestration.
 //!
 //! This crate provides the core functionality for the `ralph` CLI binary,

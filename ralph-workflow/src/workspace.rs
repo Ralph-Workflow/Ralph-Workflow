@@ -380,7 +380,7 @@ pub trait Workspace: Send + Sync {
 // Production Implementation: WorkspaceFs
 // ============================================================================
 
-include!("workspace/workspace_fs.rs");
+include!("workspace/io/workspace_fs.rs");
 
 // ============================================================================
 // Test Implementation: MemoryWorkspace

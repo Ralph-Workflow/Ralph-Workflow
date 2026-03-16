@@ -16,6 +16,9 @@ mod output;
 
 mod progress;
 
+// Runtime module - contains OS-boundary code (interior mutability for caching)
+pub mod runtime;
+
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};
 pub use progress::print_progress;
 

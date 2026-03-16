@@ -1,8 +1,8 @@
-warning: file has 501 lines (>= 500) - consider refactoring
+error: file has 501 lines (>= 500) - consider refactoring
    |
    = help: consider splitting this file into smaller, more focused modules
    = note: see CODE_STYLE.md for design principles on module organization
-   = note: `#[warn(file_too_long)]` on by default
+   = note: `#[deny(file_too_long)]` on by default
 
-warning: 1 warning emitted
+error: aborting due to 1 previous error
 

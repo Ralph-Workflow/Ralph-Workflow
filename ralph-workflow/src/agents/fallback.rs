@@ -147,18 +147,21 @@ impl ResolvedDrainConfig {
     /// Build a resolved drain config from the legacy role-shaped fallback config.
     #[must_use]
     pub fn from_legacy(fallback: &FallbackConfig) -> Self {
-        let mut bindings = HashMap::new();
-        for drain in AgentDrain::all() {
-            let role = drain.role();
-            let chain_name = fallback.effective_chain_name_for_role(role).to_string();
-            bindings.insert(
-                drain,
-                ResolvedDrainBinding {
-                    chain_name,
-                    agents: fallback.get_fallbacks(role).to_vec(),
-                },
-            );
-        }
+        // Build bindings using iterator collect instead of mutable accumulation
+        let bindings = AgentDrain::all()
+            .iter()
+            .map(|drain| {
+                let role = drain.role();
+                let chain_name = fallback.effective_chain_name_for_role(role).to_string();
+                (
+                    *drain,
+                    ResolvedDrainBinding {
+                        chain_name,
+                        agents: fallback.get_fallbacks(role).to_vec(),
+                    },
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
 
         Self {
             bindings,
@@ -436,14 +439,10 @@ impl FallbackConfig {
     /// Return whether this legacy config carries any role-keyed chain bindings.
     #[must_use]
     pub fn has_role_bindings(&self) -> bool {
-        [
-            self.developer.as_slice(),
-            self.reviewer.as_slice(),
-            self.commit.as_slice(),
-            self.analysis.as_slice(),
-        ]
-        .into_iter()
-        .any(|chain| !chain.is_empty())
+        !self.developer.is_empty()
+            || !self.reviewer.is_empty()
+            || !self.commit.is_empty()
+            || !self.analysis.is_empty()
     }
 
     /// Return whether any legacy role key was explicitly present in the source config.
@@ -492,12 +491,11 @@ impl FallbackConfig {
         let base_hundredths = self.retry_delay_ms.saturating_mul(100);
 
         // Calculate: base * (multiplier^cycle) / 100^cycle
-        // Use saturating arithmetic to avoid overflow
-        let mut delay_hundredths = base_hundredths;
-        for _ in 0..cycle {
-            delay_hundredths = delay_hundredths.saturating_mul(multiplier_hundredths);
-            delay_hundredths = delay_hundredths.saturating_div(100);
-        }
+        // Use iterator to avoid mutable binding and loop
+        let delay_hundredths = (0..cycle).fold(base_hundredths, |acc, _| {
+            acc.saturating_mul(multiplier_hundredths)
+                .saturating_div(100)
+        });
 
         // Convert back to milliseconds
         delay_hundredths.div_euclid(100).min(self.max_backoff_ms)
