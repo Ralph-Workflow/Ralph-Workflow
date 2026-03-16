@@ -315,7 +315,8 @@
 
       @if (activeTabValue === 'info') {
         <div class="card min-h-[300px]" data-testid="tab-content-info">
-          <div class="font-display text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-4">Run Information</div>
+          <div class="font-display text-[13px] font-semibold text-text-secondary uppercase tracking-wider mb-4" data-testid="run-metadata">Run Information</div>
+          <app-detail-row label="run_id" [value]="runDetailValue!.run_id" [mono]="true" data-testid="run-id" />
           <app-detail-row label="status" [value]="runDetailValue!.status" [mono]="true" />
           <app-detail-row label="phase" [value]="runDetailValue!.current_phase" [mono]="true" />
           <app-detail-row label="agent_profile" [value]="runDetailValue!.agent_profile" [mono]="true" />

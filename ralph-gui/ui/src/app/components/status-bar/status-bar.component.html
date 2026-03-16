@@ -1,7 +1,7 @@
 <div class="flex items-center justify-between h-status-bar px-3 bg-bg-surface border-t border-border-default text-xs text-text-secondary">
   <!-- Left: active workspace label + branch -->
   <div class="flex items-center flex-1 justify-start gap-2 min-w-0 overflow-hidden">
-    <span class="font-medium text-text-primary overflow-hidden text-ellipsis whitespace-nowrap">{{ currentWorkspaceLabel }}</span>
+    <span class="font-medium text-text-primary overflow-hidden text-ellipsis whitespace-nowrap" data-testid="status-bar-workspace">{{ currentWorkspaceLabel }}</span>
     @if (currentBranch) {
       <span class="text-text-secondary">{{ currentBranch }}</span>
     }
@@ -10,7 +10,7 @@
   <!-- Center: aggregated run status -->
   <div class="flex items-center flex-1 justify-center min-w-0">
     @if (currentRunSummaryText) {
-      <span class="text-text-secondary">{{ currentRunSummaryText }}</span>
+      <span class="text-text-secondary" data-testid="status-bar-run-summary">{{ currentRunSummaryText }}</span>
     }
   </div>
 
@@ -44,6 +44,7 @@
       class="connection-indicator {{ currentConnectionStatusClass }}"
       [attr.aria-label]="currentConnectionAriaLabel"
       role="status"
+      data-testid="status-bar-connection"
     >
       {{ currentConnectionStatus }}
     </span>

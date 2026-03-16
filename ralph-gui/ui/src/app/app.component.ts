@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, effect, inject, signal, computed, DOCUMENT, untracked } from '@angular/core';
+import { Component, ChangeDetectionStrategy, effect, inject, signal, computed, DOCUMENT, untracked, HostListener, ElementRef } from '@angular/core';
 import { NgStyle } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
@@ -125,6 +125,16 @@ export class AppComponent {
   private readonly sessionsService = inject(SessionsService);
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
+  private readonly elementRef = inject(ElementRef);
+
+  /** Close notification panel when clicking outside of it. */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    const notificationCenter = this.elementRef.nativeElement.querySelector('app-notification-center');
+    if (notificationCenter && !notificationCenter.contains(event.target)) {
+      this.notificationService.closePanel();
+    }
+  }
 
   /** Count of failed or paused sessions — shown as badge on the Sessions nav icon. */
   readonly failedPausedCount = computed(() => {
@@ -348,6 +358,7 @@ export class AppComponent {
 
     if (event.ctrlKey && (event.key === 'n' || event.key === 'N')) {
       this.openNewSession.set(true);
+      void this.router.navigate(['/sessions']);
       event.preventDefault();
       return;
     }

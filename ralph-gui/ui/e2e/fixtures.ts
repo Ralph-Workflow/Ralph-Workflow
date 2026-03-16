@@ -101,12 +101,13 @@ export interface TestFixtures {
   tauri: TauriInvokeBridge;
   testRepo: TestRepoFixture;
   page: Page;
+  waitForWorkspace: () => Promise<void>;
 }
 
 export const test = base.extend<TestFixtures>({
   page: async ({ page }, use) => {
     await page.addInitScript(TAURI_BRIDGE_SCRIPT);
-    
+
     // Override page.goto to use hash routing
     const originalGoto = page.goto.bind(page);
     page.goto = async (url: string, options?: Parameters<typeof originalGoto>[1]) => {
@@ -116,8 +117,41 @@ export const test = base.extend<TestFixtures>({
       }
       return originalGoto(url, options);
     };
-    
+
     await use(page);
+  },
+
+  // Custom fixture for waiting for workspace to load
+  // Use this in tests that need a workspace selected
+  waitForWorkspace: async ({ page }, use) => {
+    const waitForWorkspaceLoaded = async (): Promise<void> => {
+      // Wait for app-root to be visible first
+      await page.waitForSelector('app-root', { timeout: 10000 });
+
+      // Wait for workspace to be loaded - look for workspace-related UI
+      // The status bar shows workspace info when loaded
+      await page.waitForFunction(() => {
+        // Check if either we have a workspace selected or we're on the welcome page
+        const statusBar = document.querySelector('app-status-bar');
+        const welcomePage = document.querySelector('app-welcome');
+
+        if (welcomePage) return true; // Welcome page is fine
+
+        // If status bar exists, check if it has workspace info
+        if (statusBar) {
+          // Try to find evidence of workspace being loaded
+          const statusText = statusBar.textContent || '';
+          // If it says "Select repository" we haven't loaded workspace yet
+          if (statusText.includes('Select repository')) {
+            return false;
+          }
+          return true;
+        }
+        return false;
+      }, { timeout: 10000 });
+    };
+
+    await use(waitForWorkspaceLoaded);
   },
 
   tauri: async ({}, use) => {

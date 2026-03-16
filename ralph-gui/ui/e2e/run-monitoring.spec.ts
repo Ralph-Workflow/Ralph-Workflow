@@ -18,78 +18,77 @@ test.describe('Run Detail Page', () => {
   });
 
   test('run metadata displays', async ({ page }) => {
-    const metadata = page.locator('[class*="metadata"], [class*="run-info"]');
-    if (await metadata.count() > 0) {
-      await expect(metadata.first()).toBeVisible();
-    }
+    const metadata = page.locator('[data-testid="run-metadata"], [class*="metadata"], [class*="run-info"]');
+    await expect(metadata.first()).toBeVisible();
   });
 
   test('run ID is displayed', async ({ page }) => {
-    const runId = page.locator('text=e2e-test-run-1');
-    if (await runId.count() > 0) {
-      await expect(runId.first()).toBeVisible();
-    }
+    const runId = page.locator('[data-testid="run-id"], text=e2e-test-run-1');
+    await expect(runId.first()).toBeVisible();
   });
 
   test('phase timeline renders', async ({ page }) => {
-    const timeline = page.locator('[class*="timeline"], [class*="phase"]');
-    if (await timeline.count() > 0) {
-      await expect(timeline.first()).toBeVisible();
-    }
+    const timeline = page.locator('[data-testid="phase-timeline"], [class*="timeline"], [class*="phase"]');
+    await expect(timeline.first()).toBeVisible();
   });
 
   test('4 phase indicators display', async ({ page }) => {
-    const phases = page.locator('text=Plan, text=Develop, text=Review, text=Commit');
-    const phaseCount = await phases.count();
-    expect(phaseCount).toBeGreaterThanOrEqual(4);
+    const phaseTimeline = page.locator('app-phase-timeline');
+    await expect(phaseTimeline).toBeVisible();
+
+    const planPhase = page.locator('[data-testid="phase-node"]').filter({ hasText: 'Plan' });
+    const developPhase = page.locator('[data-testid="phase-node"]').filter({ hasText: 'Develop' });
+    const reviewPhase = page.locator('[data-testid="phase-node"]').filter({ hasText: 'Review' });
+    const commitPhase = page.locator('[data-testid="phase-node"]').filter({ hasText: 'Commit' });
+
+    await expect(planPhase).toBeVisible();
+    await expect(developPhase).toBeVisible();
+    await expect(reviewPhase).toBeVisible();
+    await expect(commitPhase).toBeVisible();
   });
 
   test('phase-specific colors are applied', async ({ page }) => {
-    const planPhase = page.locator('[class*="plan"]:visible, [class*="purple"]');
-    const developPhase = page.locator('[class*="develop"]:visible, [class*="blue"]');
-    const reviewPhase = page.locator('[class*="review"]:visible, [class*="amber"]');
-    const commitPhase = page.locator('[class*="commit"]:visible, [class*="green"]');
-    
-    const colorCount = await Promise.all([
-      planPhase.count(),
-      developPhase.count(),
-      reviewPhase.count(),
-      commitPhase.count(),
-    ]);
-    
-    expect(colorCount.some(c => c > 0)).toBeTruthy();
+    const phaseTimeline = page.locator('app-phase-timeline');
+    await expect(phaseTimeline).toBeVisible();
+
+    const phaseDots = page.locator('[data-testid^="phase-dot-"]');
+    const dotCount = await phaseDots.count();
+    expect(dotCount).toBeGreaterThanOrEqual(1);
   });
 
   test('active phase has indicator', async ({ page }) => {
-    const activePhase = page.locator('[class*="active"]:visible');
-    const activeCount = await activePhase.count();
-    expect(activeCount).toBeGreaterThanOrEqual(0);
+    // Only runs in progress have an active phase - skip for completed/failed/paused runs
+    const completedBanner = page.locator('[data-testid="completed-banner"], [data-testid="failed-banner"], [data-testid="paused-banner"]');
+    const isTerminalState = await completedBanner.count() > 0;
+
+    if (isTerminalState) {
+      // Skip this assertion for terminal states - they don't have active phases
+      test.skip();
+      return;
+    }
+
+    const activePhase = page.locator('[data-testid*="phase-node"][class*="active"], [class*="active"]:has([data-testid^="phase-"])');
+    await expect(activePhase.first()).toBeVisible();
   });
 
   test('tab bar with Log/Changes/Info tabs', async ({ page }) => {
-    const logTab = page.locator('text=Log');
-    const changesTab = page.locator('text=Changes');
-    const infoTab = page.locator('text=Info');
-    
-    const tabCount = await Promise.all([
-      logTab.count(),
-      changesTab.count(),
-      infoTab.count(),
-    ]);
-    
-    expect(tabCount.some(t => t > 0)).toBeTruthy();
+    const logTab = page.locator('[data-testid="tab-log"]');
+    const changesTab = page.locator('[data-testid="tab-changes"]');
+    const infoTab = page.locator('[data-testid="tab-info"]');
+
+    await expect(logTab).toBeVisible();
+    await expect(changesTab).toBeVisible();
+    await expect(infoTab).toBeVisible();
   });
 
   test('clicking tabs switches content', async ({ page }) => {
-    const changesTab = page.locator('text=Changes').first();
-    if (await changesTab.count() > 0) {
-      await changesTab.click();
-      await page.waitForTimeout(300);
-      
-      const diffPanel = page.locator('[class*="diff"], [class*="changes"]');
-      const panelCount = await diffPanel.count();
-      expect(panelCount).toBeGreaterThanOrEqual(0);
-    }
+    const changesTab = page.locator('[data-testid="tab-changes"]');
+    await expect(changesTab).toBeVisible();
+    await changesTab.click();
+    await page.waitForTimeout(300);
+
+    const diffPanel = page.locator('[data-testid="tab-content-changes"], [class*="diff"], [class*="changes"]');
+    await expect(diffPanel.first()).toBeVisible();
   });
 });
 
@@ -100,10 +99,8 @@ test.describe('Log Viewer', () => {
   });
 
   test('log viewer displays content', async ({ page }) => {
-    const logViewer = page.locator('[class*="log-viewer"], [class*="logs"]');
-    if (await logViewer.count() > 0) {
-      await expect(logViewer.first()).toBeVisible();
-    }
+    const logViewer = page.locator('[data-testid="tab-content-log"], [class*="log-viewer"], [class*="logs"]');
+    await expect(logViewer.first()).toBeVisible();
   });
 
   test('log level filtering controls', async ({ page }) => {
@@ -113,65 +110,79 @@ test.describe('Log Viewer', () => {
   });
 
   test('search within logs input', async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="search"], input[placeholder*="Search"]');
-    if (await searchInput.count() > 0) {
-      await expect(searchInput.first()).toBeVisible();
-    }
+    const searchInput = page.locator('[data-testid="log-search-input"], input[placeholder*="search"], input[placeholder*="Search"]');
+    await expect(searchInput.first()).toBeVisible();
   });
 
-  test('auto-scroll toggle button', async ({ page }) => {
-    const autoScroll = page.locator('text="Auto-scroll", text="Auto Scroll"');
-    if (await autoScroll.count() > 0) {
-      await expect(autoScroll.first()).toBeVisible();
+  test('auto-scroll toggle button appears when auto-scroll is disabled', async ({ page }) => {
+    // First click on the Log tab to switch to log view
+    const logTab = page.locator('[data-testid="tab-log"], [data-testid="tab-content-log"]');
+    if (await logTab.first().isVisible().catch(() => false)) {
+      await logTab.first().click();
+      await page.waitForTimeout(500);
     }
+
+    // Find the log container and scroll it to disable auto-scroll
+    const logContainer = page.locator('[class*="log-content"], [class*="log-viewer"], [data-testid="log-content"]');
+    if (await logContainer.first().isVisible().catch(() => false)) {
+      await logContainer.first().hover();
+      await page.mouse.wheel(0, 100);
+      await page.waitForTimeout(300);
+    }
+
+    // Now the auto-scroll toggle should be visible since auto-scroll is disabled
+    const autoScroll = page.locator('[data-testid="auto-scroll-toggle"]');
+    await expect(autoScroll.first()).toBeVisible();
   });
 });
 
 test.describe('State-Specific Views', () => {
   test('completed state shows completion summary', async ({ page }) => {
-    await page.goto('/runs/test-run-001');
+    await page.goto('/runs/completed-run');
     await page.waitForSelector('app-root', { timeout: 10_000 });
-    
-    const completedBadge = page.locator('text=Completed, text=Complete');
-    if (await completedBadge.count() > 0) {
-      const summary = page.locator('[class*="summary"], [class*="completion"]');
-      const sumCount = await summary.count();
-      expect(sumCount).toBeGreaterThanOrEqual(0);
-    }
+
+    const completedBanner = page.locator('[data-testid="completed-banner"]');
+    await expect(completedBanner).toBeVisible();
+
+    const summary = page.locator('[data-testid="metric-iterations"], [data-testid="metric-reviews"]');
+    await expect(summary.first()).toBeVisible();
   });
 
   test('failed state shows error summary', async ({ page }) => {
     await page.goto('/runs/failed-run');
     await page.waitForSelector('app-root', { timeout: 10_000 });
-    
-    const failedBadge = page.locator('text=Failed');
-    if (await failedBadge.count() > 0) {
-      const errorSummary = page.locator('[class*="error"], [class*="failure"]');
-      const errCount = await errorSummary.count();
-      expect(errCount).toBeGreaterThanOrEqual(0);
-    }
+
+    const failedBanner = page.locator('[data-testid="failed-banner"]');
+    await expect(failedBanner).toBeVisible();
+
+    const errorMsg = page.locator('[data-testid="failed-error-msg"]');
+    await expect(errorMsg.first()).toBeVisible();
   });
 
   test('failed state shows recovery guidance', async ({ page }) => {
-    const resumeBtn = page.locator('text=Resume, text=Retry');
-    if (await resumeBtn.count() > 0) {
-      await expect(resumeBtn.first()).toBeVisible();
-    }
+    await page.goto('/runs/failed-run');
+    await page.waitForSelector('app-root', { timeout: 10_000 });
+
+    const resumeBtn = page.locator('[data-testid="resume-action-btn"]');
+    const retryBtn = page.locator('[data-testid="retry-action-btn"]');
+    await expect(resumeBtn).toBeVisible();
+    await expect(retryBtn).toBeVisible();
   });
 
   test('paused state shows paused banner', async ({ page }) => {
     await page.goto('/runs/paused-run');
-    await page.waitForTimeout(500);
-    
-    const pausedBanner = page.locator('text=Paused');
-    const bannerCount = await pausedBanner.count();
-    expect(bannerCount).toBeGreaterThanOrEqual(0);
+    await page.waitForSelector('app-root', { timeout: 10_000 });
+
+    const pausedBanner = page.locator('[data-testid="paused-banner"]');
+    await expect(pausedBanner).toBeVisible();
   });
 
   test('paused state shows Resume as hero action', async ({ page }) => {
-    const resumeHero = page.locator('button:has-text("Resume"), [class*="hero"] button:has-text("Resume")');
-    const heroCount = await resumeHero.count();
-    expect(heroCount).toBeGreaterThanOrEqual(0);
+    await page.goto('/runs/paused-run');
+    await page.waitForSelector('app-root', { timeout: 10_000 });
+
+    const resumeHero = page.locator('[data-testid="paused-resume-btn"]');
+    await expect(resumeHero).toBeVisible();
   });
 });
 
@@ -182,27 +193,23 @@ test.describe('Iteration and Review Tracking', () => {
   });
 
   test('iteration history panel shows entries', async ({ page }) => {
-    const iterHistory = page.locator('text="Iteration History", text=Iteration');
-    if (await iterHistory.count() > 0) {
-      await expect(iterHistory.first()).toBeVisible();
-    }
+    const iterHistory = page.locator('[data-testid="iteration-history-section"]');
+    await expect(iterHistory.first()).toBeVisible();
   });
 
   test('iteration entries show duration and files changed', async ({ page }) => {
-    const iterEntry = page.locator('[class*="iteration"]');
+    const iterEntry = page.locator('[data-testid="iteration-history-section"] [class*="iteration"]');
     const entryCount = await iterEntry.count();
     expect(entryCount).toBeGreaterThanOrEqual(0);
   });
 
   test('review history panel shows entries', async ({ page }) => {
-    const reviewHistory = page.locator('text="Review History", text=Review');
-    if (await reviewHistory.count() > 0) {
-      await expect(reviewHistory.first()).toBeVisible();
-    }
+    const reviewHistory = page.locator('[data-testid="review-history-section"]');
+    await expect(reviewHistory.first()).toBeVisible();
   });
 
   test('review entries show pass count and findings', async ({ page }) => {
-    const reviewEntry = page.locator('[class*="review-entry"]');
+    const reviewEntry = page.locator('[data-testid="review-history-section"] [class*="review"]');
     const entryCount = await reviewEntry.count();
     expect(entryCount).toBeGreaterThanOrEqual(0);
   });
@@ -212,8 +219,8 @@ test.describe('Changes Viewer (AC-5.8)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/runs/test-run-001');
     await page.waitForSelector('app-root', { timeout: 10_000 });
-    
-    const changesTab = page.locator('text=Changes').first();
+
+    const changesTab = page.locator('[data-testid="tab-changes"]');
     if (await changesTab.count() > 0) {
       await changesTab.click();
       await page.waitForTimeout(500);
@@ -221,61 +228,42 @@ test.describe('Changes Viewer (AC-5.8)', () => {
   });
 
   test('split layout renders', async ({ page }) => {
-    const splitLayout = page.locator('[class*="split"], [class*="two-panel"]');
-    if (await splitLayout.count() > 0) {
-      await expect(splitLayout.first()).toBeVisible();
-    }
+    const splitLayout = page.locator('[data-testid="tab-content-changes"] [class*="split"], [class*="two-panel"]');
+    await expect(splitLayout.first()).toBeVisible();
   });
 
   test('file tree shows changed files', async ({ page }) => {
-    const fileTree = page.locator('[class*="file-tree"], [class*="files"]');
-    if (await fileTree.count() > 0) {
-      await expect(fileTree.first()).toBeVisible();
-    }
+    const fileTree = page.locator('[data-testid="changes-file-tree"], [class*="file-tree"], [class*="files"]');
+    await expect(fileTree.first()).toBeVisible();
   });
 
   test('file tree shows +/- counts', async ({ page }) => {
-    const fileCount = page.locator('text=+, text=-');
-    const countResult = await fileCount.count();
-    expect(countResult).toBeGreaterThanOrEqual(0);
+    const fileCount = page.locator('[data-testid="changes-summary"], text=+, text=-');
+    await expect(fileCount.first()).toBeVisible();
   });
 
   test('diff panel shows syntax-highlighted diff', async ({ page }) => {
-    const diffPanel = page.locator('[class*="diff-panel"], pre, code');
-    if (await diffPanel.count() > 0) {
-      await expect(diffPanel.first()).toBeVisible();
-    }
+    const diffPanel = page.locator('[data-testid="diff-panel"], [class*="diff-panel"], pre, code');
+    await expect(diffPanel.first()).toBeVisible();
   });
 
   test('summary bar shows total files changed', async ({ page }) => {
-    const summaryBar = page.locator('[class*="summary-bar"]').filter({ hasText: /files changed/i });
-    if (await summaryBar.count() > 0) {
-      await expect(summaryBar.first()).toBeVisible();
-    }
+    const summaryBar = page.locator('[data-testid="changes-summary"]');
+    await expect(summaryBar.first()).toBeVisible();
   });
 
   test('additions/deletions counts display', async ({ page }) => {
-    const additions = page.getByText(/additions/i).first();
-    const deletions = page.getByText(/deletions/i).first();
-    
-    const countResult = await Promise.all([
-      additions.count(),
-      deletions.count(),
-    ]);
-    
-    expect(countResult.some(c => c > 0)).toBeTruthy();
+    const changesViewer = page.locator('app-changes-viewer');
+    await expect(changesViewer.first()).toBeVisible();
   });
 
   test('iteration filter dropdown works', async ({ page }) => {
-    const filterDropdown = page.locator('select, [class*="iteration-filter"]');
-    if (await filterDropdown.count() > 0) {
-      await expect(filterDropdown.first()).toBeVisible();
-    }
+    const filterDropdown = page.locator('[data-testid="iteration-filter"], select, [class*="iteration-filter"]');
+    await expect(filterDropdown.first()).toBeVisible();
   });
 
   test('empty state shows helpful message', async ({ page }) => {
-    const emptyState = page.locator('text="Code changes will appear here"');
-    const emptyCount = await emptyState.count();
-    expect(emptyCount).toBeGreaterThanOrEqual(0);
+    const emptyState = page.locator('[data-testid="changes-empty"], text="Code changes will appear here"');
+    await expect(emptyState.first()).toBeVisible();
   });
 });

@@ -16,86 +16,106 @@ test.describe('Session List', () => {
   });
 
   test('session list renders', async ({ page }) => {
-    const sessionList = page.locator('[class*="session-list"], [class*="runs"]');
-    if (await sessionList.count() > 0) {
-      await expect(sessionList.first()).toBeVisible();
-    }
-  });
-
-  test('session columns are displayed', async ({ page }) => {
-    const columns = page.locator('text=Run ID, text=Status, text=Worktree, text=Phase');
-    const colCount = await columns.count();
-    expect(colCount).toBeGreaterThanOrEqual(0);
-  });
-
-  test('status badges use correct colors', async ({ page }) => {
-    const statusBadges = page.locator('[class*="badge"], [class*="status"]');
-    const badgeCount = await statusBadges.count();
-    expect(badgeCount).toBeGreaterThanOrEqual(0);
-  });
-
-  test('filter by status dropdown works', async ({ page }) => {
-    const filterDropdown = page.locator('select, [class*="filter"]').first();
-    if (await filterDropdown.count() > 0) {
-      await expect(filterDropdown.first()).toBeVisible();
-    }
+    const sessionList = page.locator('app-session-list, .card');
+    await expect(sessionList.first()).toBeVisible();
   });
 
   test('search input filters sessions', async ({ page }) => {
-    const searchInput = page.locator('input[type="search"], input[placeholder*="search"]');
-    if (await searchInput.count() > 0) {
-      await expect(searchInput.first()).toBeVisible();
-    }
+    const searchInput = page.locator('[data-testid="session-search"], input[type="search"], input[placeholder*="search"]');
+    await expect(searchInput.first()).toBeVisible();
+  });
+
+  test('filter by worktree dropdown exists', async ({ page }) => {
+    const filterWorktree = page.locator('[data-testid="filter-worktree"], [data-testid="filter-context"]');
+    await expect(filterWorktree.first()).toBeVisible();
+  });
+
+  test('filter toolbar is present', async ({ page }) => {
+    const filterToolbar = page.locator('[data-testid="filter-toolbar"]');
+    await expect(filterToolbar.first()).toBeVisible();
   });
 
   test('checkbox selection enables batch actions', async ({ page }) => {
-    const checkboxes = page.locator('input[type="checkbox"]');
-    if (await checkboxes.count() > 0) {
-      await checkboxes.first().click();
-      await page.waitForTimeout(300);
-      
-      const batchActions = page.locator('[class*="batch"], text=Resume, text=Cancel, text=Delete');
-      const actionCount = await batchActions.count();
-      expect(actionCount).toBeGreaterThanOrEqual(0);
+    const sessionRows = page.locator('[data-testid^="session-row-"]');
+    const rowCount = await sessionRows.count();
+
+    if (rowCount === 0) {
+      test.skip();
+      return;
     }
+
+    const selectAllCheckbox = page.locator('[data-testid="select-all-checkbox"]');
+    await expect(selectAllCheckbox).toBeVisible();
+    await selectAllCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const batchBar = page.locator('[data-testid="batch-action-bar"]');
+    await expect(batchBar).toBeVisible();
+
+    const batchResumeBtn = page.locator('[data-testid="batch-resume-btn"]');
+    const batchCancelBtn = page.locator('[data-testid="batch-cancel-btn"]');
+    const batchDeleteBtn = page.locator('[data-testid="batch-delete-btn"]');
+    await expect(batchResumeBtn).toBeVisible();
+    await expect(batchCancelBtn).toBeVisible();
+    await expect(batchDeleteBtn).toBeVisible();
   });
 
   test('batch resume shows for paused/failed selections', async ({ page }) => {
-    const checkboxes = page.locator('input[type="checkbox"]');
-    if (await checkboxes.count() > 0) {
-      await checkboxes.first().click();
-      await page.waitForTimeout(300);
-      
-      const resumeBtn = page.locator('text=Resume');
-      if (await resumeBtn.count() > 0) {
-        await expect(resumeBtn.first()).toBeVisible();
-      }
+    const sessionRows = page.locator('[data-testid^="session-row-"]');
+    const rowCount = await sessionRows.count();
+
+    if (rowCount === 0) {
+      test.skip();
+      return;
     }
+
+    const selectAllCheckbox = page.locator('[data-testid="select-all-checkbox"]');
+    await expect(selectAllCheckbox).toBeVisible();
+    await selectAllCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const resumeBtn = page.locator('[data-testid="batch-resume-btn"]');
+    await expect(resumeBtn).toBeVisible();
   });
 
   test('batch cancel shows for running selections', async ({ page }) => {
-    const checkboxes = page.locator('input[type="checkbox"]');
-    if (await checkboxes.count() > 0) {
-      await checkboxes.first().click();
-      await page.waitForTimeout(300);
-      
-      const cancelBtn = page.locator('text=Cancel');
-      if (await cancelBtn.count() > 0) {
-        await expect(cancelBtn.first()).toBeVisible();
-      }
+    const sessionRows = page.locator('[data-testid^="session-row-"]');
+    const rowCount = await sessionRows.count();
+
+    if (rowCount === 0) {
+      test.skip();
+      return;
     }
+
+    const selectAllCheckbox = page.locator('[data-testid="select-all-checkbox"]');
+    await expect(selectAllCheckbox).toBeVisible();
+    await selectAllCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const cancelBtn = page.locator('[data-testid="batch-cancel-btn"]');
+    await expect(cancelBtn).toBeVisible();
   });
 
   test('batch delete requires confirmation', async ({ page }) => {
-    const deleteBtn = page.locator('text=Delete').first();
-    if (await deleteBtn.count() > 0) {
-      await deleteBtn.click();
-      await page.waitForTimeout(300);
-      
-      const confirmDialog = page.locator('[class*="dialog"], [class*="confirm"]');
-      const dialogCount = await confirmDialog.count();
-      expect(dialogCount).toBeGreaterThanOrEqual(0);
+    const sessionRows = page.locator('[data-testid^="session-row-"]');
+    const rowCount = await sessionRows.count();
+
+    if (rowCount === 0) {
+      test.skip();
+      return;
     }
+
+    const selectAllCheckbox = page.locator('[data-testid="select-all-checkbox"]');
+    await expect(selectAllCheckbox).toBeVisible();
+    await selectAllCheckbox.click();
+    await page.waitForTimeout(300);
+
+    const deleteBtn = page.locator('[data-testid="batch-delete-btn"]');
+    await deleteBtn.click();
+    await page.waitForTimeout(300);
+
+    const confirmDialog = page.locator('app-cancel-confirmation, [data-testid="cancel-dialog"], [class*="dialog"], [role="dialog"]');
+    await expect(confirmDialog.first()).toBeVisible();
   });
 });
 
@@ -103,135 +123,234 @@ test.describe('New Session Wizard', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/sessions');
     await page.waitForSelector('app-root', { timeout: 10_000 });
+    // Wait for workspace to load - check for repo path or session list
+    await page.waitForFunction(() => {
+      const text = document.body.textContent || '';
+      // Either repo is selected or we're showing sessions
+      return text.includes('No repository selected') || text.includes('Select a repository') || text.includes('No sessions yet') || text.includes('All ');
+    }, { timeout: 10000 });
   });
 
   test('new session button opens wizard', async ({ page }) => {
-    const newSessionBtn = page.locator('text="New Session", text="+ New"').first();
-    if (await newSessionBtn.count() > 0) {
-      await newSessionBtn.click();
-      await page.waitForTimeout(500);
-      
-      const wizard = page.locator('[class*="wizard"], [class*="modal"]');
-      if (await wizard.count() > 0) {
-        await expect(wizard.first()).toBeVisible();
-      }
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
   });
 
   test('step indicator shows 3 steps', async ({ page }) => {
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
+    }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
     const steps = page.locator('[class*="step"]');
     const stepCount = await steps.count();
-    expect(stepCount).toBeGreaterThanOrEqual(0);
+    expect(stepCount).toBeGreaterThanOrEqual(3);
   });
 
   test('Step 1 - Prompt Editor renders', async ({ page }) => {
-    const promptEditor = page.locator('textarea, [class*="prompt"]');
-    if (await promptEditor.count() > 0) {
-      await expect(promptEditor.first()).toBeVisible();
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const promptEditor = page.locator('textarea, [class*="prompt"]');
+    await expect(promptEditor.first()).toBeVisible();
   });
 
   test('Step 1 - character/word count updates', async ({ page }) => {
-    const textArea = page.locator('textarea').first();
-    if (await textArea.count() > 0) {
-      await textArea.fill('Test prompt content');
-      await page.waitForTimeout(300);
-      
-      const charCount = page.locator('[class*="count"], text=character');
-      if (await charCount.count() > 0) {
-        await expect(charCount.first()).toBeVisible();
-      }
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const textArea = page.locator('textarea').first();
+    await expect(textArea).toBeVisible();
+    await textArea.fill('Test prompt content');
+    await page.waitForTimeout(300);
+
+    const charCount = page.locator('[data-testid="char-count"], text=/\\d+ chars?, \\d+ words?/');
+    await expect(charCount.first()).toBeVisible();
   });
 
   test('Step 1 - Markdown preview toggle works', async ({ page }) => {
-    const previewToggle = page.locator('text=Preview, text="Markdown"');
-    if (await previewToggle.count() > 0) {
-      await expect(previewToggle.first()).toBeVisible();
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const previewToggle = page.locator('[data-testid="preview-toggle"], text=Preview, text="Markdown"');
+    await expect(previewToggle.first()).toBeVisible();
   });
 
-  test('Step 1 - Template picker button opens template selection', async ({ page }) => {
-    const templateBtn = page.locator('text="Template", text="Pick Template"');
-    if (await templateBtn.count() > 0) {
-      await expect(templateBtn.first()).toBeVisible();
+  test('Step 1 - Template picker button exists', async ({ page }) => {
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const templateSection = page.locator('text=Template, text=Templates, [class*="template"]');
+    await expect(templateSection.first()).toBeVisible();
   });
 
   test('Step 1 - Save as Template button exists', async ({ page }) => {
-    const saveTemplateBtn = page.locator('text="Save as Template"');
-    if (await saveTemplateBtn.count() > 0) {
-      await expect(saveTemplateBtn.first()).toBeVisible();
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
-  });
 
-  test('Step 1 - AI Prompt Assistant panel toggles', async ({ page }) => {
-    const aiPanel = page.locator('text="AI Assistant", text="Prompt Assistant"');
-    if (await aiPanel.count() > 0) {
-      await expect(aiPanel.first()).toBeVisible();
-    }
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const saveTemplateBtn = page.locator('[data-testid="save-as-template-btn"]');
+    await expect(saveTemplateBtn.first()).toBeVisible();
   });
 
   test('Step 2 - Configuration summary displays', async ({ page }) => {
-    const configSummary = page.locator('[class*="config"], [class*="drain"]');
-    if (await configSummary.count() > 0) {
-      await expect(configSummary.first()).toBeVisible();
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
-  });
 
-  test('Step 2 - 6 drain dropdowns render', async ({ page }) => {
-    const drains = page.locator('text=Planning, text=Development, text=Analysis, text=Review, text=Fix, text=Commit');
-    const drainCount = await drains.count();
-    expect(drainCount).toBeGreaterThanOrEqual(0);
-  });
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
 
-  test('Step 2 - Customize button expands full config', async ({ page }) => {
-    const customizeBtn = page.locator('text=Customize');
-    if (await customizeBtn.count() > 0) {
-      await customizeBtn.first().click();
-      await page.waitForTimeout(300);
-      
-      const expandedConfig = page.locator('[class*="expanded"], [class*="full-config"]');
-      const expCount = await expandedConfig.count();
-      expect(expCount).toBeGreaterThanOrEqual(0);
-    }
-  });
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
 
-  test('Step 2 - Reset to defaults works', async ({ page }) => {
-    const resetBtn = page.locator('text="Reset to defaults"');
-    if (await resetBtn.count() > 0) {
-      await resetBtn.first().click();
-      await page.waitForTimeout(300);
-    }
+    const promptTextarea = page.locator('textarea').first();
+    await expect(promptTextarea).toBeVisible();
+    await promptTextarea.fill('Test prompt');
+    await page.waitForTimeout(200);
+
+    const nextBtn = page.locator('button:has-text("Next")').first();
+    await expect(nextBtn).toBeVisible();
+    await nextBtn.click();
+    await page.waitForTimeout(500);
+
+    const configSummary = page.locator('[class*="config"], [class*="drain"], app-preflight-summary');
+    await expect(configSummary.first()).toBeVisible();
   });
 
   test('Step 3 - Review shows summary', async ({ page }) => {
-    const reviewSummary = page.locator('[class*="review"], [class*="summary"]');
-    if (await reviewSummary.count() > 0) {
-      await expect(reviewSummary.first()).toBeVisible();
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
-  });
 
-  test('Step 3 - Launch button with loading state', async ({ page }) => {
-    const launchBtn = page.locator('text=Launch, text="Start Session"');
-    if (await launchBtn.count() > 0) {
-      await expect(launchBtn.first()).toBeVisible();
-    }
-  });
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
 
-  test('Back navigation between steps', async ({ page }) => {
-    const backBtn = page.locator('text=Back').first();
-    if (await backBtn.count() > 0) {
-      await backBtn.click();
-      await page.waitForTimeout(300);
-    }
-  });
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
 
-  test('Next button disabled when requirements not met', async ({ page }) => {
+    const promptTextarea = page.locator('textarea').first();
+    await expect(promptTextarea).toBeVisible();
+    await promptTextarea.fill('Test prompt');
+    await page.waitForTimeout(200);
+
     const nextBtn = page.locator('button:has-text("Next")').first();
-    if (await nextBtn.count() > 0) {
-      const isDisabled = await nextBtn.first().isDisabled();
-      expect(isDisabled).toBeFalsy();
+    await expect(nextBtn).toBeVisible();
+    await nextBtn.click();
+    await page.waitForTimeout(500);
+
+    const nextBtn2 = page.locator('button:has-text("Next")').first();
+    await expect(nextBtn2).toBeVisible();
+    await nextBtn2.click();
+    await page.waitForTimeout(500);
+
+    const reviewSummary = page.locator('[class*="review"], [class*="summary"]');
+    await expect(reviewSummary.first()).toBeVisible();
+  });
+
+  test('Step 3 - Launch button is present', async ({ page }) => {
+    const pageText = await page.textContent('body') || '';
+    if (pageText.includes('Select a repository') || pageText.includes('No repository selected')) {
+      test.skip();
+      return;
     }
+
+    const newSessionBtn = page.locator('button:has-text("New session"), button:has-text("+ New")').first();
+    await newSessionBtn.click();
+    await page.waitForTimeout(500);
+
+    const wizard = page.locator('[class*="wizard"], [class*="modal"], app-new-session-wizard');
+    await expect(wizard.first()).toBeVisible();
+
+    const promptTextarea = page.locator('textarea').first();
+    await expect(promptTextarea).toBeVisible();
+    await promptTextarea.fill('Test prompt');
+    await page.waitForTimeout(200);
+
+    const nextBtn = page.locator('button:has-text("Next")').first();
+    await expect(nextBtn).toBeVisible();
+    await nextBtn.click();
+    await page.waitForTimeout(500);
+
+    const nextBtn2 = page.locator('button:has-text("Next")').first();
+    await expect(nextBtn2).toBeVisible();
+    await nextBtn2.click();
+    await page.waitForTimeout(500);
+
+    const launchBtn = page.locator('text=Launch, text="Start Session"');
+    await expect(launchBtn.first()).toBeVisible();
   });
 });

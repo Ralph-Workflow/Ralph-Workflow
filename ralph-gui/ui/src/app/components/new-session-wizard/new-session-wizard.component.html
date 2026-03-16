@@ -415,6 +415,39 @@
       <div class="flex justify-between items-center mb-1.5">
         <label class="section-label mb-0">PROMPT.md</label>
         <div class="flex gap-1.5">
+          <!-- History dropdown -->
+          <div class="relative">
+            <button
+              class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+              (click)="toggleHistoryDropdown()"
+              data-testid="history-dropdown-toggle"
+            >
+              History ▾
+            </button>
+            @if (historyDropdownOpen && promptHistory_.length > 0) {
+              <div
+                class="absolute top-full right-0 mt-1 bg-bg-surface border border-border-default rounded-md shadow-lg z-50 max-h-[300px] overflow-y-auto min-w-[300px]"
+                data-testid="history-dropdown"
+              >
+                @for (prompt of promptHistory_; track $index) {
+                  <button
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-bg-hover border-b border-border-subtle last:border-0 truncate font-mono"
+                    (click)="selectFromHistory(prompt)"
+                    [title]="prompt"
+                  >
+                    {{ prompt.slice(0, 50) }}{{ prompt.length > 50 ? '...' : '' }}
+                  </button>
+                }
+              </div>
+            }
+          </div>
+          <button
+            class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+            (click)="isPreviewMode.set(!isPreviewMode_)"
+            data-testid="toggle-preview"
+          >
+            {{ isPreviewMode_ ? 'Edit' : 'Preview' }}
+          </button>
           <button
             class="btn btn-ghost text-[11px] px-2.5 py-0.5"
             (click)="showReviewPanel.set(!showReviewPanel_)"
@@ -431,13 +464,30 @@
           </button>
         </div>
       </div>
-      <textarea
-        id="prompt-editor"
-        class="input input-mono resize-y leading-relaxed"
-        rows="10"
-        [value]="promptContent_"
-        (input)="onPromptChange($event)"
-      ></textarea>
+      @if (isPreviewMode_) {
+        <div class="input input-mono resize-y leading-relaxed min-h-[200px] p-3 prose prose-sm max-w-none" rows="10" data-testid="prompt-preview">
+          {{ promptContent_ }}
+        </div>
+      } @else {
+        <textarea
+          id="prompt-editor"
+          class="input input-mono resize-y leading-relaxed"
+          rows="10"
+          [value]="promptContent_"
+          (input)="onPromptChange($event)"
+        ></textarea>
+      }
+      <div class="flex justify-between items-center mt-1.5">
+        <span class="text-xs text-text-muted font-mono">
+          {{ charCount_ }} chars, {{ wordCount_ }} words
+        </span>
+        <button
+          class="btn btn-ghost text-[11px] px-2.5 py-0.5"
+          data-testid="save-as-template-btn"
+        >
+          Save as Template
+        </button>
+      </div>
       @if (showReviewPanel_) {
         <div class="mt-2.5">
           <app-prompt-review-panel

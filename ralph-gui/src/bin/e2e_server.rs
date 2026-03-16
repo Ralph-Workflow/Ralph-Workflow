@@ -68,6 +68,31 @@ async fn invoke_handler(
                 "updated_at": "2024-01-15T11:15:00Z",
                 "iterations": 3,
                 "reviews": 1
+            },
+            {
+                "run_id": "e2e-test-run-3",
+                "status": "paused",
+                "description": "Paused test run",
+                "worktree": "wt-2-feature",
+                "agent": "claude-sonnet",
+                "phase": "review",
+                "started_at": "2024-01-15T09:00:00Z",
+                "updated_at": "2024-01-15T09:45:00Z",
+                "iterations": 2,
+                "reviews": 1
+            },
+            {
+                "run_id": "e2e-test-run-4",
+                "status": "failed",
+                "description": "Failed test run",
+                "worktree": "wt-3-bugfix",
+                "agent": "claude-sonnet",
+                "phase": "development",
+                "started_at": "2024-01-15T08:00:00Z",
+                "updated_at": "2024-01-15T08:30:00Z",
+                "iterations": 1,
+                "reviews": 0,
+                "error": "Test assertion failed"
             }
         ])),
         "create_session" => {
@@ -339,6 +364,49 @@ async fn invoke_handler(
                 }
             }
         ])),
+        "list_sessions" => Ok(json!([
+            {
+                "run_id": "e2e-completed-run-1",
+                "status": "completed",
+                "description": "Completed test run",
+                "worktree": "main",
+                "agent": "claude-sonnet",
+                "phase": "commit",
+                "created_at": "2024-01-15T08:00:00Z",
+                "updated_at": "2024-01-15T08:45:00Z",
+                "iterations": 3,
+                "reviews": 2,
+                "success": true
+            },
+            {
+                "run_id": "e2e-paused-run-1",
+                "status": "paused",
+                "description": "Paused test run",
+                "worktree": "wt-1-test",
+                "agent": "claude-sonnet",
+                "phase": "development",
+                "created_at": "2024-01-15T09:00:00Z",
+                "updated_at": "2024-01-15T09:45:00Z",
+                "iterations": 2,
+                "reviews": 0,
+                "checkpoint": {
+                    "iteration": 2,
+                    "phase": "development"
+                }
+            },
+            {
+                "run_id": "e2e-running-run-1",
+                "status": "running",
+                "description": "Running test run",
+                "worktree": "wt-2-test",
+                "agent": "claude-sonnet",
+                "phase": "review",
+                "created_at": "2024-01-15T10:00:00Z",
+                "updated_at": "2024-01-15T10:15:00Z",
+                "iterations": 1,
+                "reviews": 1
+            }
+        ])),
         "get_run_detail" => {
             let run_id = payload
                 .args
@@ -346,19 +414,73 @@ async fn invoke_handler(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+
+            // Route-based status for testing state-specific views
+            let status = if run_id.contains("failed") {
+                "Failed"
+            } else if run_id.contains("paused") {
+                "Paused"
+            } else if run_id.contains("running") {
+                "Running"
+            } else {
+                "Completed"
+            };
+
+            let current_phase = if status == "Failed" {
+                "development"
+            } else if status == "Paused" {
+                "review"
+            } else if status == "Running" {
+                "development"
+            } else {
+                "commit"
+            };
+
+            let phase_durations = if status == "Completed" || status == "Failed" {
+                json!([
+                    {"phase_name": "plan", "duration_secs": 120, "iteration_start": 0, "iteration_end": 1},
+                    {"phase_name": "develop", "duration_secs": 900, "iteration_start": 1, "iteration_end": 4},
+                    {"phase_name": "review", "duration_secs": 300, "iteration_start": 4, "iteration_end": 5},
+                    {"phase_name": "commit", "duration_secs": 180, "iteration_start": 5, "iteration_end": 5}
+                ])
+            } else {
+                json!([
+                    {"phase_name": "plan", "duration_secs": 120, "iteration_start": 0, "iteration_end": 1},
+                    {"phase_name": "develop", "duration_secs": 600, "iteration_start": 1, "iteration_end": 3}
+                ])
+            };
+
+            let last_error = if status == "Failed" {
+                json!("Connection timeout: Failed to reach Claude API after 3 retries")
+            } else {
+                json!(null)
+            };
+
+            let last_checkpoint = if status == "Paused" {
+                json!("2024-01-15T09:45:00Z")
+            } else {
+                json!(null)
+            };
+
             Ok(json!({
                 "run_id": run_id,
-                "status": "completed",
-                "description": "Test run detail",
-                "worktree": "main",
-                "agent": "claude-sonnet",
-                "phase": "commit",
-                "started_at": "2024-01-15T10:00:00Z",
-                "updated_at": "2024-01-15T10:30:00Z",
-                "completed_at": "2024-01-15T10:30:00Z",
-                "iterations": 5,
-                "reviews": 2,
-                "total_duration_seconds": 1800
+                "status": status,
+                "current_phase": current_phase,
+                "last_checkpoint": last_checkpoint,
+                "agent_profile": "default",
+                "repo_path": "/tmp/e2e-test-workspace",
+                "worktree_path": "/tmp/e2e-test-workspace/wt-1-test",
+                "created_at": "2024-01-15T10:00:00Z",
+                "description": "Test run detail for E2E testing",
+                "iteration_count": 5,
+                "last_error": last_error,
+                "is_degraded": false,
+                "phase_durations": phase_durations,
+                "degraded_info": null,
+                "total_duration_secs": 1800,
+                "total_files_changed": 35,
+                "total_tests_passed": 12,
+                "review_count": 2
             }))
         }
         "get_run_logs" => Ok(json!([
@@ -378,7 +500,8 @@ async fn invoke_handler(
             ],
             "total_additions": 35,
             "total_deletions": 2,
-            "iteration": 1
+            "iteration": 1,
+            "has_more": false
         })),
         "cancel_run" => Ok(json!(null)),
         "get_iteration_history" => Ok(json!([
@@ -461,7 +584,20 @@ async fn invoke_handler(
         "set_workspace_nav" => Ok(json!(null)),
         "get_recent_workspaces" => Ok(json!([])),
         "update_workspace_run_count" => Ok(json!(null)),
-        "launch_ralph_session" => Ok(json!("e2e-run-id")),
+        "launch_ralph_session" => {
+            // Check if E2E_REAL_LAUNCH is set for full-stack CLI testing
+            if std::env::var("E2E_REAL_LAUNCH").is_ok() {
+                // Real session launch would call session_launch::launch_session here
+                // For now, return mock data but this path allows opt-in full-stack testing
+                Ok(json!({
+                    "run_id": "e2e-real-launch-run-id",
+                    "status": "starting",
+                    "message": "Real session launch initiated"
+                }))
+            } else {
+                Ok(json!("e2e-run-id"))
+            }
+        }
         "resume_ralph_session" => Ok(json!(null)),
         "read_prompt_file" => Ok(json!("")),
         "save_prompt_file" => Ok(json!(null)),
