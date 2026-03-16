@@ -1,29 +1,34 @@
 # Tech Debt: [Brief description]
 
-## Problem
-<!-- What's the technical debt? Be specific -->
-[e.g., "Authentication system uses MD5 hashing, a deprecated crypto library with known vulnerabilities"]
+## Goal
+<!-- What should the system state be after addressing this debt? -->
+[e.g., "Authentication uses bcrypt with modern security parameters, eliminating CVE exposure"]
 
-## Impact
-<!-- Why does this matter NOW? What's the cost of not fixing it? -->
-- [e.g., "Security vulnerability that could be exploited"]
-- [e.g., "Blocks upgrading to Node 20 which we need for other features"]
-- [e.g., "Every new auth feature takes 3x longer due to workarounds"]
+## Current State
+<!-- What's the technical debt and why is it problematic? -->
+[e.g., "Auth uses MD5 hashing from a deprecated library with known vulnerabilities (CVE-2023-XXXX). Library is unmaintained and blocks Node.js upgrade."]
+
+## Business Impact
+<!-- Why must this be addressed now? -->
+- [e.g., "Security: Known vulnerability exploitable in the wild"]
+- [e.g., "Velocity: Blocks Node 20 upgrade needed for other features"]
+- [e.g., "Maintenance: Workarounds add 3x development time for auth features"]
+
+## Target State
+<!-- What should the architecture/implementation look like after? -->
+[e.g., "All password hashing uses bcrypt with cost factor 12. No references to legacy crypto library. Security scans pass with no auth findings."]
 
 ## Scope
-<!-- How much of the codebase is affected? -->
-[e.g., "All user-facing auth: login, signup, password reset, session management (~20 files)"]
-
-## Success Criteria
-<!-- How do you know the debt is paid? -->
-- [e.g., "All passwords use bcrypt with cost factor 12"]
-- [e.g., "No references to old crypto library remain"]
-- [e.g., "Security scan passes with no auth-related findings"]
+<!-- What components are affected? -->
+[e.g., "Auth module: login, signup, password reset, session management. ~20 files across backend and shared utilities."]
 
 ## Constraints (optional)
-<!-- Limitations on how this can be addressed -->
-[e.g., "Can't break existing sessions" or "Must be incremental, not big-bang"]
+<!-- Limitations on the approach -->
+[e.g., "Cannot invalidate existing sessions" or "Must be incremental, not big-bang"]
 
-## Context (optional)
-<!-- How did we get here? Related decisions -->
-[e.g., "Originally implemented in 2015 when MD5 was still acceptable"]
+## Acceptance
+<!-- What must be true for this debt to be considered resolved? -->
+- [ ] [e.g., "System matches Target State"]
+- [ ] [e.g., "No references to deprecated library remain"]
+- [ ] [e.g., "Security scan passes"]
+- [ ] [e.g., "No regression in functionality"]

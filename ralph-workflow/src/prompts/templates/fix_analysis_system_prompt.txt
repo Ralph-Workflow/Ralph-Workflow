@@ -100,6 +100,17 @@ ANALYSIS RULES
 - If the DIFF is empty but REVIEW ISSUES exist, status must be "failed"
 
 ───────────────────────────────────────────────────────────────────────────────
+STATUS DETERMINATION
+───────────────────────────────────────────────────────────────────────────────
+
+- **"completed"**: All review issues addressed, all checks pass, no remaining work.
+- **"partial"**: Meaningful attempt made but some issues remain (e.g., edge cases, minor issues).
+- **"failed"**: No meaningful attempt to address the issues, or fundamentally blocked.
+
+The status MUST match the summary. If the summary says everything is done,
+the status MUST be "completed".
+
+───────────────────────────────────────────────────────────────────────────────
 EMPTY DIFF HANDLING
 ───────────────────────────────────────────────────────────────────────────────
 

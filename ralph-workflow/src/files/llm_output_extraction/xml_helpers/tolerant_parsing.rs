@@ -9,6 +9,8 @@
 //! The tolerant parsing helpers allow:
 //! - **Enum normalization**: Status values that clearly correspond to expected outcomes
 //!   are accepted even when using synonyms or different casing (e.g., "done" → "completed").
+//! - **Tag name fuzzy matching**: Minor typos in tag names (e.g., <ralph-sumary> instead of
+//!   <ralph-summary>) are accepted if they unambiguously resolve to a known tag.
 //! - **Unknown element skipping**: Unknown child elements are skipped instead of causing
 //!   validation failure. Required elements are still enforced.
 //! - **Stray text tolerance**: Whitespace or non-semantic text between elements is ignored.
@@ -19,6 +21,8 @@
 //! - Values not in the synonym table return `None` from `normalize_enum_value`
 //! - Empty values are rejected
 //! - Values that could plausibly map to multiple different outcomes are not added to tables
+//! - Tag names with ambiguous fuzzy matches (multiple known tags within edit-distance threshold)
+//!   return `None` and are skipped as unknown elements
 //!
 //! # Synonym Tables
 //!
@@ -229,6 +233,120 @@ pub fn normalize_enum_value(
 
     // Step 4: Return None - ambiguous/unknown, caller should reject
     None
+}
+
+/// Compute the Levenshtein distance between two strings.
+///
+/// This is an inline implementation for short XML tag names (typically < 30 characters).
+/// Uses dynamic programming with O(mn) time and O(min(m,n)) space.
+fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+    let (shorter, longer) = if s1.len() <= s2.len() {
+        (s1, s2)
+    } else {
+        (s2, s1)
+    };
+
+    let shorter_len = shorter.len();
+    let longer_len = longer.len();
+
+    // Special cases
+    if shorter_len == 0 {
+        return longer_len;
+    }
+    if longer_len == 0 {
+        return shorter_len;
+    }
+
+    // Use two rows instead of full matrix for O(min(m,n)) space
+    let mut prev_row: Vec<usize> = (0..=shorter_len).collect();
+    let mut curr_row = vec![0; shorter_len + 1];
+
+    for (i, c2) in longer.chars().enumerate() {
+        curr_row[0] = i + 1;
+
+        for (j, c1) in shorter.chars().enumerate() {
+            let cost = if c1 == c2 { 0 } else { 1 };
+            curr_row[j + 1] = (curr_row[j] + 1) // insertion
+                .min(prev_row[j + 1] + 1) // deletion
+                .min(prev_row[j] + cost); // substitution
+        }
+
+        std::mem::swap(&mut prev_row, &mut curr_row);
+    }
+
+    prev_row[shorter_len]
+}
+
+/// Normalize a tag name to a known tag using fuzzy matching.
+///
+/// This function performs tolerant matching for XML element names that may contain
+/// minor typos (e.g., `<ralph-sumary>` instead of `<ralph-summary>`).
+///
+/// # Arguments
+///
+/// * `tag` - The raw tag name to normalize (may have typos)
+/// * `known_tags` - The list of known/valid tag names to match against
+///
+/// # Returns
+///
+/// * `Some(&str)` - A reference to the matching known tag if exactly one tag is within
+///   the edit-distance threshold (currently 1)
+/// * `None` - If zero tags are within threshold OR multiple tags are equally close (ambiguous)
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use ralph_workflow::files::llm_output_extraction::xml_helpers::tolerant_parsing::normalize_tag_name;
+///
+/// let known = &["ralph-status", "ralph-summary", "ralph-files-changed"];
+///
+/// // Exact match
+/// assert_eq!(normalize_tag_name("ralph-summary", known), Some("ralph-summary"));
+///
+/// // Single char deletion typo
+/// assert_eq!(normalize_tag_name("ralph-sumary", known), Some("ralph-summary"));
+///
+/// // Single char insertion typo
+/// assert_eq!(normalize_tag_name("ralph-ssummary", known), Some("ralph-summary"));
+///
+/// // Completely unknown tag
+/// assert_eq!(normalize_tag_name("ralph-banana", known), None);
+///
+/// // Ambiguous input (equally close to multiple tags)
+/// assert_eq!(normalize_tag_name("ralph-status", known), None); // exact match is handled separately
+/// ```
+pub fn normalize_tag_name<'a>(tag: &str, known_tags: &'a [&str]) -> Option<&'a str> {
+    // Step 1: Trim whitespace
+    let trimmed = tag.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    // Step 2: Check for exact case-insensitive match first (fast path)
+    let lower_tag = trimmed.to_ascii_lowercase();
+    for &known in known_tags {
+        if lower_tag == known.to_ascii_lowercase() {
+            return Some(known);
+        }
+    }
+
+    // Step 3: Find all known tags within edit-distance threshold
+    const DISTANCE_THRESHOLD: usize = 1;
+    let mut matches: Vec<&str> = Vec::new();
+
+    for &known in known_tags {
+        let distance = levenshtein_distance(&lower_tag, &known.to_ascii_lowercase());
+        if distance <= DISTANCE_THRESHOLD {
+            matches.push(known);
+        }
+    }
+
+    // Step 4: Return the match if exactly one, otherwise None (ambiguous or no match)
+    if matches.len() == 1 {
+        Some(matches[0])
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -914,5 +1032,126 @@ mod tests {
     fn test_list_type_whitespace_only_returns_none() {
         let result = normalize_enum_value("   ", LIST_TYPE_VALID_VALUES, LIST_TYPE_SYNONYMS);
         assert_eq!(result, None);
+    }
+
+    // =========================================================================
+    // Tag name fuzzy matching tests
+    // =========================================================================
+
+    const DEV_RESULT_KNOWN_TAGS: &[&str] = &[
+        "ralph-status",
+        "ralph-summary",
+        "skills-mcp",
+        "ralph-files-changed",
+        "ralph-next-steps",
+    ];
+
+    #[test]
+    fn test_tag_name_exact_match_returns_canonical() {
+        let result = normalize_tag_name("ralph-summary", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_case_insensitive_exact_match() {
+        let result = normalize_tag_name("RALPH-SUMMARY", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_single_char_deletion_typo_resolves() {
+        // ralph-sumary (missing 'm') -> ralph-summary
+        let result = normalize_tag_name("ralph-sumary", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_single_char_insertion_typo_resolves() {
+        // ralph-ssummary (extra 's') -> ralph-summary
+        let result = normalize_tag_name("ralph-ssummary", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_single_char_substitution_typo_resolves() {
+        // ralph-xummary (x instead of m) -> ralph-summary
+        let result = normalize_tag_name("ralph-xummary", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_completely_unknown_returns_none() {
+        // ralph-banana is too far from any known tag
+        let result = normalize_tag_name("ralph-banana", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_tag_name_empty_input_returns_none() {
+        let result = normalize_tag_name("", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_tag_name_whitespace_only_returns_none() {
+        let result = normalize_tag_name("   ", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_tag_name_status_typo_resolves() {
+        // ralph-statuss (extra 's') -> ralph-status
+        let result = normalize_tag_name("ralph-statuss", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-status"));
+    }
+
+    #[test]
+    fn test_tag_name_whitespace_trimmed() {
+        // " ralph-summary " should match
+        let result = normalize_tag_name(" ralph-summary ", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
+    }
+
+    #[test]
+    fn test_tag_name_two_char_diff_returns_none() {
+        // ralph-summray (mm->mr, remove y) is too far from any known tag
+        let result = normalize_tag_name("ralph-summray", DEV_RESULT_KNOWN_TAGS);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_tag_name_ambiguous_input_returns_none() {
+        // Case 1: input "a" is distance 1 from both "ab" and "ac" - ambiguous
+        const AMBIGUOUS_TAGS_1: &[&str] = &["ab", "ac"];
+        let result = normalize_tag_name("a", AMBIGUOUS_TAGS_1);
+        assert_eq!(
+            result, None,
+            "Input 'a' is equally close to 'ab' and 'ac', should return None"
+        );
+
+        // Case 2: ralph-stytus is distance 1 from both ralph-stztus and ralph-stxtus - ambiguous
+        // s->z and s->x are both single substitutions at the same position
+        const AMBIGUOUS_TAGS_2: &[&str] = &["ralph-stztus", "ralph-stxtus"];
+        let result = normalize_tag_name("ralph-stytus", AMBIGUOUS_TAGS_2);
+        assert_eq!(
+            result, None,
+            "Input 'ralph-stytus' is equally close to both known tags, should return None"
+        );
+    }
+
+    #[test]
+    fn test_tag_name_for_issues_validator() {
+        const ISSUES_KNOWN_TAGS: &[&str] = &["ralph-issue", "ralph-no-issues-found"];
+        // ralph-isue (typo) -> ralph-issue
+        let result = normalize_tag_name("ralph-isue", ISSUES_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-issue"));
+    }
+
+    #[test]
+    fn test_tag_name_for_fix_result_validator() {
+        const FIX_KNOWN_TAGS: &[&str] = &["ralph-status", "ralph-summary"];
+        // ralph-summry (typo) -> ralph-summary
+        let result = normalize_tag_name("ralph-summry", FIX_KNOWN_TAGS);
+        assert_eq!(result, Some("ralph-summary"));
     }
 }

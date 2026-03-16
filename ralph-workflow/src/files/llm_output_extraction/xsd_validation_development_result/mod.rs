@@ -653,7 +653,7 @@ mod tests {
     }
 
     // =========================================================================
-    // New tolerance tests (these should FAIL until validation.rs is updated)
+    // Tolerance tests — all pass after validation.rs was updated with fuzzy tag matching
     // =========================================================================
 
     /// Test: continuation with summary lacking blocker-indicator words should now pass.
@@ -936,5 +936,87 @@ mod tests {
             .expect("Self-closing skills-mcp should be Some, not None");
         assert!(sm.skills.is_empty());
         assert!(sm.mcps.is_empty());
+    }
+
+    // =========================================================================
+    // Fuzzy tag matching tests (Step 4 of implementation plan)
+    // =========================================================================
+
+    /// Test: misspelled ralph-sumary tag resolves to ralph-summary.
+    #[test]
+    fn test_tolerant_misspelled_summary_tag_accepted() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-sumary>Some summary text</ralph-sumary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Misspelled <ralph-sumary> should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.summary, "Some summary text",
+            "Summary content should be correctly extracted from misspelled tag"
+        );
+    }
+
+    /// Test: misspelled ralph-statuss tag resolves to ralph-status.
+    #[test]
+    fn test_tolerant_misspelled_status_tag_accepted() {
+        let xml = r"<ralph-development-result>
+<ralph-statuss>completed</ralph-statuss>
+<ralph-summary>Some summary text</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Misspelled <ralph-statuss> should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "completed",
+            "Status should be correctly extracted from misspelled tag"
+        );
+    }
+
+    /// Test: completely unknown tag (large edit distance) is skipped.
+    #[test]
+    fn test_tolerant_completely_unknown_tag_skipped() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summary>Some summary</ralph-summary>
+<ralph-banana>this should be ignored</ralph-banana>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Unknown tag with large edit distance should be skipped: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "completed");
+        assert_eq!(elements.summary, "Some summary");
+    }
+
+    /// Test: self-closing misspelled tag is also handled.
+    #[test]
+    fn test_tolerant_self_closing_misspelled_tag() {
+        let xml = r"<ralph-development-result>
+<ralph-status>completed</ralph-status>
+<ralph-summry/>
+<ralph-summary>Actual summary</ralph-summary>
+</ralph-development-result>";
+
+        let result = validate_development_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing misspelled tag should be handled: {result:?}"
+        );
+        let elements = result.unwrap();
+        // The actual summary should be used
+        assert_eq!(elements.summary, "Actual summary");
     }
 }

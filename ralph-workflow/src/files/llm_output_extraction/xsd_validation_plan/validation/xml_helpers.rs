@@ -62,6 +62,70 @@ fn read_text_until_end(
     Ok(text.trim().to_string())
 }
 
+/// Read text content until the closing tag, accepting either canonical OR original tag name.
+///
+/// This function is used when fuzzy tag matching resolves a misspelled tag to its canonical form.
+/// For example, if `<title>` is matched to `title`, this function will accept
+/// either `</title>` OR the original misspelled closing tag.
+fn read_text_until_end_fuzzy(
+    reader: &mut Reader<&[u8]>,
+    canonical_end_tag: &[u8],
+    original_start_tag: &[u8],
+) -> Result<String, XsdValidationError> {
+    let mut buf = Vec::new();
+    let mut text = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Text(e)) => {
+                text.push_str(&e.unescape().unwrap_or_default());
+            }
+            Ok(Event::CData(e)) => {
+                // CDATA content is preserved exactly as-is
+                text.push_str(&String::from_utf8_lossy(&e));
+            }
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag name OR original (misspelled) tag name
+                if e.name().as_ref() == canonical_end_tag || e.name().as_ref() == original_start_tag {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MalformedXml,
+                    element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
+                    expected: format!(
+                        "closing </{}> or </{}>",
+                        String::from_utf8_lossy(canonical_end_tag),
+                        String::from_utf8_lossy(original_start_tag)
+                    ),
+                    found: "unexpected end of file".to_string(),
+                    suggestion: format!(
+                        "Ensure the element has a matching closing tag (</{}> or </{}>).",
+                        String::from_utf8_lossy(canonical_end_tag),
+                        String::from_utf8_lossy(original_start_tag)
+                    ),
+                    example: None,
+                });
+            }
+            Ok(_) => {} // Skip other events
+            Err(e) => {
+                return Err(XsdValidationError {
+                    error_type: XsdErrorType::MalformedXml,
+                    element_path: String::from_utf8_lossy(canonical_end_tag).to_string(),
+                    expected: "valid XML".to_string(),
+                    found: format!("parse error: {e}"),
+                    suggestion: "Check XML syntax".to_string(),
+                    example: None,
+                });
+            }
+        }
+        buf.clear();
+    }
+
+    Ok(text.trim().to_string())
+}
+
 /// Skip until the end of the current element (handles nested elements)
 fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
     let mut buf = Vec::new();

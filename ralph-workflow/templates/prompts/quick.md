@@ -1,9 +1,18 @@
 # Quick Change: [What you want changed]
 
-## Change
-<!-- One-liner describing the change -->
-[e.g., "Update copyright year from 2023 to 2024 in footer"]
+## Goal
+<!-- What should be different after this change? -->
+[e.g., "Footer shows the correct copyright year (2024)"]
 
-## Where (optional)
-<!-- Only if not obvious from the change description -->
-[e.g., "In the page footer component" - leave blank if obvious]
+## Change
+<!-- One sentence describing what needs to happen -->
+[e.g., "Update copyright year from 2023 to 2024 in the footer"]
+
+## Why (optional)
+<!-- Context if not obvious -->
+[e.g., "Legal requirement to keep copyright current"]
+
+## Acceptance
+<!-- How do we know it's done? -->
+- [ ] [e.g., "Footer displays '© 2024'"]
+- [ ] [e.g., "Change appears on all pages"]

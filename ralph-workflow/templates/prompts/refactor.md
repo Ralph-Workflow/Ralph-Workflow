@@ -1,28 +1,35 @@
 # Refactor: [What you want improved]
 
-## Problem
-<!-- What's wrong with the current state? Why refactor now? -->
-[e.g., "UserService is 2000 lines, impossible to test, and every change risks breaking something"]
-
 ## Goal
-<!-- What architectural improvement do you want? -->
-[e.g., "Split into focused services: UserAuthService, UserProfileService, UserPreferencesService"]
+<!-- What architectural improvement do you want to achieve? -->
+[e.g., "Decompose UserService into cohesive, single-responsibility modules"]
 
-## Benefits
-<!-- What will be better after this refactor? -->
-- [e.g., "Each service can be tested in isolation"]
-- [e.g., "Teams can work on different services without conflicts"]
-- [e.g., "Easier to understand and onboard new developers"]
+## Current State
+<!-- What's the current architecture and why is it problematic? -->
+[e.g., "UserService is a 2000-line monolith handling auth, profiles, preferences, and notifications. Changes to one concern risk breaking others. Testing requires mocking the entire service."]
 
-## Scope
-<!-- What should change? What must NOT change? -->
-- **Include:** [e.g., "UserService and direct dependencies"]
-- **Exclude:** [e.g., "Public API contracts must stay identical"]
+## Target State
+<!-- What should the architecture look like after? -->
+[e.g., "Four focused modules:
+- UserAuthModule: login, logout, password reset
+- UserProfileModule: profile CRUD, avatar handling
+- UserPreferencesModule: settings, notification preferences  
+- Each module has clear boundaries and can be tested independently"]
 
-## Behavior Preservation
-<!-- Any behaviors that MUST remain exactly the same? -->
-[e.g., "All API responses must be byte-identical" or "All existing tests must pass without modification"]
+## Invariants
+<!-- What must NOT change? -->
+- [e.g., "Public API signatures remain identical"]
+- [e.g., "All existing tests pass without modification"]
+- [e.g., "No database schema changes"]
+- [e.g., "No changes to wire format (JSON responses)"]
 
-## Context (optional)
-<!-- Constraints or patterns to follow -->
-[e.g., "Follow existing service patterns in /services/"]
+## Migration Path (optional)
+<!-- If this can't be done atomically, what are the phases? -->
+[e.g., "Phase 1: Extract UserAuthModule. Phase 2: Extract UserProfileModule. Phase 3: Clean up remaining code."]
+
+## Acceptance
+<!-- What must be true for this refactor to be complete? -->
+- [ ] [e.g., "Architecture matches Target State"]
+- [ ] [e.g., "All invariants are preserved"]
+- [ ] [e.g., "Each module can be tested in isolation"]
+- [ ] [e.g., "No regression in system behavior"]

@@ -136,6 +136,17 @@ Acceptance criteria:
   command or check that must be resolved.
 
 ───────────────────────────────────────────────────────────────────────────────
+STATUS DETERMINATION
+───────────────────────────────────────────────────────────────────────────────
+
+- **"completed"**: All plan requirements verified, all checks pass, no remaining work.
+- **"partial"**: Meaningful attempt made but some work remains (e.g., edge cases, minor issues).
+- **"failed"**: No meaningful attempt to complete the work, or fundamentally blocked.
+
+The status MUST match the summary. If the summary says everything is done,
+the status MUST be "completed".
+
+───────────────────────────────────────────────────────────────────────────────
 EMPTY OR MISSING DIFF HANDLING
 ───────────────────────────────────────────────────────────────────────────────
 

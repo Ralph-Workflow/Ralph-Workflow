@@ -23,7 +23,8 @@
 use super::types::{IssueEntry, IssuesElements};
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    parse_skills_mcp, read_text_until_end, skip_to_end,
+    parse_skills_mcp, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
+    tolerant_parsing::normalize_tag_name,
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -38,6 +39,10 @@ pub const EXAMPLE_ISSUES_XML: &str = r"<ralph-issues>
 pub const EXAMPLE_NO_ISSUES_XML: &str = r"<ralph-issues>
 <ralph-no-issues-found>No issues were found during review</ralph-no-issues-found>
 </ralph-issues>";
+
+/// Known child element tags for issues validation.
+/// Used for fuzzy tag name matching (typo tolerance).
+const KNOWN_ISSUES_TAGS: &[&str] = &["ralph-issue", "ralph-no-issues-found"];
 
 /// Validate issues XML content against the issues XSD.
 ///
@@ -156,7 +161,7 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
                                 example: Some(EXAMPLE_ISSUES_XML.into()),
                             });
                         }
-                        let entry = parse_issue_entry(&mut reader)?;
+                        let entry = parse_issue_entry(&mut reader, b"ralph-issue")?;
                         issues.push(entry);
                     }
                     b"ralph-no-issues-found" => {
@@ -181,10 +186,62 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
                             Some(read_text_until_end(&mut reader, b"ralph-no-issues-found")?);
                     }
                     other => {
-                        // Tolerant: skip unknown elements instead of rejecting.
-                        // Required elements (ralph-issue or ralph-no-issues-found) are still
-                        // enforced after the loop.
-                        let _ = skip_to_end(&mut reader, other);
+                        // Tolerant: try fuzzy tag matching before skipping.
+                        // If the tag is a known tag with minor typo, route to correct handler.
+                        let tag_name = String::from_utf8_lossy(other);
+                        if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_ISSUES_TAGS) {
+                            // Re-parse with the canonical tag name
+                            match canonical {
+                                "ralph-issue" => {
+                                    // Cannot mix issues and no-issues-found
+                                    if no_issues_found.is_some() {
+                                        return Err(XsdValidationError {
+                                            error_type: XsdErrorType::UnexpectedElement,
+                                            element_path: "ralph-issues/ralph-issue".to_string(),
+                                            expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
+                                            found: "mixed issues and no-issues-found".to_string(),
+                                            suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
+                                            example: Some(EXAMPLE_ISSUES_XML.into()),
+                                        });
+                                    }
+                                    let entry = parse_issue_entry(&mut reader, other)?;
+                                    issues.push(entry);
+                                }
+                                "ralph-no-issues-found" => {
+                                    // Cannot mix issues and no-issues-found
+                                    if !issues.is_empty() {
+                                        return Err(XsdValidationError {
+                                            error_type: XsdErrorType::UnexpectedElement,
+                                            element_path: "ralph-issues/ralph-no-issues-found".to_string(),
+                                            expected: "either <ralph-issue> elements OR <ralph-no-issues-found>, not both".to_string(),
+                                            found: "mixed issues and no-issues-found".to_string(),
+                                            suggestion: "Use <ralph-issue> when issues exist, or <ralph-no-issues-found> when no issues exist.".to_string(),
+                                            example: Some(EXAMPLE_NO_ISSUES_XML.into()),
+                                        });
+                                    }
+                                    if no_issues_found.is_some() {
+                                        return Err(duplicate_element_error(
+                                            "ralph-no-issues-found",
+                                            "ralph-issues",
+                                        ));
+                                    }
+                                    no_issues_found = Some(read_text_until_end_fuzzy(
+                                        &mut reader,
+                                        b"ralph-no-issues-found",
+                                        other,
+                                    )?);
+                                }
+                                _ => {
+                                    // Should not happen - canonical tags are from our known list
+                                    let _ = skip_to_end(&mut reader, other);
+                                }
+                            }
+                        } else {
+                            // Tolerant: skip unknown elements instead of rejecting.
+                            // Required elements (ralph-issue or ralph-no-issues-found) are still
+                            // enforced after the loop.
+                            let _ = skip_to_end(&mut reader, other);
+                        }
                         // Continue parsing — do not return an error for unknown elements.
                     }
                 }
@@ -240,9 +297,14 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
 /// Text content (including text from `<code>` children) is collected into `text`.
 /// A `<skills-mcp>` child is parsed into `skills_mcp`.
 /// Other unknown child elements are skipped tolerantly.
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
 fn parse_issue_entry(
     reader: &mut quick_xml::Reader<&[u8]>,
+    original_tag: &[u8],
 ) -> Result<IssueEntry, XsdValidationError> {
+    let canonical_tag = b"ralph-issue";
     let mut buf = Vec::new();
     let mut text_parts: Vec<String> = Vec::new();
     let mut skills_mcp = None;
@@ -290,15 +352,27 @@ fn parse_issue_entry(
                     // Skip unknown empty children
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issue" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => {
                 return Err(XsdValidationError {
                     error_type: crate::files::llm_output_extraction::xsd_validation::XsdErrorType::MalformedXml,
                     element_path: "ralph-issue".to_string(),
-                    expected: "closing </ralph-issue> tag".to_string(),
+                    expected: format!(
+                        "closing </{}> or </{}>",
+                        String::from_utf8_lossy(canonical_tag),
+                        String::from_utf8_lossy(original_tag)
+                    ),
                     found: "unexpected end of file".to_string(),
-                    suggestion: "Ensure the <ralph-issue> element has a matching closing tag."
-                        .to_string(),
+                    suggestion: format!(
+                        "Ensure the <ralph-issue> element has a matching closing tag (</{}> or </{}>).",
+                        String::from_utf8_lossy(canonical_tag),
+                        String::from_utf8_lossy(original_tag)
+                    ),
                     example: None,
                 });
             }

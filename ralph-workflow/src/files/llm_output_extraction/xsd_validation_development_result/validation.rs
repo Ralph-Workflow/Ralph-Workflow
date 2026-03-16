@@ -3,8 +3,8 @@
 use super::types::DevelopmentResultElements;
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    missing_required_error, read_text_until_end, skip_to_end,
-    tolerant_parsing::{normalize_enum_value, DEVELOPMENT_STATUS_SYNONYMS},
+    missing_required_error, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
+    tolerant_parsing::{normalize_enum_value, normalize_tag_name, DEVELOPMENT_STATUS_SYNONYMS},
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -18,6 +18,16 @@ const EXAMPLE_DEVELOPMENT_RESULT_XML: &str = r"<ralph-development-result>
 
 /// Valid status values for development results.
 const VALID_STATUSES: [&str; 3] = ["completed", "partial", "failed"];
+
+/// Known child element tags for development result validation.
+/// Used for fuzzy tag name matching (typo tolerance).
+const KNOWN_DEV_RESULT_TAGS: &[&str] = &[
+    "ralph-status",
+    "ralph-summary",
+    "skills-mcp",
+    "ralph-files-changed",
+    "ralph-next-steps",
+];
 
 /// Validate development result XML content against the XSD schema.
 ///
@@ -154,9 +164,80 @@ pub fn validate_development_result_xml(
                     next_steps = Some(read_text_until_end(&mut reader, b"ralph-next-steps")?);
                 }
                 other => {
-                    // Tolerant: skip unknown elements instead of rejecting.
-                    // Required elements (status, summary) are still enforced after the loop.
-                    let _ = skip_to_end(&mut reader, other);
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known tag with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS) {
+                        // Re-parse with the canonical tag name
+                        match canonical {
+                            "ralph-status" => {
+                                if status.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-status",
+                                        "ralph-development-result",
+                                    ));
+                                }
+                                status = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-status",
+                                    other,
+                                )?);
+                            }
+                            "ralph-summary" => {
+                                if summary.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-summary",
+                                        "ralph-development-result",
+                                    ));
+                                }
+                                summary = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-summary",
+                                    other,
+                                )?);
+                            }
+                            "skills-mcp" => {
+                                use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
+                                skills_mcp_value = Some(parse_skills_mcp(&mut reader));
+                            }
+                            "ralph-files-changed" => {
+                                if files_changed_present {
+                                    return Err(duplicate_element_error(
+                                        "ralph-files-changed",
+                                        "ralph-development-result",
+                                    ));
+                                }
+                                files_changed_present = true;
+                                files_changed = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-files-changed",
+                                    other,
+                                )?);
+                            }
+                            "ralph-next-steps" => {
+                                if next_steps_present {
+                                    return Err(duplicate_element_error(
+                                        "ralph-next-steps",
+                                        "ralph-development-result",
+                                    ));
+                                }
+                                next_steps_present = true;
+                                next_steps = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-next-steps",
+                                    other,
+                                )?);
+                            }
+                            _ => {
+                                // Should not happen - canonical tags are from our known list
+                                let _ = skip_to_end(&mut reader, other);
+                            }
+                        }
+                    } else {
+                        // Tolerant: skip unknown elements instead of rejecting.
+                        // Required elements (status, summary) are still enforced after the loop.
+                        let _ = skip_to_end(&mut reader, other);
+                    }
                     // Continue parsing — do not return an error for unknown elements.
                 }
             },
@@ -208,9 +289,24 @@ pub fn validate_development_result_xml(
                     next_steps = Some(String::new());
                 }
                 other => {
-                    // Tolerant: skip unknown empty elements instead of rejecting.
-                    let _ = other;
-                    // Continue parsing — do not return an error for unknown elements.
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known tag with minor typo, route to correct handler.
+                    // Handle canonical tag for self-closing element - skip it entirely
+                    // so the proper element can still be processed later.
+                    // Don't set any value - just ignore this misspelled self-closing tag.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(
+                        "ralph-status"
+                        | "ralph-summary"
+                        | "skills-mcp"
+                        | "ralph-files-changed"
+                        | "ralph-next-steps",
+                    ) = normalize_tag_name(&tag_name, KNOWN_DEV_RESULT_TAGS)
+                    {
+                        // Skip - don't set any value so proper elements can be processed
+                    } else {
+                        // Skip unknown self-closing elements
+                    }
                 }
             },
             Ok(Event::Text(e)) => {

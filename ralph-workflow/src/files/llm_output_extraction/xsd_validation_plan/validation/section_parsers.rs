@@ -1,4 +1,28 @@
 // Section parsing helpers.
+
+// Note: normalize_tag_name is imported in main_validator.rs and available in this module
+// via the include! statement that combines all validation/*.rs files
+
+/// Known sub-element tags for section parsing (rich content, summary, table).
+/// Used for fuzzy tag name matching (typo tolerance).
+const SECTION_SUB_ELEMENT_TAGS: &[&str] = &[
+    // Rich content elements
+    "paragraph",
+    "code-block",
+    "heading",
+    "list",
+    "table",
+    "item",
+    "caption",
+    "column",
+    "row",
+    "cell",
+    // Summary elements
+    "context",
+    "scope-items",
+    "scope-item",
+];
+
 /// Strip block-level elements from content for inline parsing.
 ///
 /// This allows list items to contain block-level elements like `<code-block>`,
@@ -160,9 +184,66 @@ fn parse_rich_content(content: &str) -> Result<RichContent, XsdValidationError> 
                         let table = parse_table(&mut reader)?;
                         elements.push(ContentElement::Table(table));
                     }
-                    _ => {
-                        // Skip unknown elements
-                        let _ = skip_to_end(&mut reader, e.name().as_ref());
+                    other => {
+                        // Tolerant: try fuzzy tag matching before skipping.
+                        // If the tag is a known sub-element with minor typo, route to correct handler.
+                        let tag_name = String::from_utf8_lossy(other);
+                        if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                            // Re-parse with the canonical tag name
+                            match canonical {
+                                "paragraph" => {
+                                    let inner = read_inner_xml(&mut reader, other)?;
+                                    elements.push(ContentElement::Paragraph(Paragraph {
+                                        content: parse_inline_elements(&inner),
+                                    }));
+                                }
+                                "code-block" => {
+                                    let attrs = get_attributes(&e);
+                                    let code = read_text_until_end_fuzzy(&mut reader, b"code-block", other)?;
+                                    elements.push(ContentElement::CodeBlock(CodeBlock {
+                                        content: code,
+                                        language: attrs.get("language").cloned(),
+                                        filename: attrs.get("filename").cloned(),
+                                    }));
+                                }
+                                "heading" => {
+                                    let attrs = get_attributes(&e);
+                                    let raw_level: u8 =
+                                        attrs.get("level").and_then(|s| s.parse().ok()).unwrap_or(3);
+                                    let level = raw_level.clamp(2, 4);
+                                    let text = read_text_until_end_fuzzy(&mut reader, b"heading", other)?;
+                                    elements.push(ContentElement::Heading(Heading { level, text }));
+                                }
+                                "list" => {
+                                    let attrs = get_attributes(&e);
+                                    let list_type_str =
+                                        attrs.get("type").map_or("", std::string::String::as_str);
+                                    let list_type = match normalize_enum_value(
+                                        list_type_str,
+                                        &["ordered", "unordered"],
+                                        LIST_TYPE_SYNONYMS,
+                                    )
+                                    .as_deref()
+                                    {
+                                        Some("ordered") => ListType::Ordered,
+                                        Some(_) | None => ListType::Unordered,
+                                    };
+                                    let list = parse_list(&mut reader, list_type)?;
+                                    elements.push(ContentElement::List(list));
+                                }
+                                "table" => {
+                                    let table = parse_table(&mut reader)?;
+                                    elements.push(ContentElement::Table(table));
+                                }
+                                _ => {
+                                    // Skip other canonical matches (item, caption, column, row, cell, etc.)
+                                    let _ = skip_to_end(&mut reader, other);
+                                }
+                            }
+                        } else {
+                            // Skip unknown elements
+                            let _ = skip_to_end(&mut reader, other);
+                        }
                     }
                 }
             }
@@ -307,8 +388,28 @@ fn parse_table(reader: &mut Reader<&[u8]>) -> Result<Table, XsdValidationError> 
                 b"row" => {
                     rows.push(parse_row(reader)?);
                 }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
+                other => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known sub-element with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                        match canonical {
+                            "caption" => {
+                                caption = Some(read_text_until_end_fuzzy(reader, b"caption", other)?);
+                            }
+                            "columns" => {
+                                columns = parse_columns(reader)?;
+                            }
+                            "row" => {
+                                rows.push(parse_row(reader)?);
+                            }
+                            _ => {
+                                let _ = skip_to_end(reader, other);
+                            }
+                        }
+                    } else {
+                        let _ = skip_to_end(reader, other);
+                    }
                 }
             },
             Ok(Event::End(e)) if e.name().as_ref() == b"table" => break,
@@ -401,7 +502,11 @@ fn parse_row(reader: &mut Reader<&[u8]>) -> Result<Row, XsdValidationError> {
 }
 
 /// Parse the ralph-summary section
-fn parse_summary(reader: &mut Reader<&[u8]>) -> Result<PlanSummary, XsdValidationError> {
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
+fn parse_summary(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<PlanSummary, XsdValidationError> {
+    let canonical_tag = b"ralph-summary";
     let mut context = None;
     let mut scope_items = Vec::new();
     let mut buf = Vec::new();
@@ -428,11 +533,43 @@ fn parse_summary(reader: &mut Reader<&[u8]>) -> Result<PlanSummary, XsdValidatio
                         category: attrs.get("category").cloned(),
                     });
                 }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
+                other => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known sub-element with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, SECTION_SUB_ELEMENT_TAGS) {
+                        match canonical {
+                            "context" => {
+                                context = Some(read_text_until_end_fuzzy(reader, b"context", other)?);
+                            }
+                            "scope-items" => {
+                                let mut wrapped = parse_scope_items(reader)?;
+                                scope_items.append(&mut wrapped);
+                            }
+                            "scope-item" => {
+                                let attrs = get_attributes(&e);
+                                let description = read_text_until_end_fuzzy(reader, b"scope-item", other)?;
+                                scope_items.push(ScopeItem {
+                                    description,
+                                    count: attrs.get("count").cloned(),
+                                    category: attrs.get("category").cloned(),
+                                });
+                            }
+                            _ => {
+                                let _ = skip_to_end(reader, other);
+                            }
+                        }
+                    } else {
+                        let _ = skip_to_end(reader, other);
+                    }
                 }
             },
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-summary" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => break,
             Ok(Event::Text(_) | _) => {} // Tolerant: skip stray text and other events
             Err(e) => {

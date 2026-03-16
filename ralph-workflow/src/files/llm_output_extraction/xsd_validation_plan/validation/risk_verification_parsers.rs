@@ -1,9 +1,14 @@
 // Risk and verification parsing (parse_risks_mitigations, parse_risk_pair, parse_verification_strategy, parse_single_verification)
 
 /// Parse the ralph-risks-mitigations section
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
 fn parse_risks_mitigations(
     reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
 ) -> Result<Vec<RiskPair>, XsdValidationError> {
+    let canonical_tag = b"ralph-risks-mitigations";
     let mut risk_pairs = Vec::new();
     let mut buf = Vec::new();
 
@@ -15,7 +20,12 @@ fn parse_risks_mitigations(
                 let pair = parse_risk_pair(reader, severity)?;
                 risk_pairs.push(pair);
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-risks-mitigations" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => break,
             Ok(_) => {}
             Err(e) => {
@@ -103,9 +113,14 @@ fn parse_risk_pair(
 }
 
 /// Parse the ralph-verification-strategy section
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
 fn parse_verification_strategy(
     reader: &mut Reader<&[u8]>,
+    original_tag: &[u8],
 ) -> Result<Vec<Verification>, XsdValidationError> {
+    let canonical_tag = b"ralph-verification-strategy";
     let mut verifications = Vec::new();
     let mut buf = Vec::new();
 
@@ -114,7 +129,12 @@ fn parse_verification_strategy(
             Ok(Event::Start(e)) if e.name().as_ref() == b"verification" => {
                 verifications.push(parse_single_verification(reader)?);
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-verification-strategy" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => break,
             Ok(_) => {}
             Err(e) => {

@@ -1,32 +1,52 @@
 # Data Pipeline: [Name or purpose]
 
-## Purpose
-<!-- Why does this data need to move? What decisions will it inform? -->
-[e.g., "Enable product team to see daily sales trends for inventory planning"]
+## Goal
+<!-- What does this pipeline accomplish? Who consumes the output? -->
+[e.g., "Analytics team has daily aggregated sales data for inventory planning"]
 
 ## Data Flow
-<!-- Where does data come from and go to? -->
-- **Source:** [e.g., "PostgreSQL orders table"]
-- **Destination:** [e.g., "Analytics data warehouse"]
+```
+[Source] → [Transform] → [Destination]
+
+[e.g., "PostgreSQL orders → Aggregate by product/day → Analytics warehouse"]
+```
+
+## Source
+<!-- Where does the data come from? -->
+- [e.g., "Table: orders (production PostgreSQL)"]
+- [e.g., "Filter: orders.created_at >= yesterday"]
+- [e.g., "Volume: ~100k records/day"]
 
 ## Transformation
-<!-- What happens to the data? What's the output shape? -->
-[e.g., "Aggregate orders by product category and day, calculate totals and averages"]
+<!-- What processing happens? -->
+[e.g., "Group by product_category and date. Calculate: total_orders, total_revenue, avg_order_value"]
+
+## Destination
+<!-- Where does the data go? What's the output schema? -->
+```
+daily_sales {
+  date: date
+  category: string  
+  total_orders: int
+  total_revenue: decimal
+  avg_order_value: decimal
+}
+```
 
 ## Schedule
-<!-- How often should this run? -->
-[e.g., "Daily at 2am UTC" or "Real-time streaming" or "On-demand triggered by API"]
+<!-- When and how often does this run? -->
+[e.g., "Daily at 02:00 UTC via cron" or "Real-time streaming" or "Triggered by API"]
 
 ## Failure Handling
-<!-- What happens when something goes wrong? -->
-- [e.g., "Source unavailable → retry 3x, then alert"]
-- [e.g., "Partial failure → checkpoint and resume"]
-- [e.g., "Bad data → quarantine and continue"]
+| Failure | Recovery |
+|---------|----------|
+| [e.g., "Source unavailable"] | [e.g., "Retry 3x, then alert ops, preserve yesterday's data"] |
+| [e.g., "Partial failure"] | [e.g., "Checkpoint progress, resume from last success"] |
+| [e.g., "Bad source data"] | [e.g., "Quarantine invalid records, continue processing"] |
 
-## Volume (optional)
-<!-- Expected data volume -->
-[e.g., "~1M records per day, growing 10% monthly"]
-
-## Context (optional)
-<!-- Existing pipeline patterns, orchestration tools -->
-[e.g., "Use existing Airflow setup in /pipelines/"]
+## Acceptance
+<!-- What must be true for this pipeline to be complete? -->
+- [ ] [e.g., "Data available in destination by SLA (03:00 UTC)"]
+- [ ] [e.g., "Output matches expected schema"]
+- [ ] [e.g., "Failure scenarios handled per spec"]
+- [ ] [e.g., "Monitoring and alerting in place"]
