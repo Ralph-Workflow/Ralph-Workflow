@@ -149,12 +149,18 @@ fn test_plan_without_skills_mcp_parses_successfully_with_none() {
 fn test_plan_skills_mcp_without_reason_attribute() {
     let xml = minimal_plan_xml(Some(
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "<skills-mcp>\n<skill>test-driven-development</skill>\n<mcp>context7</mcp>\n</skills-mcp>",
 =======
+=======
+>>>>>>> Stashed changes
         r#"<skills-mcp>
 <skill>test-driven-development</skill>
 <mcp>context7</mcp>
 </skills-mcp>"#,
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     ));
     let result = validate_plan_xml(&xml);

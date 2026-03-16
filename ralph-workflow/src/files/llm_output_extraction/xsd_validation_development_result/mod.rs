@@ -938,6 +938,7 @@ mod tests {
         assert!(sm.mcps.is_empty());
     }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
     // =========================================================================
     // Fuzzy tag matching tests (Step 4 of implementation plan)
@@ -1020,6 +1021,8 @@ mod tests {
         // The actual summary should be used
         assert_eq!(elements.summary, "Actual summary");
     }
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 }

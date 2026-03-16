@@ -247,8 +247,14 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
 /// # Returns
 ///
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 /// A `SkillsMcp` struct with parsed entries.
 pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
+=======
+/// A `SkillsMcp` struct with parsed entries. Never returns `Err` for content issues
+/// inside the element (only for XML syntax errors that prevent reading).
+pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdValidationError> {
+>>>>>>> Stashed changes
 =======
 /// A `SkillsMcp` struct with parsed entries. Never returns `Err` for content issues
 /// inside the element (only for XML syntax errors that prevent reading).
@@ -270,15 +276,21 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
                 let reason = e
                     .attributes()
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                     .filter_map(std::result::Result::ok)
                     .find(|a| a.key.as_ref() == b"reason")
                     .and_then(|a| a.unescape_value().ok())
                     .map(Cow::into_owned)
 =======
+=======
+>>>>>>> Stashed changes
                     .filter_map(|a| a.ok())
                     .find(|a| a.key.as_ref() == b"reason")
                     .and_then(|a| a.unescape_value().ok())
                     .map(|v| v.into_owned())
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
                     .filter(|s| !s.is_empty());
 
@@ -310,9 +322,12 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
             Ok(Event::Empty(e)) => {
                 // Self-closing elements like <skill/> or <mcp/> have no name text - skip
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 let _tag_bytes = e.name().as_ref();
                 // No content → nothing to record
 =======
+=======
+>>>>>>> Stashed changes
                 let tag = e.name();
                 let tag_bytes = tag.as_ref();
                 match tag_bytes {
@@ -323,6 +338,9 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
                         // Unknown self-closing element - ignore
                     }
                 }
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
             }
             Ok(Event::Text(e)) => {
@@ -359,17 +377,23 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
     };
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     SkillsMcp {
         skills,
         mcps,
         raw_content,
     }
 =======
+=======
+>>>>>>> Stashed changes
     Ok(SkillsMcp {
         skills,
         mcps,
         raw_content,
     })
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 }
 

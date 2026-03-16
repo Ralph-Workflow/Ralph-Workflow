@@ -116,7 +116,13 @@ fn render_issues_markdown(elements: &IssuesElements) -> String {
         output.push('\n');
         // Render skills-mcp recommendations if present
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
+=======
+        if let Some(ref sm) = issue.skills_mcp {
+            render_skills_mcp_inline(&mut output, sm);
+        }
+>>>>>>> Stashed changes
 =======
         if let Some(ref sm) = issue.skills_mcp {
             render_skills_mcp_inline(&mut output, sm);

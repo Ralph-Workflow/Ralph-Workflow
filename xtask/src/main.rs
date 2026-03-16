@@ -28,37 +28,15 @@
     // (collecting handles before joining ensures all threads are spawned before any join)
 )]
 
-mod cache;
-mod compliance;
+mod boundary;
 mod io;
-mod lsp_diagnostics;
-mod scanner;
-mod verify;
+mod runtime;
 
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use io::process::RealRunner;
-use verify::{CommandRunner, ProgressReporter, VerifyExitCode};
-
-/// Check if we're in a nested verify invocation.
-/// This prevents infinite recursion when tests spawn cargo xtask verify.
-///
-/// The `env_override` parameter allows testing the function with specific env values
-/// without modifying the actual process environment.
-/// - `Some("1")` or `Some("true")` (case-insensitive) → true
-/// - `Some("0")`, `Some("false")`, or `Some("")` → false
-/// - `None` → check the actual RALPH_XTASK_IN_VERIFY environment variable
-fn is_nested_verify_invocation(env_override: Option<&str>) -> bool {
-    let value = match env_override {
-        Some(v) => v,
-        None => {
-            return std::env::var("RALPH_XTASK_IN_VERIFY").is_ok();
-        }
-    };
-
-    value == "1" || value.eq_ignore_ascii_case("true")
-}
+use runtime::verify::{CommandRunner, ProgressReporter, VerifyExitCode};
 
 fn print_verify_failure(report: &verify::VerifyReport) {
     let Some(failure) = &report.failure else {
