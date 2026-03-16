@@ -127,6 +127,24 @@ export class NewSessionWizardComponent {
   readonly showCreateWorktree = signal(false);
   readonly configPanelExpanded = signal(false);
 
+  /** Whether the markdown preview is shown instead of the editor */
+  readonly isPreviewMode = signal(false);
+
+  /** Character count for the prompt textarea */
+  readonly charCount = computed(() => this.promptContent().length);
+
+  /** Word count for the prompt textarea */
+  readonly wordCount = computed(() => {
+    const text = this.promptContent().trim();
+    return text ? text.split(/\s+/).filter(Boolean).length : 0;
+  });
+
+  /** Prompt history loaded from localStorage (max 10 entries) */
+  readonly promptHistory = signal<string[]>([]);
+
+  /** Whether the history dropdown is open */
+  readonly showHistoryDropdown = signal(false);
+
   /** Stores the effective config returned from backend for the "Reset to defaults" feature */
   private effectiveConfig = signal<ConfigView | null>(null);
 
@@ -239,6 +257,9 @@ export class NewSessionWizardComponent {
   get reviewDepth_() { return this.reviewDepth(); }
   get showReviewPanel_() { return this.showReviewPanel(); }
   get showAiAssistant_() { return this.showAiAssistant(); }
+  get isPreviewMode_() { return this.isPreviewMode(); }
+  get charCount_() { return this.charCount(); }
+  get wordCount_() { return this.wordCount(); }
   get promptContent_() { return this.promptService.content(); }
   get canProceedToLaunch_() { return this.canProceedToLaunch(); }
   get hasConfiguredChains_() { return this.hasConfiguredChains(); }
@@ -254,6 +275,9 @@ export class NewSessionWizardComponent {
   get effectiveChainsConfig_() { return this.effectiveChainsConfig(); }
 
   constructor() {
+    // Load prompt history from localStorage on init
+    this.loadPromptHistory();
+
     effect(() => {
       const path = this.repoPath();
       if (path) {
@@ -472,6 +496,9 @@ export class NewSessionWizardComponent {
         reviewer_agent: reviewerAgent,
       });
 
+      // Save prompt to history after successful launch
+      this.savePromptToHistory(this.promptContent());
+
       this.sessionLaunched.emit(runId);
       this.wizardClosed.emit();
     } catch (e) {
@@ -519,4 +546,52 @@ export class NewSessionWizardComponent {
   deletePreset(name: string): void {
     this.presets.update(prev => prev.filter(p => p.name !== name));
   }
+
+  // ---- Prompt History (localStorage) ----
+
+  private readonly PROMPT_HISTORY_KEY = 'ralph-prompt-history';
+  private readonly MAX_HISTORY_ENTRIES = 10;
+
+  private loadPromptHistory(): void {
+    try {
+      const stored = localStorage.getItem(this.PROMPT_HISTORY_KEY);
+      if (stored) {
+        const history = JSON.parse(stored) as string[];
+        this.promptHistory.set(history.slice(0, this.MAX_HISTORY_ENTRIES));
+      }
+    } catch {
+      // Non-fatal: localStorage unavailable or corrupted
+      this.promptHistory.set([]);
+    }
+  }
+
+  private savePromptToHistory(prompt: string): void {
+    if (!prompt.trim()) return;
+
+    this.promptHistory.update(current => {
+      // Deduplicate: remove if already exists
+      const filtered = current.filter(p => p !== prompt);
+      // Add to front, cap at MAX_HISTORY_ENTRIES
+      const updated = [prompt, ...filtered].slice(0, this.MAX_HISTORY_ENTRIES);
+      // Persist to localStorage
+      try {
+        localStorage.setItem(this.PROMPT_HISTORY_KEY, JSON.stringify(updated));
+      } catch {
+        // Non-fatal: localStorage unavailable
+      }
+      return updated;
+    });
+  }
+
+  toggleHistoryDropdown(): void {
+    this.showHistoryDropdown.update(v => !v);
+  }
+
+  selectFromHistory(prompt: string): void {
+    this.promptContent.set(prompt);
+    this.showHistoryDropdown.set(false);
+  }
+
+  get historyDropdownOpen() { return this.showHistoryDropdown(); }
+  get promptHistory_() { return this.promptHistory(); }
 }

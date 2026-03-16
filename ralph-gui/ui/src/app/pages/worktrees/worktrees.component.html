@@ -156,12 +156,34 @@
                   <button [attr.data-testid]="'start-session-' + wt.name" class="btn btn-secondary text-[11px] px-2.5 py-0.5" (click)="startSession(wt)">
                     Start session
                   </button>
+                  <button [attr.data-testid]="'open-file-manager-' + wt.name" class="btn btn-ghost text-[11px] px-2.5 py-0.5" (click)="openInFileManager(wt)" title="Open in File Manager">
+                    <mat-icon class="text-base">folder_open</mat-icon>
+                  </button>
+                  <button [attr.data-testid]="'delete-worktree-' + wt.name" class="btn btn-ghost text-[11px] px-2.5 py-0.5 text-status-error" (click)="confirmDeleteWorktree(wt)" title="Delete Worktree">
+                    <mat-icon class="text-base">delete</mat-icon>
+                  </button>
                 }
               </div>
             </div>
           }
         </div>
       }
+    </div>
+  </div>
+}
+
+@if (deleteConfirmWorktree_) {
+  <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" role="dialog" aria-modal="true">
+    <div class="bg-bg-surface rounded-lg border border-border-default max-w-[400px] w-[90%] p-6">
+      <h2 class="font-display text-base font-semibold text-text-primary mb-4">Delete Worktree?</h2>
+      <p class="text-sm text-text-secondary mb-6">
+        Are you sure you want to delete worktree <strong class="font-mono">{{ deleteConfirmWorktree_.name }}</strong>?
+        This will remove the worktree directory but won't delete any local changes.
+      </p>
+      <div class="flex gap-3 justify-end">
+        <button class="btn btn-ghost" (click)="cancelDeleteWorktree()">Cancel</button>
+        <button class="btn btn-danger" (click)="executeDeleteWorktree()">Delete</button>
+      </div>
     </div>
   </div>
 }

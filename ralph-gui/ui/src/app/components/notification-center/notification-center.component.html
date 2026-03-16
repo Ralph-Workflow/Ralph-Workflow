@@ -4,11 +4,12 @@
   role="dialog"
   aria-label="Notifications"
   aria-modal="false"
+  data-testid="notification-list"
 >
   <div class="panel-header">
     <span class="panel-title">Notifications</span>
     @if (unreadCount > 0) {
-      <span class="unread-badge">{{ unreadCount }}</span>
+      <span class="unread-badge" data-testid="notification-badge">{{ unreadCount }}</span>
     }
     <div class="panel-actions">
       @if (notifications.length > 0) {
@@ -53,6 +54,7 @@
           [class.type-success]="notification.type === 'success'"
           [class.type-warning]="notification.type === 'warning'"
           [class.type-error]="notification.type === 'error'"
+          data-testid="notification-item"
         >
           <span class="notification-type-icon" [attr.aria-label]="notification.type">
             {{ typeIcons[notification.type] }}

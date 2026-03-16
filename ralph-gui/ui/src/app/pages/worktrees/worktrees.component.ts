@@ -33,6 +33,7 @@ export class WorktreesComponent {
   readonly creating = signal(false);
 
   readonly contextMenuWorktree = signal<WorktreeInfo | null>(null);
+  readonly deleteConfirmWorktree = signal<WorktreeInfo | null>(null);
 
   readonly mainWorktree = computed(() =>
     this.worktreesService.worktrees().find(wt => wt.is_main)
@@ -70,6 +71,7 @@ export class WorktreesComponent {
   get worktreesError() { return this.worktreesService.error(); }
   get worktreesList() { return this.worktreesWithMeta(); }
   get contextMenuWorktreeValue(): WorktreeInfo | null { return this.contextMenuWorktree(); }
+  get deleteConfirmWorktree_() { return this.deleteConfirmWorktree(); }
   get contextMenuCanStartSession(): boolean {
     const wt = this.contextMenuWorktree();
     return wt !== null && !wt.is_main;
@@ -178,5 +180,26 @@ export class WorktreesComponent {
     void this.router.navigate(['/sessions'], {
       queryParams: { new: 'true', worktree: wt.path }
     });
+  }
+
+  async openInFileManager(wt: WorktreeInfo): Promise<void> {
+    await this.tauriService.openInFileManager(wt.path);
+  }
+
+  confirmDeleteWorktree(wt: WorktreeInfo): void {
+    this.deleteConfirmWorktree.set(wt);
+  }
+
+  cancelDeleteWorktree(): void {
+    this.deleteConfirmWorktree.set(null);
+  }
+
+  async executeDeleteWorktree(): Promise<void> {
+    const wt = this.deleteConfirmWorktree();
+    if (!wt) return;
+
+    // TODO: Implement actual delete logic
+    console.log('Deleting worktree:', wt.path);
+    this.deleteConfirmWorktree.set(null);
   }
 }

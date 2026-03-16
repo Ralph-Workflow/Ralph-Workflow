@@ -1,3 +1,4 @@
+use crate::state::SharedState;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::Path;
@@ -192,7 +193,15 @@ pub fn switch_context(
     worktree_path: Option<String>,
     state: tauri::State<'_, crate::state::SharedState>,
 ) -> Result<(), String> {
-    validate_context_paths(&repo_path, worktree_path.as_deref())?;
+    switch_context_impl(state.inner(), &repo_path, worktree_path.as_deref())
+}
+
+pub fn switch_context_impl(
+    state: &SharedState,
+    repo_path: &str,
+    worktree_path: Option<&str>,
+) -> Result<(), String> {
+    validate_context_paths(repo_path, worktree_path)?;
     let mut locked = state
         .lock()
         .map_err(|e| format!("Failed to acquire state lock: {e}"))?;

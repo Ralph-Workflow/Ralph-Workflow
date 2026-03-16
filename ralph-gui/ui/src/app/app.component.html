@@ -177,13 +177,22 @@
 }
 
 @if (isShowCommandPalette) {
-  <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" (click)="showCommandPalette.set(false)">
+  <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" (click)="showCommandPalette.set(false)" data-testid="command-palette">
     <div class="bg-bg-surface rounded-lg border border-border-default max-w-[480px] w-[90%]" (click)="$event.stopPropagation()">
       <div class="flex items-center gap-2 px-5 py-4 border-b border-border-subtle">
         <span class="text-lg text-accent">⌘</span>
         <span class="font-display text-sm font-semibold text-text-primary">Command Palette</span>
       </div>
-      <div class="px-5 py-6 text-center">
+      <div class="px-5 py-4">
+        <input
+          type="text"
+          class="input w-full"
+          placeholder="Type a command..."
+          data-testid="command-palette-input"
+          autofocus
+        />
+      </div>
+      <div class="px-5 py-4 text-center">
         <p class="text-sm text-text-muted mb-4">Coming soon — command search and quick actions will appear here.</p>
         <div class="text-xs text-text-muted">Press <kbd class="bg-bg-elevated border border-border-default rounded px-1.5 py-0.5 font-mono text-[11px]">Esc</kbd> to close</div>
       </div>

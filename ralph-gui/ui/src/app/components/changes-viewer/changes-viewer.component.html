@@ -48,6 +48,7 @@
           [value]="selectedIteration_ ?? ''"
           (change)="setIteration($any($event.target).value === '' ? null : +$any($event.target).value)"
           aria-label="Filter by iteration"
+          data-testid="iteration-filter"
         >
           @for (opt of iterationOptions_; track opt.value) {
             <option [value]="opt.value ?? ''">{{ opt.label }}</option>
@@ -67,7 +68,7 @@
     <!-- Main content: file tree + diff view -->
     <div class="flex flex-1 min-h-0 gap-3">
       <!-- Left panel: file tree (directory-grouped) -->
-      <div class="w-60 shrink-0 overflow-y-auto bg-bg-surface border border-border-default rounded-md p-1 flex flex-col gap-px" role="list" aria-label="Changed files">
+      <div class="w-60 shrink-0 overflow-y-auto bg-bg-surface border border-border-default rounded-md p-1 flex flex-col gap-px" role="list" aria-label="Changed files" data-testid="changes-file-tree">
         @for (group of fileGroups_; track group.directory) {
           <div class="flex flex-col" data-testid="file-group">
             <button

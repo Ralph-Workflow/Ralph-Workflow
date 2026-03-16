@@ -1,12 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 /**
  * Basic smoke tests for the Ralph Workflow GUI.
- * These tests run against the Angular dev server (not the Tauri window).
- * They verify that the Angular app loads and core UI elements are present.
- *
- * Note: Tauri invoke calls will fail in this environment, so components
- * gracefully degrade to loading/empty states.
+ * These tests run against the Angular dev server with the E2E HTTP test server.
+ * The Tauri bridge fixture injects window.__TAURI_INTERNALS__ to route
+ * invoke calls to the HTTP server for full-stack testing.
  */
 
 test.describe('App Shell', () => {
@@ -34,12 +32,11 @@ test.describe('App Shell', () => {
 
   test('navigation sidebar contains nav items', async ({ page }) => {
     await page.goto('/');
-    await page.waitForSelector('.nav-section', { timeout: 10_000 });
-    const nav = page.locator('.nav-section');
+    await page.waitForSelector('nav', { timeout: 10_000 });
+    const nav = page.locator('nav');
     await expect(nav).toBeVisible();
     // At least one navigation item should be present
     const navItems = nav.locator('.nav-item');
-    await expect(navItems).toHaveCount(await navItems.count());
     expect(await navItems.count()).toBeGreaterThan(0);
   });
 });
@@ -50,7 +47,7 @@ test.describe('Keyboard Navigation', () => {
     await page.waitForSelector('app-root', { timeout: 10_000 });
     // Focus the body (not an input) and press ?
     await page.keyboard.press('?');
-    const overlay = page.locator('.modal-overlay');
+    const overlay = page.locator('.fixed.inset-0');
     await expect(overlay).toBeVisible({ timeout: 5_000 });
   });
 
@@ -58,8 +55,8 @@ test.describe('Keyboard Navigation', () => {
     await page.goto('/');
     await page.waitForSelector('app-root', { timeout: 10_000 });
     await page.keyboard.press('?');
-    await page.locator('.modal-overlay').waitFor({ state: 'visible', timeout: 5_000 });
+    await page.locator('.fixed.inset-0').waitFor({ state: 'visible', timeout: 5_000 });
     await page.keyboard.press('Escape');
-    await expect(page.locator('.modal-overlay')).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('.fixed.inset-0')).not.toBeVisible({ timeout: 5_000 });
   });
 });

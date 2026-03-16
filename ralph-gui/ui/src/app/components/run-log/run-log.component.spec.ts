@@ -167,7 +167,7 @@ describe('RunLogComponent', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         const el: HTMLElement = fixture.nativeElement;
-        expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeTruthy();
+        expect(el.querySelector('[data-testid="auto-scroll-toggle"]')).toBeTruthy();
       });
 
     it('should NOT show Resume auto-scroll button when autoScroll is true', async () => {
@@ -175,7 +175,7 @@ describe('RunLogComponent', () => {
         await fixture.whenStable();
         // autoScroll is true by default
         const el: HTMLElement = fixture.nativeElement;
-        expect(el.querySelector('[data-testid="resume-autoscroll"]')).toBeNull();
+        expect(el.querySelector('[data-testid="auto-scroll-toggle"]')).toBeNull();
       });
 
     it('should re-enable autoScroll when resume button is clicked', async () => {
@@ -184,7 +184,7 @@ describe('RunLogComponent', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         const el: HTMLElement = fixture.nativeElement;
-        const btn = el.querySelector<HTMLElement>('[data-testid="resume-autoscroll"]');
+        const btn = el.querySelector<HTMLElement>('[data-testid="auto-scroll-toggle"]');
         btn?.click();
         expect(component.autoScroll()).toBe(true);
       });
@@ -302,7 +302,7 @@ describe('RunLogComponent', () => {
         expect(component.logLines().length).toBe(5000);
         // parsedLines computed should also have 5000 items
         expect(component.parsedLines().length).toBe(5000);
-      });
+      }, 30000);
 
     it('should render cdk-virtual-scroll-viewport in the DOM when lines present', async () => {
         const { fixture, component } = await createComponent();

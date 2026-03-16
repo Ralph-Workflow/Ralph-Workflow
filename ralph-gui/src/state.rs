@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 /// Active repository and worktree context for the GUI.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ActiveContext {
     pub repo_path: Option<PathBuf>,
     pub worktree_path: Option<PathBuf>,
