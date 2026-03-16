@@ -94,6 +94,10 @@ impl AgentRegistry {
     /// This function is only available when the `test-utils` feature is enabled.
     #[cfg(feature = "test-utils")]
     #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "built-in agents are hardcoded and always valid"
+    )]
     pub fn with_builtins_only() -> Self {
         Self::new().expect("Built-in agents should always be valid")
     }
@@ -174,6 +178,10 @@ impl AgentRegistry {
     ///            Some("opencode/anthropic/claude-sonnet-4".to_string()));
     /// ```
     #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "bounds-checked index arithmetic"
+    )]
     pub fn resolve_from_logfile_name(&self, logfile_name: &str) -> Option<String> {
         // First check if the name is exactly a registry name (no sanitization was needed)
         if self.agents.contains_key(logfile_name) {
@@ -240,7 +248,7 @@ impl AgentRegistry {
         if name.starts_with("opencode/") {
             // Validate that it has the right format (opencode/provider/model)
             let parts: Vec<&str> = name.split('/').collect();
-            if parts.len() == 3 && parts[0] == "opencode" {
+            if parts.len() == 3 && parts.first().is_some_and(|p| *p == "opencode") {
                 return Some(name.to_string());
             }
         }
@@ -257,7 +265,7 @@ impl AgentRegistry {
             // If it's an opencode/ pattern, validate the format
             if alt.starts_with("opencode/") {
                 let parts: Vec<&str> = alt.split('/').collect();
-                if parts.len() == 3 && parts[0] == "opencode" {
+                if parts.len() == 3 && parts.first().is_some_and(|p| *p == "opencode") {
                     return Some(alt);
                 }
             }

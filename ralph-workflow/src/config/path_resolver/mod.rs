@@ -36,9 +36,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-mod boundary;
-
-pub use boundary::memory_env::MemoryConfigEnvironment;
+mod memory_env;
+pub use memory_env::MemoryConfigEnvironment;
 
 /// Trait for configuration environment access.
 ///

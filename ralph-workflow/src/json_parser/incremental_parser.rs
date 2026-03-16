@@ -135,13 +135,13 @@ impl IncrementalNdjsonParser {
                     self.escape_next = false;
                 } else {
                     self.buffer.push(byte);
-                    self.depth += 1;
+                    self.depth = self.depth.saturating_add(1);
                     self.started = true;
                 }
             }
             b'}' if !self.in_string && self.started => {
                 self.buffer.push(byte);
-                self.depth -= 1;
+                self.depth = self.depth.saturating_sub(1);
 
                 // When depth returns to 0, we have a complete JSON object
                 if self.depth == 0 {

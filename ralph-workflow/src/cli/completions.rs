@@ -18,6 +18,10 @@ use clap::CommandFactory;
 ///
 /// Returns `true` if the flag was handled (program should exit after).
 #[must_use]
+#[expect(
+    clippy::print_stderr,
+    reason = "CLI completion installation instructions"
+)]
 pub fn handle_generate_completion(shell: Shell) -> bool {
     let mut stdout = std::io::stdout();
     let shell_name = shell.name();

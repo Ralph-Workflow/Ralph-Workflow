@@ -64,7 +64,7 @@ fn similarity_percentage(a: &str, b: &str) -> u32 {
 /// Find the best matching template names using fuzzy matching.
 ///
 /// Returns templates that are similar to the input within the threshold.
-fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
+pub fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
     let input_lower = input.to_lowercase();
     let mut matches: Vec<(&'static str, u32)> = ALL_TEMPLATES
         .iter()

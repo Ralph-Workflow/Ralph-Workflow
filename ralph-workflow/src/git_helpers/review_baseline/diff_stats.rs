@@ -221,7 +221,7 @@ fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io:
         &mut |delta, _progress| {
             use git2::Delta;
 
-            stats.files_changed += 1;
+            stats.files_changed = stats.files_changed.saturating_add(1);
 
             if let Some(path) = delta.new_file().path() {
                 let path_str = path.to_string_lossy().to_string();
@@ -259,9 +259,9 @@ fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io:
             let line_count = count_lines_in_blob(blob.content());
 
             if is_new_or_modified {
-                stats.lines_added += line_count;
+                stats.lines_added = stats.lines_added.saturating_add(line_count);
             } else {
-                stats.lines_deleted += line_count;
+                stats.lines_deleted = stats.lines_deleted.saturating_add(line_count);
             }
         }
     }

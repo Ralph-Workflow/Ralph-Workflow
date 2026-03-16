@@ -107,21 +107,3 @@ pub fn handle_init_global_with<R: ConfigEnvironment>(
 pub fn handle_init_global(colors: Colors) -> anyhow::Result<bool> {
     handle_init_global_with(colors, &RealConfigEnvironment)
 }
-
-/// Handle --init when neither config nor PROMPT.md exists, using the provided environment.
-///
-/// This creates a global config file as the first step in setting up Ralph.
-pub fn handle_init_none_exist_with_env<R: ConfigEnvironment>(
-    _config_path: &std::path::Path,
-    colors: Colors,
-    env: &R,
-) -> anyhow::Result<bool> {
-    println!(
-        "{}No config found. Creating unified config...{}",
-        colors.dim(),
-        colors.reset()
-    );
-    println!();
-    handle_init_global_with(colors, env)?;
-    Ok(true)
-}

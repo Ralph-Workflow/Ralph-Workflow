@@ -31,7 +31,7 @@ impl ContinuationState {
     #[must_use]
     pub const fn trigger_xsd_retry(mut self) -> Self {
         self.xsd_retry_pending = true;
-        self.xsd_retry_count += 1;
+        self.xsd_retry_count = self.xsd_retry_count.saturating_add(1);
         self.xsd_retry_session_reuse_pending = true;
         self
     }
@@ -56,7 +56,7 @@ impl ContinuationState {
     #[must_use]
     pub const fn trigger_same_agent_retry(mut self, reason: SameAgentRetryReason) -> Self {
         self.same_agent_retry_pending = true;
-        self.same_agent_retry_count += 1;
+        self.same_agent_retry_count = self.same_agent_retry_count.saturating_add(1);
         self.same_agent_retry_reason = Some(reason);
         self
     }
@@ -206,7 +206,7 @@ impl ContinuationState {
     pub fn trigger_fix_continuation(mut self, status: FixStatus, summary: Option<String>) -> Self {
         self.fix_status = Some(status);
         self.fix_previous_summary = summary;
-        self.fix_continuation_attempt += 1;
+        self.fix_continuation_attempt = self.fix_continuation_attempt.saturating_add(1);
         self.fix_continue_pending = true;
         // Reset XSD retry state for new continuation
         self.xsd_retry_count = 0;

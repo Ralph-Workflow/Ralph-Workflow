@@ -55,7 +55,7 @@ fn handle_plumbing_commands<H: effect::AppEffectHandler>(
     handler: &mut H,
     workspace: Option<&dyn crate::workspace::Workspace>,
 ) -> anyhow::Result<bool> {
-    use plumbing::{handle_apply_commit_with_handler, handle_show_commit_msg_with_workspace};
+    use plumbing::{get_commit_message_from_workspace, handle_apply_commit_with_handler};
 
     // Helper to set up working directory for plumbing commands using the effect handler
     fn setup_working_dir_via_handler<H: effect::AppEffectHandler>(
@@ -102,7 +102,9 @@ fn handle_plumbing_commands<H: effect::AppEffectHandler>(
                 "--show-commit-msg requires workspace context. Run this command after the pipeline has initialized."
             )
         })?;
-        return handle_show_commit_msg_with_workspace(ws).map(|()| true);
+        let msg = get_commit_message_from_workspace(ws)?;
+        println!("{msg}");
+        return Ok(true);
     }
 
     // Apply commit

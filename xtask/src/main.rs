@@ -30,15 +30,16 @@
 
 mod cache;
 mod compliance;
+mod io;
+mod lsp_diagnostics;
 mod scanner;
 mod verify;
 
-use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 use std::sync::Arc;
 
-use verify::{CommandOutput, CommandRunner, CommandSpec, ProgressReporter, VerifyExitCode};
+use io::process::RealRunner;
+use verify::{CommandRunner, ProgressReporter, VerifyExitCode};
 
 /// Check if we're in a nested verify invocation.
 /// This prevents infinite recursion when tests spawn cargo xtask verify.
@@ -56,34 +57,7 @@ fn is_nested_verify_invocation(env_override: Option<&str>) -> bool {
         }
     };
 
-    // Only these values are considered truthy:
-    // - "1" (most common)
-    // - "true" (case-insensitive, e.g., "TRUE", "True")
-    // Anything else is falsy (including empty string, "0", "false", etc.)
     value == "1" || value.eq_ignore_ascii_case("true")
-}
-
-fn drain_reader_lines_lossy<R: Read>(
-    reader: R,
-    mut on_line: impl FnMut(&str),
-) -> std::io::Result<String> {
-    let mut r = BufReader::new(reader);
-    let mut buf: Vec<u8> = Vec::new();
-    let mut out = String::new();
-    loop {
-        buf.clear();
-        let n = r.read_until(b'\n', &mut buf)?;
-        if n == 0 {
-            break;
-        }
-        let cow = String::from_utf8_lossy(&buf);
-        out.push_str(cow.as_ref());
-        let trimmed = cow.trim();
-        if !trimmed.is_empty() {
-            on_line(trimmed);
-        }
-    }
-    Ok(out)
 }
 
 fn print_verify_failure(report: &verify::VerifyReport) {
@@ -116,13 +90,11 @@ fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
     );
 
     if is_test_check(failure.name) {
-        guidance.push_str(
-            " SURFACED TEST FAILURE: There is no such thing as a pre-existing test failure. When a test fails, there are only three valid paths: either the test is implemented wrong and must be fixed, or it is TESTING the wrong behavior, or the CODE is not behaving the right way, or it is not testing behavior at all and must be changed to test behavior. If that is not possible, YOU MUST REFACTOR.",
-        );
+        guidance += " SURFACED TEST FAILURE: There is no such thing as a pre-existing test failure. When a test fails, there are only three valid paths: either the test is implemented wrong and must be fixed, or it is TESTING the wrong behavior, or the CODE is not behaving the right way, or it is not testing behavior at all and must be changed to test behavior. If that is not possible, YOU MUST REFACTOR.";
     }
 
     if failure.name == "forbidden-allow-expect-scan" {
-        guidance.push_str(verify::FORBIDDEN_ALLOW_EXPECT_POLICY);
+        guidance += verify::FORBIDDEN_ALLOW_EXPECT_POLICY;
     }
 
     Some(guidance)
@@ -132,115 +104,25 @@ fn is_test_check(check_name: &str) -> bool {
     check_name.starts_with("test-") || check_name == "ralph-gui-frontend-test"
 }
 
-struct RealRunner {
-    repo_root: PathBuf,
-    reporter: Arc<dyn ProgressReporter>,
-}
-
-impl RealRunner {
-    fn new(reporter: Arc<dyn ProgressReporter>) -> Self {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("xtask manifest dir has a parent")
-            .to_path_buf();
-
-        Self {
-            repo_root,
-            reporter,
-        }
-    }
-}
-
-impl CommandRunner for RealRunner {
-    fn run(&self, spec: &CommandSpec) -> std::io::Result<CommandOutput> {
-        // Use CARGO_TERM_COLOR=never to avoid ANSI escape codes in progress lines.
-        // This eliminates the need for a strip_ansi helper and keeps forwarded
-        // "Compiling"/"Checking" lines readable in any terminal.
-        let mut env: Vec<(&str, &str)> = spec.extra_env.to_vec();
-        let color_override = ("CARGO_TERM_COLOR", "never");
-        if !env.iter().any(|(k, _)| *k == "CARGO_TERM_COLOR") {
-            env.push(color_override);
-        }
-
-        let mut child = Command::new(spec.program)
-            .args(spec.args)
-            .envs(env.iter().copied())
-            .current_dir(&self.repo_root)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-
-        let stderr_pipe = child.stderr.take().expect("stderr is piped");
-        let stdout_pipe = child.stdout.take().expect("stdout is piped");
-
-        let reporter = Arc::clone(&self.reporter);
-        let check_name = spec.name.to_string();
-
-        // Spawn a thread to read stderr and forward cargo compilation lines in real time.
-        // Cargo writes "Compiling"/"Checking"/"Finished" progress to stderr.
-        let stderr_thread = std::thread::spawn(move || {
-            drain_reader_lines_lossy(stderr_pipe, |trimmed| {
-                // Forward cargo progress lines immediately so the user sees what is
-                // being compiled instead of a silent terminal during long builds.
-                if trimmed.starts_with("Compiling ")
-                    || trimmed.starts_with("Checking ")
-                    || trimmed.starts_with("Finished ")
-                    || trimmed.starts_with("Blocking ")
-                {
-                    reporter.check_progress(&check_name, trimmed);
-                }
-            })
-            .unwrap_or_default()
-        });
-
-        // Read stdout on the main thread while the stderr thread drains in parallel.
-        let stdout_buf = drain_reader_lines_lossy(stdout_pipe, |_| {}).unwrap_or_default();
-
-        let stderr_buf = stderr_thread.join().unwrap_or_default();
-        let status = child.wait()?;
-
-        Ok(CommandOutput {
-            exit_code: status.code().unwrap_or(1),
-            stdout: stdout_buf,
-            stderr: stderr_buf,
-        })
-    }
-}
-
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args = std::env::args().skip(1);
 
-    match args.first().map(|s| s.as_str()) {
+    match args.next().as_deref() {
         Some("verify") => {
-            // Recursion guard: skip nested verify invocations to prevent infinite loops.
-            // When test-xtask runs, it spawns cargo test -p xtask which may include
-            // tests that call cargo xtask verify. This guard prevents that recursion.
-            if is_nested_verify_invocation(None) {
-                eprintln!(
-                    "xtask verify: skipping nested invocation (RALPH_XTASK_IN_VERIFY is set)"
-                );
-                return ExitCode::SUCCESS;
-            }
-
-            // Handle help flag
-            if args.iter().any(|a| a == "--help" || a == "-h") {
-                eprintln!("Usage: cargo xtask verify [--gui]");
-                eprintln!(
-                    "  --gui    Also run GUI cargo, Angular frontend, and release build checks"
-                );
-                return ExitCode::SUCCESS;
-            }
-            let gui_flag = args.iter().any(|a| a == "--gui");
-            let mode = if gui_flag {
-                verify::VerifyMode::WithGui
-            } else {
-                verify::VerifyMode::CoreOnly
-            };
-            let total_checks = verify::total_checks_for_mode(mode);
+            // Total check count = native checks + 1 (native-scan) + all group checks.
+            let total_checks = verify::NATIVE_REQUIRED_CHECKS.len()
+                + 1
+                + verify::FMT_CHECKS.len()
+                + verify::CORE_CARGO_CHECKS.len()
+                + verify::XTASK_CARGO_CHECKS.len()
+                + verify::GUI_CARGO_CHECKS.len()
+                + verify::FRONTEND_INSTALL_CHECKS.len()
+                + verify::FRONTEND_POST_INSTALL_CHECKS.len()
+                + verify::RELEASE_CHECKS.len();
             let reporter: Arc<dyn ProgressReporter> =
                 Arc::new(verify::StderrProgressReporter::new(total_checks));
             let real_runner = RealRunner::new(Arc::clone(&reporter));
-            let repo_root = real_runner.repo_root.clone();
+            let repo_root = real_runner.repo_root().clone();
             let runner = Arc::new(cache::CachingCommandRunner::new(
                 real_runner,
                 repo_root.clone(),
@@ -248,7 +130,15 @@ fn main() -> ExitCode {
             eprintln!("=== cargo xtask verify ===");
             let verify_start = std::time::Instant::now();
             let runner_for_verify: Arc<dyn CommandRunner> = runner.clone();
-            let groups = verify::CheckGroups::for_mode(mode);
+            let groups = verify::CheckGroups {
+                fmt: verify::FMT_CHECKS,
+                core_cargo: verify::CORE_CARGO_CHECKS,
+                xtask_cargo: verify::XTASK_CARGO_CHECKS,
+                gui_cargo: verify::GUI_CARGO_CHECKS,
+                frontend_install: verify::FRONTEND_INSTALL_CHECKS,
+                frontend_post_install: verify::FRONTEND_POST_INSTALL_CHECKS,
+                release: verify::RELEASE_CHECKS,
+            };
             let report = match verify::verify_fast(
                 runner_for_verify,
                 &repo_root,
@@ -289,9 +179,40 @@ fn main() -> ExitCode {
             let verbose = args.iter().any(|a| a == "--verbose" || a == "-v");
             run_dylint(verbose)
         }
+        Some("lsp-forbidden-allow-expect") => {
+            if args.iter().any(|a| a == "--help" || a == "-h") {
+                eprintln!("Usage: cargo xtask lsp-forbidden-allow-expect");
+                eprintln!(
+                    "  Emit Cargo JSON compiler-message diagnostics for the forbidden allow/expect native scan"
+                );
+                return ExitCode::SUCCESS;
+            }
+
+            let repo_root = match std::env::current_dir() {
+                Ok(path) => path,
+                Err(err) => {
+                    eprintln!("xtask error: failed to determine current directory: {err}");
+                    return ExitCode::from(1);
+                }
+            };
+
+            let mut stdout = std::io::stdout();
+            match lsp_diagnostics::emit_forbidden_allow_expect_as_cargo_json(
+                &repo_root,
+                &mut stdout,
+            ) {
+                Ok(true) => ExitCode::SUCCESS,
+                Ok(false) => ExitCode::from(1),
+                Err(err) => {
+                    eprintln!("xtask error: {err:#}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         _ => {
             eprintln!("Usage: cargo xtask verify [--gui]");
             eprintln!("       cargo xtask dylint [--verbose]");
+            eprintln!("       cargo xtask lsp-forbidden-allow-expect");
             eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
             eprintln!("  --verbose, -v    Show detailed dylint output");
             ExitCode::from(2)
@@ -759,15 +680,14 @@ fn run_dylint(verbose: bool) -> ExitCode {
         .to_string_lossy()
         .to_string();
 
-    let mut path_env = wrapper_path_str.clone();
-    path_env.push(':');
-    path_env.push_str(&nightly_bin_str);
-    path_env.push(':');
-    path_env.push_str(&cargo_bin_str);
-    if let Ok(existing_path) = std::env::var("PATH") {
-        path_env.push(':');
-        path_env.push_str(&existing_path);
-    }
+    let path_env = if let Ok(existing_path) = std::env::var("PATH") {
+        format!(
+            "{}:{}:{}:{}",
+            wrapper_path_str, nightly_bin_str, cargo_bin_str, existing_path
+        )
+    } else {
+        format!("{}:{}:{}", wrapper_path_str, nightly_bin_str, cargo_bin_str)
+    };
 
     // Check if cargo-dylint is installed
     let dylint_version = Command::new("cargo")
@@ -884,6 +804,7 @@ fn run_dylint(verbose: bool) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::process::drain_reader_lines_lossy;
     use std::io::Cursor;
 
     #[test]
@@ -999,70 +920,5 @@ mod tests {
         );
         // Invalid bytes must not truncate output; lossy conversion inserts replacement chars.
         assert!(out.contains("invalid"));
-    }
-
-    // ── VerifyMode tests ───────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_verify_mode_core_only_excludes_gui_groups() {
-        let groups = verify::CheckGroups::for_mode(verify::VerifyMode::CoreOnly);
-        assert!(groups.gui_cargo.is_empty());
-        assert!(groups.frontend_install.is_empty());
-        assert!(groups.frontend_post_install.is_empty());
-        assert!(groups.release.is_empty());
-    }
-
-    #[test]
-    fn test_verify_mode_with_gui_includes_all_groups() {
-        let groups = verify::CheckGroups::for_mode(verify::VerifyMode::WithGui);
-        assert!(!groups.gui_cargo.is_empty());
-        assert!(!groups.frontend_install.is_empty());
-        assert!(!groups.frontend_post_install.is_empty());
-        assert!(!groups.release.is_empty());
-    }
-
-    #[test]
-    fn test_is_test_check_includes_frontend_test_name() {
-        // These are defined in verify.rs
-        assert!(is_test_check("ralph-gui-frontend-test"));
-        assert!(is_test_check("test-integration"));
-        assert!(!is_test_check("fmt-check"));
-        assert!(!is_test_check("clippy-core"));
-    }
-
-    /// Tests the recursion guard function with explicit env values.
-    /// This ensures the guard correctly detects nested verify invocations.
-    #[test]
-    fn test_is_nested_verify_invocation_returns_true_when_env_var_set() {
-        // When RALPH_XTASK_IN_VERIFY is set to "1", it should return true
-        assert!(is_nested_verify_invocation(Some("1")));
-        assert!(is_nested_verify_invocation(Some("true")));
-        assert!(is_nested_verify_invocation(Some("TRUE")));
-        assert!(is_nested_verify_invocation(Some("True")));
-    }
-
-    #[test]
-    fn test_is_nested_verify_invocation_returns_false_when_env_var_absent() {
-        // When None is passed (no env override), it checks the actual environment.
-        // Use a falsy override value to test the "absent" logic path without
-        // relying on the actual environment state (which may have RALPH_XTASK_IN_VERIFY set
-        // when running under verify).
-        // A falsy value like "0" should return false.
-        assert!(!is_nested_verify_invocation(Some("0")));
-    }
-
-    #[test]
-    fn test_is_nested_verify_invocation_with_empty_string() {
-        // Empty string is falsy - not "1" or "true", so returns false
-        assert!(!is_nested_verify_invocation(Some("")));
-    }
-
-    #[test]
-    fn test_is_nested_verify_invocation_with_falsy_values() {
-        // "0" and "false" are falsy values
-        assert!(!is_nested_verify_invocation(Some("0")));
-        assert!(!is_nested_verify_invocation(Some("false")));
-        assert!(!is_nested_verify_invocation(Some("FALSE")));
-        assert!(!is_nested_verify_invocation(Some("FALSE")));
     }
 }

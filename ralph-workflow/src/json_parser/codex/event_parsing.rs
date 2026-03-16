@@ -37,7 +37,7 @@ impl CodexParser {
                 let turn_id = {
                     let mut counter = self.turn_counter.borrow_mut();
                     let id = format!("turn-{}", *counter);
-                    *counter += 1;
+                    *counter = counter.saturating_add(1);
                     id
                 };
                 Self::optional_output(handle_turn_started(&ctx, turn_id))

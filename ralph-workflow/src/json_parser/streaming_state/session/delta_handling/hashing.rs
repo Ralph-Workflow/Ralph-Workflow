@@ -48,7 +48,7 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - The content hash matches the previously streamed content
     /// * `false` - The content is different or no content was streamed
-    #[must_use] 
+    #[must_use]
     pub fn is_duplicate_by_hash(
         &self,
         content: &str,
@@ -153,7 +153,7 @@ impl StreamingSession {
                             .unwrap_or("");
 
                         // Normalize: "TOOL_USE:{name}:{input}"
-                        write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_content}").unwrap();
+                        let _ = write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_content}");
                     }
                     ContentType::Thinking => {
                         // Thinking content - not currently used in assistant events
@@ -204,15 +204,14 @@ impl StreamingSession {
                 let tool_name = usize::try_from(index_num)
                     .ok()
                     .and_then(|idx| {
-                        tool_name_hints.and_then(|hints| {
-                            hints.get(&idx).map(std::string::String::as_str)
-                        })
+                        tool_name_hints
+                            .and_then(|hints| hints.get(&idx).map(std::string::String::as_str))
                     })
                     .or_else(|| self.tool_names.get(&index_num).and_then(|n| n.as_deref()))
                     .unwrap_or("");
 
                 // Normalize: "TOOL_USE:{name}:{input}"
-                write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_input}").unwrap();
+                let _ = write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_input}");
             }
         }
 

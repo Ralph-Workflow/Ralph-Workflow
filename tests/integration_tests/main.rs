@@ -106,6 +106,7 @@ mod reducer_state_machine;
 mod required_files_cleanup;
 mod review_output_validation;
 mod review_xml_validation;
+mod rust_lsp_dylint;
 mod template_rendering_errors;
 mod template_validation_jsx;
 mod test_count_guard;
@@ -118,4 +119,3 @@ mod xsd_retry_missing_files;
 mod xsd_retry_workflow;
 
 mod dylint_target;
-mod makefile_install;

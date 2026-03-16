@@ -96,6 +96,9 @@ strsim = "0.11"
 # XML parsing for plan validation
 quick-xml = "0.37"
 
+# Functional programming helpers (HList, LabelledGeneric, Validated, etc.)
+frunk = "0.4.4"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.10"

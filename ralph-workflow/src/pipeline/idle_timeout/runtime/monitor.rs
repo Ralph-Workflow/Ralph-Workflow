@@ -191,6 +191,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config(
     )
 }
 
+#[expect(clippy::print_stderr, reason = "boundary module - runtime diagnostics")]
 pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
     activity_timestamp: &SharedActivityTimestamp,
     file_activity_config: Option<&FileActivityConfig>,

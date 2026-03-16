@@ -1,7 +1,7 @@
 /// Print a short list of common Work Guides.
 ///
 /// Shows the most commonly used Work Guides with a note to use --list-work-guides for more.
-fn print_common_work_guides(colors: Colors) {
+pub fn print_common_work_guides(colors: Colors) {
     println!("{}Common Work Guides:{}", colors.bold(), colors.reset());
     println!(
         "  {}quick{}           Quick/small changes (typos, minor fixes)",

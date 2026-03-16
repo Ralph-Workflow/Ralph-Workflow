@@ -78,19 +78,9 @@
 
 mod clock;
 mod file_activity;
-// Runtime module - contains OS-boundary code (process management, threads, loops)
-// This satisfies the dylint boundary-module check.
-pub mod runtime;
-
-// Re-export runtime::kill as kill for backward compatibility with existing test paths
-pub mod kill {
-    pub use super::runtime::kill::*;
-}
-
-// Re-export runtime::monitor as monitor for backward compatibility with existing test paths
-pub mod monitor {
-    pub use super::runtime::monitor::*;
-}
+pub(crate) mod kill;
+mod monitor;
+mod readers;
 
 pub use clock::{
     is_idle_timeout_exceeded, is_idle_timeout_exceeded_with_clock, new_activity_timestamp,
@@ -99,16 +89,14 @@ pub use clock::{
     MonotonicClock, SharedActivityTimestamp, SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
 };
 pub use file_activity::FileActivityTracker;
-pub use runtime::kill::{
-    force_kill_best_effort, kill_process, KillConfig, KillResult, DEFAULT_KILL_CONFIG,
-};
-pub(crate) use runtime::monitor::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
-pub use runtime::monitor::{
+pub use kill::{KillConfig, DEFAULT_KILL_CONFIG};
+pub(crate) use monitor::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
+pub use monitor::{
     monitor_idle_timeout, monitor_idle_timeout_with_interval,
     monitor_idle_timeout_with_interval_and_kill_config, FileActivityConfig, MonitorConfig,
     MonitorResult,
 };
-pub use runtime::readers::{ActivityTrackingReader, StderrActivityTracker};
+pub use readers::{ActivityTrackingReader, StderrActivityTracker};
 
 #[cfg(test)]
 mod tests;

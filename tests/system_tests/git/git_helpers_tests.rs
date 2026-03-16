@@ -4,13 +4,14 @@
 //! Tests that can use `MemoryWorkspace` should remain in the unit tests.
 
 use ralph_workflow::git_helpers::get_hooks_dir;
-use ralph_workflow::git_helpers::runtime::hooks::{self, HOOK_MARKER, RALPH_HOOK_NAMES};
+use ralph_workflow::git_helpers::hooks::HOOK_MARKER;
 use ralph_workflow::git_helpers::{
     self, capture_head_oid, cleanup_orphaned_marker, detect_unauthorized_commit,
     disable_git_wrapper, end_agent_phase, end_agent_phase_in_repo, ensure_agent_phase_protections,
-    git_snapshot, git_snapshot_in_repo, reinstall_hooks_if_tampered, start_agent_phase,
-    start_agent_phase_in_repo, try_remove_ralph_dir, uninstall_hooks, uninstall_hooks_in_repo,
-    verify_hooks_removed, GitHelpers,
+    git_snapshot, git_snapshot_in_repo, hooks, hooks::RALPH_HOOK_NAMES,
+    reinstall_hooks_if_tampered, start_agent_phase, start_agent_phase_in_repo,
+    try_remove_ralph_dir, uninstall_hooks, uninstall_hooks_in_repo, verify_hooks_removed,
+    GitHelpers,
 };
 use ralph_workflow::logger::Logger;
 use ralph_workflow::pipeline::AgentPhaseGuard;

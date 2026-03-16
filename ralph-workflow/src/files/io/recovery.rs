@@ -85,7 +85,7 @@ fn remove_zero_length_files_with_workspace(
     workspace: &dyn Workspace,
     agent_dir: &Path,
 ) -> io::Result<usize> {
-    let mut removed = 0;
+    let mut removed: usize = 0;
 
     for filename in [
         "PLAN.md",
@@ -101,7 +101,7 @@ fn remove_zero_length_files_with_workspace(
         if let Ok(content) = workspace.read(&file_path) {
             if content.is_empty() {
                 workspace.remove(&file_path)?;
-                removed += 1;
+                removed = removed.saturating_add(1);
             }
         }
     }

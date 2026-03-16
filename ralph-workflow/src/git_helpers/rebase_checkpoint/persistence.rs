@@ -69,6 +69,7 @@ pub fn save_rebase_checkpoint(checkpoint: &RebaseCheckpoint) -> io::Result<()> {
 ///
 /// Returns an error if the checkpoint file exists but cannot be read
 /// or contains invalid JSON, and no valid backup exists.
+#[expect(clippy::print_stderr, reason = "checkpoint recovery warning messages")]
 pub fn load_rebase_checkpoint() -> io::Result<Option<RebaseCheckpoint>> {
     let checkpoint = rebase_checkpoint_path();
     let path = Path::new(&checkpoint);
@@ -165,9 +166,7 @@ fn validate_checkpoint_impl(checkpoint: &RebaseCheckpoint) -> io::Result<()> {
         if !checkpoint.conflicted_files.contains(resolved) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(
-                    "Resolved file '{resolved}' not found in conflicted files list"
-                ),
+                format!("Resolved file '{resolved}' not found in conflicted files list"),
             ));
         }
     }
@@ -320,6 +319,7 @@ pub fn save_rebase_checkpoint_with_workspace(
 /// # Errors
 ///
 /// Returns error if the operation fails.
+#[expect(clippy::print_stderr, reason = "checkpoint recovery warning messages")]
 pub fn load_rebase_checkpoint_with_workspace(
     workspace: &dyn Workspace,
 ) -> io::Result<Option<RebaseCheckpoint>> {

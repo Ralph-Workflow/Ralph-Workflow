@@ -64,51 +64,56 @@ pub(super) fn estimate_execution_history_heap_size(state: &crate::reducer::Pipel
 
             // Approximate heap allocations: string fields + vec allocations
             // Use `len()` consistently as a deterministic size proxy.
-            let base_size = step.phase.len()
-                + step.step_type.len()
-                + step.timestamp.len()
-                + step.agent.as_ref().map_or(0, |s| s.len())
-                + step
-                    .checkpoint_saved_at
-                    .as_ref()
-                    .map_or(0, std::string::String::len)
-                + step
-                    .git_commit_oid
-                    .as_ref()
-                    .map_or(0, std::string::String::len)
-                + step
-                    .prompt_used
-                    .as_ref()
-                    .map_or(0, std::string::String::len)
-                + modified_files_detail_size
-                + issues_summary_size;
+            let base_size = step
+                .phase
+                .len()
+                .saturating_add(step.step_type.len())
+                .saturating_add(step.timestamp.len())
+                .saturating_add(step.agent.as_ref().map_or(0, |s| s.len()))
+                .saturating_add(
+                    step.checkpoint_saved_at
+                        .as_ref()
+                        .map_or(0, std::string::String::len),
+                )
+                .saturating_add(
+                    step.git_commit_oid
+                        .as_ref()
+                        .map_or(0, std::string::String::len),
+                )
+                .saturating_add(
+                    step.prompt_used
+                        .as_ref()
+                        .map_or(0, std::string::String::len),
+                )
+                .saturating_add(modified_files_detail_size)
+                .saturating_add(issues_summary_size);
 
             let outcome_size = match &step.outcome {
                 StepOutcome::Success {
                     output,
                     files_modified,
                     ..
-                } => {
-                    output.as_ref().map_or(0, |s| s.len())
-                        + files_modified.as_ref().map_or(0, |files| {
-                            files.iter().map(std::string::String::len).sum::<usize>()
-                        })
-                }
+                } => output.as_ref().map_or(0, |s| s.len()).saturating_add(
+                    files_modified.as_ref().map_or(0, |files| {
+                        files.iter().map(std::string::String::len).sum::<usize>()
+                    }),
+                ),
                 StepOutcome::Failure { error, signals, .. } => {
-                    error.len()
-                        + signals.as_ref().map_or(0, |sigs| {
+                    error
+                        .len()
+                        .saturating_add(signals.as_ref().map_or(0, |sigs| {
                             sigs.iter().map(std::string::String::len).sum::<usize>()
-                        })
+                        }))
                 }
                 StepOutcome::Partial {
                     completed,
                     remaining,
                     ..
-                } => completed.len() + remaining.len(),
+                } => completed.len().saturating_add(remaining.len()),
                 StepOutcome::Skipped { reason } => reason.len(),
             };
 
-            base_size + outcome_size
+            base_size.saturating_add(outcome_size)
         })
         .sum()
 }

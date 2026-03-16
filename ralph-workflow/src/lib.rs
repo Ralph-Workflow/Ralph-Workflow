@@ -12,10 +12,21 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: Many lints are not denied because this is a complex workflow library
-    // that uses performance-critical code patterns and has extensive test code.
-    // This is documented in the lint policy exception table.
+    // Unwrap/expect - use ? or proper error handling
+    clippy::unwrap_used,
+    clippy::expect_used,
+    // Panic - avoid panic in library code
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    // Indexing - use get() with proper error handling
+    clippy::indexing_slicing,
+    // Print - keep effects at boundaries
+    clippy::print_stdout,
+    clippy::print_stderr,
+    // Debug
     clippy::dbg_macro,
+    // Arithmetic - use checked arithmetic
+    clippy::arithmetic_side_effects,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,
     clippy::manual_filter,
@@ -24,7 +35,6 @@
     clippy::manual_flatten,
     clippy::needless_collect
 )]
-
 //! Ralph workflow library for AI agent orchestration.
 //!
 //! This crate provides the core functionality for the `ralph` CLI binary,

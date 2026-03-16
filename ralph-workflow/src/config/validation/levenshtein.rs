@@ -3,14 +3,10 @@
 //! This module provides string similarity matching to suggest corrections
 //! for unknown configuration keys.
 
-/// Calculate Levenshtein distance between two strings.
-///
-/// Returns the minimum number of single-character edits (insertions, deletions,
-/// or substitutions) required to transform string `a` into string `b`.
-///
-/// # Examples
-///
-/// See the unit tests in this module for working examples of Levenshtein distance calculation.
+#[expect(
+    clippy::expect_used,
+    reason = "bounds verified by loop invariant: i < a.len(), j < b.len()"
+)]
 pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_len = a.len();
     let b_len = b.len();
@@ -26,23 +22,32 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let mut curr_row = vec![0; b_len + 1];
 
     for (i, a_char) in a.chars().enumerate() {
-        curr_row[0] = i + 1;
+        // Safe: curr_row has length b_len + 1, and i + 1 <= b_len + 1
+        *curr_row
+            .first_mut()
+            .expect("curr_row has at least 1 element") = i + 1;
 
         for (j, b_char) in b.chars().enumerate() {
             let cost = usize::from(a_char != b_char);
-            curr_row[j + 1] = std::cmp::min(
+            // Safe: j + 1 <= b_len since j < b_len
+            let new_val = std::cmp::min(
                 std::cmp::min(
-                    curr_row[j] + 1,     // insertion
-                    prev_row[j + 1] + 1, // deletion
+                    // Safe: j <= b_len - 1, curr_row[j] is valid
+                    *curr_row.get(j).expect("j in range") + 1,
+                    // Safe: j + 1 <= b_len, prev_row[j + 1] is valid
+                    *prev_row.get(j + 1).expect("j+1 in range") + 1,
                 ),
-                prev_row[j] + cost, // substitution
+                // Safe: j <= b_len - 1, prev_row[j] is valid
+                *prev_row.get(j).expect("j in range") + cost,
             );
+            *curr_row.get_mut(j + 1).expect("j+1 in range") = new_val;
         }
 
         std::mem::swap(&mut prev_row, &mut curr_row);
     }
 
-    prev_row[b_len]
+    // Safe: prev_row has length b_len + 1, b_len is valid index
+    *prev_row.get(b_len).expect("b_len in range")
 }
 
 /// Find the closest valid key name for typo detection.

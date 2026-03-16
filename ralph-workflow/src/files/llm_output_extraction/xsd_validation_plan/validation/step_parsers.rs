@@ -109,11 +109,11 @@ fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<St
     for step in &mut steps {
         if step.step.number == 0 {
             while used_numbers.contains(&next_auto) {
-                next_auto += 1;
+                next_auto = next_auto.saturating_add(1);
             }
             step.step.number = next_auto;
             used_numbers.insert(next_auto);
-            next_auto += 1;
+            next_auto = next_auto.saturating_add(1);
         }
     }
 

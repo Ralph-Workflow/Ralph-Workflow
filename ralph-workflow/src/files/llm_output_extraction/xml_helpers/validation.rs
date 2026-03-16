@@ -109,7 +109,7 @@ fn illegal_character_error(ch: char, byte_index: usize, content: &str) -> XsdVal
 /// Find the nearest character boundary at or before the given index.
 const fn floor_char_boundary(content: &str, mut index: usize) -> usize {
     while index > 0 && !content.is_char_boundary(index) {
-        index -= 1;
+        index = index.saturating_sub(1);
     }
     index
 }
@@ -117,7 +117,7 @@ const fn floor_char_boundary(content: &str, mut index: usize) -> usize {
 /// Find the nearest character boundary at or after the given index.
 const fn ceil_char_boundary(content: &str, mut index: usize) -> usize {
     while index < content.len() && !content.is_char_boundary(index) {
-        index += 1;
+        index = index.saturating_add(1);
     }
     index
 }

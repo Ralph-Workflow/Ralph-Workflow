@@ -118,9 +118,7 @@ pub fn ccs_env_var_debug_summary<S: std::hash::BuildHasher>(
 }
 
 #[cfg(not(any(test, feature = "test-utils")))]
-pub fn ccs_env_var_debug_summary(
-    env_vars: &HashMap<String, String>,
-) -> CcsEnvVarDebugSummary {
+pub fn ccs_env_var_debug_summary(env_vars: &HashMap<String, String>) -> CcsEnvVarDebugSummary {
     ccs_env_var_debug_summary_impl(env_vars)
 }
 
@@ -139,10 +137,7 @@ fn ccs_env_var_debug_summary_impl<S: std::hash::BuildHasher>(
 
     // Helper to check if a key looks sensitive
     fn looks_sensitive(key: &str) -> bool {
-        let key_normalized: String = key
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect();
+        let key_normalized: String = key.chars().filter(char::is_ascii_alphanumeric).collect();
         key_normalized.contains("TOKEN")
             || key_normalized.contains("SECRET")
             || key_normalized.contains("PASSWORD")
@@ -152,42 +147,30 @@ fn ccs_env_var_debug_summary_impl<S: std::hash::BuildHasher>(
             || key_normalized == "AUTHORIZATION"
     }
 
-    // Classify each key and collect results
-    let classification: Vec<(String, Classification)> = env_vars
-        .keys()
-        .map(|key| {
-            let key_upper = key.to_uppercase();
-            if SAFE_KEYS.contains(&key_upper.as_str()) {
-                (key_upper, Classification::Whitelisted)
-            } else if looks_sensitive(&key_upper) {
-                (key_upper, Classification::Sensitive)
-            } else {
-                (key_upper, Classification::Hidden)
-            }
-        })
-        .collect();
+    let mut whitelisted_keys_present = Vec::new();
+    let mut redacted_sensitive_keys = 0usize;
+    let mut hidden_non_whitelisted_keys = 0usize;
 
-    // Extract whitelisted keys and count others using BTreeSet for automatic sorting and dedup
-    use std::collections::BTreeSet;
-    let whitelisted_keys_present: BTreeSet<String> = classification
-        .iter()
-        .filter_map(|(key, c)| match c {
-            Classification::Whitelisted => Some(key.clone()),
-            _ => None,
-        })
-        .collect();
-    // Convert back to Vec (BTreeSet is already sorted and deduped)
-    let whitelisted_keys_present: Vec<String> = whitelisted_keys_present.into_iter().collect();
+    for key in env_vars.keys() {
+        let key_upper = key.to_uppercase();
 
-    let redacted_sensitive_keys = classification
-        .iter()
-        .filter(|(_, c)| matches!(c, Classification::Sensitive))
-        .count();
+        if SAFE_KEYS.contains(&key_upper.as_str()) {
+            whitelisted_keys_present.push(key_upper);
+            continue;
+        }
 
-    let hidden_non_whitelisted_keys = classification
-        .iter()
-        .filter(|(_, c)| matches!(c, Classification::Hidden))
-        .count();
+        // Treat as sensitive if it looks secret-like. Otherwise it's just hidden because it's not on the whitelist.
+        let looks = looks_sensitive(&key_upper);
+
+        if looks {
+            redacted_sensitive_keys += 1;
+        } else {
+            hidden_non_whitelisted_keys += 1;
+        }
+    }
+
+    whitelisted_keys_present.sort();
+    whitelisted_keys_present.dedup();
 
     CcsEnvVarDebugSummary {
         whitelisted_keys_present,
@@ -196,12 +179,7 @@ fn ccs_env_var_debug_summary_impl<S: std::hash::BuildHasher>(
     }
 }
 
-enum Classification {
-    Whitelisted,
-    Sensitive,
-    Hidden,
-}
-
+#[expect(clippy::print_stderr, reason = "debug-mode diagnostic output only")]
 fn log_ccs_env_vars_loaded(
     debug_mode: bool,
     alias_name: &str,
@@ -222,9 +200,9 @@ fn log_ccs_env_vars_loaded(
             profile
         );
 
-        summary.whitelisted_keys_present.iter().for_each(|key| {
+        for key in &summary.whitelisted_keys_present {
             eprintln!("CCS DEBUG:   - {key}");
-        });
+        }
 
         if summary.redacted_sensitive_keys > 0 {
             eprintln!(
@@ -293,6 +271,10 @@ pub fn resolve_ccs_command(
     )
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "debug-mode diagnostic and user-facing warnings"
+)]
 fn resolve_ccs_command_impl(
     alias_config: &CcsAliasConfig,
     alias_name: &str,
@@ -380,10 +362,9 @@ fn resolve_ccs_command_impl(
             }
 
             let skip = skip.unwrap_or(2);
-            // Build new_parts using iterator combinators instead of mutable accumulation
-            let new_parts: Vec<String> = std::iter::once(claude_path.to_string_lossy().to_string())
-                .chain(parts.into_iter().skip(skip))
-                .collect();
+            let mut new_parts = Vec::with_capacity(parts.len().saturating_sub(skip - 1));
+            new_parts.push(claude_path.to_string_lossy().to_string());
+            new_parts.extend(parts.into_iter().skip(skip));
             let new_cmd = shell_words::join(&new_parts);
 
             if debug_mode {

@@ -81,9 +81,9 @@ impl KMPMatcher {
 
         while i < m {
             if pattern_bytes[i] == pattern_bytes[len] {
-                len += 1;
+                len = len.saturating_add(1);
                 lps[i] = len;
-                i += 1;
+                i = i.saturating_add(1);
             } else if len != 0 {
                 // Fall back to previous longest prefix suffix
                 len = lps[len - 1];
@@ -91,7 +91,7 @@ impl KMPMatcher {
             } else {
                 // No proper prefix suffix found
                 lps[i] = 0;
-                i += 1;
+                i = i.saturating_add(1);
             }
         }
 
@@ -132,8 +132,8 @@ impl KMPMatcher {
 
         while i < n {
             if pattern_bytes[j] == text_bytes[i] {
-                i += 1;
-                j += 1;
+                i = i.saturating_add(1);
+                j = j.saturating_add(1);
 
                 if j == m {
                     // Found complete pattern match
@@ -144,7 +144,7 @@ impl KMPMatcher {
                 j = self.failure[j - 1];
             } else {
                 // No match at all, move to next character
-                i += 1;
+                i = i.saturating_add(1);
             }
         }
 
@@ -186,8 +186,8 @@ impl KMPMatcher {
 
         while i < n {
             if pattern_bytes[j] == text_bytes[i] {
-                i += 1;
-                j += 1;
+                i = i.saturating_add(1);
+                j = j.saturating_add(1);
 
                 if j == m {
                     // Found complete pattern match
@@ -197,7 +197,7 @@ impl KMPMatcher {
             } else if j != 0 {
                 j = self.failure[j - 1];
             } else {
-                i += 1;
+                i = i.saturating_add(1);
             }
         }
 

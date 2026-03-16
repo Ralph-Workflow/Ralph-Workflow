@@ -88,8 +88,8 @@ fn parse_opencode_ref(agent_name: &str) -> Option<(String, String)> {
         return None;
     }
 
-    let provider = parts[1].to_string();
-    let model = parts[2].to_string();
+    let provider = parts.get(1)?.to_string();
+    let model = parts.get(2)?.to_string();
 
     Some((provider, model))
 }

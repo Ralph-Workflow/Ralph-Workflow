@@ -99,7 +99,8 @@ pub use test_logger::TestLogger;
 /// Used when writing to log files where ANSI codes are not supported.
 #[must_use]
 pub fn strip_ansi_codes(s: &str) -> String {
-    use super::runtime::ANSI_RE;
+    static ANSI_RE: std::sync::LazyLock<Result<regex::Regex, regex::Error>> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\x1b\[[0-9;]*m"));
     (*ANSI_RE)
         .as_ref()
         .map_or_else(|_| s.to_string(), |re| re.replace_all(s, "").to_string())

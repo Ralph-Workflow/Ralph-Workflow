@@ -446,6 +446,10 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// timeout system. If `ps` is unavailable or fails unexpectedly, a one-time
     /// warning is emitted to stderr so operators can diagnose reduced protection
     /// against false-positive idle kills.
+    #[expect(
+        clippy::print_stderr,
+        reason = "diagnostic warning for system tool failure"
+    )]
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
         {

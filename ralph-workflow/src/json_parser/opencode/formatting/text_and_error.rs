@@ -29,18 +29,12 @@ impl OpenCodeParser {
                 let key = "text:main";
 
                 if show_prefix {
-                    let rendered = TextDeltaRenderer::render_first_delta(
-                        &preview,
-                        prefix,
-                        *c,
-                        terminal_mode,
+                    let rendered =
+                        TextDeltaRenderer::render_first_delta(&preview, prefix, *c, terminal_mode);
+                    self.last_rendered_content.borrow_mut().insert(
+                        key.to_string(),
+                        crate::json_parser::delta_display::sanitize_for_display(&preview),
                     );
-                    self.last_rendered_content
-                        .borrow_mut()
-                        .insert(
-                            key.to_string(),
-                            crate::json_parser::delta_display::sanitize_for_display(&preview),
-                        );
                     return rendered;
                 }
 

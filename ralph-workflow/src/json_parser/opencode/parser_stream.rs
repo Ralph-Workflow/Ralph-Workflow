@@ -253,7 +253,7 @@ impl OpenCodeParser {
 
         let mut start = accumulated.len() - max_bytes;
         while start < accumulated.len() && !accumulated.is_char_boundary(start) {
-            start += 1;
+            start = start.saturating_add(1);
         }
         &accumulated[start..]
     }

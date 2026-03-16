@@ -209,14 +209,14 @@ pub fn format_validation_errors(errors: &[ConfigValidationError]) -> String {
     let mut output = String::new();
 
     for error in errors {
-        writeln!(output, "  {error}").unwrap();
+        let _ = writeln!(output, "  {error}");
 
         if let ConfigValidationError::UnknownKey {
             suggestion: Some(s),
             ..
         } = error
         {
-            writeln!(output, "    Did you mean '{s}'?").unwrap();
+            let _ = writeln!(output, "    Did you mean '{s}'?");
         }
     }
 

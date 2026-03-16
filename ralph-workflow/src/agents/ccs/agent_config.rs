@@ -95,6 +95,10 @@ pub fn build_ccs_agent_config(
     build_ccs_agent_config_impl(alias_config, defaults, display_name, alias_name)
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "user-facing informative messages for CCS configuration"
+)]
 fn build_ccs_agent_config_impl(
     alias_config: &CcsAliasConfig,
     defaults: &CcsConfig,

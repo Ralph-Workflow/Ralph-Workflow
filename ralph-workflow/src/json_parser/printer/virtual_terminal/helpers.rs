@@ -63,7 +63,7 @@ pub fn apply_cr_overwrite_semantics(s: &str) -> String {
                     line.resize(col + 1, ' ');
                 }
                 line[col] = ch;
-                col += 1;
+                col = col.saturating_add(1);
             }
         }
     }

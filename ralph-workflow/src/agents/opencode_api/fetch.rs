@@ -14,6 +14,7 @@ use std::time::Duration;
 /// and parses the JSON response into an `ApiCatalog`.
 ///
 /// The fetched catalog is automatically cached to disk for future use.
+#[expect(clippy::print_stderr, reason = "warning for cache save failure")]
 pub fn fetch_api_catalog() -> Result<ApiCatalog, CacheError> {
     // Build HTTP agent with timeout
     let agent = ureq::Agent::new_with_config(

@@ -54,6 +54,10 @@ pub fn format_xml_for_display(xml_content: &str) -> String {
 ///
 /// This is a simple XML pretty-printer that adds indentation
 /// based on tag nesting level.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "bounds-checked index arithmetic"
+)]
 fn pretty_print_xml(xml_content: &str) -> String {
     let mut result = String::new();
     let mut indent: usize = 0;
@@ -140,7 +144,7 @@ fn pretty_print_xml(xml_content: &str) -> String {
                         && chars[tag_start + 1] != '/'
                         && !tag_name.is_empty();
                     if should_increase_indent {
-                        indent += 1;
+                        indent = indent.saturating_add(1);
                         in_content = true;
                     }
 
@@ -178,7 +182,7 @@ fn pretty_print_xml(xml_content: &str) -> String {
             }
         }
 
-        i += 1;
+        i = i.saturating_add(1);
     }
 
     result

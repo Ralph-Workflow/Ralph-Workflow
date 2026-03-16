@@ -51,11 +51,11 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
             let b = bytes[i];
             if b != b'\\' {
                 out.push(b);
-                i += 1;
+                i = i.saturating_add(1);
                 continue;
             }
 
-            i += 1;
+            i = i.saturating_add(1);
             if i + 1 > bytes.len() {
                 break;
             }
@@ -84,9 +84,9 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
                             break;
                         }
                         val = (val * 8) + u32::from(nb - b'0');
-                        consumed += 1;
+                        consumed = consumed.saturating_add(1);
                     }
-                    i += consumed - 1;
+                    i = i.saturating_add(consumed).saturating_sub(1);
                     if let Ok(b) = u8::try_from(val) {
                         if b < 0x20 || b == 0x7F {
                             // Preserve escape sequence for control bytes.
@@ -106,7 +106,7 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
                     out.push(other);
                 }
             }
-            i += 1;
+            i = i.saturating_add(1);
         }
 
         String::from_utf8(out).ok()

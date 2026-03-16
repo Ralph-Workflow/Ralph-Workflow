@@ -630,11 +630,11 @@ pub fn uninstall_hooks_in_repo(repo_root: &Path, logger: &Logger) -> io::Result<
 
     validate_hooks_dir_for_scope(&scope, false)?;
 
-    let mut restored = 0;
+    let mut restored: usize = 0;
     for hook_name in RALPH_HOOK_NAMES {
         let hook_path = hooks_dir.join(hook_name);
         if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
-            restored += 1;
+            restored = restored.saturating_add(1);
         }
     }
 

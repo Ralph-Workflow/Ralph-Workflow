@@ -75,7 +75,11 @@ pub(super) fn run_with_agent_spawn(
         ));
     }
 
-    let argv_for_log: Vec<_> = argv.iter().chain(std::iter::once(&"<PROMPT>".to_string())).cloned().collect();
+    let argv_for_log: Vec<_> = argv
+        .iter()
+        .chain(std::iter::once(&"<PROMPT>".to_string()))
+        .cloned()
+        .collect();
     let display_cmd = truncate_text(&format_argv_for_log(&argv_for_log), 160);
     runtime.logger.info(&format!(
         "Executing: {}{}{}",
@@ -109,11 +113,12 @@ pub(super) fn run_with_agent_spawn(
     }
     runtime.workspace.write(logfile_path, "")?;
 
-    let complete_env: std::collections::HashMap<String, String> = std::env::vars()
-        .chain(cmd.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())))
-        .collect();
-    let complete_env = super::environment::sanitize_command_env(
-        complete_env,
+    let mut complete_env: std::collections::HashMap<String, String> = std::env::vars().collect();
+    for (key, value) in cmd.env_vars {
+        complete_env.insert(key.clone(), value.clone());
+    }
+    super::environment::sanitize_command_env(
+        &mut complete_env,
         cmd.env_vars,
         anthropic_env_vars_to_sanitize,
     );
@@ -212,7 +217,7 @@ pub(super) fn run_with_agent_spawn(
         const STDERR_MAX_BYTES: usize = 512 * 1024;
         let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
         let reader = BufReader::new(tracked_stderr);
-        super::runtime::stderr_collector::collect_stderr_with_cap_and_drain(
+        super::stderr_collector::collect_stderr_with_cap_and_drain(
             reader,
             STDERR_MAX_BYTES,
             stderr_cancel_for_thread.as_ref(),
@@ -227,7 +232,7 @@ pub(super) fn run_with_agent_spawn(
         activity_timestamp,
         &stdout_cancel,
     ) {
-        super::runtime::cleanup::cleanup_after_agent_failure(
+        super::cleanup::cleanup_after_agent_failure(
             &child_shared,
             &monitor_should_stop,
             &mut monitor_handle,
@@ -240,7 +245,7 @@ pub(super) fn run_with_agent_spawn(
     }
 
     let (exit_code, stderr_output, monitor_result_early) =
-        match super::runtime::process_wait::wait_for_completion_and_collect_stderr(
+        match super::process_wait::wait_for_completion_and_collect_stderr(
             &child_shared,
             &mut stderr_join_handle,
             &mut monitor_handle,
@@ -248,7 +253,7 @@ pub(super) fn run_with_agent_spawn(
         ) {
             Ok(v) => v,
             Err(e) => {
-                super::runtime::cleanup::cleanup_after_agent_failure(
+                super::cleanup::cleanup_after_agent_failure(
                     &child_shared,
                     &monitor_should_stop,
                     &mut monitor_handle,
@@ -266,7 +271,7 @@ pub(super) fn run_with_agent_spawn(
     // Use a short grace period: the agent should respond to SIGTERM quickly and
     // we don't want to add noticeable delay to the interrupt response.
     if monitor_result_early.is_none() && crate::interrupt::is_user_interrupt_requested() {
-        super::runtime::cleanup::terminate_child_best_effort(
+        super::cleanup::terminate_child_best_effort(
             &child_shared,
             runtime.executor_arc.as_ref(),
             INTERRUPT_KILL_CONFIG,
@@ -277,7 +282,7 @@ pub(super) fn run_with_agent_spawn(
         // Leaving the monitor running would cause it to block for up to
         // IDLE_TIMEOUT_SECS before the pipeline can exit.
         monitor_should_stop.store(true, Ordering::Release);
-        super::runtime::stderr_collector::cancel_and_join_stderr_collector(
+        super::stderr_collector::cancel_and_join_stderr_collector(
             &stderr_cancel,
             &mut stderr_join_handle,
             std::time::Duration::from_millis(250),
@@ -286,7 +291,7 @@ pub(super) fn run_with_agent_spawn(
             let _ = stderr_join_handle.take();
         }
     } else if matches!(monitor_result_early, Some(MonitorResult::TimedOut { .. })) {
-        let exited = super::runtime::cleanup::terminate_child_best_effort(
+        let exited = super::cleanup::terminate_child_best_effort(
             &child_shared,
             runtime.executor_arc.as_ref(),
             crate::pipeline::idle_timeout::DEFAULT_KILL_CONFIG,
@@ -296,7 +301,7 @@ pub(super) fn run_with_agent_spawn(
             monitor_should_stop.store(true, Ordering::Release);
         }
 
-        super::runtime::stderr_collector::cancel_and_join_stderr_collector(
+        super::stderr_collector::cancel_and_join_stderr_collector(
             &stderr_cancel,
             &mut stderr_join_handle,
             std::time::Duration::from_millis(250),
@@ -305,7 +310,7 @@ pub(super) fn run_with_agent_spawn(
         // Try again with a larger window. After idle timeout, we prefer to join
         // and avoid leaking a live stderr collector thread.
         if stderr_join_handle.is_some() {
-            super::runtime::stderr_collector::cancel_and_join_stderr_collector(
+            super::stderr_collector::cancel_and_join_stderr_collector(
                 &stderr_cancel,
                 &mut stderr_join_handle,
                 std::time::Duration::from_secs(2),

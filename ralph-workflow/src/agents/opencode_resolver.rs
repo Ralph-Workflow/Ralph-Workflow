@@ -74,8 +74,8 @@ impl OpenCodeResolver {
             return None;
         }
 
-        let provider = parts[1];
-        let model = parts[2];
+        let provider = parts.get(1)?;
+        let model = parts.get(2)?;
 
         // Validate provider and model exist in catalog
         if !self.catalog.has_provider(provider) {
@@ -229,9 +229,9 @@ impl OpenCodeResolver {
                 let mut msg =
                     format!("Error: OpenCode provider '{provider}' not found in API catalog.\n");
                 if let Some(closest) = suggestions.first() {
-                    writeln!(msg, "Did you mean: {closest}?").unwrap();
+                    let _ = writeln!(msg, "Did you mean: {closest}?");
                 }
-                writeln!(msg, "Agent reference: {agent_name}").unwrap();
+                let _ = writeln!(msg, "Agent reference: {agent_name}");
                 msg.push_str("Available providers: ");
                 msg.push_str(&self.catalog.provider_names().join(", "));
                 msg.push_str("\n\nPlease update your agent configuration.");
@@ -247,10 +247,10 @@ impl OpenCodeResolver {
                     "Error: OpenCode model '{provider}/{model}' not found in API catalog.\n"
                 );
                 if let Some(closest) = suggestions.first() {
-                    writeln!(msg, "Did you mean: {provider}/{closest}?").unwrap();
+                    let _ = writeln!(msg, "Did you mean: {provider}/{closest}?");
                 }
-                writeln!(msg, "Agent reference: {agent_name}").unwrap();
-                write!(msg, "Available models for '{provider}': ").unwrap();
+                let _ = writeln!(msg, "Agent reference: {agent_name}");
+                let _ = write!(msg, "Available models for '{provider}': ");
                 msg.push_str(&self.catalog.get_model_ids(provider).join(", "));
                 msg.push_str("\n\nPlease update your agent configuration.");
                 msg

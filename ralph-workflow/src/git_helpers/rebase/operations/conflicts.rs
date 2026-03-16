@@ -70,32 +70,32 @@ pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
             let mut section = Vec::new();
             section.push(lines[i]);
 
-            i += 1;
+            i = i.saturating_add(1);
             // Collect "ours" version
             while i < lines.len() && !lines[i].trim_start().starts_with("=======") {
                 section.push(lines[i]);
-                i += 1;
+                i = i.saturating_add(1);
             }
 
             if i < lines.len() {
                 section.push(lines[i]); // Add the ======= line
-                i += 1;
+                i = i.saturating_add(1);
             }
 
             // Collect "theirs" version
             while i < lines.len() && !lines[i].trim_start().starts_with(">>>>>>>") {
                 section.push(lines[i]);
-                i += 1;
+                i = i.saturating_add(1);
             }
 
             if i < lines.len() {
                 section.push(lines[i]); // Add the >>>>>>> line
-                i += 1;
+                i = i.saturating_add(1);
             }
 
             conflict_sections.push(section.join("\n"));
         } else {
-            i += 1;
+            i = i.saturating_add(1);
         }
     }
 

@@ -89,12 +89,20 @@ impl ReviewMetrics {
             // Some agents output issues with markdown headers containing checkboxes
             if let Some(rest) = parse_header_issue_format(trimmed) {
                 if let Some(severity) = IssueSeverity::from_str(rest) {
-                    metrics.total_issues += 1;
+                    metrics.total_issues = metrics.total_issues.saturating_add(1);
                     match severity {
-                        IssueSeverity::Critical => metrics.critical_issues += 1,
-                        IssueSeverity::High => metrics.high_issues += 1,
-                        IssueSeverity::Medium => metrics.medium_issues += 1,
-                        IssueSeverity::Low => metrics.low_issues += 1,
+                        IssueSeverity::Critical => {
+                            metrics.critical_issues = metrics.critical_issues.saturating_add(1)
+                        }
+                        IssueSeverity::High => {
+                            metrics.high_issues = metrics.high_issues.saturating_add(1)
+                        }
+                        IssueSeverity::Medium => {
+                            metrics.medium_issues = metrics.medium_issues.saturating_add(1)
+                        }
+                        IssueSeverity::Low => {
+                            metrics.low_issues = metrics.low_issues.saturating_add(1)
+                        }
                     }
                 }
                 continue;
@@ -125,15 +133,21 @@ impl ReviewMetrics {
             // Try to extract severity
             if let Some(severity) = IssueSeverity::from_str(rest) {
                 // Update counts
-                metrics.total_issues += 1;
+                metrics.total_issues = metrics.total_issues.saturating_add(1);
                 if resolved {
-                    metrics.resolved_issues += 1;
+                    metrics.resolved_issues = metrics.resolved_issues.saturating_add(1);
                 }
                 match severity {
-                    IssueSeverity::Critical => metrics.critical_issues += 1,
-                    IssueSeverity::High => metrics.high_issues += 1,
-                    IssueSeverity::Medium => metrics.medium_issues += 1,
-                    IssueSeverity::Low => metrics.low_issues += 1,
+                    IssueSeverity::Critical => {
+                        metrics.critical_issues = metrics.critical_issues.saturating_add(1)
+                    }
+                    IssueSeverity::High => {
+                        metrics.high_issues = metrics.high_issues.saturating_add(1)
+                    }
+                    IssueSeverity::Medium => {
+                        metrics.medium_issues = metrics.medium_issues.saturating_add(1)
+                    }
+                    IssueSeverity::Low => metrics.low_issues = metrics.low_issues.saturating_add(1),
                 }
             }
         }

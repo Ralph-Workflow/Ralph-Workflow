@@ -119,13 +119,63 @@ fn load_api_catalog_with_env(env: &dyn CacheEnvironment) -> Result<ApiCatalog, C
 
     let cache_path = cache_file_path_with_env(env)?;
 
-    // Try to load from cache
-    if let Ok(cached) = load_cached_catalog_with_env(env, &cache_path, ttl_seconds) {
-        return Ok(cached);
+    // Try to load from cache - pure function returns warnings as data
+    match load_cached_catalog_with_env(env, &cache_path, ttl_seconds) {
+        Ok(result) => {
+            // Boundary: emit warnings as side effect
+            // Note: This function does I/O (console output) so it's appropriate for boundary code
+            emit_cache_warnings(&result.warnings);
+            Ok(result.catalog)
+        }
+        Err(_) => {
+            // Cache miss or expired, fetch from API
+            fetch_api_catalog()
+        }
     }
+}
 
-    // Cache miss or expired, fetch from API
-    fetch_api_catalog()
+/// Emit cache warnings to stderr.
+/// This is a boundary function that handles I/O (console output).
+fn emit_cache_warnings(warnings: &[CacheWarning]) {
+    use std::io::Write;
+    let mut stderr = std::io::stderr();
+    for warning in warnings {
+        match warning {
+            CacheWarning::StaleCacheUsed { stale_days, error } => {
+                let _ = writeln!(
+                    stderr,
+                    "Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago"
+                );
+            }
+        }
+    }
+}
+
+/// Warnings that can occur during catalog loading.
+#[derive(Debug, Clone)]
+pub enum CacheWarning {
+    /// Used stale cache because fresh fetch failed.
+    StaleCacheUsed { stale_days: i64, error: String },
+}
+
+/// Result of loading catalog with associated warnings.
+#[derive(Debug, Clone)]
+pub struct LoadCatalogResult {
+    /// The loaded catalog.
+    pub catalog: ApiCatalog,
+    /// Warnings that occurred during loading.
+    pub warnings: Vec<CacheWarning>,
+}
+
+/// Pure function to check if stale cache should be used and compute warning.
+fn compute_stale_cache_warning(catalog: &ApiCatalog, fetch_error: String) -> Option<CacheWarning> {
+    let cached_at = catalog.cached_at?;
+    let now = chrono::Utc::now();
+    let stale_days = (now.signed_duration_since(cached_at).num_seconds() / 86400).abs();
+    (stale_days < 7).then_some(CacheWarning::StaleCacheUsed {
+        stale_days,
+        error: fetch_error,
+    })
 }
 
 /// Load a cached catalog from disk.
@@ -135,7 +185,7 @@ fn load_cached_catalog_with_env(
     env: &dyn CacheEnvironment,
     path: &Path,
     ttl_seconds: u64,
-) -> Result<ApiCatalog, CacheError> {
+) -> Result<LoadCatalogResult, CacheError> {
     let content = env.read_file(path)?;
 
     let mut catalog: ApiCatalog = serde_json::from_str(&content)?;
@@ -147,26 +197,30 @@ fn load_cached_catalog_with_env(
     if catalog.is_expired() {
         // Try to fetch fresh catalog, but use stale cache if fetch fails
         match fetch_api_catalog() {
-            Ok(fresh) => return Ok(fresh),
+            Ok(fresh) => {
+                return Ok(LoadCatalogResult {
+                    catalog: fresh,
+                    warnings: vec![],
+                })
+            }
             Err(e) => {
+                let error_str = e.to_string();
                 // Use stale cache if it's less than 7 days old
-                if let Some(cached_at) = catalog.cached_at {
-                    let now = chrono::Utc::now();
-                    let stale_days =
-                        (now.signed_duration_since(cached_at).num_seconds() / 86400).abs();
-                    if stale_days < 7 {
-                        eprintln!(
-                            "Warning: Failed to fetch fresh OpenCode API catalog ({e}), using stale cache from {stale_days} days ago"
-                        );
-                        return Ok(catalog);
-                    }
+                if let Some(warning) = compute_stale_cache_warning(&catalog, error_str.clone()) {
+                    return Ok(LoadCatalogResult {
+                        catalog,
+                        warnings: vec![warning],
+                    });
                 }
-                return Err(CacheError::FetchError(e.to_string()));
+                return Err(CacheError::FetchError(error_str));
             }
         }
     }
 
-    Ok(catalog)
+    Ok(LoadCatalogResult {
+        catalog,
+        warnings: vec![],
+    })
 }
 
 /// Save the API catalog to disk.

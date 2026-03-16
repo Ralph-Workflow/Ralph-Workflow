@@ -1,6 +1,7 @@
 /// Handle template initialization command.
 ///
 /// Creates the user templates directory and copies all default templates.
+#[expect(clippy::print_stdout, reason = "CLI output handler")]
 fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
     let templates_dir = TemplateRegistry::default_user_templates_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for templates"))?;
@@ -69,9 +70,12 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
         let target_path = if name.starts_with("reviewer/") {
             let parts: Vec<&str> = name.split('/').collect();
             if parts.len() == 2 {
+                let Some(filename) = parts.get(1) else {
+                    continue;
+                };
                 templates_dir
                     .join("reviewer")
-                    .join(format!("{}.txt", parts[1]))
+                    .join(format!("{}.txt", filename))
             } else {
                 continue;
             }

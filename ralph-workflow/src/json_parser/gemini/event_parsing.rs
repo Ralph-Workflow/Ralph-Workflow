@@ -1,4 +1,3 @@
-
 impl GeminiParser {
     /// Parse and display a single Gemini JSON event
     ///
@@ -45,7 +44,11 @@ impl GeminiParser {
             }
         };
 
-        if output.is_empty() { None } else { Some(output) }
+        if output.is_empty() {
+            None
+        } else {
+            Some(output)
+        }
     }
 
     /// Format an Init event
@@ -199,8 +202,9 @@ impl GeminiParser {
                         let session = self.streaming_session.borrow();
                         let mut out = String::new();
                         for key in session.accumulated_keys(ContentType::Text) {
-                            let accumulated =
-                                session.get_accumulated(ContentType::Text, &key).unwrap_or("");
+                            let accumulated = session
+                                .get_accumulated(ContentType::Text, &key)
+                                .unwrap_or("");
                             let sanitized = delta_display::sanitize_for_display(accumulated);
                             if sanitized.is_empty() {
                                 continue;
@@ -208,16 +212,19 @@ impl GeminiParser {
 
                             match terminal_mode {
                                 TerminalMode::Basic => {
-                                    writeln!(out, "{}[{}]{} {}{}{}",
+                                    let _ = writeln!(
+                                        out,
+                                        "{}[{}]{} {}{}{}",
                                         c.dim(),
                                         prefix,
                                         c.reset(),
                                         c.white(),
                                         sanitized,
-                                        c.reset()).unwrap();
+                                        c.reset()
+                                    );
                                 }
                                 TerminalMode::None => {
-                                    writeln!(out, "[{prefix}] {sanitized}").unwrap();
+                                    let _ = writeln!(out, "[{prefix}] {sanitized}");
                                 }
                                 TerminalMode::Full => unreachable!(),
                             }
@@ -232,7 +239,12 @@ impl GeminiParser {
                     let show_metrics = (self.verbosity.is_debug() || self.show_streaming_metrics)
                         && metrics.total_deltas > 0;
                     if show_metrics {
-                        return format!("{}{}\n{}", text_flush_non_tty, completion, metrics.format(*c));
+                        return format!(
+                            "{}{}\n{}",
+                            text_flush_non_tty,
+                            completion,
+                            metrics.format(*c)
+                        );
                     }
                     return format!("{text_flush_non_tty}{completion}");
                 }

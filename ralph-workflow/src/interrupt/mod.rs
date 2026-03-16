@@ -275,6 +275,7 @@ pub fn clear_interrupt_context() {
 /// 3. Exit gracefully
 ///
 /// Call this early in `main()` after initializing the pipeline context.
+#[expect(clippy::print_stderr, reason = "critical interrupt handling messages")]
 pub fn setup_interrupt_handler() {
     let install = ctrlc::set_handler(|| {
         request_user_interrupt();

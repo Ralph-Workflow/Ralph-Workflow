@@ -38,11 +38,11 @@ impl Template {
         while i < bytes.len().saturating_sub(1) {
             if bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
                 let start = i;
-                i += 2;
+                i = i.saturating_add(2);
 
                 // Skip whitespace after {{
                 while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
-                    i += 1;
+                    i = i.saturating_add(1);
                 }
 
                 let name_start = i;
@@ -51,7 +51,7 @@ impl Template {
                 while i < bytes.len()
                     && !(bytes[i] == b'}' && i + 1 < bytes.len() && bytes[i + 1] == b'}')
                 {
-                    i += 1;
+                    i = i.saturating_add(1);
                 }
 
                 if i < bytes.len()
@@ -101,33 +101,32 @@ impl Template {
                         });
 
                     // Look up the variable and track how it was resolved
-                    let (replacement, should_replace, source) = if let Some(value) =
-                        variables.get(var_name)
-                    {
-                        if !value.is_empty() {
-                            // Value provided and non-empty
-                            (value.clone(), true, Some(SubstitutionSource::Value))
-                        } else if let Some(default) = &default_value {
-                            // Value provided but empty, use default
-                            (
-                                default.clone(),
-                                true,
-                                Some(SubstitutionSource::EmptyWithDefault),
-                            )
-                        } else {
-                            // Variable exists but is empty, and no default - treat as missing if configured
-                            if empty_is_missing {
-                                unsubstituted.push(var_name.to_string());
+                    let (replacement, should_replace, source) =
+                        if let Some(value) = variables.get(var_name) {
+                            if !value.is_empty() {
+                                // Value provided and non-empty
+                                (value.clone(), true, Some(SubstitutionSource::Value))
+                            } else if let Some(default) = &default_value {
+                                // Value provided but empty, use default
+                                (
+                                    default.clone(),
+                                    true,
+                                    Some(SubstitutionSource::EmptyWithDefault),
+                                )
+                            } else {
+                                // Variable exists but is empty, and no default - treat as missing if configured
+                                if empty_is_missing {
+                                    unsubstituted.push(var_name.to_string());
+                                }
+                                (String::new(), false, None)
                             }
+                        } else if let Some(default) = &default_value {
+                            (default.clone(), true, Some(SubstitutionSource::Default))
+                        } else {
+                            // No value AND no default - truly unsubstituted
+                            unsubstituted.push(var_name.to_string());
                             (String::new(), false, None)
-                        }
-                    } else if let Some(default) = &default_value {
-                        (default.clone(), true, Some(SubstitutionSource::Default))
-                    } else {
-                        // No value AND no default - truly unsubstituted
-                        unsubstituted.push(var_name.to_string());
-                        (String::new(), false, None)
-                    };
+                        };
 
                     if should_replace {
                         if let Some(src) = source {
@@ -142,7 +141,7 @@ impl Template {
                     continue;
                 }
             }
-            i += 1;
+            i = i.saturating_add(1);
         }
 
         // Apply replacements in reverse order to maintain correct positions
@@ -164,7 +163,7 @@ impl Template {
             if !result.contains(&token) && !content.contains(&token) {
                 return token;
             }
-            index += 1;
+            index = index.saturating_add(1);
         }
     }
 

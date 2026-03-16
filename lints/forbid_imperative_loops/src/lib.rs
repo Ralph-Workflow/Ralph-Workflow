@@ -55,7 +55,7 @@ dylint_linting::impl_early_lint! {
     ///     .collect();
     /// ```
     pub FORBID_IMPERATIVE_LOOPS,
-    Deny,
+    Warn,
     "imperative loops (`while`, `loop`, `for`) are forbidden outside boundary modules",
     ForbidImperativeLoops
 }

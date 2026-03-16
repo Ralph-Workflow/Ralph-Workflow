@@ -27,7 +27,7 @@ impl StreamingSession {
 
         if let Some((count, prev_hash)) = self.consecutive_duplicates.get_mut(content_key) {
             if *prev_hash == delta_hash {
-                *count += 1;
+                *count = count.saturating_add(1);
                 // Check if we've exceeded the consecutive duplicate threshold
                 if *count >= thresholds.consecutive_duplicate_threshold {
                     // This is a resend glitch - drop the delta entirely
@@ -88,7 +88,7 @@ impl StreamingSession {
         // Track delta size and warn on large deltas BEFORE duplicate check
         // This ensures we track all received deltas even if they're duplicates
         if delta_size > snapshot_threshold() {
-            self.large_delta_count += 1;
+            self.large_delta_count = self.large_delta_count.saturating_add(1);
             if self.verbose_warnings {
                 eprintln!(
                     "Warning: Large delta ({delta_size} chars) for key '{key}'. \
@@ -147,7 +147,7 @@ impl StreamingSession {
             match self.get_delta_from_snapshot(delta, key) {
                 Ok(extracted) => {
                     // Track successful snapshot repair
-                    self.snapshot_repairs_count += 1;
+                    self.snapshot_repairs_count = self.snapshot_repairs_count.saturating_add(1);
                     extracted.to_string()
                 }
                 Err(e) => {

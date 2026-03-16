@@ -5,12 +5,12 @@ mod agent_spawn;
 #[cfg(test)]
 mod agent_spawn_test;
 
-// Runtime module - contains OS-boundary code (process management, threads, loops)
-pub mod runtime;
-
+mod cleanup;
 mod environment;
+mod process_wait;
 mod run;
 mod save;
+mod stderr_collector;
 mod streaming;
 mod streaming_line_reader;
 mod types;
@@ -33,7 +33,7 @@ use agent_spawn::run_with_agent_spawn;
 use crate::agents::JsonParserType;
 
 #[cfg(test)]
-use runtime::stderr_collector::collect_stderr_with_cap_and_drain;
+use stderr_collector::collect_stderr_with_cap_and_drain;
 
 #[cfg(test)]
 use save::build_prompt_archive_filename;

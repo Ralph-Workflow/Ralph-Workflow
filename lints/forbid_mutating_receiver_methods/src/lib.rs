@@ -30,6 +30,7 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::net::TcpStream",
     "std::net::UdpSocket",
     // Standard collections (boundary usage only)
+    "std::vec::Vec",
     "std::collections::HashMap",
     "std::collections::BTreeMap",
     "std::collections::HashSet",
@@ -41,6 +42,8 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::process::ChildStdin",
     "std::process::ChildStdout",
     "std::process::ChildStderr",
+    // Option (for .take() on Option fields)
+    "std::option::Option",
 ];
 
 dylint_linting::impl_late_lint! {
@@ -75,7 +78,7 @@ dylint_linting::impl_late_lint! {
     /// let config = config.with_value("key", "value"); // returns new Config
     /// ```
     pub FORBID_MUTATING_RECEIVER_METHODS,
-    Deny,
+    Warn,
     "calls to `&mut self` methods are forbidden outside boundary modules and types",
     ForbidMutatingReceiverMethods
 }

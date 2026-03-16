@@ -31,8 +31,16 @@ impl Template {
                 continue;
             }
 
-            let loop_var = parts[0].trim().to_string();
-            let list_var = parts[1].trim();
+            let Some(loop_var_part) = parts.first() else {
+                result = result[start + 1..].to_string();
+                continue;
+            };
+            let loop_var = loop_var_part.trim().to_string();
+            let Some(list_var_part) = parts.get(1) else {
+                result = result[start + 1..].to_string();
+                continue;
+            };
+            let list_var = list_var_part.trim();
 
             // Find the matching {% endfor %}
             let endfor_start = if let Some(pos) = result[for_end..].find("{% endfor %}") {

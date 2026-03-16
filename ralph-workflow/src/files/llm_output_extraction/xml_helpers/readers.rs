@@ -195,15 +195,15 @@ pub fn read_text_until_end_fuzzy(
 /// See the unit tests in this module for working examples.
 pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), XsdValidationError> {
     let mut buf = Vec::new();
-    let mut depth = 1;
+    let mut depth: usize = 1;
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.name().as_ref() == end_tag => {
-                depth += 1;
+                depth = depth.saturating_add(1);
             }
             Ok(Event::End(e)) if e.name().as_ref() == end_tag => {
-                depth -= 1;
+                depth = depth.saturating_sub(1);
                 if depth == 0 {
                     break;
                 }

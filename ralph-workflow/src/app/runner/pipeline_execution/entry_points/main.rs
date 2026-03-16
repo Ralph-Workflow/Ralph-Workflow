@@ -69,6 +69,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
         );
         handle_diagnose(
+            &mut std::io::stdout(),
             colors,
             &config,
             &registry,

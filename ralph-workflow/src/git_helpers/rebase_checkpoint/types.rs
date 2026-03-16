@@ -146,8 +146,8 @@ impl RebaseCheckpoint {
     /// Increments both the global error count and the phase-specific error count.
     #[must_use]
     pub fn with_error(mut self, error: String) -> Self {
-        self.error_count += 1;
-        self.phase_error_count += 1;
+        self.error_count = self.error_count.saturating_add(1);
+        self.phase_error_count = self.phase_error_count.saturating_add(1);
         self.last_error = Some(error);
         self.timestamp = chrono::Utc::now().to_rfc3339();
         self

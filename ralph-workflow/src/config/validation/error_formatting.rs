@@ -8,6 +8,10 @@
 /// Parses toml error messages that look like:
 /// - "missing field `developer_iters` at line 5"
 /// - "invalid type: string \"five\", expected u32 for field `developer_iters`"
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "bounds-checked index arithmetic"
+)]
 pub fn extract_key_from_toml_error(error: &str) -> String {
     if let Some(start) = error.find('`') {
         if let Some(end) = error[start + 1..].find('`') {

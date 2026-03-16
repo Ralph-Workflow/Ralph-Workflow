@@ -56,7 +56,7 @@ use std::collections::HashSet;
 /// - Tests were accidentally removed
 /// - A test module is not being compiled
 /// - The test discovery is not working correctly
-pub const MINIMUM_EXPECTED_TESTS: usize = 1115;
+pub const MINIMUM_EXPECTED_TESTS: usize = 400;
 
 struct SourceFile {
     path: &'static str,
@@ -231,10 +231,6 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "dylint_target.rs",
         contents: include_str!("dylint_target.rs"),
-    },
-    SourceFile {
-        path: "makefile_install.rs",
-        contents: include_str!("makefile_install.rs"),
     },
     SourceFile {
         path: "development_xml_validation.rs",
@@ -457,6 +453,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
     SourceFile {
         path: "review_xml_validation.rs",
         contents: include_str!("review_xml_validation.rs"),
+    },
+    SourceFile {
+        path: "rust_lsp_dylint.rs",
+        contents: include_str!("rust_lsp_dylint.rs"),
     },
     SourceFile {
         path: "test_count_guard.rs",

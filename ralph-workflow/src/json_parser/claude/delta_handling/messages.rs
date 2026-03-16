@@ -282,11 +282,10 @@ impl crate::json_parser::claude::ClaudeParser {
                                     TerminalMode::Full => unreachable!(),
                                 };
 
-                                writeln!(
+                                let _ = writeln!(
                                     thinking_output,
                                     "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}"
-                                )
-                                .unwrap();
+                                );
                             }
                         }
 
@@ -332,11 +331,10 @@ impl crate::json_parser::claude::ClaudeParser {
                                         TerminalMode::Full => unreachable!(),
                                     };
 
-                                    writeln!(
+                                    let _ = writeln!(
                                         tool_output,
                                         "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}"
-                                    )
-                                    .unwrap();
+                                    );
                                 }
                             }
                         }
@@ -371,8 +369,8 @@ impl crate::json_parser::claude::ClaudeParser {
                                     TerminalMode::Full => unreachable!(),
                                 };
 
-                                writeln!(text_output, "{prefix_fmt}{sanitized}{suffix_fmt}")
-                                    .unwrap();
+                                let _ =
+                                    writeln!(text_output, "{prefix_fmt}{sanitized}{suffix_fmt}");
                             }
                         }
 

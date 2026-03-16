@@ -30,7 +30,8 @@ impl VirtualTerminal {
                 '\n' => {
                     flush_text(self, &mut text_buffer);
                     // Newline: move to next row, column 0
-                    *self.cursor_row.borrow_mut() += 1;
+                    let new_row = self.cursor_row.borrow().saturating_add(1);
+                    *self.cursor_row.borrow_mut() = new_row;
                     *self.cursor_col.borrow_mut() = 0;
                     self.ensure_row_exists();
                 }

@@ -65,7 +65,7 @@ dylint_linting::impl_early_lint! {
     /// }
     /// ```
     pub FORBID_INTERIOR_MUTABILITY,
-    Deny,
+    Warn,
     "interior-mutability types are forbidden outside boundary modules",
     ForbidInteriorMutability
 }

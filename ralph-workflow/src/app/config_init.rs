@@ -132,6 +132,8 @@ pub fn initialize_config(
 /// * `args` - The parsed CLI arguments
 /// * `colors` - Color configuration for output
 /// * `logger` - Logger for info/warning messages
+#[expect(clippy::print_stderr, reason = "CLI error output to user")]
+#[expect(clippy::print_stdout, reason = "CLI help output to user")]
 /// * `catalog_loader` - Loader for the `OpenCode` API catalog
 /// * `path_resolver` - Resolver for configuration file paths
 ///

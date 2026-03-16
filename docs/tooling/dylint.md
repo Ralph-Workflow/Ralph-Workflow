@@ -44,6 +44,30 @@ make dylint
 cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
 ```
 
+## Rust LSP Integration
+
+This repository includes a wrapper at `.cargo/rust-analyzer-dylint` for Rust LSP clients that use
+`rust-analyzer.check.overrideCommand`.
+
+- The wrapper runs `cargo clippy` first so standard Rust and clippy warnings surface in the editor.
+- The wrapper then runs `cargo dylint` with JSON diagnostics enabled so custom lint diagnostics surface too.
+- The wrapper finally runs `cargo xtask lsp-forbidden-allow-expect` so the native forbidden `#[allow(...)]` / `#[expect(...)]` audit also appears in the editor as JSON diagnostics.
+- It filters non-JSON progress lines to stderr so rust-analyzer sees clean JSON on stdout.
+- VS Code is preconfigured through `.vscode/settings.json`.
+- Claude Code exposes the shared wrapper path through `.claude/settings.json` so the same command is available in project settings.
+
+Use this command in clients that expose rust-analyzer settings, including VS Code and Claude Code:
+
+```json
+{
+  "rust-analyzer.check.overrideCommand": [
+    ".cargo/rust-analyzer-dylint"
+  ]
+}
+```
+
+OpenCode v1.2.27 rejects a top-level `lsp` key in `opencode.json`, so this repository does not check in an OpenCode project config for the wrapper.
+
 ## Developing Lints
 
 Custom lints are in the `lints/` directory. Each lint is a separate crate that compiles to a dynamic library.

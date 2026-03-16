@@ -53,6 +53,7 @@ impl RebaseStateMachine {
     /// # Errors
     ///
     /// Returns error if the operation fails.
+    #[expect(clippy::print_stderr, reason = "recovery warning messages")]
     pub fn load_or_create(upstream_branch: String) -> io::Result<Self> {
         if rebase_checkpoint_exists() {
             // Try to load the primary checkpoint
@@ -110,7 +111,10 @@ impl RebaseStateMachine {
     /// Returns `Ok(state_machine)` with either backup loaded or fresh state.
     fn try_load_backup_or_create(upstream_branch: String) -> io::Result<Self> {
         let workspace = WorkspaceFs::new(std::env::current_dir()?);
-        Ok(Self::try_load_backup_or_create_with_workspace(&workspace, upstream_branch))
+        Ok(Self::try_load_backup_or_create_with_workspace(
+            &workspace,
+            upstream_branch,
+        ))
     }
 
     /// Load backup checkpoint or create fresh state using workspace abstraction.
@@ -338,59 +342,35 @@ impl RecoveryAction {
 
         match error_kind {
             // Category 1: Rebase Cannot Start - Generally not recoverable
-            crate::git_helpers::rebase::RebaseErrorKind::InvalidRevision { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InvalidRevision { .. } => Self::Abort,
             crate::git_helpers::rebase::RebaseErrorKind::DirtyWorkingTree => Self::Abort,
-            crate::git_helpers::rebase::RebaseErrorKind::ConcurrentOperation { .. } => {
-                Self::Retry
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::RepositoryCorrupt { .. } => {
-                Self::Abort
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::EnvironmentFailure { .. } => {
-                Self::Abort
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::HookRejection { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ConcurrentOperation { .. } => Self::Retry,
+            crate::git_helpers::rebase::RebaseErrorKind::RepositoryCorrupt { .. } => Self::Abort,
+            crate::git_helpers::rebase::RebaseErrorKind::EnvironmentFailure { .. } => Self::Abort,
+            crate::git_helpers::rebase::RebaseErrorKind::HookRejection { .. } => Self::Abort,
 
             // Category 2: Rebase Stops (Interrupted)
-            crate::git_helpers::rebase::RebaseErrorKind::ContentConflict { .. } => {
-                Self::Continue
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ContentConflict { .. } => Self::Continue,
             crate::git_helpers::rebase::RebaseErrorKind::PatchApplicationFailed { .. } => {
                 Self::Retry
             }
-            crate::git_helpers::rebase::RebaseErrorKind::InteractiveStop { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InteractiveStop { .. } => Self::Abort,
             crate::git_helpers::rebase::RebaseErrorKind::EmptyCommit => Self::Skip,
-            crate::git_helpers::rebase::RebaseErrorKind::AutostashFailed { .. } => {
-                Self::Retry
-            }
-            crate::git_helpers::rebase::RebaseErrorKind::CommitCreationFailed { .. } => {
-                Self::Retry
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::AutostashFailed { .. } => Self::Retry,
+            crate::git_helpers::rebase::RebaseErrorKind::CommitCreationFailed { .. } => Self::Retry,
             crate::git_helpers::rebase::RebaseErrorKind::ReferenceUpdateFailed { .. } => {
                 Self::Retry
             }
 
             // Category 3: Post-Rebase Failures
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::ValidationFailed { .. } => {
-                Self::Abort
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ValidationFailed { .. } => Self::Abort,
 
             // Category 4: Interrupted/Corrupted State
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::ProcessTerminated { .. } => {
-                Self::Continue
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::ProcessTerminated { .. } => Self::Continue,
             #[cfg(any(test, feature = "test-utils"))]
-            crate::git_helpers::rebase::RebaseErrorKind::InconsistentState { .. } => {
-                Self::Retry
-            }
+            crate::git_helpers::rebase::RebaseErrorKind::InconsistentState { .. } => Self::Retry,
 
             // Category 5: Unknown
             crate::git_helpers::rebase::RebaseErrorKind::Unknown { .. } => Self::Abort,

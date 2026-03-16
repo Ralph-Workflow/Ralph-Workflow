@@ -249,10 +249,7 @@ impl OpenCodeParser {
     /// - `glob`: `pattern`, `path?`
     /// - `grep`: `pattern`, `path?`, `include?`
     /// - `fetch`: `url`, `format?`, `timeout?`
-    pub(super) fn format_tool_specific_input(
-        tool_name: &str,
-        input: &serde_json::Value,
-    ) -> String {
+    pub(super) fn format_tool_specific_input(tool_name: &str, input: &serde_json::Value) -> String {
         let Some(obj) = input.as_object() else {
             return format_tool_input(input);
         };
@@ -263,10 +260,10 @@ impl OpenCodeParser {
                 let file_path = obj.get("filePath").and_then(|v| v.as_str()).unwrap_or("");
                 let mut result = file_path.to_string();
                 if let Some(offset) = obj.get("offset").and_then(serde_json::Value::as_u64) {
-                    write!(result, " (offset: {offset})").unwrap();
+                    let _ = write!(result, " (offset: {offset})");
                 }
                 if let Some(limit) = obj.get("limit").and_then(serde_json::Value::as_u64) {
-                    write!(result, " (limit: {limit})").unwrap();
+                    let _ = write!(result, " (limit: {limit})");
                 }
                 result
             }
@@ -301,20 +298,17 @@ impl OpenCodeParser {
                 // Primary: pattern, optional: path
                 let pattern = obj.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
                 let path = obj.get("path").and_then(|v| v.as_str());
-                path.map_or_else(
-                    || pattern.to_string(),
-                    |p| format!("{pattern} in {p}")
-                )
+                path.map_or_else(|| pattern.to_string(), |p| format!("{pattern} in {p}"))
             }
             "grep" => {
                 // Primary: pattern, optional: path, include
                 let pattern = obj.get("pattern").and_then(|v| v.as_str()).unwrap_or("");
                 let mut result = format!("/{pattern}/");
                 if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
-                    write!(result, " in {path}").unwrap();
+                    let _ = write!(result, " in {path}");
                 }
                 if let Some(include) = obj.get("include").and_then(|v| v.as_str()) {
-                    write!(result, " ({include})").unwrap();
+                    let _ = write!(result, " ({include})");
                 }
                 result
             }
@@ -322,19 +316,14 @@ impl OpenCodeParser {
                 // Primary: url, optional: format
                 let url = obj.get("url").and_then(|v| v.as_str()).unwrap_or("");
                 let format = obj.get("format").and_then(|v| v.as_str());
-                format.map_or_else(
-                    || url.to_string(),
-                    |f| format!("{url} ({f})")
-                )
+                format.map_or_else(|| url.to_string(), |f| format!("{url} ({f})"))
             }
             "todowrite" | "todoread" => {
                 // Show count of todos if available
-                obj.get("todos")
-                    .and_then(|v| v.as_array())
-                    .map_or_else(
-                        || format_tool_input(input),
-                        |todos| format!("{} items", todos.len())
-                    )
+                obj.get("todos").and_then(|v| v.as_array()).map_or_else(
+                    || format_tool_input(input),
+                    |todos| format!("{} items", todos.len()),
+                )
             }
             _ => {
                 // Fallback to generic formatting

@@ -1,5 +1,9 @@
 // Template parsing logic: tokenizing, comment stripping, and partial extraction.
 
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "bounds-checked index arithmetic"
+)]
 impl Template {
     /// Strip `{# comment #}` style comments from the content.
     ///

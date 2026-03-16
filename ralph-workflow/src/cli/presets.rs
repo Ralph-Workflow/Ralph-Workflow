@@ -27,6 +27,7 @@ pub enum Preset {
 /// - All CLI arguments are handled (fixes missing -L, -S, -T flags)
 /// - Event processing is testable and maintainable
 /// - Consistent with the existing pipeline reducer pattern
+#[expect(clippy::print_stderr, reason = "CLI warning for invalid arguments")]
 pub fn apply_args_to_config(args: &super::Args, config: &mut Config, colors: Colors) {
     use crate::cli::reducer::{apply_cli_state_to_config, args_to_events, reduce, CliState};
 

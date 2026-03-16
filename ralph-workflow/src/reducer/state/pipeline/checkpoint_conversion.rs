@@ -19,7 +19,7 @@ fn bound_execution_history_steps(
 
     // Keep only the most recent `limit` entries while dropping the oversized
     // allocation from legacy checkpoints.
-    let keep_from = len - limit;
+    let keep_from = len.saturating_sub(limit);
     steps.into_iter().skip(keep_from).collect()
 }
 

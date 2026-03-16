@@ -59,6 +59,10 @@ impl AgentRegistry {
     /// # Errors
     ///
     /// Returns an error when the named drain configuration is invalid.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "small counter that cannot realistically overflow"
+    )]
     pub fn apply_unified_config(
         &mut self,
         unified: &crate::config::UnifiedConfig,
@@ -98,21 +102,23 @@ impl AgentRegistry {
             return 0;
         }
 
-        let mut loaded = 0usize;
-        for (name, overrides) in &unified.agents {
+        // Use fold to count loaded agents functionally
+        let loaded = unified.agents.iter().fold(0usize, |count, (name, overrides)| {
             if let Some(existing) = self.agents.get(name).cloned() {
                 // Merge with existing agent
                 let merged = Self::merge_agent_config(existing, overrides);
                 self.register(name, merged);
-                loaded += 1;
+                count.saturating_add(1)
             } else {
                 // New agent definition: require a non-empty command.
                 if let Some(config) = Self::create_new_agent_config(overrides) {
                     self.register(name, config);
-                    loaded += 1;
+                    count.saturating_add(1)
+                } else {
+                    count
                 }
             }
-        }
+        });
         loaded
     }
 

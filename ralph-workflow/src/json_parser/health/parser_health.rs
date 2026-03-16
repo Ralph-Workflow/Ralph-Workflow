@@ -30,14 +30,14 @@ impl ParserHealth {
 
     /// Record a parsed event
     pub const fn record_parsed(&mut self) {
-        self.total_events += 1;
-        self.parsed_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.parsed_events = self.parsed_events.saturating_add(1);
     }
 
     /// Record an ignored event
     pub const fn record_ignored(&mut self) {
-        self.total_events += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record an unknown event type (valid JSON but unhandled)
@@ -46,16 +46,16 @@ impl ParserHealth {
     /// but doesn't have specific handling for. These should not trigger health
     /// warnings as they represent future/new event types, not parser errors.
     pub const fn record_unknown_event(&mut self) {
-        self.total_events += 1;
-        self.unknown_events += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.unknown_events = self.unknown_events.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record a parse error (malformed JSON)
     pub const fn record_parse_error(&mut self) {
-        self.total_events += 1;
-        self.parse_errors += 1;
-        self.ignored_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.parse_errors = self.parse_errors.saturating_add(1);
+        self.ignored_events = self.ignored_events.saturating_add(1);
     }
 
     /// Record a control event (state management with no user-facing output)
@@ -64,8 +64,8 @@ impl ParserHealth {
     /// rather than user-facing content. They should not be counted as
     /// "ignored" for health monitoring purposes.
     pub const fn record_control_event(&mut self) {
-        self.total_events += 1;
-        self.control_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.control_events = self.control_events.saturating_add(1);
     }
 
     /// Record a partial/delta event (streaming content displayed incrementally)
@@ -74,8 +74,8 @@ impl ParserHealth {
     /// in real-time as deltas. These are NOT errors and should not trigger
     /// health warnings. They are tracked separately to show streaming activity.
     pub const fn record_partial_event(&mut self) {
-        self.total_events += 1;
-        self.partial_events += 1;
+        self.total_events = self.total_events.saturating_add(1);
+        self.partial_events = self.partial_events.saturating_add(1);
     }
 
     /// Get the percentage of parse errors (excluding unknown events)

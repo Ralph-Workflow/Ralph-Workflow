@@ -82,7 +82,8 @@ fn extract_yaml_inline_settings_value(inline: &str) -> Option<String> {
     // Very small parser for "{ ..., settings: \"...\" }" emitted by yaml.dump().
     let needle = "settings:";
     let idx = inline.find(needle)?;
-    let after = inline[idx + needle.len()..].trim_start();
+    let start = idx.checked_add(needle.len())?;
+    let after = inline[start..].trim_start();
     let token = after
         .split(',')
         .next()
@@ -103,7 +104,9 @@ fn unquote_yaml_scalar(value: &str) -> String {
     if v.len() >= 2
         && ((v.starts_with('"') && v.ends_with('"')) || (v.starts_with('\'') && v.ends_with('\'')))
     {
-        let inner = &v[1..v.len() - 1];
+        // Use checked subtraction - the len() >= 2 check guarantees this is safe
+        let end_idx = v.len().saturating_sub(1);
+        let inner = &v[1..end_idx];
         // CCS uses js-yaml with double quotes; keep unescaping minimal for paths.
         inner.replace("\\\"", "\"").replace("\\\\", "\\")
     } else {

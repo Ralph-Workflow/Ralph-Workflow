@@ -21,6 +21,7 @@ const LINT_SCAN_EXCLUDE_GLOBS: &[&str] = &[
     "**/node_modules/**",
     "**/dist/**",
     "**/ui/**",
+    "**/target/**",
     // verify.rs contains FORBIDDEN_ALLOW_EXPECT_POLICY which documents the lint policy
     // using literal examples of the forbidden patterns - these are not actual violations
     "verify.rs",

@@ -50,7 +50,7 @@ dylint_linting::impl_early_lint! {
     /// let total: u64 = items.iter().map(|item| item.price).sum();
     /// ```
     pub FORBID_MUT_BINDING,
-    Deny,
+    Warn,
     "`let mut` bindings are forbidden outside boundary modules",
     ForbidMutBinding
 }

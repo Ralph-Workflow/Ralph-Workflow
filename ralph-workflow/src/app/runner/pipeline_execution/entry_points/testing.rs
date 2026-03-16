@@ -180,6 +180,7 @@ pub fn run_with_config_and_resolver<
             .map(std::convert::AsRef::as_ref)
             .ok_or_else(|| anyhow::anyhow!("--diagnose requires workspace context"))?;
         handle_diagnose(
+            &mut std::io::stdout(),
             colors,
             &config,
             &registry,
@@ -437,6 +438,7 @@ where
             .map(std::convert::AsRef::as_ref)
             .ok_or_else(|| anyhow::anyhow!("--diagnose requires workspace context"))?;
         handle_diagnose(
+            &mut std::io::stdout(),
             colors,
             &config,
             &registry,

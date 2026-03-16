@@ -268,8 +268,8 @@ pub fn cleanup_stale_xml_files_with_workspace(
     force_cleanup: bool,
 ) -> io::Result<String> {
     let mut report = Vec::new();
-    let mut cleaned = 0;
-    let mut writable = 0;
+    let mut cleaned: usize = 0;
+    let mut writable: usize = 0;
 
     if !workspace.is_dir(tmp_dir) {
         return Ok("Directory doesn't exist yet - nothing to clean".to_string());
@@ -289,12 +289,12 @@ pub fn cleanup_stale_xml_files_with_workspace(
             // Remove the file
             if workspace.exists(path) {
                 workspace.remove(path)?;
-                cleaned += 1;
+                cleaned = cleaned.saturating_add(1);
                 report.push(format!("  🗑 Removed file: {}", path.display()));
             }
         } else {
             // Just count it as writable (in memory workspace, everything is writable)
-            writable += 1;
+            writable = writable.saturating_add(1);
             report.push(format!("  ✓ {} is writable", path.display()));
         }
     }

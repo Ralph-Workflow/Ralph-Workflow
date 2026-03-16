@@ -23,6 +23,10 @@ pub struct DiffFileSection {
 /// Extract text content from an XML tag.
 ///
 /// Simple extraction for well-formed tags. Returns None if tag not found.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "bounds-checked index arithmetic"
+)]
 pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
     let start_tag = format!("<{tag_name}>");
     let end_tag = format!("</{tag_name}>");

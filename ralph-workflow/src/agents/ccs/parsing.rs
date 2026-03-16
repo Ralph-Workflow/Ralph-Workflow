@@ -28,7 +28,7 @@ pub fn parse_ccs_ref(agent_name: &str) -> Option<&str> {
 }
 
 /// Check if an agent name is a CCS reference.
-#[must_use] 
+#[must_use]
 pub fn is_ccs_ref(agent_name: &str) -> bool {
     parse_ccs_ref(agent_name).is_some()
 }
@@ -78,7 +78,7 @@ fn choose_best_profile_guess<'a>(input: &str, suggestions: &'a [String]) -> Opti
         return Some(exact);
     }
     if suggestions.len() == 1 {
-        return Some(suggestions[0].as_str());
+        return Some(suggestions.first()?.as_str());
     }
     if let Some(starts) = suggestions
         .iter()
@@ -87,7 +87,7 @@ fn choose_best_profile_guess<'a>(input: &str, suggestions: &'a [String]) -> Opti
     {
         return Some(starts);
     }
-    Some(suggestions[0].as_str())
+    Some(suggestions.first()?.as_str())
 }
 
 pub(super) fn load_ccs_env_vars_with_guess(

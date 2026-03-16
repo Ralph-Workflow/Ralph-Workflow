@@ -33,6 +33,10 @@ static WORKSPACE_SCAN_UNREADABLE_DIR_WARNED: OnceLock<()> = OnceLock::new();
 /// `#[inline(never)]` prevents this function from being merged into its caller's
 /// stack frame, keeping each frame independently bounded.
 #[inline(never)]
+#[expect(
+    clippy::print_stderr,
+    reason = "diagnostic warning for filesystem issues"
+)]
 fn scan_dir_recursive(
     workspace: &dyn Workspace,
     dir: &Path,

@@ -69,7 +69,7 @@ impl OpenCodeParser {
 
                     match terminal_mode {
                         TerminalMode::Basic => {
-                            writeln!(
+                            let _ = writeln!(
                                 out,
                                 "{}[{}]{} {}{}{}",
                                 colors.dim(),
@@ -78,11 +78,10 @@ impl OpenCodeParser {
                                 colors.white(),
                                 sanitized,
                                 colors.reset()
-                            )
-                            .unwrap();
+                            );
                         }
                         TerminalMode::None => {
-                            writeln!(out, "[{prefix}] {sanitized}").unwrap();
+                            let _ = writeln!(out, "[{prefix}] {sanitized}");
                         }
                         TerminalMode::Full => unreachable!(),
                     }
@@ -97,7 +96,11 @@ impl OpenCodeParser {
         let input = tokens.input.unwrap_or(0);
         let output = tokens.output.unwrap_or(0);
         let reasoning = tokens.reasoning.unwrap_or(0);
-        let cache_read = tokens.cache.as_ref().and_then(|cache| cache.read).unwrap_or(0);
+        let cache_read = tokens
+            .cache
+            .as_ref()
+            .and_then(|cache| cache.read)
+            .unwrap_or(0);
 
         if reasoning > 0 {
             format!("in:{input} out:{output} reason:{reasoning} cache:{cache_read}")
@@ -225,8 +228,7 @@ impl OpenCodeParser {
         let _was_in_block = self.streaming_session.borrow_mut().on_message_stop();
 
         let terminal_mode = *self.terminal_mode.borrow();
-        let text_flush_non_tty =
-            self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);
+        let text_flush_non_tty = self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);
         let render_context = StepFinishRenderContext {
             is_duplicate,
             was_streaming,

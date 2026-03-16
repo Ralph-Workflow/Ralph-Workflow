@@ -93,7 +93,7 @@ impl PrefixDebouncer {
             return true;
         }
 
-        self.delta_count += 1;
+        self.delta_count = self.delta_count.saturating_add(1);
 
         // Check time-based threshold
         if let Some(threshold) = self.config.prefix_time_threshold {

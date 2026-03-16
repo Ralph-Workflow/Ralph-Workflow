@@ -29,7 +29,7 @@ impl StreamingSession {
 
         if is_mid_stream_restart {
             // Track protocol violation
-            self.protocol_violations += 1;
+            self.protocol_violations = self.protocol_violations.saturating_add(1);
             // Log the contract violation for debugging (only if verbose warnings enabled)
             if self.verbose_warnings {
                 eprintln!(
@@ -107,7 +107,7 @@ impl StreamingSession {
     /// # Returns
     /// * `Some(id)` - The current message ID
     /// * `None` - No message ID is set
-    #[must_use] 
+    #[must_use]
     pub fn get_current_message_id(&self) -> Option<&str> {
         self.current_message_id.as_deref()
     }
@@ -123,7 +123,7 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - This message has already been displayed (is a duplicate)
     /// * `false` - This is a new message
-    #[must_use] 
+    #[must_use]
     pub fn is_duplicate_final_message(&self, message_id: &str) -> bool {
         self.displayed_final_messages.contains(message_id)
     }
@@ -163,7 +163,7 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - This message was pre-rendered, suppress all streaming output
     /// * `false` - This message was not pre-rendered, allow streaming output
-    #[must_use] 
+    #[must_use]
     pub fn is_message_pre_rendered(&self, message_id: &str) -> bool {
         self.pre_rendered_message_ids.contains(message_id)
     }
@@ -180,7 +180,7 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - This content was already rendered, suppress rendering
     /// * `false` - This content was not rendered, allow rendering
-    #[must_use] 
+    #[must_use]
     pub fn is_assistant_content_rendered(&self, content_hash: u64) -> bool {
         self.rendered_assistant_content_hashes
             .contains(&content_hash)
@@ -347,7 +347,7 @@ impl StreamingSession {
     /// This is a broader check that returns true if ANY content type
     /// has been streamed. Used to skip entire message display when
     /// all content was already streamed.
-    #[must_use] 
+    #[must_use]
     pub fn has_any_streamed_content(&self) -> bool {
         !self.streamed_types.is_empty()
     }

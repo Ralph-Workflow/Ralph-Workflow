@@ -89,3 +89,17 @@ fn test_verify_gui_flag_is_accepted() {
         stderr
     );
 }
+
+#[test]
+fn test_lsp_forbidden_allow_expect_help_flag_exits_successfully() {
+    skip_if_in_verify();
+    let result = std::process::Command::new("cargo")
+        .args(["xtask", "lsp-forbidden-allow-expect", "--help"])
+        .output()
+        .expect("cargo xtask lsp-forbidden-allow-expect --help should execute");
+
+    assert!(
+        result.status.success(),
+        "lsp-forbidden-allow-expect --help should exit successfully"
+    );
+}

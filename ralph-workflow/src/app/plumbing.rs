@@ -94,21 +94,13 @@ pub fn resolve_commit_message_agents_for_testing(
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` on success or an error if the file cannot be read.
+/// Returns the commit message string on success.
 ///
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn handle_show_commit_msg_with_workspace(workspace: &dyn Workspace) -> anyhow::Result<()> {
-    match read_commit_message_file_with_workspace(workspace) {
-        Ok(msg) => {
-            println!("{msg}");
-            Ok(())
-        }
-        Err(e) => {
-            anyhow::bail!("Failed to read commit message: {e}");
-        }
-    }
+pub fn get_commit_message_from_workspace(workspace: &dyn Workspace) -> anyhow::Result<String> {
+    read_commit_message_file_with_workspace(workspace).map_err(anyhow::Error::from)
 }
 
 /// Handles the `--apply-commit` command using effect handler abstraction.

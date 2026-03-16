@@ -38,7 +38,7 @@ impl ConfigLoadWithValidationError {
                 if !global_errors.is_empty() {
                     output.push_str("~/.config/ralph-workflow.toml:\n");
                     for error in global_errors {
-                        writeln!(output, "  {}", format_single_error(error)).unwrap();
+                        let _ = writeln!(output, "  {}", format_single_error(error));
                     }
                     output.push('\n');
                 }
@@ -46,20 +46,19 @@ impl ConfigLoadWithValidationError {
                 if !local_errors.is_empty() {
                     output.push_str(".agent/ralph-workflow.toml:\n");
                     for error in local_errors {
-                        writeln!(output, "  {}", format_single_error(error)).unwrap();
+                        let _ = writeln!(output, "  {}", format_single_error(error));
                     }
                     output.push('\n');
                 }
 
                 if !other_errors.is_empty() {
                     for error in other_errors {
-                        write!(
+                        let _ = write!(
                             output,
                             "{}:\n  {}\n",
                             error.file().display(),
                             format_single_error(error)
-                        )
-                        .unwrap();
+                        );
                     }
                     output.push('\n');
                 }

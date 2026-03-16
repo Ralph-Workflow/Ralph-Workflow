@@ -468,13 +468,13 @@ fn get_start_commit_summary_impl(
             .push(head_commit.id())
             .map_err(|e| to_io_error(&e))?;
 
-        let mut count = 0;
+        let mut count: usize = 0;
         for commit_id in revwalk {
             let commit_id = commit_id.map_err(|e| to_io_error(&e))?;
             if commit_id == start_commit.id() {
                 break;
             }
-            count += 1;
+            count = count.saturating_add(1);
             if count > 1000 {
                 break;
             }

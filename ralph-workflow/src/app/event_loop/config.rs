@@ -58,7 +58,7 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
     // The defensive check in trigger_continuation provides additional safety by preventing
     // counter increment when next_attempt >= max_continue_count.
     let max_dev_continuations = ctx.config.max_dev_continuations.unwrap_or(2);
-    let max_continue_count = 1 + max_dev_continuations;
+    let max_continue_count = max_dev_continuations.saturating_add(1);
 
     // SAFETY ASSERTION: when max_dev_continuations is absent, unwrap_or(2)
     // must produce the default total-attempts cap of 3.

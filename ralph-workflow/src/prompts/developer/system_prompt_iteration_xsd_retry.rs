@@ -72,22 +72,20 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     if !schema_exists || !last_output_exists {
         diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
-            writeln!(
+            let _ = writeln!(
                 diagnostic_prefix,
                 "  - Schema file: {} (workspace.root() = {})",
                 workspace.absolute_str(schema_relative_path),
                 workspace.root().display()
-            )
-            .unwrap();
+            );
         }
         if !last_output_exists {
-            writeln!(
+            let _ = writeln!(
                 diagnostic_prefix,
                 "  - Last output: {} (workspace.root() = {})",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
                 workspace.root().display()
-            )
-            .unwrap();
+            );
         }
         diagnostic_prefix
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
@@ -191,22 +189,20 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     if !schema_exists || !last_output_exists {
         diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
         if !schema_exists {
-            writeln!(
+            let _ = writeln!(
                 diagnostic_prefix,
                 "  - Schema file: {} (workspace.root() = {})",
                 workspace.absolute_str(schema_relative_path),
                 workspace.root().display()
-            )
-            .unwrap();
+            );
         }
         if !last_output_exists {
-            writeln!(
+            let _ = writeln!(
                 diagnostic_prefix,
                 "  - Last output: {} (workspace.root() = {})",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
                 workspace.root().display()
-            )
-            .unwrap();
+            );
         }
         diagnostic_prefix
             .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
