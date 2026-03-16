@@ -301,15 +301,15 @@ pub struct NativeCheck {
 pub const NATIVE_REQUIRED_CHECKS: &[NativeCheck] = &[
     NativeCheck {
         name: "compliance-timeout-wrapper",
-        run: crate::compliance::check_timeout_wrappers,
+        run: crate::boundary::compliance::check_timeout_wrappers,
     },
     NativeCheck {
         name: "audit-no-shell-scripts",
-        run: crate::compliance::check_no_shell_scripts,
+        run: crate::boundary::compliance::check_no_shell_scripts,
     },
     NativeCheck {
         name: "tailwind4-removed-angular-classes",
-        run: crate::compliance::check_tailwind4_removed_angular_classes,
+        run: crate::boundary::compliance::check_tailwind4_removed_angular_classes,
     },
 ];
 

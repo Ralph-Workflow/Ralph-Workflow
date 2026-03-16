@@ -10,6 +10,4 @@
 //! The forbid_mutating_receiver_methods lint permits &mut self methods
 //! in boundary modules.
 
-pub mod cache;
 pub mod process;
-pub mod scanner;

@@ -30,7 +30,6 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::net::TcpStream",
     "std::net::UdpSocket",
     // Standard collections (boundary usage only)
-    "std::vec::Vec",
     "std::collections::HashMap",
     "std::collections::BTreeMap",
     "std::collections::HashSet",
@@ -42,8 +41,6 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::process::ChildStdin",
     "std::process::ChildStdout",
     "std::process::ChildStderr",
-    // Option (for .take() on Option fields)
-    "std::option::Option",
 ];
 
 dylint_linting::impl_late_lint! {

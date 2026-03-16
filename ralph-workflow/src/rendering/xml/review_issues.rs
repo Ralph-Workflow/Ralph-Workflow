@@ -45,8 +45,10 @@ pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> Strin
                 elements.issues.len()
             )
             .unwrap();
-            let issue_texts: Vec<String> = elements.issue_texts();
-            output.push_str(&render_issues_grouped_by_file(&issue_texts, output_context));
+            output.push_str(&render_issues_grouped_by_file(
+                &elements.issues,
+                output_context,
+            ));
         }
     } else {
         output.push_str("⚠️  Unable to parse issues XML\n\n");

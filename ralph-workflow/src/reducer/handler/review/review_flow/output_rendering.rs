@@ -306,7 +306,6 @@ impl MainEffectHandler {
             .filter(|outcome| outcome.pass == pass)
             .ok_or(ErrorEvent::ValidatedReviewOutcomeMissing { pass })?;
 
-<<<<<<< Updated upstream
         // Try to get structured issue data from XML for skills-mcp.
         // Fall back to plain-string reconstruction if XML is unavailable.
         let elements = ctx
@@ -326,19 +325,6 @@ impl MainEffectHandler {
                 no_issues_found: outcome.no_issues_found.clone(),
             });
 
-=======
-        let elements = crate::files::llm_output_extraction::IssuesElements {
-            issues: outcome
-                .issues
-                .iter()
-                .map(|s| crate::files::llm_output_extraction::IssueEntry {
-                    text: s.clone(),
-                    skills_mcp: None,
-                })
-                .collect(),
-            no_issues_found: outcome.no_issues_found.clone(),
-        };
->>>>>>> Stashed changes
         let markdown = render_issues_markdown(&elements);
         ctx.workspace
             .write(Path::new(".agent/ISSUES.md"), &markdown)

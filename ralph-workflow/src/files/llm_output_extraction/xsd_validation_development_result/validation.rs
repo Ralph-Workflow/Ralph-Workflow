@@ -141,23 +141,7 @@ pub fn validate_development_result_xml(
                 }
                 b"skills-mcp" => {
                     use crate::files::llm_output_extraction::xml_helpers::parse_skills_mcp;
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
                     skills_mcp_value = Some(parse_skills_mcp(&mut reader));
-=======
-                    skills_mcp_value = Some(parse_skills_mcp(&mut reader)?);
->>>>>>> Stashed changes
-=======
-                    skills_mcp_value = Some(parse_skills_mcp(&mut reader)?);
->>>>>>> Stashed changes
-=======
-                    skills_mcp_value = Some(parse_skills_mcp(&mut reader)?);
->>>>>>> Stashed changes
-=======
-                    skills_mcp_value = Some(parse_skills_mcp(&mut reader)?);
->>>>>>> Stashed changes
                 }
                 b"ralph-files-changed" => {
                     if files_changed_present {
