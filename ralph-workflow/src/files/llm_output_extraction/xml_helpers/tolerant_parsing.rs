@@ -37,6 +37,7 @@
 ///
 /// Canonical values: `"completed"`, `"partial"`, `"failed"`
 pub const DEVELOPMENT_STATUS_SYNONYMS: &[(&str, &str)] = &[
+    ("complete", "completed"),
     ("done", "completed"),
     ("success", "completed"),
     ("succeed", "completed"),
@@ -419,6 +420,16 @@ mod tests {
     fn test_development_whitespace_trimming() {
         let result = normalize_enum_value(
             "  completed  ",
+            DEVELOPMENT_VALID_VALUES,
+            DEVELOPMENT_STATUS_SYNONYMS,
+        );
+        assert_eq!(result, Some("completed".to_string()));
+    }
+
+    #[test]
+    fn test_development_synonym_complete_maps_to_completed() {
+        let result = normalize_enum_value(
+            "complete",
             DEVELOPMENT_VALID_VALUES,
             DEVELOPMENT_STATUS_SYNONYMS,
         );

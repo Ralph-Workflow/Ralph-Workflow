@@ -28,6 +28,7 @@
         <xs:element name="ralph-status">
           <xs:simpleType>
             <xs:restriction base="xs:string">
+              <xs:enumeration value="completed"/>
               <xs:enumeration value="partial"/>
               <xs:enumeration value="failed"/>
             </xs:restriction>

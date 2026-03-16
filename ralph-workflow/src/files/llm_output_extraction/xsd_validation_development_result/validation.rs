@@ -405,11 +405,12 @@ pub fn validate_development_result_xml(
 
 /// Validate continuation-mode development result XML.
 ///
-/// Continuation outputs must have status "partial" or "failed" and must include
-/// non-empty `ralph-next-steps`. The `ralph-files-changed` element, if present,
-/// is silently discarded rather than rejected — it is a harmless structural
-/// deviation. No content-quality checks are enforced on the wording of the
-/// summary or next-steps.
+/// Continuation outputs may have status "completed", "partial", or "failed".
+/// When status is "partial" or "failed", non-empty `ralph-next-steps` is required.
+/// When status is "completed", `ralph-next-steps` is optional.
+/// The `ralph-files-changed` element, if present, is silently discarded rather
+/// than rejected — it is a harmless structural deviation. No content-quality
+/// checks are enforced on the wording of the summary or next-steps.
 ///
 /// # Errors
 ///
@@ -419,25 +420,15 @@ pub fn validate_continuation_development_result_xml(
 ) -> Result<DevelopmentResultElements, XsdValidationError> {
     let elements = validate_development_result_xml(xml_content)?;
 
-    if elements.status != "partial" && elements.status != "failed" {
-        return Err(XsdValidationError {
-            error_type: XsdErrorType::InvalidContent,
-            element_path: "ralph-status".to_string(),
-            expected: "one of: partial, failed for continuation output".to_string(),
-            found: elements.status,
-            suggestion:
-                "Continuation output exists only when the full plan was not completed, so use <ralph-status>partial</ralph-status> or <ralph-status>failed</ralph-status>."
-                    .to_string(),
-            example: Some(EXAMPLE_DEVELOPMENT_RESULT_XML.into()),
-        });
-    }
-
     // Tolerate ralph-files-changed if present — clear it so downstream ignores it.
     let mut elements = elements;
     elements.files_changed = None;
     elements.files_changed_present = false;
 
-    if elements.next_steps.is_none() {
+    // When status is partial or failed, next_steps is required
+    if (elements.status == "partial" || elements.status == "failed")
+        && elements.next_steps.is_none()
+    {
         return Err(missing_required_error(
             "ralph-next-steps",
             "ralph-development-result",
