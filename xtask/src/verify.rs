@@ -602,6 +602,58 @@ pub struct CheckGroups<'a> {
     pub release: &'a [CommandSpec],
 }
 
+/// Controls which check groups are included in a verify run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyMode {
+    /// Default mode: only core CLI+library checks. Omits GUI cargo, frontend, and release.
+    CoreOnly,
+    /// Full mode: includes GUI cargo, Angular frontend, and release build checks.
+    WithGui,
+}
+
+impl<'a> CheckGroups<'a> {
+    /// Construct a `CheckGroups` for the given mode.
+    ///
+    /// - `CoreOnly`: `gui_cargo`, `frontend_install`, `frontend_post_install`, and `release` are empty.
+    /// - `WithGui`: all groups are fully populated.
+    pub fn for_mode(mode: VerifyMode) -> CheckGroups<'a> {
+        match mode {
+            VerifyMode::CoreOnly => CheckGroups {
+                fmt: FMT_CHECKS,
+                core_cargo: CORE_CARGO_CHECKS,
+                xtask_cargo: XTASK_CARGO_CHECKS,
+                gui_cargo: &[],
+                frontend_install: &[],
+                frontend_post_install: &[],
+                release: &[],
+            },
+            VerifyMode::WithGui => CheckGroups {
+                fmt: FMT_CHECKS,
+                core_cargo: CORE_CARGO_CHECKS,
+                xtask_cargo: XTASK_CARGO_CHECKS,
+                gui_cargo: GUI_CARGO_CHECKS,
+                frontend_install: FRONTEND_INSTALL_CHECKS,
+                frontend_post_install: FRONTEND_POST_INSTALL_CHECKS,
+                release: RELEASE_CHECKS,
+            },
+        }
+    }
+}
+
+/// Compute the total number of checks for a given mode (for progress counter).
+pub fn total_checks_for_mode(mode: VerifyMode) -> usize {
+    let groups = CheckGroups::for_mode(mode);
+    NATIVE_REQUIRED_CHECKS.len()
+        + 1 // native-scan
+        + groups.fmt.len()
+        + groups.core_cargo.len()
+        + groups.xtask_cargo.len()
+        + groups.gui_cargo.len()
+        + groups.frontend_install.len()
+        + groups.frontend_post_install.len()
+        + groups.release.len()
+}
+
 fn all_group_checks(groups: &CheckGroups<'_>) -> Vec<CommandSpec> {
     groups
         .fmt
@@ -1078,7 +1130,10 @@ pub const XTASK_CARGO_CHECKS: &[CommandSpec] = &[
         program: "cargo",
         args: &["test", "-p", "xtask"],
         success_exit_codes: &[0],
-        extra_env: &[("CARGO_TARGET_DIR", "target/xtask-parallel-verify")],
+        extra_env: &[
+            ("CARGO_TARGET_DIR", "target/xtask-parallel-verify"),
+            ("RALPH_XTASK_IN_VERIFY", "1"),
+        ],
     },
 ];
 
@@ -2019,6 +2074,27 @@ mod tests {
                 spec.name
             );
         }
+    }
+
+    /// Verifies that test-xtask sets the recursion guard env var to prevent infinite verify loops.
+    /// This is a critical defense-in-depth layer: when verify runs test-xtask, any nested
+    /// verify invocation will detect RALPH_XTASK_IN_VERIFY and exit early.
+    #[test]
+    fn test_test_xtask_check_sets_recursion_guard_env_var() {
+        let test_xtask = XTASK_CARGO_CHECKS
+            .iter()
+            .find(|spec| spec.name == "test-xtask")
+            .expect("test-xtask should exist in XTASK_CARGO_CHECKS");
+
+        let has_recursion_guard = test_xtask
+            .extra_env
+            .iter()
+            .any(|(k, v)| *k == "RALPH_XTASK_IN_VERIFY" && *v == "1");
+
+        assert!(
+            has_recursion_guard,
+            "test-xtask must set RALPH_XTASK_IN_VERIFY=1 to prevent infinite recursion"
+        );
     }
 
     #[test]
@@ -4065,6 +4141,104 @@ error: could not compile `ralph-workflow` (lib test) due to 1 previous error
             failure.stdout.starts_with(FORBIDDEN_ALLOW_EXPECT_POLICY),
             "failure output should start with policy text, got: {}",
             failure.stdout
+        );
+    }
+
+    // ── VerifyMode tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_gui_flag_absent_yields_empty_gui_and_frontend_groups() {
+        let groups = CheckGroups::for_mode(VerifyMode::CoreOnly);
+        assert!(
+            groups.gui_cargo.is_empty(),
+            "gui_cargo must be empty without --gui"
+        );
+        assert!(
+            groups.frontend_install.is_empty(),
+            "frontend_install must be empty without --gui"
+        );
+        assert!(
+            groups.frontend_post_install.is_empty(),
+            "frontend_post_install must be empty without --gui"
+        );
+        assert!(
+            groups.release.is_empty(),
+            "release checks must be empty without --gui"
+        );
+    }
+
+    #[test]
+    fn test_gui_flag_present_yields_full_gui_and_frontend_groups() {
+        let groups = CheckGroups::for_mode(VerifyMode::WithGui);
+        assert!(
+            !groups.gui_cargo.is_empty(),
+            "gui_cargo must be populated with --gui"
+        );
+        assert!(
+            !groups.frontend_install.is_empty(),
+            "frontend_install must be populated with --gui"
+        );
+        assert!(
+            !groups.frontend_post_install.is_empty(),
+            "frontend_post_install must be populated with --gui"
+        );
+        assert!(
+            !groups.release.is_empty(),
+            "release checks must be populated with --gui"
+        );
+    }
+
+    #[test]
+    fn test_core_checks_always_present_regardless_of_gui_flag() {
+        for mode in [VerifyMode::CoreOnly, VerifyMode::WithGui] {
+            let groups = CheckGroups::for_mode(mode);
+            assert!(!groups.fmt.is_empty(), "fmt checks must always be present");
+            assert!(
+                !groups.core_cargo.is_empty(),
+                "core_cargo checks must always be present"
+            );
+            assert!(
+                !groups.xtask_cargo.is_empty(),
+                "xtask_cargo checks must always be present"
+            );
+        }
+    }
+
+    #[test]
+    fn test_total_checks_count_matches_core_only_mode() {
+        let groups = CheckGroups::for_mode(VerifyMode::CoreOnly);
+        let total = total_checks_for_mode(VerifyMode::CoreOnly);
+        let actual_count = groups.fmt.len()
+            + groups.core_cargo.len()
+            + groups.xtask_cargo.len()
+            + groups.gui_cargo.len()
+            + groups.frontend_install.len()
+            + groups.frontend_post_install.len()
+            + groups.release.len()
+            + NATIVE_REQUIRED_CHECKS.len()
+            + 1; // native-scan
+        assert_eq!(
+            total, actual_count,
+            "total_checks_for_mode must match group sizes for CoreOnly"
+        );
+    }
+
+    #[test]
+    fn test_total_checks_count_matches_with_gui_mode() {
+        let groups = CheckGroups::for_mode(VerifyMode::WithGui);
+        let total = total_checks_for_mode(VerifyMode::WithGui);
+        let actual_count = groups.fmt.len()
+            + groups.core_cargo.len()
+            + groups.xtask_cargo.len()
+            + groups.gui_cargo.len()
+            + groups.frontend_install.len()
+            + groups.frontend_post_install.len()
+            + groups.release.len()
+            + NATIVE_REQUIRED_CHECKS.len()
+            + 1; // native-scan
+        assert_eq!(
+            total, actual_count,
+            "total_checks_for_mode must match group sizes for WithGui"
         );
     }
 }
