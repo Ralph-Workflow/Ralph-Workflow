@@ -3,6 +3,12 @@
 // This file contains the production implementation that performs actual
 // filesystem operations relative to the repository root.
 
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+use super::super::{DirEntry, Workspace};
+
 /// Production workspace implementation using the real filesystem.
 ///
 /// All file operations are performed relative to the repository root using `std::fs`.

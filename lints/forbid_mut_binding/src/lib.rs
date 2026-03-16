@@ -1,5 +1,11 @@
 #![feature(rustc_private)]
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// ── Lint policy ──
+// This rule enforces a functional programming principle.  The rule itself
+// (what it forbids, where it permits exceptions) MUST NOT be altered.
+// If the *implementation* has a bug — false positives, false negatives,
+// or code that contradicts the principle it enforces — fix the
+// implementation.  The spirit of the rule is authoritative, not the
+// current code.
 #![deny(warnings)]
 #![deny(clippy::all)]
 
@@ -20,22 +26,31 @@ const BOUNDARY_MODULES: &[&str] = &["io", "runtime", "ffi", "boundary"];
 dylint_linting::impl_early_lint! {
     /// ### What it does
     ///
-    /// Rejects `let mut` bindings outside of explicitly whitelisted boundary
-    /// modules (`io`, `runtime`, `ffi`, `boundary`).
+    /// Rejects mutable bindings (`let mut`, mutable function parameters)
+    /// outside of explicitly whitelisted boundary modules (`io/`, `runtime/`,
+    /// `ffi/`, `boundary/`).
     ///
-    /// ### Why is this bad?
+    /// ### FP principle: immutability by default
     ///
-    /// Mutable bindings encourage imperative, mutation-heavy code. Preferring
-    /// immutable bindings and functional transformations produces code that is
-    /// easier to reason about, test, and compose.
+    /// In Haskell every binding is immutable — there is no `let mut`.
+    /// Values are transformed by producing new values, not by mutating
+    /// existing ones.  This makes code referentially transparent: you
+    /// can substitute a binding with its definition anywhere without
+    /// changing the program's meaning.
+    ///
+    /// In Rust, mutable bindings break that property.  They encourage
+    /// imperative accumulation patterns that are harder to reason about,
+    /// test, and compose.  Prefer `fold`, `map`, `collect`, and other
+    /// combinator-based transformations that return new values.
     ///
     /// ### Boundary exceptions
     ///
-    /// Low-level boundary code (I/O, FFI, runtime glue) often must interact
-    /// with APIs that require mutation. Place such code in a module whose path
-    /// contains one of the boundary markers listed above.
+    /// Boundary code (I/O, FFI, runtime glue) often must interact with
+    /// APIs that require mutation.  Place such code in a module whose
+    /// path contains one of the boundary markers.  This mirrors the
+    /// Haskell separation between pure code and the `IO` monad.
     ///
-    /// ### Example (bad)
+    /// ### Example (bad — mutable accumulator)
     ///
     /// ```rust,ignore
     /// let mut total = 0;
@@ -44,7 +59,7 @@ dylint_linting::impl_early_lint! {
     /// }
     /// ```
     ///
-    /// ### Example (good)
+    /// ### Example (good — immutable fold)
     ///
     /// ```rust,ignore
     /// let total: u64 = items.iter().map(|item| item.price).sum();
@@ -115,6 +130,8 @@ mod tests {
     use super::path_contains_boundary_component;
     use std::path::Path;
 
+    // ── All four boundary modules must be detected ──
+
     #[test]
     fn boundary_io_module_is_detected() {
         assert!(path_contains_boundary_component(Path::new(
@@ -137,11 +154,54 @@ mod tests {
     }
 
     #[test]
+    fn boundary_dir_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/boundary/adapter.rs"
+        )));
+    }
+
+    // ── Non-boundary modules must NOT be detected ──
+
+    #[test]
     fn non_boundary_module_is_not_detected() {
         assert!(!path_contains_boundary_component(Path::new(
             "src/pipeline/reducer.rs"
         )));
     }
+
+    #[test]
+    fn non_boundary_domain_module_is_not_detected() {
+        assert!(!path_contains_boundary_component(Path::new(
+            "src/config/settings.rs"
+        )));
+    }
+
+    // ── File-level boundary module (.rs file matching a marker name) ──
+
+    #[test]
+    fn file_level_io_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new("src/io.rs")));
+    }
+
+    #[test]
+    fn file_level_runtime_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/runtime.rs"
+        )));
+    }
+
+    // ── Substring boundary markers must NOT match ──
+
+    #[test]
+    fn iostream_is_not_a_boundary_module() {
+        // "iostream" contains "io" as a substring but the path component
+        // is "iostream", not "io", so it must not match.
+        assert!(!path_contains_boundary_component(Path::new(
+            "src/iostream/reader.rs"
+        )));
+    }
+
+    // ── UI tests ──
 
     #[test]
     fn ui() {

@@ -18,9 +18,8 @@
 
 #![deny(unsafe_code)]
 
-use std::env;
-
 use crate::executor::ProcessExecutor;
+use crate::git_helpers::runtime::{get_system_hostname, get_system_username};
 
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
@@ -81,24 +80,9 @@ impl GitIdentity {
 /// - On Windows: `%USERNAME%` env var
 #[must_use]
 pub fn fallback_username(executor: Option<&dyn ProcessExecutor>) -> String {
-    // Try environment variables first (fastest)
-    if cfg!(unix) {
-        if let Ok(user) = env::var("USER") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
-        if let Ok(user) = env::var("LOGNAME") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
-    } else if cfg!(windows) {
-        if let Ok(user) = env::var("USERNAME") {
-            if !user.trim().is_empty() {
-                return user.trim().to_string();
-            }
-        }
+    // Try environment variables first (fastest) - uses runtime function
+    if let Some(user) = get_system_username() {
+        return user;
     }
 
     // As a last resort, try to run whoami (Unix only)
@@ -133,12 +117,9 @@ pub fn fallback_email(username: &str, executor: Option<&dyn ProcessExecutor>) ->
 
 /// Get the system hostname.
 fn get_hostname(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
-    // Try HOSTNAME environment variable first (fastest)
-    if let Ok(hostname) = env::var("HOSTNAME") {
-        let hostname = hostname.trim();
-        if !hostname.is_empty() {
-            return Some(hostname.to_string());
-        }
+    // Try HOSTNAME environment variable first (fastest) - uses runtime function
+    if let Some(hostname) = get_system_hostname() {
+        return Some(hostname);
     }
 
     // Try the `hostname` command

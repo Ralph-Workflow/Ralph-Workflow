@@ -24,11 +24,12 @@ impl SystemInfo {
 
     /// Gather system information with a provided process executor.
     pub fn gather_with_executor(executor: &dyn ProcessExecutor) -> Self {
-        let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
-        let working_directory = std::env::current_dir()
+        use crate::diagnostics::runtime as rt;
+        let os = rt::get_os_info();
+        let working_directory = rt::get_working_directory()
             .ok()
             .map(|p| p.display().to_string());
-        let shell = std::env::var("SHELL").ok();
+        let shell = rt::get_shell();
 
         let git_version = executor
             .execute("git", &["--version"], &[], None)
@@ -66,7 +67,7 @@ impl SystemInfo {
             git_repo,
             git_branch,
             uncommitted_changes,
-            arch: std::env::consts::ARCH.to_string(),
+            arch: rt::get_arch().to_string(),
         }
     }
 }

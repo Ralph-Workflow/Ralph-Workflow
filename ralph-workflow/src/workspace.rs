@@ -75,8 +75,6 @@
 //!
 //! - [`crate::executor::ProcessExecutor`] - Similar abstraction for process execution
 
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -112,14 +110,14 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn read(&self, relative: &Path) -> io::Result<String>;
+    fn read(&self, relative: &Path) -> std::io::Result<String>;
 
     /// Read a file as bytes relative to the repository root.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn read_bytes(&self, relative: &Path) -> io::Result<Vec<u8>>;
+    fn read_bytes(&self, relative: &Path) -> std::io::Result<Vec<u8>>;
 
     /// Write content to a file relative to the repository root.
     /// Creates parent directories if they don't exist.
@@ -127,7 +125,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn write(&self, relative: &Path, content: &str) -> io::Result<()>;
+    fn write(&self, relative: &Path, content: &str) -> std::io::Result<()>;
 
     /// Write bytes to a file relative to the repository root.
     /// Creates parent directories if they don't exist.
@@ -135,7 +133,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn write_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()>;
+    fn write_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()>;
 
     /// Append bytes to a file relative to the repository root.
     /// Creates the file if it doesn't exist. Creates parent directories if needed.
@@ -143,7 +141,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn append_bytes(&self, relative: &Path, content: &[u8]) -> io::Result<()>;
+    fn append_bytes(&self, relative: &Path, content: &[u8]) -> std::io::Result<()>;
 
     /// Check if a path exists relative to the repository root.
     fn exists(&self, relative: &Path) -> bool;
@@ -159,14 +157,14 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn remove(&self, relative: &Path) -> io::Result<()>;
+    fn remove(&self, relative: &Path) -> std::io::Result<()>;
 
     /// Remove a file if it exists, silently succeeding if it doesn't.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn remove_if_exists(&self, relative: &Path) -> io::Result<()>;
+    fn remove_if_exists(&self, relative: &Path) -> std::io::Result<()>;
 
     /// Remove a directory and all its contents relative to the repository root.
     ///
@@ -176,21 +174,21 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn remove_dir_all(&self, relative: &Path) -> io::Result<()>;
+    fn remove_dir_all(&self, relative: &Path) -> std::io::Result<()>;
 
     /// Remove a directory and all its contents if it exists, silently succeeding if it doesn't.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn remove_dir_all_if_exists(&self, relative: &Path) -> io::Result<()>;
+    fn remove_dir_all_if_exists(&self, relative: &Path) -> std::io::Result<()>;
 
     /// Create a directory and all parent directories relative to the repository root.
     ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn create_dir_all(&self, relative: &Path) -> io::Result<()>;
+    fn create_dir_all(&self, relative: &Path) -> std::io::Result<()>;
 
     /// List entries in a directory relative to the repository root.
     ///
@@ -201,7 +199,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>>;
+    fn read_dir(&self, relative: &Path) -> std::io::Result<Vec<DirEntry>>;
 
     /// Rename/move a file from one path to another relative to the repository root.
     ///
@@ -211,7 +209,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()>;
 
     /// Write content to a file atomically using temp file + rename pattern.
     ///
@@ -241,7 +239,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn write_atomic(&self, relative: &Path, content: &str) -> io::Result<()>;
+    fn write_atomic(&self, relative: &Path, content: &str) -> std::io::Result<()>;
 
     /// Set a file to read-only permissions.
     ///
@@ -256,7 +254,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn set_readonly(&self, relative: &Path) -> io::Result<()>;
+    fn set_readonly(&self, relative: &Path) -> std::io::Result<()>;
 
     /// Set a file to writable permissions.
     ///
@@ -270,7 +268,7 @@ pub trait Workspace: Send + Sync {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    fn set_writable(&self, relative: &Path) -> io::Result<()>;
+    fn set_writable(&self, relative: &Path) -> std::io::Result<()>;
 
     // =========================================================================
     // Path resolution (default implementations)
@@ -377,10 +375,13 @@ pub trait Workspace: Send + Sync {
 }
 
 // ============================================================================
-// Production Implementation: WorkspaceFs
+// Production Implementation: WorkspaceFs (in io/ boundary module)
 // ============================================================================
 
-include!("workspace/workspace_fs.rs");
+pub mod io;
+
+// Re-export WorkspaceFs for backward compatibility
+pub use io::WorkspaceFs;
 
 // ============================================================================
 // Test Implementation: MemoryWorkspace

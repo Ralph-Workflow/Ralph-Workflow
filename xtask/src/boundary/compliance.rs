@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use aho_corasick::AhoCorasick;
 
-use crate::scanner::LineIndex;
-use crate::verify::{CheckStatus, NativeCheckResult};
+use crate::io::scanner::LineIndex;
+use crate::runtime::verify::{CheckStatus, NativeCheckResult};
 
 // Pattern IDs for the timeout-wrapper Aho-Corasick automaton (O(n+m+z) scan).
 const PAT_TEST_ATTR: usize = 0; // "#[test]"
@@ -230,7 +230,8 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
     }
 
     let mut files = Vec::new();
-    if let Err(error) = crate::scanner::collect_files_with_glob(&template_dir, "*.html", &mut files)
+    if let Err(error) =
+        crate::io::scanner::collect_files_with_glob(&template_dir, "*.html", &mut files)
     {
         return NativeCheckResult {
             status: CheckStatus::Error,
@@ -300,7 +301,7 @@ pub fn check_tailwind4_removed_angular_classes(repo_root: &Path) -> NativeCheckR
 
 fn collect_rs_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    crate::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
+    crate::io::scanner::collect_files_with_glob(dir, "*.rs", &mut files)?;
     files.retain(|p| !should_skip_file(p));
     files.sort();
     Ok(files)

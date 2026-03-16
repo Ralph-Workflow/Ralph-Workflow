@@ -1,5 +1,11 @@
 #![feature(rustc_private)]
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// ── Lint policy ──
+// This rule enforces a functional programming principle.  The rule itself
+// (what it forbids, where it permits exceptions) MUST NOT be altered.
+// If the *implementation* has a bug — false positives, false negatives,
+// or code that contradicts the principle it enforces — fix the
+// implementation.  The spirit of the rule is authoritative, not the
+// current code.
 #![deny(warnings)]
 #![deny(clippy::all)]
 
@@ -20,7 +26,14 @@ const BOUNDARY_MODULES: &[&str] = &["io", "runtime", "ffi", "boundary"];
 /// Types whose `&mut self` methods are always permitted (fully qualified paths).
 ///
 /// These are types at the outermost boundary of the application that inherently
-/// require mutation (e.g., I/O handles, builders provided by frameworks).
+/// require mutation (e.g., I/O handles, process objects).
+///
+/// Standard collections (`HashMap`, `Vec`, etc.) are intentionally **not** in
+/// this list.  In the FP style of this project, domain code should build new
+/// collections via iterator combinators (`collect`, `chain`, `extend` returning
+/// a new value) rather than mutate them in place.  Collection mutation is
+/// permitted inside boundary modules, which are already exempt from this lint
+/// by the boundary-module path check.
 const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     // Standard I/O
     "std::io::BufWriter",
@@ -29,12 +42,6 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::fs::File",
     "std::net::TcpStream",
     "std::net::UdpSocket",
-    // Standard collections (boundary usage only)
-    "std::collections::HashMap",
-    "std::collections::BTreeMap",
-    "std::collections::HashSet",
-    "std::collections::BTreeSet",
-    "std::collections::VecDeque",
     // Process / OS
     "std::process::Command",
     "std::process::Child",
@@ -46,30 +53,45 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
 dylint_linting::impl_late_lint! {
     /// ### What it does
     ///
-    /// Rejects calls to methods with `&mut self` receivers unless the receiver
-    /// type appears in an allowlist of boundary types, or the call site is
-    /// inside a boundary module.
+    /// Rejects calls to methods with `&mut self` receivers unless the
+    /// receiver type appears in an allowlist of inherently-effectful I/O
+    /// types, or the call site is inside a boundary module.
     ///
-    /// ### Why is this bad?
+    /// ### FP principle: referential transparency and value semantics
     ///
-    /// Calling `&mut self` methods means the caller is mutating shared state
-    /// in place. In application-level code this makes data flow harder to
-    /// trace and breaks referential transparency. Prefer returning new values
-    /// over mutating existing ones.
+    /// In Haskell, data structures are persistent — `Data.Map.insert`
+    /// returns a *new* map rather than mutating the old one.  This
+    /// preserves referential transparency: every expression can be
+    /// replaced by its value without changing the program's meaning.
+    ///
+    /// Calling `&mut self` methods in Rust breaks that property.  The
+    /// caller is mutating state in place, which makes data flow harder
+    /// to trace and hides side effects from callers.  Prefer returning
+    /// new values via builder patterns (`with_value`, `into_iter()
+    /// .chain().collect()`, struct-update syntax) over mutating in
+    /// place.
+    ///
+    /// Standard collections (`HashMap`, `Vec`, etc.) are intentionally
+    /// **not** allowlisted globally.  Domain code should build
+    /// collections via iterator pipelines (`collect`, `chain`,
+    /// `extend` returning a new value).  Collection mutation is
+    /// permitted inside boundary modules, which are already exempt.
     ///
     /// ### Boundary exceptions
     ///
-    /// I/O handles, OS process objects, and framework builders inherently
-    /// require mutation. Their types are allowlisted. Additional boundary
-    /// code should live in modules marked with a boundary path component.
+    /// I/O handles and OS process objects inherently require mutation
+    /// — they represent external resources, not values.  Their types
+    /// are allowlisted.  Additional boundary code should live in
+    /// modules marked with a boundary path component (`io/`,
+    /// `runtime/`, `ffi/`, `boundary/`).
     ///
-    /// ### Example (bad)
+    /// ### Example (bad — in-place mutation)
     ///
     /// ```rust,ignore
     /// config.set_value("key", "value"); // &mut self
     /// ```
     ///
-    /// ### Example (good)
+    /// ### Example (good — returns new value)
     ///
     /// ```rust,ignore
     /// let config = config.with_value("key", "value"); // returns new Config
@@ -109,18 +131,23 @@ fn is_in_boundary_module(cx: &LateContext<'_>, span: rustc_span::Span) -> bool {
     }
 }
 
-fn is_allowed_receiver_type(ty: Ty<'_>) -> bool {
-    let ty_str = format!("{ty}");
-
-    // Strip references and smart pointers to get the underlying type
+/// Check whether a type string (after reference stripping) matches an
+/// allowed receiver type.  Extracted so the matching logic is unit-testable
+/// without requiring a compiler `Ty` value.
+fn is_allowed_receiver_str(ty_str: &str) -> bool {
     let base = ty_str
         .strip_prefix("&mut ")
         .or_else(|| ty_str.strip_prefix("&"))
-        .unwrap_or(&ty_str);
+        .unwrap_or(ty_str);
 
     ALLOWED_RECEIVER_TYPES
         .iter()
         .any(|allowed| base.starts_with(allowed))
+}
+
+fn is_allowed_receiver_type(ty: Ty<'_>) -> bool {
+    let ty_str = format!("{ty}");
+    is_allowed_receiver_str(&ty_str)
 }
 
 impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {
@@ -176,8 +203,10 @@ impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {
 
 #[cfg(test)]
 mod tests {
-    use super::path_contains_boundary_component;
+    use super::{is_allowed_receiver_str, path_contains_boundary_component};
     use std::path::Path;
+
+    // ── path_contains_boundary_component ──
 
     #[test]
     fn boundary_io_module_is_detected() {
@@ -187,11 +216,127 @@ mod tests {
     }
 
     #[test]
+    fn boundary_runtime_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/runtime/executor.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_ffi_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/ffi/bindings.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_dir_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/boundary/adapter.rs"
+        )));
+    }
+
+    #[test]
     fn non_boundary_module_is_not_detected() {
         assert!(!path_contains_boundary_component(Path::new(
             "src/pipeline/reducer.rs"
         )));
     }
+
+    // ── is_allowed_receiver_str: allowed I/O and process types ──
+
+    #[test]
+    fn allows_bufwriter() {
+        assert!(is_allowed_receiver_str("std::io::BufWriter<std::fs::File>"));
+    }
+
+    #[test]
+    fn allows_command() {
+        assert!(is_allowed_receiver_str("std::process::Command"));
+    }
+
+    #[test]
+    fn allows_file() {
+        assert!(is_allowed_receiver_str("std::fs::File"));
+    }
+
+    #[test]
+    fn allows_tcp_stream() {
+        assert!(is_allowed_receiver_str("std::net::TcpStream"));
+    }
+
+    #[test]
+    fn allows_child() {
+        assert!(is_allowed_receiver_str("std::process::Child"));
+    }
+
+    #[test]
+    fn allows_ref_stripped_bufwriter() {
+        assert!(is_allowed_receiver_str(
+            "&mut std::io::BufWriter<std::fs::File>"
+        ));
+    }
+
+    // ── is_allowed_receiver_str: collections must NOT be allowed globally ──
+
+    #[test]
+    fn rejects_hashmap_in_domain_code() {
+        assert!(
+            !is_allowed_receiver_str("std::collections::HashMap<String, String>"),
+            "HashMap mutation should not be globally allowed; use boundary modules"
+        );
+    }
+
+    #[test]
+    fn rejects_btreemap_in_domain_code() {
+        assert!(
+            !is_allowed_receiver_str("std::collections::BTreeMap<String, i32>"),
+            "BTreeMap mutation should not be globally allowed; use boundary modules"
+        );
+    }
+
+    #[test]
+    fn rejects_hashset_in_domain_code() {
+        assert!(
+            !is_allowed_receiver_str("std::collections::HashSet<String>"),
+            "HashSet mutation should not be globally allowed; use boundary modules"
+        );
+    }
+
+    #[test]
+    fn rejects_btreeset_in_domain_code() {
+        assert!(
+            !is_allowed_receiver_str("std::collections::BTreeSet<i32>"),
+            "BTreeSet mutation should not be globally allowed; use boundary modules"
+        );
+    }
+
+    #[test]
+    fn rejects_vecdeque_in_domain_code() {
+        assert!(
+            !is_allowed_receiver_str("std::collections::VecDeque<u8>"),
+            "VecDeque mutation should not be globally allowed; use boundary modules"
+        );
+    }
+
+    // ── is_allowed_receiver_str: custom types must not be allowed ──
+
+    #[test]
+    fn rejects_custom_config_type() {
+        assert!(!is_allowed_receiver_str("my_app::Config"));
+    }
+
+    #[test]
+    fn rejects_bare_string() {
+        assert!(!is_allowed_receiver_str("String"));
+    }
+
+    #[test]
+    fn rejects_vec() {
+        assert!(!is_allowed_receiver_str("Vec<i32>"));
+    }
+
+    // ── UI tests ──
 
     #[test]
     fn ui() {

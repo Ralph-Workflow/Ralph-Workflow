@@ -24,35 +24,51 @@ use crate::reducer::ui_event::{XmlOutputContext, XmlOutputType};
 /// Render skills-mcp recommendations in markdown format.
 ///
 /// Renders structured skills and MCPs with optional reasons, or raw content if no structured data.
-pub fn render_skills_mcp_markdown(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
-    use std::fmt::Write as _;
+#[must_use]
+pub fn render_skills_mcp_markdown(skills_mcp: Option<&SkillsMcp>) -> String {
+    let Some(sm) = skills_mcp else {
+        return String::new();
+    };
 
-    if let Some(sm) = skills_mcp {
-        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
-        if has_structured || sm.raw_content.is_some() {
-            output.push_str("  - Skills & MCP:\n");
-            for skill in &sm.skills {
-                if let Some(ref reason) = skill.reason {
-                    writeln!(output, "    - skill: {} \u{2014} {}", skill.name, reason).unwrap();
-                } else {
-                    writeln!(output, "    - skill: {}", skill.name).unwrap();
-                }
-            }
-            for mcp in &sm.mcps {
-                if let Some(ref reason) = mcp.reason {
-                    writeln!(output, "    - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
-                } else {
-                    writeln!(output, "    - mcp: {}", mcp.name).unwrap();
-                }
-            }
-            if let Some(ref raw) = sm.raw_content {
-                let trimmed: &str = raw.trim();
-                if !trimmed.is_empty() && !has_structured {
-                    writeln!(output, "    - {trimmed}").unwrap();
-                }
-            }
+    let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+    if !(has_structured || sm.raw_content.is_some()) {
+        return String::new();
+    }
+
+    let mut output = String::new();
+
+    output.push_str("  - Skills & MCP:\n");
+
+    for skill in &sm.skills {
+        let line = if let Some(ref reason) = skill.reason {
+            format!("    - skill: {} \u{2014} {}", skill.name, reason)
+        } else {
+            format!("    - skill: {}", skill.name)
+        };
+        output.push_str(&line);
+        output.push('\n');
+    }
+
+    for mcp in &sm.mcps {
+        let line = if let Some(ref reason) = mcp.reason {
+            format!("    - mcp: {} \u{2014} {}", mcp.name, reason)
+        } else {
+            format!("    - mcp: {}", mcp.name)
+        };
+        output.push_str(&line);
+        output.push('\n');
+    }
+
+    if let Some(ref raw) = sm.raw_content {
+        let trimmed: &str = raw.trim();
+        if !trimmed.is_empty() && !has_structured {
+            output.push_str("    - ");
+            output.push_str(trimmed);
+            output.push('\n');
         }
     }
+
+    output
 }
 
 /// Render XML content based on its type.

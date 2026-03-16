@@ -3,6 +3,7 @@
 //! This module provides comprehensive diagnostic information for troubleshooting
 //! Ralph configuration and environment issues.
 
+pub mod runtime;
 mod agents;
 mod system;
 

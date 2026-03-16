@@ -8,15 +8,15 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
-pub use crate::verify::{CommandOutput, CommandRunner, CommandSpec};
+pub use crate::runtime::verify::{CommandOutput, CommandRunner, CommandSpec};
 
 pub struct RealRunner {
     repo_root: PathBuf,
-    reporter: Arc<dyn crate::verify::ProgressReporter>,
+    reporter: Arc<dyn crate::runtime::verify::ProgressReporter>,
 }
 
 impl RealRunner {
-    pub fn new(reporter: Arc<dyn crate::verify::ProgressReporter>) -> Self {
+    pub fn new(reporter: Arc<dyn crate::runtime::verify::ProgressReporter>) -> Self {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("xtask manifest dir has a parent")

@@ -1,5 +1,11 @@
 #![feature(rustc_private)]
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// ── Lint policy ──
+// This rule enforces a code-organisation principle.  The rule itself
+// (what it forbids, where it permits exceptions) MUST NOT be altered.
+// If the *implementation* has a bug — false positives, false negatives,
+// or code that contradicts the principle it enforces — fix the
+// implementation.  The spirit of the rule is authoritative, not the
+// current code.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]

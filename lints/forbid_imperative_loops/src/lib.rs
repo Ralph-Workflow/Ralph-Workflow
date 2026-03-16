@@ -1,5 +1,11 @@
 #![feature(rustc_private)]
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// ── Lint policy ──
+// This rule enforces a functional programming principle.  The rule itself
+// (what it forbids, where it permits exceptions) MUST NOT be altered.
+// If the *implementation* has a bug — false positives, false negatives,
+// or code that contradicts the principle it enforces — fix the
+// implementation.  The spirit of the rule is authoritative, not the
+// current code.
 #![deny(warnings)]
 #![deny(clippy::all)]
 
@@ -20,21 +26,31 @@ dylint_linting::impl_early_lint! {
     /// Rejects `while`, `loop`, and `for` loop constructs outside of
     /// explicitly whitelisted boundary modules.
     ///
-    /// ### Why is this bad?
+    /// ### FP principle: avoid explicit recursion and imperative iteration
     ///
-    /// Imperative loops encourage mutable accumulators, index manipulation,
-    /// and break/continue control flow that obscures intent. Iterator
-    /// combinators (`map`, `filter`, `fold`, `for_each`, etc.) express the
-    /// same transformations more declaratively and compose better.
+    /// In functional programming, data transformations are expressed as
+    /// compositions of higher-order functions (`map`, `filter`, `fold`,
+    /// `flat_map`, etc.) rather than step-by-step mutation inside a loop
+    /// body.  The Haskell community summarises this as "avoid explicit
+    /// recursion" — prefer combinators that make the *shape* of the
+    /// transformation visible in the type (HaskellWiki: "Avoid explicit
+    /// recursion").
+    ///
+    /// Imperative loops in Rust encourage mutable accumulators, index
+    /// manipulation, and `break`/`continue` control flow that obscures
+    /// intent.  Iterator pipelines express the same work declaratively
+    /// and compose better.
     ///
     /// ### Boundary exceptions
     ///
-    /// Low-level boundary code (I/O, runtime, FFI) sometimes needs explicit
-    /// loop constructs for retry logic, polling, or byte-level parsing.
-    /// Place such code in a module whose path contains one of the boundary
-    /// markers.
+    /// Boundary code (I/O polling, retry loops, byte-level parsing)
+    /// sometimes genuinely needs an imperative loop because the
+    /// surrounding API is inherently effectful.  Place such code in a
+    /// module whose path contains a boundary marker (`io/`, `runtime/`,
+    /// `ffi/`, `boundary/`).  This mirrors the Haskell separation
+    /// between pure computation and the `IO` monad.
     ///
-    /// ### Example (bad)
+    /// ### Example (bad — imperative accumulation)
     ///
     /// ```rust,ignore
     /// let mut result = Vec::new();
@@ -45,7 +61,7 @@ dylint_linting::impl_early_lint! {
     /// }
     /// ```
     ///
-    /// ### Example (good)
+    /// ### Example (good — declarative pipeline)
     ///
     /// ```rust,ignore
     /// let result: Vec<_> = items
@@ -127,6 +143,8 @@ mod tests {
     use super::path_contains_boundary_component;
     use std::path::Path;
 
+    // ── All four boundary modules must be detected ──
+
     #[test]
     fn boundary_io_module_is_detected() {
         assert!(path_contains_boundary_component(Path::new(
@@ -135,11 +153,59 @@ mod tests {
     }
 
     #[test]
+    fn boundary_runtime_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/runtime/executor.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_ffi_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/ffi/bindings.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_dir_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/boundary/adapter.rs"
+        )));
+    }
+
+    // ── Non-boundary modules must NOT be detected ──
+
+    #[test]
     fn non_boundary_module_is_not_detected() {
         assert!(!path_contains_boundary_component(Path::new(
             "src/pipeline/state.rs"
         )));
     }
+
+    #[test]
+    fn non_boundary_domain_module_is_not_detected() {
+        assert!(!path_contains_boundary_component(Path::new(
+            "src/reducer/logic.rs"
+        )));
+    }
+
+    // ── File-level boundary module (.rs file matching a marker name) ──
+
+    #[test]
+    fn file_level_io_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new("src/io.rs")));
+    }
+
+    // ── Substring boundary markers must NOT match ──
+
+    #[test]
+    fn iostream_is_not_a_boundary_module() {
+        assert!(!path_contains_boundary_component(Path::new(
+            "src/iostream/reader.rs"
+        )));
+    }
+
+    // ── UI tests ──
 
     #[test]
     fn ui() {

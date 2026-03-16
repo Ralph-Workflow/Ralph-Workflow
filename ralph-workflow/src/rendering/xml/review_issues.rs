@@ -196,9 +196,16 @@ static SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 fn parse_issue_entry(issue: &IssueEntry) -> ParsedIssue {
-    let mut parsed = parse_issue(&issue.text);
-    parsed.skills_mcp.clone_from(&issue.skills_mcp);
-    parsed
+    let parsed = parse_issue(&issue.text);
+    ParsedIssue {
+        file: parsed.file,
+        line_start: parsed.line_start,
+        line_end: parsed.line_end,
+        severity: parsed.severity,
+        snippet: parsed.snippet,
+        description: parsed.description,
+        skills_mcp: issue.skills_mcp.clone(),
+    }
 }
 
 fn parse_issue(issue: &str) -> ParsedIssue {

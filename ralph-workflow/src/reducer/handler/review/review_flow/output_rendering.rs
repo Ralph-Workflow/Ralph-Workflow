@@ -284,7 +284,7 @@ fn render_issues_markdown(
         output.push('\n');
 
         // Render skills-mcp for this issue if present
-        render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
+        output.push_str(&render_skills_mcp_markdown(issue.skills_mcp.as_ref()));
     }
 
     output

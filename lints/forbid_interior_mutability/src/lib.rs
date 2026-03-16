@@ -1,5 +1,11 @@
 #![feature(rustc_private)]
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// ── Lint policy ──
+// This rule enforces a functional programming principle.  The rule itself
+// (what it forbids, where it permits exceptions) MUST NOT be altered.
+// If the *implementation* has a bug — false positives, false negatives,
+// or code that contradicts the principle it enforces — fix the
+// implementation.  The spirit of the rule is authoritative, not the
+// current code.
 #![deny(warnings)]
 #![deny(clippy::all)]
 
@@ -36,19 +42,28 @@ dylint_linting::impl_early_lint! {
     /// `UnsafeCell`, `Mutex`, `RwLock`, `OnceLock`, `LazyLock`, `OnceCell`)
     /// in type annotations outside boundary modules.
     ///
-    /// ### Why is this bad?
+    /// ### FP principle: `&T` must mean truly immutable
     ///
-    /// Interior mutability lets code mutate values behind shared references,
-    /// breaking the expectation that `&T` is truly immutable. This makes
-    /// reasoning about data flow much harder and hides mutation from callers.
+    /// In Haskell, a value *is* immutable — there is no mechanism to
+    /// mutate it behind a shared reference.  Rust's borrow checker
+    /// approximates this with `&T`, but interior-mutability wrappers
+    /// (`Cell`, `RefCell`, `Mutex`, …) break the guarantee: code can
+    /// mutate values behind `&T`, destroying referential transparency
+    /// and making data flow invisible to callers.
+    ///
+    /// Keeping interior mutability out of domain code means `&T` in a
+    /// function signature is a genuine promise of immutability, just
+    /// as it would be in Haskell.
     ///
     /// ### Boundary exceptions
     ///
-    /// Some boundary code (I/O adapters, caches, runtime internals) genuinely
-    /// needs interior mutability. Place such code in a module whose path
-    /// contains one of the boundary markers.
+    /// Boundary code (I/O adapters, caches, runtime internals)
+    /// sometimes genuinely needs interior mutability — Haskell uses
+    /// `IORef` / `MVar` in its `IO` monad for the same reason.  Place
+    /// such code in a module whose path contains one of the boundary
+    /// markers (`io/`, `runtime/`, `ffi/`, `boundary/`).
     ///
-    /// ### Example (bad)
+    /// ### Example (bad — hidden mutation behind `&T`)
     ///
     /// ```rust,ignore
     /// struct Config {
@@ -56,10 +71,9 @@ dylint_linting::impl_early_lint! {
     /// }
     /// ```
     ///
-    /// ### Example (good)
+    /// ### Example (good — return a new value)
     ///
     /// ```rust,ignore
-    /// // Return a new Config with the cache populated
     /// fn with_cached(config: &Config, entries: HashMap<String, String>) -> Config {
     ///     Config { cache: entries, ..config.clone() }
     /// }
@@ -99,6 +113,22 @@ fn is_in_boundary_module(cx: &EarlyContext<'_>, span: rustc_span::Span) -> bool 
     }
 }
 
+/// Check whether a sequence of path segments ends with a forbidden type's
+/// segments.  Returns the display name when it matches.
+fn segments_match_forbidden(segments: &[&str]) -> Option<&'static str> {
+    FORBIDDEN_TYPES
+        .iter()
+        .find(|(forbidden_segments, _)| {
+            segments.len() >= forbidden_segments.len() && {
+                let tail = &segments[segments.len() - forbidden_segments.len()..];
+                tail.iter()
+                    .zip(forbidden_segments.iter())
+                    .all(|(a, b)| *a == *b)
+            }
+        })
+        .map(|(_, display_name)| *display_name)
+}
+
 fn matches_forbidden_type(ty: &Ty) -> Option<&'static str> {
     if let TyKind::Path(None, path) = &ty.kind {
         let segments: Vec<&str> = path
@@ -106,21 +136,10 @@ fn matches_forbidden_type(ty: &Ty) -> Option<&'static str> {
             .iter()
             .map(|s| s.ident.name.as_str())
             .collect();
-        for (forbidden_segments, display_name) in FORBIDDEN_TYPES {
-            // Match if the type path ends with the forbidden segments
-            if segments.len() >= forbidden_segments.len() {
-                let tail = &segments[segments.len() - forbidden_segments.len()..];
-                if tail
-                    .iter()
-                    .zip(forbidden_segments.iter())
-                    .all(|(a, b)| *a == *b)
-                {
-                    return Some(display_name);
-                }
-            }
-        }
+        segments_match_forbidden(&segments)
+    } else {
+        None
     }
-    None
 }
 
 /// Recursively walk a type AST node to find forbidden interior-mutability
@@ -149,20 +168,21 @@ fn check_ty_recursive(cx: &EarlyContext<'_>, ty: &Ty) {
 
     // Walk into generic arguments to catch patterns like Arc<Mutex<T>>
     if let TyKind::Path(_, path) = &ty.kind {
-        for segment in &path.segments {
-            if let Some(args) = &segment.args {
-                if let rustc_ast::ast::GenericArgs::AngleBracketed(angle_args) = args.as_ref() {
-                    for arg in &angle_args.args {
-                        if let rustc_ast::ast::AngleBracketedArg::Arg(
-                            rustc_ast::ast::GenericArg::Type(inner_ty),
-                        ) = arg
-                        {
-                            check_ty_recursive(cx, inner_ty);
-                        }
-                    }
-                }
-            }
-        }
+        path.segments
+            .iter()
+            .filter_map(|segment| segment.args.as_ref())
+            .filter_map(|args| match args.as_ref() {
+                rustc_ast::ast::GenericArgs::AngleBracketed(angle_args) => Some(angle_args),
+                _ => None,
+            })
+            .flat_map(|angle_args| angle_args.args.iter())
+            .filter_map(|arg| match arg {
+                rustc_ast::ast::AngleBracketedArg::Arg(rustc_ast::ast::GenericArg::Type(
+                    inner_ty,
+                )) => Some(inner_ty),
+                _ => None,
+            })
+            .for_each(|inner_ty| check_ty_recursive(cx, inner_ty));
     }
 }
 
@@ -170,9 +190,10 @@ impl EarlyLintPass for ForbidInteriorMutability {
     fn check_item(&mut self, cx: &EarlyContext<'_>, item: &Item) {
         // Check struct fields
         if let ItemKind::Struct(_, _, variant_data) = &item.kind {
-            for field in variant_data.fields() {
-                check_ty_recursive(cx, &field.ty);
-            }
+            variant_data
+                .fields()
+                .iter()
+                .for_each(|field| check_ty_recursive(cx, &field.ty));
         }
     }
 
@@ -183,8 +204,10 @@ impl EarlyLintPass for ForbidInteriorMutability {
 
 #[cfg(test)]
 mod tests {
-    use super::path_contains_boundary_component;
+    use super::{path_contains_boundary_component, segments_match_forbidden};
     use std::path::Path;
+
+    // ── path_contains_boundary_component ──
 
     #[test]
     fn boundary_io_module_is_detected() {
@@ -194,11 +217,140 @@ mod tests {
     }
 
     #[test]
+    fn boundary_runtime_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/runtime/executor.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_ffi_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/ffi/bindings.rs"
+        )));
+    }
+
+    #[test]
+    fn boundary_dir_module_is_detected() {
+        assert!(path_contains_boundary_component(Path::new(
+            "src/boundary/adapter.rs"
+        )));
+    }
+
+    #[test]
     fn non_boundary_module_is_not_detected() {
         assert!(!path_contains_boundary_component(Path::new(
             "src/config/settings.rs"
         )));
     }
+
+    #[test]
+    fn non_boundary_domain_module_is_not_detected() {
+        assert!(!path_contains_boundary_component(Path::new(
+            "src/pipeline/state.rs"
+        )));
+    }
+
+    // ── segments_match_forbidden ──
+
+    #[test]
+    fn detects_bare_mutex() {
+        assert_eq!(
+            segments_match_forbidden(&["Mutex"]),
+            Some("std::sync::Mutex")
+        );
+    }
+
+    #[test]
+    fn detects_fully_qualified_mutex() {
+        assert_eq!(
+            segments_match_forbidden(&["std", "sync", "Mutex"]),
+            Some("std::sync::Mutex")
+        );
+    }
+
+    #[test]
+    fn detects_bare_cell() {
+        assert_eq!(segments_match_forbidden(&["Cell"]), Some("std::cell::Cell"));
+    }
+
+    #[test]
+    fn detects_bare_refcell() {
+        assert_eq!(
+            segments_match_forbidden(&["RefCell"]),
+            Some("std::cell::RefCell")
+        );
+    }
+
+    #[test]
+    fn detects_bare_rwlock() {
+        assert_eq!(
+            segments_match_forbidden(&["RwLock"]),
+            Some("std::sync::RwLock")
+        );
+    }
+
+    #[test]
+    fn detects_bare_oncelock() {
+        assert_eq!(
+            segments_match_forbidden(&["OnceLock"]),
+            Some("std::sync::OnceLock")
+        );
+    }
+
+    #[test]
+    fn detects_bare_lazylock() {
+        assert_eq!(
+            segments_match_forbidden(&["LazyLock"]),
+            Some("std::sync::LazyLock")
+        );
+    }
+
+    #[test]
+    fn detects_bare_oncecell() {
+        assert_eq!(
+            segments_match_forbidden(&["OnceCell"]),
+            Some("once_cell::sync::OnceCell")
+        );
+    }
+
+    #[test]
+    fn detects_bare_unsafecell() {
+        assert_eq!(
+            segments_match_forbidden(&["UnsafeCell"]),
+            Some("std::cell::UnsafeCell")
+        );
+    }
+
+    #[test]
+    fn non_forbidden_type_returns_none() {
+        assert_eq!(segments_match_forbidden(&["Arc"]), None);
+    }
+
+    #[test]
+    fn non_forbidden_custom_type_returns_none() {
+        assert_eq!(segments_match_forbidden(&["MyCache"]), None);
+    }
+
+    #[test]
+    fn empty_segments_returns_none() {
+        let empty: &[&str] = &[];
+        assert_eq!(segments_match_forbidden(empty), None);
+    }
+
+    #[test]
+    fn partial_match_does_not_fire() {
+        // "MutexGuard" should not match "Mutex"
+        assert_eq!(segments_match_forbidden(&["MutexGuard"]), None);
+    }
+
+    #[test]
+    fn substring_in_path_does_not_fire() {
+        // A path containing "Mutex" as a module name but ending in a safe type
+        assert_eq!(segments_match_forbidden(&["Mutex", "Guard"]), None);
+    }
+
+    // ── UI tests ──
 
     #[test]
     fn ui() {

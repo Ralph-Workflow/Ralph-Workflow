@@ -1,4 +1,4 @@
-use crate::scanner::{self, LineIndex, NativeScanCheck, NativeScanViolation};
+use crate::io::scanner::{self, LineIndex, NativeScanCheck, NativeScanViolation};
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use std::fs;
@@ -15,6 +15,13 @@ const FORBIDDEN_ALLOW_EXPECT_LITERALS: &[&str] = &[
     "#[cfg_attr(",
     "#![cfg_attr(",
 ];
+
+/// Emit forbidden allow/expect diagnostics to stdout.
+/// This is a convenience wrapper that handles stdout creation in the boundary module.
+pub fn emit_forbidden_allow_expect_to_stdout(repo_root: &Path) -> Result<bool> {
+    let mut stdout = std::io::stdout();
+    emit_forbidden_allow_expect_as_cargo_json(repo_root, &mut stdout)
+}
 
 pub fn emit_forbidden_allow_expect_as_cargo_json(
     repo_root: &Path,

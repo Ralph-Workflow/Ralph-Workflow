@@ -115,7 +115,7 @@ fn render_issues_markdown(elements: &IssuesElements) -> String {
         output.push_str(trimmed);
         output.push('\n');
         // Render skills-mcp recommendations if present
-        render_skills_mcp_markdown(&mut output, issue.skills_mcp.as_ref());
+        output.push_str(&render_skills_mcp_markdown(issue.skills_mcp.as_ref()));
     }
 
     output

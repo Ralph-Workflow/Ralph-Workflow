@@ -83,23 +83,12 @@ pub fn take_exit_130_after_run() -> bool {
     EXIT_130_AFTER_RUN.swap(false, Ordering::SeqCst)
 }
 
+mod runtime;
+
 #[cfg(unix)]
 fn restore_prompt_md_writable_via_std_fs() {
-    use std::os::unix::fs::PermissionsExt;
-
-    fn make_writable(path: &std::path::Path) -> bool {
-        let Ok(metadata) = std::fs::metadata(path) else {
-            return false;
-        };
-
-        let mut perms = metadata.permissions();
-        // Preserve existing mode bits but ensure owner write is enabled.
-        perms.set_mode(perms.mode() | 0o200);
-        std::fs::set_permissions(path, perms).is_ok()
-    }
-
     // Fast path: current working directory is already the repo root in normal runs.
-    if make_writable(std::path::Path::new("PROMPT.md")) {
+    if runtime::restore_prompt_md_writable(std::path::Path::new("PROMPT.md")) {
         return;
     }
 
@@ -108,8 +97,7 @@ fn restore_prompt_md_writable_via_std_fs() {
         return;
     };
 
-    let prompt_path = repo_root.join("PROMPT.md");
-    let _ = make_writable(&prompt_path);
+    let _ = runtime::restore_prompt_md_writable_in_repo(&repo_root);
 }
 
 fn remove_repo_root_ralph_dir_via_std_fs() {
@@ -121,7 +109,7 @@ fn remove_repo_root_ralph_dir_via_std_fs() {
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
     if let Some(repo_root) = repo_root {
-        let _ = std::fs::remove_dir_all(repo_root.join(".git/ralph"));
+        runtime::remove_ralph_dir(&repo_root);
     }
 }
 

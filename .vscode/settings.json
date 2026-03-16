@@ -1,5 +1,1 @@
-{
-  "rust-analyzer.check.overrideCommand": [
-    ".cargo/rust-analyzer-dylint"
-  ]
-}
+{}

@@ -11,8 +11,9 @@
 //! 2. Embedded template: Compiled-in fallback
 //! 3. Error: Template not found
 
-use std::fs;
 use std::path::PathBuf;
+
+use super::io::{get_xdg_config_home, load_template, template_exists};
 
 /// Error type for template loading operations.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -58,7 +59,7 @@ impl TemplateRegistry {
     /// `None` if home directory cannot be determined.
     #[must_use]
     pub fn default_user_templates_dir() -> Option<PathBuf> {
-        if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        if let Some(xdg) = get_xdg_config_home() {
             let xdg = xdg.trim();
             if !xdg.is_empty() {
                 return Some(PathBuf::from(xdg).join("ralph").join("templates"));
@@ -120,8 +121,8 @@ impl TemplateRegistry {
         // Try user template first
         if let Some(user_dir) = &self.user_templates_dir {
             let user_path = user_dir.join(format!("{name}.txt"));
-            if user_path.exists() {
-                return fs::read_to_string(&user_path).map_err(|e| TemplateError::ReadError {
+            if template_exists(&user_path) {
+                return load_template(&user_path).map_err(|e| TemplateError::ReadError {
                     name: name.to_string(),
                     reason: e.to_string(),
                 });
