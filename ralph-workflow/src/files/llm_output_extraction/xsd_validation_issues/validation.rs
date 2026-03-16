@@ -26,8 +26,12 @@ use crate::files::llm_output_extraction::xml_helpers::{
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     parse_skills_mcp, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
     tolerant_parsing::normalize_tag_name,
+=======
+    parse_skills_mcp, read_text_until_end, skip_to_end,
+>>>>>>> Stashed changes
 =======
     parse_skills_mcp, read_text_until_end, skip_to_end,
 >>>>>>> Stashed changes
@@ -176,7 +180,11 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                         let entry = parse_issue_entry(&mut reader, b"ralph-issue")?;
+=======
+                        let entry = parse_issue_entry(&mut reader)?;
+>>>>>>> Stashed changes
 =======
                         let entry = parse_issue_entry(&mut reader)?;
 >>>>>>> Stashed changes
@@ -324,6 +332,7 @@ pub fn validate_issues_xml(xml_content: &str) -> Result<IssuesElements, XsdValid
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 ///
 /// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
 /// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
@@ -332,6 +341,11 @@ fn parse_issue_entry(
     original_tag: &[u8],
 ) -> Result<IssueEntry, XsdValidationError> {
     let canonical_tag = b"ralph-issue";
+=======
+fn parse_issue_entry(
+    reader: &mut quick_xml::Reader<&[u8]>,
+) -> Result<IssueEntry, XsdValidationError> {
+>>>>>>> Stashed changes
 =======
 fn parse_issue_entry(
     reader: &mut quick_xml::Reader<&[u8]>,
@@ -378,7 +392,11 @@ fn parse_issue_entry(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                     skills_mcp = Some(parse_skills_mcp(reader));
+=======
+                    skills_mcp = Some(parse_skills_mcp(reader)?);
+>>>>>>> Stashed changes
 =======
                     skills_mcp = Some(parse_skills_mcp(reader)?);
 >>>>>>> Stashed changes
@@ -397,8 +415,13 @@ fn parse_issue_entry(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             Ok(Event::Empty(e)) => {
                 if e.name().as_ref() == b"skills-mcp" {
+=======
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"skills-mcp" => {
+>>>>>>> Stashed changes
 =======
             Ok(Event::Empty(e)) => match e.name().as_ref() {
                 b"skills-mcp" => {
@@ -420,6 +443,7 @@ fn parse_issue_entry(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 } else {
                     // Skip unknown empty children
                 }
@@ -435,6 +459,8 @@ fn parse_issue_entry(
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
                 }
                 _ => {
                     // Skip unknown empty children
@@ -443,6 +469,9 @@ fn parse_issue_entry(
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-issue" => break,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
@@ -452,6 +481,7 @@ fn parse_issue_entry(
                 return Err(XsdValidationError {
                     error_type: crate::files::llm_output_extraction::xsd_validation::XsdErrorType::MalformedXml,
                     element_path: "ralph-issue".to_string(),
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
@@ -471,12 +501,17 @@ fn parse_issue_entry(
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
                     expected: "closing </ralph-issue> tag".to_string(),
                     found: "unexpected end of file".to_string(),
                     suggestion: "Ensure the <ralph-issue> element has a matching closing tag."
                         .to_string(),
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

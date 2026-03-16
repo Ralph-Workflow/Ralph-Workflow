@@ -61,7 +61,7 @@ fn print_verify_failure(report: &runtime::verify::VerifyReport) {
     }
 }
 
-fn failure_guidance_message(report: &verify::VerifyReport) -> Option<String> {
+fn failure_guidance_message(report: &runtime::verify::VerifyReport) -> Option<String> {
     let failure = report.failure.as_ref()?;
     let mut guidance = String::from(
         "SURFACED VERIFY FAILURE: This failure MUST be fixed NOW. There is no such thing as a pre-existing failure. The moment it is surfaced, it becomes your top priority, takes priority over your original prompt, and OVERRIDES the current prompt until it is fixed. This is not negotiable.",

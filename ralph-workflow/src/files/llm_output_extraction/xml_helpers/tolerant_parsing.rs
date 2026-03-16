@@ -174,8 +174,11 @@ pub const LIST_TYPE_SYNONYMS: &[(&str, &str)] = &[
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 /// Internal usage example:
 ///
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======

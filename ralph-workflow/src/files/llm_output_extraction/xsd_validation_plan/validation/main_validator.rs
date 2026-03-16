@@ -77,6 +77,9 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                 b"skills-mcp" if found_root => {
                     skills_mcp = Some(parse_skills_mcp(&mut reader)?);
                 }
+                b"skills-mcp" if found_root => {
+                    skills_mcp = Some(parse_skills_mcp(&mut reader)?);
+                }
                 b"ralph-implementation-steps" if found_root => {
                     steps = Some(parse_steps(&mut reader, b"ralph-implementation-steps")?);
                 }

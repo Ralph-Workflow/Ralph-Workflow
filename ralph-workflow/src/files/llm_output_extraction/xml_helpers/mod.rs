@@ -66,9 +66,13 @@ pub use errors::{
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 pub use readers::{
     create_reader, parse_skills_mcp, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
 };
+=======
+pub use readers::{create_reader, parse_skills_mcp, read_text_until_end, skip_to_end};
+>>>>>>> Stashed changes
 =======
 pub use readers::{create_reader, parse_skills_mcp, read_text_until_end, skip_to_end};
 >>>>>>> Stashed changes

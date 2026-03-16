@@ -151,8 +151,11 @@ fn test_plan_skills_mcp_without_reason_attribute() {
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "<skills-mcp>\n<skill>test-driven-development</skill>\n<mcp>context7</mcp>\n</skills-mcp>",
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 =======
@@ -163,6 +166,9 @@ fn test_plan_skills_mcp_without_reason_attribute() {
 </skills-mcp>"#,
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

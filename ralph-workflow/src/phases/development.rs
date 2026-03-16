@@ -160,6 +160,35 @@ fn format_skills_section(elements: &PlanElements) -> String {
         }
     }
 
+    // Skills & MCP recommendations (if present)
+    if let Some(ref sm) = elements.skills_mcp {
+        let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
+        if has_structured || sm.raw_content.is_some() {
+            result.push_str("### Skills & MCP Recommendations\n\n");
+            for skill in &sm.skills {
+                if let Some(ref reason) = skill.reason {
+                    writeln!(result, "- **Skill:** {} \u{2014} {}", skill.name, reason).unwrap();
+                } else {
+                    writeln!(result, "- **Skill:** {}", skill.name).unwrap();
+                }
+            }
+            for mcp in &sm.mcps {
+                if let Some(ref reason) = mcp.reason {
+                    writeln!(result, "- **MCP:** {} \u{2014} {}", mcp.name, reason).unwrap();
+                } else {
+                    writeln!(result, "- **MCP:** {}", mcp.name).unwrap();
+                }
+            }
+            if let Some(ref raw) = sm.raw_content {
+                let trimmed = raw.trim();
+                if !trimmed.is_empty() {
+                    writeln!(result, "\n{trimmed}").unwrap();
+                }
+            }
+            result.push('\n');
+        }
+    }
+
     // Implementation steps
     result.push_str("## Implementation Steps\n\n");
     for step in &elements.steps {
