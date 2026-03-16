@@ -21,7 +21,7 @@ else
     PLATFORM := unknown
 endif
 
-.PHONY: all build release test clean install uninstall check fmt lint dylint dylint-verbose help build-gui install-gui install-gui-local verify verify-gui ci
+.PHONY: all build release test clean install install-local install-with-gui install-with-gui-local uninstall check fmt lint dylint dylint-verbose help build-gui install-gui install-gui-local verify verify-gui ci
 
 # Default target
 all: build
@@ -51,19 +51,34 @@ clean:
 	echo "Build artifacts cleaned"
 
 # Install the binary (requires sudo for system directories)
+# NOTE: This installs only the CLI binary. For GUI support, use install-with-gui.
 install: release
+	echo "Installing $(BINARY_NAME) to $(INSTALL_BIN)..."
+	mkdir -p $(INSTALL_BIN)
+	install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME)
+	echo "Installed: $(INSTALL_BIN)/$(BINARY_NAME)"
+	echo ""
+	echo "Installation complete! Run 'ralph --help' to get started."
+	echo "To also install the GUI, run: make install-with-gui"
+
+# Install to user's local bin (no sudo needed) - CLI only
+install-local:
+	$(MAKE) install INSTALL_ROOT=$(HOME)/.local
+
+# Build the GUI and install both CLI and GUI binaries.
+# Requires: cargo tauri and bun (for Angular frontend build).
+install-with-gui: build-gui
 	echo "Installing $(BINARY_NAME) to $(INSTALL_BIN)..."
 	mkdir -p $(INSTALL_BIN)
 	install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME)
 	echo "Installed: $(INSTALL_BIN)/$(BINARY_NAME)"
 	$(MAKE) install-gui
 	echo ""
-	echo "Installation complete! Run 'ralph --help' to get started."
-	echo "GUI: Run 'ralph-gui' to launch the desktop application."
+	echo "Full installation complete! Run 'ralph --help' and 'ralph-gui' to get started."
 
-# Install to user's local bin (no sudo needed)
-install-local:
-	$(MAKE) install INSTALL_ROOT=$(HOME)/.local
+# Full install (CLI + GUI) to user's local bin (no sudo needed)
+install-with-gui-local:
+	$(MAKE) install-with-gui INSTALL_ROOT=$(HOME)/.local
 
 # Uninstall the binary
 uninstall:
@@ -167,8 +182,10 @@ help:
 	echo "  test          Run all tests"
 	echo "  test-verbose  Run tests with output"
 	echo "  clean         Remove build artifacts"
-	echo "  install       Install to $(INSTALL_BIN) (may need sudo)"
-	echo "  install-local Install to ~/.local/bin (no sudo needed)"
+	echo "  install       Install CLI only to $(INSTALL_BIN) (may need sudo)"
+	echo "  install-local Install CLI only to ~/.local/bin (no sudo needed)"
+	echo "  install-with-gui Install CLI + GUI to $(INSTALL_BIN) (requires cargo tauri)"
+	echo "  install-with-gui-local Install CLI + GUI to ~/.local/bin (no sudo needed)"
 	echo "  uninstall     Remove installed binary"
 	echo "  check         Run type checks"
 	echo "  fmt           Format source code"
@@ -193,5 +210,6 @@ help:
 	echo "Examples:"
 	echo "  make release && sudo make install"
 	echo "  make install-local"
+	echo "  make install-with-gui"
+	echo "  make install-with-gui-local"
 	echo "  INSTALL_ROOT=/opt make install"
-	echo "  make build-gui && sudo make install-gui"

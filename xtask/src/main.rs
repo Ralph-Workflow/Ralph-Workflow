@@ -304,7 +304,7 @@ fn main() -> ExitCode {
 fn run_dylint(verbose: bool) -> ExitCode {
     use std::process::Command;
 
-    let dylint_quiet = if verbose { "0" } else { "1" };
+    let dylint_quiet = if verbose { "false" } else { "true" };
     let force_offline = std::env::var("DYLINT_FORCE_OFFLINE").unwrap_or_default() == "1";
 
     // Get environment variables with fallbacks

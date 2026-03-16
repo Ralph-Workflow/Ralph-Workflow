@@ -32,32 +32,39 @@ fn extract_makefile_target(makefile: &str, target_name: &str) -> String {
         if i == 0 {
             continue; // skip the target line itself
         }
-        // A target line is one that contains a colon but not in a variable reference
-        // Simple heuristic: starts with optional whitespace, then word characters, then colon
+        // A target line must:
+        // 1. Start with alphanumeric or underscore (not a variable or directive)
+        // 2. Contain a colon (the target separator)
+        // 3. NOT be a variable assignment (VAR := value) or conditional (if/else/fi)
         let trimmed = line.trim();
-        if !trimmed.is_empty()
-            && trimmed.contains(':')
-            && !trimmed.contains("$$")
-            && !trimmed.starts_with('\t')
-            && !trimmed.starts_with(" if")
-            && !trimmed.starts_with(" else")
-            && !trimmed.starts_with(" fi")
-        {
-            // Check if this looks like a target (has colon at start or after word chars)
-            if trimmed.starts_with(char::is_alphabetic) || trimmed.starts_with('_') {
-                // This is likely a new target
-                end = start + rest[..i].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let is_target = trimmed.starts_with(char::is_alphabetic) || trimmed.starts_with('_');
+        let has_colon = trimmed.contains(':');
+        let is_variable_assignment = trimmed.contains(" :=")
+            || trimmed.starts_with("if ")
+            || trimmed.starts_with("else")
+            || trimmed.starts_with("fi")
+            || trimmed.starts_with(" endif");
+
+        if is_target && has_colon && !is_variable_assignment {
+            // This is likely a new target - calculate end position
+            // Find the newline before this line
+            if let Some(newline_pos) = rest[..i].rfind('\n') {
+                end = newline_pos + 1;
                 break;
             }
         }
         // Also stop at double newline (paragraph break)
         if line.is_empty() && rest.lines().nth(i + 1).is_some_and(|l| l.is_empty()) {
-            end = start + rest[..i].rfind('\n').map(|p| p + 1).unwrap_or(0);
-            break;
+            if let Some(newline_pos) = rest[..i].rfind('\n') {
+                end = newline_pos + 1;
+                break;
+            }
         }
     }
 
-    makefile[start..start + end].to_string()
+    // Ensure end is within bounds
+    let actual_end = std::cmp::min(end, rest.len());
+    makefile[start..start + actual_end].to_string()
 }
 
 #[test]

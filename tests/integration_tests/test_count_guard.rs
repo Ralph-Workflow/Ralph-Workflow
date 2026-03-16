@@ -233,6 +233,10 @@ const INTEGRATION_TEST_SOURCES: &[SourceFile] = &[
         contents: include_str!("dylint_target.rs"),
     },
     SourceFile {
+        path: "makefile_install.rs",
+        contents: include_str!("makefile_install.rs"),
+    },
+    SourceFile {
         path: "development_xml_validation.rs",
         contents: include_str!("development_xml_validation.rs"),
     },
