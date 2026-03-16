@@ -1,17 +1,41 @@
 # Migration: [What schema change is needed]
 
-## Change
-<!-- What's changing in the database schema? -->
-[e.g., "Add 'verified_at' timestamp column to users table"]
+## Goal
+<!-- What capability does this schema change enable? -->
+[e.g., "Support email verification feature by tracking when users verify their email"]
 
-## Reason
-<!-- Why is this change needed? -->
-[e.g., "Support email verification feature"]
+## Schema Change
+<!-- What's changing? -->
+```sql
+-- Example
+ALTER TABLE users ADD COLUMN verified_at TIMESTAMP NULL;
+CREATE INDEX idx_users_verified_at ON users(verified_at);
+```
 
-## Data (optional)
-<!-- Any data that needs to be migrated or backfilled? -->
-[e.g., "Set verified_at to created_at for existing users"]
+## Data Migration (optional)
+<!-- Does existing data need to be transformed? -->
+[e.g., "Backfill: Set verified_at = created_at for existing users (treat as verified)"]
 
-## Constraints (optional)
-<!-- Any deployment or downtime constraints? -->
-[e.g., "Must be zero-downtime" or "Can have 5 min maintenance window"]
+## Rollback Plan
+<!-- How do we undo this if needed? -->
+```sql
+-- Example
+ALTER TABLE users DROP COLUMN verified_at;
+```
+
+## Deployment Constraints
+<!-- How must this be deployed? -->
+- [e.g., "Zero-downtime required (online migration)"]
+- [e.g., "Can tolerate 5-minute maintenance window"]
+- [e.g., "Must be backward-compatible with current app version"]
+
+## Dependencies (optional)
+<!-- What depends on or is depended upon by this change? -->
+[e.g., "App deploy must happen after migration" or "Migration depends on previous migration X"]
+
+## Acceptance
+<!-- What must be true for this migration to be complete? -->
+- [ ] [e.g., "Migration runs successfully in all environments"]
+- [ ] [e.g., "Rollback tested and documented"]
+- [ ] [e.g., "Data migration completed correctly"]
+- [ ] [e.g., "Application works with new schema"]

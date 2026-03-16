@@ -7,8 +7,8 @@
 
 use crate::files::llm_output_extraction::xml_helpers::{
     create_reader, duplicate_element_error, format_content_preview, malformed_xml_error,
-    missing_required_error, read_text_until_end, skip_to_end,
-    tolerant_parsing::{normalize_enum_value, FIX_STATUS_SYNONYMS},
+    missing_required_error, read_text_until_end, read_text_until_end_fuzzy, skip_to_end,
+    tolerant_parsing::{normalize_enum_value, normalize_tag_name, FIX_STATUS_SYNONYMS},
 };
 use crate::files::llm_output_extraction::xsd_validation::{XsdErrorType, XsdValidationError};
 use quick_xml::events::Event;
@@ -21,6 +21,10 @@ const EXAMPLE_FIX_RESULT_XML: &str = r"<ralph-fix-result>
 
 /// Valid status values for fix results.
 const VALID_STATUSES: [&str; 3] = ["all_issues_addressed", "issues_remain", "no_issues_found"];
+
+/// Known child element tags for fix result validation.
+/// Used for fuzzy tag name matching (typo tolerance).
+const KNOWN_FIX_RESULT_TAGS: &[&str] = &["ralph-status", "ralph-summary"];
 
 /// Validate fix result XML content against the XSD schema.
 ///
@@ -115,9 +119,48 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
                     summary = Some(read_text_until_end(&mut reader, b"ralph-summary")?);
                 }
                 other => {
-                    // Tolerant: skip unknown elements instead of rejecting.
-                    // Required elements (status) are still enforced after the loop.
-                    let _ = skip_to_end(&mut reader, other);
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known tag with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_FIX_RESULT_TAGS) {
+                        // Re-parse with the canonical tag name
+                        match canonical {
+                            "ralph-status" => {
+                                if status.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-status",
+                                        "ralph-fix-result",
+                                    ));
+                                }
+                                status = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-status",
+                                    other,
+                                )?);
+                            }
+                            "ralph-summary" => {
+                                if summary.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-summary",
+                                        "ralph-fix-result",
+                                    ));
+                                }
+                                summary = Some(read_text_until_end_fuzzy(
+                                    &mut reader,
+                                    b"ralph-summary",
+                                    other,
+                                )?);
+                            }
+                            _ => {
+                                // Should not happen - canonical tags are from our known list
+                                let _ = skip_to_end(&mut reader, other);
+                            }
+                        }
+                    } else {
+                        // Tolerant: skip unknown elements instead of rejecting.
+                        // Required elements (status) are still enforced after the loop.
+                        let _ = skip_to_end(&mut reader, other);
+                    }
                     // Continue parsing — do not return an error for unknown elements.
                 }
             },
@@ -125,6 +168,52 @@ pub fn validate_fix_result_xml(xml_content: &str) -> Result<FixResultElements, X
                 // Tolerant: ignore stray text between elements.
                 let _ = e;
             }
+            Ok(Event::Empty(e)) => match e.name().as_ref() {
+                b"ralph-status" => {
+                    if status.is_some() {
+                        return Err(duplicate_element_error("ralph-status", "ralph-fix-result"));
+                    }
+                    status = Some(String::new());
+                }
+                b"ralph-summary" => {
+                    if summary.is_some() {
+                        return Err(duplicate_element_error("ralph-summary", "ralph-fix-result"));
+                    }
+                    summary = Some(String::new());
+                }
+                other => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known tag with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_FIX_RESULT_TAGS) {
+                        // Handle canonical tag for self-closing element
+                        match canonical {
+                            "ralph-status" => {
+                                if status.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-status",
+                                        "ralph-fix-result",
+                                    ));
+                                }
+                                status = Some(String::new());
+                            }
+                            "ralph-summary" => {
+                                if summary.is_some() {
+                                    return Err(duplicate_element_error(
+                                        "ralph-summary",
+                                        "ralph-fix-result",
+                                    ));
+                                }
+                                summary = Some(String::new());
+                            }
+                            _ => {
+                                // Should not happen - canonical tags are from our known list
+                            }
+                        }
+                    }
+                    // Else: skip unknown self-closing element
+                }
+            },
             Ok(Event::End(e)) if e.name().as_ref() == b"ralph-fix-result" => break,
             Ok(Event::Eof) => {
                 return Err(XsdValidationError {
@@ -585,5 +674,84 @@ mod tests {
 
         let result = validate_fix_result_xml(xml);
         assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // Fuzzy tag matching tests (Step 5 of implementation plan)
+    // =========================================================================
+
+    /// Test: misspelled ralph-summry tag resolves to ralph-summary.
+    #[test]
+    fn test_tolerant_fix_misspelled_summary_tag_accepted() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_issues_addressed</ralph-status>
+<ralph-summry>Fixed all issues</ralph-summry>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Misspelled <ralph-summry> should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.summary,
+            Some("Fixed all issues".to_string()),
+            "Summary content should be correctly extracted from misspelled tag"
+        );
+    }
+
+    /// Test: misspelled ralph-statuss tag resolves to ralph-status.
+    #[test]
+    fn test_tolerant_fix_misspelled_status_tag_accepted() {
+        let xml = r"<ralph-fix-result>
+<ralph-statuss>all_issues_addressed</ralph-statuss>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Misspelled <ralph-statuss> should be accepted: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(
+            elements.status, "all_issues_addressed",
+            "Status should be correctly extracted from misspelled tag"
+        );
+    }
+
+    /// Test: completely unknown tag (large edit distance) is skipped.
+    #[test]
+    fn test_tolerant_fix_completely_unknown_tag_skipped() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_issues_addressed</ralph-status>
+<ralph-banana>this should be ignored</ralph-banana>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Unknown tag with large edit distance should be skipped: {result:?}"
+        );
+        let elements = result.unwrap();
+        assert_eq!(elements.status, "all_issues_addressed");
+    }
+
+    /// Test: self-closing misspelled tag is also handled.
+    #[test]
+    fn test_tolerant_fix_self_closing_misspelled_tag() {
+        let xml = r"<ralph-fix-result>
+<ralph-status>all_issues_addressed</ralph-status>
+<ralph-summry/>
+</ralph-fix-result>";
+
+        let result = validate_fix_result_xml(xml);
+        assert!(
+            result.is_ok(),
+            "Self-closing misspelled tag should be handled: {result:?}"
+        );
+        let elements = result.unwrap();
+        // Self-closing misspelled tag should be treated as empty and skipped
+        assert!(elements.summary.is_none());
     }
 }

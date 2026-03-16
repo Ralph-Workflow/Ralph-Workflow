@@ -4,6 +4,19 @@
 // are already imported in the parent module (xsd_validation_plan/mod.rs)
 // and are available via `use super::*;` in validation/mod.rs
 
+use crate::files::llm_output_extraction::xml_helpers::tolerant_parsing::normalize_tag_name;
+
+/// Known child element tags for plan validation.
+/// Used for fuzzy tag name matching (typo tolerance).
+const KNOWN_PLAN_TAGS: &[&str] = &[
+    "ralph-summary",
+    "skills-mcp",
+    "ralph-implementation-steps",
+    "ralph-critical-files",
+    "ralph-risks-mitigations",
+    "ralph-verification-strategy",
+];
+
 /// Validate plan XML content against the structured XSD schema.
 ///
 /// This validates that the XML content conforms to the expected
@@ -50,25 +63,61 @@ pub fn validate_plan_xml(xml_content: &str) -> Result<PlanElements, XsdValidatio
                     found_root = true;
                 }
                 b"ralph-summary" if found_root => {
-                    summary = Some(parse_summary(&mut reader)?);
+                    summary = Some(parse_summary(&mut reader, b"ralph-summary")?);
                 }
                 b"skills-mcp" if found_root => {
                     skills_mcp = Some(parse_skills_mcp(&mut reader));
                 }
                 b"ralph-implementation-steps" if found_root => {
-                    steps = Some(parse_steps(&mut reader)?);
+                    steps = Some(parse_steps(&mut reader, b"ralph-implementation-steps")?);
                 }
                 b"ralph-critical-files" if found_root => {
-                    critical_files = Some(parse_critical_files(&mut reader)?);
+                    critical_files = Some(parse_critical_files(&mut reader, b"ralph-critical-files")?);
                 }
                 b"ralph-risks-mitigations" if found_root => {
-                    risks_mitigations = Some(parse_risks_mitigations(&mut reader)?);
+                    risks_mitigations = Some(parse_risks_mitigations(&mut reader, b"ralph-risks-mitigations")?);
                 }
                 b"ralph-verification-strategy" if found_root => {
-                    verification_strategy = Some(parse_verification_strategy(&mut reader)?);
+                    verification_strategy = Some(parse_verification_strategy(&mut reader, b"ralph-verification-strategy")?);
+                }
+                _ if found_root => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known tag with minor typo, route to correct handler.
+                    let element_name = e.name();
+                    let tag_name = String::from_utf8_lossy(element_name.as_ref());
+                    if let Some(canonical) = normalize_tag_name(&tag_name, KNOWN_PLAN_TAGS) {
+                        // Re-parse with the canonical tag name
+                        match canonical {
+                            "ralph-summary" => {
+                                summary = Some(parse_summary(&mut reader, e.name().as_ref())?);
+                            }
+                            "skills-mcp" => {
+                                skills_mcp = Some(parse_skills_mcp(&mut reader));
+                            }
+                            "ralph-implementation-steps" => {
+                                steps = Some(parse_steps(&mut reader, e.name().as_ref())?);
+                            }
+                            "ralph-critical-files" => {
+                                critical_files = Some(parse_critical_files(&mut reader, e.name().as_ref())?);
+                            }
+                            "ralph-risks-mitigations" => {
+                                risks_mitigations = Some(parse_risks_mitigations(&mut reader, e.name().as_ref())?);
+                            }
+                            "ralph-verification-strategy" => {
+                                verification_strategy = Some(parse_verification_strategy(&mut reader, e.name().as_ref())?);
+                            }
+                            _ => {
+                                // Should not happen - canonical tags are from our known list
+                                let _ = skip_to_end(&mut reader, e.name().as_ref());
+                            }
+                        }
+                    } else {
+                        // Skip unknown elements
+                        let _ = skip_to_end(&mut reader, e.name().as_ref());
+                    }
                 }
                 _ => {
-                    // Skip unknown elements
+                    // Skip unknown elements before root is found
                     let _ = skip_to_end(&mut reader, e.name().as_ref());
                 }
             },

@@ -591,3 +591,112 @@ fn test_validate_nul_byte_from_nbsp_typo() {
         error.suggestion
     );
 }
+
+// =========================================================================
+// Fuzzy tag matching tests (Step 6 of implementation plan)
+// =========================================================================
+
+/// Test: misspelled ralph-isue tag resolves to ralph-issue.
+#[test]
+fn test_tolerant_issues_misspelled_issue_tag() {
+    let xml = r"<ralph-issues>
+<ralph-isue>First issue description</ralph-isue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <ralph-isue> should be accepted: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 1, "One issue should be parsed");
+    assert_eq!(
+        elements.issues[0].text, "First issue description",
+        "Issue content should be correctly extracted from misspelled tag"
+    );
+}
+
+/// Test: misspelled ralph-no-isssues-found tag resolves to ralph-no-issues-found.
+#[test]
+fn test_tolerant_issues_misspelled_no_issues_found_tag() {
+    let xml = r"<ralph-issues>
+<ralph-no-isssues-found>No issues were found</ralph-no-isssues-found>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <ralph-no-isssues-found> should be accepted: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert!(
+        elements.no_issues_found.is_some(),
+        "no_issues_found should be set"
+    );
+    assert_eq!(
+        elements.no_issues_found.unwrap(),
+        "No issues were found",
+        "No-issues-found content should be correctly extracted"
+    );
+}
+
+/// Test: fuzzy-resolved ralph-no-issues-found still enforces mutual exclusion.
+#[test]
+fn test_tolerant_issues_fuzzy_resolved_no_issues_still_enforces_mutual_exclusion() {
+    // If a typo resolves to ralph-no-issues-found, it should still trigger the mixing check
+    let xml = r"<ralph-issues>
+<ralph-issue>Some issue</ralph-issue>
+<ralph-no-isssues-found>No issues</ralph-no-isssues-found>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_err(),
+        "Mixing ralph-issue with fuzzy-resolved ralph-no-issues-found should be rejected"
+    );
+    let error = result.unwrap_err();
+    assert!(
+        error.expected.contains("not both") || error.suggestion.contains("not both"),
+        "Error should mention mutual exclusion: {:?}",
+        error
+    );
+}
+
+/// Test: completely unknown tag (large edit distance) is skipped.
+#[test]
+fn test_tolerant_issues_completely_unknown_tag_skipped() {
+    let xml = r"<ralph-issues>
+<ralph-issue>First issue</ralph-issue>
+<ralph-banana>this should be ignored</ralph-banana>
+<ralph-issue>Second issue</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Unknown tag with large edit distance should be skipped: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(elements.issues.len(), 2, "Both issues should be parsed");
+}
+
+/// Test: self-closing misspelled tag is also handled.
+#[test]
+fn test_tolerant_issues_self_closing_misspelled_tag() {
+    let xml = r"<ralph-issues>
+<ralph-isue/>
+<ralph-issue>Actual issue</ralph-issue>
+</ralph-issues>";
+
+    let result = validate_issues_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Self-closing misspelled tag should be handled: {result:?}"
+    );
+    let elements = result.unwrap();
+    assert_eq!(
+        elements.issues.len(),
+        1,
+        "Only the actual issue should be parsed"
+    );
+}

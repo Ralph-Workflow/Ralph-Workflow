@@ -1,5 +1,20 @@
 // Step parsing functions (parse_steps, parse_single_step, parse_file_element, parse_target_files, parse_critical_files)
 
+// Note: normalize_tag_name is imported in main_validator.rs and available in this module
+// via the include! statement that combines all validation/*.rs files
+
+/// Known sub-element tags for step parsing.
+/// Used for fuzzy tag name matching (typo tolerance).
+const STEP_SUB_ELEMENT_TAGS: &[&str] = &[
+    "title",
+    "content",
+    "target-files",
+    "depends-on",
+    "location",
+    "rationale",
+    "file",
+];
+
 struct ParsedStep {
     step: Step,
     explicit_number: Option<u32>,
@@ -13,7 +28,11 @@ struct ParsedStep {
 /// were parsed with sentinel number 0 (i.e., the number attribute was missing).
 /// Explicit step numbers are reserved first, then unnumbered steps receive the
 /// next unused positive numbers in document order.
-fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationError> {
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
+fn parse_steps(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<Vec<Step>, XsdValidationError> {
+    let canonical_tag = b"ralph-implementation-steps";
     let mut steps = Vec::new();
     let mut buf = Vec::new();
 
@@ -49,7 +68,12 @@ fn parse_steps(reader: &mut Reader<&[u8]>) -> Result<Vec<Step>, XsdValidationErr
                 };
                 steps.push(step);
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-implementation-steps" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => break,
             Ok(_) => {}
             Err(e) => {
@@ -246,8 +270,55 @@ fn parse_single_step(
                     let element_xml = reconstruct_element(name, &attrs_str, &inner);
                     bare_content_xml.push_str(&element_xml);
                 }
-                _ => {
-                    let _ = skip_to_end(reader, e.name().as_ref());
+                other => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known sub-element with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
+                        // Re-parse with the canonical tag name by recursing with the correct name
+                        match canonical {
+                            "title" => {
+                                title = Some(read_text_until_end_fuzzy(reader, b"title", other)?);
+                            }
+                            "content" => {
+                                if !bare_content_xml.is_empty() {
+                                    content_fragments.push(parse_rich_content(&bare_content_xml)?);
+                                    bare_content_xml.clear();
+                                }
+                                let inner = read_inner_xml(reader, b"content")?;
+                                content_fragments.push(parse_rich_content(&inner)?);
+                            }
+                            "target-files" => {
+                                let mut wrapped = parse_target_files(reader)?;
+                                target_files.append(&mut wrapped);
+                            }
+                            "location" => {
+                                location = Some(read_text_until_end_fuzzy(reader, b"location", other)?);
+                            }
+                            "rationale" => {
+                                rationale = Some(read_text_until_end_fuzzy(reader, b"rationale", other)?);
+                            }
+                            "depends-on" => {
+                                let dep_attrs = get_attributes(&e);
+                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
+                                    depends_on.push(step_num);
+                                }
+                                let _ = skip_to_end(reader, b"depends-on");
+                            }
+                            "file" => {
+                                let file_attrs = get_attributes(&e);
+                                let file = parse_file_element(&file_attrs)?;
+                                target_files.push(file);
+                                let _ = skip_to_end(reader, b"file");
+                            }
+                            _ => {
+                                // Should not happen - canonical tags are from our known list
+                                let _ = skip_to_end(reader, other);
+                            }
+                        }
+                    } else {
+                        let _ = skip_to_end(reader, other);
+                    }
                 }
             },
             Ok(Event::Empty(e)) => match e.name().as_ref() {
@@ -263,7 +334,30 @@ fn parse_single_step(
                     let file = parse_file_element(&file_attrs)?;
                     target_files.push(file);
                 }
-                _ => {}
+                other => {
+                    // Tolerant: try fuzzy tag matching before skipping.
+                    // If the tag is a known sub-element with minor typo, route to correct handler.
+                    let tag_name = String::from_utf8_lossy(other);
+                    if let Some(canonical) = normalize_tag_name(&tag_name, STEP_SUB_ELEMENT_TAGS) {
+                        match canonical {
+                            "depends-on" => {
+                                let dep_attrs = get_attributes(&e);
+                                if let Some(step_num) = dep_attrs.get("step").and_then(|s| s.parse().ok()) {
+                                    depends_on.push(step_num);
+                                }
+                            }
+                            "file" => {
+                                let file_attrs = get_attributes(&e);
+                                let file = parse_file_element(&file_attrs)?;
+                                target_files.push(file);
+                            }
+                            _ => {
+                                // Self-closing title, content, target-files, location, rationale - ignore
+                            }
+                        }
+                    }
+                    // Else: skip unknown self-closing element
+                }
             },
             Ok(Event::End(e)) if e.name().as_ref() == b"step" => break,
             Ok(Event::Eof) => break,
@@ -433,7 +527,11 @@ fn parse_target_files(reader: &mut Reader<&[u8]>) -> Result<Vec<TargetFile>, Xsd
 /// - File with `action` only → primary file
 /// - File with `purpose` only → reference file
 /// - File with both or neither → rejected as ambiguous
-fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, XsdValidationError> {
+///
+/// The `original_tag` parameter is used for fuzzy matching - when the opening tag was misspelled,
+/// this allows the parser to accept either the canonical closing tag OR the original misspelled one.
+fn parse_critical_files(reader: &mut Reader<&[u8]>, original_tag: &[u8]) -> Result<CriticalFiles, XsdValidationError> {
+    let canonical_tag = b"ralph-critical-files";
     let mut primary_files = Vec::new();
     let mut reference_files = Vec::new();
     let mut buf = Vec::new();
@@ -468,7 +566,12 @@ fn parse_critical_files(reader: &mut Reader<&[u8]>) -> Result<CriticalFiles, Xsd
                 let file_attrs = get_attributes(&e);
                 classify_bare_critical_file(&file_attrs, &mut primary_files, &mut reference_files)?;
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"ralph-critical-files" => break,
+            Ok(Event::End(e)) => {
+                // Accept either canonical tag OR original (misspelled) tag
+                if e.name().as_ref() == canonical_tag || e.name().as_ref() == original_tag {
+                    break;
+                }
+            }
             Ok(Event::Eof) => break,
             Ok(_) => {}
             Err(e) => {

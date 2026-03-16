@@ -2259,3 +2259,270 @@ fn test_plan_mixed_numbered_and_unnumbered_steps() {
         "Fourth step should have non-zero number"
     );
 }
+
+// =========================================================================
+// Fuzzy tag matching tests (Step 7 of implementation plan)
+// These test that the plan validator tolerates minor typos in tag names.
+// =========================================================================
+
+/// Test: misspelled ralph-sumary resolves to ralph-summary.
+#[test]
+fn test_plan_fuzzy_misspelled_summary_tag() {
+    let xml = r#"<ralph-plan>
+<ralph-sumary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="3" category="files">Test files</scope-item>
+<scope-item count="5" category="functions">Test functions</scope-item>
+<scope-item count="10" category="tests">Test cases</scope-item>
+</scope-items>
+</ralph-sumary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Implement the feature</title>
+<target-files>
+<file path="src/main.rs" action="create"/>
+</target-files>
+<content>
+<paragraph>Implementation details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="create"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <ralph-sumary> should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert!(
+        plan.summary.context.contains("Test plan"),
+        "Summary context should be parsed from misspelled tag"
+    );
+}
+
+/// Test: misspelled ralph-implementaton-steps resolves to ralph-implementation-steps.
+#[test]
+fn test_plan_fuzzy_misspelled_implementation_steps_tag() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="3" category="files">Test files</scope-item>
+<scope-item count="5" category="functions">Test functions</scope-item>
+<scope-item count="10" category="tests">Test cases</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementaton-steps>
+<step number="1" type="file-change" priority="high">
+<title>Implement the feature</title>
+<target-files>
+<file path="src/main.rs" action="create"/>
+</target-files>
+<content>
+<paragraph>Implementation details.</paragraph>
+</content>
+</step>
+</ralph-implementaton-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="create"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <ralph-implementaton-steps> should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 1, "One step should be parsed");
+}
+
+/// Test: misspelled step sub-element (titl instead of title) is tolerated.
+#[test]
+fn test_plan_fuzzy_misspelled_step_title_tag() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="3" category="files">Test files</scope-item>
+<scope-item count="5" category="functions">Test functions</scope-item>
+<scope-item count="10" category="tests">Test cases</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<titl>Implement the feature</titl>
+<target-files>
+<file path="src/main.rs" action="create"/>
+</target-files>
+<content>
+<paragraph>Implementation details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="create"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <titl> should be accepted: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 1);
+}
+
+/// Test: misspelled ralph-critical-files resolves to ralph-critical-files.
+#[test]
+fn test_plan_fuzzy_misspelled_critical_files_tag() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="3" category="files">Test files</scope-item>
+<scope-item count="5" category="functions">Test functions</scope-item>
+<scope-item count="10" category="tests">Test cases</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Implement the feature</title>
+<target-files>
+<file path="src/main.rs" action="create"/>
+</target-files>
+<content>
+<paragraph>Implementation details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-critial-files>
+<primary-files>
+<file path="src/main.rs" action="create"/>
+</primary-files>
+</ralph-critial-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Misspelled <ralph-critial-files> should be accepted: {:?}",
+        result.err()
+    );
+}
+
+/// Test: completely unknown tag (large edit distance) is skipped.
+#[test]
+fn test_plan_fuzzy_unknown_tag_skipped() {
+    let xml = r#"<ralph-plan>
+<ralph-summary>
+<context>Test plan</context>
+<scope-items>
+<scope-item count="3" category="files">Test files</scope-item>
+<scope-item count="5" category="functions">Test functions</scope-item>
+<scope-item count="10" category="tests">Test cases</scope-item>
+</scope-items>
+</ralph-summary>
+<ralph-implementation-steps>
+<step number="1" type="file-change" priority="high">
+<title>Implement the feature</title>
+<target-files>
+<file path="src/main.rs" action="create"/>
+</target-files>
+<content>
+<paragraph>Implementation details.</paragraph>
+</content>
+</step>
+</ralph-implementation-steps>
+<ralph-banana>This should be ignored</ralph-banana>
+<ralph-critical-files>
+<primary-files>
+<file path="src/main.rs" action="create"/>
+</primary-files>
+</ralph-critical-files>
+<ralph-risks-mitigations>
+<risk-pair severity="low">
+<risk>Risk</risk>
+<mitigation>Mitigation</mitigation>
+</risk-pair>
+</ralph-risks-mitigations>
+<ralph-verification-strategy>
+<verification>
+<method>Run tests</method>
+<expected-outcome>All pass</expected-outcome>
+</verification>
+</ralph-verification-strategy>
+</ralph-plan>"#;
+
+    let result = validate_plan_xml(xml);
+    assert!(
+        result.is_ok(),
+        "Unknown tag with large edit distance should be skipped: {:?}",
+        result.err()
+    );
+    let plan = result.unwrap();
+    assert_eq!(plan.steps.len(), 1);
+}

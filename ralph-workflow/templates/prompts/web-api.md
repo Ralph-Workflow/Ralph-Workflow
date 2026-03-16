@@ -1,31 +1,51 @@
 # API: [Name or purpose of the API]
 
-## Purpose
-<!-- What problem does this API solve? Who consumes it? -->
-[e.g., "Allows the mobile app to manage user accounts"]
+## Goal
+<!-- What capability does this API provide? Who consumes it? -->
+[e.g., "Mobile and web clients can perform user management operations via REST"]
 
-## Endpoints
-<!-- What endpoints are needed? -->
-- [e.g., "POST /users - Create a new user"]
-- [e.g., "GET /users/:id - Get user by ID"]
-- [e.g., "PUT /users/:id - Update user"]
+## Resources & Operations
+<!-- What resources does this API expose? -->
+```
+POST   /users          Create user
+GET    /users/:id      Get user by ID
+PUT    /users/:id      Update user
+DELETE /users/:id      Delete user (soft delete)
+GET    /users          List users (paginated)
+```
 
-## Data
-<!-- What data is exchanged? -->
-- **Input:** [e.g., "User details: name, email, role"]
-- **Output:** [e.g., "User object with ID and timestamps"]
+## Data Contracts
+<!-- What are the request/response shapes? -->
+```
+User {
+  id: string
+  email: string (unique)
+  name: string
+  created_at: timestamp
+  updated_at: timestamp
+}
+```
 
-## Behavior
-<!-- Key behaviors and business rules -->
+## Business Rules
+<!-- Domain rules the API must enforce -->
 - [e.g., "Email must be unique across all users"]
-- [e.g., "Deleting a user soft-deletes, preserving history"]
+- [e.g., "Delete is soft-delete (sets deleted_at, preserves data)"]
+- [e.g., "Name is required, 1-100 characters"]
 
-## Error Scenarios
-<!-- What can go wrong? How should errors appear to the consumer? -->
-- [e.g., "Duplicate email → 409 Conflict with message"]
-- [e.g., "User not found → 404 with user-friendly message"]
-- [e.g., "Invalid input → 400 with field-level errors"]
+## Error Handling
+<!-- Error response contract -->
+- [e.g., "400 Bad Request: validation errors with field-level details"]
+- [e.g., "404 Not Found: resource doesn't exist"]
+- [e.g., "409 Conflict: uniqueness violation"]
+- [e.g., "All errors return { error: string, details?: object }"]
 
-## Context (optional)
-<!-- Authentication, rate limits, or other API-wide concerns -->
-[e.g., "Requires JWT auth, rate limited to 100 req/min"]
+## Non-Functional Requirements (optional)
+<!-- Performance, security, operational constraints -->
+[e.g., "Rate limit: 100 req/min per client" or "Auth: JWT Bearer token required"]
+
+## Acceptance
+<!-- What must be true for this API to be complete? -->
+- [ ] [e.g., "All endpoints implemented per spec"]
+- [ ] [e.g., "Error responses match contract"]
+- [ ] [e.g., "Business rules enforced"]
+- [ ] [e.g., "API documentation generated"]
