@@ -38,7 +38,7 @@ use std::sync::Arc;
 use io::process::RealRunner;
 use runtime::verify::{CommandRunner, ProgressReporter, VerifyExitCode};
 
-fn print_verify_failure(report: &verify::VerifyReport) {
+fn print_verify_failure(report: &runtime::verify::VerifyReport) {
     let Some(failure) = &report.failure else {
         return;
     };

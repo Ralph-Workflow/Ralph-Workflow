@@ -150,8 +150,11 @@ fn test_plan_skills_mcp_without_reason_attribute() {
     let xml = minimal_plan_xml(Some(
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "<skills-mcp>\n<skill>test-driven-development</skill>\n<mcp>context7</mcp>\n</skills-mcp>",
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
         r#"<skills-mcp>
@@ -159,6 +162,9 @@ fn test_plan_skills_mcp_without_reason_attribute() {
 <mcp>context7</mcp>
 </skills-mcp>"#,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

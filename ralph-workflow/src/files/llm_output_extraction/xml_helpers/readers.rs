@@ -248,8 +248,14 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, end_tag: &[u8]) -> Result<(), Xsd
 ///
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 /// A `SkillsMcp` struct with parsed entries.
 pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> SkillsMcp {
+=======
+/// A `SkillsMcp` struct with parsed entries. Never returns `Err` for content issues
+/// inside the element (only for XML syntax errors that prevent reading).
+pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdValidationError> {
+>>>>>>> Stashed changes
 =======
 /// A `SkillsMcp` struct with parsed entries. Never returns `Err` for content issues
 /// inside the element (only for XML syntax errors that prevent reading).
@@ -277,6 +283,7 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
                     .attributes()
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                     .filter_map(std::result::Result::ok)
                     .find(|a| a.key.as_ref() == b"reason")
                     .and_then(|a| a.unescape_value().ok())
@@ -284,11 +291,16 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
 =======
 =======
 >>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
                     .filter_map(|a| a.ok())
                     .find(|a| a.key.as_ref() == b"reason")
                     .and_then(|a| a.unescape_value().ok())
                     .map(|v| v.into_owned())
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
@@ -323,9 +335,12 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
                 // Self-closing elements like <skill/> or <mcp/> have no name text - skip
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 let _tag_bytes = e.name().as_ref();
                 // No content → nothing to record
 =======
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
                 let tag = e.name();
@@ -339,6 +354,9 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
                     }
                 }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
@@ -378,6 +396,7 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
 
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     SkillsMcp {
         skills,
         mcps,
@@ -386,12 +405,17 @@ pub fn parse_skills_mcp(reader: &mut Reader<&[u8]>) -> Result<SkillsMcp, XsdVali
 =======
 =======
 >>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
     Ok(SkillsMcp {
         skills,
         mcps,
         raw_content,
     })
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
