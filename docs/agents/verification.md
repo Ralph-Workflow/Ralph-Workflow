@@ -1,10 +1,24 @@
 # Required Verification (before PR/completion)
 
-## Canonical command
+## Canonical commands
 
+### Default (CLI + library only — for backend/workflow work):
 ```bash
 cargo xtask verify
 ```
+
+### With GUI (full verification — for GUI/frontend work):
+```bash
+cargo xtask verify --gui
+```
+
+Use `--gui` when:
+- Working on `ralph-gui/` Rust code
+- Working on `ralph-gui/ui/` Angular frontend
+- Preparing a PR that touches GUI files
+- Running full CI locally (`make ci` or `make verify-gui`)
+
+Do NOT use `--gui` when only working on `ralph-workflow/`, `test-helpers/`, `tests/`, or `xtask/`.
 
 Verification passes when required checks complete successfully with **no ERROR/WARNING diagnostics**. Informational output is acceptable.
 
@@ -31,6 +45,28 @@ On an unchanged tree, `cargo xtask verify` may reuse cached clean results for el
 Warm runs also persist per-file content fingerprints in `target/xtask-verify-cache.json`, allowing a fresh `cargo xtask verify` process to reuse unchanged digests instead of rereading every scoped file byte before deciding on cache hits. There is no fixed cross-machine runtime target, but unchanged warm runs should spend noticeably less time in cache-eligibility work than cold runs because the preparation step shares those hashes across all lanes up front.
 
 The release lane is intentionally narrower than the full workspace: `release-build` runs `cargo build --release` against workspace default members, so warm-cache reuse should survive edits under `tests/` while still invalidating on changes to `ralph-workflow`, `test-helpers`, `xtask`, manifests, or lockfiles.
+
+---
+
+## Recursion Protection for Tests That Spawn xtask
+
+The verify pipeline runs `test-xtask` which executes `cargo test -p xtask`. Tests in the xtask crate that spawn `cargo xtask` subprocesses could cause infinite recursion (verify runs test-xtask which runs tests which run verify again).
+
+### Defense-in-Depth Layers
+
+Three protection layers prevent this:
+
+1. **Layer A (main.rs):** The `RALPH_XTASK_IN_VERIFY` environment variable guard in `xtask/src/main.rs`. When verify detects this variable is set, it exits early with success instead of re-running checks.
+
+2. **Layer B (verify.rs):** The `test-xtask` CommandSpec in `xtask/src/verify.rs` sets `RALPH_XTASK_IN_VERIFY=1` in `extra_env`. This ensures the guard is inherited by all subprocesses spawned during test-xtask execution.
+
+3. **Layer C (separate binary):** Subprocess-spawning tests live in `xtask/tests/subprocess_invocation_tests.rs`, not in `xtask/src/main.rs`. This separate integration test binary is NOT included in `cargo test -p xtask` (the test-xtask check), so it cannot be triggered during verify.
+
+### Rules for Contributors
+
+- **Any test that spawns `cargo xtask` or `cargo test` MUST live in `xtask/tests/`**, not in `xtask/src/`.
+- **Every subprocess test MUST check `RALPH_XTASK_IN_VERIFY`** at the top and skip (exit 0) if set.
+- To run subprocess tests explicitly: `cargo test -p xtask --test subprocess_invocation_tests`
 
 ---
 
