@@ -29,15 +29,6 @@
       "*": "deny"
     }
   },
-      "*": "deny"
-    },
-    "grep": {
-      "*": "deny"
-    },
-    "task": {
-      "*": "deny"
-    }
-  },
   "agent": {
     "primary": {
       "description": "Primary agent with restricted access - only docs allowed for coordination",
