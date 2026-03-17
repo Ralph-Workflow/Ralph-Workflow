@@ -1,0 +1,120 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agents": {
+    "primary": {
+      "description": "Primary agent with full access to all code areas for coordinating the Ralph workflow refactoring project.",
+      "mode": "primary",
+      "permission": {
+        "bash": {
+          "*": "allow"
+        },
+        "read": {
+          "*": "allow"
+        },
+        "write": {
+          "*": "allow"
+        },
+        "edit": {
+          "*": "allow"
+        },
+        "glob": {
+          "*": "allow"
+        },
+        "grep": {
+          "*": "allow"
+        },
+        "task": {
+          "*": "allow"
+        }
+      }
+    },
+    "workflow-gui": {
+      "description": "Ralph GUI - Angular frontend application. Contains UI components, services, and Angular-specific code for the code review interface.",
+      "mode": "subagent"
+    },
+    "workflow-core": {
+      "description": "Ralph workflow core entry points. Root-level files: lib.rs (module declarations), main.rs (CLI entry), banner.rs (ASCII banner), exit_pause.rs (exit handling). Application bootstrap and top-level orchestration.",
+      "mode": "subagent"
+    },
+    "workflow-reducer": {
+      "description": "Event-driven state management core. Modules: reducer (state transitions), pipeline (data flow orchestration), checkpoint (state snapshots), phases (workflow stages). The functional heart of the application.",
+      "mode": "subagent"
+    },
+    "workflow-execution": {
+      "description": "Execution and runtime. Modules: executor (task execution logic), runtime (process/thread management). Handles work dispatch and lifecycle management.",
+      "mode": "subagent"
+    },
+    "workflow-io": {
+      "description": "I/O boundaries. Modules: io (input/output operations, file reading/writing, network calls), files (file system operations, path handling). Primary boundary between domain logic and external systems.",
+      "mode": "subagent"
+    },
+    "workflow-workspace": {
+      "description": "Workspace abstraction and boundaries. Modules: workspace (workspace discovery, project detection), boundary (external system interfaces). Defines the interface between the application and user projects.",
+      "mode": "subagent"
+    },
+    "workflow-git": {
+      "description": "Git operations helper. Module: git_helpers. Contains git operations like diff parsing, commit analysis, branch detection. Boundary module that interacts with the git executable.",
+      "mode": "subagent"
+    },
+    "workflow-config": {
+      "description": "Configuration and CLI. Modules: config (application configuration, settings loading), cli (command-line argument parsing, subcommands). All user-facing configuration handling.",
+      "mode": "subagent"
+    },
+    "workflow-app": {
+      "description": "Application orchestration. Module: app. Main application layer that coordinates all other modules, wiring together components.",
+      "mode": "subagent"
+    },
+    "workflow-logging": {
+      "description": "Logging infrastructure. Modules: logging (log message construction, formatting), logger (log output handling, sinks). Observability and debugging support.",
+      "mode": "subagent"
+    },
+    "workflow-monitoring": {
+      "description": "Observability. Modules: monitoring (metrics collection, performance tracking), diagnostics (error reporting, debugging utilities). System reliability and troubleshooting support.",
+      "mode": "subagent"
+    },
+    "workflow-misc": {
+      "description": "Shared utilities. Modules: common (shared types, utilities), platform (OS-specific code), rendering (UI/text rendering), templates (message/response templates). Cross-cutting functionality.",
+      "mode": "subagent"
+    },
+    "workflow-future": {
+      "description": "Experimental and specialized features. Modules: benchmarks (performance measurement), interrupt (signal handling), language_detector (programming language identification), review_metrics (code review analytics). Advanced or niche functionality.",
+      "mode": "subagent"
+    },
+    "workflow-agents": {
+      "description": "AI agent integrations. Module: agents. Contains AI agent abstractions or integrations for the code review workflow.",
+      "mode": "subagent"
+    },
+    "workflow-prompts": {
+      "description": "Prompt engineering. Modules: guidelines (prompt guidelines, best practices), prompts (prompt templates, message construction). Drives AI interactions.",
+      "mode": "subagent"
+    },
+    "workflow-json": {
+      "description": "JSON parsing and serialization. Module: json_parser. Handles JSON parsing, validation, and structured data handling from files and APIs.",
+      "mode": "subagent"
+    },
+    "workflow-cloud": {
+      "description": "Cloud integrations. Module: cloud. Handles cloud service integrations, remote operations, or cloud-native functionality. Boundary module for external cloud APIs.",
+      "mode": "subagent"
+    },
+    "test-helpers": {
+      "description": "Test utilities crate. Shared testing utilities, test fixtures, and helper functions used across the test suite.",
+      "mode": "subagent"
+    },
+    "xtask": {
+      "description": "Build automation crate. Build tasks, development scripts, and project maintenance utilities. CI/CD and development workflow automation.",
+      "mode": "subagent"
+    },
+    "workflow-tests": {
+      "description": "Integration tests. End-to-end tests, integration scenarios, and test harnesses in the tests/ directory that span multiple modules.",
+      "mode": "subagent"
+    },
+    "workflow-lints": {
+      "description": "Linting rules crate. Custom linting rules, code quality checks, and static analysis that define project code standards.",
+      "mode": "subagent"
+    },
+    "workflow-docs": {
+      "description": "Documentation. Architecture decision records, code style guides, API documentation, and developer guides in the docs/ directory.",
+      "mode": "subagent"
+    }
+  }
+}
