@@ -6,8 +6,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Go-specific guidelines to the review
-pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // Core Go guidelines
+pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Run go fmt and golint".to_string(),
         "Check all error returns".to_string(),
@@ -45,18 +44,19 @@ pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
         "Don't use panic for normal error handling".to_string(),
     ]);
 
-    // Add web framework guidelines if applicable
     if stack
         .frameworks
         .iter()
         .any(|f| matches!(f.as_str(), "Gin" | "Chi" | "Fiber" | "Echo"))
     {
-        add_go_web_guidelines(guidelines);
+        guidelines = add_go_web_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Go web framework guidelines (Gin, Chi, Fiber, Echo)
-fn add_go_web_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_go_web_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use proper error handling in handlers".to_string(),
         "Use context for cancellation".to_string(),
@@ -67,6 +67,8 @@ fn add_go_web_guidelines(guidelines: &mut ReviewGuidelines) {
         "Set proper CORS headers".to_string(),
         "Validate input in handlers".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -84,8 +86,7 @@ mod tests {
             package_manager: Some("Go modules".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Go-specific checks
         assert!(guidelines
@@ -106,8 +107,7 @@ mod tests {
             package_manager: Some("Go modules".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Go web framework checks
         assert!(guidelines
@@ -131,8 +131,7 @@ mod tests {
             package_manager: Some("Go modules".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Go web framework checks
         assert!(guidelines
@@ -152,8 +151,7 @@ mod tests {
             package_manager: Some("Go modules".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Go web framework checks
         assert!(guidelines
@@ -173,8 +171,7 @@ mod tests {
             package_manager: Some("Go modules".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Go web framework checks
         assert!(guidelines

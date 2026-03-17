@@ -225,20 +225,15 @@ impl ReviewGuidelines {
 
     /// Format guidelines as a prompt section
     pub(crate) fn format_for_prompt(&self) -> String {
-        let mut sections = Vec::new();
-
-        if let Some(s) = Self::format_section(&self.quality_checks, "CODE QUALITY", 10) {
-            sections.push(s);
-        }
-        if let Some(s) = Self::format_section(&self.security_checks, "SECURITY", 10) {
-            sections.push(s);
-        }
-        if let Some(s) = Self::format_section(&self.performance_checks, "PERFORMANCE", 8) {
-            sections.push(s);
-        }
-        if let Some(s) = Self::format_section(&self.anti_patterns, "AVOID", 8) {
-            sections.push(s);
-        }
+        let sections: Vec<String> = [
+            Self::format_section(&self.quality_checks, "CODE QUALITY", 10),
+            Self::format_section(&self.security_checks, "SECURITY", 10),
+            Self::format_section(&self.performance_checks, "PERFORMANCE", 8),
+            Self::format_section(&self.anti_patterns, "AVOID", 8),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         sections.join("\n\n")
     }
@@ -248,29 +243,22 @@ impl ReviewGuidelines {
     /// This produces a more detailed prompt section that groups checks by priority,
     /// helping agents focus on the most critical issues first.
     pub(crate) fn format_for_prompt_with_priorities(&self) -> String {
-        fn push_section(
-            sections: &mut Vec<String>,
-            header: &str,
-            checks: &[SeverityCheck],
-            limit: usize,
-        ) {
+        fn build_section(header: &str, checks: &[SeverityCheck], limit: usize) -> Option<String> {
             if checks.is_empty() {
-                return;
+                return None;
             }
-            let mut items: Vec<String> = checks
+            let items: Vec<String> = checks
                 .iter()
                 .take(limit)
                 .map(|c| format!("  - {}", c.check))
                 .collect();
+            let mut items = items;
             if checks.len() > limit {
                 items.push(format!("  - ... (+{} more)", checks.len() - limit));
             }
-            sections.push(format!("{}\n{}", header, items.join("\n")));
+            Some(format!("{}\n{}", header, items.join("\n")))
         }
 
-        let mut sections = Vec::new();
-
-        // Critical: Security and secrets.
         let critical_checks: Vec<SeverityCheck> = self
             .security_checks
             .iter()
@@ -278,14 +266,7 @@ impl ReviewGuidelines {
             .cloned()
             .map(SeverityCheck::critical)
             .collect();
-        push_section(
-            &mut sections,
-            "CRITICAL (must fix before merge):",
-            &critical_checks,
-            10,
-        );
 
-        // High: Concurrency and resource management.
         let high_checks: Vec<SeverityCheck> = self
             .concurrency_checks
             .iter()
@@ -293,14 +274,7 @@ impl ReviewGuidelines {
             .cloned()
             .map(SeverityCheck::high)
             .collect();
-        push_section(
-            &mut sections,
-            "HIGH (should fix before merge):",
-            &high_checks,
-            10,
-        );
 
-        // Medium: Quality, anti-patterns, performance, testing, API design.
         let medium_checks: Vec<SeverityCheck> = self
             .quality_checks
             .iter()
@@ -311,14 +285,7 @@ impl ReviewGuidelines {
             .cloned()
             .map(SeverityCheck::medium)
             .collect();
-        push_section(
-            &mut sections,
-            "MEDIUM (should address):",
-            &medium_checks,
-            12,
-        );
 
-        // Low: Documentation, observability.
         let low_checks: Vec<SeverityCheck> = self
             .documentation_checks
             .iter()
@@ -326,16 +293,24 @@ impl ReviewGuidelines {
             .cloned()
             .map(SeverityCheck::low)
             .collect();
-        push_section(&mut sections, "LOW (nice to have):", &low_checks, 10);
 
-        // Info: Idioms.
         let info_checks: Vec<SeverityCheck> = self
             .idioms
             .iter()
             .cloned()
             .map(SeverityCheck::info)
             .collect();
-        push_section(&mut sections, "INFO (observations):", &info_checks, 10);
+
+        let sections: Vec<String> = [
+            build_section("CRITICAL (must fix before merge):", &critical_checks, 10),
+            build_section("HIGH (should fix before merge):", &high_checks, 10),
+            build_section("MEDIUM (should address):", &medium_checks, 12),
+            build_section("LOW (nice to have):", &low_checks, 10),
+            build_section("INFO (observations):", &info_checks, 10),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         sections.join("\n\n")
     }

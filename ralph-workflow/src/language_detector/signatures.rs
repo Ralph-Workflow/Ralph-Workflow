@@ -117,18 +117,18 @@ pub(super) fn detect_signature_files_with_workspace(
     root: &Path,
 ) -> (Vec<String>, Option<String>, Option<String>) {
     let signatures = collect_signature_files_with_workspace(workspace, root);
-    let mut results = detectors::DetectionResults::new();
+    let results = detectors::DetectionResults::new();
 
-    detectors::detect_rust(workspace, &signatures, &mut results);
-    detectors::detect_python(workspace, &signatures, &mut results);
-    detectors::detect_javascript(workspace, &signatures, &mut results);
-    detectors::detect_go(workspace, &signatures, &mut results);
-    detectors::detect_ruby(workspace, &signatures, &mut results);
-    detectors::detect_java(workspace, &signatures, &mut results);
-    detectors::detect_php(workspace, &signatures, &mut results);
-    detectors::detect_dotnet(&signatures, &mut results);
-    detectors::detect_elixir(workspace, &signatures, &mut results);
-    detectors::detect_dart(workspace, &signatures, &mut results);
+    let results = detectors::detect_rust(workspace, &signatures, results);
+    let results = detectors::detect_python(workspace, &signatures, results);
+    let results = detectors::detect_javascript(workspace, &signatures, results);
+    let results = detectors::detect_go(workspace, &signatures, results);
+    let results = detectors::detect_ruby(workspace, &signatures, results);
+    let results = detectors::detect_java(workspace, &signatures, results);
+    let results = detectors::detect_php(workspace, &signatures, results);
+    let results = detectors::detect_dotnet(&signatures, results);
+    let results = detectors::detect_elixir(workspace, &signatures, results);
+    let results = detectors::detect_dart(workspace, &signatures, results);
 
     results.finish()
 }

@@ -28,40 +28,34 @@ impl Template {
     pub fn render(&self, variables: &HashMap<&str, String>) -> Result<String, TemplateError> {
         let mut literal_segments = Vec::new();
         // Process loops first (they may generate new variable references)
-        let (mut result, loop_logs) = Self::process_loops_with_log(
-            &self.content,
-            variables,
-            &mut literal_segments,
-        );
+        let (result, loop_logs) =
+            Self::process_loops_with_log(&self.content, variables, &mut literal_segments);
 
         // Process conditionals
-        result = Self::process_conditionals(&result, variables);
+        let result = Self::process_conditionals(&result, variables);
 
         // Substitute variables (with default values and substitution tracking)
         let (result_after_sub, _substituted, unsubstituted) =
             Self::substitute_variables_allow_empty(&result, variables);
 
-        // Check for missing variables
-        let mut missing = Vec::new();
-        for loop_log in loop_logs {
-            if result.contains(&loop_log.token) {
-                for name in loop_log.unsubstituted {
-                    if !missing.contains(&name) {
-                        missing.push(name);
-                    }
-                }
-            }
-        }
-        for name in unsubstituted {
-            if !missing.contains(&name) {
-                missing.push(name);
-            }
-        }
+        // Check for missing variables using iterator pipeline
+        let missing: Vec<String> = loop_logs
+            .iter()
+            .filter(|loop_log| result.contains(&loop_log.token))
+            .flat_map(|loop_log| loop_log.unsubstituted.clone())
+            .chain(unsubstituted)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
         if let Some(first_missing) = missing.first() {
             return Err(TemplateError::MissingVariable(first_missing.clone()));
         }
 
-        Ok(Self::restore_literal_segments(result_after_sub, &literal_segments))
+        Ok(Self::restore_literal_segments(
+            result_after_sub,
+            &literal_segments,
+        ))
     }
 
     /// Render the template with variables and partials support.
@@ -144,36 +138,27 @@ impl Template {
         }
 
         // Process loops (they may generate new variable references)
-        let (loop_processed, loop_logs) = Self::process_loops_with_log(
-            &result,
-            variables,
-            &mut literal_segments,
-        );
-        result = loop_processed;
+        let (loop_processed, loop_logs) =
+            Self::process_loops_with_log(&result, variables, &mut literal_segments);
+        let result = loop_processed;
 
         // Process conditionals
-        result = Self::process_conditionals(&result, variables);
+        let result = Self::process_conditionals(&result, variables);
 
         // Now substitute variables in the result (using the new method that handles defaults)
         let (result_after_sub, _substituted, unsubstituted) =
             Self::substitute_variables_allow_empty(&result, variables);
 
-        // Check for missing variables
-        let mut missing = Vec::new();
-        for loop_log in loop_logs {
-            if result.contains(&loop_log.token) {
-                for name in loop_log.unsubstituted {
-                    if !missing.contains(&name) {
-                        missing.push(name);
-                    }
-                }
-            }
-        }
-        for name in unsubstituted {
-            if !missing.contains(&name) {
-                missing.push(name);
-            }
-        }
+        // Check for missing variables using iterator pipeline
+        let missing: Vec<String> = loop_logs
+            .iter()
+            .filter(|loop_log| result.contains(&loop_log.token))
+            .flat_map(|loop_log| loop_log.unsubstituted.clone())
+            .chain(unsubstituted)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
         if let Some(first_missing) = missing.first() {
             return Err(TemplateError::MissingVariable(first_missing.clone()));
         }
@@ -226,44 +211,40 @@ impl Template {
             )?;
             visited.pop();
 
-            let token = Self::next_literal_token(
-                &result,
-                &rendered_partial.content,
-                &literal_segments,
-            );
+            let token =
+                Self::next_literal_token(&result, &rendered_partial.content, &literal_segments);
             literal_segments.push(LiteralSegment {
                 token: token.clone(),
                 content: rendered_partial.content,
             });
             result = result.replace(&full_match, &token);
             log.substituted.extend(rendered_partial.log.substituted);
-            for name in rendered_partial.log.unsubstituted {
-                if !log.unsubstituted.contains(&name) {
-                    log.unsubstituted.push(name);
-                }
-            }
+            let new_unsub: Vec<String> = rendered_partial
+                .log
+                .unsubstituted
+                .into_iter()
+                .filter(|name| !log.unsubstituted.contains(name))
+                .collect();
+            log.unsubstituted.extend(new_unsub);
         }
 
         // Process loops
         let (loop_processed, loop_logs) =
-            Self::process_loops_with_log(
-                &result,
-                variables,
-                &mut literal_segments,
-            );
-        result = loop_processed;
+            Self::process_loops_with_log(&result, variables, &mut literal_segments);
+        let result = loop_processed;
 
         // Process conditionals
-        result = Self::process_conditionals(&result, variables);
+        let result = Self::process_conditionals(&result, variables);
 
         for loop_log in loop_logs {
             if result.contains(&loop_log.token) {
                 log.substituted.extend(loop_log.substituted);
-                for name in loop_log.unsubstituted {
-                    if !log.unsubstituted.contains(&name) {
-                        log.unsubstituted.push(name);
-                    }
-                }
+                let new_unsub: Vec<String> = loop_log
+                    .unsubstituted
+                    .into_iter()
+                    .filter(|name| !log.unsubstituted.contains(name))
+                    .collect();
+                log.unsubstituted.extend(new_unsub);
             }
         }
 
@@ -272,11 +253,11 @@ impl Template {
             Self::substitute_variables(&result, variables);
 
         log.substituted.extend(substituted);
-        for name in unsubstituted {
-            if !log.unsubstituted.contains(&name) {
-                log.unsubstituted.push(name);
-            }
-        }
+        let new_unsub: Vec<String> = unsubstituted
+            .into_iter()
+            .filter(|name| !log.unsubstituted.contains(name))
+            .collect();
+        log.unsubstituted.extend(new_unsub);
 
         Ok(RenderedTemplate {
             content: Self::restore_literal_segments(result_after_sub, &literal_segments),

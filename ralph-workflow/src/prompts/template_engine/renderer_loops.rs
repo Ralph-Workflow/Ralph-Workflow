@@ -66,29 +66,40 @@ impl Template {
                 }
             });
 
-            // Build the loop output
-            let mut loop_output = String::new();
-            let mut substituted = Vec::new();
-            let mut unsubstituted = Vec::new();
-            for item in items {
-                // Create a temporary variable map with the loop variable
-                let mut loop_vars: HashMap<&str, String> = variables.clone();
-                loop_vars.insert(&loop_var, item);
+            // Build the loop output using iterator pipeline
+            let loop_results: Vec<(String, Vec<crate::prompts::SubstitutionEntry>, Vec<String>)> =
+                items
+                    .iter()
+                    .map(|item| {
+                        // Create a temporary variable map with the loop variable
+                        let mut loop_vars: HashMap<&str, String> = variables.clone();
+                        loop_vars.insert(&loop_var, item.clone());
 
-                // Process conditionals first with loop variables
-                let processed = Self::process_conditionals(&block_template, &loop_vars);
+                        // Process conditionals first with loop variables
+                        let processed = Self::process_conditionals(&block_template, &loop_vars);
 
-                // Then substitute variables (collect log for loop substitutions)
-                let (processed, loop_substituted, loop_unsubstituted) =
-                    Self::substitute_variables(&processed, &loop_vars);
-                substituted.extend(loop_substituted);
-                for name in loop_unsubstituted {
-                    if !unsubstituted.contains(&name) {
-                        unsubstituted.push(name);
-                    }
-                }
-                loop_output.push_str(&processed);
-            }
+                        // Then substitute variables (collect log for loop substitutions)
+                        Self::substitute_variables(&processed, &loop_vars)
+                    })
+                    .collect();
+
+            let loop_output: String = loop_results
+                .iter()
+                .map(|(processed, _, _)| processed.clone())
+                .collect::<Vec<_>>()
+                .join("");
+
+            let substituted: Vec<crate::prompts::SubstitutionEntry> = loop_results
+                .iter()
+                .flat_map(|(_, sub, _)| sub.clone())
+                .collect();
+
+            let unsubstituted: Vec<String> = loop_results
+                .iter()
+                .flat_map(|(_, _, unsub)| unsub.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
 
             // Replace the entire for block with the loop output
             let token = Self::next_literal_token(&result, &loop_output, literal_segments);

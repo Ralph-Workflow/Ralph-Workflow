@@ -7,7 +7,10 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add JavaScript-specific guidelines to the review
-pub fn add_javascript_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
+pub fn add_javascript_guidelines(
+    mut guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use const/let, never var".to_string(),
         "Handle Promise rejections".to_string(),
@@ -34,21 +37,20 @@ pub fn add_javascript_guidelines(guidelines: &mut ReviewGuidelines, stack: &Proj
         "Avoid synchronous I/O in Node.js".to_string(),
     ]);
 
-    // Add frontend guidelines if using React or Vue
     if stack.frameworks.iter().any(|f| f == "React" || f == "Vue") {
-        add_frontend_guidelines(guidelines);
+        guidelines = add_frontend_guidelines(guidelines);
     }
 
-    // Add framework-specific guidelines
-    add_framework_guidelines(guidelines, stack);
+    add_framework_guidelines(guidelines, stack)
 }
 
 /// Add TypeScript-specific guidelines to the review
-pub fn add_typescript_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // First add all JavaScript guidelines
-    add_javascript_guidelines(guidelines, stack);
+pub fn add_typescript_guidelines(
+    mut guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
+    guidelines = add_javascript_guidelines(guidelines, stack);
 
-    // Then add TypeScript-specific guidelines
     guidelines.quality_checks.extend([
         "Use strict TypeScript mode".to_string(),
         "Prefer interfaces over type aliases for objects".to_string(),
@@ -66,10 +68,12 @@ pub fn add_typescript_guidelines(guidelines: &mut ReviewGuidelines, stack: &Proj
         "Don't use 'as' casts to bypass type checking".to_string(),
         "Avoid non-null assertions (!) without justification".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add frontend-specific guidelines (React/Vue)
-fn add_frontend_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_frontend_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Components are properly modularized".to_string(),
         "State management is predictable".to_string(),
@@ -81,24 +85,30 @@ fn add_frontend_guidelines(guidelines: &mut ReviewGuidelines) {
         "Use lazy loading for large components".to_string(),
         "Optimize bundle size".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add framework-specific guidelines based on detected frameworks
-fn add_framework_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
+fn add_framework_guidelines(
+    mut guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
     for framework in &stack.frameworks {
-        match framework.as_str() {
+        guidelines = match framework.as_str() {
             "React" => add_react_guidelines(guidelines),
             "Vue" => add_vue_guidelines(guidelines),
             "Angular" => add_angular_guidelines(guidelines),
             "Express" | "Fastify" | "NestJS" => add_node_backend_guidelines(guidelines),
             "Next.js" | "Nuxt" => add_ssr_framework_guidelines(guidelines),
-            _ => {}
+            _ => guidelines,
         }
     }
+    guidelines
 }
 
 /// Add React-specific guidelines
-fn add_react_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_react_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use hooks correctly (rules of hooks)".to_string(),
         "Properly manage component lifecycle".to_string(),
@@ -110,10 +120,12 @@ fn add_react_guidelines(guidelines: &mut ReviewGuidelines) {
         "Don't mutate state directly".to_string(),
         "Avoid inline functions in render".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Vue-specific guidelines
-fn add_vue_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_vue_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use Composition API for complex logic".to_string(),
         "Follow Vue style guide".to_string(),
@@ -124,10 +136,12 @@ fn add_vue_guidelines(guidelines: &mut ReviewGuidelines) {
         "Avoid watchers when computed works".to_string(),
         "Don't directly mutate props".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Angular-specific guidelines
-fn add_angular_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_angular_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use OnPush change detection where possible".to_string(),
         "Follow Angular style guide".to_string(),
@@ -142,10 +156,12 @@ fn add_angular_guidelines(guidelines: &mut ReviewGuidelines) {
         "Avoid subscribing without unsubscribing".to_string(),
         "Don't use any type".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Node.js backend framework guidelines (Express, Fastify, `NestJS`)
-fn add_node_backend_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_node_backend_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use middleware pattern effectively".to_string(),
         "Handle errors in middleware".to_string(),
@@ -157,10 +173,12 @@ fn add_node_backend_guidelines(guidelines: &mut ReviewGuidelines) {
         "Implement rate limiting".to_string(),
         "Validate request body schema".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add SSR framework guidelines (Next.js, Nuxt)
-fn add_ssr_framework_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_ssr_framework_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use appropriate rendering strategy (SSR/SSG/ISR)".to_string(),
         "Handle hydration correctly".to_string(),
@@ -171,6 +189,8 @@ fn add_ssr_framework_guidelines(guidelines: &mut ReviewGuidelines) {
         "Minimize client-side JavaScript".to_string(),
         "Use image optimization".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -188,8 +208,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_javascript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_javascript_guidelines(ReviewGuidelines::default(), &stack);
 
         assert!(guidelines
             .quality_checks
@@ -209,8 +228,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_typescript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_typescript_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have TypeScript checks
         assert!(guidelines.quality_checks.iter().any(|c| c.contains("any")));
@@ -237,8 +255,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_javascript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_javascript_guidelines(ReviewGuidelines::default(), &stack);
 
         assert!(guidelines
             .quality_checks
@@ -257,8 +274,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_typescript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_typescript_guidelines(ReviewGuidelines::default(), &stack);
 
         assert!(guidelines
             .quality_checks
@@ -277,8 +293,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_javascript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_javascript_guidelines(ReviewGuidelines::default(), &stack);
 
         assert!(guidelines
             .quality_checks
@@ -301,8 +316,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_typescript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_typescript_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have SSR framework guidelines
         assert!(guidelines
@@ -322,8 +336,7 @@ mod tests {
             package_manager: Some("Bun".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_typescript_guidelines(&mut guidelines, &stack);
+        let guidelines = add_typescript_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have React-specific checks
         assert!(guidelines

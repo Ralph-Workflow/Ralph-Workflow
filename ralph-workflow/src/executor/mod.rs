@@ -46,6 +46,7 @@
 //!
 //! - [`crate::workspace::Workspace`] - Similar abstraction for filesystem operations
 
+mod child_proc;
 mod executor_trait;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;

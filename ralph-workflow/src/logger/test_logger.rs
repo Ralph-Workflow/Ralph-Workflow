@@ -3,15 +3,23 @@
 //! Provides `TestLogger` which implements `Loggable` and captures all log
 //! messages in memory for assertion in tests.
 
+use std::cell::RefCell;
+
 use super::loggable::Loggable;
 use crate::json_parser::printer::Printable;
-use std::cell::RefCell;
 
 /// Test logger that captures log output for assertion.
 ///
 /// This logger stores all log messages in memory for testing purposes.
 /// It provides methods to retrieve and inspect the captured log output.
 /// Uses line buffering similar to `TestPrinter` to handle partial writes.
+///
+/// # Design Note
+///
+/// This logger uses interior mutability (RefCell) to allow the Loggable trait's
+/// `&self` methods to accumulate state. This is necessary because the Loggable
+/// trait uses `&self` and we need to store accumulated logs. This is acceptable
+/// for a test utility that doesn't share state across threads.
 ///
 /// # Availability
 ///
@@ -21,41 +29,34 @@ use std::cell::RefCell;
 /// this code but it's not used by the binary, which is expected behavior.
 #[derive(Debug, Default)]
 pub struct TestLogger {
-    /// Captured complete log lines.
     logs: RefCell<Vec<String>>,
-    /// Buffer for incomplete lines (content without trailing newline).
     buffer: RefCell<String>,
 }
 
 impl TestLogger {
-    /// Create a new test logger.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Get all captured log messages including partial buffered content.
+    #[must_use]
     pub fn get_logs(&self) -> Vec<String> {
         let mut result = self.logs.borrow().clone();
-        let buffer = self.buffer.borrow();
-        if !buffer.is_empty() {
-            result.push(buffer.clone());
+        if !self.buffer.borrow().is_empty() {
+            result.push(self.buffer.borrow().clone());
         }
         result
     }
 
-    /// Clear all captured log messages and buffered content.
     pub fn clear(&self) {
         self.logs.borrow_mut().clear();
         self.buffer.borrow_mut().clear();
     }
 
-    /// Check if a specific message exists in the logs.
     pub fn has_log(&self, msg: &str) -> bool {
         self.get_logs().iter().any(|l| l.contains(msg))
     }
 
-    /// Get the number of times a specific pattern appears in logs.
     pub fn count_pattern(&self, pattern: &str) -> usize {
         self.get_logs()
             .iter()
@@ -88,7 +89,6 @@ impl Loggable for TestLogger {
 
 impl Printable for TestLogger {
     fn is_terminal(&self) -> bool {
-        // Test logger is never a terminal
         false
     }
 }
@@ -97,12 +97,14 @@ impl std::io::Write for TestLogger {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let s = std::str::from_utf8(buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let mut buffer = self.buffer.borrow_mut();
-        buffer.push_str(s);
+        self.buffer.borrow_mut().push_str(s);
 
-        // Process complete lines (similar to TestPrinter)
-        while let Some(newline_pos) = buffer.find('\n') {
-            let line = buffer.drain(..=newline_pos).collect::<String>();
+        while let Some(newline_pos) = self.buffer.borrow().find('\n') {
+            let line = self
+                .buffer
+                .borrow_mut()
+                .drain(..=newline_pos)
+                .collect::<String>();
             self.logs.borrow_mut().push(line);
         }
 
@@ -110,11 +112,9 @@ impl std::io::Write for TestLogger {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        // Flush any remaining buffer content to logs
-        let mut buffer = self.buffer.borrow_mut();
-        if !buffer.is_empty() {
-            self.logs.borrow_mut().push(buffer.clone());
-            buffer.clear();
+        if !self.buffer.borrow().is_empty() {
+            self.logs.borrow_mut().push(self.buffer.borrow().clone());
+            self.buffer.borrow_mut().clear();
         }
         Ok(())
     }

@@ -5,7 +5,7 @@
 
 use super::event::CliEvent;
 
-/// Convert CLI arguments into a sequence of events.
+/// Convert CLI arguments into a sequence of events (functional pattern with iterator pipeline).
 ///
 /// This function maps each relevant field in the Args struct to a
 /// corresponding `CliEvent`. Events are generated in a deterministic order,

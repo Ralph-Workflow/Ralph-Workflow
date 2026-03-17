@@ -6,7 +6,7 @@
 /// Cloud runtime configuration (internal).
 ///
 /// This struct is loaded from environment variables when cloud mode is enabled.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CloudConfig {
     /// Enable cloud reporting mode (internal env-config).
     pub enabled: bool,
@@ -27,7 +27,7 @@ pub struct CloudConfig {
 /// Git remote configuration (internal).
 ///
 /// Loaded from environment variables when cloud mode is enabled.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GitRemoteConfig {
     /// Authentication method for git operations
     pub auth_method: GitAuthMethod,
@@ -47,7 +47,7 @@ pub struct GitRemoteConfig {
     pub remote_name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GitAuthMethod {
     /// Use SSH key (default for containers with mounted keys)
     SshKey {

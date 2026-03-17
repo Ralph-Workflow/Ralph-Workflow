@@ -216,8 +216,6 @@ pub fn cleanup_stale_rebase_state() -> io::Result<CleanupResult> {
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
 
-    let mut result = CleanupResult::default();
-
     // List of possible stale rebase state files/directories
     let stale_paths = [
         (REBASE_APPLY_DIR, "rebase-apply directory"),
@@ -229,46 +227,53 @@ pub fn cleanup_stale_rebase_state() -> io::Result<CleanupResult> {
         ("COMMIT_EDITMSG", "commit message"),
     ];
 
-    for (path_name, description) in &stale_paths {
-        let full_path = git_dir.join(path_name);
-        if full_path.exists() {
-            // Try to validate the state before removing
-            let is_valid = validate_state_file(&full_path);
-            if !is_valid.unwrap_or(true) {
-                // State is invalid or corrupted, safe to remove
-                let removed = if full_path.is_dir() {
-                    fs::remove_dir_all(&full_path)
-                        .map(|()| true)
-                        .unwrap_or(false)
-                } else {
-                    fs::remove_file(&full_path).map(|()| true).unwrap_or(false)
-                };
+    let lock_files = ["index.lock", "packed-refs.lock", "HEAD.lock"];
 
-                if removed {
-                    result
-                        .cleaned_paths
-                        .push(format!("{path_name} ({description})"));
+    let cleaned_paths: Vec<String> = stale_paths
+        .iter()
+        .filter_map(|(path_name, description)| {
+            let full_path = git_dir.join(path_name);
+            if full_path.exists() {
+                let is_valid = validate_state_file(&full_path);
+                if !is_valid.unwrap_or(true) {
+                    let removed = if full_path.is_dir() {
+                        fs::remove_dir_all(&full_path)
+                            .map(|()| true)
+                            .unwrap_or(false)
+                    } else {
+                        fs::remove_file(&full_path).map(|()| true).unwrap_or(false)
+                    };
+
+                    if removed {
+                        return Some(format!("{path_name} ({description})"));
+                    }
                 }
             }
-        }
-    }
-
-    // Clean up lock files if they exist
-    let lock_files = ["index.lock", "packed-refs.lock", "HEAD.lock"];
-    for lock_file in &lock_files {
-        let lock_path = git_dir.join(lock_file);
-        if lock_path.exists() {
-            // Lock files are generally safe to remove if stale
-            if fs::remove_file(&lock_path).is_ok() {
-                result.locks_removed = true;
-                result
-                    .cleaned_paths
-                    .push(format!("{lock_file} (lock file)"));
+            None
+        })
+        .chain(lock_files.iter().filter_map(|lock_file| {
+            let lock_path = git_dir.join(lock_file);
+            if lock_path.exists() && fs::remove_file(&lock_path).is_ok() {
+                Some(format!("{lock_file} (lock file)"))
+            } else {
+                None
             }
-        }
-    }
+        }))
+        .collect();
 
-    Ok(result)
+    let locks_removed = !lock_files
+        .iter()
+        .filter(|lock_file| {
+            let lock_path = git_dir.join(lock_file);
+            lock_path.exists() && fs::remove_file(&lock_path).is_ok()
+        })
+        .count()
+        == 0;
+
+    Ok(CleanupResult {
+        cleaned_paths,
+        locks_removed,
+    })
 }
 
 /// Validate a Git state file for corruption.
@@ -390,15 +395,10 @@ pub fn attempt_automatic_recovery(
     let repo = git2::Repository::discover(".").map_err(|e| git2_to_io_error(&e))?;
     let git_dir = repo.path();
     let lock_files = ["index.lock", "packed-refs.lock", "HEAD.lock"];
-    let mut removed_any = false;
-
-    for lock_file in &lock_files {
+    let removed_any = lock_files.iter().any(|lock_file| {
         let lock_path = git_dir.join(lock_file);
-        // Note: std::fs is acceptable here - operating on .git/ internals, not workspace files
-        if lock_path.exists() && std::fs::remove_file(&lock_path).is_ok() {
-            removed_any = true;
-        }
-    }
+        lock_path.exists() && std::fs::remove_file(&lock_path).is_ok()
+    });
 
     if removed_any && validate_git_state().is_ok() {
         return Ok(true);

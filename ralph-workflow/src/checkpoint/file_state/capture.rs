@@ -1,6 +1,6 @@
 impl FileSystemState {
     /// Create a new file system state.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -28,44 +28,24 @@ impl FileSystemState {
     /// CLI-layer code that operates before a workspace is available. New pipeline code
     /// should use `capture_with_workspace` instead.
     fn capture_current_with_executor_impl(executor: &dyn ProcessExecutor) -> Self {
-        let mut state = Self::new();
+        let files_to_capture = [
+            "PROMPT.md",
+            ".agent/PLAN.md",
+            ".agent/ISSUES.md",
+            ".agent/config.toml",
+            ".agent/start_commit",
+            ".agent/NOTES.md",
+            ".agent/status",
+        ];
 
-        // Always capture PROMPT.md
-        state.capture_file_impl("PROMPT.md");
+        let mut state = files_to_capture
+            .iter()
+            .fold(Self::new(), |mut state, path| {
+                state.capture_file_impl(path);
+                state
+            });
 
-        // Capture .agent/PLAN.md if it exists (moved to .agent directory)
-        if Path::new(".agent/PLAN.md").exists() {
-            state.capture_file_impl(".agent/PLAN.md");
-        }
-
-        // Capture .agent/ISSUES.md if it exists (moved to .agent directory)
-        if Path::new(".agent/ISSUES.md").exists() {
-            state.capture_file_impl(".agent/ISSUES.md");
-        }
-
-        // Capture .agent/config.toml if it exists
-        if Path::new(".agent/config.toml").exists() {
-            state.capture_file_impl(".agent/config.toml");
-        }
-
-        // Capture .agent/start_commit if it exists
-        if Path::new(".agent/start_commit").exists() {
-            state.capture_file_impl(".agent/start_commit");
-        }
-
-        // Capture .agent/NOTES.md if it exists
-        if Path::new(".agent/NOTES.md").exists() {
-            state.capture_file_impl(".agent/NOTES.md");
-        }
-
-        // Capture .agent/status if it exists
-        if Path::new(".agent/status").exists() {
-            state.capture_file_impl(".agent/status");
-        }
-
-        // Try to capture git state
         state.capture_git_state(executor);
-
         state
     }
 
@@ -83,44 +63,24 @@ impl FileSystemState {
         workspace: &dyn Workspace,
         executor: &dyn ProcessExecutor,
     ) -> Self {
-        let mut state = Self::new();
+        let files_to_capture = [
+            "PROMPT.md",
+            ".agent/PLAN.md",
+            ".agent/ISSUES.md",
+            ".agent/config.toml",
+            ".agent/start_commit",
+            ".agent/NOTES.md",
+            ".agent/status",
+        ];
 
-        // Always capture PROMPT.md
-        state.capture_file_with_workspace(workspace, "PROMPT.md");
+        let mut state = files_to_capture
+            .iter()
+            .fold(Self::new(), |mut state, path| {
+                state.capture_file_with_workspace(workspace, path);
+                state
+            });
 
-        // Capture .agent/PLAN.md if it exists
-        if workspace.exists(Path::new(".agent/PLAN.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/PLAN.md");
-        }
-
-        // Capture .agent/ISSUES.md if it exists
-        if workspace.exists(Path::new(".agent/ISSUES.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/ISSUES.md");
-        }
-
-        // Capture .agent/config.toml if it exists
-        if workspace.exists(Path::new(".agent/config.toml")) {
-            state.capture_file_with_workspace(workspace, ".agent/config.toml");
-        }
-
-        // Capture .agent/start_commit if it exists
-        if workspace.exists(Path::new(".agent/start_commit")) {
-            state.capture_file_with_workspace(workspace, ".agent/start_commit");
-        }
-
-        // Capture .agent/NOTES.md if it exists
-        if workspace.exists(Path::new(".agent/NOTES.md")) {
-            state.capture_file_with_workspace(workspace, ".agent/NOTES.md");
-        }
-
-        // Capture .agent/status if it exists
-        if workspace.exists(Path::new(".agent/status")) {
-            state.capture_file_with_workspace(workspace, ".agent/status");
-        }
-
-        // Try to capture git state
         state.capture_git_state(executor);
-
         state
     }
 
@@ -131,7 +91,8 @@ impl FileSystemState {
             workspace.read_bytes(path_ref).map_or_else(
                 |_| FileSnapshot::not_found(path),
                 |content| {
-                    let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
+                    let checksum =
+                        crate::checkpoint::state::calculate_checksum_from_bytes(&content);
                     let size = content.len() as u64;
                     FileSnapshot::new(path, checksum, size, true)
                 },
@@ -152,7 +113,8 @@ impl FileSystemState {
             std::fs::read(path_obj).map_or_else(
                 |_| FileSnapshot::not_found(path),
                 |content| {
-                    let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
+                    let checksum =
+                        crate::checkpoint::state::calculate_checksum_from_bytes(&content);
                     let size = content.len() as u64;
                     FileSnapshot::new(path, checksum, size, true)
                 },

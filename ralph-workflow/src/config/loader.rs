@@ -23,6 +23,7 @@
 //! a clear error message. This is not optional - config validation runs on
 //! every startup before any other CLI operation.
 use super::path_resolver::ConfigEnvironment;
+use super::types::Config;
 use super::unified::UnifiedConfig;
 use super::validation::{validate_config_file, ConfigValidationError};
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ pub use error_types::ConfigLoadWithValidationError;
 mod config_builder;
 use config_builder::config_from_unified;
 pub(super) use config_builder::default_config;
+use config_builder::ConfigConversionResult;
 
 mod env_overrides;
 pub(super) use env_overrides::apply_env_overrides;
@@ -279,18 +281,20 @@ pub fn load_config_from_path_with_env(
     // Build cloud config from the injected env (not the real process env) so that
     // callers using MemoryConfigEnvironment get a deterministic, isolated cloud config.
     let cloud = super::types::CloudConfig::from_env_fn(|k| env.get_env_var(k));
-    let config = {
-        let mut cfg = merged_unified
-            .as_ref()
-            .map_or_else(default_config, |unified_cfg| {
-                config_from_unified(unified_cfg, &mut warnings)
-            });
-        cfg.cloud = cloud;
-        cfg
+    let conversion_result = merged_unified.as_ref().map_or_else(
+        || ConfigConversionResult::new(default_config()),
+        config_from_unified,
+    );
+    warnings.extend(conversion_result.warnings);
+    let config = Config {
+        cloud,
+        ..conversion_result.config
     };
 
     // Step 5: Apply environment variable overrides
-    let config = apply_env_overrides(config, &mut warnings, env);
+    let override_result = apply_env_overrides(config, env);
+    warnings.extend(override_result.warnings);
+    let config = override_result.config;
 
     // Step 6: Validate cloud configuration (fail-fast)
     if let Err(e) = config.cloud.validate() {
@@ -310,10 +314,11 @@ fn merge_global_with_built_in_agent_chain_defaults(
     global: &UnifiedConfig,
     global_content: &str,
 ) -> UnifiedConfig {
-    let mut merged = global.clone();
     let resolved = UnifiedConfig::default().merge_with_content(global_content, global);
-    merged.agent_chain = resolved.agent_chain;
-    merged
+    UnifiedConfig {
+        agent_chain: resolved.agent_chain,
+        ..global.clone()
+    }
 }
 
 mod env_parsing;

@@ -170,19 +170,17 @@ where
     let mut initial_state = if let Some(ref checkpoint) = resume_checkpoint {
         // Restore progress from checkpoint, but keep budgets/limits config-driven.
         // Initialize a config-aware base state first, then overlay checkpoint progress.
-        let mut base_state = crate::app::event_loop::create_initial_state_with_config(&phase_ctx);
+        let base_state = crate::app::event_loop::create_initial_state_with_config(&phase_ctx);
         let migrated = PipelineState::from_checkpoint_with_execution_history_limit(
             checkpoint.clone(),
             phase_ctx.config.execution_history_limit,
         );
 
         crate::app::event_loop::overlay_checkpoint_progress_onto_base_state(
-            &mut base_state,
+            base_state,
             migrated,
             phase_ctx.config.execution_history_limit,
-        );
-
-        base_state
+        )
     } else {
         crate::app::event_loop::create_initial_state_with_config(&phase_ctx)
     };

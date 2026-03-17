@@ -54,43 +54,39 @@ impl DiffReviewContent {
     /// If no baseline information is available, returns a generic message.
     #[must_use]
     pub fn format_context_header(&self) -> String {
-        let mut lines = Vec::new();
+        let baseline_line = self
+            .baseline_short
+            .as_ref()
+            .map(|short| {
+                format!(
+                    "Diff Context: Compared against {} {}",
+                    self.baseline_description, short
+                )
+            })
+            .unwrap_or_else(|| "Diff Context: Version information not available".to_string());
 
-        if let Some(short) = &self.baseline_short {
-            lines.push(format!(
-                "Diff Context: Compared against {} {}",
-                self.baseline_description, short
-            ));
-        } else {
-            lines.push("Diff Context: Version information not available".to_string());
-        }
+        let truncation_line = match self.truncation_level {
+            DiffTruncationLevel::Full => None,
+            DiffTruncationLevel::Abbreviated => Some(format!(
+                "Note: Diff abbreviated - {}/{} files shown",
+                self.shown_file_count.unwrap_or(0),
+                self.total_file_count
+            )),
+            DiffTruncationLevel::FileList => Some(format!(
+                "Note: Only file list shown - {} files changed",
+                self.total_file_count
+            )),
+            DiffTruncationLevel::FileListAbbreviated => Some(format!(
+                "Note: File list abbreviated - {}/{} files shown",
+                self.shown_file_count.unwrap_or(0),
+                self.total_file_count
+            )),
+        };
 
-        // Add information about truncation if applicable
-        match self.truncation_level {
-            DiffTruncationLevel::Full => {
-                // No truncation - full diff
-            }
-            DiffTruncationLevel::Abbreviated => {
-                lines.push(format!(
-                    "Note: Diff abbreviated - {}/{} files shown",
-                    self.shown_file_count.unwrap_or(0),
-                    self.total_file_count
-                ));
-            }
-            DiffTruncationLevel::FileList => {
-                lines.push(format!(
-                    "Note: Only file list shown - {} files changed",
-                    self.total_file_count
-                ));
-            }
-            DiffTruncationLevel::FileListAbbreviated => {
-                lines.push(format!(
-                    "Note: File list abbreviated - {}/{} files shown",
-                    self.shown_file_count.unwrap_or(0),
-                    self.total_file_count
-                ));
-            }
-        }
+        let lines: Vec<String> = [Some(baseline_line), truncation_line]
+            .into_iter()
+            .flatten()
+            .collect();
 
         if lines.is_empty() {
             String::new()

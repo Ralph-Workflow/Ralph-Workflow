@@ -32,67 +32,69 @@ fn format_time_ago(duration: chrono::TimeDelta) -> String {
 /// to create the checkpoint, including all relevant flags and options.
 fn reconstruct_command(checkpoint: &PipelineCheckpoint) -> Option<String> {
     let cli = &checkpoint.cli_args;
-    let mut parts = vec!["ralph".to_string()];
 
-    // Add -D flag
-    if cli.developer_iters > 0 {
-        parts.push(format!("-D {}", cli.developer_iters));
-    }
-
-    // Add -R flag
-    if cli.reviewer_reviews > 0 {
-        parts.push(format!("-R {}", cli.reviewer_reviews));
-    }
-
-    // Add --review-depth if specified
-    if let Some(ref depth) = cli.review_depth {
-        parts.push(format!("--review-depth {depth}"));
-    }
-
-    // Add --no-isolation if false (isolation_mode defaults to true)
-    if !cli.isolation_mode {
-        parts.push("--no-isolation".to_string());
-    }
-
-    // Add verbosity flags
-    match cli.verbosity {
-        0 => parts.push("--quiet".to_string()),
-        2 => parts.push("--verbose".to_string()),
-        3 => parts.push("--full".to_string()),
-        4 => parts.push("--debug".to_string()),
-        _ => {} // Default verbosity or unknown
-    }
-
-    // Add --show-streaming-metrics if true
-    if cli.show_streaming_metrics {
-        parts.push("--show-streaming-metrics".to_string());
-    }
-
-    // Add --reviewer-json-parser if specified
-    if let Some(ref parser) = cli.reviewer_json_parser {
-        parts.push(format!("--reviewer-json-parser {parser}"));
-    }
-
-    // Add --agent flags if agents differ from defaults
-    // Note: We can't determine defaults here, so we always show them
-    parts.push(format!("--agent {}", checkpoint.developer_agent));
-    parts.push(format!("--reviewer-agent {}", checkpoint.reviewer_agent));
-
-    // Add model overrides if present
-    if let Some(ref model) = checkpoint.developer_agent_config.model_override {
-        parts.push(format!("--model \"{model}\""));
-    }
-    if let Some(ref model) = checkpoint.reviewer_agent_config.model_override {
-        parts.push(format!("--reviewer-model \"{model}\""));
-    }
-
-    // Add provider overrides if present
-    if let Some(ref provider) = checkpoint.developer_agent_config.provider_override {
-        parts.push(format!("--provider \"{provider}\""));
-    }
-    if let Some(ref provider) = checkpoint.reviewer_agent_config.provider_override {
-        parts.push(format!("--reviewer-provider \"{provider}\""));
-    }
+    let parts: Vec<String> = std::iter::once("ralph".to_string())
+        .chain((cli.developer_iters > 0).then(|| format!("-D {}", cli.developer_iters)))
+        .chain((cli.reviewer_reviews > 0).then(|| format!("-R {}", cli.reviewer_reviews)))
+        .chain(
+            cli.review_depth
+                .as_ref()
+                .map(|depth| format!("--review-depth {depth}")),
+        )
+        .chain((!cli.isolation_mode).then(|| "--no-isolation".to_string()))
+        .chain(match cli.verbosity {
+            0 => Some("--quiet".to_string()),
+            2 => Some("--verbose".to_string()),
+            3 => Some("--full".to_string()),
+            4 => Some("--debug".to_string()),
+            _ => None,
+        })
+        .chain(
+            cli.show_streaming_metrics
+                .then(|| "--show-streaming-metrics".to_string()),
+        )
+        .chain(
+            cli.reviewer_json_parser
+                .as_ref()
+                .map(|parser| format!("--reviewer-json-parser {parser}")),
+        )
+        .chain(std::iter::once(format!(
+            "--agent {}",
+            checkpoint.developer_agent
+        )))
+        .chain(std::iter::once(format!(
+            "--reviewer-agent {}",
+            checkpoint.reviewer_agent
+        )))
+        .chain(
+            checkpoint
+                .developer_agent_config
+                .model_override
+                .as_ref()
+                .map(|model| format!("--model \"{model}\"")),
+        )
+        .chain(
+            checkpoint
+                .reviewer_agent_config
+                .model_override
+                .as_ref()
+                .map(|model| format!("--reviewer-model \"{model}\"")),
+        )
+        .chain(
+            checkpoint
+                .developer_agent_config
+                .provider_override
+                .as_ref()
+                .map(|provider| format!("--provider \"{provider}\"")),
+        )
+        .chain(
+            checkpoint
+                .reviewer_agent_config
+                .provider_override
+                .as_ref()
+                .map(|provider| format!("--reviewer-provider \"{provider}\"")),
+        )
+        .collect();
 
     if parts.len() > 1 {
         Some(parts.join(" "))
@@ -146,28 +148,23 @@ fn suggest_next_step(checkpoint: &PipelineCheckpoint) -> String {
             "attempt to fix pipeline failure and emit completion marker".to_string()
         }
         PipelinePhase::Interrupted => {
-            // Provide more detailed information for interrupted state
-            // The interrupted phase can occur at any point, so we need to describe
-            // what the user was doing when interrupted
-            let mut context = vec!["resume from interrupted state".to_string()];
-
-            // Add context about what was being worked on
-            if checkpoint.iteration > 0 {
-                context.push(format!(
-                    "(development iteration {}/{})",
-                    checkpoint.iteration, checkpoint.total_iterations
-                ));
-            }
-            if checkpoint.reviewer_pass > 0 {
-                context.push(format!(
-                    "(review pass {}/{})",
-                    checkpoint.reviewer_pass, checkpoint.total_reviewer_passes
-                ));
-            }
-
-            // Explain what will happen on resume
-            context.push("full pipeline will run from interrupted point".to_string());
-
+            let context: Vec<String> = std::iter::once("resume from interrupted state".to_string())
+                .chain((checkpoint.iteration > 0).then(|| {
+                    format!(
+                        "(development iteration {}/{})",
+                        checkpoint.iteration, checkpoint.total_iterations
+                    )
+                }))
+                .chain((checkpoint.reviewer_pass > 0).then(|| {
+                    format!(
+                        "(review pass {}/{})",
+                        checkpoint.reviewer_pass, checkpoint.total_reviewer_passes
+                    )
+                }))
+                .chain(std::iter::once(
+                    "full pipeline will run from interrupted point".to_string(),
+                ))
+                .collect();
             context.join(" - ")
         }
     }
@@ -187,22 +184,16 @@ fn create_progress_bar(current: u32, total: u32) -> String {
         .checked_div(total)
         .unwrap_or(0);
 
-    let mut bar = String::from("[");
-    for i in 0..width {
-        if i < filled {
-            bar.push('=');
-        } else {
-            bar.push('-');
-        }
-    }
-    bar.push(']');
+    let bar: String = (0..width)
+        .map(|i| if i < filled { '=' } else { '-' })
+        .collect();
 
     let percentage = current_clamped
         .saturating_mul(100)
         .saturating_add(total / 2)
         .checked_div(total)
         .unwrap_or(0);
-    format!("{bar} {percentage}%")
+    format!("[{bar}] {percentage}%")
 }
 
 /// Get a stable, ASCII-only indicator for a pipeline phase.

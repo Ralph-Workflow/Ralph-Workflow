@@ -75,11 +75,13 @@ pub(super) fn merge_fallback_configs(
                     }
                 };
 
-            // Merge provider_fallback maps (local entries override global)
-            let mut provider_fallback = g.provider_fallback.clone();
-            for (k, v) in &l.provider_fallback {
-                provider_fallback.insert(k.clone(), v.clone());
-            }
+            // Merge provider_fallback maps (local entries override global) using iterator chain
+            let provider_fallback: std::collections::HashMap<_, _> = g
+                .provider_fallback
+                .iter()
+                .chain(l.provider_fallback.iter())
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
 
             Some(FallbackConfig {
                 developer: merge_chain("developer", &l.developer, &g.developer),

@@ -27,11 +27,7 @@ fn truncate_redacted(input: &str) -> String {
 }
 
 fn redact_http_url_userinfo(input: &str) -> String {
-    // Replace `http(s)://user[:pass]@host` with `http(s)://<redacted>@host`.
-    // This is conservative: we only redact when an '@' appears in the URL authority.
-
-    // Find all URL positions using iterator
-    let mut http_positions: Vec<(usize, &str)> = [("https://", "https://"), ("http://", "http://")]
+    let http_positions: Vec<(usize, &str)> = [("https://", "https://"), ("http://", "http://")]
         .iter()
         .flat_map(|(pattern, replacement)| {
             input
@@ -44,19 +40,23 @@ fn redact_http_url_userinfo(input: &str) -> String {
         return input.to_string();
     }
 
-    // Sort by position
-    http_positions.sort_by_key(|(idx, _)| *idx);
+    let sorted_positions = {
+        let mut positions = http_positions;
+        positions.sort_by_key(|(idx, _)| *idx);
+        positions
+    };
 
-    // Build result using fold
-    let (result_parts, last_end) = http_positions.iter().fold(
+    let (result_parts, last_end) = sorted_positions.iter().fold(
         (Vec::new(), 0usize),
-        |(mut parts, last_end), (start, scheme)| {
-            // Add non-URL portion
-            if *start > last_end {
-                parts.push(&input[last_end..*start]);
-            }
+        |(parts, last_end), (start, scheme)| {
+            let new_parts = if *start > last_end {
+                let mut tmp = parts;
+                tmp.push(&input[last_end..*start]);
+                tmp
+            } else {
+                parts
+            };
 
-            // Find authority end (next '/' or whitespace)
             let scheme_len = scheme.len();
             let authority_start = start + scheme_len;
             let authority_end = input[authority_start..]
@@ -65,25 +65,24 @@ fn redact_http_url_userinfo(input: &str) -> String {
                 .unwrap_or(input.len());
 
             let authority = &input[authority_start..authority_end];
+            let mut final_parts = new_parts;
             if let Some(at_pos) = authority.rfind('@') {
-                // Redact: keep host portion after '@'
-                parts.push(scheme);
-                parts.push("<redacted>@");
-                parts.push(&authority[at_pos + 1..]);
+                final_parts.push(scheme);
+                final_parts.push("<redacted>@");
+                final_parts.push(&authority[at_pos + 1..]);
             } else {
-                parts.push(scheme);
-                parts.push(authority);
+                final_parts.push(scheme);
+                final_parts.push(authority);
             }
 
-            (parts, authority_end)
+            (final_parts, authority_end)
         },
     );
 
-    // Add remaining portion
     if last_end < input.len() {
-        let mut rp = result_parts;
-        rp.push(&input[last_end..]);
-        rp.concat()
+        let mut remaining = result_parts;
+        remaining.push(&input[last_end..]);
+        remaining.concat()
     } else {
         result_parts.concat()
     }

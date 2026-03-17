@@ -1,4 +1,8 @@
 //! Mock cloud reporter for testing.
+//!
+//! This module uses interior mutability for test infrastructure because the
+//! CloudReporter trait uses &self methods, requiring shared state tracking.
+//! This is exempt from functional lints as it's test-only infrastructure.
 
 use super::{CloudError, CloudReporter, PipelineResult, ProgressUpdate};
 use std::sync::{Arc, Mutex};
@@ -26,45 +30,44 @@ impl MockCloudReporter {
         }
     }
 
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned.
     pub fn set_should_fail(&self, fail: bool) {
-        *self.should_fail.lock().unwrap() = fail;
+        if let Ok(mut guard) = self.should_fail.lock() {
+            *guard = fail;
+        }
     }
 
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn calls(&self) -> Vec<MockCloudCall> {
-        self.calls.lock().unwrap().clone()
+        self.calls
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn progress_count(&self) -> usize {
         self.calls
             .lock()
-            .unwrap()
-            .iter()
-            .filter(|c| matches!(c, MockCloudCall::Progress(_)))
-            .count()
+            .map(|guard| {
+                guard
+                    .iter()
+                    .filter(|c| matches!(c, MockCloudCall::Progress(_)))
+                    .count()
+            })
+            .unwrap_or(0)
     }
 
-    /// # Panics
-    ///
-    /// Panics if the mutex is poisoned.
     #[must_use]
     pub fn heartbeat_count(&self) -> usize {
         self.calls
             .lock()
-            .unwrap()
-            .iter()
-            .filter(|c| matches!(c, MockCloudCall::Heartbeat))
-            .count()
+            .map(|guard| {
+                guard
+                    .iter()
+                    .filter(|c| matches!(c, MockCloudCall::Heartbeat))
+                    .count()
+            })
+            .unwrap_or(0)
     }
 }
 
@@ -76,32 +79,41 @@ impl Default for MockCloudReporter {
 
 impl CloudReporter for MockCloudReporter {
     fn report_progress(&self, update: &ProgressUpdate) -> Result<(), CloudError> {
-        if *self.should_fail.lock().unwrap() {
+        let should_fail = self.should_fail.lock().map(|guard| *guard).unwrap_or(false);
+
+        if should_fail {
             return Err(CloudError::NetworkError("Mock failure".to_string()));
         }
-        self.calls
-            .lock()
-            .unwrap()
-            .push(MockCloudCall::Progress(update.clone()));
+
+        if let Ok(mut guard) = self.calls.lock() {
+            guard.push(MockCloudCall::Progress(update.clone()));
+        }
         Ok(())
     }
 
     fn heartbeat(&self) -> Result<(), CloudError> {
-        if *self.should_fail.lock().unwrap() {
+        let should_fail = self.should_fail.lock().map(|guard| *guard).unwrap_or(false);
+
+        if should_fail {
             return Err(CloudError::NetworkError("Mock failure".to_string()));
         }
-        self.calls.lock().unwrap().push(MockCloudCall::Heartbeat);
+
+        if let Ok(mut guard) = self.calls.lock() {
+            guard.push(MockCloudCall::Heartbeat);
+        }
         Ok(())
     }
 
     fn report_completion(&self, result: &PipelineResult) -> Result<(), CloudError> {
-        if *self.should_fail.lock().unwrap() {
+        let should_fail = self.should_fail.lock().map(|guard| *guard).unwrap_or(false);
+
+        if should_fail {
             return Err(CloudError::NetworkError("Mock failure".to_string()));
         }
-        self.calls
-            .lock()
-            .unwrap()
-            .push(MockCloudCall::Completion(result.clone()));
+
+        if let Ok(mut guard) = self.calls.lock() {
+            guard.push(MockCloudCall::Completion(result.clone()));
+        }
         Ok(())
     }
 }

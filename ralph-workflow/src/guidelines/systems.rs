@@ -5,7 +5,7 @@
 use super::base::ReviewGuidelines;
 
 /// Add C/C++ guidelines to the review
-pub fn add_c_cpp_guidelines(guidelines: &mut ReviewGuidelines) {
+pub fn add_c_cpp_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Check return values of system calls".to_string(),
         "Use RAII for resource management (C++)".to_string(),
@@ -32,10 +32,12 @@ pub fn add_c_cpp_guidelines(guidelines: &mut ReviewGuidelines) {
         "Don't use C-style casts (C++)".to_string(),
         "Avoid global mutable state".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add C# guidelines to the review
-pub fn add_csharp_guidelines(guidelines: &mut ReviewGuidelines) {
+pub fn add_csharp_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use async/await for I/O operations".to_string(),
         "Implement IDisposable correctly".to_string(),
@@ -54,6 +56,8 @@ pub fn add_csharp_guidelines(guidelines: &mut ReviewGuidelines) {
         "Don't catch generic Exception".to_string(),
         "Avoid blocking on async code".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -62,8 +66,7 @@ mod tests {
 
     #[test]
     fn test_c_cpp_guidelines() {
-        let mut guidelines = ReviewGuidelines::default();
-        add_c_cpp_guidelines(&mut guidelines);
+        let guidelines = add_c_cpp_guidelines(ReviewGuidelines::default());
 
         // Should have C/C++ security checks
         assert!(guidelines
@@ -82,8 +85,7 @@ mod tests {
 
     #[test]
     fn test_csharp_guidelines() {
-        let mut guidelines = ReviewGuidelines::default();
-        add_csharp_guidelines(&mut guidelines);
+        let guidelines = add_csharp_guidelines(ReviewGuidelines::default());
 
         // Should have C# specific checks
         assert!(guidelines

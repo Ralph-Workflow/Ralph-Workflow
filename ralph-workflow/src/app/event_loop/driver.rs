@@ -205,7 +205,7 @@ fn process_additional_events<'ctx, H>(
 ) where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    for additional_event in additional_events {
+    additional_events.into_iter().for_each(|additional_event| {
         let event_str = format!("{additional_event:?}");
         let additional_state = reduce(runtime.state.clone(), additional_event);
         runtime.trace.push(build_trace_entry(
@@ -217,7 +217,7 @@ fn process_additional_events<'ctx, H>(
         handler.update_state(additional_state.clone());
         runtime.state = additional_state;
         runtime.events_processed = runtime.events_processed.saturating_add(1);
-    }
+    });
 }
 
 fn update_loop_detection_state<'ctx, H>(handler: &mut H, runtime: &mut LoopRuntime)
@@ -302,10 +302,10 @@ where
         ui_events,
     } = result;
 
-    for ui_event in &ui_events {
+    ui_events.iter().for_each(|ui_event| {
         ctx.logger
             .info(&crate::rendering::render_ui_event(ui_event));
-    }
+    });
 
     let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
     process_primary_event(

@@ -1,67 +1,34 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "tools": {
-    "filesystem": false,
-    "git": false,
-    "sequential-thinking": false,
-    "memory": false
-  },
-  "permission": {
-    "bash": {
-      "*": "deny"
-    },
-    "read": {
-      "*": "deny"
-    },
-    "write": {
-      "*": "deny"
-    },
-    "edit": {
-      "*": "deny"
-    },
-    "glob": {
-      "*": "deny"
-    },
-    "grep": {
-      "*": "deny"
-    },
-    "task": {
-      "*": "deny"
-    }
-  },
   "agent": {
-    "primary": {
-      "description": "Primary agent with full access",
+    "build": {
+      "description": "Primary agent with full access. Delegates work to specialized subagents (workflow-gui, workflow-core, workflow-reducer, etc.) for parallel execution and focused expertise. Coordinate subagents rather than doing all work directly.",
       "mode": "primary",
-      "model": "minimax/MiniMax-M2.5-highspeed",
-      "tools": {
-        "filesystem": true,
-        "git": true,
-        "sequential-thinking": true,
-        "memory": true
-      },
+      "model": "anthropic/claude-sonnet-4-5",
       "permission": {
         "bash": {
-          "*": "allow"
+          "cargo *": "allow",
+          "git diff *": "allow",
+          "git log *": "allow",
+          "git show *": "allow",
+          "git status *": "allow",
+          "head *": "allow",
+          "make *": "allow",
+          "tail *": "allow"
         },
-        "read": {
-          "*": "allow"
-        },
-        "write": {
-          "*": "allow"
-        },
-        "edit": {
-          "*": "allow"
-        },
-        "glob": {
-          "*": "allow"
-        },
-        "grep": {
-          "*": "allow"
-        },
-        "task": {
-          "*": "allow"
-        }
+        "read": "allow",
+        "write": "deny",
+        "edit": "deny",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "question": "allow",
+        "skill": "allow",
+        "todoread": "allow",
+        "todowrite": "allow",
+        "task": "allow"
       }
     },
     "workflow-gui": {
@@ -70,31 +37,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-gui --lib": "allow",
+          "cargo clippy -p ralph-gui --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-gui/**": "allow",
-          "docs/**": "allow"
+          "*ralph-gui/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-gui/**": "allow"
+          "*ralph-gui/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-gui/**": "allow"
+          "*ralph-gui/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-gui/**": "allow",
-          "docs/**": "allow"
+          "*ralph-gui/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-gui/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-gui/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-gui/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-core": {
@@ -103,46 +96,79 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/lib.rs": "allow",
-          "ralph-workflow/src/main.rs": "allow",
-          "ralph-workflow/src/banner.rs": "allow",
-          "ralph-workflow/src/exit_pause.rs": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/lib.rs": "allow",
-          "ralph-workflow/src/main.rs": "allow",
-          "ralph-workflow/src/banner.rs": "allow",
-          "ralph-workflow/src/exit_pause.rs": "allow"
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/lib.rs": "allow",
-          "ralph-workflow/src/main.rs": "allow",
-          "ralph-workflow/src/banner.rs": "allow",
-          "ralph-workflow/src/exit_pause.rs": "allow"
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/lib.rs": "allow",
-          "ralph-workflow/src/main.rs": "allow",
-          "ralph-workflow/src/banner.rs": "allow",
-          "ralph-workflow/src/exit_pause.rs": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/lib.rs": "allow",
-          "ralph-workflow/src/main.rs": "allow",
-          "ralph-workflow/src/banner.rs": "allow",
-          "ralph-workflow/src/exit_pause.rs": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-reducer": {
@@ -151,46 +177,75 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/reducer/**": "allow",
-          "ralph-workflow/src/pipeline/**": "allow",
-          "ralph-workflow/src/checkpoint/**": "allow",
-          "ralph-workflow/src/phases/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/reducer/**": "allow",
-          "ralph-workflow/src/pipeline/**": "allow",
-          "ralph-workflow/src/checkpoint/**": "allow",
-          "ralph-workflow/src/phases/**": "allow"
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/reducer/**": "allow",
-          "ralph-workflow/src/pipeline/**": "allow",
-          "ralph-workflow/src/checkpoint/**": "allow",
-          "ralph-workflow/src/phases/**": "allow"
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/reducer/**": "allow",
-          "ralph-workflow/src/pipeline/**": "allow",
-          "ralph-workflow/src/checkpoint/**": "allow",
-          "ralph-workflow/src/phases/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/reducer/**": "allow",
-          "ralph-workflow/src/pipeline/**": "allow",
-          "ralph-workflow/src/checkpoint/**": "allow",
-          "ralph-workflow/src/phases/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/reducer/**": "allow",
+          "*ralph-workflow/src/pipeline/**": "allow",
+          "*ralph-workflow/src/checkpoint/**": "allow",
+          "*ralph-workflow/src/phases/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-execution": {
@@ -199,36 +254,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/executor/**": "allow",
-          "ralph-workflow/src/runtime/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/executor/**": "allow",
-          "ralph-workflow/src/runtime/**": "allow"
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/executor/**": "allow",
-          "ralph-workflow/src/runtime/**": "allow"
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/executor/**": "allow",
-          "ralph-workflow/src/runtime/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/executor/**": "allow",
-          "ralph-workflow/src/runtime/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/executor/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-io": {
@@ -237,36 +319,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/io/**": "allow",
-          "ralph-workflow/src/files/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/io/**": "allow",
-          "ralph-workflow/src/files/**": "allow"
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/io/**": "allow",
-          "ralph-workflow/src/files/**": "allow"
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/io/**": "allow",
-          "ralph-workflow/src/files/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/io/**": "allow",
-          "ralph-workflow/src/files/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/files/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-workspace": {
@@ -275,36 +384,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/workspace/**": "allow",
-          "ralph-workflow/src/boundary/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/workspace/**": "allow",
-          "ralph-workflow/src/boundary/**": "allow"
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/workspace/**": "allow",
-          "ralph-workflow/src/boundary/**": "allow"
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/workspace/**": "allow",
-          "ralph-workflow/src/boundary/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/workspace/**": "allow",
-          "ralph-workflow/src/boundary/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/workspace/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-git": {
@@ -313,31 +449,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/git_helpers/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/git_helpers/**": "allow"
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/git_helpers/**": "allow"
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/git_helpers/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/git_helpers/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/git_helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-config": {
@@ -346,36 +508,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/config/**": "allow",
-          "ralph-workflow/src/cli/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/config/**": "allow",
-          "ralph-workflow/src/cli/**": "allow"
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/config/**": "allow",
-          "ralph-workflow/src/cli/**": "allow"
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/config/**": "allow",
-          "ralph-workflow/src/cli/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/config/**": "allow",
-          "ralph-workflow/src/cli/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/config/**": "allow",
+          "*ralph-workflow/src/cli/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-app": {
@@ -384,31 +573,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/app/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/app/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/app/**": "allow"
+          "*ralph-workflow/src/app/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/app/**": "allow"
+          "*ralph-workflow/src/app/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/app/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/app/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/app/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/app/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/app/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-logging": {
@@ -417,36 +632,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/logging/**": "allow",
-          "ralph-workflow/src/logger/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/logging/**": "allow",
-          "ralph-workflow/src/logger/**": "allow"
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/logging/**": "allow",
-          "ralph-workflow/src/logger/**": "allow"
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/logging/**": "allow",
-          "ralph-workflow/src/logger/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/logging/**": "allow",
-          "ralph-workflow/src/logger/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/logging/**": "allow",
+          "*ralph-workflow/src/logger/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-monitoring": {
@@ -455,36 +697,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/monitoring/**": "allow",
-          "ralph-workflow/src/diagnostics/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/monitoring/**": "allow",
-          "ralph-workflow/src/diagnostics/**": "allow"
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/monitoring/**": "allow",
-          "ralph-workflow/src/diagnostics/**": "allow"
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/monitoring/**": "allow",
-          "ralph-workflow/src/diagnostics/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/monitoring/**": "allow",
-          "ralph-workflow/src/diagnostics/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/monitoring/**": "allow",
+          "*ralph-workflow/src/diagnostics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-misc": {
@@ -493,46 +762,75 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/common/**": "allow",
-          "ralph-workflow/src/platform/**": "allow",
-          "ralph-workflow/src/rendering/**": "allow",
-          "ralph-workflow/src/templates/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/common/**": "allow",
-          "ralph-workflow/src/platform/**": "allow",
-          "ralph-workflow/src/rendering/**": "allow",
-          "ralph-workflow/src/templates/**": "allow"
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/common/**": "allow",
-          "ralph-workflow/src/platform/**": "allow",
-          "ralph-workflow/src/rendering/**": "allow",
-          "ralph-workflow/src/templates/**": "allow"
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/common/**": "allow",
-          "ralph-workflow/src/platform/**": "allow",
-          "ralph-workflow/src/rendering/**": "allow",
-          "ralph-workflow/src/templates/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/common/**": "allow",
-          "ralph-workflow/src/platform/**": "allow",
-          "ralph-workflow/src/rendering/**": "allow",
-          "ralph-workflow/src/templates/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/common/**": "allow",
+          "*ralph-workflow/src/platform/**": "allow",
+          "*ralph-workflow/src/rendering/**": "allow",
+          "*ralph-workflow/src/templates/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-future": {
@@ -541,46 +839,75 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/benchmarks/**": "allow",
-          "ralph-workflow/src/interrupt/**": "allow",
-          "ralph-workflow/src/language_detector/**": "allow",
-          "ralph-workflow/src/review_metrics/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/benchmarks/**": "allow",
-          "ralph-workflow/src/interrupt/**": "allow",
-          "ralph-workflow/src/language_detector/**": "allow",
-          "ralph-workflow/src/review_metrics/**": "allow"
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/benchmarks/**": "allow",
-          "ralph-workflow/src/interrupt/**": "allow",
-          "ralph-workflow/src/language_detector/**": "allow",
-          "ralph-workflow/src/review_metrics/**": "allow"
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/benchmarks/**": "allow",
-          "ralph-workflow/src/interrupt/**": "allow",
-          "ralph-workflow/src/language_detector/**": "allow",
-          "ralph-workflow/src/review_metrics/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/benchmarks/**": "allow",
-          "ralph-workflow/src/interrupt/**": "allow",
-          "ralph-workflow/src/language_detector/**": "allow",
-          "ralph-workflow/src/review_metrics/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/benchmarks/**": "allow",
+          "*ralph-workflow/src/interrupt/**": "allow",
+          "*ralph-workflow/src/language_detector/**": "allow",
+          "*ralph-workflow/src/review_metrics/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-agents": {
@@ -589,31 +916,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/agents/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/agents/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/agents/**": "allow"
+          "*ralph-workflow/src/agents/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/agents/**": "allow"
+          "*ralph-workflow/src/agents/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/agents/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/agents/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/agents/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/agents/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/agents/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-prompts": {
@@ -622,36 +975,63 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/guidelines/**": "allow",
-          "ralph-workflow/src/prompts/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/guidelines/**": "allow",
-          "ralph-workflow/src/prompts/**": "allow"
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/guidelines/**": "allow",
-          "ralph-workflow/src/prompts/**": "allow"
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/guidelines/**": "allow",
-          "ralph-workflow/src/prompts/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/guidelines/**": "allow",
-          "ralph-workflow/src/prompts/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/guidelines/**": "allow",
+          "*ralph-workflow/src/prompts/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-json": {
@@ -660,31 +1040,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/json_parser/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/json_parser/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/json_parser/**": "allow"
+          "*ralph-workflow/src/json_parser/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/json_parser/**": "allow"
+          "*ralph-workflow/src/json_parser/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/json_parser/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/json_parser/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/json_parser/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/json_parser/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/json_parser/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-cloud": {
@@ -693,31 +1099,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow --lib --all-features": "allow",
+          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "ralph-workflow/src/cloud/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/cloud/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "ralph-workflow/src/cloud/**": "allow"
+          "*ralph-workflow/src/cloud/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "ralph-workflow/src/cloud/**": "allow"
+          "*ralph-workflow/src/cloud/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "ralph-workflow/src/cloud/**": "allow",
-          "docs/**": "allow"
+          "*ralph-workflow/src/cloud/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "ralph-workflow/src/cloud/**": "allow",
-          "docs/**": "allow"
-        }
+          "*ralph-workflow/src/cloud/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*ralph-workflow/src/cloud/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "test-helpers": {
@@ -726,31 +1158,56 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo clippy -p test-helpers --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "test-helpers/**": "allow",
-          "docs/**": "allow"
+          "*test-helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "test-helpers/**": "allow"
+          "*test-helpers/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "test-helpers/**": "allow"
+          "*test-helpers/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "test-helpers/**": "allow",
-          "docs/**": "allow"
+          "*test-helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "test-helpers/**": "allow",
-          "docs/**": "allow"
-        }
+          "*test-helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*test-helpers/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "xtask": {
@@ -759,31 +1216,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p xtask": "allow",
+          "cargo clippy -p xtask --all-targets -- -D warnings": "allow"
         },
         "read": {
           "*": "deny",
-          "xtask/**": "allow",
-          "docs/**": "allow"
+          "*xtask/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "xtask/**": "allow"
+          "*xtask/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "xtask/**": "allow"
+          "*xtask/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "xtask/**": "allow",
-          "docs/**": "allow"
+          "*xtask/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "xtask/**": "allow",
-          "docs/**": "allow"
-        }
+          "*xtask/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*xtask/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-tests": {
@@ -792,31 +1275,56 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "cargo test -p ralph-workflow-tests --test integration_tests": "allow"
         },
         "read": {
           "*": "deny",
-          "tests/**": "allow",
-          "docs/**": "allow"
+          "*tests/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "tests/**": "allow"
+          "*tests/**": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "tests/**": "allow"
+          "*tests/**": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "tests/**": "allow",
-          "docs/**": "allow"
+          "*tests/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "tests/**": "allow",
-          "docs/**": "allow"
-        }
+          "*tests/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*tests/**": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-lints": {
@@ -825,31 +1333,57 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+          "make dylint": "allow",
+          "cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet": "allow"
         },
         "read": {
           "*": "deny",
-          "workflow-lints/**": "allow",
-          "docs/**": "allow"
+          "*workflow-lints/*": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "workflow-lints/**": "allow"
+          "*workflow-lints/*": "allow",
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "workflow-lints/**": "allow"
+          "*workflow-lints/*": "allow",
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "workflow-lints/**": "allow",
-          "docs/**": "allow"
+          "*workflow-lints/*": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "workflow-lints/**": "allow",
-          "docs/**": "allow"
-        }
+          "*workflow-lints/*": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*workflow-lints/*": "allow",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     },
     "workflow-docs": {
@@ -858,28 +1392,47 @@
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "deny",
+          "ls": "allow",
+          "ls *": "allow",
+          "cat": "allow",
+          "cat *": "allow"
         },
         "read": {
           "*": "deny",
-          "docs/**": "allow"
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "docs/**": "allow"
+          ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "docs/**": "allow"
+          ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "docs/**": "allow"
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "docs/**": "allow"
-        }
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "list": {
+          "*": "deny",
+          "*docs/**": "allow",
+          ".opencode/**": "deny"
+        },
+        "webfetch": "deny",
+        "websearch": "deny",
+        "question": "deny",
+        "skill": "allow",
+        "todoread": "deny",
+        "todowrite": "deny",
+        "task": "deny"
       }
     }
   }

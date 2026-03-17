@@ -108,22 +108,22 @@ fn test_metrics_collector_respects_interval() {
 
     // Should not record at iteration 0 (initial state)
     state.iteration = 0;
-    collector.maybe_record(&state);
+    collector = collector.maybe_record(&state);
     assert_eq!(collector.snapshots().len(), 0);
 
     // Should record at iteration 1
     state.iteration = 1;
-    collector.maybe_record(&state);
+    collector = collector.maybe_record(&state);
     assert_eq!(collector.snapshots().len(), 1);
 
     // Should not record at iteration 5
     state.iteration = 5;
-    collector.maybe_record(&state);
+    collector = collector.maybe_record(&state);
     assert_eq!(collector.snapshots().len(), 1);
 
     // Should record at iteration 10
     state.iteration = 10;
-    collector.maybe_record(&state);
+    collector = collector.maybe_record(&state);
     assert_eq!(collector.snapshots().len(), 2);
 }
 
@@ -134,7 +134,7 @@ fn test_metrics_collector_retains_bounded_snapshots_by_default() {
 
     for i in 1..=2000 {
         state.iteration = i;
-        collector.maybe_record(&state);
+        collector = collector.maybe_record(&state);
     }
 
     let snapshots = collector.snapshots();
@@ -160,7 +160,7 @@ fn test_metrics_collector_retains_bounded_snapshots_by_default() {
 
 #[test]
 fn test_telemetry_backend_noop() {
-    let mut backend = NoOpBackend;
+    let backend = NoOpBackend;
     let state = PipelineState::initial(100, 5);
     let snap = MemorySnapshot::from_pipeline_state(&state);
 
@@ -173,49 +173,51 @@ fn test_telemetry_backend_noop() {
 #[test]
 fn test_record_and_emit_integrates_with_backend() {
     struct CountingBackend {
-        snapshot_count: usize,
+        snapshot_count: std::cell::RefCell<usize>,
     }
 
     impl TelemetryBackend for CountingBackend {
-        fn emit_snapshot(&mut self, _snapshot: &MemorySnapshot) {
-            self.snapshot_count += 1;
+        fn emit_snapshot(&self, _snapshot: &MemorySnapshot) {
+            *self.snapshot_count.borrow_mut() += 1;
         }
-        fn emit_warning(&mut self, _message: &str) {}
-        fn flush(&mut self) {}
+        fn emit_warning(&self, _message: &str) {}
+        fn flush(&self) {}
     }
 
     let mut collector = MemoryMetricsCollector::new(10);
-    let mut backend = CountingBackend { snapshot_count: 0 };
+    let backend = CountingBackend {
+        snapshot_count: std::cell::RefCell::new(0),
+    };
     let mut state = PipelineState::initial(100, 5);
 
     // Should not emit at iteration 0 (initial state)
     state.iteration = 0;
-    collector.record_and_emit(&state, &mut backend);
-    assert_eq!(backend.snapshot_count, 0);
+    collector = collector.record_and_emit(&state, &backend);
+    assert_eq!(*backend.snapshot_count.borrow(), 0);
     assert_eq!(collector.snapshots().len(), 0);
 
     // Should emit at iteration 1
     state.iteration = 1;
-    collector.record_and_emit(&state, &mut backend);
-    assert_eq!(backend.snapshot_count, 1);
+    collector = collector.record_and_emit(&state, &backend);
+    assert_eq!(*backend.snapshot_count.borrow(), 1);
     assert_eq!(collector.snapshots().len(), 1);
 
     // Should not emit at iteration 5
     state.iteration = 5;
-    collector.record_and_emit(&state, &mut backend);
-    assert_eq!(backend.snapshot_count, 1);
+    collector = collector.record_and_emit(&state, &backend);
+    assert_eq!(*backend.snapshot_count.borrow(), 1);
 
     // Should emit at iteration 10
     state.iteration = 10;
-    collector.record_and_emit(&state, &mut backend);
-    assert_eq!(backend.snapshot_count, 2);
+    collector = collector.record_and_emit(&state, &backend);
+    assert_eq!(*backend.snapshot_count.borrow(), 2);
     assert_eq!(collector.snapshots().len(), 2);
 }
 
 #[test]
 fn test_logging_backend_emits_warnings_above_threshold() {
     let logger = Rc::new(TestLogger::new());
-    let mut backend = LoggingBackend::with_logger(100, logger.clone()); // 100 byte threshold
+    let backend = LoggingBackend::with_logger(100, logger.clone()); // 100 byte threshold
     let mut state = PipelineState::initial(100, 5);
 
     // Add enough history to exceed threshold
@@ -262,7 +264,8 @@ fn test_memory_metrics_library_code_does_not_write_directly_to_stderr() {
         ("backends.rs", src_backends),
     ] {
         assert!(
-            !src.contains("eprintln!(\"[METRICS]") && !src.contains("eprintln!(\"[METRICS WARNING]"),
+            !src.contains("eprintln!(\"[METRICS]")
+                && !src.contains("eprintln!(\"[METRICS WARNING]"),
             "memory_metrics/{name} should not use eprintln! in library code"
         );
     }

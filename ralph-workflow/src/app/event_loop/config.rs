@@ -74,20 +74,24 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
         max_continue_count,
         ctx.config.max_same_agent_retries.unwrap_or(2),
     );
-    let mut state = PipelineState::initial_with_continuation(
+    let state = PipelineState::initial_with_continuation(
         ctx.config.developer_iters,
         ctx.config.reviewer_reviews,
         &continuation,
     );
-    state.max_commit_residual_retries =
+    let max_commit_residual_retries =
         u8::try_from(ctx.config.max_commit_residual_retries.unwrap_or(10)).unwrap_or(u8::MAX);
 
     // Inject a checkpoint-safe (redacted) view of runtime cloud config.
     // This ensures pure orchestration can derive cloud effects when enabled,
     // without ever storing secrets in reducer state.
-    state.cloud = crate::config::CloudStateConfig::from(ctx.cloud);
+    let cloud = crate::config::CloudStateConfig::from(ctx.cloud);
 
-    state
+    PipelineState {
+        max_commit_residual_retries,
+        cloud,
+        ..state
+    }
 }
 
 /// Overlay checkpoint-derived progress onto a config-derived base state.
@@ -99,46 +103,50 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
 /// NOTE: `base_state.cloud` is intentionally preserved (it is derived from
 /// runtime env and is already redacted/credential-free).
 pub fn overlay_checkpoint_progress_onto_base_state(
-    base_state: &mut PipelineState,
+    base_state: PipelineState,
     migrated: PipelineState,
     execution_history_limit: usize,
-) {
+) -> PipelineState {
     let migrated_execution_history = migrated.execution_history().clone();
 
-    base_state.phase = migrated.phase;
-    base_state.iteration = migrated.iteration;
-    base_state.total_iterations = migrated.total_iterations;
-    base_state.reviewer_pass = migrated.reviewer_pass;
-    base_state.total_reviewer_passes = migrated.total_reviewer_passes;
-    base_state.rebase = migrated.rebase;
-    base_state
-        .replace_execution_history_bounded(migrated_execution_history, execution_history_limit);
-    base_state.prompt_inputs = migrated.prompt_inputs;
-    base_state.prompt_permissions = migrated.prompt_permissions;
-    base_state.prompt_history = migrated.prompt_history;
-    base_state.metrics = migrated.metrics;
+    let cloud = base_state.cloud.clone();
 
-    // Restore resume-critical recovery/dev-fix/interrupt fields.
-    // These are checkpoint-derived and must not be dropped, otherwise resumed runs
-    // can behave as if recovery/dev-fix state never happened.
-    base_state.recovery_epoch = migrated.recovery_epoch;
-    base_state.recovery_escalation_level = migrated.recovery_escalation_level;
-    base_state.dev_fix_attempt_count = migrated.dev_fix_attempt_count;
-    base_state.failed_phase_for_recovery = migrated.failed_phase_for_recovery;
-    base_state.interrupted_by_user = migrated.interrupted_by_user;
+    let new_execution_history = base_state
+        .with_execution_history(migrated_execution_history, execution_history_limit)
+        .execution_history;
 
-    // Restore cloud resume continuity from checkpoint-migrated state.
-    // Keep `base_state.cloud` (runtime env-derived, redacted).
-    base_state.pending_push_commit = migrated.pending_push_commit;
-    base_state.git_auth_configured = migrated.git_auth_configured;
-    base_state.pr_created = migrated.pr_created;
-    base_state.pr_url = migrated.pr_url;
-    base_state.pr_number = migrated.pr_number;
-    base_state.push_count = migrated.push_count;
-    base_state.push_retry_count = migrated.push_retry_count;
-    base_state.last_push_error = migrated.last_push_error;
-    base_state.unpushed_commits = migrated.unpushed_commits;
-    base_state.last_pushed_commit = migrated.last_pushed_commit;
+    PipelineState {
+        phase: migrated.phase,
+        iteration: migrated.iteration,
+        total_iterations: migrated.total_iterations,
+        reviewer_pass: migrated.reviewer_pass,
+        total_reviewer_passes: migrated.total_reviewer_passes,
+        rebase: migrated.rebase,
+        execution_history: new_execution_history,
+        prompt_inputs: migrated.prompt_inputs,
+        prompt_permissions: migrated.prompt_permissions,
+        prompt_history: migrated.prompt_history,
+        metrics: migrated.metrics,
+        recovery_epoch: migrated.recovery_epoch,
+        recovery_escalation_level: migrated.recovery_escalation_level,
+        dev_fix_attempt_count: migrated.dev_fix_attempt_count,
+        failed_phase_for_recovery: migrated.failed_phase_for_recovery,
+        interrupted_by_user: migrated.interrupted_by_user,
+        pending_push_commit: migrated.pending_push_commit,
+        git_auth_configured: migrated.git_auth_configured,
+        pr_created: migrated.pr_created,
+        pr_url: migrated.pr_url,
+        pr_number: migrated.pr_number,
+        push_count: migrated.push_count,
+        push_retry_count: migrated.push_retry_count,
+        last_push_error: migrated.last_push_error,
+        unpushed_commits: migrated.unpushed_commits,
+        last_pushed_commit: migrated.last_pushed_commit,
+        // Preserve cloud from base_state (runtime env-derived, redacted)
+        cloud,
+        // Take all other fields from migrated that aren't explicitly set above
+        ..migrated
+    }
 }
 
 /// Maximum iterations for the main event loop to prevent infinite loops.
@@ -195,7 +203,7 @@ mod resume_overlay_tests {
         migrated.unpushed_commits = vec!["deadbeef".to_string()];
         migrated.last_pushed_commit = Some("beadfeed".to_string());
 
-        overlay_checkpoint_progress_onto_base_state(&mut base, migrated, 1000);
+        let base = overlay_checkpoint_progress_onto_base_state(base, migrated, 1000);
 
         // Runtime (env-derived) redacted config is preserved.
         assert!(base.cloud.enabled);
@@ -217,7 +225,7 @@ mod resume_overlay_tests {
 
     #[test]
     fn resume_overlay_restores_recovery_and_interrupt_fields() {
-        let mut base = PipelineState::initial(3, 2);
+        let base = PipelineState::initial(3, 2);
 
         let mut migrated = PipelineState::initial(999, 999);
         migrated.dev_fix_attempt_count = 42;
@@ -226,7 +234,7 @@ mod resume_overlay_tests {
         migrated.failed_phase_for_recovery = Some(PipelinePhase::Review);
         migrated.interrupted_by_user = true;
 
-        overlay_checkpoint_progress_onto_base_state(&mut base, migrated, 1000);
+        let base = overlay_checkpoint_progress_onto_base_state(base, migrated, 1000);
 
         assert_eq!(base.dev_fix_attempt_count, 42);
         assert_eq!(base.recovery_epoch, 7);

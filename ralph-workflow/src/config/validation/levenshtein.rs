@@ -24,23 +24,21 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
             // Use fold to compute current row - maintains the sequential dependency
             // curr_row[i+1] depends on curr_row[i]
             let first_val = j + 1;
-            let (curr_row, _) = (0..=a_len).fold(
-                (vec![0usize; a_len + 1], first_val),
-                |(mut row, prev_val), i| {
+            let curr_row: Vec<usize> = (0..=a_len)
+                .scan(first_val, |prev_val, i| {
                     if i == 0 {
-                        row[0] = first_val;
-                        (row, first_val)
+                        Some(first_val)
                     } else {
                         let cost = usize::from(*b_char != a_chars[i - 1]);
-                        let curr = prev_val
+                        let curr = (*prev_val)
                             .saturating_add(1)
                             .min(prev_row[i].saturating_add(1))
                             .min(prev_row[i - 1].saturating_add(cost));
-                        row[i] = curr;
-                        (row, curr)
+                        *prev_val = curr;
+                        Some(curr)
                     }
-                },
-            );
+                })
+                .collect();
             curr_row
         },
     );

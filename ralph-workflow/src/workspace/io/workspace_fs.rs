@@ -114,28 +114,24 @@ impl Workspace for WorkspaceFs {
 
     fn read_dir(&self, relative: &Path) -> io::Result<Vec<DirEntry>> {
         let abs_path = self.root.join(relative);
-        let mut entries = Vec::new();
-        for entry in fs::read_dir(abs_path)? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
-            // Store relative path from workspace root
-            let rel_path = relative.join(entry.file_name());
-            let modified = metadata.modified().ok();
-            if let Some(mod_time) = modified {
-                entries.push(DirEntry::with_modified(
-                    rel_path,
-                    metadata.is_file(),
-                    metadata.is_dir(),
-                    mod_time,
-                ));
-            } else {
-                entries.push(DirEntry::new(
-                    rel_path,
-                    metadata.is_file(),
-                    metadata.is_dir(),
-                ));
-            }
-        }
+        let entries: Vec<DirEntry> = fs::read_dir(abs_path)?
+            .map(|entry| -> io::Result<DirEntry> {
+                let entry = entry?;
+                let metadata = entry.metadata()?;
+                let rel_path = relative.join(entry.file_name());
+                let modified = metadata.modified().ok();
+                Ok(if let Some(mod_time) = modified {
+                    DirEntry::with_modified(
+                        rel_path,
+                        metadata.is_file(),
+                        metadata.is_dir(),
+                        mod_time,
+                    )
+                } else {
+                    DirEntry::new(rel_path, metadata.is_file(), metadata.is_dir())
+                })
+            })
+            .collect::<io::Result<Vec<_>>>()?;
         Ok(entries)
     }
 

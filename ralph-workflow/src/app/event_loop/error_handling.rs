@@ -42,15 +42,9 @@ use std::time::Instant;
 pub(super) fn extract_error_event(
     err: &anyhow::Error,
 ) -> Option<crate::reducer::event::ErrorEvent> {
-    // Handlers are allowed to wrap typed ErrorEvents with additional context
-    // (e.g. via `anyhow::Context`). Search the full error chain so we still
-    // recover the underlying reducer error event.
-    for cause in err.chain() {
-        if let Some(error_event) = cause.downcast_ref::<crate::reducer::event::ErrorEvent>() {
-            return Some(error_event.clone());
-        }
-    }
-    None
+    err.chain()
+        .find_map(|cause| cause.downcast_ref::<crate::reducer::event::ErrorEvent>())
+        .cloned()
 }
 
 /// Result of guarded effect execution.

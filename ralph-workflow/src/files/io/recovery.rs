@@ -34,46 +34,51 @@ fn validate_agent_state_with_workspace(
     workspace: &dyn Workspace,
     agent_dir: &Path,
 ) -> StateValidation {
-    let mut issues = Vec::new();
+    let issues: Vec<String> = if !workspace.exists(agent_dir) {
+        vec![".agent/ directory does not exist".to_string()]
+    } else {
+        let unreadable_files: Vec<String> = workspace
+            .read_dir(agent_dir)
+            .ok()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| {
+                        let path = entry.path();
+                        if entry.is_file() && workspace.read(path).is_err() {
+                            Some(format!("Corrupted file: {}", path.display()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
-    if !workspace.exists(agent_dir) {
-        return StateValidation {
-            is_valid: false,
-            issues: vec![".agent/ directory does not exist".to_string()],
-        };
-    }
+        let zero_length_files: Vec<String> = [
+            "PLAN.md",
+            "ISSUES.md",
+            "STATUS.md",
+            "NOTES.md",
+            "commit-message.txt",
+        ]
+        .iter()
+        .filter_map(|filename| {
+            let file_path = agent_dir.join(filename);
+            let content = workspace.read(&file_path).ok();
+            if content.is_some_and(|c| c.is_empty()) {
+                Some(format!("Zero-length file: {filename}"))
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    // Detect unreadable files in the `.agent/` directory.
-    if let Ok(entries) = workspace.read_dir(agent_dir) {
-        for entry in entries {
-            let path = entry.path();
-            if !entry.is_file() {
-                continue;
-            }
-            if workspace.read(path).is_err() {
-                issues.push(format!("Corrupted file: {}", path.display()));
-            }
-        }
-    }
-
-    // Zero-length files are a common interruption artifact.
-    for filename in [
-        "PLAN.md",
-        "ISSUES.md",
-        "STATUS.md",
-        "NOTES.md",
-        "commit-message.txt",
-    ] {
-        let file_path = agent_dir.join(filename);
-        if !workspace.exists(&file_path) {
-            continue;
-        }
-        if let Ok(content) = workspace.read(&file_path) {
-            if content.is_empty() {
-                issues.push(format!("Zero-length file: {filename}"));
-            }
-        }
-    }
+        unreadable_files
+            .into_iter()
+            .chain(zero_length_files)
+            .collect()
+    };
 
     StateValidation {
         is_valid: issues.is_empty(),
@@ -85,26 +90,30 @@ fn remove_zero_length_files_with_workspace(
     workspace: &dyn Workspace,
     agent_dir: &Path,
 ) -> io::Result<usize> {
-    let mut removed: usize = 0;
-
-    for filename in [
+    let filenames = [
         "PLAN.md",
         "ISSUES.md",
         "STATUS.md",
         "NOTES.md",
         "commit-message.txt",
-    ] {
-        let file_path = agent_dir.join(filename);
-        if !workspace.exists(&file_path) {
-            continue;
-        }
-        if let Ok(content) = workspace.read(&file_path) {
-            if content.is_empty() {
-                workspace.remove(&file_path)?;
-                removed = removed.saturating_add(1);
+    ];
+
+    let removed: usize = filenames
+        .iter()
+        .filter_map(|filename| {
+            let file_path = agent_dir.join(filename);
+            if !workspace.exists(&file_path) {
+                return None;
             }
-        }
-    }
+            if let Ok(content) = workspace.read(&file_path) {
+                if content.is_empty() {
+                    workspace.remove(&file_path).ok()?;
+                    return Some(1);
+                }
+            }
+            None
+        })
+        .sum();
 
     Ok(removed)
 }

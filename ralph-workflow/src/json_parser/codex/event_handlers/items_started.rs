@@ -240,9 +240,11 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
 
             // Accumulate for backward compatibility with reasoning_completed
             // For backward compat, use the full text not just delta
-            let mut acc = ctx.reasoning_accumulator.borrow_mut();
-            acc.add_delta(ContentType::Thinking, "reasoning", &incremental_delta);
-            drop(acc);
+            ctx.reasoning_accumulator.borrow_mut().add_delta(
+                ContentType::Thinking,
+                "reasoning",
+                &incremental_delta,
+            );
 
             // Sanitize for display
             let sanitized = crate::json_parser::delta_display::sanitize_for_display(&accumulated);

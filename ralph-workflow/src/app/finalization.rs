@@ -65,49 +65,55 @@ pub fn finalize_pipeline(
 ) {
     // Stop the PROMPT.md monitor if it was started
     if let Some(monitor) = prompt_monitor {
-        for warning in monitor.stop() {
-            ctx.logger.warn(&warning);
-        }
+        monitor.stop().iter().for_each(|warning| {
+            ctx.logger.warn(warning);
+        });
     }
 
     // End agent phase and clean up
     let repo_root = ctx.workspace.root();
     crate::git_helpers::end_agent_phase_in_repo(repo_root);
     crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-    let mut cleanup_ok = true;
 
-    if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, ctx.logger) {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            // Integration tests and some non-git scenarios use a workspace root that does
-            // not exist on the real filesystem. In those cases, hook cleanup is not
-            // applicable and must not keep the guard armed.
-            ctx.logger.warn(&format!(
-                "Skipping hook uninstall (repo not present on filesystem): {err}"
-            ));
-        } else {
-            cleanup_ok = false;
-            ctx.logger
-                .warn(&format!("Failed to uninstall Ralph hooks: {err}"));
+    let uninstall_result = crate::git_helpers::uninstall_hooks_in_repo(repo_root, ctx.logger);
+    let hook_uninstall_ok = match uninstall_result {
+        Ok(_) => true,
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                ctx.logger.warn(&format!(
+                    "Skipping hook uninstall (repo not present on filesystem): {err}"
+                ));
+                true
+            } else {
+                ctx.logger
+                    .warn(&format!("Failed to uninstall Ralph hooks: {err}"));
+                false
+            }
         }
-    }
+    };
 
     let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
-    if !wrapper_remaining.is_empty() {
-        cleanup_ok = false;
+    let wrapper_ok = if wrapper_remaining.is_empty() {
+        true
+    } else {
         ctx.logger.warn(&format!(
             "Wrapper artifacts still present after cleanup: {}",
             wrapper_remaining.join(", ")
         ));
-    }
+        false
+    };
 
-    match crate::git_helpers::verify_hooks_removed(repo_root) {
+    let hooks_result = crate::git_helpers::verify_hooks_removed(repo_root);
+    let hooks_ok = match hooks_result {
         Ok(remaining) => {
-            if !remaining.is_empty() {
-                cleanup_ok = false;
+            if remaining.is_empty() {
+                true
+            } else {
                 ctx.logger.warn(&format!(
                     "Ralph hooks still present after cleanup: {}",
                     remaining.join(", ")
                 ));
+                false
             }
         }
         Err(err) => {
@@ -115,13 +121,16 @@ pub fn finalize_pipeline(
                 ctx.logger.warn(&format!(
                     "Skipping hook cleanup verification (repo not present on filesystem): {err}"
                 ));
+                true
             } else {
-                cleanup_ok = false;
                 ctx.logger
                     .warn(&format!("Failed to verify hook cleanup: {err}"));
+                false
             }
         }
-    }
+    };
+
+    let mut cleanup_ok = hook_uninstall_ok && wrapper_ok && hooks_ok;
 
     // Note: Individual commits were created per-iteration during development
     // and per-cycle during review. The final commit phase has been removed.

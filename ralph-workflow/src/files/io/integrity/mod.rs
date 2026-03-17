@@ -110,24 +110,28 @@ pub fn check_filesystem_ready_with_workspace(
     workspace.remove(&test_file)?;
 
     // Best-effort stale lock detection: fail only on clear cases.
-    if let Ok(entries) = workspace.read_dir(path) {
-        for entry in entries {
-            let Some(name) = entry.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
-            if !name.to_ascii_lowercase().ends_with(".lock") {
-                continue;
-            }
-
-            // Check modification time
-            if let Some(modified) = entry.modified() {
-                if let Ok(elapsed) = modified.elapsed() {
-                    if elapsed > std::time::Duration::from_secs(3600) {
-                        return Err(io::Error::other(format!("Stale lock file found: {name}")));
-                    }
+    if let Some(lock_file) = workspace.read_dir(path).ok().and_then(|entries| {
+        entries
+            .iter()
+            .filter_map(|entry| {
+                let name = entry.file_name()?;
+                let name = name.to_str()?;
+                if !name.to_ascii_lowercase().ends_with(".lock") {
+                    return None;
                 }
-            }
-        }
+                let modified = entry.modified()?;
+                let elapsed = modified.elapsed().ok()?;
+                if elapsed > std::time::Duration::from_secs(3600) {
+                    Some(name.to_string())
+                } else {
+                    None
+                }
+            })
+            .next()
+    }) {
+        return Err(io::Error::other(format!(
+            "Stale lock file found: {lock_file}"
+        )));
     }
 
     Ok(())
@@ -267,37 +271,41 @@ pub fn cleanup_stale_xml_files_with_workspace(
     tmp_dir: &Path,
     force_cleanup: bool,
 ) -> io::Result<String> {
-    let mut report = Vec::new();
-    let mut cleaned: usize = 0;
-    let mut writable: usize = 0;
-
     if !workspace.is_dir(tmp_dir) {
         return Ok("Directory doesn't exist yet - nothing to clean".to_string());
     }
 
     let entries = workspace.read_dir(tmp_dir)?;
-    for entry in entries {
-        let path = entry.path();
 
-        // Only check .xml files
-        let extension = path.extension().and_then(|s| s.to_str());
-        if extension != Some("xml") {
-            continue;
-        }
-
-        if force_cleanup {
-            // Remove the file
-            if workspace.exists(path) {
-                workspace.remove(path)?;
-                cleaned = cleaned.saturating_add(1);
-                report.push(format!("  🗑 Removed file: {}", path.display()));
+    let results: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let extension = path.extension().and_then(|s| s.to_str())?;
+            if extension != "xml" {
+                return None;
             }
-        } else {
-            // Just count it as writable (in memory workspace, everything is writable)
-            writable = writable.saturating_add(1);
-            report.push(format!("  ✓ {} is writable", path.display()));
-        }
-    }
+            Some((path, extension == "xml"))
+        })
+        .collect();
+
+    let (writable, cleaned, report): (usize, usize, Vec<String>) = if force_cleanup {
+        let cleaned: Vec<_> = results
+            .iter()
+            .filter(|(path, _)| workspace.exists(path))
+            .filter_map(|(path, _)| {
+                workspace.remove(path).ok()?;
+                Some(format!("  🗑 Removed file: {}", path.display()))
+            })
+            .collect();
+        (0, cleaned.len(), cleaned)
+    } else {
+        let report: Vec<_> = results
+            .iter()
+            .map(|(path, _)| format!("  ✓ {} is writable", path.display()))
+            .collect();
+        (results.len(), 0, report)
+    };
 
     let summary = format!(
         "XML file check complete: {} writable, {} locked, {} cleaned",

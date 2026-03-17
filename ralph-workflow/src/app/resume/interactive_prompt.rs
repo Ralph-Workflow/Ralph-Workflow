@@ -83,12 +83,12 @@ pub fn offer_resume_if_checkpoint_exists(
 
     let validation = validate_checkpoint(&checkpoint, config, registry, workspace);
 
-    for warning in &validation.warnings {
+    validation.warnings.iter().for_each(|warning| {
         logger.warn(warning);
-    }
-    for error in &validation.errors {
+    });
+    validation.errors.iter().for_each(|error| {
         logger.error(error);
-    }
+    });
 
     if !validation.is_valid {
         logger.error("Checkpoint validation failed. Cannot resume.");
@@ -113,12 +113,14 @@ pub fn offer_resume_if_checkpoint_exists(
 
     let validation_outcome = checkpoint.file_system_state.as_ref().map_or(
         ValidationOutcome::Passed,
-        |file_system_state| validate_file_system_state(
-            file_system_state,
-            logger,
-            args.recovery.recovery_strategy.into(),
-            workspace,
-        )
+        |file_system_state| {
+            validate_file_system_state(
+                file_system_state,
+                logger,
+                args.recovery.recovery_strategy.into(),
+                workspace,
+            )
+        },
     );
 
     if matches!(validation_outcome, ValidationOutcome::Failed(_)) {

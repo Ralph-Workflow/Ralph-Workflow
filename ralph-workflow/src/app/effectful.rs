@@ -270,16 +270,16 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
         (".agent/tmp/commit_message.xsd", COMMIT_MESSAGE_XSD_SCHEMA),
     ];
 
-    for (path, content) in schemas {
+    schemas.iter().try_for_each(|(path, content)| {
         match handler.execute(AppEffect::WriteFile {
             path: PathBuf::from(path),
             content: content.to_string(),
         }) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-            other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
+            AppEffectResult::Ok => Ok(()),
+            AppEffectResult::Error(e) => Err(format!("Failed to write {path}: {e}")),
+            other => Err(format!("Unexpected result from WriteFile: {other:?}")),
         }
-    }
+    })?;
 
     // Only create context files in non-isolation mode
     if !isolation_mode {
@@ -289,18 +289,18 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
             (".agent/ISSUES.md", VAGUE_ISSUES_LINE),
         ];
 
-        for (path, line) in context_files {
+        context_files.iter().try_for_each(|(path, line)| {
             // Match overwrite_one_liner behavior: add trailing newline
             let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
             match handler.execute(AppEffect::WriteFile {
                 path: PathBuf::from(path),
                 content,
             }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-                other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
+                AppEffectResult::Ok => Ok(()),
+                AppEffectResult::Error(e) => Err(format!("Failed to write {path}: {e}")),
+                other => Err(format!("Unexpected result from WriteFile: {other:?}")),
             }
-        }
+        })?;
     }
 
     Ok(())
@@ -337,8 +337,7 @@ pub fn reset_context_for_isolation_effectful<H: AppEffectHandler>(
         PathBuf::from(".agent/ISSUES.md"),
     ];
 
-    for path in context_files {
-        // Check if file exists
+    context_files.iter().try_fold((), |(), path| {
         let exists = match handler.execute(AppEffect::PathExists { path: path.clone() }) {
             AppEffectResult::Bool(b) => b,
             AppEffectResult::Error(e) => {
@@ -357,23 +356,22 @@ pub fn reset_context_for_isolation_effectful<H: AppEffectHandler>(
             }
         };
 
-        // Delete if exists
         if exists {
             match handler.execute(AppEffect::DeleteFile { path: path.clone() }) {
-                AppEffectResult::Ok => {}
+                AppEffectResult::Ok => Ok(()),
                 AppEffectResult::Error(e) => {
-                    return Err(format!("Failed to delete {}: {}", path.display(), e))
+                    Err(format!("Failed to delete {}: {}", path.display(), e))
                 }
-                other => {
-                    return Err(format!(
-                        "Unexpected result from DeleteFile for {}: {:?}",
-                        path.display(),
-                        other
-                    ))
-                }
+                other => Err(format!(
+                    "Unexpected result from DeleteFile for {}: {:?}",
+                    path.display(),
+                    other
+                )),
             }
+        } else {
+            Ok(())
         }
-    }
+    })?;
 
     Ok(())
 }

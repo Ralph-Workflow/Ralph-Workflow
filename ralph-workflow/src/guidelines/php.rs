@@ -6,8 +6,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add PHP-specific guidelines to the review
-pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // Core PHP guidelines
+pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use PHP 8+ features where available".to_string(),
         "Follow PSR standards".to_string(),
@@ -28,17 +27,18 @@ pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
         "Avoid register_globals behavior".to_string(),
     ]);
 
-    // Add framework-specific guidelines
     if stack.frameworks.contains(&"Laravel".to_string()) {
-        add_laravel_guidelines(guidelines);
+        guidelines = add_laravel_guidelines(guidelines);
     }
     if stack.frameworks.contains(&"Symfony".to_string()) {
-        add_symfony_guidelines(guidelines);
+        guidelines = add_symfony_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Laravel-specific guidelines
-fn add_laravel_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_laravel_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines
         .quality_checks
         .push("Use Eloquent relationships properly".to_string());
@@ -57,10 +57,12 @@ fn add_laravel_guidelines(guidelines: &mut ReviewGuidelines) {
         "Use Laravel's authorization (Gates/Policies)".to_string(),
         "Sanitize input with request validation".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Symfony-specific guidelines
-fn add_symfony_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_symfony_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Follow Symfony best practices".to_string(),
         "Use dependency injection properly".to_string(),
@@ -71,6 +73,8 @@ fn add_symfony_guidelines(guidelines: &mut ReviewGuidelines) {
         "Configure Symfony Security properly".to_string(),
         "Use voters for authorization".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -88,8 +92,7 @@ mod tests {
             package_manager: Some("Composer".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have PHP-specific security checks
         assert!(guidelines
@@ -110,8 +113,7 @@ mod tests {
             package_manager: Some("Composer".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Laravel-specific checks
         assert!(guidelines
@@ -135,8 +137,7 @@ mod tests {
             package_manager: Some("Composer".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Symfony-specific checks
         assert!(guidelines

@@ -157,23 +157,16 @@ impl Template {
         content: &str,
         literal_segments: &[LiteralSegment],
     ) -> String {
-        let mut index = literal_segments.len();
-        loop {
-            let token = format!("__RALPH_TEMPLATE_LITERAL_{index}__");
-            if !result.contains(&token) && !content.contains(&token) {
-                return token;
-            }
-            index = index.saturating_add(1);
-        }
+        let start_index = literal_segments.len();
+        (start_index..)
+            .map(|index| format!("__RALPH_TEMPLATE_LITERAL_{index}__"))
+            .find(|token| !result.contains(token) && !content.contains(token))
+            .expect("Should always find a unique token")
     }
 
-    fn restore_literal_segments(
-        mut content: String,
-        literal_segments: &[LiteralSegment],
-    ) -> String {
-        for segment in literal_segments.iter().rev() {
-            content = content.replace(&segment.token, &segment.content);
-        }
-        content
+    fn restore_literal_segments(content: String, literal_segments: &[LiteralSegment]) -> String {
+        literal_segments.iter().rev().fold(content, |acc, segment| {
+            acc.replace(&segment.token, &segment.content)
+        })
     }
 }

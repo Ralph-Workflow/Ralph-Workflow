@@ -85,17 +85,15 @@ pub fn create_prompt_backup_with_workspace(
         .map_err(|e| io::Error::new(e.kind(), format!("Failed to write PROMPT.md backup: {e}")))?;
 
     // Set read-only permissions on all backups (best-effort)
-    let mut readonly_warning = None;
-
-    for backup_path in [backup_base, backup_1, backup_2] {
-        if workspace.exists(backup_path) {
-            if let Err(e) = workspace.set_readonly(backup_path) {
-                if readonly_warning.is_none() {
-                    readonly_warning = Some(e.to_string());
-                }
-            }
-        }
-    }
+    let readonly_warning = [backup_base, backup_1, backup_2]
+        .iter()
+        .filter(|backup_path| workspace.exists(backup_path))
+        .find_map(|backup_path| {
+            workspace
+                .set_readonly(backup_path)
+                .err()
+                .map(|e| e.to_string())
+        });
 
     Ok(readonly_warning)
 }

@@ -176,9 +176,16 @@ impl RebaseStateMachine {
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn transition_to(&mut self, phase: RebasePhase) -> io::Result<()> {
-        self.checkpoint = self.checkpoint.clone().with_phase(phase);
-        save_rebase_checkpoint(&self.checkpoint)
+    pub fn transition_to(self, phase: RebasePhase) -> (Self, io::Result<()>) {
+        let checkpoint = self.checkpoint.clone().with_phase(phase);
+        let result = save_rebase_checkpoint(&checkpoint);
+        (
+            Self {
+                checkpoint,
+                max_recovery_attempts: self.max_recovery_attempts,
+            },
+            result,
+        )
     }
 
     /// Record a conflict in a file.
@@ -186,8 +193,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `file` - The file path that has conflicts
-    pub fn record_conflict(&mut self, file: String) {
+    pub fn record_conflict(mut self, file: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_conflicted_file(file);
+        self
     }
 
     /// Record that a conflict has been resolved.
@@ -195,8 +203,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `file` - The file path that was resolved
-    pub fn record_resolution(&mut self, file: String) {
+    pub fn record_resolution(mut self, file: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_resolved_file(file);
+        self
     }
 
     /// Record an error that occurred.
@@ -204,8 +213,9 @@ impl RebaseStateMachine {
     /// # Arguments
     ///
     /// * `error` - The error message to record
-    pub fn record_error(&mut self, error: String) {
+    pub fn record_error(mut self, error: String) -> Self {
         self.checkpoint = self.checkpoint.clone().with_error(error);
+        self
     }
 
     /// Check if recovery is possible.
@@ -281,12 +291,12 @@ impl RebaseStateMachine {
     ///
     /// Returns an error if saving the checkpoint fails.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn abort(mut self) -> io::Result<()> {
-        self.checkpoint = self
+    pub fn abort(self) -> io::Result<()> {
+        let checkpoint = self
             .checkpoint
             .clone()
             .with_phase(RebasePhase::RebaseAborted);
-        save_rebase_checkpoint(&self.checkpoint)
+        save_rebase_checkpoint(&checkpoint)
     }
 }
 

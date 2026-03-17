@@ -123,7 +123,8 @@ fn rebase_onto_impl(
     // Use git CLI for rebase via executor - more reliable than libgit2
     let output = executor.execute("git", &["rebase", upstream_branch], &[], None)?;
 
-    if output.status.success() {
+    let is_success = output.status.success();
+    if is_success {
         Ok(RebaseResult::Success)
     } else {
         let stderr = &output.stderr;
@@ -163,4 +164,3 @@ fn rebase_onto_impl(
         }
     }
 }
-

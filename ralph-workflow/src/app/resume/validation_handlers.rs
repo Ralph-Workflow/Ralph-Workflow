@@ -75,12 +75,12 @@ pub fn handle_resume_with_validation(
             let validation = validate_checkpoint(&checkpoint, config, registry, workspace);
 
             // Display validation results
-            for warning in &validation.warnings {
+            validation.warnings.iter().for_each(|warning| {
                 logger.warn(warning);
-            }
-            for error in &validation.errors {
+            });
+            validation.errors.iter().for_each(|error| {
                 logger.error(error);
-            }
+            });
 
             if !validation.is_valid {
                 // When --resume is explicitly specified and validation fails, return an error.

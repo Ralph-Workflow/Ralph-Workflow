@@ -6,8 +6,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Python-specific guidelines to the review
-pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // Core Python guidelines
+pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Follow PEP 8 style guide".to_string(),
         "Use type hints for function signatures".to_string(),
@@ -45,20 +44,21 @@ pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
         "Avoid global state".to_string(),
     ]);
 
-    // Add framework-specific guidelines
     if stack.frameworks.contains(&"Django".to_string()) {
-        add_django_guidelines(guidelines);
+        guidelines = add_django_guidelines(guidelines);
     }
     if stack.frameworks.contains(&"FastAPI".to_string()) {
-        add_fastapi_guidelines(guidelines);
+        guidelines = add_fastapi_guidelines(guidelines);
     }
     if stack.frameworks.contains(&"Flask".to_string()) {
-        add_flask_guidelines(guidelines);
+        guidelines = add_flask_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Django-specific guidelines
-fn add_django_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_django_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use Django ORM effectively".to_string(),
         "Follow Django coding style".to_string(),
@@ -70,10 +70,12 @@ fn add_django_guidelines(guidelines: &mut ReviewGuidelines) {
         "Validate forms properly".to_string(),
         "Use Django's authentication system".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add FastAPI-specific guidelines
-fn add_fastapi_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_fastapi_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use Pydantic models for validation".to_string(),
         "Define proper response models".to_string(),
@@ -84,10 +86,12 @@ fn add_fastapi_guidelines(guidelines: &mut ReviewGuidelines) {
         "Implement proper OAuth2/JWT handling".to_string(),
         "Use HTTPSRedirectMiddleware".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Flask-specific guidelines
-fn add_flask_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_flask_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use Blueprints for organization".to_string(),
         "Use Flask-SQLAlchemy properly".to_string(),
@@ -97,6 +101,8 @@ fn add_flask_guidelines(guidelines: &mut ReviewGuidelines) {
         "Set SECRET_KEY securely".to_string(),
         "Use flask-talisman for security headers".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -114,8 +120,7 @@ mod tests {
             package_manager: Some("pip".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Python-specific checks
         assert!(guidelines.quality_checks.iter().any(|c| c.contains("PEP")));
@@ -136,8 +141,7 @@ mod tests {
             package_manager: Some("pip".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Django-specific checks
         assert!(guidelines
@@ -161,8 +165,7 @@ mod tests {
             package_manager: Some("pip".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have FastAPI-specific checks
         assert!(guidelines
@@ -186,8 +189,7 @@ mod tests {
             package_manager: Some("pip".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Flask-specific checks
         assert!(guidelines

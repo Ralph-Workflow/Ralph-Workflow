@@ -17,18 +17,19 @@ pub enum Preset {
     Opencode,
 }
 
-/// Apply CLI arguments to the configuration.
+/// Apply CLI arguments to the configuration (functional pattern - returns new Config).
 ///
 /// This function uses the reducer architecture to process CLI arguments:
 /// 1. Parse Args into a sequence of `CliEvents`
 /// 2. Run events through the reducer to build `CliState`
-/// 3. Apply `CliState` to Config
+/// 3. Apply `CliState` to Config returning a new Config
 ///
 /// This approach ensures:
 /// - All CLI arguments are handled (fixes missing -L, -S, -T flags)
 /// - Event processing is testable and maintainable
 /// - Consistent with the existing pipeline reducer pattern
-pub fn apply_args_to_config(args: &super::Args, config: &mut Config, colors: Colors) {
+#[must_use]
+pub fn apply_args_to_config(args: &super::Args, config: Config, colors: Colors) -> Config {
     use crate::cli::reducer::{apply_cli_state_to_config, args_to_events, reduce, CliState};
 
     // Validate review depth before processing (for user warning)
@@ -52,12 +53,9 @@ pub fn apply_args_to_config(args: &super::Args, config: &mut Config, colors: Col
     // Parse args into events
     let events = args_to_events(args);
 
-    // Run events through reducer to build state
-    let mut state = CliState::initial();
-    for event in events {
-        state = reduce(state, event);
-    }
+    // Run events through reducer to build state (functional pattern with fold)
+    let state = events.into_iter().fold(CliState::initial(), reduce);
 
-    // Apply final state to config
-    apply_cli_state_to_config(&state, config);
+    // Apply final state to config (functional pattern)
+    apply_cli_state_to_config(&state, &config)
 }

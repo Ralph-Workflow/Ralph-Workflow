@@ -6,7 +6,7 @@
 use super::{MemoryFile, MemoryWorkspace};
 use crate::workspace::{DirEntry, Workspace};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 impl Workspace for MemoryWorkspace {
     fn root(&self) -> &Path {
@@ -201,20 +201,24 @@ impl Workspace for MemoryWorkspace {
         };
 
         // Build result after locks are dropped
-        let mut entries = Vec::new();
         let mut seen = std::collections::HashSet::new();
+        let file_entries: Vec<DirEntry> = file_entries
+            .into_iter()
+            .filter_map(|(name, path, modified)| {
+                seen.insert(name)
+                    .then_some(DirEntry::with_modified(path, true, false, modified))
+            })
+            .collect();
 
-        for (name, path, modified) in file_entries {
-            if seen.insert(name) {
-                entries.push(DirEntry::with_modified(path, true, false, modified));
-            }
-        }
+        let dir_entries: Vec<DirEntry> = dir_entries
+            .into_iter()
+            .filter_map(|(name, path)| {
+                seen.insert(name)
+                    .then_some(DirEntry::new(path, false, true))
+            })
+            .collect();
 
-        for (name, path) in dir_entries {
-            if seen.insert(name) {
-                entries.push(DirEntry::new(path, false, true));
-            }
-        }
+        let entries: Vec<DirEntry> = file_entries.into_iter().chain(dir_entries).collect();
 
         Ok(entries)
     }
@@ -243,31 +247,15 @@ impl MemoryWorkspace {
     ///
     /// Internal implementation used by both `remove_dir_all` and `remove_dir_all_if_exists`.
     fn remove_dir_all_impl(&self, relative: &Path) {
-        // Remove all files under this directory
         {
             let mut files = self.files.write()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace files lock");
-            let to_remove: Vec<PathBuf> = files
-                .keys()
-                .filter(|path| path.starts_with(relative))
-                .cloned()
-                .collect();
-            for path in to_remove {
-                files.remove(&path);
-            }
+            files.retain(|path, _| !path.starts_with(relative));
         }
-        // Remove all directories under this directory (including itself)
         {
             let mut dirs = self.directories.write()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-            let to_remove: Vec<PathBuf> = dirs
-                .iter()
-                .filter(|path| path.starts_with(relative) || *path == relative)
-                .cloned()
-                .collect();
-            for path in to_remove {
-                dirs.remove(&path);
-            }
+            dirs.retain(|path| !path.starts_with(relative) && path != relative);
         }
     }
 }

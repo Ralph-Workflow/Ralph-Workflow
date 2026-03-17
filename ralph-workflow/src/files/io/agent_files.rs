@@ -1,18 +1,10 @@
-//! Agent file management for the `.agent/` directory.
-//!
-//! This module handles creation, modification, and cleanup of files
-//! in the `.agent/` directory that are used during pipeline execution.
-
-use std::fs;
-use std::io::{self, BufRead};
+use std::io;
 use std::path::Path;
 
+use crate::files::io::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
+use crate::files::io::integrity;
+use crate::files::io::recovery;
 use crate::workspace::Workspace;
-
-use super::{
-    context::VAGUE_ISSUES_LINE, context::VAGUE_NOTES_LINE, context::VAGUE_STATUS_LINE, integrity,
-    recovery,
-};
 
 /// XSD schemas for XML validation - included at compile time.
 /// These are written to `.agent/xsd/` at pipeline start for agent self-validation.
@@ -32,40 +24,6 @@ pub const GENERATED_FILES: &[&str] = &[
     ".agent/checkpoint.json.tmp",
     ".git/ralph/no_agent_commit",
 ];
-
-/// Check if a file contains a specific marker string.
-///
-/// Useful for detecting specific content patterns in files without
-/// loading the entire file into memory.
-///
-/// # Arguments
-///
-/// * `file_path` - Path to the file to check
-/// * `marker` - String to search for
-///
-/// # Returns
-///
-/// `Ok(true)` if the marker is found, `Ok(false)` if not found or file doesn't exist.
-///
-/// # Errors
-///
-/// Returns error if the operation fails.
-pub fn file_contains_marker(file_path: &Path, marker: &str) -> io::Result<bool> {
-    if !file_path.exists() {
-        return Ok(false);
-    }
-
-    let file = fs::File::open(file_path)?;
-    let reader = io::BufReader::new(file);
-
-    for line in reader.lines().map_while(Result::ok) {
-        if line.contains(marker) {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
-}
 
 /// Ensure required files and directories exist using workspace.
 ///
@@ -156,13 +114,26 @@ pub fn file_contains_marker_with_workspace(
     }
 
     let content = workspace.read(path)?;
-    for line in content.lines() {
-        if line.contains(marker) {
-            return Ok(true);
-        }
+    Ok(content.lines().any(|line| line.contains(marker)))
+}
+
+/// Check if a file contains a specific marker string using std::fs.
+///
+/// This is the non-workspace version that operates on absolute paths
+/// outside the workspace abstraction (e.g., `.git/hooks/`).
+///
+/// Returns `Ok(true)` if the marker is found, `Ok(false)` if not found or file doesn't exist.
+///
+/// # Errors
+///
+/// Returns error if the operation fails.
+pub fn file_contains_marker(path: &Path, marker: &str) -> io::Result<bool> {
+    if !path.exists() {
+        return Ok(false);
     }
 
-    Ok(false)
+    let content = std::fs::read_to_string(path)?;
+    Ok(content.lines().any(|line| line.contains(marker)))
 }
 
 /// Delete the PLAN.md file using the workspace.
@@ -254,9 +225,10 @@ pub fn write_commit_message_file_with_workspace(
 ///
 /// This is the workspace-based version of `cleanup_generated_files_at`.
 pub fn cleanup_generated_files_with_workspace(workspace: &dyn Workspace) {
-    for file in GENERATED_FILES {
-        let _ = workspace.remove(Path::new(file));
-    }
+    let _ = GENERATED_FILES
+        .iter()
+        .map(|file| workspace.remove(Path::new(file)))
+        .collect::<Vec<_>>();
 }
 
 /// Write XSD schemas to .agent/tmp/ using the workspace.

@@ -90,20 +90,22 @@ pub fn normalize_protection_scope_path(path: &Path) -> PathBuf {
         return canonical;
     }
 
-    let mut existing_ancestor = path;
-    while !existing_ancestor.exists() {
-        let Some(parent) = existing_ancestor.parent() else {
-            return path.to_path_buf();
-        };
-        existing_ancestor = parent;
+    let existing_ancestor = path
+        .ancestors()
+        .find(|ancestor| ancestor.exists())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| path.to_path_buf());
+
+    if existing_ancestor == path {
+        return path.to_path_buf();
     }
 
-    let Ok(canonical_ancestor) = fs::canonicalize(existing_ancestor) else {
+    let Ok(canonical_ancestor) = fs::canonicalize(&existing_ancestor) else {
         return path.to_path_buf();
     };
 
     let suffix = path
-        .strip_prefix(existing_ancestor)
+        .strip_prefix(&existing_ancestor)
         .unwrap_or_else(|_| Path::new(""));
     canonical_ancestor.join(suffix)
 }

@@ -3,6 +3,7 @@
 //! This module provides handlers for listing agents and their configurations.
 
 use crate::agents::{is_ccs_ref, AgentRegistry};
+use itertools::Itertools;
 use std::io::Write;
 
 /// Handle --list-agents command.
@@ -16,14 +17,15 @@ use std::io::Write;
 /// CCS aliases (ccs/...) are displayed separately for clarity.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_agents(registry: &AgentRegistry) {
-    let mut items = registry.list();
-    items.sort_by(|(a, _), (b, _)| a.cmp(b));
+    let items: Vec<_> = registry
+        .list()
+        .into_iter()
+        .sorted_by(|(a, _), (b, _)| a.cmp(b))
+        .collect();
 
-    // Separate regular agents from CCS aliases
     let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
         items.into_iter().partition(|(name, _)| is_ccs_ref(name));
 
-    // Print regular agents
     if !regular_agents.is_empty() {
         let _ = writeln!(std::io::stdout(), "Agents:");
         for (name, cfg) in regular_agents {
@@ -39,7 +41,6 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
         }
     }
 
-    // Print CCS aliases
     if !ccs_aliases.is_empty() {
         let _ = writeln!(std::io::stdout(), "\nCCS Aliases:");
         for (name, cfg) in ccs_aliases {
@@ -58,14 +59,15 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
 /// CCS aliases are shown separately to distinguish them from regular agents.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_available_agents(registry: &AgentRegistry) {
-    let mut items = registry.list_available();
-    items.sort_unstable();
+    let items: Vec<_> = registry
+        .list_available()
+        .into_iter()
+        .sorted_unstable()
+        .collect();
 
-    // Separate regular agents from CCS aliases
     let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
         items.into_iter().partition(|name| is_ccs_ref(name));
 
-    // Print regular agents
     if !regular_agents.is_empty() {
         let _ = writeln!(std::io::stdout(), "Available agents:");
         for name in regular_agents {
@@ -74,7 +76,6 @@ pub fn handle_list_available_agents(registry: &AgentRegistry) {
         }
     }
 
-    // Print CCS aliases
     if !ccs_aliases.is_empty() {
         let _ = writeln!(std::io::stdout(), "\nAvailable CCS aliases:");
         for name in ccs_aliases {

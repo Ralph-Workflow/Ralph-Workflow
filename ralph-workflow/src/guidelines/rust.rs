@@ -6,8 +6,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Rust-specific guidelines to the review
-pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // Core Rust guidelines
+pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "No unwrap/expect in production paths; use Result + ?".to_string(),
         "Proper lifetime annotations where needed".to_string(),
@@ -46,18 +45,19 @@ pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
         "Avoid panic! in library code".to_string(),
     ]);
 
-    // Add web framework guidelines if applicable
     if stack
         .frameworks
         .iter()
         .any(|f| matches!(f.as_str(), "Actix" | "Axum" | "Rocket" | "Warp"))
     {
-        add_rust_web_guidelines(guidelines);
+        guidelines = add_rust_web_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Rust web framework guidelines (Actix, Axum, Rocket, Warp)
-fn add_rust_web_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_rust_web_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use extractors for request data".to_string(),
         "Handle errors with proper status codes".to_string(),
@@ -68,6 +68,8 @@ fn add_rust_web_guidelines(guidelines: &mut ReviewGuidelines) {
         "Validate all user input".to_string(),
         "Use tower middleware for common concerns".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -85,8 +87,7 @@ mod tests {
             package_manager: Some("Cargo".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Rust-specific checks
         assert!(guidelines
@@ -115,8 +116,7 @@ mod tests {
             package_manager: Some("Cargo".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Rust-specific checks but not web framework checks
         assert!(guidelines
@@ -143,8 +143,7 @@ mod tests {
             package_manager: Some("Cargo".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Rust web framework checks
         assert!(guidelines

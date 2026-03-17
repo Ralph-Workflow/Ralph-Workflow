@@ -33,7 +33,8 @@ fn abort_rebase_impl(
     // Use git CLI for abort via executor
     let output = executor.execute("git", &["rebase", "--abort"], &[], None)?;
 
-    if output.status.success() {
+    let is_success = output.status.success();
+    if is_success {
         Ok(())
     } else {
         Err(io::Error::other(format!(

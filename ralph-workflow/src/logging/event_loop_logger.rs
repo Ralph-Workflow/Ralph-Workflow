@@ -28,6 +28,7 @@ pub struct LogEffectParams<'a> {
 ///
 /// **Redaction:** This logger must never include sensitive content like
 /// prompts, agent outputs, secrets, or credentials.
+#[derive(Clone)]
 pub struct EventLoopLogger {
     seq: u64,
 }
@@ -39,6 +40,12 @@ impl EventLoopLogger {
     #[must_use]
     pub const fn new() -> Self {
         Self { seq: 1 }
+    }
+
+    /// Get the current sequence number.
+    #[must_use]
+    pub const fn seq(&self) -> u64 {
+        self.seq
     }
 
     /// Create a new `EventLoopLogger` that continues from an existing log file.
@@ -73,29 +80,21 @@ impl EventLoopLogger {
         log_path: &Path,
     ) -> Result<Self, std::io::Error> {
         if !workspace.exists(log_path) {
-            // Log file doesn't exist, start fresh
             return Ok(Self { seq: 1 });
         }
 
         let content = workspace.read(log_path)?;
         if content.is_empty() {
-            // Empty file, start fresh
             return Ok(Self { seq: 1 });
         }
 
-        // Find the last non-empty line and extract sequence number
         let last_seq = content
             .lines()
             .rev()
             .find(|line| !line.trim().is_empty())
-            .and_then(|line| {
-                // Log format: "<seq> ts=<rfc3339> phase=<Phase> ..."
-                // Extract the first number (sequence number)
-                line.split_whitespace().next()?.parse::<u64>().ok()
-            })
-            .unwrap_or(0); // If we can't parse, start fresh
+            .and_then(|line| line.split_whitespace().next()?.parse::<u64>().ok())
+            .unwrap_or(0);
 
-        // Next sequence is last_seq + 1
         Ok(Self { seq: last_seq + 1 })
     }
 
@@ -122,20 +121,22 @@ impl EventLoopLogger {
     /// Callers who want visibility into logging failures should check the return value
     /// and log to the pipeline logger if desired.
     ///
+    /// # Returns
+    ///
+    /// Returns a new logger with the next sequence number.
+    ///
     /// # Errors
     ///
     /// Returns error if the operation fails.
-    pub fn log_effect(&mut self, params: &LogEffectParams<'_>) -> Result<(), std::io::Error> {
+    pub fn log_effect(self, params: &LogEffectParams<'_>) -> Result<(Self, u64), std::io::Error> {
         let ts = Utc::now().to_rfc3339();
 
-        // Format extra events (if any)
         let extra = if params.extra_events.is_empty() {
             String::new()
         } else {
             format!(" extra=[{}]", params.extra_events.join(","))
         };
 
-        // Format context (if any)
         let ctx = if params.context.is_empty() {
             String::new()
         } else {
@@ -163,8 +164,9 @@ impl EventLoopLogger {
             .workspace
             .append_bytes(params.log_path, line.as_bytes())?;
 
-        self.seq = self.seq.saturating_add(1);
-        Ok(())
+        let next_seq = self.seq.saturating_add(1);
+        let updated_logger = Self { seq: next_seq };
+        Ok((updated_logger, next_seq))
     }
 }
 
@@ -185,10 +187,10 @@ mod tests {
         let workspace = WorkspaceFs::new(tempdir.path().to_path_buf());
 
         let log_path = std::path::Path::new("event_loop.log");
-        let mut logger = EventLoopLogger::new();
+        let logger = EventLoopLogger::new();
 
         // Log a few effects
-        logger
+        let (logger, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -201,7 +203,7 @@ mod tests {
             })
             .unwrap();
 
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -243,7 +245,7 @@ mod tests {
 
         // Log several effects
         for i in 0..5 {
-            logger
+            let (updated_logger, _) = logger
                 .log_effect(&LogEffectParams {
                     workspace: &workspace,
                     log_path,
@@ -255,6 +257,7 @@ mod tests {
                     context: &[],
                 })
                 .unwrap();
+            logger = updated_logger;
         }
 
         // Verify sequence numbers
@@ -273,9 +276,9 @@ mod tests {
         let workspace = WorkspaceFs::new(tempdir.path().to_path_buf());
 
         let log_path = std::path::Path::new("event_loop.log");
-        let mut logger = EventLoopLogger::new();
+        let logger = EventLoopLogger::new();
 
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -302,9 +305,9 @@ mod tests {
         let workspace = WorkspaceFs::new(tempdir.path().to_path_buf());
 
         let log_path = std::path::Path::new("event_loop.log");
-        let mut logger = EventLoopLogger::new();
+        let logger = EventLoopLogger::new();
 
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -335,7 +338,7 @@ mod tests {
         {
             let mut logger = EventLoopLogger::new();
             for i in 0..3 {
-                logger
+                let (updated_logger, _) = logger
                     .log_effect(&LogEffectParams {
                         workspace: &workspace,
                         log_path,
@@ -347,14 +350,15 @@ mod tests {
                         context: &[],
                     })
                     .unwrap();
+                logger = updated_logger;
             }
         }
 
         // Create a new logger from the existing log
-        let mut logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
+        let logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
 
         // The next log entry should have seq=4
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -387,10 +391,10 @@ mod tests {
         let log_path = std::path::Path::new("event_loop.log");
 
         // Create a logger from a nonexistent log file
-        let mut logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
+        let logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
 
         // Should start at seq=1
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,
@@ -418,10 +422,10 @@ mod tests {
         workspace.write(log_path, "").unwrap();
 
         // Create a logger from an empty log file
-        let mut logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
+        let logger = EventLoopLogger::from_existing_log(&workspace, log_path).unwrap();
 
         // Should start at seq=1
-        logger
+        let (_, _) = logger
             .log_effect(&LogEffectParams {
                 workspace: &workspace,
                 log_path,

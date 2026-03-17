@@ -468,11 +468,12 @@ fn get_start_commit_summary_impl(
             .push(head_commit.id())
             .map_err(|e| to_io_error(&e))?;
 
-        let count = revwalk
+        let commits: Vec<_> = revwalk
             .map(|res| res.map_err(|e| to_io_error(&e)))
             .take_while(|res| res.as_ref().map_or(true, |id| *id != start_commit.id()))
             .take(1000)
-            .count();
+            .collect();
+        let count = commits.len();
 
         let is_stale = count > 10;
         (count, is_stale)

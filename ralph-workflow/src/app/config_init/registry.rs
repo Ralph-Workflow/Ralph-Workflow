@@ -111,17 +111,23 @@ pub(super) fn setup_opencode_catalog<L: CatalogLoader>(
 ///
 /// If no agent was explicitly selected via CLI/env/preset, uses the first entry
 /// from the `agent_chain` configuration.
-pub(super) fn apply_default_agents(config: &mut Config, registry: &AgentRegistry) {
-    if config.developer_agent.is_none() {
-        config.developer_agent = registry
+pub(super) fn apply_default_agents(config: &Config, registry: &AgentRegistry) -> Config {
+    let developer_agent = config.developer_agent.clone().or_else(|| {
+        registry
             .resolved_drain(AgentDrain::Development)
             .and_then(|binding| binding.agents.first())
-            .cloned();
-    }
-    if config.reviewer_agent.is_none() {
-        config.reviewer_agent = registry
+            .cloned()
+    });
+    let reviewer_agent = config.reviewer_agent.clone().or_else(|| {
+        registry
             .resolved_drain(AgentDrain::Review)
             .and_then(|binding| binding.agents.first())
-            .cloned();
+            .cloned()
+    });
+
+    Config {
+        developer_agent,
+        reviewer_agent,
+        ..config.clone()
     }
 }

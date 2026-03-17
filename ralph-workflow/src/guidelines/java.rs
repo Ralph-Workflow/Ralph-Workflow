@@ -6,7 +6,10 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Java-specific guidelines to the review
-pub fn add_java_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
+pub fn add_java_guidelines(
+    mut guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Follow Java naming conventions".to_string(),
         "Use Optional instead of null returns".to_string(),
@@ -26,14 +29,18 @@ pub fn add_java_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectSta
         "Avoid public fields".to_string(),
     ]);
 
-    // Add Spring guidelines if detected
     if stack.frameworks.contains(&"Spring".to_string()) {
-        add_spring_guidelines(guidelines);
+        guidelines = add_spring_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Kotlin-specific guidelines to the review
-pub fn add_kotlin_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
+pub fn add_kotlin_guidelines(
+    mut guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use null safety features".to_string(),
         "Prefer data classes for DTOs".to_string(),
@@ -46,14 +53,15 @@ pub fn add_kotlin_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectS
         "Don't use lateinit for nullable fields".to_string(),
     ]);
 
-    // Add Spring guidelines if detected
     if stack.frameworks.contains(&"Spring".to_string()) {
-        add_spring_guidelines(guidelines);
+        guidelines = add_spring_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Spring framework guidelines
-fn add_spring_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_spring_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use constructor injection".to_string(),
         "Follow Spring Boot conventions".to_string(),
@@ -64,6 +72,8 @@ fn add_spring_guidelines(guidelines: &mut ReviewGuidelines) {
         "Configure Spring Security properly".to_string(),
         "Use @Valid for input validation".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -81,8 +91,7 @@ mod tests {
             package_manager: Some("Maven".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_java_guidelines(&mut guidelines, &stack);
+        let guidelines = add_java_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Java-specific checks
         assert!(guidelines
@@ -110,8 +119,7 @@ mod tests {
             package_manager: Some("Maven".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_java_guidelines(&mut guidelines, &stack);
+        let guidelines = add_java_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Spring-specific checks
         assert!(guidelines
@@ -135,8 +143,7 @@ mod tests {
             package_manager: Some("Gradle".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_kotlin_guidelines(&mut guidelines, &stack);
+        let guidelines = add_kotlin_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Kotlin-specific checks
         assert!(guidelines
@@ -157,8 +164,7 @@ mod tests {
             package_manager: Some("Gradle".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_kotlin_guidelines(&mut guidelines, &stack);
+        let guidelines = add_kotlin_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Spring-specific checks
         assert!(guidelines

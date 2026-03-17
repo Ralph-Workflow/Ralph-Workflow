@@ -10,13 +10,13 @@ use super::snapshot::MemorySnapshot;
 /// (Prometheus, `DataDog`, `CloudWatch`, etc.)
 pub trait TelemetryBackend {
     /// Emit a memory snapshot to the telemetry system.
-    fn emit_snapshot(&mut self, snapshot: &MemorySnapshot);
+    fn emit_snapshot(&self, snapshot: &MemorySnapshot);
 
     /// Emit a warning when memory usage approaches threshold.
-    fn emit_warning(&mut self, message: &str);
+    fn emit_warning(&self, message: &str);
 
     /// Flush any buffered metrics.
-    fn flush(&mut self);
+    fn flush(&self);
 }
 
 /// No-op telemetry backend for testing.
@@ -24,9 +24,9 @@ pub trait TelemetryBackend {
 pub struct NoOpBackend;
 
 impl TelemetryBackend for NoOpBackend {
-    fn emit_snapshot(&mut self, _snapshot: &MemorySnapshot) {}
-    fn emit_warning(&mut self, _message: &str) {}
-    fn flush(&mut self) {}
+    fn emit_snapshot(&self, _snapshot: &MemorySnapshot) {}
+    fn emit_warning(&self, _message: &str) {}
+    fn flush(&self) {}
 }
 
 /// Logging-based telemetry backend.
@@ -51,7 +51,7 @@ impl LoggingBackend {
 }
 
 impl TelemetryBackend for LoggingBackend {
-    fn emit_snapshot(&mut self, snapshot: &MemorySnapshot) {
+    fn emit_snapshot(&self, snapshot: &MemorySnapshot) {
         self.logger.info(&format!(
             "[METRICS] iteration={} history_len={} heap_bytes={} checkpoint_count={}",
             snapshot.iteration,
@@ -68,11 +68,11 @@ impl TelemetryBackend for LoggingBackend {
         }
     }
 
-    fn emit_warning(&mut self, message: &str) {
+    fn emit_warning(&self, message: &str) {
         self.logger.warn(&format!("[METRICS WARNING] {message}"));
     }
 
-    fn flush(&mut self) {
+    fn flush(&self) {
         // Logging backend doesn't buffer
     }
 }

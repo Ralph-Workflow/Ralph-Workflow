@@ -45,71 +45,96 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
         }
 
         // Git porcelain uses C-style quoting. Octal escapes represent BYTES, not Unicode codepoints.
-        let mut out: Vec<u8> = Vec::with_capacity(bytes.len().saturating_sub(2));
-        let mut i = 1usize;
-        while i + 1 < bytes.len() {
+        // Process bytes using a recursive approach that builds new values
+        let inner = &bytes[1..bytes.len() - 1];
+
+        fn process_bytes(
+            bytes: &[u8],
+            i: usize,
+            in_escape: bool,
+            octal_val: Option<(u32, usize, usize)>, // (value, consumed, start_idx)
+        ) -> Vec<u8> {
+            if i >= bytes.len() {
+                return Vec::new();
+            }
+
             let b = bytes[i];
-            if b != b'\\' {
-                out.push(b);
-                i = i.saturating_add(1);
-                continue;
-            }
+            let mut result = Vec::new();
 
-            i = i.saturating_add(1);
-            if i + 1 > bytes.len() {
-                break;
-            }
-
-            let esc = bytes[i];
-            match esc {
-                b'\\' => out.push(b'\\'),
-                b'"' => out.push(b'"'),
-                // Do NOT decode control-character escapes into real control bytes.
-                // Preserve the escaped form to avoid control-character injection.
-                b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
-                    out.push(b'\\');
-                    out.push(esc);
-                }
-                b'0'..=b'7' => {
-                    let digit_start = i;
-                    let mut val: u32 = u32::from(esc - b'0');
-                    let mut consumed = 1usize;
-                    while consumed < 3 {
-                        let next_i = i + consumed;
-                        if next_i + 1 >= bytes.len() {
-                            break;
-                        }
-                        let nb = bytes[next_i];
-                        if !(b'0'..=b'7').contains(&nb) {
-                            break;
-                        }
-                        val = (val * 8) + u32::from(nb - b'0');
-                        consumed = consumed.saturating_add(1);
+            if in_escape {
+                // Currently processing escape sequence
+                match b {
+                    b'\\' => {
+                        result.push(b'\\');
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
                     }
-                    i = i.saturating_add(consumed).saturating_sub(1);
-                    if let Ok(b) = u8::try_from(val) {
-                        if b < 0x20 || b == 0x7F {
-                            // Preserve escape sequence for control bytes.
-                            out.push(b'\\');
-                            out.extend_from_slice(&bytes[digit_start..digit_start + consumed]);
+                    b'"' => {
+                        result.push(b'"');
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                    }
+                    b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
+                        result.push(b'\\');
+                        result.push(b);
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                    }
+                    b'0'..=b'7' => {
+                        // Start octal sequence
+                        let octal = (u32::from(b - b'0'), 1, i);
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, true, Some(octal)));
+                    }
+                    _ => {
+                        result.push(b'\\');
+                        result.push(b);
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+                    }
+                }
+            } else if let Some((val, consumed, start_idx)) = octal_val {
+                // Currently processing octal digits
+                if b.is_ascii_digit() && consumed < 3 {
+                    let new_val = (val * 8) + u32::from(b - b'0');
+                    let new_consumed = consumed + 1;
+                    result.extend_from_slice(&process_bytes(
+                        bytes,
+                        i + 1,
+                        true,
+                        Some((new_val, new_consumed, start_idx)),
+                    ));
+                } else {
+                    // Finish octal processing
+                    if let Ok(byte) = u8::try_from(val) {
+                        if byte < 0x20 || byte == 0x7F {
+                            result.push(b'\\');
+                            result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
                         } else {
-                            out.push(b);
+                            result.push(byte);
                         }
                     } else {
-                        // Preserve unknown/overflow escape sequence.
-                        out.push(b'\\');
-                        out.extend_from_slice(&bytes[digit_start..digit_start + consumed]);
+                        result.push(b'\\');
+                        result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
+                    }
+                    // Process current byte
+                    if b == b'\\' {
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
+                    } else {
+                        result.push(b);
+                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
                     }
                 }
-                other => {
-                    out.push(b'\\');
-                    out.push(other);
+            } else {
+                // Normal processing
+                if b == b'\\' {
+                    result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
+                } else {
+                    result.push(b);
+                    result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
                 }
             }
-            i = i.saturating_add(1);
+
+            result
         }
 
-        String::from_utf8(out).ok()
+        let result = process_bytes(inner, 0, false, None);
+        String::from_utf8(result).ok()
     }
 
     fn parse_path_component(raw: &str) -> String {
@@ -117,42 +142,42 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
         unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
     }
 
-    let mut out: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for line in snapshot.lines() {
-        let bytes = line.as_bytes();
-        if bytes.len() < 4 {
-            continue;
-        }
-        // Porcelain v1: 2 status chars + space + path
-        if bytes[2] != b' ' {
-            continue;
-        }
-        let x = bytes[0] as char;
-        let y = bytes[1] as char;
-        let mut path_spec = &line[3..];
-        path_spec = path_spec.trim_end();
-        if path_spec.is_empty() {
-            continue;
-        }
-
-        // Rename/copy lines: `old -> new` (porcelain v1). Prefer the new path.
-        if x == 'R' || y == 'R' || x == 'C' || y == 'C' {
-            if let Some((_, new_part)) = path_spec.rsplit_once(" -> ") {
-                path_spec = new_part.trim_end();
+    let mut out: Vec<String> = snapshot
+        .lines()
+        .filter_map(|line| {
+            let bytes = line.as_bytes();
+            if bytes.len() < 4 {
+                return None;
             }
-        }
+            if bytes[2] != b' ' {
+                return None;
+            }
+            let x = bytes[0] as char;
+            let y = bytes[1] as char;
+            let path_spec = line[3..].trim_end();
+            if path_spec.is_empty() {
+                return None;
+            }
 
-        let parsed = parse_path_component(path_spec);
-        if parsed.is_empty() {
-            continue;
-        }
+            let path_spec = if x == 'R' || y == 'R' || x == 'C' || y == 'C' {
+                path_spec
+                    .rsplit_once(" -> ")
+                    .map_or(path_spec, |(_, new_part)| new_part.trim_end())
+            } else {
+                path_spec
+            };
 
-        if seen.insert(parsed.clone()) {
-            out.push(parsed);
-        }
-    }
+            let parsed = parse_path_component(path_spec);
+            if parsed.is_empty() {
+                return None;
+            }
+
+            Some(parsed)
+        })
+        .filter(|parsed| seen.insert(parsed.clone()))
+        .collect();
 
     out.sort();
     out
@@ -168,70 +193,63 @@ fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
         .statuses(Some(&mut opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let mut result = String::new();
-    for entry in statuses.iter() {
-        let status = entry.status();
-        let Some(path) = entry.path() else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "non-UTF8 path encountered in git status; cannot safely track residual files",
-            ));
-        };
-        let path = path.to_string();
-        if path.bytes().any(|b| b < 0x20 || b == 0x7F) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "control characters in path encountered in git status; cannot safely snapshot",
-            ));
-        }
+    let lines: Vec<String> = statuses
+        .iter()
+        .map(|entry| {
+            let status = entry.status();
+            let path = entry.path().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "non-UTF8 path encountered in git status; cannot safely track residual files",
+                )
+            })?;
+            let path = path.to_string();
+            if path.bytes().any(|b| b < 0x20 || b == 0x7F) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "control characters in path encountered in git status; cannot safely snapshot",
+                ));
+            }
 
-        // Convert git2 status to porcelain format.
-        // Untracked files are represented as "??" in porcelain v1.
-        if status.contains(git2::Status::WT_NEW) {
-            result.push('?');
-            result.push('?');
-            result.push(' ');
-            result.push_str(&path);
-            result.push('\n');
-            continue;
-        }
+            // Convert git2 status to porcelain format.
+            // Untracked files are represented as "??" in porcelain v1.
+            if status.contains(git2::Status::WT_NEW) {
+                return Ok(format!("?? {path}\n"));
+            }
 
-        // Index status
-        let index_status = if status.contains(git2::Status::INDEX_NEW) {
-            'A'
-        } else if status.contains(git2::Status::INDEX_MODIFIED) {
-            'M'
-        } else if status.contains(git2::Status::INDEX_DELETED) {
-            'D'
-        } else if status.contains(git2::Status::INDEX_RENAMED) {
-            'R'
-        } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
-            'T'
-        } else {
-            ' '
-        };
+            // Index status
+            let index_status = if status.contains(git2::Status::INDEX_NEW) {
+                'A'
+            } else if status.contains(git2::Status::INDEX_MODIFIED) {
+                'M'
+            } else if status.contains(git2::Status::INDEX_DELETED) {
+                'D'
+            } else if status.contains(git2::Status::INDEX_RENAMED) {
+                'R'
+            } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
+                'T'
+            } else {
+                ' '
+            };
 
-        // Worktree status
-        let wt_status = if status.contains(git2::Status::WT_MODIFIED) {
-            'M'
-        } else if status.contains(git2::Status::WT_DELETED) {
-            'D'
-        } else if status.contains(git2::Status::WT_RENAMED) {
-            'R'
-        } else if status.contains(git2::Status::WT_TYPECHANGE) {
-            'T'
-        } else {
-            ' '
-        };
+            // Worktree status
+            let wt_status = if status.contains(git2::Status::WT_MODIFIED) {
+                'M'
+            } else if status.contains(git2::Status::WT_DELETED) {
+                'D'
+            } else if status.contains(git2::Status::WT_RENAMED) {
+                'R'
+            } else if status.contains(git2::Status::WT_TYPECHANGE) {
+                'T'
+            } else {
+                ' '
+            };
 
-        result.push(index_status);
-        result.push(wt_status);
-        result.push(' ');
-        result.push_str(&path);
-        result.push('\n');
-    }
+            Ok(format!("{index_status}{wt_status} {path}\n"))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
 
-    Ok(result)
+    Ok(lines.into_iter().collect())
 }
 
 #[cfg(test)]

@@ -29,17 +29,22 @@ pub(super) fn log_effect_execution(
         .map(|(k, v)| (*k, v.as_str()))
         .collect();
 
-    if let Err(e) = event_loop_logger.log_effect(&crate::logging::LogEffectParams {
-        workspace: ctx.workspace,
-        log_path: &ctx.run_log_context.event_loop_log(),
-        phase: state.phase,
-        effect: effect_str,
-        primary_event: event_str,
-        extra_events: &extra_events,
-        duration_ms,
-        context: &context_refs,
-    }) {
-        ctx.logger
-            .warn(&format!("Failed to write to event loop log: {e}"));
-    }
+    let (new_logger, _seq) = event_loop_logger
+        .clone()
+        .log_effect(&crate::logging::LogEffectParams {
+            workspace: ctx.workspace,
+            log_path: &ctx.run_log_context.event_loop_log(),
+            phase: state.phase,
+            effect: effect_str,
+            primary_event: event_str,
+            extra_events: &extra_events,
+            duration_ms,
+            context: &context_refs,
+        })
+        .unwrap_or_else(|e| {
+            ctx.logger
+                .warn(&format!("Failed to write to event loop log: {e}"));
+            (event_loop_logger.clone(), 0)
+        });
+    *event_loop_logger = new_logger;
 }

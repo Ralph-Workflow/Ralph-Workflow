@@ -48,8 +48,9 @@ impl EventTraceBuffer {
 
     pub(super) fn push(&mut self, entry: EventTraceEntry) {
         self.entries.push_back(entry);
-        while self.entries.len() > self.capacity {
-            self.entries.pop_front();
+        let overflow = self.entries.len().saturating_sub(self.capacity);
+        if overflow > 0 {
+            self.entries.drain(0..overflow);
         }
     }
 
@@ -100,20 +101,17 @@ pub(super) fn dump_event_loop_trace(
     final_state: &PipelineState,
     reason: &str,
 ) -> bool {
-    let mut out = String::new();
+    let trace_lines: Vec<String> = trace
+        .entries()
+        .iter()
+        .filter_map(|entry| serde_json::to_string(entry).ok())
+        .collect();
 
-    for entry in trace.entries() {
-        match serde_json::to_string(entry) {
-            Ok(line) => {
-                out.push_str(&line);
-                out.push('\n');
-            }
-            Err(err) => {
-                ctx.logger.error(&format!(
-                    "Failed to serialize event loop trace entry: {err}"
-                ));
-            }
-        }
+    let error_count = trace.entries().len().saturating_sub(trace_lines.len());
+    if error_count > 0 {
+        ctx.logger.error(&format!(
+            "Failed to serialize {error_count} event loop trace entries"
+        ));
     }
 
     let final_line = match serde_json::to_string(&EventTraceFinalState {
@@ -126,7 +124,6 @@ pub(super) fn dump_event_loop_trace(
             ctx.logger.error(&format!(
                 "Failed to serialize event loop final state: {err}"
             ));
-            // Ensure the file still contains something useful.
             format!(
                 "{{\"kind\":\"final_state\",\"reason\":{},\"phase\":{}}}",
                 serde_json::to_string(reason).unwrap_or_else(|_| "\"unknown\"".to_string()),
@@ -135,15 +132,15 @@ pub(super) fn dump_event_loop_trace(
             )
         }
     };
-    out.push_str(&final_line);
-    out.push('\n');
 
-    // Get trace path from run log context
+    let out = trace_lines
+        .into_iter()
+        .chain(std::iter::once(final_line))
+        .map(|line| format!("{line}\n"))
+        .collect::<String>();
+
     let trace_path = ctx.run_log_context.event_loop_trace();
 
-    // Ensure the trace directory exists. While `Workspace::write` is expected to
-    // create parent directories, we do this explicitly so trace dumping is
-    // resilient even under stricter workspace implementations.
     if let Some(parent) = trace_path.parent() {
         if let Err(err) = ctx.workspace.create_dir_all(parent) {
             ctx.logger

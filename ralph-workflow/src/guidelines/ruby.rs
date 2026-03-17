@@ -6,8 +6,7 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Ruby-specific guidelines to the review
-pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
-    // Core Ruby guidelines
+pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Follow Ruby style guide (rubocop)".to_string(),
         "Use meaningful variable names".to_string(),
@@ -27,17 +26,18 @@ pub fn add_guidelines(guidelines: &mut ReviewGuidelines, stack: &ProjectStack) {
         "Avoid deeply nested conditionals".to_string(),
     ]);
 
-    // Add framework-specific guidelines
     if stack.frameworks.contains(&"Rails".to_string()) {
-        add_rails_guidelines(guidelines);
+        guidelines = add_rails_guidelines(guidelines);
     }
     if stack.frameworks.contains(&"Sinatra".to_string()) {
-        add_sinatra_guidelines(guidelines);
+        guidelines = add_sinatra_guidelines(guidelines);
     }
+
+    guidelines
 }
 
 /// Add Rails-specific guidelines
-fn add_rails_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_rails_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Follow Rails conventions".to_string(),
         "Use Active Record validations".to_string(),
@@ -49,10 +49,12 @@ fn add_rails_guidelines(guidelines: &mut ReviewGuidelines) {
         "Protect against mass assignment".to_string(),
         "Use Rails' built-in CSRF protection".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Sinatra-specific guidelines
-fn add_sinatra_guidelines(guidelines: &mut ReviewGuidelines) {
+fn add_sinatra_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use modular Sinatra style for larger apps".to_string(),
         "Organize routes logically".to_string(),
@@ -62,6 +64,8 @@ fn add_sinatra_guidelines(guidelines: &mut ReviewGuidelines) {
         "Enable rack protection".to_string(),
         "Set session secret securely".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -79,8 +83,7 @@ mod tests {
             package_manager: Some("Bundler".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Ruby-specific checks
         assert!(guidelines
@@ -104,8 +107,7 @@ mod tests {
             package_manager: Some("Bundler".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Rails-specific security checks
         assert!(guidelines
@@ -129,8 +131,7 @@ mod tests {
             package_manager: Some("Bundler".to_string()),
         };
 
-        let mut guidelines = ReviewGuidelines::default();
-        add_guidelines(&mut guidelines, &stack);
+        let guidelines = add_guidelines(ReviewGuidelines::default(), &stack);
 
         // Should have Sinatra-specific checks
         assert!(guidelines

@@ -65,53 +65,71 @@ impl BaselineSummary {
 
     /// Format a detailed version for verbose display.
     pub fn format_detailed(&self) -> String {
-        let mut lines = Vec::new();
-
-        lines.push("Review Baseline Summary:".to_string());
-        lines.push("─".repeat(40));
-
-        match &self.baseline_oid {
+        let baseline_info: Vec<String> = match &self.baseline_oid {
             Some(oid) => {
                 let short_oid = &oid[..8.min(oid.len())];
-                lines.push(format!("  Commit: {short_oid}"));
+                let lines = vec![format!("  Commit: {short_oid}")];
                 if self.commits_since > 0 {
-                    lines.push(format!("  Commits since baseline: {}", self.commits_since));
+                    lines
+                        .into_iter()
+                        .chain(std::iter::once(format!(
+                            "  Commits since baseline: {}",
+                            self.commits_since
+                        )))
+                        .collect()
+                } else {
+                    lines
                 }
             }
-            None => {
-                lines.push("  Commit: start_commit (initial baseline)".to_string());
-            }
-        }
+            None => vec!["  Commit: start_commit (initial baseline)".to_string()],
+        };
 
-        lines.push(format!(
-            "  Files changed: {}",
-            self.diff_stats.files_changed
-        ));
-        lines.push(format!("  Lines added: {}", self.diff_stats.lines_added));
-        lines.push(format!(
-            "  Lines deleted: {}",
-            self.diff_stats.lines_deleted
-        ));
+        let file_info: Vec<String> = if !self.diff_stats.changed_files.is_empty() {
+            let file_lines: Vec<String> = self
+                .diff_stats
+                .changed_files
+                .iter()
+                .map(|file| format!("    - {file}"))
+                .collect();
+            let remaining = self.diff_stats.files_changed - self.diff_stats.changed_files.len();
+            let remaining_line = (remaining > 0).then(|| format!("    ... and {remaining} more"));
+            std::iter::once(String::new())
+                .chain(std::iter::once("  Changed files:".to_string()))
+                .chain(file_lines)
+                .chain(remaining_line)
+                .collect()
+        } else {
+            Vec::new()
+        };
 
-        if !self.diff_stats.changed_files.is_empty() {
-            lines.push(String::new());
-            lines.push("  Changed files:".to_string());
-            for file in &self.diff_stats.changed_files {
-                lines.push(format!("    - {file}"));
-            }
-            if self.diff_stats.changed_files.len() < self.diff_stats.files_changed {
-                let remaining = self.diff_stats.files_changed - self.diff_stats.changed_files.len();
-                lines.push(format!("    ... and {remaining} more"));
-            }
-        }
-
-        if self.is_stale {
-            lines.push(String::new());
-            lines.push(
+        let stale_warning: Vec<String> = if self.is_stale {
+            vec![
+                String::new(),
                 "  ⚠ WARNING: Baseline is stale. Consider updating with --reset-start-commit."
                     .to_string(),
-            );
-        }
+            ]
+        } else {
+            Vec::new()
+        };
+
+        let lines: Vec<String> = std::iter::once("Review Baseline Summary:".to_string())
+            .chain(std::iter::once("─".repeat(40)))
+            .chain(baseline_info)
+            .chain(std::iter::once(format!(
+                "  Files changed: {}",
+                self.diff_stats.files_changed
+            )))
+            .chain(std::iter::once(format!(
+                "  Lines added: {}",
+                self.diff_stats.lines_added
+            )))
+            .chain(std::iter::once(format!(
+                "  Lines deleted: {}",
+                self.diff_stats.lines_deleted
+            )))
+            .chain(file_info)
+            .chain(stale_warning)
+            .collect();
 
         lines.join("\n")
     }
@@ -213,38 +231,37 @@ fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io:
         .diff_tree_to_tree(Some(&baseline_tree), Some(&head_tree), None)
         .map_err(|e| to_io_error(&e))?;
 
-    // Collect statistics
-    let mut stats = DiffStats::default();
-    let mut delta_ids = Vec::new();
+    // First collect deltas and their info into a collection
+    #[derive(Debug, Clone)]
+    struct DeltaInfo {
+        path: Option<String>,
+        is_added_or_modified: bool,
+        blob_id: git2::Oid,
+    }
+
+    let deltas: std::cell::RefCell<Vec<DeltaInfo>> = std::cell::RefCell::new(Vec::new());
 
     diff.foreach(
-        &mut |delta, _progress| {
+        |delta, _progress| {
             use git2::Delta;
 
-            stats.files_changed = stats.files_changed.saturating_add(1);
+            let path = delta
+                .new_file()
+                .path()
+                .or(delta.old_file().path())
+                .map(|p| p.to_string_lossy().to_string());
 
-            if let Some(path) = delta.new_file().path() {
-                let path_str = path.to_string_lossy().to_string();
-                if stats.changed_files.len() < 10 {
-                    stats.changed_files.push(path_str);
-                }
-            } else if let Some(path) = delta.old_file().path() {
-                let path_str = path.to_string_lossy().to_string();
-                if stats.changed_files.len() < 10 {
-                    stats.changed_files.push(path_str);
-                }
-            }
+            let (is_new_or_modified, blob_id) = match delta.status() {
+                Delta::Added | Delta::Modified => (true, delta.new_file().id()),
+                Delta::Deleted => (false, delta.old_file().id()),
+                _ => return true,
+            };
 
-            match delta.status() {
-                Delta::Added | Delta::Modified => {
-                    delta_ids.push((delta.new_file().id(), true));
-                }
-                Delta::Deleted => {
-                    delta_ids.push((delta.old_file().id(), false));
-                }
-                _ => {}
-            }
-
+            deltas.borrow_mut().push(DeltaInfo {
+                path,
+                is_added_or_modified: is_new_or_modified,
+                blob_id,
+            });
             true
         },
         None,
@@ -253,18 +270,37 @@ fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io:
     )
     .map_err(|e| to_io_error(&e))?;
 
-    // Count lines added/deleted
-    for (blob_id, is_new_or_modified) in delta_ids {
-        if let Ok(blob) = repo.find_blob(blob_id) {
-            let line_count = count_lines_in_blob(blob.content());
+    let deltas = deltas.into_inner();
 
-            if is_new_or_modified {
-                stats.lines_added = stats.lines_added.saturating_add(line_count);
+    // Now compute stats from the collected deltas
+    let files_changed = deltas.len();
+    let changed_files: Vec<String> = deltas
+        .iter()
+        .filter_map(|d| d.path.clone())
+        .take(10)
+        .collect();
+
+    let (lines_added, lines_deleted) = deltas
+        .iter()
+        .filter_map(|d| {
+            repo.find_blob(d.blob_id)
+                .ok()
+                .map(|blob| (d.is_added_or_modified, count_lines_in_blob(blob.content())))
+        })
+        .fold((0usize, 0usize), |(add, del), (is_new, count)| {
+            if is_new {
+                (add.saturating_add(count), del)
             } else {
-                stats.lines_deleted = stats.lines_deleted.saturating_add(line_count);
+                (add, del.saturating_add(count))
             }
-        }
-    }
+        });
+
+    let stats = DiffStats {
+        files_changed,
+        lines_added,
+        lines_deleted,
+        changed_files,
+    };
 
     Ok(stats)
 }

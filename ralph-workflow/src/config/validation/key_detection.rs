@@ -28,29 +28,32 @@ pub fn detect_unknown_and_deprecated_keys(
         None => return (KeyLocationList::new(), KeyLocationList::new()),
     };
 
-    // Separate valid sections from unknown ones using fold
-    let (unknown, deprecated): (KeyLocationList, KeyLocationList) = table.iter().fold(
-        (KeyLocationList::new(), KeyLocationList::new()),
-        |(mut unknown, mut deprecated), (key, value)| {
-            match key.as_str() {
-                // Valid top-level sections
-                "general" | "ccs" | "agents" | "ccs_aliases" | "agent_chain" | "agent_chains"
-                | "agent_drains" => {
-                    // Recursively check subsections
-                    let prefix = format!("{key}.");
-                    let (section_unknown, section_deprecated) =
-                        check_section(key.as_str(), value, &prefix);
-                    unknown.extend(section_unknown);
-                    deprecated.extend(section_deprecated);
-                }
-                // Unknown top-level section
-                _ => {
-                    unknown.push((key.clone(), String::new()));
-                }
-            }
-            (unknown, deprecated)
-        },
-    );
+    // Separate valid sections from unknown ones - build unknown and deprecated separately
+    let unknown: KeyLocationList = table
+        .iter()
+        .filter(|(key, _value)| {
+            !matches!(
+                key.as_str(),
+                "general"
+                    | "ccs"
+                    | "agents"
+                    | "ccs_aliases"
+                    | "agent_chain"
+                    | "agent_chains"
+                    | "agent_drains"
+            )
+        })
+        .map(|(key, _)| (key.clone(), String::new()))
+        .collect();
+
+    let deprecated: KeyLocationList = table
+        .iter()
+        .filter(|(key, _)| matches!(key.as_str(), "general"))
+        .flat_map(|(key, value)| {
+            let prefix = format!("{key}.");
+            check_section(key.as_str(), value, &prefix).1
+        })
+        .collect();
 
     (unknown, deprecated)
 }
@@ -74,19 +77,22 @@ fn check_section(
 
     match section {
         "general" => {
-            // Use fold to process keys
-            let (deprecated, unknown): (KeyLocationList, KeyLocationList) = table.keys().fold(
-                (KeyLocationList::new(), KeyLocationList::new()),
-                |(mut deprecated, mut unknown), key| {
-                    let key_str = key.as_str();
-                    if DEPRECATED_GENERAL_KEYS.contains(&key_str) {
-                        deprecated.push((key.clone(), prefix.to_string()));
-                    } else if !VALID_GENERAL_KEYS.contains(&key_str) {
-                        unknown.push((key.clone(), prefix.to_string()));
-                    }
-                    (deprecated, unknown)
-                },
-            );
+            let keys: Vec<String> = table.keys().cloned().collect();
+            let (deprecated_keys, unknown_keys): (Vec<String>, Vec<String>) = keys
+                .into_iter()
+                .partition(|key| DEPRECATED_GENERAL_KEYS.contains(&key.as_str()));
+
+            let deprecated: KeyLocationList = deprecated_keys
+                .into_iter()
+                .map(|key| (key, prefix.to_string()))
+                .collect();
+
+            let unknown: KeyLocationList = unknown_keys
+                .into_iter()
+                .filter(|key| !VALID_GENERAL_KEYS.contains(&key.as_str()))
+                .map(|key| (key, prefix.to_string()))
+                .collect();
+
             (unknown, deprecated)
         }
         "ccs" => {

@@ -39,16 +39,22 @@ impl DetectionResults {
         }
     }
 
-    fn push_framework(&mut self, framework: impl Into<String>) {
+    #[must_use]
+    pub fn with_framework(mut self, framework: impl Into<String>) -> Self {
         push_unique(&mut self.frameworks, framework);
+        self
     }
 
-    fn push_test_framework(&mut self, framework: impl Into<String>) {
+    #[must_use]
+    pub fn with_test_framework(mut self, framework: impl Into<String>) -> Self {
         push_unique(&mut self.test_frameworks, framework);
+        self
     }
 
-    fn push_package_manager(&mut self, manager: impl Into<String>) {
+    #[must_use]
+    pub fn with_package_manager(mut self, manager: impl Into<String>) -> Self {
         push_unique(&mut self.package_managers, manager);
+        self
     }
 
     pub(super) fn finish(self) -> (Vec<String>, Option<String>, Option<String>) {
@@ -63,13 +69,13 @@ impl DetectionResults {
 pub(super) fn detect_rust(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(cargo_files) = signatures.by_name_lower.get("cargo.toml") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Cargo");
+    results = results.with_package_manager("Cargo");
 
     for path in cargo_files {
         let Ok(content) = workspace.read(path) else {
@@ -78,7 +84,7 @@ pub(super) fn detect_rust(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("[dev-dependencies]") || content_lower.contains("[[test]]") {
-            results.push_test_framework("cargo test");
+            results = results.with_test_framework("cargo test");
         }
 
         for (name, framework) in [
@@ -92,28 +98,30 @@ pub(super) fn detect_rust(
             ("yew", "Yew"),
         ] {
             if content_lower.contains(name) {
-                results.push_framework(framework);
+                results = results.with_framework(framework);
             }
         }
     }
+
+    results
 }
 
 pub(super) fn detect_python(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let paths = if let Some(p) = signatures.by_name_lower.get("pyproject.toml") {
-        results.push_package_manager("Poetry/pip");
+        results = results.with_package_manager("Poetry/pip");
         Some(p)
     } else if let Some(p) = signatures.by_name_lower.get("requirements.txt") {
-        results.push_package_manager("pip");
+        results = results.with_package_manager("pip");
         Some(p)
     } else if signatures.by_name_lower.contains_key("setup.py") {
-        results.push_package_manager("setuptools");
+        results = results.with_package_manager("setuptools");
         None
     } else if signatures.by_name_lower.contains_key("pipfile") {
-        results.push_package_manager("Pipenv");
+        results = results.with_package_manager("Pipenv");
         None
     } else {
         None
@@ -127,7 +135,7 @@ pub(super) fn detect_python(
             let content_lower = content.to_lowercase();
 
             if content_lower.contains("pytest") {
-                results.push_test_framework("pytest");
+                results = results.with_test_framework("pytest");
             }
 
             for (name, framework) in [
@@ -136,33 +144,35 @@ pub(super) fn detect_python(
                 ("flask", "Flask"),
             ] {
                 if content_lower.contains(name) {
-                    results.push_framework(framework);
+                    results = results.with_framework(framework);
                 }
             }
         }
     }
+
+    results
 }
 
 pub(super) fn detect_javascript(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("package.json") else {
-        return;
+        return results;
     };
 
-    if signatures.by_name_lower.contains_key("pnpm-lock.yaml") {
-        results.push_package_manager("pnpm");
+    results = if signatures.by_name_lower.contains_key("pnpm-lock.yaml") {
+        results.with_package_manager("pnpm")
     } else if signatures.by_name_lower.contains_key("yarn.lock") {
-        results.push_package_manager("Yarn");
+        results.with_package_manager("Yarn")
     } else if signatures.by_name_lower.contains_key("bun.lockb")
         || signatures.by_name_lower.contains_key("bun.lock")
     {
-        results.push_package_manager("Bun");
+        results.with_package_manager("Bun")
     } else {
-        results.push_package_manager("npm");
-    }
+        results.with_package_manager("npm")
+    };
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -178,7 +188,7 @@ pub(super) fn detect_javascript(
             ("\"playwright\"", "Playwright"),
         ] {
             if content_lower.contains(pattern) {
-                results.push_test_framework(name);
+                results = results.with_test_framework(name);
             }
         }
 
@@ -195,23 +205,25 @@ pub(super) fn detect_javascript(
             ("\"gatsby\"", "Gatsby"),
         ] {
             if content_lower.contains(pattern) {
-                results.push_framework(name);
+                results = results.with_framework(name);
             }
         }
     }
+
+    results
 }
 
 pub(super) fn detect_go(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("go.mod") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Go Modules");
-    results.push_test_framework("go test");
+    results = results.with_package_manager("Go Modules");
+    results = results.with_test_framework("go test");
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -227,22 +239,24 @@ pub(super) fn detect_go(
             ("go-chi/chi", "Chi"),
         ] {
             if content_lower.contains(pattern) {
-                results.push_framework(name);
+                results = results.with_framework(name);
             }
         }
     }
+
+    results
 }
 
 pub(super) fn detect_ruby(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("gemfile") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Bundler");
+    results = results.with_package_manager("Bundler");
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -251,27 +265,29 @@ pub(super) fn detect_ruby(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("rspec") {
-            results.push_test_framework("RSpec");
+            results = results.with_test_framework("RSpec");
         } else if content_lower.contains("minitest") {
-            results.push_test_framework("Minitest");
+            results = results.with_test_framework("Minitest");
         }
 
         if content_lower.contains("rails") {
-            results.push_framework("Rails");
+            results = results.with_framework("Rails");
         } else if content_lower.contains("sinatra") {
-            results.push_framework("Sinatra");
+            results = results.with_framework("Sinatra");
         }
     }
+
+    results
 }
 
 pub(super) fn detect_java(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     if let Some(paths) = signatures.by_name_lower.get("pom.xml") {
-        results.push_package_manager("Maven");
-        detect_java_frameworks(workspace, paths, results);
+        results = results.with_package_manager("Maven");
+        results = detect_java_frameworks(workspace, paths, results);
     }
 
     let gradle_paths: Vec<_> = signatures
@@ -283,16 +299,18 @@ pub(super) fn detect_java(
         .collect();
 
     if !gradle_paths.is_empty() {
-        results.push_package_manager("Gradle");
-        detect_java_frameworks(workspace, &gradle_paths, results);
+        results = results.with_package_manager("Gradle");
+        results = detect_java_frameworks(workspace, &gradle_paths, results);
     }
+
+    results
 }
 
 fn detect_java_frameworks(
     workspace: &dyn Workspace,
     paths: &[impl AsRef<Path>],
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     for path in paths {
         let Ok(content) = workspace.read(path.as_ref()) else {
             continue;
@@ -300,25 +318,27 @@ fn detect_java_frameworks(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("junit") {
-            results.push_test_framework("JUnit");
+            results = results.with_test_framework("JUnit");
         }
 
         if content_lower.contains("spring") {
-            results.push_framework("Spring");
+            results = results.with_framework("Spring");
         }
     }
+
+    results
 }
 
 pub(super) fn detect_php(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("composer.json") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Composer");
+    results = results.with_package_manager("Composer");
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -327,38 +347,45 @@ pub(super) fn detect_php(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("phpunit") {
-            results.push_test_framework("PHPUnit");
+            results = results.with_test_framework("PHPUnit");
         }
 
         for (pattern, name) in [("laravel", "Laravel"), ("symfony", "Symfony")] {
             if content_lower.contains(pattern) {
-                results.push_framework(name);
+                results = results.with_framework(name);
             }
         }
     }
+
+    results
 }
 
-pub(super) fn detect_dotnet(signatures: &SignatureFiles, results: &mut DetectionResults) {
+pub(super) fn detect_dotnet(
+    signatures: &SignatureFiles,
+    mut results: DetectionResults,
+) -> DetectionResults {
     if signatures
         .by_name_lower
         .keys()
         .any(|k| k.ends_with(".csproj") || k.ends_with(".fsproj"))
     {
-        results.push_package_manager("NuGet");
+        results = results.with_package_manager("NuGet");
     }
+
+    results
 }
 
 pub(super) fn detect_elixir(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("mix.exs") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Mix");
-    results.push_test_framework("ExUnit");
+    results = results.with_package_manager("Mix");
+    results = results.with_test_framework("ExUnit");
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -367,21 +394,23 @@ pub(super) fn detect_elixir(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("phoenix") {
-            results.push_framework("Phoenix");
+            results = results.with_framework("Phoenix");
         }
     }
+
+    results
 }
 
 pub(super) fn detect_dart(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    results: &mut DetectionResults,
-) {
+    mut results: DetectionResults,
+) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("pubspec.yaml") else {
-        return;
+        return results;
     };
 
-    results.push_package_manager("Pub");
+    results = results.with_package_manager("Pub");
 
     for path in paths {
         let Ok(content) = workspace.read(path) else {
@@ -390,8 +419,10 @@ pub(super) fn detect_dart(
         let content_lower = content.to_lowercase();
 
         if content_lower.contains("flutter:") || content_lower.contains("flutter_test") {
-            results.push_framework("Flutter");
-            results.push_test_framework("Flutter Test");
+            results = results.with_framework("Flutter");
+            results = results.with_test_framework("Flutter Test");
         }
     }
+
+    results
 }

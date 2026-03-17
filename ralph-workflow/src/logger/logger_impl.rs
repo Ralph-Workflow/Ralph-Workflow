@@ -53,9 +53,13 @@ impl Logger {
     /// instead. This method uses `std::fs` directly and is intended for CLI layer
     /// code or legacy compatibility.
     #[must_use]
-    pub fn with_log_file(mut self, path: &str) -> Self {
-        self.log_file = Some(path.to_string());
-        self
+    pub fn with_log_file(self, path: &str) -> Self {
+        Self {
+            colors: self.colors,
+            log_file: Some(path.to_string()),
+            workspace: self.workspace,
+            workspace_log_path: self.workspace_log_path,
+        }
     }
 
     /// Configure the logger to write logs via a workspace.
@@ -69,14 +73,13 @@ impl Logger {
     /// * `workspace` - The workspace to use for file operations
     /// * `relative_path` - Path relative to workspace root for the log file
     #[must_use]
-    pub fn with_workspace_log(
-        mut self,
-        workspace: Arc<dyn Workspace>,
-        relative_path: &str,
-    ) -> Self {
-        self.workspace = Some(workspace);
-        self.workspace_log_path = Some(relative_path.to_string());
-        self
+    pub fn with_workspace_log(self, workspace: Arc<dyn Workspace>, relative_path: &str) -> Self {
+        Self {
+            colors: self.colors,
+            log_file: self.log_file,
+            workspace: Some(workspace),
+            workspace_log_path: Some(relative_path.to_string()),
+        }
     }
 
     /// Write a message to the log file (if configured).
@@ -358,9 +361,6 @@ impl Loggable for Logger {
     }
 
     fn header(&self, title: &str, color_fn: fn(Colors) -> &'static str) {
-        // Call the inherent impl's header method
-        // We need to duplicate the implementation here since calling the inherent
-        // method from a trait impl causes issues with method resolution
         let c = self.colors;
         let color = color_fn(c);
         let width = 60;
@@ -438,11 +438,11 @@ mod tests {
         #[test]
         fn test_logger_with_workspace_writes_to_file() {
             let workspace = Arc::new(MemoryWorkspace::new_test());
-            let logger = Logger::new(Colors::new())
+            let mut logger = Logger::new(Colors::new())
                 .with_workspace_log(workspace.clone(), ".agent/logs/test.log");
 
             // Use the Loggable trait to log a message
-            Loggable::info(&logger, "test message");
+            Loggable::info(&mut logger, "test message");
 
             // Verify the message was written to the workspace
             let content = workspace.get_file(".agent/logs/test.log").unwrap();

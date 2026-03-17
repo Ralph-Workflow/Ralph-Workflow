@@ -62,7 +62,10 @@ fn main() -> anyhow::Result<()> {
         exit_pause::ExitOutcome::Success
     };
 
-    let launch_context = exit_pause::detect_launch_context();
+    let launch_context = exit_pause::detect_launch_context_with(
+        exit_pause::StdEnvironment,
+        exit_pause::StdProcessSpawner,
+    );
     if exit_pause::should_pause_before_exit(pause_mode, outcome, &launch_context) {
         let _ = exit_pause::pause_for_enter();
     }

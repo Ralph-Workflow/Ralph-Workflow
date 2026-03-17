@@ -128,20 +128,23 @@ fn conflict_resolution_content_id(
     let mut keys: Vec<&String> = conflicts.keys().collect();
     keys.sort();
 
-    let mut s = String::new();
-    s.push_str("conflict_resolution|");
-    s.push_str(&phase.to_lowercase());
-    s.push('\n');
-    for k in keys {
-        if let Some(c) = conflicts.get(k) {
-            s.push_str(k);
-            s.push('\n');
-            s.push_str(&c.conflict_content);
-            s.push('\n');
-            s.push_str(&c.current_content);
-            s.push('\n');
-        }
-    }
+    let content_parts: Vec<String> = keys
+        .iter()
+        .filter_map(|k| {
+            conflicts.get(*k).map(|c| {
+                format!(
+                    "{}\n{}\n{}\n{}",
+                    k, c.conflict_content, c.current_content, ""
+                )
+            })
+        })
+        .collect();
+
+    let s = format!(
+        "conflict_resolution|{}\n{}\n",
+        phase.to_lowercase(),
+        content_parts.join("\n")
+    );
     sha256_hex_str(&s)
 }
 

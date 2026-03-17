@@ -94,9 +94,9 @@ fn log_detailed_rebase_state(checkpoint: &PipelineCheckpoint, logger: &Logger) {
         logger.info("");
         logger.warn("Rebase conflicts detected:");
         if let crate::checkpoint::RebaseState::HasConflicts { files } = &checkpoint.rebase_state {
-            for file in files.iter().take(10) {
+            files.iter().take(10).for_each(|file| {
                 logger.info(&format!("  - {file}"));
-            }
+            });
             if files.len() > 10 {
                 logger.info(&format!(
                     "  ... and {} more",
@@ -116,16 +116,21 @@ fn log_detailed_execution_history(checkpoint: &PipelineCheckpoint, logger: &Logg
                 "Execution History: {} step(s)",
                 history.steps.len()
             ));
-            for (i, step) in history.steps.iter().take(10).enumerate() {
-                let outcome_str = outcome_marker_ascii(&step.outcome);
-                logger.info(&format!(
-                    "  {}. {} {} ({})",
-                    i.saturating_add(1),
-                    outcome_str,
-                    step.step_type,
-                    step.phase
-                ));
-            }
+            history
+                .steps
+                .iter()
+                .take(10)
+                .enumerate()
+                .for_each(|(i, step)| {
+                    let outcome_str = outcome_marker_ascii(&step.outcome);
+                    logger.info(&format!(
+                        "  {}. {} {} ({})",
+                        i.saturating_add(1),
+                        outcome_str,
+                        step.step_type,
+                        step.phase
+                    ));
+                });
             if history.steps.len() > 10 {
                 logger.info(&format!(
                     "  ... and {} more steps",
@@ -155,9 +160,9 @@ fn log_detailed_file_system_state(checkpoint: &PipelineCheckpoint, logger: &Logg
         if let Some(ref status) = fs_state.git_status {
             if !status.is_empty() {
                 logger.warn("  Git working tree has changes:");
-                for line in status.lines().take(5) {
+                status.lines().take(5).for_each(|line| {
                     logger.info(&format!("    {line}"));
-                }
+                });
             }
         }
     }
@@ -172,9 +177,13 @@ fn log_detailed_environment_snapshot(checkpoint: &PipelineCheckpoint, logger: &L
                 "Environment Variables: {} RALPH_* var(s)",
                 env_snap.ralph_vars.len()
             ));
-            for (key, value) in env_snap.ralph_vars.iter().take(10) {
-                logger.info(&format!("  {key}={value}"));
-            }
+            env_snap
+                .ralph_vars
+                .iter()
+                .take(10)
+                .for_each(|(key, value)| {
+                    logger.info(&format!("  {key}={value}"));
+                });
             if env_snap.ralph_vars.len() > 10 {
                 logger.info(&format!(
                     "  ... and {} more",

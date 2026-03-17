@@ -33,15 +33,15 @@ pub(crate) fn validate_file_system_state(
 
     logger.warn("File system state validation detected changes:");
 
-    for error in &errors {
+    errors.iter().for_each(|error| {
         let (problem, commands) = error.recovery_commands();
         logger.warn(&format!("  - {error}"));
         logger.info(&format!("    What's wrong: {problem}"));
         logger.info("    How to fix:");
-        for cmd in commands {
+        commands.iter().for_each(|cmd| {
             logger.info(&format!("      {cmd}"));
-        }
-    }
+        });
+    });
 
     // Handle based on the recovery strategy
     match strategy {
@@ -67,9 +67,9 @@ pub(crate) fn validate_file_system_state(
                 logger.success("Automatic recovery completed successfully.");
             } else {
                 logger.warn("Some issues could not be automatically recovered:");
-                for error in &remaining {
+                remaining.iter().for_each(|error| {
                     logger.warn(&format!("  - {error}"));
-                }
+                });
                 logger.warn("Proceeding with resume despite unrecovered issues (strategy: auto).");
                 logger.info("Note: Pipeline behavior may be unpredictable.");
             }
@@ -99,21 +99,25 @@ fn attempt_auto_recovery(
     logger: &Logger,
     workspace: &dyn Workspace,
 ) -> (usize, Vec<ValidationError>) {
-    let mut recovered: usize = 0;
-    let mut remaining = Vec::new();
+    let results: Vec<Result<(), String>> = errors
+        .iter()
+        .map(|error| attempt_recovery_for_error(file_system_state, error, logger, workspace))
+        .collect();
 
-    for error in errors {
-        match attempt_recovery_for_error(file_system_state, error, logger, workspace) {
-            Ok(()) => {
-                recovered = recovered.saturating_add(1);
-                logger.success(&format!("Recovered: {error}"));
-            }
-            Err(e) => {
-                remaining.push(error.clone());
-                logger.warn(&format!("Could not recover: {error} - {e}"));
-            }
-        }
-    }
+    let recovered = results.iter().filter(|r| r.is_ok()).count();
+    let remaining: Vec<ValidationError> = results
+        .iter()
+        .enumerate()
+        .filter_map(|(i, r)| r.as_ref().err().map(|_| errors[i].clone()))
+        .collect();
+
+    errors
+        .iter()
+        .zip(results.iter())
+        .for_each(|(error, result)| match result {
+            Ok(()) => logger.success(&format!("Recovered: {error}")),
+            Err(e) => logger.warn(&format!("Could not recover: {error} - {e}")),
+        });
 
     (recovered, remaining)
 }

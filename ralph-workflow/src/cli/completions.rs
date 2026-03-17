@@ -20,13 +20,9 @@ use std::io::Write;
 /// Returns `true` if the flag was handled (program should exit after).
 #[must_use]
 pub fn handle_generate_completion(shell: Shell) -> bool {
-    let mut stdout = std::io::stdout();
     let shell_name = shell.name();
 
-    // Get the command from Args
-    let mut command = crate::cli::Args::command();
-
-    // Generate the completion script using clap_complete
+    // Generate completion to stdout using a scope for the mutable references
     let shell_type = match shell {
         Shell::Bash => clap_complete::Shell::Bash,
         Shell::Zsh => clap_complete::Shell::Zsh,
@@ -35,6 +31,8 @@ pub fn handle_generate_completion(shell: Shell) -> bool {
         Shell::Pwsh => clap_complete::Shell::PowerShell,
     };
 
+    let mut command = crate::cli::Args::command();
+    let mut stdout = std::io::stdout();
     clap_complete::generate(shell_type, &mut command, "ralph", &mut stdout);
 
     // Print installation instructions

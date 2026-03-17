@@ -212,36 +212,28 @@ fn extract_revision(output: &str) -> Option<String> {
         ("'", "'"),
     ];
 
-    for (start, end) in patterns {
-        if let Some(start_idx) = output.find(start) {
-            let after_start = &output[start_idx + start.len()..];
-            if let Some(end_idx) = after_start.find(end) {
-                let revision = &after_start[..end_idx];
-                if !revision.is_empty() {
-                    return Some(revision.to_string());
-                }
-            }
-        }
-    }
+    patterns.iter().find_map(|(start, end)| {
+        let start_idx = output.find(start)?;
+        let after_start = &output[start_idx + start.len()..];
+        let end_idx = after_start.find(end)?;
+        let revision = &after_start[..end_idx];
+        (!revision.is_empty()).then_some(revision.to_string())
+    })?;
 
     // Also try to extract branch names from error messages
-    for line in output.lines() {
-        if line.contains("not found") || line.contains("does not exist") {
-            // Extract potential branch/revision name
+    output
+        .lines()
+        .find(|line| line.contains("not found") || line.contains("does not exist"))
+        .and_then(|line| {
             let words: Vec<&str> = line.split_whitespace().collect();
-            for (i, word) in words.iter().enumerate() {
-                if *word == "'"
-                    || *word == "\""
-                        && i + 2 < words.len()
-                        && (words[i + 2] == "'" || words[i + 2] == "\"")
-                {
-                    return Some(words[i + 1].to_string());
-                }
-            }
-        }
-    }
-
-    None
+            words
+                .iter()
+                .position(|word| {
+                    *word == "'" || (*word == "\"" && words.iter().take(3).any(|w| *w == "\""))
+                })
+                .and_then(|i| words.get(i + 1))
+                .map(|w| w.to_string())
+        })
 }
 
 /// Extract operation name from error output.
@@ -301,27 +293,25 @@ fn extract_error_line(output: &str) -> String {
                 && !line.starts_with("Hint:")
                 && !line.starts_with("note:")
                 && !line.starts_with("Note:")
-        }).map_or_else(|| output.trim().to_string(), |s| s.trim().to_string())
+        })
+        .map_or_else(|| output.trim().to_string(), |s| s.trim().to_string())
 }
 
 /// Extract conflict file paths from error output.
 fn extract_conflict_files(output: &str) -> Vec<String> {
-    let mut files = Vec::new();
-
-    for line in output.lines() {
-        if line.contains("CONFLICT") || line.contains("Conflict") || line.contains("Merge conflict")
-        {
-            // Extract file path from patterns like:
-            // "CONFLICT (content): Merge conflict in src/file.rs"
-            // "Merge conflict in src/file.rs"
-            if let Some(start) = line.find("in ") {
+    output
+        .lines()
+        .filter(|line| {
+            line.contains("CONFLICT")
+                || line.contains("Conflict")
+                || line.contains("Merge conflict")
+        })
+        .filter_map(|line| {
+            line.find("in ").map(|start| {
                 let path = line[start + 3..].trim();
-                if !path.is_empty() {
-                    files.push(path.to_string());
-                }
-            }
-        }
-    }
-
-    files
+                (!path.is_empty()).then_some(path.to_string())
+            })
+        })
+        .flatten()
+        .collect()
 }

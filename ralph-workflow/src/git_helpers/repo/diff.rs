@@ -181,14 +181,11 @@ fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
                 .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
                 .map_err(|e| git2_to_io_error(&e))?;
 
-            let mut result = Vec::new();
-            diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-                result.extend_from_slice(line.content());
-                true
-            })
-            .map_err(|e| git2_to_io_error(&e))?;
+            let buf = diff
+                .to_buf(git2::DiffFormat::Patch)
+                .map_err(|e| git2_to_io_error(&e))?;
 
-            return Ok(String::from_utf8_lossy(&result).to_string());
+            return Ok(String::from_utf8_lossy(&buf).to_string());
         }
         Err(e) => return Err(git2_to_io_error(&e)),
     };
@@ -202,14 +199,11 @@ fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
         .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
+    let buf = diff
+        .to_buf(git2::DiffFormat::Patch)
+        .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&result).to_string())
+    Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
 fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> io::Result<String> {
@@ -224,14 +218,11 @@ fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> io::Result<Stri
         .diff_tree_to_workdir_with_index(Some(&start_tree), Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
+    let buf = diff
+        .to_buf(git2::DiffFormat::Patch)
+        .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&result).to_string())
+    Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
 /// Generate a diff from the empty tree (initial commit).
@@ -244,12 +235,9 @@ fn git_diff_from_empty_tree(repo: &git2::Repository) -> io::Result<String> {
         .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let mut result = Vec::new();
-    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
-        result.extend_from_slice(line.content());
-        true
-    })
-    .map_err(|e| git2_to_io_error(&e))?;
+    let buf = diff
+        .to_buf(git2::DiffFormat::Patch)
+        .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&result).to_string())
+    Ok(String::from_utf8_lossy(&buf).to_string())
 }

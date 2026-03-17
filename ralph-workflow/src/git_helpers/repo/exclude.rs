@@ -37,17 +37,18 @@ fn is_safe_exclude_pattern(pattern: &str) -> bool {
     if path.is_absolute() {
         return false;
     }
-    for component in path.components() {
-        match component {
-            std::path::Component::CurDir
-            | std::path::Component::ParentDir
-            | std::path::Component::RootDir
-            | std::path::Component::Prefix(_) => return false,
-            std::path::Component::Normal(_) => {}
-        }
-    }
 
-    true
+    let has_invalid_component = path.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::CurDir
+                | std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    });
+
+    !has_invalid_component
 }
 
 /// Add `patterns` to `.git/info/exclude` that are not already present.
@@ -92,13 +93,11 @@ pub fn ensure_local_excludes(repo_root: &Path, patterns: &[&str]) -> io::Result<
     // Collect lines already present to avoid duplicates.
     let existing_lines: std::collections::HashSet<&str> = existing.lines().collect();
 
-    let mut additions = String::new();
-    for pattern in approved {
-        if !existing_lines.contains(pattern) {
-            additions.push_str(pattern);
-            additions.push('\n');
-        }
-    }
+    let additions: String = approved
+        .iter()
+        .filter(|pattern| !existing_lines.contains(*pattern))
+        .map(|pattern| format!("{pattern}\n"))
+        .collect();
 
     if additions.is_empty() {
         return Ok(());

@@ -1,6 +1,36 @@
 use crate::cli::PauseOnExitMode;
 use std::io::Write;
 
+pub trait TerminalOutput: Write + Send {}
+impl<W: Write + Send> TerminalOutput for W {}
+
+pub trait TerminalInput: std::io::Read + Send {}
+impl<R: std::io::Read + Send> TerminalInput for R {}
+
+pub trait EnvironmentReader: Send {
+    fn var_os(&self, key: &str) -> Option<std::ffi::OsString>;
+}
+
+pub struct StdEnvironment;
+
+impl EnvironmentReader for StdEnvironment {
+    fn var_os(&self, key: &str) -> Option<std::ffi::OsString> {
+        std::env::var_os(key)
+    }
+}
+
+pub trait ProcessSpawner: Send {
+    fn spawn(&self, program: &str, args: &[&str]) -> Option<std::process::Output>;
+}
+
+pub struct StdProcessSpawner;
+
+impl ProcessSpawner for StdProcessSpawner {
+    fn spawn(&self, program: &str, args: &[&str]) -> Option<std::process::Output> {
+        std::process::Command::new(program).args(args).output().ok()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitOutcome {
     Success,
@@ -32,26 +62,28 @@ pub fn should_pause_before_exit(
 }
 
 #[must_use]
-pub fn detect_launch_context() -> LaunchContext {
+pub fn detect_launch_context_with(
+    env: impl EnvironmentReader,
+    spawner: impl ProcessSpawner,
+) -> LaunchContext {
     LaunchContext {
         is_windows: cfg!(windows),
-        has_terminal_session_marker: has_terminal_session_marker(),
-        parent_process_name: detect_parent_process_name(),
+        has_terminal_session_marker: has_terminal_session_marker_with(&env),
+        parent_process_name: detect_parent_process_name_with(spawner),
     }
 }
 
-/// Wait for user confirmation before closing the process.
-///
-/// # Errors
-///
-/// Returns an error when writing the prompt to stderr fails or when stdin cannot be read.
 pub fn pause_for_enter() -> std::io::Result<()> {
-    std::io::stderr().write_all(b"\nPress Enter to close... ")?;
-    std::io::stderr().flush()?;
+    pause_for_enter_with(std::io::stdin(), std::io::stderr())
+}
 
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line)?;
-
+pub fn pause_for_enter_with(
+    mut input: impl TerminalInput,
+    mut output: impl TerminalOutput,
+) -> std::io::Result<()> {
+    output.write_all(b"\nPress Enter to close... ")?;
+    let mut buf = String::new();
+    input.read_to_string(&mut buf)?;
     Ok(())
 }
 
@@ -66,7 +98,7 @@ fn is_probably_standalone_windows_launch(launch_context: &LaunchContext) -> bool
         .is_some_and(|name| normalize_process_name(name) == "explorer.exe")
 }
 
-fn has_terminal_session_marker() -> bool {
+fn has_terminal_session_marker_with(env: &impl EnvironmentReader) -> bool {
     const TERMINAL_MARKERS: [&str; 7] = [
         "WT_SESSION",
         "TERM",
@@ -78,7 +110,8 @@ fn has_terminal_session_marker() -> bool {
     ];
 
     TERMINAL_MARKERS.iter().any(|key| {
-        std::env::var_os(key).is_some_and(|value| !value.to_string_lossy().trim().is_empty())
+        env.var_os(key)
+            .is_some_and(|value| !value.to_string_lossy().trim().is_empty())
     })
 }
 
@@ -95,18 +128,16 @@ fn normalize_process_name(name: &str) -> String {
 }
 
 #[cfg(windows)]
-fn detect_parent_process_name() -> Option<String> {
-    use std::process::Command;
-
+fn detect_parent_process_name_with(spawner: impl ProcessSpawner) -> Option<String> {
     let script = format!(
         "$p=(Get-CimInstance Win32_Process -Filter \"ProcessId = {}\").ParentProcessId; if ($p) {{ (Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName }}",
         std::process::id()
     );
 
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-        .ok()?;
+    let output = spawner.spawn(
+        "powershell",
+        &["-NoProfile", "-NonInteractive", "-Command", &script],
+    )?;
 
     if !output.status.success() {
         return None;
@@ -117,7 +148,7 @@ fn detect_parent_process_name() -> Option<String> {
 }
 
 #[cfg(not(windows))]
-const fn detect_parent_process_name() -> Option<String> {
+fn detect_parent_process_name_with(_spawner: impl ProcessSpawner) -> Option<String> {
     None
 }
 
@@ -130,6 +161,45 @@ mod tests {
             is_windows: true,
             has_terminal_session_marker: has_marker,
             parent_process_name: parent.map(ToString::to_string),
+        }
+    }
+
+    struct MockEnv {
+        vars: std::collections::HashMap<String, std::ffi::OsString>,
+    }
+
+    impl MockEnv {
+        fn new() -> Self {
+            Self {
+                vars: std::collections::HashMap::new(),
+            }
+        }
+
+        fn with_var(mut self, key: &str, value: &str) -> Self {
+            self.vars.insert(key.to_string(), value.into());
+            self
+        }
+    }
+
+    impl EnvironmentReader for MockEnv {
+        fn var_os(&self, key: &str) -> Option<std::ffi::OsString> {
+            self.vars.get(key).cloned()
+        }
+    }
+
+    struct MockSpawner {
+        output: Option<std::process::Output>,
+    }
+
+    impl MockSpawner {
+        fn no_output() -> Self {
+            Self { output: None }
+        }
+    }
+
+    impl ProcessSpawner for MockSpawner {
+        fn spawn(&self, _program: &str, _args: &[&str]) -> Option<std::process::Output> {
+            self.output.clone()
         }
     }
 
@@ -205,5 +275,23 @@ mod tests {
             ExitOutcome::Interrupted,
             &context,
         ));
+    }
+
+    #[test]
+    fn test_terminal_marker_detection_with_mock_env() {
+        let env = MockEnv::new().with_var("TERM", "xterm-256color");
+        assert!(has_terminal_session_marker_with(&env));
+
+        let env_no_marker = MockEnv::new();
+        assert!(!has_terminal_session_marker_with(&env_no_marker));
+    }
+
+    #[test]
+    fn test_launch_context_with_deps() {
+        let env = MockEnv::new().with_var("TERM", "xterm");
+        let spawner = MockSpawner::no_output();
+
+        let context = detect_launch_context_with(env, spawner);
+        assert!(context.has_terminal_session_marker);
     }
 }

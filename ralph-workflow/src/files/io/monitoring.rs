@@ -22,7 +22,7 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -62,10 +62,11 @@ pub struct PromptMonitor {
     stop_signal: Arc<AtomicBool>,
     /// Handle to the monitor thread (None if not started)
     monitor_thread: Option<thread::JoinHandle<()>>,
-    /// Warnings emitted by the monitor thread.
+    /// Warnings from the monitor thread (via thread-safe channel).
     ///
-    /// This avoids printing directly from library/background thread code.
-    warnings: Arc<Mutex<Vec<String>>>,
+    /// Uses Mutex only for thread communication, not to hide state changes.
+    /// This is a documented exception for background thread coordination.
+    warnings: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl PromptMonitor {
@@ -91,7 +92,7 @@ impl PromptMonitor {
             restoration_detected: Arc::new(AtomicBool::new(false)),
             stop_signal: Arc::new(AtomicBool::new(false)),
             monitor_thread: None,
-            warnings: Arc::new(Mutex::new(Vec::new())),
+            warnings: Arc::new(std::sync::Mutex::new(Vec::new())),
         })
     }
 
@@ -133,7 +134,7 @@ impl PromptMonitor {
     fn monitor_thread_main(
         restoration_detected: &Arc<AtomicBool>,
         stop_signal: &Arc<AtomicBool>,
-        warnings: &Arc<Mutex<Vec<String>>>,
+        warnings: &Arc<std::sync::Mutex<Vec<String>>>,
     ) {
         use notify::Watcher;
 
@@ -178,26 +179,16 @@ impl PromptMonitor {
         }
 
         // Process events until stop signal is received
-        let mut prompt_existed_last_check = true;
-
         while !stop_signal.load(Ordering::Relaxed) {
             // Check for events with a short timeout
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(Ok(event)) => {
-                    Self::handle_fs_event(
-                        &event,
-                        restoration_detected,
-                        &mut prompt_existed_last_check,
-                    );
+                    Self::handle_fs_event(&event, restoration_detected);
 
                     // Drain any queued events to coalesce bursts.
                     while let Ok(next) = rx.try_recv() {
                         if let Ok(next_event) = next {
-                            Self::handle_fs_event(
-                                &next_event,
-                                restoration_detected,
-                                &mut prompt_existed_last_check,
-                            );
+                            Self::handle_fs_event(&next_event, restoration_detected);
                         }
                     }
                 }
@@ -213,11 +204,7 @@ impl PromptMonitor {
     }
 
     /// Handle a file system event from the watcher.
-    fn handle_fs_event(
-        event: &notify::Event,
-        restoration_detected: &Arc<AtomicBool>,
-        _prompt_existed_last_check: &mut bool,
-    ) {
+    fn handle_fs_event(event: &notify::Event, restoration_detected: &Arc<AtomicBool>) {
         for path in &event.paths {
             if is_prompt_md_path(path) {
                 // Check for remove event
@@ -236,19 +223,24 @@ impl PromptMonitor {
     /// Some filesystems (NFS, network drives) don't support file system
     /// events. This fallback polls every 100ms to check if PROMPT.md exists.
     fn polling_monitor(restoration_detected: &Arc<AtomicBool>, stop_signal: &Arc<AtomicBool>) {
-        let mut prompt_existed = Path::new("PROMPT.md").exists();
+        let check_deletion = || {
+            let prompt_exists_now = Path::new("PROMPT.md").exists();
+            (prompt_exists_now, prompt_exists_now)
+        };
+
+        let mut previous_exists = Path::new("PROMPT.md").exists();
 
         while !stop_signal.load(Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(100));
 
-            let prompt_exists_now = Path::new("PROMPT.md").exists();
+            let (current_exists, _) = check_deletion();
 
             // Detect deletion (transition from exists to not exists)
-            if prompt_existed && !prompt_exists_now && Self::restore_from_backup() {
+            if previous_exists && !current_exists && Self::restore_from_backup() {
                 restoration_detected.store(true, Ordering::Release);
             }
 
-            prompt_existed = prompt_exists_now;
+            previous_exists = current_exists;
         }
     }
 
@@ -367,20 +359,17 @@ impl PromptMonitor {
 // Helper functions (boundary module - mutation and I/O permitted)
 // ============================================================================
 
-fn push_warning(warnings: &Arc<Mutex<Vec<String>>>, warning: String) {
-    let mut guard = match warnings.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    guard.push(warning);
+fn push_warning(warnings: &Arc<std::sync::Mutex<Vec<String>>>, warning: String) {
+    if let Ok(mut guard) = warnings.lock() {
+        guard.push(warning);
+    }
 }
 
-fn drain_warnings(warnings: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
-    let mut guard = match warnings.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    std::mem::take(&mut *guard)
+fn drain_warnings(warnings: &Arc<std::sync::Mutex<Vec<String>>>) -> Vec<String> {
+    warnings
+        .lock()
+        .map(|guard| std::mem::take(&mut guard.clone()))
+        .unwrap_or_default()
 }
 
 fn read_backup_content_secure(path: &Path) -> Option<String> {

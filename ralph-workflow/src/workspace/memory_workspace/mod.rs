@@ -115,12 +115,17 @@ impl MemoryWorkspace {
             if parent.as_os_str().is_empty() {
                 return;
             }
+            let dirs_to_create: Vec<PathBuf> = parent
+                .components()
+                .scan(PathBuf::new(), |state, component| {
+                    state.push(component);
+                    Some(state.clone())
+                })
+                .collect();
             let mut dirs = self.directories.write()
                 .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-            let mut current = PathBuf::new();
-            for component in parent.components() {
-                current.push(component);
-                dirs.insert(current.clone());
+            for dir in dirs_to_create {
+                dirs.insert(dir);
             }
         }
     }
@@ -129,12 +134,17 @@ impl MemoryWorkspace {
     ///
     /// Used for creating directories themselves (not just parents).
     fn ensure_dir_path(&self, path: &Path) {
+        let dirs_to_create: Vec<PathBuf> = path
+            .components()
+            .scan(PathBuf::new(), |state, component| {
+                state.push(component);
+                Some(state.clone())
+            })
+            .collect();
         let mut dirs = self.directories.write()
             .expect("RwLock poisoned - indicates panic in another thread holding MemoryWorkspace directories lock");
-        let mut current = PathBuf::new();
-        for component in path.components() {
-            current.push(component);
-            dirs.insert(current.clone());
+        for dir in dirs_to_create {
+            dirs.insert(dir);
         }
     }
 }

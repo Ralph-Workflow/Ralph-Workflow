@@ -13,27 +13,25 @@ impl ReviewGuidelines {
     /// 2. Adding guidelines for all secondary languages
     /// 3. Framework-specific guidelines are added by each language module
     pub(crate) fn for_stack(stack: &ProjectStack) -> Self {
-        let mut guidelines = Self::default();
+        let base = Self::default();
 
-        // Add primary language guidelines.
-        add_language_guidelines(&mut guidelines, &stack.primary_language, stack);
+        let with_primary = add_language_guidelines(base, &stack.primary_language, stack);
 
-        // Add secondary language guidelines (important for multi-framework projects).
-        // This enables projects like PHP + TypeScript + React to get all relevant guidelines.
-        for lang in &stack.secondary_languages {
-            add_language_guidelines(&mut guidelines, lang, stack);
-        }
-
-        guidelines
+        stack
+            .secondary_languages
+            .iter()
+            .fold(with_primary, |acc, lang| {
+                add_language_guidelines(acc, lang, stack)
+            })
     }
 }
 
 /// Add guidelines for a specific language.
 fn add_language_guidelines(
-    guidelines: &mut ReviewGuidelines,
+    guidelines: ReviewGuidelines,
     language: &str,
     stack: &ProjectStack,
-) {
+) -> ReviewGuidelines {
     match language {
         "Rust" => rust::add_guidelines(guidelines, stack),
         "Python" => python::add_guidelines(guidelines, stack),
@@ -49,6 +47,6 @@ fn add_language_guidelines(
         "Elixir" => functional::add_elixir_guidelines(guidelines),
         "Scala" => functional::add_scala_guidelines(guidelines),
         "Swift" => functional::add_swift_guidelines(guidelines),
-        _ => {} // Use defaults for unknown languages
+        _ => guidelines,
     }
 }

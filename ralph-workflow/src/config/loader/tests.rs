@@ -91,13 +91,11 @@ fn test_apply_env_overrides() {
         .with_env_var("RALPH_ISOLATION_MODE", "false");
 
     // Act
-    let mut warnings = Vec::new();
-    let config = apply_env_overrides(default_config(), &mut warnings, &env);
-
-    // Assert
+    let result = apply_env_overrides(default_config(), &env);
+    let config = result.config;
     assert_eq!(config.developer_iters, 10);
     assert!(!config.isolation_mode);
-    assert!(warnings.is_empty());
+    assert!(result.warnings.is_empty());
 }
 
 #[test]

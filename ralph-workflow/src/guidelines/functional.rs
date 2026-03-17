@@ -5,7 +5,7 @@
 use super::base::ReviewGuidelines;
 
 /// Add Elixir-specific guidelines to the review
-pub fn add_elixir_guidelines(guidelines: &mut ReviewGuidelines) {
+pub fn add_elixir_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use pattern matching effectively".to_string(),
         "Follow pipe operator conventions".to_string(),
@@ -21,10 +21,12 @@ pub fn add_elixir_guidelines(guidelines: &mut ReviewGuidelines) {
         "Let it crash - use supervisors".to_string(),
         "Use with for happy path chaining".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Scala-specific guidelines to the review
-pub fn add_scala_guidelines(guidelines: &mut ReviewGuidelines) {
+pub fn add_scala_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use immutable collections".to_string(),
         "Prefer Option over null".to_string(),
@@ -37,10 +39,12 @@ pub fn add_scala_guidelines(guidelines: &mut ReviewGuidelines) {
         "Don't use return statements".to_string(),
         "Avoid throwing exceptions".to_string(),
     ]);
+
+    guidelines
 }
 
 /// Add Swift-specific guidelines to the review
-pub fn add_swift_guidelines(guidelines: &mut ReviewGuidelines) {
+pub fn add_swift_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
     guidelines.quality_checks.extend([
         "Use optionals correctly".to_string(),
         "Follow Swift API design guidelines".to_string(),
@@ -57,6 +61,8 @@ pub fn add_swift_guidelines(guidelines: &mut ReviewGuidelines) {
         "Avoid force unwrapping (!)".to_string(),
         "Don't use implicitly unwrapped optionals unnecessarily".to_string(),
     ]);
+
+    guidelines
 }
 
 #[cfg(test)]
@@ -65,8 +71,7 @@ mod tests {
 
     #[test]
     fn test_elixir_guidelines() {
-        let mut guidelines = ReviewGuidelines::default();
-        add_elixir_guidelines(&mut guidelines);
+        let guidelines = add_elixir_guidelines(ReviewGuidelines::default());
 
         // Should have Elixir-specific checks
         assert!(guidelines
@@ -81,8 +86,7 @@ mod tests {
 
     #[test]
     fn test_scala_guidelines() {
-        let mut guidelines = ReviewGuidelines::default();
-        add_scala_guidelines(&mut guidelines);
+        let guidelines = add_scala_guidelines(ReviewGuidelines::default());
 
         // Should have Scala-specific checks
         assert!(guidelines
@@ -97,8 +101,7 @@ mod tests {
 
     #[test]
     fn test_swift_guidelines() {
-        let mut guidelines = ReviewGuidelines::default();
-        add_swift_guidelines(&mut guidelines);
+        let guidelines = add_swift_guidelines(ReviewGuidelines::default());
 
         // Should have Swift-specific checks
         assert!(guidelines

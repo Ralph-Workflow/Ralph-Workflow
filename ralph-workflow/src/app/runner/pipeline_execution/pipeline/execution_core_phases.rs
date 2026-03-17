@@ -46,45 +46,49 @@ fn compute_initial_state(
     resume_checkpoint: Option<&crate::checkpoint::PipelineCheckpoint>,
     should_run_rebase: bool,
 ) -> crate::reducer::PipelineState {
-    let mut initial_state = resume_checkpoint.map_or_else(
+    let base_state = resume_checkpoint.map_or_else(
         || crate::app::event_loop::create_initial_state_with_config(phase_ctx),
         |checkpoint| {
-            let mut base_state =
-                crate::app::event_loop::create_initial_state_with_config(phase_ctx);
+            let base_state = crate::app::event_loop::create_initial_state_with_config(phase_ctx);
             let migrated =
                 crate::reducer::PipelineState::from_checkpoint_with_execution_history_limit(
                     checkpoint.clone(),
                     phase_ctx.config.execution_history_limit,
                 );
             crate::app::event_loop::overlay_checkpoint_progress_onto_base_state(
-                &mut base_state,
+                base_state,
                 migrated,
                 phase_ctx.config.execution_history_limit,
-            );
-            base_state
+            )
         },
     );
 
     if should_run_rebase {
         if matches!(
-            initial_state.rebase,
+            base_state.rebase,
             crate::reducer::state::RebaseState::NotStarted
         ) {
             let default_branch =
                 crate::git_helpers::get_default_branch().unwrap_or_else(|_| "main".to_string());
-            initial_state.rebase = crate::reducer::state::RebaseState::InProgress {
+            let mut new_state = base_state;
+            new_state.rebase = crate::reducer::state::RebaseState::InProgress {
                 original_head: "HEAD".to_string(),
                 target_branch: default_branch,
             };
+            new_state
+        } else {
+            base_state
         }
     } else if matches!(
-        initial_state.rebase,
+        base_state.rebase,
         crate::reducer::state::RebaseState::NotStarted
     ) {
-        initial_state.rebase = crate::reducer::state::RebaseState::Skipped;
+        let mut new_state = base_state;
+        new_state.rebase = crate::reducer::state::RebaseState::Skipped;
+        new_state
+    } else {
+        base_state
     }
-
-    initial_state
 }
 
 fn run_event_loop_with_default_handler(
