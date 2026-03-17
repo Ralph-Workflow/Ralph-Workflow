@@ -1,0 +1,100 @@
+#!/usr/bin/env sh
+set -eu
+
+# Replacement for `dylint-link` that does not require `RUSTUP_TOOLCHAIN`.
+#
+# `cargo-dylint` intentionally unsets several env vars (including
+# `RUSTUP_TOOLCHAIN`) when building lint libraries. The upstream `dylint-link`
+# binary currently hard-requires that env var, which makes builds fail in
+# environments that don't use rustup proxy binaries.
+#
+# This script behaves like a minimal `dylint-link`:
+# - delegates to the real linker (defaults to `cc`)
+# - when linking the lint library itself, copies the output to a filename that
+#   Dylint can discover: `<dll_prefix><lib>@<toolchain><dll_suffix>`
+
+linker="${DYLINT_REAL_LINKER:-cc}"
+
+out_path=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out_path="$arg"
+    break
+  fi
+  prev="$arg"
+done
+
+"$linker" "$@"
+
+if [ -z "$out_path" ]; then
+  exit 0
+fi
+
+case "$out_path" in
+  *"@"*)
+    # Already has a toolchain suffix.
+    exit 0
+    ;;
+esac
+
+base="$(basename "$out_path")"
+
+# Only copy dynamic libraries.
+case "$base" in
+  *.dylib|*.so|*.dll) ;;
+  *) exit 0 ;;
+esac
+
+pkg="${CARGO_PKG_NAME:-}"
+if [ -z "$pkg" ]; then
+  exit 0
+fi
+
+pkg_us="$(printf '%s' "$pkg" | tr '-' '_')"
+
+toolchain=""
+
+# Prefer extracting the toolchain from cargo-dylint's target dir layout:
+#   .../target/dylint/libraries/<toolchain>/...
+tmp="${out_path#*"/target/dylint/libraries/"}"
+if [ "$tmp" != "$out_path" ]; then
+  toolchain="${tmp%%/*}"
+fi
+
+if [ -z "$toolchain" ]; then
+  toolchain="${RUSTUP_TOOLCHAIN:-}"
+fi
+
+if [ -z "$toolchain" ] && command -v rustup >/dev/null 2>&1; then
+  # Output format: "stable-aarch64-apple-darwin (active, default)"
+  toolchain="$(rustup show active-toolchain 2>/dev/null | awk '{print $1}' || true)"
+fi
+
+if [ -z "$toolchain" ]; then
+  exit 0
+fi
+
+dir="$(dirname "$out_path")"
+if [ "$(basename "$dir")" = "deps" ]; then
+  dir="$(dirname "$dir")"
+fi
+
+suffix="${base##*.}"
+
+case "$base" in
+  lib"$pkg_us".*)
+    prefix="lib"
+    name="$pkg_us"
+    ;;
+  "$pkg_us".*)
+    prefix=""
+    name="$pkg_us"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+dest="$dir/${prefix}${name}@${toolchain}.${suffix}"
+cp "$out_path" "$dest"

@@ -1,11 +1,18 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: the style guide is authoritative.
 //
-// Note: unsafe_code is not denied in lib.rs because the library requires unsafe blocks for
-// legitimate POSIX operations (fcntl, kill, setpgid, etc.) with proper safety documentation.
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`,
+// `docs/code-style/coding-patterns.md`, `docs/code-style/testing.md`, and
+// `docs/tooling/dylint.md` when fixing violations.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// This library intentionally keeps boundary-sensitive policy in dylint so
+// domain modules stay strict without blocking legitimate `io/`, `runtime/`,
+// `ffi/`, and `boundary/` code.
+//
+// `unsafe_code` is not denied here because the library contains documented
+// POSIX boundary code that requires small unsafe sections.
+//
+// `clippy::cargo` stays off because it reports ecosystem dependency conflicts
+// rather than code-shape problems contributors can fix locally.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![deny(
@@ -22,10 +29,11 @@
     clippy::manual_flatten,
     clippy::needless_collect
 )]
-// NOTE: unwrap_used, expect_used, and panic are not denied here because they are
-// appropriately used in boundary modules (io/, runtime/, cli/). Dylint's functional
-// lints (forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods,
-// forbid_interior_mutability) correctly distinguish domain from boundary code.
+// `unwrap_used`, `expect_used`, and blanket panic bans are not enforced at this
+// crate root because the relevant policy is boundary-sensitive. Fix ordinary code
+// to use `Result`, `?`, and explicit state/value transformations; if the code is a
+// real boundary concern, keep it in an explicit boundary module instead of weakening
+// the lint.
 //! Ralph workflow library for AI agent orchestration.
 //!
 //! This crate provides the core functionality for the `ralph` CLI binary,

@@ -1,0 +1,12 @@
+error: `let mut x` is forbidden outside boundary modules
+  --> $DIR/mut_binding.rs:5:9
+   |
+LL |     let mut x = 42; //~ ERROR `let mut x` is forbidden
+   |         ^^^^^
+   |
+   = help: replace mutable accumulator with iterator pipeline: `xs.iter().map(f).collect()` or `xs.iter().fold(init, f)`. See q$DIRck reference in `docs/code-style/functional-transformations.md`.
+   = note: if mutation is gen$DIRnely req$DIRred for I/O or FFI, move this code into a boundary module (io/, runtime/, ffi/, boundary/)
+   = note: `#[deny(forbid_mut_binding)]` on by default
+
+error: aborting due to 1 previous error
+

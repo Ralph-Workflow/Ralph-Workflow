@@ -1,5 +1,8 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
-// Lint levels are configured in Cargo.toml [lints].
+// Lint levels are configured in `ralph-gui/Cargo.toml` so Tauri-specific
+// exceptions remain crate-local and documented.
+//
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`, `docs/code-style/testing.md`,
+// and `ralph-gui/clippy.toml` when fixing GUI lint violations.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use ralph_gui::commands::{config, run_management, session, workspace, worktree};

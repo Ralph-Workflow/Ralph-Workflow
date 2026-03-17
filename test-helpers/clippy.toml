@@ -17,17 +17,18 @@
 #   - docs/code-style/testing.md           # Test strictness rules
 # ============================================================================
 
-# Test-helpers specific clippy configuration
+# Test-helpers specific clippy configuration.
 #
-# EXCEPTION: This crate wraps git2/libgit2 C APIs which cannot propagate Result
-# without redesigning the entire test harness. The documented exception in AGENTS.md
-# allows expect/unwrap usage in this crate only.
+# EXCEPTION: This crate is a test boundary around git2 / libgit2 setup. The
+# style-guide exception is documented in `CODE_STYLE.md` and
+# `docs/code-style/testing.md`.
 
 # --- Test strictness: no escape hatches ---
 # See: docs/code-style/testing.md
 #
 # WHY: Tests should verify behavior, not contain implementation shortcuts.
-# EXCEPTION: This crate wraps C APIs - see AGENTS.md documentation
+# EXCEPTION: This crate wraps libgit2-backed test setup helpers where panic-
+# oriented fixture code is the documented repository exception.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
@@ -37,13 +38,15 @@ allow-indexing-slicing-in-tests = true
 # --- Disallowed types (interior mutability / shared mutable state) ---
 # See: docs/code-style/boundaries.md
 #
-# EXCEPTION: This crate wraps C APIs that require specific patterns
+# NOTE: boundary-aware interior-mutability policy belongs in dylint, not in a
+# blanket clippy type deny list.
 disallowed-types = []
 
 # --- Disallowed methods (mutation / imperative patterns) ---
 # See: docs/code-style/coding-patterns.md
 #
-# EXCEPTION: This crate wraps C APIs - use of unwrap/expect is documented in AGENTS.md
+# NOTE: boundary-aware mutating-method policy belongs in dylint, not in a
+# blanket clippy method deny list.
 disallowed-methods = []
 
 # --- Disallowed macros (side effects) ---

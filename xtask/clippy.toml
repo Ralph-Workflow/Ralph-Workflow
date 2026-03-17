@@ -1,19 +1,32 @@
-# Xtask specific clippy configuration
-# This crate is a build tooling binary that uses various patterns needed for
-# performance-critical code that trigger strict lints:
-# - Mutex/RwLock for caching
-# - unwrap/expect for thread joins (legitimate for build tooling)
-# - Indexing and arithmetic for performance-critical hot paths
-# - The policy exception for xtask is: "Top-level binary entry point; 
-#   no caller to return Result to"
+# ============================================================================
+# LINT POLICY FILE -- STYLE GUIDE FIRST.
+#
+# This crate is build-tooling boundary code. Keep ordinary style-guide rules by
+# default, and document every exception that remains necessary because the code
+# itself is a top-level tooling boundary.
+#
+# Reference docs when fixing violations:
+#   - CODE_STYLE.md
+#   - docs/code-style/boundaries.md
+#   - docs/code-style/testing.md
+#   - docs/code-style/coding-patterns.md
+#   - docs/tooling/dylint.md
+# ============================================================================
 
 disallowed-types = []
 disallowed-methods = []
+
+# --- Disallowed macros (debug leftovers) ---
+# WHY: even build tooling should not ship `dbg!` noise.
+# HOW TO FIX: replace ad-hoc debug output with structured stderr progress or
+# assertions in tests.
+disallowed-macros = [
+  { path = "std::dbg", reason = "No debug leftovers; use structured tooling diagnostics instead" },
+]
 
 # Relax some lints for build tooling
 # These are performance-critical code paths where the safety costs outweigh benefits
 arithmetic-side-effects-allowed = ["*"]
 
-# NOTE: needless_collect was removed from deny list in main.rs because the collect
-# IS required for parallelism (collecting handles before joining ensures all threads
-# are spawned before any join - this is a false positive from clippy)
+# NOTE: `needless_collect` remains intentionally off in the crate root because
+# collecting join handles before joining is required for parallel verify fan-out.

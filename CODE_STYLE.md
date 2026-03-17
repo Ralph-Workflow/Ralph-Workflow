@@ -20,6 +20,16 @@ Tests should match the layer they exercise, as described in `docs/code-style/tes
 
 Across all of this, keep a few working rules in mind: keep domain code pure and deterministic, push mutation and I/O to explicit boundaries, prefer clear and boring code over clever code, avoid `unwrap()` and `.expect()` outside documented exceptions, and delete dead code instead of suppressing warnings around it.
 
+## Documented Lint Exceptions
+
+The style guide is the source of truth for lint policy. Exceptions are narrow and must be documented where they are introduced.
+
+- `xtask`: build-tooling boundary code may use patterns that are inappropriate for ordinary domain code, such as stderr reporting and tightly-scoped crash-on-invariant helpers at the top-level binary boundary.
+- `test-helpers`: this crate is a boundary wrapper around `git2` / libgit2 test setup, so repository test ergonomics may use panic-oriented helpers instead of forcing every fixture call site to propagate errors.
+- `ralph-gui`: the Tauri application boundary and generated binding/export paths may require framework-shaped entrypoint code that differs from ordinary library code; keep those exceptions local to the GUI crate and document them in the lint config.
+
+These are not blanket exemptions. When a rule can follow the ordinary style guide, fix the code instead of widening the exception.
+
 ## Pipeline Architecture
 
 If you change pipeline behavior, also read:

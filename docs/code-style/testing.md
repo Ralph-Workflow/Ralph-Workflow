@@ -157,3 +157,15 @@ The important assertion is the observable event, not the internal helper calls.
 - unit tests must serialize because production code reads global state
 - handler tests need to understand internal retry loops
 - domain tests need temporary files just to exercise parsing or normalization
+
+## Repository-level lint exceptions
+
+The default rule is still: no `unwrap()`, no `.expect()`, no panic-driven assertions, and no hidden global setup.
+
+Approved exceptions are narrow boundary cases, not an alternate testing style:
+
+- `test-helpers` may use panic-oriented helpers because it exists to set up real `git2` / libgit2 repositories for higher-level tests.
+- GUI entrypoint and framework-facing tests may keep the smallest necessary framework-shaped exception local to `ralph-gui` when Tauri or generated binding flows require it.
+- Build-tooling tests in `xtask` may keep boundary-style crash behavior where the code under test is itself a top-level tooling boundary.
+
+If a test does not fall into one of those boundary cases, fix it to match the normal style-guide rules.

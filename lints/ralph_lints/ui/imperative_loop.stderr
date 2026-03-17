@@ -1,0 +1,15 @@
+error: `for` loop is forbidden outside boundary modules
+  --> $DIR/imperative_loop.rs:3:5
+   |
+LL | /     for i in 0..10 {
+LL | |         //~ ERROR `for` loop is forbidden
+LL | |         let _ = i;
+LL | |     }
+   | |_____^
+   |
+   = help: replace loop with iterator pipeline: `xs.filter(p).map(f).collect()`, `xs.fold(init, f)`, or `xs.any(p)` / `xs.all(p)`. See q$DIRck reference in `docs/code-style/functional-transformations.md`.
+   = note: if a loop is gen$DIRnely req$DIRred for I/O or runtime logic, move this code into a boundary module (io/, runtime/, ffi/, boundary/)
+   = note: `#[deny(forbid_imperative_loops)]` on by default
+
+error: aborting due to 1 previous error
+

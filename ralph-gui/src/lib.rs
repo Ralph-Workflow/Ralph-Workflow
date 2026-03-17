@@ -1,6 +1,8 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
-// Lint levels are configured in Cargo.toml [lints] to allow crate-specific
-// exemptions (e.g. needless_pass_by_value is required for tauri::State params).
+// Lint levels are configured in `ralph-gui/Cargo.toml` so the framework-facing
+// exceptions stay visible next to the Tauri crate definition.
+//
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`, `docs/code-style/testing.md`,
+// and `ralph-gui/clippy.toml` when fixing GUI lint violations.
 
 pub mod commands;
 pub mod state;

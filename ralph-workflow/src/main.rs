@@ -1,8 +1,14 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS TO, YOU MUST REFACTOR EVEN IF IT TAKES YOU LONG TIME
+// Lint policy: fix code to match the style guide rather than weakening the lint.
 //
-// Note: clippy::cargo is not enabled because it flags transitive dependency version conflicts
-// (e.g., bitflags 1.3.2 from inotify vs 2.10.0 from other crates) which are ecosystem-level
-// issues outside our control and don't reflect code quality problems.
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`,
+// `docs/code-style/coding-patterns.md`, and `docs/code-style/testing.md`.
+//
+// This binary is a CLI boundary, so the crate root keeps only the rules that are
+// universally correct for entrypoint code. Boundary-sensitive rules stay documented
+// in the library and in dylint.
+//
+// `clippy::cargo` stays off because it reports dependency graph conflicts that are
+// not actionable style-guide violations.
 #![deny(warnings)]
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
@@ -10,8 +16,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: Many lints are not denied because this is a CLI binary with test code.
-    // This is documented in the lint policy exception table.
+    // Keep entrypoint code free of accidental stdout logging and debug leftovers,
+    // but do not over-apply domain-only restrictions to the CLI boundary.
     clippy::print_stdout,
     clippy::dbg_macro,
     // Push toward combinators instead of hand-written control flow

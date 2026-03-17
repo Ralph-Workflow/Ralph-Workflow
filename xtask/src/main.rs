@@ -1,4 +1,9 @@
-// DO NOT CHANGE LINTING POLICY UNLESS THE USER SPECIFICALLY ASKS to, YOU MUST not change linting rules without explicit direction. Lint configuration is a repository contract. It must not be weakened for convenience, laziness, or to void a refactor.
+// Lint policy: fix tooling code to match the style guide before considering an
+// exception.
+//
+// See `CODE_STYLE.md`, `docs/code-style/boundaries.md`,
+// `docs/code-style/coding-patterns.md`, `docs/code-style/testing.md`, and
+// `xtask/clippy.toml` for crate-specific rationale.
 
 #![deny(warnings)]
 #![deny(clippy::all)]
@@ -7,11 +12,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // NOTE: unwrap_used/expect_used/indexing_slicing/arithmetic_side_effects
-    // are not denied because xtask is build tooling that uses performance-critical
-    // code patterns (mutex caching, thread joins, array indexing).
-    // Also print_stderr is allowed for error reporting in build tooling.
-    // This is documented in the lint policy exception table.
+    // `xtask` is a build-tooling boundary: keep universal correctness rules here,
+    // and document any remaining boundary-only exceptions in `xtask/clippy.toml`.
     clippy::panic_in_result_fn,
     clippy::print_stdout,
     clippy::dbg_macro,
