@@ -34,6 +34,12 @@
       "description": "Primary agent with full access",
       "mode": "primary",
       "model": "minimax/MiniMax-M2.5-highspeed",
+      "tools": {
+        "filesystem": true,
+        "git": true,
+        "sequential-thinking": true,
+        "memory": true
+      },
       "permission": {
         "bash": {
           "*": "allow"
