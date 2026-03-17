@@ -1,31 +1,72 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "tools": {
+    "filesystem": false,
+    "git": false,
+    "sequential-thinking": false,
+    "memory": false
+  },
+  "permission": {
+    "bash": {
+      "*": "deny"
+    },
+    "read": {
+      "*": "deny"
+    },
+    "write": {
+      "*": "deny"
+    },
+    "edit": {
+      "*": "deny"
+    },
+    "glob": {
+      "*": "deny"
+    },
+    "grep": {
+      "*": "deny"
+    },
+    "task": {
+      "*": "deny"
+    }
+  },
+      "*": "deny"
+    },
+    "grep": {
+      "*": "deny"
+    },
+    "task": {
+      "*": "deny"
+    }
+  },
   "agent": {
     "primary": {
-      "description": "Primary agent with full access to all code areas for coordinating the Ralph workflow refactoring project.",
+      "description": "Primary agent with restricted access - only docs allowed for coordination",
       "mode": "primary",
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "allow"
+          "*": "deny"
         },
         "read": {
-          "*": "allow"
+          "*": "deny",
+          "docs/**": "allow"
         },
         "write": {
-          "*": "allow"
+          "*": "deny"
         },
         "edit": {
-          "*": "allow"
+          "*": "deny"
         },
         "glob": {
-          "*": "allow"
+          "*": "deny",
+          "docs/**": "allow"
         },
         "grep": {
-          "*": "allow"
+          "*": "deny",
+          "docs/**": "allow"
         },
         "task": {
-          "*": "allow"
+          "*": "deny"
         }
       }
     },
@@ -72,26 +113,40 @@
         },
         "read": {
           "*": "deny",
-          "src/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/lib.rs": "allow",
+          "ralph-workflow/src/main.rs": "allow",
+          "ralph-workflow/src/banner.rs": "allow",
+          "ralph-workflow/src/exit_pause.rs": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/**": "allow"
+          "ralph-workflow/src/lib.rs": "allow",
+          "ralph-workflow/src/main.rs": "allow",
+          "ralph-workflow/src/banner.rs": "allow",
+          "ralph-workflow/src/exit_pause.rs": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/**": "allow"
+          "ralph-workflow/src/lib.rs": "allow",
+          "ralph-workflow/src/main.rs": "allow",
+          "ralph-workflow/src/banner.rs": "allow",
+          "ralph-workflow/src/exit_pause.rs": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/**": "allow",
+          "ralph-workflow/src/lib.rs": "allow",
+          "ralph-workflow/src/main.rs": "allow",
+          "ralph-workflow/src/banner.rs": "allow",
+          "ralph-workflow/src/exit_pause.rs": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/**": "allow",
+          "ralph-workflow/src/lib.rs": "allow",
+          "ralph-workflow/src/main.rs": "allow",
+          "ralph-workflow/src/banner.rs": "allow",
+          "ralph-workflow/src/exit_pause.rs": "allow",
           "docs/**": "allow"
         }
       }
@@ -106,41 +161,40 @@
         },
         "read": {
           "*": "deny",
-          "src/reducer/**": "allow",
-          "src/pipeline/**": "allow",
-          "src/checkpoint/**": "allow",
-          "src/phases/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/reducer/**": "allow",
+          "ralph-workflow/src/pipeline/**": "allow",
+          "ralph-workflow/src/checkpoint/**": "allow",
+          "ralph-workflow/src/phases/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/reducer/**": "allow",
-          "src/pipeline/**": "allow",
-          "src/checkpoint/**": "allow",
-          "src/phases/**": "allow"
+          "ralph-workflow/src/reducer/**": "allow",
+          "ralph-workflow/src/pipeline/**": "allow",
+          "ralph-workflow/src/checkpoint/**": "allow",
+          "ralph-workflow/src/phases/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/reducer/**": "allow",
-          "src/pipeline/**": "allow",
-          "src/checkpoint/**": "allow",
-          "src/phases/**": "allow"
+          "ralph-workflow/src/reducer/**": "allow",
+          "ralph-workflow/src/pipeline/**": "allow",
+          "ralph-workflow/src/checkpoint/**": "allow",
+          "ralph-workflow/src/phases/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/reducer/**": "allow",
-          "src/pipeline/**": "allow",
-          "src/checkpoint/**": "allow",
-          "src/phases/**": "allow",
+          "ralph-workflow/src/reducer/**": "allow",
+          "ralph-workflow/src/pipeline/**": "allow",
+          "ralph-workflow/src/checkpoint/**": "allow",
+          "ralph-workflow/src/phases/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/reducer/**": "allow",
-          "src/pipeline/**": "allow",
-          "src/checkpoint/**": "allow",
-          "src/phases/**": "allow",
+          "ralph-workflow/src/reducer/**": "allow",
+          "ralph-workflow/src/pipeline/**": "allow",
+          "ralph-workflow/src/checkpoint/**": "allow",
+          "ralph-workflow/src/phases/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -155,31 +209,30 @@
         },
         "read": {
           "*": "deny",
-          "src/executor/**": "allow",
-          "src/runtime/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/executor/**": "allow",
+          "ralph-workflow/src/runtime/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/executor/**": "allow",
-          "src/runtime/**": "allow"
+          "ralph-workflow/src/executor/**": "allow",
+          "ralph-workflow/src/runtime/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/executor/**": "allow",
-          "src/runtime/**": "allow"
+          "ralph-workflow/src/executor/**": "allow",
+          "ralph-workflow/src/runtime/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/executor/**": "allow",
-          "src/runtime/**": "allow",
+          "ralph-workflow/src/executor/**": "allow",
+          "ralph-workflow/src/runtime/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/executor/**": "allow",
-          "src/runtime/**": "allow",
+          "ralph-workflow/src/executor/**": "allow",
+          "ralph-workflow/src/runtime/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -194,31 +247,30 @@
         },
         "read": {
           "*": "deny",
-          "src/io/**": "allow",
-          "src/files/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/io/**": "allow",
+          "ralph-workflow/src/files/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/io/**": "allow",
-          "src/files/**": "allow"
+          "ralph-workflow/src/io/**": "allow",
+          "ralph-workflow/src/files/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/io/**": "allow",
-          "src/files/**": "allow"
+          "ralph-workflow/src/io/**": "allow",
+          "ralph-workflow/src/files/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/io/**": "allow",
-          "src/files/**": "allow",
+          "ralph-workflow/src/io/**": "allow",
+          "ralph-workflow/src/files/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/io/**": "allow",
-          "src/files/**": "allow",
+          "ralph-workflow/src/io/**": "allow",
+          "ralph-workflow/src/files/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -233,31 +285,30 @@
         },
         "read": {
           "*": "deny",
-          "src/workspace/**": "allow",
-          "src/boundary/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/workspace/**": "allow",
+          "ralph-workflow/src/boundary/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/workspace/**": "allow",
-          "src/boundary/**": "allow"
+          "ralph-workflow/src/workspace/**": "allow",
+          "ralph-workflow/src/boundary/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/workspace/**": "allow",
-          "src/boundary/**": "allow"
+          "ralph-workflow/src/workspace/**": "allow",
+          "ralph-workflow/src/boundary/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/workspace/**": "allow",
-          "src/boundary/**": "allow",
+          "ralph-workflow/src/workspace/**": "allow",
+          "ralph-workflow/src/boundary/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/workspace/**": "allow",
-          "src/boundary/**": "allow",
+          "ralph-workflow/src/workspace/**": "allow",
+          "ralph-workflow/src/boundary/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -272,26 +323,25 @@
         },
         "read": {
           "*": "deny",
-          "src/git_helpers/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/git_helpers/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/git_helpers/**": "allow"
+          "ralph-workflow/src/git_helpers/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/git_helpers/**": "allow"
+          "ralph-workflow/src/git_helpers/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/git_helpers/**": "allow",
+          "ralph-workflow/src/git_helpers/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/git_helpers/**": "allow",
+          "ralph-workflow/src/git_helpers/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -306,31 +356,30 @@
         },
         "read": {
           "*": "deny",
-          "src/config/**": "allow",
-          "src/cli/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/config/**": "allow",
+          "ralph-workflow/src/cli/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/config/**": "allow",
-          "src/cli/**": "allow"
+          "ralph-workflow/src/config/**": "allow",
+          "ralph-workflow/src/cli/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/config/**": "allow",
-          "src/cli/**": "allow"
+          "ralph-workflow/src/config/**": "allow",
+          "ralph-workflow/src/cli/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/config/**": "allow",
-          "src/cli/**": "allow",
+          "ralph-workflow/src/config/**": "allow",
+          "ralph-workflow/src/cli/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/config/**": "allow",
-          "src/cli/**": "allow",
+          "ralph-workflow/src/config/**": "allow",
+          "ralph-workflow/src/cli/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -345,26 +394,25 @@
         },
         "read": {
           "*": "deny",
-          "src/app/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/app/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/app/**": "allow"
+          "ralph-workflow/src/app/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/app/**": "allow"
+          "ralph-workflow/src/app/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/app/**": "allow",
+          "ralph-workflow/src/app/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/app/**": "allow",
+          "ralph-workflow/src/app/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -379,31 +427,30 @@
         },
         "read": {
           "*": "deny",
-          "src/logging/**": "allow",
-          "src/logger/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/logging/**": "allow",
+          "ralph-workflow/src/logger/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/logging/**": "allow",
-          "src/logger/**": "allow"
+          "ralph-workflow/src/logging/**": "allow",
+          "ralph-workflow/src/logger/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/logging/**": "allow",
-          "src/logger/**": "allow"
+          "ralph-workflow/src/logging/**": "allow",
+          "ralph-workflow/src/logger/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/logging/**": "allow",
-          "src/logger/**": "allow",
+          "ralph-workflow/src/logging/**": "allow",
+          "ralph-workflow/src/logger/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/logging/**": "allow",
-          "src/logger/**": "allow",
+          "ralph-workflow/src/logging/**": "allow",
+          "ralph-workflow/src/logger/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -418,31 +465,30 @@
         },
         "read": {
           "*": "deny",
-          "src/monitoring/**": "allow",
-          "src/diagnostics/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/monitoring/**": "allow",
+          "ralph-workflow/src/diagnostics/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/monitoring/**": "allow",
-          "src/diagnostics/**": "allow"
+          "ralph-workflow/src/monitoring/**": "allow",
+          "ralph-workflow/src/diagnostics/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/monitoring/**": "allow",
-          "src/diagnostics/**": "allow"
+          "ralph-workflow/src/monitoring/**": "allow",
+          "ralph-workflow/src/diagnostics/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/monitoring/**": "allow",
-          "src/diagnostics/**": "allow",
+          "ralph-workflow/src/monitoring/**": "allow",
+          "ralph-workflow/src/diagnostics/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/monitoring/**": "allow",
-          "src/diagnostics/**": "allow",
+          "ralph-workflow/src/monitoring/**": "allow",
+          "ralph-workflow/src/diagnostics/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -457,41 +503,40 @@
         },
         "read": {
           "*": "deny",
-          "src/common/**": "allow",
-          "src/platform/**": "allow",
-          "src/rendering/**": "allow",
-          "src/templates/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/common/**": "allow",
+          "ralph-workflow/src/platform/**": "allow",
+          "ralph-workflow/src/rendering/**": "allow",
+          "ralph-workflow/src/templates/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/common/**": "allow",
-          "src/platform/**": "allow",
-          "src/rendering/**": "allow",
-          "src/templates/**": "allow"
+          "ralph-workflow/src/common/**": "allow",
+          "ralph-workflow/src/platform/**": "allow",
+          "ralph-workflow/src/rendering/**": "allow",
+          "ralph-workflow/src/templates/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/common/**": "allow",
-          "src/platform/**": "allow",
-          "src/rendering/**": "allow",
-          "src/templates/**": "allow"
+          "ralph-workflow/src/common/**": "allow",
+          "ralph-workflow/src/platform/**": "allow",
+          "ralph-workflow/src/rendering/**": "allow",
+          "ralph-workflow/src/templates/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/common/**": "allow",
-          "src/platform/**": "allow",
-          "src/rendering/**": "allow",
-          "src/templates/**": "allow",
+          "ralph-workflow/src/common/**": "allow",
+          "ralph-workflow/src/platform/**": "allow",
+          "ralph-workflow/src/rendering/**": "allow",
+          "ralph-workflow/src/templates/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/common/**": "allow",
-          "src/platform/**": "allow",
-          "src/rendering/**": "allow",
-          "src/templates/**": "allow",
+          "ralph-workflow/src/common/**": "allow",
+          "ralph-workflow/src/platform/**": "allow",
+          "ralph-workflow/src/rendering/**": "allow",
+          "ralph-workflow/src/templates/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -506,41 +551,40 @@
         },
         "read": {
           "*": "deny",
-          "src/benchmarks/**": "allow",
-          "src/interrupt/**": "allow",
-          "src/language_detector/**": "allow",
-          "src/review_metrics/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/benchmarks/**": "allow",
+          "ralph-workflow/src/interrupt/**": "allow",
+          "ralph-workflow/src/language_detector/**": "allow",
+          "ralph-workflow/src/review_metrics/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/benchmarks/**": "allow",
-          "src/interrupt/**": "allow",
-          "src/language_detector/**": "allow",
-          "src/review_metrics/**": "allow"
+          "ralph-workflow/src/benchmarks/**": "allow",
+          "ralph-workflow/src/interrupt/**": "allow",
+          "ralph-workflow/src/language_detector/**": "allow",
+          "ralph-workflow/src/review_metrics/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/benchmarks/**": "allow",
-          "src/interrupt/**": "allow",
-          "src/language_detector/**": "allow",
-          "src/review_metrics/**": "allow"
+          "ralph-workflow/src/benchmarks/**": "allow",
+          "ralph-workflow/src/interrupt/**": "allow",
+          "ralph-workflow/src/language_detector/**": "allow",
+          "ralph-workflow/src/review_metrics/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/benchmarks/**": "allow",
-          "src/interrupt/**": "allow",
-          "src/language_detector/**": "allow",
-          "src/review_metrics/**": "allow",
+          "ralph-workflow/src/benchmarks/**": "allow",
+          "ralph-workflow/src/interrupt/**": "allow",
+          "ralph-workflow/src/language_detector/**": "allow",
+          "ralph-workflow/src/review_metrics/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/benchmarks/**": "allow",
-          "src/interrupt/**": "allow",
-          "src/language_detector/**": "allow",
-          "src/review_metrics/**": "allow",
+          "ralph-workflow/src/benchmarks/**": "allow",
+          "ralph-workflow/src/interrupt/**": "allow",
+          "ralph-workflow/src/language_detector/**": "allow",
+          "ralph-workflow/src/review_metrics/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -555,26 +599,25 @@
         },
         "read": {
           "*": "deny",
-          "src/agents/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/agents/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/agents/**": "allow"
+          "ralph-workflow/src/agents/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/agents/**": "allow"
+          "ralph-workflow/src/agents/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/agents/**": "allow",
+          "ralph-workflow/src/agents/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/agents/**": "allow",
+          "ralph-workflow/src/agents/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -589,31 +632,30 @@
         },
         "read": {
           "*": "deny",
-          "src/guidelines/**": "allow",
-          "src/prompts/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/guidelines/**": "allow",
+          "ralph-workflow/src/prompts/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/guidelines/**": "allow",
-          "src/prompts/**": "allow"
+          "ralph-workflow/src/guidelines/**": "allow",
+          "ralph-workflow/src/prompts/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/guidelines/**": "allow",
-          "src/prompts/**": "allow"
+          "ralph-workflow/src/guidelines/**": "allow",
+          "ralph-workflow/src/prompts/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/guidelines/**": "allow",
-          "src/prompts/**": "allow",
+          "ralph-workflow/src/guidelines/**": "allow",
+          "ralph-workflow/src/prompts/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/guidelines/**": "allow",
-          "src/prompts/**": "allow",
+          "ralph-workflow/src/guidelines/**": "allow",
+          "ralph-workflow/src/prompts/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -628,26 +670,25 @@
         },
         "read": {
           "*": "deny",
-          "src/json_parser/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/json_parser/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/json_parser/**": "allow"
+          "ralph-workflow/src/json_parser/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/json_parser/**": "allow"
+          "ralph-workflow/src/json_parser/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/json_parser/**": "allow",
+          "ralph-workflow/src/json_parser/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/json_parser/**": "allow",
+          "ralph-workflow/src/json_parser/**": "allow",
           "docs/**": "allow"
         }
       }
@@ -662,26 +703,25 @@
         },
         "read": {
           "*": "deny",
-          "src/cloud/**": "allow",
-          "Cargo.toml": "allow",
+          "ralph-workflow/src/cloud/**": "allow",
           "docs/**": "allow"
         },
         "write": {
           "*": "deny",
-          "src/cloud/**": "allow"
+          "ralph-workflow/src/cloud/**": "allow"
         },
         "edit": {
           "*": "deny",
-          "src/cloud/**": "allow"
+          "ralph-workflow/src/cloud/**": "allow"
         },
         "glob": {
           "*": "deny",
-          "src/cloud/**": "allow",
+          "ralph-workflow/src/cloud/**": "allow",
           "docs/**": "allow"
         },
         "grep": {
           "*": "deny",
-          "src/cloud/**": "allow",
+          "ralph-workflow/src/cloud/**": "allow",
           "docs/**": "allow"
         }
       }
