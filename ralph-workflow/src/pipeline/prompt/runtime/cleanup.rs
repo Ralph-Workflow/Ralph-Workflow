@@ -2,14 +2,12 @@ use crate::pipeline::idle_timeout::KillConfig;
 use std::io;
 use std::sync::Arc;
 
-pub(crate) fn terminate_child_best_effort(
+pub fn terminate_child_best_effort(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     executor: &dyn crate::executor::ProcessExecutor,
     kill_config: KillConfig,
 ) -> bool {
-    use crate::pipeline::idle_timeout::runtime::kill::{
-        force_kill_best_effort, kill_process, KillResult,
-    };
+    use crate::pipeline::idle_timeout::kill::{force_kill_best_effort, kill_process, KillResult};
     use std::time::Instant;
 
     let pid = {
@@ -68,7 +66,7 @@ pub(crate) fn terminate_child_best_effort(
     }
 }
 
-pub(crate) fn cleanup_after_agent_failure(
+pub fn cleanup_after_agent_failure(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     monitor_should_stop: &Arc<std::sync::atomic::AtomicBool>,
     monitor_handle: &mut Option<

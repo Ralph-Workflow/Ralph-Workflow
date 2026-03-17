@@ -62,59 +62,57 @@ impl ReviewMetrics {
 
     /// Parse metrics from ISSUES.md content
     pub(crate) fn from_issues_content(content: &str) -> Self {
-        // Parse all issue lines first using iterator pipeline
-        let (issues, resolved_count) =
-            content
-                .lines()
-                .fold((Vec::new(), 0u32), |(mut issues, mut resolved), line| {
-                    let trimmed = line.trim();
+        // Parse all issue lines using iterator pipeline - collect into Vec of (severity, is_resolved)
+        let parsed_issues: Vec<(IssueSeverity, bool)> = content
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
 
-                    // Skip empty lines
-                    if trimmed.is_empty() {
-                        return (issues, resolved);
-                    }
+                // Skip empty lines
+                if trimmed.is_empty() {
+                    return None;
+                }
 
-                    // Try header-based format first (e.g., "#### [ ] Critical:")
-                    if let Some(rest) = parse_header_issue_format(trimmed) {
-                        if let Some(severity) = IssueSeverity::from_str(rest) {
-                            issues.push(severity);
-                        }
-                        return (issues, resolved);
-                    }
+                // Try header-based format first (e.g., "#### [ ] Critical:")
+                if let Some(rest) = parse_header_issue_format(trimmed) {
+                    return IssueSeverity::from_str(rest).map(|severity| (severity, false));
+                }
 
-                    // Skip headers that don't contain issue format
-                    if trimmed.starts_with('#') {
-                        return (issues, resolved);
-                    }
+                // Skip headers that don't contain issue format
+                if trimmed.starts_with('#') {
+                    return None;
+                }
 
-                    // Check for checkbox format
-                    let (is_resolved, rest) = if let Some(rest) = trimmed
-                        .strip_prefix("- [x]")
-                        .or_else(|| trimmed.strip_prefix("- [X]"))
-                    {
-                        (true, rest)
-                    } else if let Some(rest) = trimmed.strip_prefix("- [ ]") {
-                        (false, rest)
-                    } else if let Some(rest) = trimmed.strip_prefix("-") {
-                        (false, rest)
-                    } else {
-                        return (issues, resolved);
-                    };
+                // Check for checkbox format
+                let (is_resolved, rest) = if let Some(rest) = trimmed
+                    .strip_prefix("- [x]")
+                    .or_else(|| trimmed.strip_prefix("- [X]"))
+                {
+                    (true, rest)
+                } else if let Some(rest) = trimmed.strip_prefix("- [ ]") {
+                    (false, rest)
+                } else if let Some(rest) = trimmed.strip_prefix("-") {
+                    (false, rest)
+                } else {
+                    return None;
+                };
 
-                    let rest = rest.trim();
+                let rest = rest.trim();
 
-                    // Try to extract severity
-                    if let Some(severity) = IssueSeverity::from_str(rest) {
-                        issues.push(severity);
-                        if is_resolved {
-                            resolved = resolved.saturating_add(1);
-                        }
-                    }
+                // Try to extract severity
+                IssueSeverity::from_str(rest).map(|severity| (severity, is_resolved))
+            })
+            .collect();
 
-                    (issues, resolved)
-                });
-
-        let content_lower = content.to_lowercase();
+        // Extract issues and count resolved
+        let issues: Vec<IssueSeverity> = parsed_issues
+            .iter()
+            .map(|(severity, _)| *severity)
+            .collect();
+        let resolved_count = parsed_issues
+            .iter()
+            .filter(|(_, is_resolved)| *is_resolved)
+            .count() as u32;
 
         // Count by severity
         let critical_issues = issues
@@ -130,8 +128,10 @@ impl ReviewMetrics {
         let total_issues = issues.len() as u32;
 
         // Check for explicit "no issues" declaration only if no actual issues were found.
+        let content_lower = content.to_lowercase();
         let no_issues_declared = if total_issues == 0 {
-            content_lower.lines().any(|line| {
+            // Use a recursive helper to check lines without &mut self iterator methods
+            fn check_line_matches(line: &str) -> bool {
                 let trimmed = line.trim();
                 let cleaned = trimmed
                     .trim_start_matches('-')
@@ -150,7 +150,27 @@ impl ReviewMetrics {
                         && !cleaned.contains("high")
                         && !cleaned.contains("medium")
                         && !cleaned.contains("low"))
-            })
+            }
+
+            // Use recursive helper to check all lines without mutability
+            fn check_all_lines(
+                lines: &[&str],
+                idx: usize,
+                check_fn: &dyn Fn(&str) -> bool,
+            ) -> bool {
+                if idx >= lines.len() {
+                    return false;
+                }
+                if check_fn(lines[idx]) {
+                    true
+                } else {
+                    check_all_lines(lines, idx + 1, check_fn)
+                }
+            }
+
+            // Split by newline and check using recursion
+            let lines: Vec<&str> = content_lower.split('\n').collect();
+            check_all_lines(&lines, 0, &check_line_matches)
         } else {
             false
         };

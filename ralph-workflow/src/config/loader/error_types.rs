@@ -1,5 +1,4 @@
 use super::super::validation::ConfigValidationError;
-use std::fmt::Write;
 
 /// Error type for config loading with validation.
 #[derive(Debug, thiserror::Error)]
@@ -16,57 +15,72 @@ impl ConfigLoadWithValidationError {
     pub fn format_errors(&self) -> String {
         match self {
             Self::ValidationErrors(errors) => {
-                let mut output =
-                    String::from("Error: Configuration invalid - cannot start Ralph\n\n");
+                // Group errors by file for clearer presentation using iterator pipeline
+                let global_and_rest: (Vec<&ConfigValidationError>, Vec<&ConfigValidationError>) =
+                    errors.iter().partition(|error| {
+                        let path_str = error.file().to_string_lossy();
+                        path_str.contains(".config")
+                    });
 
-                // Group errors by file for clearer presentation
-                let mut global_errors: Vec<&ConfigValidationError> = Vec::new();
-                let mut local_errors: Vec<&ConfigValidationError> = Vec::new();
-                let mut other_errors: Vec<&ConfigValidationError> = Vec::new();
+                let global_errors = global_and_rest.0;
+                let local_and_other = global_and_rest.1;
 
-                for error in errors {
-                    let path_str = error.file().to_string_lossy();
-                    if path_str.contains(".config") {
-                        global_errors.push(error);
-                    } else if path_str.contains(".agent") {
-                        local_errors.push(error);
-                    } else {
-                        other_errors.push(error);
-                    }
-                }
+                let local_partition: (Vec<&ConfigValidationError>, Vec<&ConfigValidationError>) =
+                    local_and_other.iter().partition(|error| {
+                        let path_str = error.file().to_string_lossy();
+                        path_str.contains(".agent")
+                    });
 
-                if !global_errors.is_empty() {
-                    output.push_str("~/.config/ralph-workflow.toml:\n");
-                    for error in global_errors {
-                        let _ = writeln!(output, "  {}", format_single_error(error));
-                    }
-                    output.push('\n');
-                }
+                let local_errors = local_partition.0;
+                let other_errors = local_partition.1;
 
-                if !local_errors.is_empty() {
-                    output.push_str(".agent/ralph-workflow.toml:\n");
-                    for error in local_errors {
-                        let _ = writeln!(output, "  {}", format_single_error(error));
-                    }
-                    output.push('\n');
-                }
+                // Build output string functionally
+                let global_section = if global_errors.is_empty() {
+                    String::new()
+                } else {
+                    let error_lines: String = global_errors
+                        .iter()
+                        .map(|error| format!("  {}", format_single_error(error)))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!("~/.config/ralph-workflow.toml:\n{}\n\n", error_lines)
+                };
 
-                if !other_errors.is_empty() {
-                    for error in other_errors {
-                        let _ = write!(
-                            output,
-                            "{}:\n  {}\n",
-                            error.file().display(),
-                            format_single_error(error)
-                        );
-                    }
-                    output.push('\n');
-                }
+                let local_section = if local_errors.is_empty() {
+                    String::new()
+                } else {
+                    let error_lines: String = local_errors
+                        .iter()
+                        .map(|error| format!("  {}", format_single_error(error)))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!(".agent/ralph-workflow.toml:\n{}\n\n", error_lines)
+                };
 
-                output.push_str(
-                    "Fix these errors and try again, or run `ralph --check-config` for details.",
-                );
-                output
+                let other_section = if other_errors.is_empty() {
+                    String::new()
+                } else {
+                    let error_lines: String = other_errors
+                        .iter()
+                        .map(|error| {
+                            format!(
+                                "{}:\n  {}\n",
+                                error.file().display(),
+                                format_single_error(error)
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    format!("{}\n", error_lines)
+                };
+
+                format!(
+                    "Error: Configuration invalid - cannot start Ralph\n\n{}{}{}{}Fix these errors and try again, or run `ralph --check-config` for details.",
+                    global_section,
+                    local_section,
+                    other_section,
+                    if other_errors.is_empty() { "" } else { "\n" }
+                )
             }
             Self::Io(e) => e.to_string(),
         }

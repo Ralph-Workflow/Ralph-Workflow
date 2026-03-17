@@ -6,7 +6,7 @@
 
 ---
 
-## 🚨 TOP PRIORITY: Fix Issues Immediately
+## 🚨 TOP PRIORITY: Fix ALL Pre-existing Issues Immediately It does not matter if something is Pre-existing
 **Every surfaced issue becomes your #1 priority immediately.** No exceptions, no "pre-existing" carve-outs.
 
 1. Discover any issue → STOP → Fix it completely → Verify clean → Return to original task.

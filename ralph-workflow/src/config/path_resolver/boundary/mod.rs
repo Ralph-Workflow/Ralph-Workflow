@@ -1,1 +1,3 @@
-pub mod memory_env;
+pub mod real_env;
+
+pub use real_env::RealConfigEnvironment;

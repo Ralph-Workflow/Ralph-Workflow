@@ -9,82 +9,103 @@ fn parse_ccs_profiles_from_config_yaml(content: &str) -> std::collections::HashM
     //     type: api
     //     settings: "~/.ccs/glm.settings.json"
 
-    // Process lines functionally - each line transforms state
-    let (_, result) = content.lines().fold(
-        (ParserState::default(), std::collections::HashMap::new()),
-        |(state, mut out), raw_line| {
-            let line = raw_line.trim_end();
-            if line.trim().is_empty() {
-                return (state, out);
-            }
-            let trimmed = line.trim_start();
-            if trimmed.starts_with('#') {
-                return (state, out);
-            }
+    // Process lines recursively - functional state machine
+    let lines: Vec<&str> = content.lines().collect();
+    process_lines(&lines, 0, ParserState::default(), Vec::new())
+        .into_iter()
+        .collect()
+}
 
-            let indent = line.len().saturating_sub(trimmed.len());
+fn process_lines(
+    lines: &[&str],
+    index: usize,
+    state: ParserState,
+    entries: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    if index >= lines.len() {
+        return entries;
+    }
 
-            // State machine transitions
-            let new_state = if !state.in_profiles {
-                if trimmed == "profiles:" {
-                    ParserState {
-                        in_profiles: true,
-                        profiles_indent: indent,
-                        ..ParserState::default()
-                    }
+    let line = lines[index];
+    let trimmed = line.trim_end();
+    if trimmed.trim().is_empty() {
+        return process_lines(lines, index + 1, state, entries);
+    }
+    let trimmed_start = trimmed.trim_start();
+    if trimmed_start.starts_with('#') {
+        return process_lines(lines, index + 1, state, entries);
+    }
+
+    let indent = trimmed.len().saturating_sub(trimmed_start.len());
+
+    // State machine transitions - return new state and potentially new entries
+    if !state.in_profiles {
+        if trimmed_start == "profiles:" {
+            let new_state = ParserState {
+                in_profiles: true,
+                profiles_indent: indent,
+                ..ParserState::default()
+            };
+            return process_lines(lines, index + 1, new_state, entries);
+        }
+        return process_lines(lines, index + 1, state, entries);
+    }
+
+    if indent <= state.profiles_indent {
+        return process_lines(lines, index + 1, ParserState::default(), entries);
+    }
+
+    if state.current_profile.is_none() {
+        if let Some((name, rest)) = trimmed_start.split_once(':') {
+            let profile_name = name.trim().to_string();
+            let rest = rest.trim();
+            let new_profile = Some((profile_name.clone(), indent));
+
+            // Build new entries list using iterator chain (no mutation)
+            let new_entries = if rest.contains("settings:") {
+                if let Some(settings) = extract_yaml_inline_settings_value(rest) {
+                    entries.into_iter().chain([(profile_name, settings)]).collect()
                 } else {
-                    state
-                }
-            } else if indent <= state.profiles_indent {
-                // End of profiles block
-                ParserState::default()
-            } else if state.current_profile.is_none() {
-                // Looking for profile entry
-                if let Some((name, rest)) = trimmed.split_once(':') {
-                    let profile_name = name.trim().to_string();
-                    let rest = rest.trim();
-                    let new_profile = Some((profile_name.clone(), indent));
-
-                    // Check for inline mapping form: name: { ..., settings: "..." }
-                    if rest.contains("settings:") {
-                        if let Some(settings) = extract_yaml_inline_settings_value(rest) {
-                            out.insert(profile_name, settings);
-                        }
-                    }
-
-                    ParserState {
-                        in_profiles: state.in_profiles,
-                        profiles_indent: state.profiles_indent,
-                        current_profile: new_profile,
-                    }
-                } else {
-                    state
-                }
-            } else if let Some((profile_name, profile_indent)) = state.current_profile.as_ref() {
-                if indent <= *profile_indent {
-                    ParserState {
-                        in_profiles: state.in_profiles,
-                        profiles_indent: state.profiles_indent,
-                        current_profile: None,
-                    }
-                } else if let Some(value) = trimmed.strip_prefix("settings:") {
-                    let settings = unquote_yaml_scalar(value.trim());
-                    if !settings.is_empty() {
-                        out.insert(profile_name.clone(), settings);
-                    }
-                    state
-                } else {
-                    state
+                    entries
                 }
             } else {
-                state
+                entries
             };
 
-            (new_state, out)
-        },
-    );
+            let new_state = ParserState {
+                in_profiles: state.in_profiles,
+                profiles_indent: state.profiles_indent,
+                current_profile: new_profile,
+            };
+            return process_lines(lines, index + 1, new_state, new_entries);
+        }
+        return process_lines(lines, index + 1, state, entries);
+    }
 
-    result
+    if let Some((profile_name, profile_indent)) = state.current_profile.as_ref() {
+        if indent <= *profile_indent {
+            let new_state = ParserState {
+                in_profiles: state.in_profiles,
+                profiles_indent: state.profiles_indent,
+                current_profile: None,
+            };
+            return process_lines(lines, index + 1, new_state, entries);
+        }
+
+        if let Some(value) = trimmed_start.strip_prefix("settings:") {
+            let settings = unquote_yaml_scalar(value.trim());
+            if !settings.is_empty() {
+                // Build new entries list using iterator chain (no mutation)
+                let new_entries: Vec<_> = entries
+                    .into_iter()
+                    .chain([(profile_name.clone(), settings)])
+                    .collect();
+                return process_lines(lines, index + 1, state, new_entries);
+            }
+        }
+    }
+
+    process_lines(lines, index + 1, state, entries)
 }
 
 #[derive(Default)]

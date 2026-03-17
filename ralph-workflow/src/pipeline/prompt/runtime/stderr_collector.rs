@@ -1,7 +1,7 @@
 use std::io::{self, Read};
 use std::sync::Arc;
 
-pub(crate) fn collect_stderr_with_cap_and_drain<R: Read>(
+pub fn collect_stderr_with_cap_and_drain<R: Read>(
     mut reader: R,
     max_bytes: usize,
     cancel: &std::sync::atomic::AtomicBool,
@@ -50,7 +50,7 @@ pub(crate) fn collect_stderr_with_cap_and_drain<R: Read>(
     Ok(stderr_output)
 }
 
-pub(crate) fn cancel_and_join_stderr_collector(
+pub fn cancel_and_join_stderr_collector(
     cancel: &Arc<std::sync::atomic::AtomicBool>,
     stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
     join_timeout: std::time::Duration,

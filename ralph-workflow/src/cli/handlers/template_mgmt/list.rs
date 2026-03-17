@@ -35,11 +35,14 @@ fn handle_template_list_impl(colors: Colors, include_deprecated: bool) {
     let _ = writeln!(std::io::stdout(), "{}{}{}", colors.bold(), header, colors.reset());
     let _ = writeln!(std::io::stdout());
 
-    for (name, _, description) in {
-        let mut items: Vec<_> = filtered_templates.clone();
-        items.sort_by(|a, b| a.0.cmp(b.0));
-        items
-    } {
+    // Sort templates by name using itertools
+    let sorted_templates: Vec<_> = filtered_templates
+        .iter()
+        .sorted_by(|a, b| a.0.cmp(b.0))
+        .collect();
+
+    // Print templates using iterator for_each
+    sorted_templates.iter().for_each(|(name, _, description)| {
         // Show deprecated marker in the list
         let is_deprecated = template_catalog::get_template_metadata(name).is_some_and(|meta| meta.deprecated);
 
@@ -50,7 +53,7 @@ fn handle_template_list_impl(colors: Colors, include_deprecated: bool) {
         };
 
         let _ = writeln!(std::io::stdout(), "  {}{}{}{}  {}{}{}", colors.cyan(), name, colors.reset(), deprecated_marker, colors.dim(), description, colors.reset());
-    }
+    });
 
     let _ = writeln!(std::io::stdout());
     if include_deprecated {

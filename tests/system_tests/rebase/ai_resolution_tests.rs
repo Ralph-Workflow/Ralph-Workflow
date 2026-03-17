@@ -570,9 +570,7 @@ fn test_recovery_from_checkpoint() {
 #[serial]
 fn test_rebase_lock_prevents_concurrent() {
     with_default_timeout(|| {
-        use ralph_workflow::git_helpers::rebase_state_machine::{
-            acquire_rebase_lock, release_rebase_lock,
-        };
+        use ralph_workflow::git_helpers::{acquire_rebase_lock, release_rebase_lock};
 
         with_temp_cwd(|_dir| {
             // Acquire lock
@@ -602,9 +600,7 @@ fn test_rebase_lock_prevents_concurrent() {
 #[serial]
 fn test_stale_lock_is_cleaned_up() {
     with_default_timeout(|| {
-        use ralph_workflow::git_helpers::rebase_state_machine::{
-            acquire_rebase_lock, release_rebase_lock,
-        };
+        use ralph_workflow::git_helpers::{acquire_rebase_lock, release_rebase_lock};
 
         with_temp_cwd(|dir| {
             // Manually create a stale lock file

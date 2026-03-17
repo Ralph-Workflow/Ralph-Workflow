@@ -2,8 +2,9 @@
 //
 // This file implements delta handlers for Codex streaming items.
 
+#[cfg(any(test, debug_assertions))]
 use std::io::Write;
-//
+
 // # CCS Spam Prevention Architecture (Layers 1 & 2: Suppress & Accumulate)
 //
 // These handlers work with the delta renderers to implement the first two layers

@@ -135,8 +135,7 @@ cargo test -p ralph-workflow-tests --test integration_tests summary_consistency
 # Release build
 cargo build --release
 
-# Custom lints (dylint) - check for files exceeding line limits
-# This runs the file_too_long lint from lints/file_too_long
+# Custom lints (dylint) - all lints consolidated in ralph_lints
 #
 # IMPORTANT:
 # - Running dylint against the `ralph` binary target can fail the build because the binary uses
@@ -148,7 +147,7 @@ cargo build --release
 # Recommended (library target only):
 make dylint
 # or:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
 ```
 
 **If any command fails or emits ERROR/WARNING diagnostics, FIX IT before continuing.** No ignored tests allowed.

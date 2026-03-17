@@ -2,11 +2,12 @@ use super::*;
 use crate::config::Config;
 use crate::executor::{MockProcessExecutor, ProcessExecutor};
 use crate::logger::{Colors, Logger};
-use crate::pipeline::Timer;
+use crate::runtime::streaming::STDOUT_PUMP_CHANNEL_CAPACITY;
 use crate::workspace::MemoryWorkspace;
 use crate::workspace::Workspace;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -128,23 +129,13 @@ fn cleanup_stdout_pump_sets_cancel_on_parse_error() {
     let executor_arc: Arc<dyn ProcessExecutor> = Arc::new(MockProcessExecutor::new());
     let executor: &dyn ProcessExecutor = executor_arc.as_ref();
 
-    let mut timer = Timer::new();
-    let runtime = PipelineRuntime {
-        timer: &mut timer,
-        logger: &logger,
-        colors: &colors,
-        config: &config,
-        executor,
-        executor_arc: Arc::clone(&executor_arc),
-        workspace: &workspace,
-        workspace_arc: std::sync::Arc::new(workspace.clone()),
-    };
+    let _ = (executor, colors, config, workspace); // Suppress unused warnings
 
     let cancel = Arc::new(AtomicBool::new(false));
     let pump_handle = std::thread::spawn(|| {});
     let parse_result: io::Result<()> = Err(io::Error::other("parse error"));
 
-    cleanup_stdout_pump(pump_handle, &cancel, &runtime, &parse_result);
+    cleanup_stdout_pump(pump_handle, &cancel, &logger, &parse_result);
 
     assert!(
         cancel.load(Ordering::Acquire),

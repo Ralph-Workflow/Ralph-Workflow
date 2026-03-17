@@ -1,4 +1,7 @@
-use super::*;
+// Test moved to runtime boundary - import from there
+use crate::runtime::streaming::streaming_line_reader::MAX_BUFFER_SIZE;
+use crate::runtime::streaming::StreamingLineReader;
+use std::io::{BufRead, Cursor};
 
 #[test]
 fn test_streaming_line_reader_rejects_single_line_larger_than_max_buffer_size() {

@@ -99,97 +99,111 @@ impl CheckpointBuilder {
 
     /// Set the phase and iteration information.
     #[must_use]
-    pub const fn phase(
-        mut self,
-        phase: PipelinePhase,
-        iteration: u32,
-        total_iterations: u32,
-    ) -> Self {
-        self.phase = Some(phase);
-        self.iteration = iteration;
-        self.total_iterations = total_iterations;
-        self
+    pub fn phase(self, phase: PipelinePhase, iteration: u32, total_iterations: u32) -> Self {
+        Self {
+            phase: Some(phase),
+            iteration,
+            total_iterations,
+            ..self
+        }
     }
 
     /// Set the reviewer pass information.
     #[must_use]
-    pub const fn reviewer_pass(mut self, pass: u32, total: u32) -> Self {
-        self.reviewer_pass = pass;
-        self.total_reviewer_passes = total;
-        self
+    pub fn reviewer_pass(self, pass: u32, total: u32) -> Self {
+        Self {
+            reviewer_pass: pass,
+            total_reviewer_passes: total,
+            ..self
+        }
     }
 
     /// Set the agent names.
     #[must_use]
-    pub fn agents(mut self, developer: &str, reviewer: &str) -> Self {
-        self.developer_agent = Some(developer.to_string());
-        self.reviewer_agent = Some(reviewer.to_string());
-        self
+    pub fn agents(self, developer: &str, reviewer: &str) -> Self {
+        Self {
+            developer_agent: Some(developer.to_string()),
+            reviewer_agent: Some(reviewer.to_string()),
+            ..self
+        }
     }
 
     /// Set the CLI arguments snapshot.
     #[must_use]
-    pub fn cli_args(mut self, args: CliArgsSnapshot) -> Self {
-        self.cli_args = Some(args);
-        self
+    pub fn cli_args(self, args: CliArgsSnapshot) -> Self {
+        Self {
+            cli_args: Some(args),
+            ..self
+        }
     }
 
     /// Set the last template substitution log for validation and observability.
     #[must_use]
-    pub fn with_last_substitution_log(
-        mut self,
-        log: Option<crate::prompts::SubstitutionLog>,
-    ) -> Self {
-        self.last_substitution_log = log;
-        self
+    pub fn with_last_substitution_log(self, log: Option<crate::prompts::SubstitutionLog>) -> Self {
+        Self {
+            last_substitution_log: log,
+            ..self
+        }
     }
 
     /// Set the developer agent configuration snapshot.
     #[must_use]
-    pub fn developer_config(mut self, config: AgentConfigSnapshot) -> Self {
-        self.developer_agent_config = Some(config);
-        self
+    pub fn developer_config(self, config: AgentConfigSnapshot) -> Self {
+        Self {
+            developer_agent_config: Some(config),
+            ..self
+        }
     }
 
     /// Set the reviewer agent configuration snapshot.
     #[must_use]
-    pub fn reviewer_config(mut self, config: AgentConfigSnapshot) -> Self {
-        self.reviewer_agent_config = Some(config);
-        self
+    pub fn reviewer_config(self, config: AgentConfigSnapshot) -> Self {
+        Self {
+            reviewer_agent_config: Some(config),
+            ..self
+        }
     }
 
     /// Set the rebase state.
     #[must_use]
-    pub fn rebase_state(mut self, state: RebaseState) -> Self {
-        self.rebase_state = state;
-        self
+    pub fn rebase_state(self, state: RebaseState) -> Self {
+        Self {
+            rebase_state: state,
+            ..self
+        }
     }
 
     /// Set the config path.
     #[must_use]
-    pub fn config_path(mut self, path: Option<std::path::PathBuf>) -> Self {
-        self.config_path = path;
-        self
+    pub fn config_path(self, path: Option<std::path::PathBuf>) -> Self {
+        Self {
+            config_path: path,
+            ..self
+        }
     }
 
     /// Set the git user name and email.
     #[must_use]
-    pub fn git_identity(mut self, name: Option<&str>, email: Option<&str>) -> Self {
-        self.git_user_name = name.map(String::from);
-        self.git_user_email = email.map(String::from);
-        self
+    pub fn git_identity(self, name: Option<&str>, email: Option<&str>) -> Self {
+        Self {
+            git_user_name: name.map(String::from),
+            git_user_email: email.map(String::from),
+            ..self
+        }
     }
 
     /// Set the process executor for external process execution.
     #[must_use]
-    pub fn with_executor(mut self, executor: Arc<dyn ProcessExecutor>) -> Self {
-        self.executor = Some(executor);
-        self
+    pub fn with_executor(self, executor: Arc<dyn ProcessExecutor>) -> Self {
+        Self {
+            executor: Some(executor),
+            ..self
+        }
     }
 
     /// Capture CLI arguments from a Config.
     #[must_use]
-    pub fn capture_cli_args(mut self, config: &Config) -> Self {
+    pub fn capture_cli_args(self, config: &Config) -> Self {
         let review_depth_str = Some(review_depth_to_string(config.review_depth).to_string());
         let snapshot = crate::checkpoint::state::CliArgsSnapshotBuilder::new(
             config.developer_iters,
@@ -201,8 +215,10 @@ impl CheckpointBuilder {
         .show_streaming_metrics(config.show_streaming_metrics)
         .reviewer_json_parser(config.reviewer_json_parser.clone())
         .build();
-        self.cli_args = Some(snapshot);
-        self
+        Self {
+            cli_args: Some(snapshot),
+            ..self
+        }
     }
 
     /// Capture all configuration from a `PhaseContext` and `AgentRegistry`.
@@ -277,9 +293,11 @@ impl CheckpointBuilder {
     /// This is a convenience method that extracts the `executor_arc` from `PhaseContext`
     /// and sets it for the checkpoint builder.
     #[must_use]
-    pub fn with_executor_from_context(mut self, executor_arc: Arc<dyn ProcessExecutor>) -> Self {
-        self.executor = Some(executor_arc);
-        self
+    pub fn with_executor_from_context(self, executor_arc: Arc<dyn ProcessExecutor>) -> Self {
+        Self {
+            executor: Some(executor_arc),
+            ..self
+        }
     }
 
     /// Attach execution history from a `PhaseContext`.
@@ -287,9 +305,11 @@ impl CheckpointBuilder {
     /// This method captures the execution history from the phase context
     /// and attaches it to the checkpoint.
     #[must_use]
-    pub fn with_execution_history(mut self, history: ExecutionHistory) -> Self {
-        self.execution_history = Some(history);
-        self
+    pub fn with_execution_history(self, history: ExecutionHistory) -> Self {
+        Self {
+            execution_history: Some(history),
+            ..self
+        }
     }
 
     /// Set the entire prompt history from a `HashMap`.
@@ -301,15 +321,18 @@ impl CheckpointBuilder {
     /// * `history` - `HashMap` of prompt keys to `PromptHistoryEntry` values
     #[must_use]
     pub fn with_prompt_history(
-        mut self,
+        self,
         history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     ) -> Self {
-        self.prompt_history = if history.is_empty() {
+        let prompt_history = if history.is_empty() {
             None
         } else {
             Some(history)
         };
-        self
+        Self {
+            prompt_history,
+            ..self
+        }
     }
 
     /// Attach reducer-managed prompt input materialization state.
@@ -318,21 +341,26 @@ impl CheckpointBuilder {
     /// oversize handling that was already materialized for a given content id and
     /// consumer signature.
     #[must_use]
-    pub fn with_prompt_inputs(mut self, prompt_inputs: PromptInputsState) -> Self {
+    pub fn with_prompt_inputs(self, prompt_inputs: PromptInputsState) -> Self {
         let is_empty = prompt_inputs.planning.is_none()
             && prompt_inputs.development.is_none()
             && prompt_inputs.review.is_none()
             && prompt_inputs.commit.is_none()
             && prompt_inputs.xsd_retry_last_output.is_none();
-        self.prompt_inputs = if is_empty { None } else { Some(prompt_inputs) };
-        self
+        let prompt_inputs = if is_empty { None } else { Some(prompt_inputs) };
+        Self {
+            prompt_inputs,
+            ..self
+        }
     }
 
     /// Set prompt permission state for resume-safe restoration.
     #[must_use]
-    pub fn with_prompt_permissions(mut self, prompt_permissions: PromptPermissionsState) -> Self {
-        self.prompt_permissions = prompt_permissions;
-        self
+    pub fn with_prompt_permissions(self, prompt_permissions: PromptPermissionsState) -> Self {
+        Self {
+            prompt_permissions,
+            ..self
+        }
     }
 
     /// Set the logging `run_id` (timestamp-based) for per-run log directory.
@@ -340,9 +368,11 @@ impl CheckpointBuilder {
     /// This should be set from the `RunLogContext.run_id()` to ensure resume
     /// continuity - when resuming, logs will continue in the same directory.
     #[must_use]
-    pub fn with_log_run_id(mut self, log_run_id: String) -> Self {
-        self.log_run_id = Some(log_run_id);
-        self
+    pub fn with_log_run_id(self, log_run_id: String) -> Self {
+        Self {
+            log_run_id: Some(log_run_id),
+            ..self
+        }
     }
 
     /// Build the checkpoint without workspace.

@@ -178,13 +178,8 @@ impl ParsingTraceLog {
             self.attempt_number
         ));
 
-        // Build the content in memory first
-        let mut content = String::new();
-        Self::write_header_to_string(&mut content, self);
-        Self::write_raw_output_to_string(&mut content, self);
-        Self::write_parsing_steps_to_string(&mut content, self);
-        Self::write_final_message_to_string(&mut content, self);
-        Self::write_footer_to_string(&mut content);
+        // Build the content using string concatenation
+        let content = Self::build_trace_content(self);
 
         // Write using workspace
         workspace.create_dir_all(log_dir)?;
@@ -193,135 +188,147 @@ impl ParsingTraceLog {
         Ok(trace_path)
     }
 
-    // String-based write helpers for workspace support
-    fn write_header_to_string(s: &mut String, trace: &Self) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "================================================================================"
-        );
-        let _ = writeln!(
-            s,
-            "PARSING TRACE LOG - Attempt #{:03}",
-            trace.attempt_number
-        );
-        let _ = writeln!(
-            s,
-            "================================================================================"
-        );
-        let _ = writeln!(s);
-        let _ = writeln!(s, "Agent:     {}", trace.agent);
-        let _ = writeln!(s, "Strategy:  {}", trace.strategy);
-        let _ = writeln!(
-            s,
-            "Timestamp: {}",
+    /// Build the complete trace content as a string.
+    #[must_use]
+    fn build_trace_content(trace: &Self) -> String {
+        [
+            Self::header_to_string(trace).as_str(),
+            &Self::raw_output_to_string(trace),
+            &Self::parsing_steps_to_string(trace),
+            &Self::final_message_to_string(trace),
+            Self::footer_to_string().as_str(),
+        ]
+        .concat()
+    }
+
+    /// Convert header to string.
+    #[must_use]
+    fn header_to_string(trace: &Self) -> String {
+        format!(
+            "\
+================================================================================
+PARSING TRACE LOG - Attempt #{:03}
+================================================================================
+
+Agent:     {}
+Strategy:  {}
+Timestamp: {}
+
+",
+            trace.attempt_number,
+            trace.agent,
+            trace.strategy,
             trace.timestamp.format("%Y-%m-%d %H:%M:%S %Z")
-        );
-        let _ = writeln!(s);
+        )
     }
 
-    fn write_raw_output_to_string(s: &mut String, trace: &Self) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "RAW AGENT OUTPUT");
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-        match &trace.raw_output {
-            Some(output) => {
-                let _ = writeln!(s, "{output}");
-            }
-            None => {
-                let _ = writeln!(s, "[No raw output captured]");
-            }
-        }
-        let _ = writeln!(s);
+    /// Convert raw output to string.
+    #[must_use]
+    fn raw_output_to_string(trace: &Self) -> String {
+        format!(
+            "\
+--------------------------------------------------------------------------------
+RAW AGENT OUTPUT
+--------------------------------------------------------------------------------
+
+{}
+
+",
+            trace.raw_output.as_deref().unwrap_or("[No raw output captured]")
+        )
     }
 
-    fn write_parsing_steps_to_string(s: &mut String, trace: &Self) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "PARSING STEPS");
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-
+    /// Convert parsing steps to string.
+    #[must_use]
+    fn parsing_steps_to_string(trace: &Self) -> String {
         if trace.steps.is_empty() {
-            let _ = writeln!(s, "[No parsing steps recorded]");
-        } else {
-            for step in &trace.steps {
-                let status = if step.success {
-                    "✓ SUCCESS"
+            return "\
+--------------------------------------------------------------------------------
+PARSING STEPS
+--------------------------------------------------------------------------------
+
+[No parsing steps recorded]
+
+"
+            .to_string();
+        }
+
+        let steps_content: String = trace
+            .steps
+            .iter()
+            .map(|step| {
+                let status = if step.success { "✓ SUCCESS" } else { "✗ FAILED" };
+                let step_str = format!("{}. {} [{}]\n", step.step_number, step.description, status);
+
+                let input_str = step
+                    .input
+                    .as_ref()
+                    .map(|input| {
+                        input
+                            .lines()
+                            .map(|line| format!("   INPUT:\n   {}\n", line))
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default();
+
+                let result_str = step
+                    .result
+                    .as_ref()
+                    .map(|result| {
+                        result
+                            .lines()
+                            .map(|line| format!("   RESULT:\n   {}\n", line))
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default();
+
+                let details_str = if !step.details.is_empty() {
+                    format!("   DETAILS: {}\n", step.details)
                 } else {
-                    "✗ FAILED"
+                    String::new()
                 };
-                let _ = writeln!(s, "{}. {} [{}]", step.step_number, step.description, status);
-                let _ = writeln!(s);
 
-                if let Some(input) = &step.input {
-                    let _ = writeln!(s, "   INPUT:");
-                    for line in input.lines() {
-                        let _ = writeln!(s, "   {line}");
-                    }
-                    let _ = writeln!(s);
-                }
+                format!("{}{}{}{}", step_str, input_str, result_str, details_str)
+            })
+            .collect();
 
-                if let Some(result) = &step.result {
-                    let _ = writeln!(s, "   RESULT:");
-                    for line in result.lines() {
-                        let _ = writeln!(s, "   {line}");
-                    }
-                    let _ = writeln!(s);
-                }
+        format!(
+            "\
+--------------------------------------------------------------------------------
+PARSING STEPS
+--------------------------------------------------------------------------------
 
-                if !step.details.is_empty() {
-                    let _ = writeln!(s, "   DETAILS: {}", step.details);
-                    let _ = writeln!(s);
-                }
-            }
-        }
-        let _ = writeln!(s);
+{}
+",
+            steps_content
+        )
     }
 
-    fn write_final_message_to_string(s: &mut String, trace: &Self) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "FINAL EXTRACTED MESSAGE");
-        let _ = writeln!(
-            s,
-            "--------------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-        match &trace.final_message {
-            Some(message) => {
-                let _ = writeln!(s, "{message}");
-            }
-            None => {
-                let _ = writeln!(s, "[No message extracted]");
-            }
-        }
-        let _ = writeln!(s);
+    /// Convert final message to string.
+    #[must_use]
+    fn final_message_to_string(trace: &Self) -> String {
+        format!(
+            "\
+--------------------------------------------------------------------------------
+FINAL EXTRACTED MESSAGE
+--------------------------------------------------------------------------------
+
+{}
+
+",
+            trace.final_message.as_deref().unwrap_or("[No message extracted]")
+        )
     }
 
-    fn write_footer_to_string(s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "================================================================================"
-        );
+    /// Convert footer to string.
+    #[must_use]
+    fn footer_to_string() -> String {
+        "\
+================================================================================
+END OF TRACE LOG
+================================================================================
+"
+        .to_string()
     }
 }
 

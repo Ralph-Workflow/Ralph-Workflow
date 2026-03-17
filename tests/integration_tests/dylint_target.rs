@@ -58,8 +58,9 @@ fn make_dylint_target_forces_nightly_cargo_resolution() {
         );
 
         assert!(
-            dylint_body.contains("cargo dylint -q --all -p ralph-workflow -- --lib --quiet"),
-            "dylint target should lint the ralph-workflow library target with workspace metadata"
+            dylint_body
+                .contains("cargo dylint -q --lib ralph_lints -p ralph-workflow -- --lib --quiet"),
+            "dylint target should lint the ralph-workflow library target with ralph_lints only"
         );
         assert!(
             !dylint_body.contains("cargo dylint -q --path"),

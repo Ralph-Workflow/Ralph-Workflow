@@ -161,5 +161,9 @@ pub use rebase_checkpoint::RebaseCheckpoint;
 #[cfg(any(test, feature = "test-utils"))]
 pub use rebase_state_machine::RecoveryAction;
 
+// Re-export rebase lock functions for tests only
+#[cfg(any(test, feature = "test-utils"))]
+pub use runtime::lock::{acquire_rebase_lock, release_rebase_lock};
+
 #[cfg(test)]
 mod tests;

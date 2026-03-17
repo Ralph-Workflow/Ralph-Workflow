@@ -18,6 +18,7 @@
 //! ## Suppression+Flush (Basic/None Modes)
 //!
 //! In non-TTY modes:
+//!
 //! 1. Accumulate all deltas silently (suppress per-delta output)
 //! 2. At `message_stop`, flush accumulated content ONCE per block
 //! 3. Prevents CCS spam (hundreds of "[ccs/glm]" lines)
@@ -35,6 +36,9 @@
 //! - **`ThinkingDelta`**: Extended thinking blocks (Claude reasoning)
 //! - **`ToolUseDelta`**: Tool use parameters (partial JSON chunks)
 
+#[cfg(any(test, debug_assertions))]
+use std::io::Write;
+
 use crate::json_parser::delta_display::{
     compute_append_only_suffix, sanitize_for_display, DeltaDisplayFormatter, DeltaRenderer,
     TextDeltaRenderer,
@@ -42,7 +46,6 @@ use crate::json_parser::delta_display::{
 use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::{ContentBlockDelta, ContentType};
-use std::io::Write;
 
 /// Format tool input for display (convert non-string values to JSON).
 fn format_tool_input(value: &serde_json::Value) -> String {

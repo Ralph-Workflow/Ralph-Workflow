@@ -1,5 +1,7 @@
 # Lint Policy Alignment Implementation Plan
 
+> **STATUS:** This plan is outdated. All custom lints have been consolidated into `ralph_lints` for performance reasons. The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods, forbid_interior_mutability) have been removed.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Align workspace lint configuration, crate-root lint documentation, and custom dylints with the repository style guide so enforcement matches the documented architecture instead of accidental historical drift.
@@ -36,9 +38,11 @@ Re-run the targeted lint-crate tests if this task introduced any.
 
 ### Task 2: Fix `file_too_long` so enforcement matches the style guide
 
+> **Note:** `file_too_long` is now in `lints/ralph_lints/src/file_too_long.rs`
+
 **Files:**
-- Modify: `lints/file_too_long/src/lib.rs`
-- Test: `lints/file_too_long/src/lib.rs`
+- Modify: `lints/ralph_lints/src/file_too_long.rs`
+- Test: `lints/ralph_lints`
 - Modify: `docs/tooling/dylint.md`
 
 **Step 1: Write the failing test**
@@ -47,7 +51,7 @@ Add unit tests around a new file-length classification helper proving that sub-1
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo +nightly test` in `lints/file_too_long`
+Run: `cargo +nightly test` in `lints/ralph_lints`
 
 Expected: FAIL because the current implementation still treats 500+ lines as a deny-level violation.
 
@@ -60,7 +64,7 @@ Expected: FAIL because the current implementation still treats 500+ lines as a d
 
 **Step 4: Run test to verify it passes**
 
-Run: `cargo +nightly test` in `lints/file_too_long`
+Run: `cargo +nightly test` in `lints/ralph_lints`
 
 Expected: PASS.
 
@@ -140,7 +144,7 @@ N/A beyond the targeted lint-crate tests already added.
 
 Run the smallest relevant commands first, then full verification:
 
-- `cargo +nightly test` in `lints/file_too_long`
+- `cargo +nightly test` in `lints/ralph_lints`
 - `cargo clippy -p ralph-workflow -p ralph-workflow-tests -p test-helpers --all-targets --all-features -- -D warnings`
 - `cargo clippy -p xtask --all-targets -- -D warnings`
 - `cargo clippy -p ralph-gui --all-targets -- -D warnings`

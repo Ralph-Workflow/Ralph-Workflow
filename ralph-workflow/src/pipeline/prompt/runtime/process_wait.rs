@@ -3,7 +3,7 @@ use crate::pipeline::prompt::PipelineRuntime;
 use std::io;
 use std::sync::Arc;
 
-pub(crate) fn wait_for_completion_and_collect_stderr(
+pub fn wait_for_completion_and_collect_stderr(
     child_arc: &Arc<std::sync::Mutex<Box<dyn crate::executor::AgentChild>>>,
     stderr_join_handle: &mut Option<std::thread::JoinHandle<io::Result<String>>>,
     monitor_handle: &mut Option<std::thread::JoinHandle<MonitorResult>>,

@@ -2,6 +2,17 @@
 
 This repository uses [dylint](https://github.com/trailofbits/dylint) for custom Rust lints.
 
+## Consolidation: All Lints in ralph_lints
+
+**All custom lints have been consolidated into a single crate: `ralph_lints`.**
+
+This was done for performance reasons:
+- Building multiple separate lint crates (`--all`) significantly increases dylint driver build time
+- Loading a single consolidated lint library reduces initialization overhead
+- Faster iteration cycles during development
+
+The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods, forbid_interior_mutability) have been removed. All lint implementations are now located in `lints/ralph_lints/src/`.
+
 ## Lint Severity Levels
 
 The dylint lints are configured at **Deny** level in their definitions (e.g., `pub FORBID_MUT_BINDING, Deny, ...`). This means violations cause build failures by default. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
@@ -47,6 +58,9 @@ For practical examples of how to rewrite imperative code to satisfy these lints,
 | `forbid_imperative_loops` | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules |
 | `forbid_mutating_receiver_methods` | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module |
 | `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
+| `forbid_terminal_output` | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules |
+| `forbid_io_effects` | Rejects direct file I/O operations (`std::fs`, `std::io`) outside boundary modules |
+| `boundary_function_too_complex` | Flags boundary functions exceeding a complexity threshold |
 
 ### Boundary modules
 
@@ -76,13 +90,11 @@ near the top of the file. When `cargo xtask verify` sees that marker, it prints
 ## Running Lints
 
 ```bash
-# Run all custom lints
-cargo dylint --all
-
-# Run all custom lints (recommended: via make)
+# Run all custom lints (via make - recommended)
 make dylint
-# or run a specific lint:
-cargo dylint --path lints/file_too_long -p ralph-workflow -- --lib --quiet
+
+# Run using cargo dylint directly with ralph_lints
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
 ```
 
 ## Rust LSP Integration
@@ -111,12 +123,12 @@ OpenCode v1.2.27 rejects a top-level `lsp` key in `opencode.json`, so this repos
 
 ## Developing Lints
 
-Custom lints are in the `lints/` directory. Each lint is a separate crate that compiles to a dynamic library.
+Custom lints are consolidated in `lints/ralph_lints/`. Each lint module is located in `lints/ralph_lints/src/`.
 
-To build and test a lint:
+To build and test lints:
 
 ```bash
-cd lints/file_too_long
+cd lints/ralph_lints
 cargo +nightly test
 ```
 
@@ -145,7 +157,7 @@ make dylint
 When `CARGO_HOME` points to a writable temp directory in a sandboxed environment, `make dylint`
 will reuse the existing `~/.cargo/registry/cache` and `~/.cargo/registry/index` data when
 available and automatically switch Cargo to offline mode. This avoids unnecessary network access
-while still allowing the local lint crate under `lints/file_too_long` to build.
+while still allowing the lint crate under `lints/ralph_lints` to build.
 
 ## Known Issues
 

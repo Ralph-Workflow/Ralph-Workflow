@@ -315,7 +315,8 @@ pub fn execute_dylint(
         cmd.arg("-q");
     }
 
-    cmd.arg("--all")
+    cmd.arg("--lib")
+        .arg("ralph_lints")
         .arg("-p")
         .arg("ralph-workflow")
         .arg("--")

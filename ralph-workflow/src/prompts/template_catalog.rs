@@ -5,7 +5,7 @@
 //! This module provides a single source of truth for all embedded templates,
 //! consolidating scattered `include_str!` calls across the codebase.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Metadata about an embedded template.
 #[derive(Debug, Clone)]
@@ -49,27 +49,27 @@ pub fn get_template_metadata(name: &str) -> Option<&'static EmbeddedTemplate> {
 /// A vector of all embedded templates with metadata, sorted by name.
 #[must_use]
 pub fn list_all_templates() -> Vec<&'static EmbeddedTemplate> {
-    let mut templates: Vec<&EmbeddedTemplate> = EMBEDDED_TEMPLATES.values().collect();
-    templates.sort_by_key(|t| t.name);
-    templates
+    // BTreeMap iterates values in key-sorted order
+    EMBEDDED_TEMPLATES.values().collect()
 }
 
 /// Get all templates as a map.
 ///
 /// Returns templates in the format used by CLI template management code.
 #[must_use]
-pub fn get_templates_map() -> HashMap<String, (String, String)> {
-    let mut map = HashMap::new();
-    for template in list_all_templates() {
-        map.insert(
-            template.name.to_string(),
+pub fn get_templates_map() -> BTreeMap<String, (String, String)> {
+    list_all_templates()
+        .into_iter()
+        .map(|template| {
             (
-                template.content.to_string(),
-                template.description.to_string(),
-            ),
-        );
-    }
-    map
+                template.name.to_string(),
+                (
+                    template.content.to_string(),
+                    template.description.to_string(),
+                ),
+            )
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -80,9 +80,9 @@ pub fn get_templates_map() -> HashMap<String, (String, String)> {
 ///
 /// All templates are embedded at compile time using `include_str!`.
 /// User templates in `~/.config/ralph/templates/*.txt` override these.
-static EMBEDDED_TEMPLATES: std::sync::LazyLock<HashMap<&str, EmbeddedTemplate>> =
+static EMBEDDED_TEMPLATES: std::sync::LazyLock<BTreeMap<&str, EmbeddedTemplate>> =
     std::sync::LazyLock::new(|| {
-        let mut m = HashMap::new();
+        let mut m = BTreeMap::new();
 
         // ============================================================================
         // Commit Templates

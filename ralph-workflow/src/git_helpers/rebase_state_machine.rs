@@ -6,9 +6,7 @@
 
 #![deny(unsafe_code)]
 
-use std::fs;
 use std::io;
-use std::io::Write;
 use std::path::Path;
 
 use crate::workspace::{Workspace, WorkspaceFs};

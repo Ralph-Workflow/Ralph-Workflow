@@ -147,37 +147,34 @@ pub fn load_ccs_env_vars_with_deps(
     // Convert to HashMap<String, String> - functional style with early error termination
     let env_vars: std::collections::HashMap<String, String> = env_obj
         .iter()
-        .try_fold(
-            std::collections::HashMap::new(),
-            |mut acc, (key, value)| {
-                if !is_valid_env_var_name_portable(key) {
-                    return Err(CcsEnvVarsError::InvalidEnvVarName {
-                        path: settings_path.clone(),
-                        key: key.clone(),
-                    });
+        .map(|(key, value)| {
+            if !is_valid_env_var_name_portable(key) {
+                return Err(CcsEnvVarsError::InvalidEnvVarName {
+                    path: settings_path.clone(),
+                    key: key.clone(),
+                });
+            }
+            if is_dangerous_env_var_name(key) {
+                return Err(CcsEnvVarsError::DangerousEnvVar {
+                    path: settings_path.clone(),
+                    key: key.clone(),
+                });
+            }
+            let str_value = value.as_str().ok_or_else(|| {
+                CcsEnvVarsError::NonStringEnvVarValue {
+                    path: settings_path.clone(),
+                    key: key.clone(),
                 }
-                if is_dangerous_env_var_name(key) {
-                    return Err(CcsEnvVarsError::DangerousEnvVar {
-                        path: settings_path.clone(),
-                        key: key.clone(),
-                    });
-                }
-                let str_value = value.as_str().ok_or_else(|| {
-                    CcsEnvVarsError::NonStringEnvVarValue {
-                        path: settings_path.clone(),
-                        key: key.clone(),
-                    }
-                })?;
-                if !is_safe_env_var_value(str_value) {
-                    return Err(CcsEnvVarsError::UnsafeEnvVarValue {
-                        path: settings_path.clone(),
-                        key: key.clone(),
-                    });
-                }
-                acc.insert(key.clone(), str_value.to_string());
-                Ok(acc)
-            },
-        )?;
+            })?;
+            if !is_safe_env_var_value(str_value) {
+                return Err(CcsEnvVarsError::UnsafeEnvVarValue {
+                    path: settings_path.clone(),
+                    key: key.clone(),
+                });
+            }
+            Ok((key.clone(), str_value.to_string()))
+        })
+        .collect::<Result<_, _>>()?;
 
     Ok(env_vars)
 }

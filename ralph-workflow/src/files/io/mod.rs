@@ -27,6 +27,7 @@ pub(in crate::files) mod recovery;
 pub mod agent_files;
 pub mod backup;
 pub mod context;
+pub mod monitoring;
 
 // Re-exports from submodules for API convenience
 pub use agent_files::{

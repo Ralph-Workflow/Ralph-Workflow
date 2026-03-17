@@ -125,6 +125,7 @@
 pub mod agents;
 pub mod app;
 pub mod banner;
+pub mod boundary;
 pub mod checkpoint;
 pub mod cli;
 pub mod cloud;
@@ -137,6 +138,7 @@ pub mod files;
 pub mod git_helpers;
 pub mod guidelines;
 pub mod interrupt;
+pub mod io;
 pub mod json_parser;
 pub mod language_detector;
 pub mod logger;
@@ -149,6 +151,7 @@ pub mod prompts;
 pub mod reducer;
 pub mod rendering;
 pub mod review_metrics;
+pub mod runtime;
 pub mod templates;
 pub mod workspace;
 

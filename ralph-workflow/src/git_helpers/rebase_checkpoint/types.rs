@@ -113,44 +113,50 @@ impl RebaseCheckpoint {
     ///
     /// Resets the phase error count when transitioning to a new phase.
     #[must_use]
-    pub fn with_phase(mut self, phase: RebasePhase) -> Self {
-        // Reset phase error count when transitioning to a new phase
-        if self.phase != phase {
-            self.phase_error_count = 0;
+    pub fn with_phase(self, phase: RebasePhase) -> Self {
+        let phase_error_count = if self.phase != phase { 0 } else { self.phase_error_count };
+        Self {
+            phase,
+            phase_error_count,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            ..self
         }
-        self.phase = phase;
-        self.timestamp = chrono::Utc::now().to_rfc3339();
-        self
     }
 
     /// Add a conflicted file.
     #[must_use]
-    pub fn with_conflicted_file(mut self, file: String) -> Self {
-        if !self.conflicted_files.contains(&file) {
-            self.conflicted_files.push(file);
-        }
-        self
+    pub fn with_conflicted_file(self, file: String) -> Self {
+        let conflicted_files = if !self.conflicted_files.contains(&file) {
+            self.conflicted_files.into_iter().chain(std::iter::once(file)).collect()
+        } else {
+            self.conflicted_files
+        };
+        Self { conflicted_files, ..self }
     }
 
     /// Add a resolved file.
     #[must_use]
-    pub fn with_resolved_file(mut self, file: String) -> Self {
-        if !self.resolved_files.contains(&file) {
-            self.resolved_files.push(file);
-        }
-        self
+    pub fn with_resolved_file(self, file: String) -> Self {
+        let resolved_files = if !self.resolved_files.contains(&file) {
+            self.resolved_files.into_iter().chain(std::iter::once(file)).collect()
+        } else {
+            self.resolved_files
+        };
+        Self { resolved_files, ..self }
     }
 
     /// Add an error.
     ///
     /// Increments both the global error count and the phase-specific error count.
     #[must_use]
-    pub fn with_error(mut self, error: String) -> Self {
-        self.error_count = self.error_count.saturating_add(1);
-        self.phase_error_count = self.phase_error_count.saturating_add(1);
-        self.last_error = Some(error);
-        self.timestamp = chrono::Utc::now().to_rfc3339();
-        self
+    pub fn with_error(self, error: String) -> Self {
+        Self {
+            error_count: self.error_count.saturating_add(1),
+            phase_error_count: self.phase_error_count.saturating_add(1),
+            last_error: Some(error),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            ..self
+        }
     }
 
     /// Check if all conflicts are resolved.

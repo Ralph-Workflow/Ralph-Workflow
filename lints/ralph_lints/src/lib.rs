@@ -15,14 +15,9 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
+mod domain;
 mod boundary;
-mod file_too_long;
-mod forbid_imperative_loops;
-mod forbid_interior_mutability;
-mod forbid_io_effects;
-mod forbid_mut_binding;
-mod forbid_mutating_receiver_methods;
-mod forbid_terminal_output;
+mod runtime;
 
 dylint_linting::dylint_library!();
 
@@ -30,17 +25,18 @@ dylint_linting::dylint_library!();
 #[unsafe(no_mangle)]
 pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint::LintStore) {
     // FP lints: mutation and imperative patterns
-    forbid_mut_binding::register_lints(sess, lint_store);
-    forbid_imperative_loops::register_lints(sess, lint_store);
-    forbid_mutating_receiver_methods::register_lints(sess, lint_store);
-    forbid_interior_mutability::register_lints(sess, lint_store);
+    boundary::forbid_mut_binding::register_lints(sess, lint_store);
+    boundary::forbid_imperative_loops::register_lints(sess, lint_store);
+    boundary::forbid_mutating_receiver_methods::register_lints(sess, lint_store);
+    boundary::forbid_interior_mutability::register_lints(sess, lint_store);
 
     // Boundary lints: I/O effects
-    forbid_terminal_output::register_lints(sess, lint_store);
-    forbid_io_effects::register_lints(sess, lint_store);
+    boundary::forbid_terminal_output::register_lints(sess, lint_store);
+    boundary::forbid_io_effects::register_lints(sess, lint_store);
+    boundary::boundary_function_too_complex::register_lints(sess, lint_store);
 
-    // Code quality lints
-    file_too_long::register_lints(sess, lint_store);
+    // Code quality lints (runtime - uses std::env)
+    runtime::file_length::register_lints(sess, lint_store);
 }
 
 #[cfg(test)]

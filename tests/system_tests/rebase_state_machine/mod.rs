@@ -7,7 +7,7 @@
 use ralph_workflow::git_helpers::rebase_checkpoint::{
     save_rebase_checkpoint, RebaseCheckpoint, RebasePhase,
 };
-use ralph_workflow::git_helpers::rebase_state_machine::{
+use ralph_workflow::git_helpers::{
     acquire_rebase_lock, release_rebase_lock, RebaseLock, RebaseStateMachine,
 };
 use serial_test::serial;

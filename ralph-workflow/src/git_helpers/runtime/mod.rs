@@ -6,6 +6,7 @@
 pub mod agent_phase_state;
 pub mod hooks;
 pub mod identity;
+pub mod lock;
 pub mod wrapper;
 
 pub use agent_phase_state::{AGENT_PHASE_HOOKS_DIR, AGENT_PHASE_RALPH_DIR, AGENT_PHASE_REPO_ROOT};

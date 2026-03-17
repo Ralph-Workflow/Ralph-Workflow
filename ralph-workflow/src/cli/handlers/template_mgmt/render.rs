@@ -6,14 +6,15 @@ pub fn handle_template_render(name: &str, colors: Colors) -> anyhow::Result<()> 
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Template '{name}' not found"))?;
 
-    // Get variables from environment or command line
-    let mut variables = HashMap::new();
-
-    // For now, just use some example variables for testing
-    // In a full implementation, this would parse --var KEY=VALUE arguments
-    variables.insert("PROMPT".to_string(), "Example prompt content".to_string());
-    variables.insert("PLAN".to_string(), "Example plan content".to_string());
-    variables.insert("DIFF".to_string(), "+ example line".to_string());
+    // Build variables map using functional pattern
+    let variables: BTreeMap<String, String> = [
+        ("PROMPT", "Example prompt content"),
+        ("PLAN", "Example plan content"),
+        ("DIFF", "+ example line"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
 
     let _ = writeln!(std::io::stdout(), "{}Rendering template '{}'...{}", colors.bold(), name, colors.reset());
     let _ = writeln!(std::io::stdout());

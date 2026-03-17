@@ -18,7 +18,7 @@ Each layer owns a different job.
 |------|------|-----------------------|
 | State | Immutable snapshot | Easy to inspect, serialize, and test |
 | Orchestrator | Decide next effect | Pure, state-driven, no I/O |
-| Handler | Execute one effect attempt | Thin, boundary-only, fact-producing |
+| Handler | Execute the requested effect work | Thin, boundary-only, outcome-reporting |
 | Event | Describe what happened | Past tense, data-rich, no commands |
 | Reducer | Produce next state | Pure `(state, event) -> state` |
 
@@ -33,6 +33,13 @@ Good reducers:
 - treat events as facts, not instructions
 
 ```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewEvent {
+    Started,
+    IssueRecorded(ReviewIssue),
+    Completed,
+}
+
 pub fn reduce_review(state: ReviewState, event: ReviewEvent) -> ReviewState {
     match event {
         ReviewEvent::Started => ReviewState {
@@ -41,6 +48,10 @@ pub fn reduce_review(state: ReviewState, event: ReviewEvent) -> ReviewState {
         },
         ReviewEvent::IssueRecorded(issue) => ReviewState {
             issues: state.issues.into_iter().chain([issue]).collect(),
+            ..state
+        },
+        ReviewEvent::Completed => ReviewState {
+            completed: true,
             ..state
         },
     }
@@ -107,6 +118,18 @@ The project should model runtime progression with small, explicit types.
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanDocument {
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineState {
+    pub phase: PipelinePhase,
+    pub plan: Option<PlanDocument>,
+    pub pending_review: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PipelinePhase {
     Planning,
     Development,
@@ -114,6 +137,18 @@ pub enum PipelinePhase {
     Commit,
     Done,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanRequest;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DevelopmentRequest;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewRequest;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitRequest;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
@@ -124,7 +159,7 @@ pub enum Effect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
+pub enum PipelineEvent {
     PlanningStarted,
     PlanGenerated(PlanDocument),
     DevelopmentCompleted,
@@ -143,21 +178,50 @@ The naming rule is important:
 
 Good handlers:
 
-- perform one concrete effect attempt
-- translate runtime results into fact-shaped events
+- perform the requested effect work without adding workflow policy
+- translate runtime results into descriptive reducer inputs
 - do not hide retry loops or fallback logic
 - do not mutate pipeline state directly
 
 ```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewRequest {
+    pub prompt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewEvent {
+    Completed,
+}
+
+pub trait ProcessExecutor {
+    fn run_review_process(
+        &self,
+        request: &ReviewRequest,
+    ) -> Result<(), ReviewExecutionError>;
+}
+
 pub fn execute_review(
     executor: &dyn ProcessExecutor,
     request: &ReviewRequest,
 ) -> Result<ReviewEvent, ReviewExecutionError> {
-    run_review_process(executor, request)
-        .map(ReviewEvent::Completed)
-        .map_err(ReviewExecutionError::from)
+    executor
+        .run_review_process(request)
+        .map(|()| ReviewEvent::Completed)
 }
 ```
+
+In the smallest case, a handler can return one event directly.
+
+Some reducer-driven runtimes wrap handler output in a small result object that
+carries:
+
+- one primary reducer event
+- optional additional reducer events
+- optional UI-only events that do not affect correctness
+
+That wrapper is optional. The architectural rule stays the same: handlers report
+outcomes; reducers and orchestrators own decisions.
 
 ### Idealized handler/result translation
 
@@ -169,7 +233,28 @@ pub struct ReviewRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewOutput {
-    pub issue: Option<ReviewIssue>,
+    pub issue_count: usize,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PipelineEvent {
+    ReviewObserved {
+        issue_count: usize,
+        summary: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiEvent {
+    ReviewSummaryRendered(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectResult {
+    pub primary_event: PipelineEvent,
+    pub additional_events: Vec<PipelineEvent>,
+    pub ui_events: Vec<UiEvent>,
 }
 
 pub trait ReviewExecutor {
@@ -179,11 +264,18 @@ pub trait ReviewExecutor {
 pub fn execute_review(
     executor: &dyn ReviewExecutor,
     request: &ReviewRequest,
-) -> Result<PipelineEvent, ReviewExecutionError> {
+) -> Result<EffectResult, ReviewExecutionError> {
     executor.run_review(request).map(|output| {
-        output.issue.map_or(PipelineEvent::ReviewCompleted, |issue| {
-            PipelineEvent::ReviewIssueRecorded(issue)
-        })
+        let primary_event = PipelineEvent::ReviewObserved {
+            issue_count: output.issue_count,
+            summary: output.summary.clone(),
+        };
+
+        EffectResult {
+            primary_event,
+            additional_events: Vec::new(),
+            ui_events: vec![UiEvent::ReviewSummaryRendered(output.summary)],
+        }
     })
 }
 ```
@@ -191,13 +283,16 @@ pub fn execute_review(
 This is the preferred shape for handlers in the project:
 
 - accept all inputs explicitly
-- execute one attempt
-- translate runtime output into a fact-shaped event
-- return
+- perform the requested edge work
+- translate runtime output into descriptive events or an `EffectResult`
+- return without deciding retries, fallbacks, or phase transitions
+
+If multiple reducer events are required, their order must reflect the order in
+which the reducer should observe those facts.
 
 ## What good events look like
 
-Events should read like things that already happened:
+Events should read like things that already happened or outcomes that were observed:
 
 - `ReviewStarted`
 - `ReviewCompleted`
@@ -229,6 +324,9 @@ pub enum ReviewEvent {
 ```
 
 This is better than an event that only says "review happened" while forcing reducers to inspect logs or external files.
+
+When a handler needs observability-only output for logs or UI, keep that output
+separate from reducer events. Correctness must not depend on UI-only emissions.
 
 ## What good orchestration looks like
 

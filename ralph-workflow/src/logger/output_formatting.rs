@@ -17,20 +17,24 @@ use crate::config::Verbosity;
 #[must_use]
 pub fn argv_requests_json(argv: &[String]) -> bool {
     // Skip argv[0] (the executable); scan flags/args only.
-    let mut iter = argv.iter().skip(1).peekable();
-    while let Some(arg) = iter.next() {
-        if arg == "--json" || arg.starts_with("--json=") {
+    let args: Vec<&String> = argv.iter().skip(1).collect();
+
+    // Check each argument with lookahead capability using index-based iteration
+    args.iter().enumerate().any(|(i, arg)| {
+        // Check for immediate JSON flags
+        if *arg == "--json" || arg.starts_with("--json=") {
             return true;
         }
 
-        if arg == "--output-format" {
-            if let Some(next) = iter.peek() {
-                let next = next.as_str();
-                if next.contains("json") {
-                    return true;
-                }
+        // Check --output-format with next arg as value
+        if *arg == "--output-format" && i + 1 < args.len() {
+            let next = args[i + 1].as_str();
+            if next.contains("json") {
+                return true;
             }
         }
+
+        // Check --output-format=value format
         if let Some((flag, value)) = arg.split_once('=') {
             if flag == "--output-format" && value.contains("json") {
                 return true;
@@ -40,39 +44,39 @@ pub fn argv_requests_json(argv: &[String]) -> bool {
             }
         }
 
-        if arg == "--format" {
-            if let Some(next) = iter.peek() {
-                if next.as_str() == "json" {
-                    return true;
-                }
-            }
-        }
-
-        // Some CLIs use short flags like -F json or -o stream-json
-        if arg == "-F" {
-            if let Some(next) = iter.peek() {
-                if next.as_str() == "json" {
-                    return true;
-                }
-            }
-        }
-        if arg.starts_with("-F") && arg != "-F" && arg.trim_start_matches("-F") == "json" {
+        // Check --format with next arg as value
+        if *arg == "--format" && i + 1 < args.len() && args[i + 1].as_str() == "json" {
             return true;
         }
 
-        if arg == "-o" {
-            if let Some(next) = iter.peek() {
-                let next = next.as_str();
-                if next.contains("json") {
-                    return true;
-                }
-            }
-        }
-        if arg.starts_with("-o") && arg != "-o" && arg.trim_start_matches("-o").contains("json") {
+        // Check -F json
+        if *arg == "-F" && i + 1 < args.len() && args[i + 1].as_str() == "json" {
             return true;
         }
-    }
-    false
+        let arg_str = arg.as_str();
+        if arg_str.starts_with("-F")
+            && arg_str != "-F"
+            && arg_str.trim_start_matches("-F") == "json"
+        {
+            return true;
+        }
+
+        // Check -o json
+        if *arg == "-o" && i + 1 < args.len() {
+            let next = args[i + 1].as_str();
+            if next.contains("json") {
+                return true;
+            }
+        }
+        if arg_str.starts_with("-o")
+            && arg_str != "-o"
+            && arg_str.trim_start_matches("-o").contains("json")
+        {
+            return true;
+        }
+
+        false
+    })
 }
 
 /// Format generic JSON output for display.

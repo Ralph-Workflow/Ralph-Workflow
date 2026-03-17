@@ -245,27 +245,35 @@ impl UnifiedConfig {
             },
         };
 
-        // Merge agents map (local entries override global entries)
-        let mut agents = self.agents.clone();
-        for (key, value) in &local.agents {
-            agents.insert(key.clone(), value.clone());
-        }
+        // Merge agents map (local entries override global entries) - use iterator chain
+        let agents: std::collections::HashMap<_, _> = self
+            .agents
+            .iter()
+            .chain(local.agents.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        // Merge CCS aliases map (local entries override global entries)
-        let mut ccs_aliases = self.ccs_aliases.clone();
-        for (key, value) in &local.ccs_aliases {
-            ccs_aliases.insert(key.clone(), value.clone());
-        }
+        // Merge CCS aliases map (local entries override global entries) - use iterator chain
+        let ccs_aliases: std::collections::HashMap<_, _> = self
+            .ccs_aliases
+            .iter()
+            .chain(local.ccs_aliases.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        let mut agent_chains = self.agent_chains.clone();
-        for (key, value) in &local.agent_chains {
-            agent_chains.insert(key.clone(), value.clone());
-        }
+        let agent_chains: std::collections::HashMap<_, _> = self
+            .agent_chains
+            .iter()
+            .chain(local.agent_chains.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        let mut agent_drains = self.agent_drains.clone();
-        for (key, value) in &local.agent_drains {
-            agent_drains.insert(key.clone(), value.clone());
-        }
+        let agent_drains: std::collections::HashMap<_, _> = self
+            .agent_drains
+            .iter()
+            .chain(local.agent_drains.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         // Agent chain: merge per-key (local non-empty chains override global)
         let agent_chain = merge_fallback_configs(
@@ -575,27 +583,35 @@ impl UnifiedConfig {
             },
         };
 
-        // Merge agents map (local entries override global entries)
-        let mut agents = self.agents.clone();
-        for (key, value) in &local_parsed.agents {
-            agents.insert(key.clone(), value.clone());
-        }
+        // Merge agents map (local entries override global entries) - use iterator chain
+        let agents: std::collections::HashMap<_, _> = self
+            .agents
+            .iter()
+            .chain(local_parsed.agents.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        // Merge CCS aliases map (local entries override global entries)
-        let mut ccs_aliases = self.ccs_aliases.clone();
-        for (key, value) in &local_parsed.ccs_aliases {
-            ccs_aliases.insert(key.clone(), value.clone());
-        }
+        // Merge CCS aliases map (local entries override global entries) - use iterator chain
+        let ccs_aliases: std::collections::HashMap<_, _> = self
+            .ccs_aliases
+            .iter()
+            .chain(local_parsed.ccs_aliases.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        let mut agent_chains = self.agent_chains.clone();
-        for (key, value) in &local_parsed.agent_chains {
-            agent_chains.insert(key.clone(), value.clone());
-        }
+        let agent_chains: std::collections::HashMap<_, _> = self
+            .agent_chains
+            .iter()
+            .chain(local_parsed.agent_chains.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-        let mut agent_drains = self.agent_drains.clone();
-        for (key, value) in &local_parsed.agent_drains {
-            agent_drains.insert(key.clone(), value.clone());
-        }
+        let agent_drains: std::collections::HashMap<_, _> = self
+            .agent_drains
+            .iter()
+            .chain(local_parsed.agent_drains.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         let chain_table = local_toml.get("agent_chain");
         let named_schema_present = !agent_chains.is_empty() || !agent_drains.is_empty();
@@ -648,10 +664,13 @@ fn merge_named_schema_legacy_metadata(
         let global = global.unwrap_or(&defaults);
         let local = local.unwrap_or(&defaults);
 
-        let mut provider_fallback = global.provider_fallback.clone();
-        for (key, value) in &local.provider_fallback {
-            provider_fallback.insert(key.clone(), value.clone());
-        }
+        // Merge provider_fallback map using iterator chain
+        let provider_fallback: std::collections::HashMap<_, _> = global
+            .provider_fallback
+            .iter()
+            .chain(local.provider_fallback.iter())
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         Some(FallbackConfig {
             developer: Vec::new(),

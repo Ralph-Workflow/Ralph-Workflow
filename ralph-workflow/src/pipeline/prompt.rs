@@ -9,10 +9,10 @@ mod cleanup;
 mod environment;
 mod process_wait;
 mod run;
+mod runtime;
 mod save;
 mod stderr_collector;
 mod streaming;
-mod streaming_line_reader;
 mod types;
 
 pub use run::run_with_prompt;
@@ -39,12 +39,6 @@ use stderr_collector::collect_stderr_with_cap_and_drain;
 use save::build_prompt_archive_filename;
 
 #[cfg(test)]
-use streaming_line_reader::StreamingLineReader;
-
-#[cfg(test)]
-use streaming_line_reader::MAX_BUFFER_SIZE;
-
-#[cfg(test)]
 use crate::config::Config;
 
 #[cfg(test)]
@@ -52,9 +46,6 @@ use crate::logger::{Colors, Logger};
 
 #[cfg(test)]
 use crate::pipeline::Timer;
-
-#[cfg(test)]
-use std::io::BufRead;
 
 /// Maximum safe prompt size in bytes for command-line arguments.
 ///

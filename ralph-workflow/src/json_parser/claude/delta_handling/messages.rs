@@ -36,6 +36,8 @@ use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::ContentType;
 use std::fmt::Write as FmtWrite;
+
+#[cfg(any(test, debug_assertions))]
 use std::io::Write;
 
 impl crate::json_parser::claude::ClaudeParser {

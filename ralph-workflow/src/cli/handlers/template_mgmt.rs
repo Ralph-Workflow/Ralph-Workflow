@@ -8,9 +8,10 @@
 //! - Extracting variables from templates
 //! - Rendering templates for testing
 
-use std::collections::HashMap;
-use std::fs;
+use std::collections::BTreeMap;
 use std::io::Write;
+
+use itertools::Itertools;
 
 use crate::cli::args::TemplateCommands;
 use crate::logger::Colors;
@@ -22,7 +23,7 @@ use crate::prompts::{
 };
 
 /// Get all available templates as a map of name -> (content, description).
-fn get_all_templates() -> HashMap<String, (String, String)> {
+fn get_all_templates() -> BTreeMap<String, (String, String)> {
     template_catalog::get_templates_map()
 }
 

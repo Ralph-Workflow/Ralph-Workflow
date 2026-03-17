@@ -203,86 +203,130 @@ pub struct AgentConfigBuilder {
 impl AgentConfigBuilder {
     /// Set the base command to run the agent.
     #[must_use]
-    pub fn cmd(mut self, cmd: impl Into<String>) -> Self {
-        self.cmd = Some(cmd.into());
-        self
+    pub fn cmd(self, cmd: impl Into<String>) -> Self {
+        Self {
+            cmd: Some(cmd.into()),
+            ..self
+        }
     }
 
     /// Set the output-format flag.
     #[must_use]
-    pub fn output_flag(mut self, flag: impl Into<String>) -> Self {
-        self.output_flag = Some(flag.into());
-        self
+    pub fn output_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            output_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the autonomous mode flag.
     #[must_use]
-    pub fn yolo_flag(mut self, flag: impl Into<String>) -> Self {
-        self.yolo_flag = Some(flag.into());
-        self
+    pub fn yolo_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            yolo_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the verbose output flag.
     #[must_use]
-    pub fn verbose_flag(mut self, flag: impl Into<String>) -> Self {
-        self.verbose_flag = Some(flag.into());
-        self
+    pub fn verbose_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            verbose_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set whether the agent can run git commit.
     #[must_use]
-    pub const fn can_commit(mut self, can_commit: bool) -> Self {
-        self.can_commit = Some(can_commit);
-        self
+    pub fn can_commit(self, can_commit: bool) -> Self {
+        Self {
+            can_commit: Some(can_commit),
+            cmd: self.cmd,
+            output_flag: self.output_flag,
+            yolo_flag: self.yolo_flag,
+            verbose_flag: self.verbose_flag,
+            json_parser: self.json_parser,
+            model_flag: self.model_flag,
+            print_flag: self.print_flag,
+            streaming_flag: self.streaming_flag,
+            session_flag: self.session_flag,
+            env_vars: self.env_vars,
+            display_name: self.display_name,
+        }
     }
 
     /// Set the JSON parser type.
     #[must_use]
-    pub const fn json_parser(mut self, parser: JsonParserType) -> Self {
-        self.json_parser = Some(parser);
-        self
+    pub fn json_parser(self, parser: JsonParserType) -> Self {
+        Self {
+            json_parser: Some(parser),
+            cmd: self.cmd,
+            output_flag: self.output_flag,
+            yolo_flag: self.yolo_flag,
+            verbose_flag: self.verbose_flag,
+            can_commit: self.can_commit,
+            model_flag: self.model_flag,
+            print_flag: self.print_flag,
+            streaming_flag: self.streaming_flag,
+            session_flag: self.session_flag,
+            env_vars: self.env_vars,
+            display_name: self.display_name,
+        }
     }
 
     /// Set the model/provider flag.
     #[must_use]
-    pub fn model_flag(mut self, flag: impl Into<String>) -> Self {
-        self.model_flag = Some(flag.into());
-        self
+    pub fn model_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            model_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the print/non-interactive mode flag.
     #[must_use]
-    pub fn print_flag(mut self, flag: impl Into<String>) -> Self {
-        self.print_flag = Some(flag.into());
-        self
+    pub fn print_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            print_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the streaming flag.
     #[must_use]
-    pub fn streaming_flag(mut self, flag: impl Into<String>) -> Self {
-        self.streaming_flag = Some(flag.into());
-        self
+    pub fn streaming_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            streaming_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set the session continuation flag template.
     #[must_use]
-    pub fn session_flag(mut self, flag: impl Into<String>) -> Self {
-        self.session_flag = Some(flag.into());
-        self
+    pub fn session_flag(self, flag: impl Into<String>) -> Self {
+        Self {
+            session_flag: Some(flag.into()),
+            ..self
+        }
     }
 
     /// Set environment variables.
     #[must_use]
-    pub fn env_vars(mut self, env_vars: HashMap<String, String>) -> Self {
-        self.env_vars = Some(env_vars);
-        self
+    pub fn env_vars(self, env_vars: HashMap<String, String>) -> Self {
+        Self {
+            env_vars: Some(env_vars),
+            ..self
+        }
     }
 
     /// Set the display name.
     #[must_use]
-    pub fn display_name(mut self, name: impl Into<String>) -> Self {
-        self.display_name = Some(name.into());
-        self
+    pub fn display_name(self, name: impl Into<String>) -> Self {
+        Self {
+            display_name: Some(name.into()),
+            ..self
+        }
     }
 
     /// Build the `AgentConfig`.

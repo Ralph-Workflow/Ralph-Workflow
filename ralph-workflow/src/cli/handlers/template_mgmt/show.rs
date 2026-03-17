@@ -26,13 +26,14 @@ pub fn handle_template_show(name: &str, colors: Colors) -> anyhow::Result<()> {
     if variables.is_empty() {
         let _ = writeln!(std::io::stdout(), "  (none)");
     } else {
-        for var in &variables {
+        // Print variables using iterator for_each
+        variables.iter().for_each(|var| {
             if var.has_default {
                 let _ = writeln!(std::io::stdout(), "  {}{}{} = {}{}{}", colors.cyan(), var.name, colors.reset(), colors.green(), var.default_value.as_deref().unwrap_or(""), colors.reset());
             } else {
                 let _ = writeln!(std::io::stdout(), "  {}{}{}", colors.cyan(), var.name, colors.reset());
             }
-        }
+        });
     }
 
     let _ = writeln!(std::io::stdout());
@@ -42,17 +43,19 @@ pub fn handle_template_show(name: &str, colors: Colors) -> anyhow::Result<()> {
     if partials.is_empty() {
         let _ = writeln!(std::io::stdout(), "  (none)");
     } else {
-        for partial in &partials {
+        // Print partials using iterator for_each
+        partials.iter().for_each(|partial| {
             let _ = writeln!(std::io::stdout(), "  {}{}{}", colors.cyan(), partial, colors.reset());
-        }
+        });
     }
 
     let _ = writeln!(std::io::stdout());
     let _ = writeln!(std::io::stdout(), "{}Content:{}", colors.bold(), colors.reset());
     let _ = writeln!(std::io::stdout(), "{}", colors.dim());
-    for line in content.lines().take(50) {
+    // Print content lines using iterator for_each
+    content.lines().take(50).for_each(|line| {
         let _ = writeln!(std::io::stdout(), "{line}");
-    }
+    });
     if content.lines().count() > 50 {
         let _ = writeln!(std::io::stdout(), "... ({} more lines)", content.lines().count() - 50);
     }

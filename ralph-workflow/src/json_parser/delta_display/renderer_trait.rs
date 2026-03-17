@@ -6,6 +6,9 @@
 //
 // This module implements a three-layer approach to prevent repeated prefixed lines
 // for streaming deltas in non-TTY modes (logs, CI output):
+
+#[cfg(any(test, debug_assertions))]
+use std::io::Write;
 //
 // ## Layer 1: Suppression at Renderer Level
 //
@@ -41,8 +44,6 @@
 // - `ccs_wrapping_waterfall_reproduction.rs`: wrapping/cursor-up failure reproduction
 // - `ccs_ansi_stripping_console.rs`: ANSI-stripping console behavior
 // - `codex_reasoning_spam_regression.rs`: Codex reasoning regression
-
-use std::io::Write;
 
 /// Renderer for streaming delta content.
 ///

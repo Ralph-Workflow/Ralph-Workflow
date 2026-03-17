@@ -104,24 +104,26 @@ impl CommitLogSession {
         final_outcome: &str,
         workspace: &dyn Workspace,
     ) -> std::io::Result<()> {
-        use std::fmt::Write;
-
         // Skip writing for noop sessions
         if self.is_noop() {
             return Ok(());
         }
 
         let summary_path = self.run_dir.join("SUMMARY.txt");
-        let mut content = String::new();
 
-        let _ = writeln!(content, "COMMIT GENERATION SESSION SUMMARY");
-        let _ = writeln!(content, "=================================");
-        let _ = writeln!(content);
-        let _ = writeln!(content, "Run directory: {}", self.run_dir.display());
-        let _ = writeln!(content, "Total attempts: {total_attempts}");
-        let _ = writeln!(content, "Final outcome: {final_outcome}");
-        let _ = writeln!(content);
-        let _ = writeln!(content, "Individual attempt logs are in this directory.");
+        let content = format!(
+            "COMMIT GENERATION SESSION SUMMARY\n\
+             =================================\n\
+             \n\
+             Run directory: {}\n\
+             Total attempts: {}\n\
+             Final outcome: {}\n\
+             \n\
+             Individual attempt logs are in this directory.\n",
+            self.run_dir.display(),
+            total_attempts,
+            final_outcome
+        );
 
         workspace.write(&summary_path, &content)?;
         Ok(())

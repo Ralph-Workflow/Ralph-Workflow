@@ -1740,51 +1740,18 @@ mod tests {
                 );
                 assert!(
                     globs.iter().any(|glob| {
-                        glob.dir == "lints/file_too_long/src" && glob.pattern == "*.rs"
+                        glob.dir == "lints/ralph_lints/src" && glob.pattern == "*.rs"
                     }),
                     "dylint must include the custom lint crate sources"
                 );
-                for required_glob_dir in [
-                    "lints/forbid_mut_binding/src",
-                    "lints/forbid_imperative_loops/src",
-                    "lints/forbid_mutating_receiver_methods/src",
-                    "lints/forbid_interior_mutability/src",
-                ] {
-                    assert!(
-                        globs.iter().any(|glob| {
-                            glob.dir == required_glob_dir && glob.pattern == "*.rs"
-                        }),
-                        "dylint must include sources in {required_glob_dir}"
-                    );
-                }
                 for required_file in [
                     "Makefile",
-                    "lints/file_too_long/Cargo.toml",
-                    "lints/file_too_long/Cargo.lock",
-                    "lints/file_too_long/.cargo/config.toml",
-                    "lints/file_too_long/rust-toolchain.toml",
-                    "lints/file_too_long/dylint-link",
-                    "lints/file_too_long/rustc-nightly",
-                    "lints/forbid_mut_binding/Cargo.toml",
-                    "lints/forbid_mut_binding/.cargo/config.toml",
-                    "lints/forbid_mut_binding/rust-toolchain.toml",
-                    "lints/forbid_mut_binding/dylint-link",
-                    "lints/forbid_mut_binding/rustc-nightly",
-                    "lints/forbid_imperative_loops/Cargo.toml",
-                    "lints/forbid_imperative_loops/.cargo/config.toml",
-                    "lints/forbid_imperative_loops/rust-toolchain.toml",
-                    "lints/forbid_imperative_loops/dylint-link",
-                    "lints/forbid_imperative_loops/rustc-nightly",
-                    "lints/forbid_mutating_receiver_methods/Cargo.toml",
-                    "lints/forbid_mutating_receiver_methods/.cargo/config.toml",
-                    "lints/forbid_mutating_receiver_methods/rust-toolchain.toml",
-                    "lints/forbid_mutating_receiver_methods/dylint-link",
-                    "lints/forbid_mutating_receiver_methods/rustc-nightly",
-                    "lints/forbid_interior_mutability/Cargo.toml",
-                    "lints/forbid_interior_mutability/.cargo/config.toml",
-                    "lints/forbid_interior_mutability/rust-toolchain.toml",
-                    "lints/forbid_interior_mutability/dylint-link",
-                    "lints/forbid_interior_mutability/rustc-nightly",
+                    "lints/ralph_lints/Cargo.toml",
+                    "lints/ralph_lints/Cargo.lock",
+                    "lints/ralph_lints/.cargo/config.toml",
+                    "lints/ralph_lints/rust-toolchain.toml",
+                    "lints/ralph_lints/dylint-link",
+                    "lints/ralph_lints/rustc-nightly",
                 ] {
                     assert!(
                         files.contains(&required_file),

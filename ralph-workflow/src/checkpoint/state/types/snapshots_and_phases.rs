@@ -112,24 +112,21 @@ impl CliArgsSnapshotBuilder {
     }
 
     /// Set the verbosity level.
-    #[must_use] 
-    pub const fn verbosity(mut self, verbosity: u8) -> Self {
-        self.verbosity = verbosity;
-        self
+    #[must_use]
+    pub fn verbosity(self, verbosity: u8) -> Self {
+        Self { verbosity, ..self }
     }
 
     /// Set whether to show streaming metrics.
-    #[must_use] 
-    pub const fn show_streaming_metrics(mut self, show: bool) -> Self {
-        self.show_streaming_metrics = show;
-        self
+    #[must_use]
+    pub fn show_streaming_metrics(self, show: bool) -> Self {
+        Self { show_streaming_metrics: show, ..self }
     }
 
     /// Set the reviewer JSON parser override.
-    #[must_use] 
-    pub fn reviewer_json_parser(mut self, parser: Option<String>) -> Self {
-        self.reviewer_json_parser = parser;
-        self
+    #[must_use]
+    pub fn reviewer_json_parser(self, parser: Option<String>) -> Self {
+        Self { reviewer_json_parser: parser, ..self }
     }
 
     /// Build the snapshot.
@@ -234,24 +231,21 @@ impl AgentConfigSnapshot {
     }
 
     /// Set model override.
-    #[must_use] 
-    pub fn with_model_override(mut self, model: Option<String>) -> Self {
-        self.model_override = model;
-        self
+    #[must_use]
+    pub fn with_model_override(self, model: Option<String>) -> Self {
+        Self { model_override: model, ..self }
     }
 
     /// Set provider override.
-    #[must_use] 
-    pub fn with_provider_override(mut self, provider: Option<String>) -> Self {
-        self.provider_override = provider;
-        self
+    #[must_use]
+    pub fn with_provider_override(self, provider: Option<String>) -> Self {
+        Self { provider_override: provider, ..self }
     }
 
     /// Set context level.
-    #[must_use] 
-    pub const fn with_context_level(mut self, level: u8) -> Self {
-        self.context_level = level;
-        self
+    #[must_use]
+    pub fn with_context_level(self, level: u8) -> Self {
+        Self { context_level: level, ..self }
     }
 }
 
