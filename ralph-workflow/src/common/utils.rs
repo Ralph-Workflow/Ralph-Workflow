@@ -124,46 +124,45 @@ fn shell_quote_for_log(arg: &str) -> String {
 
 /// Format argv for logs, redacting likely secrets.
 pub fn format_argv_for_log(argv: &[String]) -> String {
-    let mut out = Vec::with_capacity(argv.len());
-    let mut redact_next_value = false;
+    // Use indices to track state across iterations - simpler than scan for this use case
+    let indices = 0..argv.len();
+    let out: Vec<String> = indices
+        .map(|i| {
+            let arg = &argv[i];
+            // Check if previous arg was a sensitive key that should trigger redaction
+            let prev_was_sensitive = i > 0 && is_sensitive_key(&argv[i - 1]);
 
-    for arg in argv {
-        if redact_next_value {
-            out.push("<redacted>".to_string());
-            redact_next_value = false;
-            continue;
-        }
-        redact_next_value = false;
-
-        if let Some((k, v)) = arg.split_once('=') {
-            // Flag-style (--token=...) or env-style (GITHUB_TOKEN=...)
-            let env_key = k.to_ascii_uppercase();
-            let looks_like_secret_env = env_key.contains("TOKEN")
-                || env_key.contains("SECRET")
-                || env_key.contains("PASSWORD")
-                || env_key.contains("PASS")
-                || env_key.contains("KEY");
-            if is_sensitive_key(k) || looks_like_secret_env {
-                out.push(format!("{}=<redacted>", shell_quote_for_log(k)));
-                continue;
+            if prev_was_sensitive {
+                return "<redacted>".to_string();
             }
-            let redacted = redact_arg_value(k, v);
-            out.push(shell_quote_for_log(&format!("{k}={redacted}")));
-            continue;
-        }
 
-        if is_sensitive_key(arg) {
-            out.push(shell_quote_for_log(arg));
-            redact_next_value = true;
-            continue;
-        }
+            if let Some((k, v)) = arg.split_once('=') {
+                // Flag-style (--token=...) or env-style (GITHUB_TOKEN=...)
+                let env_key = k.to_ascii_uppercase();
+                let looks_like_secret_env = env_key.contains("TOKEN")
+                    || env_key.contains("SECRET")
+                    || env_key.contains("PASSWORD")
+                    || env_key.contains("PASS")
+                    || env_key.contains("KEY");
+                if is_sensitive_key(k) || looks_like_secret_env {
+                    return format!("{}=<redacted>", shell_quote_for_log(k));
+                }
+                let redacted = redact_arg_value(k, v);
+                return shell_quote_for_log(&format!("{k}={redacted}"));
+            }
 
-        let redacted = SECRET_LIKE_RE.as_ref().map_or_else(
-            || arg.clone(),
-            |re| re.replace_all(arg, "<redacted>").to_string(),
-        );
-        out.push(shell_quote_for_log(&redacted));
-    }
+            if is_sensitive_key(arg) {
+                // Return as-is, next iteration will redact
+                return arg.to_string();
+            }
+
+            let redacted = SECRET_LIKE_RE.as_ref().map_or_else(
+                || arg.clone(),
+                |re| re.replace_all(arg, "<redacted>").to_string(),
+            );
+            shell_quote_for_log(&redacted)
+        })
+        .collect();
 
     out.join(" ")
 }

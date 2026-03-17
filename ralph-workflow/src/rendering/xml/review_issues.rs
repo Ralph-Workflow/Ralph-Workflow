@@ -312,7 +312,7 @@ fn extract_file_from_issue(issue: &str) -> Option<&str> {
     // This is best-effort heuristic parsing
     for pattern in ["in ", "at ", "File: ", "file "] {
         if let Some(idx) = issue.find(pattern) {
-            let start = idx + pattern.len();
+            let start = idx.saturating_add(pattern.len());
             let rest = &issue[start..];
             // Find end of path (space, comma, colon for line number, or end of string)
             let end = rest

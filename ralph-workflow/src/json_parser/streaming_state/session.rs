@@ -9,6 +9,7 @@ use crate::json_parser::health::StreamingQualityMetrics;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::io::Write as IoWrite;
 
 // Include the sub-modules
 include!("session/session_struct.rs");

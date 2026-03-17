@@ -7,9 +7,12 @@ fn render_cloud_pr_title_and_body(state: &PipelineState) -> (String, String) {
     // This value is safe to publish in a PR title/body.
     let prompt_summary = format!("Ralph workflow run {run_id}");
 
-    let mut vars: HashMap<&str, String> = HashMap::new();
-    vars.insert("run_id", run_id.to_string());
-    vars.insert("prompt_summary", prompt_summary);
+    let vars: HashMap<_, _> = [
+        ("run_id", run_id.to_string()),
+        ("prompt_summary", prompt_summary),
+    ]
+    .into_iter()
+    .collect();
 
     let default_title = "Ralph workflow changes".to_string();
 
@@ -38,7 +41,7 @@ fn try_render_cloud_pr_template(
 ) -> Option<String> {
     let converted = convert_cloud_pr_template_placeholders(template)?;
 
-    let partials: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let partials: std::collections::HashMap<String, String> = std::iter::empty().collect(); // Empty - no partials for cloud PR templates
     let t = crate::prompts::template_engine::Template::new(&converted);
     t.render_with_partials(vars, &partials).ok()
 }

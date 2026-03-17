@@ -3,13 +3,11 @@
 //! This module provides string similarity matching to suggest corrections
 //! for unknown configuration keys.
 
-#[expect(
-    clippy::expect_used,
-    reason = "bounds verified by loop invariant: i < a.len(), j < b.len()"
-)]
 pub fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_len = a.len();
-    let b_len = b.len();
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
+    let b_len = b_chars.len();
 
     if a_len == 0 {
         return b_len;
@@ -18,36 +16,36 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
         return a_len;
     }
 
-    let mut prev_row: Vec<usize> = (0..=b_len).collect();
-    let mut curr_row = vec![0; b_len + 1];
-
-    for (i, a_char) in a.chars().enumerate() {
-        // Safe: curr_row has length b_len + 1, and i + 1 <= b_len + 1
-        *curr_row
-            .first_mut()
-            .expect("curr_row has at least 1 element") = i + 1;
-
-        for (j, b_char) in b.chars().enumerate() {
-            let cost = usize::from(a_char != b_char);
-            // Safe: j + 1 <= b_len since j < b_len
-            let new_val = std::cmp::min(
-                std::cmp::min(
-                    // Safe: j <= b_len - 1, curr_row[j] is valid
-                    *curr_row.get(j).expect("j in range") + 1,
-                    // Safe: j + 1 <= b_len, prev_row[j + 1] is valid
-                    *prev_row.get(j + 1).expect("j+1 in range") + 1,
-                ),
-                // Safe: j <= b_len - 1, prev_row[j] is valid
-                *prev_row.get(j).expect("j in range") + cost,
+    // Standard algorithm: iterate over b as outer, a as inner
+    // Functional style: use fold to build rows, scan for inner dependency
+    let final_row = b_chars.iter().enumerate().fold(
+        (0..=a_len).collect::<Vec<usize>>(),
+        |prev_row, (j, b_char)| {
+            // Use fold to compute current row - maintains the sequential dependency
+            // curr_row[i+1] depends on curr_row[i]
+            let first_val = j + 1;
+            let (curr_row, _) = (0..=a_len).fold(
+                (vec![0usize; a_len + 1], first_val),
+                |(mut row, prev_val), i| {
+                    if i == 0 {
+                        row[0] = first_val;
+                        (row, first_val)
+                    } else {
+                        let cost = usize::from(*b_char != a_chars[i - 1]);
+                        let curr = prev_val
+                            .saturating_add(1)
+                            .min(prev_row[i].saturating_add(1))
+                            .min(prev_row[i - 1].saturating_add(cost));
+                        row[i] = curr;
+                        (row, curr)
+                    }
+                },
             );
-            *curr_row.get_mut(j + 1).expect("j+1 in range") = new_val;
-        }
+            curr_row
+        },
+    );
 
-        std::mem::swap(&mut prev_row, &mut curr_row);
-    }
-
-    // Safe: prev_row has length b_len + 1, b_len is valid index
-    *prev_row.get(b_len).expect("b_len in range")
+    *final_row.get(a_len).unwrap_or(&a_len)
 }
 
 /// Find the closest valid key name for typo detection.

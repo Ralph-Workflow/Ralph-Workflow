@@ -4,6 +4,7 @@
 
 use crate::agents::OpenCodeProviderType;
 use crate::logger::Colors;
+use std::io::Write;
 
 /// Provider category for display organization
 #[derive(Debug, Clone, Copy)]
@@ -132,15 +133,27 @@ pub fn print_provider_info(colors: Colors, provider: OpenCodeProviderType, agent
         format!(" (e.g., {})", examples[0])
     };
 
-    println!("{}{}{}", colors.bold(), provider.name(), colors.reset());
-    println!("  Prefix: {}{}", provider.prefix(), example_str);
-    println!("  Auth: {}", provider.auth_command());
-    println!("  Agent: {agent_alias}");
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}{}{}",
+        colors.bold(),
+        provider.name(),
+        colors.reset()
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  Prefix: {}{}",
+        provider.prefix(),
+        example_str
+    );
+    let _ = writeln!(std::io::stdout(), "  Auth: {}", provider.auth_command());
+    let _ = writeln!(std::io::stdout(), "  Agent: {agent_alias}");
 }
 
 /// Print a provider category with all its providers
 fn print_category(colors: Colors, category: &ProviderCategory) {
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}═══ {} ═══{}",
         colors.bold(),
         category.name,
@@ -149,24 +162,46 @@ fn print_category(colors: Colors, category: &ProviderCategory) {
     for (provider, alias) in category.providers {
         print_provider_info(colors, *provider, alias);
     }
-    println!();
+    let _ = writeln!(std::io::stdout());
 }
 
 /// Print important notes about providers
 fn print_notes(colors: Colors) {
-    println!("{}═══ IMPORTANT NOTES ═══{}", colors.bold(), colors.reset());
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}═══ IMPORTANT NOTES ═══{}",
+        colors.bold(),
+        colors.reset()
+    );
+    let _ = writeln!(
+        std::io::stdout(),
         "• OpenCode Zen (opencode/*) and Z.AI Direct (zai/* or zhipuai/*) are SEPARATE endpoints!"
     );
-    println!("  - opencode/* routes through OpenCode's Zen gateway at opencode.ai");
-    println!("  - zai/* or zhipuai/* connects directly to Z.AI's API at api.z.ai");
-    println!("  - Z.AI Coding Plan is an auth tier; model prefix remains zai/* or zhipuai/*");
-    println!("• Cloud providers (Vertex, Bedrock, Azure, SAP) require additional configuration");
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - opencode/* routes through OpenCode's Zen gateway at opencode.ai"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - zai/* or zhipuai/* connects directly to Z.AI's API at api.z.ai"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - Z.AI Coding Plan is an auth tier; model prefix remains zai/* or zhipuai/*"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "• Cloud providers (Vertex, Bedrock, Azure, SAP) require additional configuration"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
         "• Local providers (Ollama, LM Studio, llama.cpp) run on your hardware - no API key needed"
     );
-    println!("• Use clear naming: opencode-zen-*, opencode-zai-*, opencode-direct-* aliases");
-    println!();
+    let _ = writeln!(
+        std::io::stdout(),
+        "• Use clear naming: opencode-zen-*, opencode-zai-*, opencode-direct-* aliases"
+    );
+    let _ = writeln!(std::io::stdout());
 }
 
 /// Handle --list-providers command.
@@ -174,11 +209,19 @@ fn print_notes(colors: Colors) {
 /// Displays a categorized list of all `OpenCode` provider types with their
 /// model prefixes, authentication commands, and example agent aliases.
 pub fn handle_list_providers(colors: Colors) {
-    println!("{}OpenCode Provider Types{}", colors.bold(), colors.reset());
-    println!();
-    println!("Ralph includes built-in guidance for major OpenCode provider prefixes (plus a custom fallback).");
-    println!("OpenCode may support additional providers; consult OpenCode docs for the full set.");
-    println!();
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}OpenCode Provider Types{}",
+        colors.bold(),
+        colors.reset()
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Ralph includes built-in guidance for major OpenCode provider prefixes (plus a custom fallback).");
+    let _ = writeln!(
+        std::io::stdout(),
+        "OpenCode may support additional providers; consult OpenCode docs for the full set."
+    );
+    let _ = writeln!(std::io::stdout());
 
     for category in PROVIDER_CATEGORIES {
         print_category(colors, category);
@@ -199,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_category_names() {
-        let expected_names = &[
+        let expected_names: &[&str] = &[
             "OPENCODE GATEWAY",
             "CHINESE AI PROVIDERS",
             "MAJOR CLOUD PROVIDERS",

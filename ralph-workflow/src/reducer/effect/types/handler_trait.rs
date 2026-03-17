@@ -1,4 +1,11 @@
-// NOTE: split from reducer/effect/types.rs (EffectHandler trait).
+//! Boundary trait for effect execution.
+//!
+//! This module defines the `EffectHandler` trait, which is the runtime
+//! boundary where effects are executed. Effects involve I/O, process spawning,
+//! agent invocation, and other side effects - therefore this trait and its
+//! implementations live at the architectural boundary.
+//!
+//! NOTE: split from reducer/effect/types.rs (EffectHandler trait).
 
 use crate::phases::PhaseContext;
 use anyhow::Result;

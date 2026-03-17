@@ -99,11 +99,10 @@ impl OpenCodeResolver {
         // This is required for non-interactive/headless execution
         // The value must be a JSON object where keys are permission types and values are actions
         // Using {"*": "allow"} grants all permissions for all patterns
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert(
+        let env_vars = std::collections::HashMap::from([(
             "OPENCODE_PERMISSION".to_string(),
             r#"{"*": "allow"}"#.to_string(),
-        );
+        )]);
 
         AgentConfig {
             cmd: "opencode run".to_string(),
@@ -128,11 +127,10 @@ impl OpenCodeResolver {
     /// Build an `AgentConfig` for plain "opencode" (no provider/model specified).
     /// `OpenCode` will use its default model configuration.
     fn build_default_config() -> AgentConfig {
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert(
+        let env_vars = std::collections::HashMap::from([(
             "OPENCODE_PERMISSION".to_string(),
             r#"{"*": "allow"}"#.to_string(),
-        );
+        )]);
 
         AgentConfig {
             cmd: "opencode run".to_string(),
@@ -178,8 +176,7 @@ impl OpenCodeResolver {
 
     /// Suggest similar provider names for a typo.
     fn suggest_providers(&self, provider: &str) -> Vec<String> {
-        let mut suggestions: Vec<_> = self
-            .catalog
+        self.catalog
             .provider_names()
             .into_iter()
             .map(|p| {
@@ -187,20 +184,21 @@ impl OpenCodeResolver {
                 (p, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .collect();
-
-        suggestions.sort_by_key(|(_, d)| *d);
-        suggestions
+            .fold(Vec::new(), |mut acc, (p, d)| {
+                // Insert sorted by distance
+                let pos = acc.iter().position(|(_, dd)| d <= *dd).unwrap_or(acc.len());
+                acc.insert(pos, (p, d));
+                acc
+            })
             .into_iter()
-            .map(|(p, _)| p)
             .take(MAX_TYPO_DISTANCE)
+            .map(|(p, _)| p)
             .collect()
     }
 
     /// Suggest similar model names for a typo.
     fn suggest_models(&self, provider: &str, model: &str) -> Vec<String> {
-        let mut suggestions: Vec<_> = self
-            .catalog
+        self.catalog
             .get_model_ids(provider)
             .into_iter()
             .map(|m| {
@@ -208,13 +206,15 @@ impl OpenCodeResolver {
                 (m, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .collect();
-
-        suggestions.sort_by_key(|(_, d)| *d);
-        suggestions
+            .fold(Vec::new(), |mut acc, (m, d)| {
+                // Insert sorted by distance
+                let pos = acc.iter().position(|(_, dd)| d <= *dd).unwrap_or(acc.len());
+                acc.insert(pos, (m, d));
+                acc
+            })
             .into_iter()
-            .map(|(m, _)| m)
             .take(MAX_TYPO_DISTANCE)
+            .map(|(m, _)| m)
             .collect()
     }
 
@@ -225,35 +225,37 @@ impl OpenCodeResolver {
                 provider,
                 suggestions,
             } => {
-                use std::fmt::Write;
-                let mut msg =
+                let msg =
                     format!("Error: OpenCode provider '{provider}' not found in API catalog.\n");
-                if let Some(closest) = suggestions.first() {
-                    let _ = writeln!(msg, "Did you mean: {closest}?");
-                }
-                let _ = writeln!(msg, "Agent reference: {agent_name}");
-                msg.push_str("Available providers: ");
-                msg.push_str(&self.catalog.provider_names().join(", "));
-                msg.push_str("\n\nPlease update your agent configuration.");
-                msg
+                let msg = if let Some(closest) = suggestions.first() {
+                    format!("{msg}Did you mean: {closest}?\n")
+                } else {
+                    msg
+                };
+                let msg = format!("{msg}Agent reference: {agent_name}");
+                let available = self.catalog.provider_names().join(", ");
+                format!(
+                    "{msg}\nAvailable providers: {available}\n\nPlease update your agent configuration."
+                )
             }
             ValidationError::ModelNotFound {
                 provider,
                 model,
                 suggestions,
             } => {
-                use std::fmt::Write;
-                let mut msg = format!(
+                let msg = format!(
                     "Error: OpenCode model '{provider}/{model}' not found in API catalog.\n"
                 );
-                if let Some(closest) = suggestions.first() {
-                    let _ = writeln!(msg, "Did you mean: {provider}/{closest}?");
-                }
-                let _ = writeln!(msg, "Agent reference: {agent_name}");
-                let _ = write!(msg, "Available models for '{provider}': ");
-                msg.push_str(&self.catalog.get_model_ids(provider).join(", "));
-                msg.push_str("\n\nPlease update your agent configuration.");
-                msg
+                let msg = if let Some(closest) = suggestions.first() {
+                    format!("{msg}Did you mean: {provider}/{closest}?\n")
+                } else {
+                    msg
+                };
+                let msg = format!("{msg}Agent reference: {agent_name}\n");
+                let available = self.catalog.get_model_ids(provider).join(", ");
+                format!(
+                    "{msg}Available models for '{provider}': {available}\n\nPlease update your agent configuration."
+                )
             }
         }
     }

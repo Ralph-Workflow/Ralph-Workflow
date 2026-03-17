@@ -7,10 +7,16 @@ use crate::config::unified::UnifiedConfig;
 use crate::config::validation::ConfigValidationError;
 use crate::config::{Config, ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
+use std::io::Write;
 
 fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
-    println!("{}Validation errors found:{}", colors.red(), colors.reset());
-    println!();
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Validation errors found:{}",
+        colors.red(),
+        colors.reset()
+    );
+    let _ = writeln!(std::io::stdout());
 
     // Group errors by file for clearer presentation
     let mut global_errors: Vec<_> = Vec::new();
@@ -29,7 +35,8 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
     }
 
     if !global_errors.is_empty() {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}~/.config/ralph-workflow.toml:{}",
             colors.yellow(),
             colors.reset()
@@ -37,11 +44,12 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
         for error in global_errors {
             print_config_error(colors, error);
         }
-        println!();
+        let _ = writeln!(std::io::stdout());
     }
 
     if !local_errors.is_empty() {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}.agent/ralph-workflow.toml:{}",
             colors.yellow(),
             colors.reset()
@@ -49,23 +57,25 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
         for error in local_errors {
             print_config_error(colors, error);
         }
-        println!();
+        let _ = writeln!(std::io::stdout());
     }
 
     if !other_errors.is_empty() {
         for error in other_errors {
-            println!(
+            let _ = writeln!(
+                std::io::stdout(),
                 "{}{}:{}",
                 colors.yellow(),
                 error.file().display(),
                 colors.reset()
             );
             print_config_error(colors, error);
-            println!();
+            let _ = writeln!(std::io::stdout());
         }
     }
 
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Fix these errors and try again.{}",
         colors.red(),
         colors.reset()
@@ -76,11 +86,17 @@ fn print_config_sources<R: ConfigEnvironment>(colors: Colors, env: &R) {
     let global_path = env.unified_config_path();
     let local_path = env.local_config_path();
 
-    println!("{}Configuration sources:{}", colors.cyan(), colors.reset());
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Configuration sources:{}",
+        colors.cyan(),
+        colors.reset()
+    );
 
     if let Some(path) = global_path {
         let exists = env.file_exists(&path);
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  Global: {} {}",
             path.display(),
             if exists {
@@ -93,7 +109,8 @@ fn print_config_sources<R: ConfigEnvironment>(colors: Colors, env: &R) {
 
     if let Some(path) = local_path {
         let exists = env.file_exists(&path);
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  Local:  {} {}",
             path.display(),
             if exists {
@@ -106,18 +123,40 @@ fn print_config_sources<R: ConfigEnvironment>(colors: Colors, env: &R) {
 }
 
 fn print_effective_settings(colors: Colors, config: &Config) {
-    println!();
-    println!("{}Effective settings:{}", colors.cyan(), colors.reset());
-    println!("  Verbosity: {}", config.verbosity as u8);
-    println!("  Developer iterations: {}", config.developer_iters);
-    println!("  Reviewer reviews: {}", config.reviewer_reviews);
-    println!("  Interactive: {}", config.behavior.interactive);
-    println!("  Isolation mode: {}", config.isolation_mode);
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Effective settings:{}",
+        colors.cyan(),
+        colors.reset()
+    );
+    let _ = writeln!(std::io::stdout(), "  Verbosity: {}", config.verbosity as u8);
+    let _ = writeln!(
+        std::io::stdout(),
+        "  Developer iterations: {}",
+        config.developer_iters
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  Reviewer reviews: {}",
+        config.reviewer_reviews
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  Interactive: {}",
+        config.behavior.interactive
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  Isolation mode: {}",
+        config.isolation_mode
+    );
 }
 
 fn print_merged_config(colors: Colors, merged_unified: Option<UnifiedConfig>) {
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Full merged configuration:{}",
         colors.cyan(),
         colors.reset()
@@ -125,7 +164,7 @@ fn print_merged_config(colors: Colors, merged_unified: Option<UnifiedConfig>) {
     if let Some(unified) = merged_unified {
         let toml_str = toml::to_string_pretty(&unified)
             .unwrap_or_else(|_| "Error serializing config".to_string());
-        println!("{toml_str}");
+        let _ = writeln!(std::io::stdout(), "{toml_str}");
     }
 }
 
@@ -152,12 +191,13 @@ pub fn handle_check_config_with<R: ConfigEnvironment>(
     env: &R,
     verbose: bool,
 ) -> anyhow::Result<bool> {
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Checking configuration...{}",
         colors.dim(),
         colors.reset()
     );
-    println!();
+    let _ = writeln!(std::io::stdout());
 
     let (config, merged_unified, warnings) = match load_config_from_path_with_env(None, env) {
         Ok(result) => result,
@@ -171,11 +211,16 @@ pub fn handle_check_config_with<R: ConfigEnvironment>(
     };
 
     if !warnings.is_empty() {
-        println!("{}Warnings:{}", colors.yellow(), colors.reset());
+        let _ = writeln!(
+            std::io::stdout(),
+            "{}Warnings:{}",
+            colors.yellow(),
+            colors.reset()
+        );
         for warning in &warnings {
-            println!("  {warning}");
+            let _ = writeln!(std::io::stdout(), "  {warning}");
         }
-        println!();
+        let _ = writeln!(std::io::stdout());
     }
 
     print_config_sources(colors, env);
@@ -185,8 +230,13 @@ pub fn handle_check_config_with<R: ConfigEnvironment>(
         print_merged_config(colors, merged_unified);
     }
 
-    println!();
-    println!("{}Configuration valid{}", colors.green(), colors.reset());
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Configuration valid{}",
+        colors.green(),
+        colors.reset()
+    );
 
     Ok(true)
 }
@@ -195,15 +245,27 @@ pub fn handle_check_config_with<R: ConfigEnvironment>(
 fn print_config_error(colors: Colors, error: &ConfigValidationError) {
     match error {
         ConfigValidationError::TomlSyntax { error, .. } => {
-            println!("  {}TOML syntax error:{}", colors.red(), colors.reset());
-            println!("    {error}");
+            let _ = writeln!(
+                std::io::stdout(),
+                "  {}TOML syntax error:{}",
+                colors.red(),
+                colors.reset()
+            );
+            let _ = writeln!(std::io::stdout(), "    {error}");
         }
         ConfigValidationError::UnknownKey {
             key, suggestion, ..
         } => {
-            println!("  {}Unknown key '{}'{}", colors.red(), key, colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "  {}Unknown key '{}'{}",
+                colors.red(),
+                key,
+                colors.reset()
+            );
             if let Some(s) = suggestion {
-                println!(
+                let _ = writeln!(
+                    std::io::stdout(),
                     "    {}Did you mean '{}'?{}",
                     colors.dim(),
                     s,
@@ -212,13 +274,14 @@ fn print_config_error(colors: Colors, error: &ConfigValidationError) {
             }
         }
         ConfigValidationError::InvalidValue { key, message, .. } => {
-            println!(
+            let _ = writeln!(
+                std::io::stdout(),
                 "  {}Invalid value for '{}'{}",
                 colors.red(),
                 key,
                 colors.reset()
             );
-            println!("    {message}");
+            let _ = writeln!(std::io::stdout(), "    {message}");
         }
     }
 }

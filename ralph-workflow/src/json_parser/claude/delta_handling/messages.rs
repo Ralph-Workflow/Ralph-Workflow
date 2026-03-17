@@ -35,7 +35,8 @@ use crate::json_parser::delta_display::{
 use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::ContentType;
-use std::fmt::Write;
+use std::fmt::Write as FmtWrite;
+use std::io::Write;
 
 impl crate::json_parser::claude::ClaudeParser {
     /// Handle standalone text delta events (not part of content blocks).
@@ -133,15 +134,18 @@ impl crate::json_parser::claude::ClaudeParser {
                 if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized_text.is_empty()
                 {
                     #[cfg(debug_assertions)]
-                    eprintln!(
-                        "Warning: Delta discontinuity detected for tool use text. \
-                         Provider sent non-monotonic content. \
-                         Last: {:?} (len={}), Current: {:?} (len={})",
-                        &last_rendered[..last_rendered.len().min(40)],
-                        last_rendered.len(),
-                        &sanitized_text[..sanitized_text.len().min(40)],
-                        sanitized_text.len()
-                    );
+                    {
+                        let _ = writeln!(
+                            std::io::stderr(),
+                            "Warning: Delta discontinuity detected for tool use text. \
+                             Provider sent non-monotonic content. \
+                             Last: {:?} (len={}), Current: {:?} (len={})",
+                            &last_rendered[..last_rendered.len().min(40)],
+                            last_rendered.len(),
+                            &sanitized_text[..sanitized_text.len().min(40)],
+                            sanitized_text.len()
+                        );
+                    }
                 }
 
                 // Track new rendered content

@@ -249,7 +249,7 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
             .as_ref()
             .map_or(0, |info| info.running_thread_count);
 
-        child_count += 1;
+        child_count = child_count.saturating_add(1);
         total_cpu_ms += cpu_time_ms;
         let counts_as_current_activity = libproc_state_indicates_current_activity(
             bsd_info.status,
@@ -258,7 +258,7 @@ fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         );
 
         if counts_as_current_activity {
-            active_child_count += 1;
+            active_child_count = active_child_count.saturating_add(1);
         }
         qualifying_descendants.push(descendant_pid);
     }
@@ -621,9 +621,9 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                             }
 
                             debug_assert_eq!(child.parent_pid, current);
-                            child_count += 1;
+                            child_count = child_count.saturating_add(1);
                             if child.currently_active {
-                                active_child_count += 1;
+                                active_child_count = active_child_count.saturating_add(1);
                             }
                             total_cpu_ms += child.cpu_time_ms;
                             descendant_pids.push(child.pid);

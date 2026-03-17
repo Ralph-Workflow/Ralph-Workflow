@@ -99,13 +99,13 @@ fn attempt_auto_recovery(
     logger: &Logger,
     workspace: &dyn Workspace,
 ) -> (usize, Vec<ValidationError>) {
-    let mut recovered = 0;
+    let mut recovered: usize = 0;
     let mut remaining = Vec::new();
 
     for error in errors {
         match attempt_recovery_for_error(file_system_state, error, logger, workspace) {
             Ok(()) => {
-                recovered += 1;
+                recovered = recovered.saturating_add(1);
                 logger.success(&format!("Recovered: {error}"));
             }
             Err(e) => {

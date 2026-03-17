@@ -11,6 +11,7 @@ The root `CODE_STYLE.md` file stays short and policy-focused. This directory exp
 - `docs/code-style/boundaries.md` - where `domain/`, `io/`, `runtime/`, `boundary/`, and `ffi/` code belongs
 - `docs/code-style/module-organization.md` - how files and modules should be split and named
 - `docs/code-style/coding-patterns.md` - detailed before/after examples for everyday Rust refactors
+- `docs/code-style/functional-transformations.md` - practical cookbook for writing lint-compliant FP Rust (collection building, loop replacement, struct updates, conditional chains)
 - `docs/code-style/errors-and-diagnostics.md` - how to model failures, warnings, and returned diagnostics
 - `docs/code-style/generics-and-abstractions.md` - when explicit Rust is best and when abstractions like `frunk` are justified
 - `docs/code-style/testing.md` - what tests should look like for each layer
@@ -22,9 +23,10 @@ The root `CODE_STYLE.md` file stays short and policy-focused. This directory exp
 3. `docs/code-style/boundaries.md`
 4. `docs/code-style/module-organization.md`
 5. `docs/code-style/coding-patterns.md`
-6. `docs/code-style/errors-and-diagnostics.md`
-7. `docs/code-style/generics-and-abstractions.md`
-8. `docs/code-style/testing.md`
+6. `docs/code-style/functional-transformations.md`
+7. `docs/code-style/errors-and-diagnostics.md`
+8. `docs/code-style/generics-and-abstractions.md`
+9. `docs/code-style/testing.md`
 
 ## What this guide is for
 
@@ -34,6 +36,7 @@ Use this directory when you need to answer questions like:
 - Should this function be pure or effectful?
 - How should this module be split?
 - What does a good reducer or handler look like?
+- How do I rewrite this imperative pattern to satisfy the FP lints?
 - How should errors and diagnostics be modeled?
 - When is a generic abstraction justified?
 - How should tests be shaped for this architecture?

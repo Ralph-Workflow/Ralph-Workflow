@@ -48,11 +48,22 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
         return None;
     }
 
-    println!();
-    println!("{}PROMPT.md not found.{}", colors.yellow(), colors.reset());
-    println!();
-    println!("PROMPT.md contains your task specification for the AI agents.");
-    print!("Would you like to create one from a template? [Y/n]: ");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}PROMPT.md not found.{}",
+        colors.yellow(),
+        colors.reset()
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "PROMPT.md contains your task specification for the AI agents."
+    );
+    let _ = write!(
+        std::io::stdout(),
+        "Would you like to create one from a template? [Y/n]: "
+    );
     if io::stdout().flush().is_err() {
         return None;
     }
@@ -71,13 +82,14 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
     }
 
     // Empty or 'y'/'yes' means yes - proceed to template selection
-    println!();
-    println!("Available templates:");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Available templates:");
 
     let templates = list_templates();
 
     for (name, description) in &templates {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}{}{}  {}{}{}",
             colors.cyan(),
             name,
@@ -87,10 +99,11 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
             colors.reset()
         );
     }
-    println!();
+    let _ = writeln!(std::io::stdout());
 
     // Prompt for template selection with default to feature-spec
-    print!(
+    let _ = write!(
+        std::io::stdout(),
         "Select template {}[default: feature-spec]{}: ",
         colors.dim(),
         colors.reset()
@@ -116,7 +129,8 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
 
     // Validate the template exists
     if get_template(selected).is_none() {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}Unknown template: '{}'. Using feature-spec as default.{}",
             colors.yellow(),
             selected,
@@ -148,7 +162,8 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
 
     // Check if PROMPT.md already exists (shouldn't happen in our flow, but safety check)
     if prompt_path.exists() {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}PROMPT.md already exists. Skipping creation.{}",
             colors.yellow(),
             colors.reset()
@@ -165,26 +180,34 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
     let content = template.content();
     fs::write(prompt_path, content)?;
 
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Created PROMPT.md from template: {}{}{}",
         colors.green(),
         colors.bold(),
         template_name,
         colors.reset()
     );
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "Template: {}{}{}  {}",
         colors.cyan(),
         template.name(),
         colors.reset(),
         template.description()
     );
-    println!();
-    println!("Next steps:");
-    println!("  1. Edit PROMPT.md with your task details");
-    println!("  2. Run ralph again with your commit message");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Next steps:");
+    let _ = writeln!(
+        std::io::stdout(),
+        "  1. Edit PROMPT.md with your task details"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  2. Run ralph again with your commit message"
+    );
 
     Ok(())
 }

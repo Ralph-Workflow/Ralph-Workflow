@@ -46,7 +46,7 @@ fn redact_http_url_userinfo(input: &str) -> String {
             ("http://", 7usize)
         } else {
             out.push(bytes[i] as char);
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         };
 
@@ -61,7 +61,7 @@ fn redact_http_url_userinfo(input: &str) -> String {
             if b == b'/' || b.is_ascii_whitespace() {
                 break;
             }
-            end += 1;
+            end = end.saturating_add(1);
         }
 
         let authority = &input[scheme_end..end];
@@ -93,13 +93,13 @@ fn redact_bearer_tokens(input: &str) -> String {
             i += "bearer ".len();
             // Skip token characters (up to whitespace).
             while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
-                i += 1;
+                i = i.saturating_add(1);
             }
             continue;
         }
 
         out.push(bytes[i] as char);
-        i += 1;
+        i = i.saturating_add(1);
     }
     out
 }
@@ -136,13 +136,13 @@ fn redact_common_query_params(input: &str) -> String {
                 if b == b'&' || b.is_ascii_whitespace() {
                     break;
                 }
-                i += 1;
+                i = i.saturating_add(1);
             }
             continue;
         }
 
         out.push(bytes[i] as char);
-        i += 1;
+        i = i.saturating_add(1);
     }
 
     out
@@ -173,7 +173,7 @@ fn redact_token_like_substrings(input: &str) -> String {
                 let b = bytes[end];
                 let c = b as char;
                 if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-                    end += 1;
+                    end = end.saturating_add(1);
                     continue;
                 }
                 break;
@@ -185,7 +185,7 @@ fn redact_token_like_substrings(input: &str) -> String {
         }
 
         out.push(bytes[i] as char);
-        i += 1;
+        i = i.saturating_add(1);
     }
 
     out

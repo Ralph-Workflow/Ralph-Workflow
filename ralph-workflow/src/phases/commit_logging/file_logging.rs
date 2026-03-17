@@ -70,7 +70,7 @@ impl CommitLogSession {
 
     /// Get the next attempt number and increment the counter.
     pub const fn next_attempt_number(&mut self) -> usize {
-        self.attempt_counter += 1;
+        self.attempt_counter = self.attempt_counter.saturating_add(1);
         self.attempt_counter
     }
 

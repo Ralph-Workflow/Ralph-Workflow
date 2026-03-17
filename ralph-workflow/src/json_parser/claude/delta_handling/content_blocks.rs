@@ -42,6 +42,7 @@ use crate::json_parser::delta_display::{
 use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::{ContentBlockDelta, ContentType};
+use std::io::Write;
 
 /// Format tool input for display (convert non-string values to JSON).
 fn format_tool_input(value: &serde_json::Value) -> String {
@@ -176,15 +177,19 @@ impl crate::json_parser::claude::ClaudeParser {
                             // This is a protocol violation - content changed unexpectedly
                             // Log it for debugging provider behavior (similar to snapshot-as-delta warnings)
                             #[cfg(debug_assertions)]
-                            eprintln!(
-                                "Warning: Delta discontinuity detected for text block {index}. \
-                                 Provider sent non-monotonic content. \
-                                 Last: {:?} (len={}), Current: {:?} (len={})",
-                                &last_rendered[..last_rendered.len().min(40)],
-                                last_rendered.len(),
-                                &sanitized_text[..sanitized_text.len().min(40)],
-                                sanitized_text.len()
-                            );
+                            {
+                                let _ = writeln!(
+                                    std::io::stderr(),
+                                    "Warning: Delta discontinuity detected for text block {}. \
+                                     Provider sent non-monotonic content. \
+                                     Last: {:?} (len={}), Current: {:?} (len={})",
+                                    index,
+                                    &last_rendered[..last_rendered.len().min(40)],
+                                    last_rendered.len(),
+                                    &sanitized_text[..sanitized_text.len().min(40)],
+                                    sanitized_text.len()
+                                );
+                            }
                         }
 
                         // Track new rendered content
@@ -277,15 +282,19 @@ impl crate::json_parser::claude::ClaudeParser {
                                 && !sanitized.is_empty()
                             {
                                 #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "Warning: Delta discontinuity detected for thinking block {index}. \
-                                     Provider sent non-monotonic content. \
-                                     Last: {:?} (len={}), Current: {:?} (len={})",
-                                    &last_rendered[..last_rendered.len().min(40)],
-                                    last_rendered.len(),
-                                    &sanitized[..sanitized.len().min(40)],
-                                    sanitized.len()
-                                );
+                                {
+                                    let _ = writeln!(
+                                        std::io::stderr(),
+                                        "Warning: Delta discontinuity detected for thinking block {}. \
+                                         Provider sent non-monotonic content. \
+                                         Last: {:?} (len={}), Current: {:?} (len={})",
+                                        index,
+                                        &last_rendered[..last_rendered.len().min(40)],
+                                        last_rendered.len(),
+                                        &sanitized[..sanitized.len().min(40)],
+                                        sanitized.len()
+                                    );
+                                }
                             }
 
                             // Track new rendered content

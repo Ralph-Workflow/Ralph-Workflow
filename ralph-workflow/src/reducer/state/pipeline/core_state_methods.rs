@@ -203,15 +203,42 @@ impl PipelineState {
     /// - Memory usage: ~51 KB heap (based on recorded baseline measurements)
     /// - Checkpoint size: ~375 KB serialized
     /// - Growth: Bounded (oldest entries dropped when limit reached)
-    pub fn add_execution_step(&mut self, step: ExecutionStep, limit: usize) {
-        self.execution_history.push_bounded(step, limit);
+    #[must_use]
+    pub fn with_execution_step(self, step: ExecutionStep, limit: usize) -> Self {
+        Self {
+            execution_history: self.execution_history.with_step(step, limit),
+            ..self
+        }
     }
 
+    #[must_use]
+    pub fn with_execution_history(
+        self,
+        history: std::collections::VecDeque<ExecutionStep>,
+        limit: usize,
+    ) -> Self {
+        Self {
+            execution_history: self.execution_history.with_replaced(history, limit),
+            ..self
+        }
+    }
+
+    /// Mutable method for backward compatibility during migration.
+    /// Prefer `with_execution_step` for new code.
+    pub fn add_execution_step(&mut self, step: ExecutionStep, limit: usize) {
+        let new_history = std::mem::take(&mut self.execution_history).with_step(step, limit);
+        self.execution_history = new_history;
+    }
+
+    /// Mutable method for backward compatibility during migration.
+    /// Prefer `with_execution_history` for new code.
     pub(crate) fn replace_execution_history_bounded(
         &mut self,
         history: std::collections::VecDeque<ExecutionStep>,
         limit: usize,
     ) {
-        self.execution_history.replace_bounded(history, limit);
+        let current = self.execution_history.clone();
+        let new_history = current.with_replaced(history, limit);
+        self.execution_history = new_history;
     }
 }

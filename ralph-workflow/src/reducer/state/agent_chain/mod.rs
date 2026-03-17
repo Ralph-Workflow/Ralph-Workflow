@@ -286,35 +286,42 @@ impl AgentChainState {
 
     #[must_use]
     pub fn with_agents(
-        mut self,
+        self,
         agents: Vec<String>,
         models_per_agent: Vec<Vec<String>>,
         role: AgentRole,
     ) -> Self {
-        self.agents = Arc::from(agents);
-        self.models_per_agent = Arc::from(models_per_agent);
-        self.current_role = role;
-        self.current_drain = match role {
+        let current_drain = match role {
             AgentRole::Developer => AgentDrain::Development,
             AgentRole::Reviewer => AgentDrain::Review,
             AgentRole::Commit => AgentDrain::Commit,
             AgentRole::Analysis => AgentDrain::Analysis,
         };
-        self.current_mode = DrainMode::Normal;
-        self
+        Self {
+            agents: Arc::from(agents),
+            models_per_agent: Arc::from(models_per_agent),
+            current_role: role,
+            current_drain,
+            current_mode: DrainMode::Normal,
+            ..self
+        }
     }
 
     #[must_use]
-    pub const fn with_drain(mut self, drain: AgentDrain) -> Self {
-        self.current_drain = drain;
-        self.current_role = drain.role();
-        self
+    pub fn with_drain(self, drain: AgentDrain) -> Self {
+        Self {
+            current_drain: drain,
+            current_role: drain.role(),
+            ..self
+        }
     }
 
     #[must_use]
-    pub const fn with_mode(mut self, mode: DrainMode) -> Self {
-        self.current_mode = mode;
-        self
+    pub fn with_mode(self, mode: DrainMode) -> Self {
+        Self {
+            current_mode: mode,
+            ..self
+        }
     }
 
     #[must_use]
@@ -327,22 +334,39 @@ impl AgentChainState {
     /// A retry cycle is when all agents have been exhausted and we start
     /// over with exponential backoff.
     #[must_use]
-    pub const fn with_max_cycles(mut self, max_cycles: u32) -> Self {
-        self.max_cycles = max_cycles;
-        self
+    pub fn with_max_cycles(self, max_cycles: u32) -> Self {
+        Self { max_cycles, ..self }
     }
 
     #[must_use]
-    pub const fn with_backoff_policy(
-        mut self,
+    pub fn with_backoff_policy(
+        self,
         retry_delay_ms: u64,
         backoff_multiplier: f64,
         max_backoff_ms: u64,
     ) -> Self {
-        self.retry_delay_ms = retry_delay_ms;
-        self.backoff_multiplier = backoff_multiplier;
-        self.max_backoff_ms = max_backoff_ms;
-        self
+        Self {
+            retry_delay_ms,
+            backoff_multiplier,
+            max_backoff_ms,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_retry_cycle(self, retry_cycle: u32) -> Self {
+        Self {
+            retry_cycle,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_current_agent_index(self, current_agent_index: usize) -> Self {
+        Self {
+            current_agent_index,
+            ..self
+        }
     }
 
     #[must_use]

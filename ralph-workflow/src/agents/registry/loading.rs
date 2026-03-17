@@ -32,9 +32,13 @@ impl AgentRegistry {
                 let count = config.agents.len();
                 let resolved_drains = config.resolve_drains_checked()?;
 
-                for (name, agent_toml) in config.agents {
-                    self.register(&name, AgentConfig::from(agent_toml));
-                }
+                let agents_to_register: Vec<_> = config
+                    .agents
+                    .into_iter()
+                    .map(|(name, agent_toml)| (name, AgentConfig::from(agent_toml)))
+                    .collect();
+                self.agents.extend(agents_to_register);
+
                 self.resolved_drains = resolved_drains.unwrap_or_else(|| {
                     Self::merge_general_runtime_settings(
                         &self.resolved_drains,
@@ -67,8 +71,9 @@ impl AgentRegistry {
         &mut self,
         unified: &crate::config::UnifiedConfig,
     ) -> Result<usize, AgentConfigError> {
-        let mut loaded = self.apply_ccs_aliases(unified);
-        loaded += self.apply_agent_overrides(unified);
+        let ccs_loaded = self.apply_ccs_aliases(unified);
+        let agent_loaded = self.apply_agent_overrides(unified);
+        let loaded = ccs_loaded + agent_loaded;
 
         self.resolved_drains = unified
             .resolve_agent_drains_checked()
@@ -102,24 +107,25 @@ impl AgentRegistry {
             return 0;
         }
 
-        // Use fold to count loaded agents functionally
-        let loaded = unified.agents.iter().fold(0usize, |count, (name, overrides)| {
-            if let Some(existing) = self.agents.get(name).cloned() {
-                // Merge with existing agent
-                let merged = Self::merge_agent_config(existing, overrides);
-                self.register(name, merged);
-                count.saturating_add(1)
-            } else {
-                // New agent definition: require a non-empty command.
-                if let Some(config) = Self::create_new_agent_config(overrides) {
-                    self.register(name, config);
-                    count.saturating_add(1)
-                } else {
-                    count
-                }
-            }
-        });
-        loaded
+        // First, collect all registrations functionally
+        let registrations: Vec<_> = unified
+            .agents
+            .iter()
+            .filter_map(|(name, overrides)| {
+                self.agents
+                    .get(name)
+                    .cloned()
+                    .map(|existing| (name.clone(), Self::merge_agent_config(existing, overrides)))
+                    .or_else(|| Self::create_new_agent_config(overrides).map(|config| (name.clone(), config)))
+            })
+            .collect();
+
+        // Then register them (requires mutation - use for_each which is a method call, not a for loop)
+        registrations
+            .iter()
+            .for_each(|(name, config)| self.register(name, config.clone()));
+
+        registrations.len()
     }
 
     /// Create a new agent config from unified config overrides.

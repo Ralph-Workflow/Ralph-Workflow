@@ -6,6 +6,7 @@ use super::kill::{
 use super::{is_idle_timeout_exceeded, SharedActivityTimestamp, SharedFileActivityTracker};
 use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};
 use crate::workspace::Workspace;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -332,7 +333,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
 
         // Log diagnostic information about timeout trigger
         let time_since_output = super::time_since_activity(activity_timestamp);
-        eprintln!(
+        let _ = writeln!(
+            std::io::stderr(),
             "Idle timeout exceeded: no output activity for {} seconds",
             time_since_output.as_secs()
         );
@@ -348,7 +350,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 last_child_observation = None;
                 last_child_info = None;
                 child_startup_grace_available = true;
-                eprintln!(
+                let _ = writeln!(
+                    std::io::stderr(),
                     "Continuing monitoring: file activity was confirmed within the last timeout window"
                 );
                 continue;
@@ -380,16 +383,21 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     last_child_observation = None;
                     last_child_info = None;
                     child_startup_grace_available = true;
-                    eprintln!("AI-generated files were updated recently, continuing monitoring");
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "AI-generated files were updated recently, continuing monitoring"
+                    );
                     continue;
                 }
                 Ok(false) => {
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "No AI-generated file updates in the last {file_window:?}, proceeding with timeout"
                     );
                 }
                 Err(e) => {
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Warning: file activity check failed (treating as no recent file activity, proceeding with timeout enforcement): {e}"
                     );
                 }
@@ -404,7 +412,10 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             last_child_observation = None;
             last_child_info = None;
             child_startup_grace_available = true;
-            eprintln!("Output activity detected after file scan; continuing monitoring");
+            let _ = writeln!(
+                std::io::stderr(),
+                "Output activity detected after file scan; continuing monitoring"
+            );
             continue;
         }
 
@@ -431,7 +442,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     child_startup_grace_available = false;
                     consecutive_idle_count = 0;
                     last_child_observation = Some(info);
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Agent has currently active child processes for the first time during idle timeout \
                          (pid {child_pid}, {} active of {} children, cpu {}ms, signature {}); granting startup grace",
                         info.active_child_count,
@@ -461,7 +473,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                     }
                     consecutive_idle_count = 0;
                     child_startup_grace_available = true;
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Agent has currently active child processes (pid {child_pid}, \
                          {} active of {} children, cpu {}ms, signature {}); continuing monitoring",
                         info.active_child_count,
@@ -473,7 +486,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                 }
 
                 if info.has_stalled_children() {
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Agent has child processes (pid {child_pid}, {} total, 0 currently active, cpu {}ms, signature {}) \
                          but none show current work; treating as idle",
                         info.child_count,
@@ -481,7 +495,8 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
                         info.descendant_pid_signature
                     );
                 } else if info.has_currently_active_children() {
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Agent has child processes (pid {child_pid}, {} active of {} total, cpu {}ms, signature {}) \
                          but they showed no fresh progress since the last idle check; treating as idle",
                         info.active_child_count,
@@ -501,9 +516,10 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         // Require multiple consecutive idle observations before killing to avoid
         // false positives during transient quiet periods (LLM API waits, slow
         // compilations, transitions between work phases, etc.).
-        consecutive_idle_count += 1;
+        consecutive_idle_count = consecutive_idle_count.saturating_add(1);
         if consecutive_idle_count < required_idle_confirmations {
-            eprintln!(
+            let _ = writeln!(
+                std::io::stderr(),
                 "Idle confirmed {consecutive_idle_count}/{required_idle_confirmations} times; waiting for next check interval before kill"
             );
             continue;

@@ -98,7 +98,7 @@ where
     ));
     handler.update_state(new_state.clone());
 
-    (new_state, events_processed + 1)
+    (new_state, events_processed.saturating_add(1))
 }
 
 fn apply_checkpoint_effect_result<'ctx, H>(
@@ -121,7 +121,7 @@ where
         &event_str,
     ));
     handler.update_state(state.clone());
-    events_processed += 1;
+    events_processed = events_processed.saturating_add(1);
 
     for event in result.additional_events {
         let event_str = format!("{event:?}");
@@ -133,7 +133,7 @@ where
             &event_str,
         ));
         handler.update_state(state.clone());
-        events_processed += 1;
+        events_processed = events_processed.saturating_add(1);
     }
 
     (state, events_processed)
@@ -278,7 +278,7 @@ where
                 &event_str,
             ));
             handler.update_state(new_state.clone());
-            events_processed += 1;
+            events_processed = events_processed.saturating_add(1);
 
             for event in result.additional_events {
                 let event_str = format!("{event:?}");
@@ -290,7 +290,7 @@ where
                     &event_str,
                 ));
                 handler.update_state(new_state.clone());
-                events_processed += 1;
+                events_processed = events_processed.saturating_add(1);
             }
 
             RecoveryResult::Success(new_state, events_processed, false)

@@ -79,7 +79,7 @@ dylint_linting::impl_early_lint! {
     /// }
     /// ```
     pub FORBID_INTERIOR_MUTABILITY,
-    Warn,
+    Deny,
     "interior-mutability types are forbidden outside boundary modules",
     ForbidInteriorMutability
 }
@@ -153,10 +153,7 @@ fn check_ty_recursive(cx: &EarlyContext<'_>, ty: &Ty) {
                 diag.primary_message(format!(
                     "interior-mutability type `{display_name}` is forbidden outside boundary modules"
                 ));
-                diag.help(
-                    "prefer immutable data structures and return new values instead of \
-                     mutating behind shared references",
-                );
+                diag.help("use immutable data: build collections with `xs.map(|x| (x.key, x.val)).collect()` instead of `RefCell<HashMap>`. For state, use struct-update syntax (`..state`) or builder methods. See `docs/code-style/functional-transformations.md`.");
                 diag.note(
                     "if interior mutability is genuinely required for I/O or caching at the \
                      outermost boundary, move this code into a boundary module \

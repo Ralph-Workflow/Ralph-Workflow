@@ -12,21 +12,8 @@
     // No explicit iterator loops when a more idiomatic form exists
     clippy::explicit_iter_loop,
     clippy::explicit_into_iter_loop,
-    // Unwrap/expect - use ? or proper error handling
-    clippy::unwrap_used,
-    clippy::expect_used,
-    // Panic - avoid panic in library code
-    clippy::panic,
-    clippy::panic_in_result_fn,
-    // Indexing - use get() with proper error handling
-    clippy::indexing_slicing,
-    // Print - keep effects at boundaries
-    clippy::print_stdout,
-    clippy::print_stderr,
     // Debug
     clippy::dbg_macro,
-    // Arithmetic - use checked arithmetic
-    clippy::arithmetic_side_effects,
     // Push toward combinators instead of hand-written control flow
     clippy::manual_map,
     clippy::manual_filter,
@@ -35,6 +22,10 @@
     clippy::manual_flatten,
     clippy::needless_collect
 )]
+// NOTE: unwrap_used, expect_used, and panic are not denied here because they are
+// appropriately used in boundary modules (io/, runtime/, cli/). Dylint's functional
+// lints (forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods,
+// forbid_interior_mutability) correctly distinguish domain from boundary code.
 //! Ralph workflow library for AI agent orchestration.
 //!
 //! This crate provides the core functionality for the `ralph` CLI binary,

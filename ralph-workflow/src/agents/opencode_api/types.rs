@@ -88,36 +88,41 @@ struct RawModelLimit {
 
 impl From<HashMap<String, RawProviderEntry>> for ApiCatalog {
     fn from(raw: HashMap<String, RawProviderEntry>) -> Self {
-        let mut providers = HashMap::new();
-        let mut models = HashMap::new();
-
-        for (provider_id, entry) in raw {
-            // Create provider entry
-            providers.insert(
-                provider_id.clone(),
-                Provider {
+        // Process all entries functionally - collect providers and models in one pass
+        let (providers, models) = raw
+            .into_iter()
+            .map(|(provider_id, entry)| {
+                // Create provider entry
+                let provider = Provider {
                     id: entry.id.clone(),
                     name: entry.name.clone(),
                     description: entry.doc.unwrap_or_default(),
+                };
+
+                // Convert models from HashMap to Vec
+                let model_list: Vec<Model> = entry
+                    .models
+                    .into_values()
+                    .map(|m| Model {
+                        id: m.id,
+                        name: m.name,
+                        description: m.family.unwrap_or_default(),
+                        context_length: m.limit.and_then(|l| l.context),
+                    })
+                    .collect();
+
+                (provider_id, provider, model_list)
+            })
+            .fold(
+                (HashMap::new(), HashMap::new()),
+                |(mut providers, mut models), (id, provider, model_list)| {
+                    if !model_list.is_empty() {
+                        models.insert(id.clone(), model_list);
+                    }
+                    providers.insert(id, provider);
+                    (providers, models)
                 },
             );
-
-            // Convert models from HashMap to Vec
-            let model_list: Vec<Model> = entry
-                .models
-                .into_values()
-                .map(|m| Model {
-                    id: m.id,
-                    name: m.name,
-                    description: m.family.unwrap_or_default(),
-                    context_length: m.limit.and_then(|l| l.context),
-                })
-                .collect();
-
-            if !model_list.is_empty() {
-                models.insert(provider_id, model_list);
-            }
-        }
 
         Self {
             providers,

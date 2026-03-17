@@ -6,6 +6,7 @@
 use crate::config::{Config, ReviewDepth};
 use crate::logger::Colors;
 use clap::ValueEnum;
+use std::io::Write;
 
 /// Preset configurations for common agent combinations.
 #[derive(Clone, Debug, ValueEnum)]
@@ -27,21 +28,24 @@ pub enum Preset {
 /// - All CLI arguments are handled (fixes missing -L, -S, -T flags)
 /// - Event processing is testable and maintainable
 /// - Consistent with the existing pipeline reducer pattern
-#[expect(clippy::print_stderr, reason = "CLI warning for invalid arguments")]
 pub fn apply_args_to_config(args: &super::Args, config: &mut Config, colors: Colors) {
     use crate::cli::reducer::{apply_cli_state_to_config, args_to_events, reduce, CliState};
 
     // Validate review depth before processing (for user warning)
     if let Some(ref depth) = args.review_depth {
         if ReviewDepth::from_str(depth).is_none() {
-            eprintln!(
+            let _ = writeln!(
+                std::io::stderr(),
                 "{}{}Warning:{} Unknown review depth '{}'. Using default (standard).",
                 colors.bold(),
                 colors.yellow(),
                 colors.reset(),
                 depth
             );
-            eprintln!("Valid options: standard, comprehensive, security, incremental");
+            let _ = writeln!(
+                std::io::stderr(),
+                "Valid options: standard, comprehensive, security, incremental"
+            );
         }
     }
 

@@ -3,6 +3,7 @@
 //! This module provides handlers for listing agents and their configurations.
 
 use crate::agents::{is_ccs_ref, AgentRegistry};
+use std::io::Write;
 
 /// Handle --list-agents command.
 ///
@@ -24,22 +25,26 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
 
     // Print regular agents
     if !regular_agents.is_empty() {
-        println!("Agents:");
+        let _ = writeln!(std::io::stdout(), "Agents:");
         for (name, cfg) in regular_agents {
             let display_name = registry.display_name(name);
-            println!(
+            let _ = writeln!(
+                std::io::stdout(),
                 "  {}\tcmd={}\tparser={}\tcan_commit={}",
-                display_name, cfg.cmd, cfg.json_parser, cfg.can_commit
+                display_name,
+                cfg.cmd,
+                cfg.json_parser,
+                cfg.can_commit
             );
         }
     }
 
     // Print CCS aliases
     if !ccs_aliases.is_empty() {
-        println!("\nCCS Aliases:");
+        let _ = writeln!(std::io::stdout(), "\nCCS Aliases:");
         for (name, cfg) in ccs_aliases {
             let display_name = registry.display_name(name);
-            println!("  {}\t→ \"{}\"", display_name, cfg.cmd);
+            let _ = writeln!(std::io::stdout(), "  {}\t→ \"{}\"", display_name, cfg.cmd);
         }
     }
 }
@@ -62,19 +67,19 @@ pub fn handle_list_available_agents(registry: &AgentRegistry) {
 
     // Print regular agents
     if !regular_agents.is_empty() {
-        println!("Available agents:");
+        let _ = writeln!(std::io::stdout(), "Available agents:");
         for name in regular_agents {
             let display_name = registry.display_name(name);
-            println!("  {display_name}");
+            let _ = writeln!(std::io::stdout(), "  {display_name}");
         }
     }
 
     // Print CCS aliases
     if !ccs_aliases.is_empty() {
-        println!("\nAvailable CCS aliases:");
+        let _ = writeln!(std::io::stdout(), "\nAvailable CCS aliases:");
         for name in ccs_aliases {
             let display_name = registry.display_name(name);
-            println!("  {display_name}");
+            let _ = writeln!(std::io::stdout(), "  {display_name}");
         }
     }
 }

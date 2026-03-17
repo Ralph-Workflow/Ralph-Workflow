@@ -16,7 +16,7 @@ impl AgentChainState {
         // When models are configured, we try each model for the current agent once.
         // If the models list is exhausted, advance to the next agent/retry cycle
         // instead of looping models indefinitely.
-        let mut next = match self.models_per_agent.get(self.current_agent_index) {
+        let next = match self.models_per_agent.get(self.current_agent_index) {
             Some(models) if !models.is_empty() => {
                 if self.current_model_index + 1 < models.len() {
                     // Simple model advance - only increment model index
@@ -45,11 +45,15 @@ impl AgentChainState {
             _ => self.switch_to_next_agent(),
         };
 
+        // Clear session ID when switching to a different agent
         if next.current_agent_index != start_agent_index {
-            next.last_session_id = None;
+            Self {
+                last_session_id: None,
+                ..next
+            }
+        } else {
+            next
         }
-
-        next
     }
 
     #[must_use]
@@ -529,14 +533,15 @@ mod backoff_semantics_tests {
     #[test]
     fn test_switch_to_agent_named_preserves_backoff_when_retry_cycle_hits_max_but_state_is_not_exhausted(
     ) {
-        let mut state = AgentChainState::initial().with_agents(
-            vec!["a".to_string(), "b".to_string(), "c".to_string()],
-            vec![vec![], vec![], vec![]],
-            AgentRole::Developer,
-        );
-        state.max_cycles = 2;
-        state.retry_cycle = 1;
-        state.current_agent_index = 2;
+        let state = AgentChainState::initial()
+            .with_agents(
+                vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                vec![vec![], vec![], vec![]],
+                AgentRole::Developer,
+            )
+            .with_max_cycles(2)
+            .with_retry_cycle(1)
+            .with_current_agent_index(2);
 
         let next = state.switch_to_agent_named("b");
 

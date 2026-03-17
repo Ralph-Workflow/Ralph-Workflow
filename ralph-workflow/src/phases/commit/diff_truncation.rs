@@ -73,7 +73,7 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
 
     let mut result = String::new();
     let mut current_size = 0;
-    let mut files_included = 0;
+    let mut files_included: usize = 0;
     let total_files = files.len();
 
     for file in &files {
@@ -85,7 +85,7 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
                 result.push('\n');
             }
             current_size += file_size;
-            files_included += 1;
+            files_included = files_included.saturating_add(1);
         } else if files_included == 0 {
             let truncated_lines = truncate_lines_to_fit(&file.lines, max_size);
             for line in truncated_lines {
@@ -159,62 +159,87 @@ fn prioritize_file_path(path: &str) -> i32 {
     }
 }
 
-fn truncate_to_utf8_boundary(s: &mut String, max_bytes: usize) {
+fn truncate_to_utf8_boundary(s: &str, max_bytes: usize) -> String {
     if s.len() <= max_bytes {
-        return;
+        return s.to_string();
     }
-    let mut cut = 0usize;
-    for (idx, _) in s.char_indices() {
-        if idx > max_bytes {
-            break;
-        }
-        cut = idx;
-    }
-    s.truncate(cut);
+    let cut = s
+        .char_indices()
+        .take_while(|(idx, _)| *idx <= max_bytes)
+        .last()
+        .map(|(idx, _)| idx)
+        .unwrap_or(0);
+    s[..cut].to_string()
 }
 
 fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
-    let mut result = Vec::new();
-    let mut current_size = 0;
-
-    for line in lines {
-        let line_size = line.len() + 1;
-        if current_size + line_size <= max_size {
-            current_size += line_size;
-            result.push(line.clone());
-        } else {
-            break;
-        }
-    }
+    // First pass: collect lines that fit within max_size
+    let (result, current_size) = lines.iter().fold(
+        (Vec::new(), 0usize),
+        |(mut acc, size), line| {
+            let line_size = line.len() + 1;
+            if size + line_size <= max_size {
+                acc.push(line.clone());
+                (acc, size + line_size)
+            } else {
+                (acc, size)
+            }
+        },
+    );
 
     let suffix = " [truncated...]";
     let suffix_len = suffix.len();
 
-    if !result.is_empty() {
-        // current_size tracks line lengths + '\n' for each included line.
-        // Appending the suffix increases size; ensure we stay within max_size
-        // by trimming from the last included line if needed.
-        let mut total_size = current_size;
-        while !result.is_empty() && total_size + suffix_len > max_size {
-            let last_len = result.last().expect("checked non-empty").len();
-            let excess = total_size + suffix_len - max_size;
-            if excess < last_len {
-                let new_len = last_len - excess;
-                let last = result.last_mut().expect("checked non-empty");
-                truncate_to_utf8_boundary(last, new_len);
-                break;
-            }
-            // Can't trim enough from last line; drop it and retry.
-            let dropped = result.pop().expect("checked non-empty");
-            total_size = total_size.saturating_sub(dropped.len() + 1);
-        }
+    if result.is_empty() {
+        return result;
+    }
 
+    // Second pass: ensure suffix fits within max_size
+    let adjusted = if current_size + suffix_len > max_size {
+        let target_bytes = max_size.saturating_sub(suffix_len);
+        // Work backwards from end of result, truncating first line if needed
+        // Leave room for newline after each line (+1 per line)
+        let kept: Vec<_> = result.iter().rev().fold(
+            (Vec::new(), 0usize),
+            |(mut acc, size), line| {
+                let line_size = line.len() + 1;
+                if size + line_size <= target_bytes {
+                    // Can fit this line completely
+                    acc.push(line.clone());
+                    (acc, size + line_size)
+                } else if acc.is_empty() {
+                    // This is the first (last) line - truncate it to fit
+                    // Leave room for newline: max allowed is target_bytes - 1
+                    let max_for_line = target_bytes.saturating_sub(1);
+                    let new_line = truncate_to_utf8_boundary(line, max_for_line);
+                    if !new_line.is_empty() {
+                        let new_size = new_line.len() + 1;
+                        acc.push(new_line.clone());
+                        (acc, new_size)
+                    } else {
+                        (acc, size)
+                    }
+                } else {
+                    // Can't fit more, stop adding
+                    (acc, size)
+                }
+            },
+        )
+        .0;
+        kept
+    } else {
+        result
+    };
+
+    if adjusted.is_empty() {
+        adjusted
+    } else {
+        let mut result = adjusted;
         if let Some(last) = result.last_mut() {
             last.push_str(suffix);
         }
+        result
     }
-
-    result
 }
 
 #[cfg(test)]

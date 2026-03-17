@@ -65,22 +65,26 @@ impl<'a> SyntaxValidator<'a> {
     }
 
     fn try_skip_comment(&mut self, bytes: &[u8]) -> bool {
-        if self.i + 1 < bytes.len() && bytes[self.i] == b'{' && bytes[self.i + 1] == b'#' {
+        if self.i.saturating_add(1) < bytes.len()
+            && bytes[self.i] == b'{'
+            && bytes[self.i + 1] == b'#'
+        {
             let comment_start = self.line;
             self.i = self.i.saturating_add(2);
-            while self.i + 1 < bytes.len() && !(bytes[self.i] == b'#' && bytes[self.i + 1] == b'}')
+            while self.i.saturating_add(1) < bytes.len()
+                && !(bytes[self.i] == b'#' && bytes[self.i + 1] == b'}')
             {
                 if bytes[self.i] == b'\n' {
                     self.line = self.line.saturating_add(1);
                 }
                 self.i = self.i.saturating_add(1);
             }
-            if self.i + 1 >= bytes.len() {
+            if self.i.saturating_add(1) >= bytes.len() {
                 self.errors.push(ValidationError::UnclosedComment {
                     line: comment_start,
                 });
             }
-            if self.i + 1 < bytes.len() {
+            if self.i.saturating_add(1) < bytes.len() {
                 self.i = self.i.saturating_add(2);
             }
             true
@@ -91,13 +95,13 @@ impl<'a> SyntaxValidator<'a> {
 
     fn try_parse_conditional(&mut self, bytes: &[u8]) -> bool {
         // Check for {% if ... %}
-        if self.i + 5 < bytes.len()
+        if self.i.saturating_add(5) < bytes.len()
             && bytes[self.i] == b'{'
             && bytes[self.i + 1] == b'%'
             && bytes[self.i + 2] == b' '
             && bytes[self.i + 3] == b'i'
             && bytes[self.i + 4] == b'f'
-            && bytes[self.i + 5] == b' '
+            && bytes[self.i.saturating_add(5)] == b' '
         {
             let if_start = self.i;
             self.i = self.i.saturating_add(6);
@@ -123,17 +127,17 @@ impl<'a> SyntaxValidator<'a> {
         }
 
         // Check for {% endif %}
-        if self.i + 9 < bytes.len()
+        if self.i.saturating_add(9) < bytes.len()
             && bytes[self.i] == b'{'
             && bytes[self.i + 1] == b'%'
             && bytes[self.i + 2] == b' '
             && bytes[self.i + 3] == b'e'
             && bytes[self.i + 4] == b'n'
-            && bytes[self.i + 5] == b'd'
-            && bytes[self.i + 6] == b'i'
+            && bytes[self.i.saturating_add(5)] == b'd'
+            && bytes[self.i.saturating_add(6)] == b'i'
             && bytes[self.i + 7] == b'f'
             && bytes[self.i + 8] == b' '
-            && bytes[self.i + 9] == b'%'
+            && bytes[self.i.saturating_add(9)] == b'%'
         {
             self.conditional_stack.pop();
             self.i = self.i.saturating_add(11);
@@ -145,14 +149,14 @@ impl<'a> SyntaxValidator<'a> {
 
     fn try_parse_loop(&mut self, bytes: &[u8]) -> bool {
         // Check for {% for ... %}
-        if self.i + 6 < bytes.len()
+        if self.i.saturating_add(6) < bytes.len()
             && bytes[self.i] == b'{'
             && bytes[self.i + 1] == b'%'
             && bytes[self.i + 2] == b' '
             && bytes[self.i + 3] == b'f'
             && bytes[self.i + 4] == b'o'
-            && bytes[self.i + 5] == b'r'
-            && bytes[self.i + 6] == b' '
+            && bytes[self.i.saturating_add(5)] == b'r'
+            && bytes[self.i.saturating_add(6)] == b' '
         {
             let for_start = self.i;
             self.i = self.i.saturating_add(7);
@@ -178,17 +182,17 @@ impl<'a> SyntaxValidator<'a> {
         }
 
         // Check for {% endfor %}
-        if self.i + 10 < bytes.len()
+        if self.i.saturating_add(10) < bytes.len()
             && bytes[self.i] == b'{'
             && bytes[self.i + 1] == b'%'
             && bytes[self.i + 2] == b' '
             && bytes[self.i + 3] == b'e'
             && bytes[self.i + 4] == b'n'
-            && bytes[self.i + 5] == b'd'
-            && bytes[self.i + 6] == b'f'
+            && bytes[self.i.saturating_add(5)] == b'd'
+            && bytes[self.i.saturating_add(6)] == b'f'
             && bytes[self.i + 7] == b'o'
             && bytes[self.i + 8] == b'r'
-            && bytes[self.i + 9] == b' '
+            && bytes[self.i.saturating_add(9)] == b' '
         {
             self.loop_stack.pop();
             self.i = self.i.saturating_add(12);

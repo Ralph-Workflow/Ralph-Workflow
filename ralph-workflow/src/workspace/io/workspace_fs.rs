@@ -23,7 +23,7 @@ impl WorkspaceFs {
     /// # Arguments
     ///
     /// * `repo_root` - The repository root directory (typically discovered via git)
-    #[must_use] 
+    #[must_use]
     pub const fn new(repo_root: PathBuf) -> Self {
         Self { root: repo_root }
     }

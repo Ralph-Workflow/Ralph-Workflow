@@ -102,7 +102,7 @@ impl MainEffectHandler {
         ctx.logger
             .info("Cleaning up context files to prevent pollution...");
 
-        let mut cleaned_count = 0;
+        let mut cleaned_count: usize = 0;
 
         // Delete PLAN.md via workspace
         let plan_path = Path::new(".agent/PLAN.md");
@@ -113,7 +113,7 @@ impl MainEffectHandler {
                     path: plan_path.display().to_string(),
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 })?;
-            cleaned_count += 1;
+            cleaned_count = cleaned_count.saturating_add(1);
         }
 
         // Delete ISSUES.md (may not exist if in isolation mode) via workspace
@@ -125,7 +125,7 @@ impl MainEffectHandler {
                     path: issues_path.display().to_string(),
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 })?;
-            cleaned_count += 1;
+            cleaned_count = cleaned_count.saturating_add(1);
         }
 
         // Delete ALL .xml files in .agent/tmp/ to prevent context pollution via workspace
@@ -148,7 +148,7 @@ impl MainEffectHandler {
                             kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                         }
                     })?;
-                    cleaned_count += 1;
+                    cleaned_count = cleaned_count.saturating_add(1);
                 }
             }
         }

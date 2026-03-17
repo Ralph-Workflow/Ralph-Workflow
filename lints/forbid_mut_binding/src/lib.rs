@@ -65,7 +65,7 @@ dylint_linting::impl_early_lint! {
     /// let total: u64 = items.iter().map(|item| item.price).sum();
     /// ```
     pub FORBID_MUT_BINDING,
-    Warn,
+    Deny,
     "`let mut` bindings are forbidden outside boundary modules",
     ForbidMutBinding
 }
@@ -112,10 +112,7 @@ impl EarlyLintPass for ForbidMutBinding {
                     "`let mut {}` is forbidden outside boundary modules",
                     ident.name
                 ));
-                diag.help(
-                    "use immutable bindings with functional transformations (map, fold, collect) \
-                     instead of mutable accumulation",
-                );
+                diag.help("replace mutable accumulator with iterator pipeline: `xs.iter().map(f).collect()` or `xs.iter().fold(init, f)`. See quick reference in `docs/code-style/functional-transformations.md`.");
                 diag.note(
                     "if mutation is genuinely required for I/O or FFI, move this code into a \
                      boundary module (io/, runtime/, ffi/, boundary/)",

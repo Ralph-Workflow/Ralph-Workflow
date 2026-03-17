@@ -103,7 +103,7 @@ fn handle_plumbing_commands<H: effect::AppEffectHandler>(
             )
         })?;
         let msg = get_commit_message_from_workspace(ws)?;
-        println!("{msg}");
+        logger.info(&msg);
         return Ok(true);
     }
 

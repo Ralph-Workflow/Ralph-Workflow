@@ -113,7 +113,8 @@ impl Logger {
     /// Log an informational message.
     pub fn info(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -129,7 +130,8 @@ impl Logger {
     /// Log a success message.
     pub fn success(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -147,7 +149,8 @@ impl Logger {
     /// Log a warning message.
     pub fn warn(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -165,7 +168,8 @@ impl Logger {
     /// Log an error message.
     pub fn error(&self, msg: &str) {
         let c = &self.colors;
-        eprintln!(
+        let _ = writeln!(
+            std::io::stderr(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -183,7 +187,8 @@ impl Logger {
     /// Log a step/action message.
     pub fn step(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -209,8 +214,9 @@ impl Logger {
         let title_len = title.chars().count();
         let padding = (width - title_len - 2) / 2;
 
-        println!();
-        println!(
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -219,7 +225,8 @@ impl Logger {
             BOX_TR,
             c.reset()
         );
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -232,7 +239,8 @@ impl Logger {
             BOX_V,
             c.reset()
         );
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -246,9 +254,23 @@ impl Logger {
     /// Print a sub-header (less prominent than header).
     pub fn subheader(&self, title: &str) {
         let c = &self.colors;
-        println!();
-        println!("{}{}{} {}{}", c.bold(), c.blue(), ARROW, title, c.reset());
-        println!("{}{}──{}", c.dim(), "─".repeat(title.len()), c.reset());
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(
+            std::io::stdout(),
+            "{}{}{} {}{}",
+            c.bold(),
+            c.blue(),
+            ARROW,
+            title,
+            c.reset()
+        );
+        let _ = writeln!(
+            std::io::stdout(),
+            "{}{}──{}",
+            c.dim(),
+            "─".repeat(title.len()),
+            c.reset()
+        );
     }
 }
 
@@ -267,7 +289,8 @@ impl Loggable for Logger {
 
     fn info(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -282,7 +305,8 @@ impl Loggable for Logger {
 
     fn success(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -299,7 +323,8 @@ impl Loggable for Logger {
 
     fn warn(&self, msg: &str) {
         let c = &self.colors;
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -316,7 +341,8 @@ impl Loggable for Logger {
 
     fn error(&self, msg: &str) {
         let c = &self.colors;
-        eprintln!(
+        let _ = writeln!(
+            std::io::stderr(),
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -341,8 +367,9 @@ impl Loggable for Logger {
         let title_len = title.chars().count();
         let padding = (width - title_len - 2) / 2;
 
-        println!();
-        println!(
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -351,7 +378,8 @@ impl Loggable for Logger {
             BOX_TR,
             c.reset()
         );
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -364,7 +392,8 @@ impl Loggable for Logger {
             BOX_V,
             c.reset()
         );
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}{}{}{}{}{}",
             color,
             c.bold(),

@@ -252,14 +252,12 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
     };
 
     config.logger.success("Commit message generated:");
-    println!();
-    println!(
+    config.logger.info(&format!(
         "{}{}{}",
         config.colors.cyan(),
         commit_message,
         config.colors.reset()
-    );
-    println!();
+    ));
 
     // Write the message to file for use with --apply-commit (using workspace)
     write_commit_message_file_with_workspace(config.workspace, &commit_message)?;

@@ -27,12 +27,12 @@ impl AgentDiagnostics {
     pub fn test(registry: &AgentRegistry) -> Self {
         let all_agents = registry.list();
         let mut agent_status = Vec::new();
-        let mut available_count = 0;
+        let mut available_count: usize = 0;
 
         for (name, cfg) in &all_agents {
             let available = registry.is_agent_available(name);
             if available {
-                available_count += 1;
+                available_count = available_count.saturating_add(1);
             }
 
             agent_status.push(AgentStatus {

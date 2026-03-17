@@ -54,7 +54,8 @@ impl OpenCodeParser {
                 // Detect discontinuities in OpenCode text deltas
                 if suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
                     #[cfg(debug_assertions)]
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Warning: Delta discontinuity detected in OpenCode text. \
                          Provider sent non-monotonic content. \
                          Last: {:?} (len={}), Current: {:?} (len={})",

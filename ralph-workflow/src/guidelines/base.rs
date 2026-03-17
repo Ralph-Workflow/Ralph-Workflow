@@ -147,59 +147,33 @@ impl ReviewGuidelines {
     /// Returns a comprehensive list of all applicable checks organized by category
     /// with severity levels. This is useful for generating detailed review reports.
     pub(crate) fn get_all_checks(&self) -> Vec<SeverityCheck> {
-        let mut checks = Vec::new();
-
-        // Security checks are CRITICAL
-        for check in &self.security_checks {
-            checks.push(SeverityCheck::critical(check.clone()));
-        }
-        for check in &self.secrets_checks {
-            checks.push(SeverityCheck::critical(check.clone()));
-        }
-
-        // Concurrency issues are HIGH severity
-        for check in &self.concurrency_checks {
-            checks.push(SeverityCheck::high(check.clone()));
-        }
-
-        // Concurrency and resource management issues are HIGH
-        for check in &self.resource_checks {
-            checks.push(SeverityCheck::high(check.clone()));
-        }
-
-        // Quality issues are MEDIUM
-        for check in &self.quality_checks {
-            checks.push(SeverityCheck::medium(check.clone()));
-        }
-        for check in &self.anti_patterns {
-            checks.push(SeverityCheck::medium(check.clone()));
-        }
-
-        // Performance, testing, API design are MEDIUM
-        for check in &self.performance_checks {
-            checks.push(SeverityCheck::medium(check.clone()));
-        }
-        for check in &self.testing_checks {
-            checks.push(SeverityCheck::medium(check.clone()));
-        }
-        for check in &self.api_design_checks {
-            checks.push(SeverityCheck::medium(check.clone()));
-        }
-
-        // Observability and documentation are LOW
-        for check in &self.observability_checks {
-            checks.push(SeverityCheck::low(check.clone()));
-        }
-        for check in &self.documentation_checks {
-            checks.push(SeverityCheck::low(check.clone()));
-        }
-
-        // Idioms are informational.
-        for check in &self.idioms {
-            checks.push(SeverityCheck::info(check.clone()));
-        }
-
-        checks
+        self.security_checks
+            .iter()
+            .chain(self.secrets_checks.iter())
+            .map(SeverityCheck::critical)
+            .chain(
+                self.concurrency_checks
+                    .iter()
+                    .chain(self.resource_checks.iter())
+                    .map(SeverityCheck::high),
+            )
+            .chain(
+                self.quality_checks
+                    .iter()
+                    .chain(self.anti_patterns.iter())
+                    .chain(self.performance_checks.iter())
+                    .chain(self.testing_checks.iter())
+                    .chain(self.api_design_checks.iter())
+                    .map(SeverityCheck::medium),
+            )
+            .chain(
+                self.observability_checks
+                    .iter()
+                    .chain(self.documentation_checks.iter())
+                    .map(SeverityCheck::low),
+            )
+            .chain(self.idioms.iter().map(SeverityCheck::info))
+            .collect()
     }
 
     /// Get a brief summary for display

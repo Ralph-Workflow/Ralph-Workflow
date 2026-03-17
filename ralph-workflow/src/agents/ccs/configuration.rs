@@ -147,30 +147,31 @@ fn ccs_env_var_debug_summary_impl<S: std::hash::BuildHasher>(
             || key_normalized == "AUTHORIZATION"
     }
 
-    let mut whitelisted_keys_present = Vec::new();
-    let mut redacted_sensitive_keys = 0usize;
-    let mut hidden_non_whitelisted_keys = 0usize;
+    // Use partition to separate keys into whitelisted vs (sensitive or hidden)
+    let (whitelisted, others): (Vec<_>, Vec<_>) = env_vars
+        .keys()
+        .partition(|key| SAFE_KEYS.contains(&key.to_uppercase().as_str()));
 
-    for key in env_vars.keys() {
-        let key_upper = key.to_uppercase();
+    let whitelisted_keys_present: Vec<String> = {
+        use std::collections::BTreeSet;
+        whitelisted
+            .into_iter()
+            .map(|k| k.to_uppercase())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    };
 
-        if SAFE_KEYS.contains(&key_upper.as_str()) {
-            whitelisted_keys_present.push(key_upper);
-            continue;
-        }
-
-        // Treat as sensitive if it looks secret-like. Otherwise it's just hidden because it's not on the whitelist.
-        let looks = looks_sensitive(&key_upper);
-
-        if looks {
-            redacted_sensitive_keys += 1;
-        } else {
-            hidden_non_whitelisted_keys += 1;
-        }
-    }
-
-    whitelisted_keys_present.sort();
-    whitelisted_keys_present.dedup();
+    let (redacted_sensitive_keys, hidden_non_whitelisted_keys) = others
+        .iter()
+        .fold((0usize, 0usize), |(redacted, hidden), key| {
+            let key_upper = key.to_uppercase();
+            if looks_sensitive(&key_upper) {
+                (redacted.saturating_add(1), hidden)
+            } else {
+                (redacted, hidden.saturating_add(1))
+            }
+        });
 
     CcsEnvVarDebugSummary {
         whitelisted_keys_present,
@@ -200,9 +201,9 @@ fn log_ccs_env_vars_loaded(
             profile
         );
 
-        for key in &summary.whitelisted_keys_present {
+        summary.whitelisted_keys_present.iter().for_each(|key| {
             eprintln!("CCS DEBUG:   - {key}");
-        }
+        });
 
         if summary.redacted_sensitive_keys > 0 {
             eprintln!(
@@ -362,9 +363,10 @@ fn resolve_ccs_command_impl(
             }
 
             let skip = skip.unwrap_or(2);
-            let mut new_parts = Vec::with_capacity(parts.len().saturating_sub(skip - 1));
-            new_parts.push(claude_path.to_string_lossy().to_string());
-            new_parts.extend(parts.into_iter().skip(skip));
+            // Build new_parts using functional style - collect into new Vec
+            let new_parts: Vec<String> = std::iter::once(claude_path.to_string_lossy().to_string())
+                .chain(parts.into_iter().skip(skip))
+                .collect();
             let new_cmd = shell_words::join(&new_parts);
 
             if debug_mode {

@@ -1,6 +1,8 @@
 // Codex `item.started` event handlers.
 //
 // This file implements delta handlers for Codex streaming items.
+
+use std::io::Write;
 //
 // # CCS Spam Prevention Architecture (Layers 1 & 2: Suppress & Accumulate)
 //
@@ -119,15 +121,18 @@ pub fn handle_agent_message_started(
                 // Detect discontinuities
                 if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
                     #[cfg(debug_assertions)]
-                    eprintln!(
-                        "Warning: Delta discontinuity detected in Codex text item. \
-                         Provider sent non-monotonic content. \
-                         Last: {:?} (len={}), Current: {:?} (len={})",
-                        &last_rendered[..last_rendered.len().min(40)],
-                        last_rendered.len(),
-                        &sanitized[..sanitized.len().min(40)],
-                        sanitized.len()
-                    );
+                    {
+                        let _ = writeln!(
+                            std::io::stderr(),
+                            "Warning: Delta discontinuity detected in Codex text item. \
+                             Provider sent non-monotonic content. \
+                             Last: {:?} (len={}), Current: {:?} (len={})",
+                            &last_rendered[..last_rendered.len().min(40)],
+                            last_rendered.len(),
+                            &sanitized[..sanitized.len().min(40)],
+                            sanitized.len()
+                        );
+                    }
                 }
 
                 ctx.last_rendered_content
@@ -273,15 +278,18 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
                     // Detect discontinuities in thinking deltas
                     if new_suffix.is_empty() && !last_rendered.is_empty() && !sanitized.is_empty() {
                         #[cfg(debug_assertions)]
-                        eprintln!(
-                            "Warning: Delta discontinuity detected in Codex thinking item. \
-                         Provider sent non-monotonic content. \
-                         Last: {:?} (len={}), Current: {:?} (len={})",
-                            &last_rendered[..last_rendered.len().min(40)],
-                            last_rendered.len(),
-                            &sanitized[..sanitized.len().min(40)],
-                            sanitized.len()
-                        );
+                        {
+                            let _ = writeln!(
+                                std::io::stderr(),
+                                "Warning: Delta discontinuity detected in Codex thinking item. \
+                             Provider sent non-monotonic content. \
+                             Last: {:?} (len={}), Current: {:?} (len={})",
+                                &last_rendered[..last_rendered.len().min(40)],
+                                last_rendered.len(),
+                                &sanitized[..sanitized.len().min(40)],
+                                sanitized.len()
+                            );
+                        }
                     }
 
                     ctx.last_rendered_content

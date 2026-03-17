@@ -11,31 +11,37 @@ fn list_available_ccs_profiles_with_deps(
         return Vec::new();
     };
 
-    let mut unique = std::collections::HashSet::new();
+    // Collect profiles from all sources using iterator chaining
+    let yaml_keys: Vec<String> = load_ccs_profiles_from_config_yaml_with_deps(env, fs)
+        .map(|m| m.into_keys().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let json_keys: Vec<String> = load_ccs_profiles_from_config_json_with_deps(env, fs)
+        .map(|m| m.into_keys().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let file_keys: Vec<String> = list_ccs_json_files_with_fs(fs, &ccs_dir)
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(|path| {
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .filter(|name| is_ccs_settings_filename(name))
+                        .and_then(derive_ccs_profile_name_from_filename)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
-    if let Ok(yaml_profiles) = load_ccs_profiles_from_config_yaml_with_deps(env, fs) {
-        unique.extend(yaml_profiles.keys().cloned());
-    }
-    if let Ok(json_profiles) = load_ccs_profiles_from_config_json_with_deps(env, fs) {
-        unique.extend(json_profiles.keys().cloned());
-    }
-
-    // Also include any *.settings.json files in ~/.ccs (common default path).
-    if let Ok(files) = list_ccs_json_files_with_fs(fs, &ccs_dir) {
-        for path in files {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if is_ccs_settings_filename(name) {
-                    if let Some(profile) = derive_ccs_profile_name_from_filename(name) {
-                        unique.insert(profile);
-                    }
-                }
-            }
-        }
-    }
-
-    let mut profiles = unique.into_iter().collect::<Vec<_>>();
-    profiles.sort();
-    profiles
+    // Chain all sources, collect to HashSet for uniqueness, then BTreeSet for ordering
+    yaml_keys
+        .into_iter()
+        .chain(json_keys)
+        .chain(file_keys)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// Find suggestions for a CCS profile name using case-insensitive matching.
@@ -138,37 +144,40 @@ pub fn load_ccs_env_vars_with_deps(
         path: settings_path.clone(),
     })?;
 
-    // Convert to HashMap<String, String>
-    let mut env_vars = std::collections::HashMap::new();
-    for (key, value) in env_obj {
-        if !is_valid_env_var_name_portable(key) {
-            return Err(CcsEnvVarsError::InvalidEnvVarName {
-                path: settings_path.clone(),
-                key: key.clone(),
-            });
-        }
-        // Reject dangerous environment variable names that could be used for injection
-        if is_dangerous_env_var_name(key) {
-            return Err(CcsEnvVarsError::DangerousEnvVar {
-                path: settings_path.clone(),
-                key: key.clone(),
-            });
-        }
-        let str_value = value
-            .as_str()
-            .ok_or_else(|| CcsEnvVarsError::NonStringEnvVarValue {
-                path: settings_path.clone(),
-                key: key.clone(),
-            })?;
-        // Validate environment variable values for safety
-        if !is_safe_env_var_value(str_value) {
-            return Err(CcsEnvVarsError::UnsafeEnvVarValue {
-                path: settings_path.clone(),
-                key: key.clone(),
-            });
-        }
-        env_vars.insert(key.clone(), str_value.to_string());
-    }
+    // Convert to HashMap<String, String> - functional style with early error termination
+    let env_vars: std::collections::HashMap<String, String> = env_obj
+        .iter()
+        .try_fold(
+            std::collections::HashMap::new(),
+            |mut acc, (key, value)| {
+                if !is_valid_env_var_name_portable(key) {
+                    return Err(CcsEnvVarsError::InvalidEnvVarName {
+                        path: settings_path.clone(),
+                        key: key.clone(),
+                    });
+                }
+                if is_dangerous_env_var_name(key) {
+                    return Err(CcsEnvVarsError::DangerousEnvVar {
+                        path: settings_path.clone(),
+                        key: key.clone(),
+                    });
+                }
+                let str_value = value.as_str().ok_or_else(|| {
+                    CcsEnvVarsError::NonStringEnvVarValue {
+                        path: settings_path.clone(),
+                        key: key.clone(),
+                    }
+                })?;
+                if !is_safe_env_var_value(str_value) {
+                    return Err(CcsEnvVarsError::UnsafeEnvVarValue {
+                        path: settings_path.clone(),
+                        key: key.clone(),
+                    });
+                }
+                acc.insert(key.clone(), str_value.to_string());
+                Ok(acc)
+            },
+        )?;
 
     Ok(env_vars)
 }

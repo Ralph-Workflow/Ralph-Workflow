@@ -163,7 +163,7 @@ impl EventLoopLogger {
             .workspace
             .append_bytes(params.log_path, line.as_bytes())?;
 
-        self.seq += 1;
+        self.seq = self.seq.saturating_add(1);
         Ok(())
     }
 }

@@ -105,8 +105,6 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
             content,
             content_id,
         } => {
-            use std::collections::hash_map::Entry;
-
             // Insert the captured prompt into the reducer-owned prompt history.
             //
             // This event is emitted by prompt preparation handlers when a fresh prompt
@@ -127,13 +125,11 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
                 content_id,
             };
 
-            let mut state = state;
-            match state.prompt_history.entry(key) {
-                Entry::Vacant(v) => {
-                    let _ = v.insert(entry);
-                }
-                Entry::Occupied(mut o) => {
-                    let existing = o.get();
+            // Functional style: build new HashMap from iterator, avoiding let mut
+            // First, determine the final entry value
+            let final_entry = match state.prompt_history.get(&key) {
+                None => entry,
+                Some(existing) => {
                     // Preserve richer metadata: do not downgrade an existing content-id to None
                     // when the prompt content itself is identical.
                     let is_same_content = existing.content == entry.content;
@@ -144,14 +140,28 @@ pub fn reduce_prompt_input_event(state: PipelineState, event: PromptInputEvent) 
 
                     if is_same_content && would_downgrade_id {
                         // Keep existing.
+                        existing.clone()
                     } else if is_exact_same {
                         // Idempotent no-op.
+                        existing.clone()
                     } else {
-                        let _ = o.insert(entry);
+                        entry
                     }
                 }
+            };
+
+            // Build new HashMap: iterate existing entries, then add/update the new entry
+            let new_history = state
+                .prompt_history
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .chain(std::iter::once((key, final_entry)))
+                .collect();
+
+            PipelineState {
+                prompt_history: new_history,
+                ..state
             }
-            state
         }
     }
 }

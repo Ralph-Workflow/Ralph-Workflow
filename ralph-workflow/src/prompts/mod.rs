@@ -29,11 +29,11 @@
 //! - `prompt_dispatch` - Dispatch functions for prompt routing
 
 pub mod analysis;
-pub mod io;
 mod commit;
 pub mod content_builder;
 pub mod content_reference;
 mod developer;
+pub mod io;
 pub mod partials;
 pub mod prompt_history_entry;
 pub mod prompt_scope_key;

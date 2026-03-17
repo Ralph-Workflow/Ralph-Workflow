@@ -2,43 +2,49 @@
 ///
 /// Shows the most commonly used Work Guides with a note to use --list-work-guides for more.
 pub fn print_common_work_guides(colors: Colors) {
-    println!("{}Common Work Guides:{}", colors.bold(), colors.reset());
-    println!(
+    let _ = writeln!(std::io::stdout(), "{}Common Work Guides:{}", colors.bold(), colors.reset());
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}quick{}           Quick/small changes (typos, minor fixes)",
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}bug-fix{}         Bug fix with investigation guidance",
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}feature-spec{}    Comprehensive product specification",
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}refactor{}        Code refactoring with behavior preservation",
         colors.cyan(),
         colors.reset()
     );
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "Use {}--list-work-guides{} for the complete list of Work Guides.",
         colors.cyan(),
         colors.reset()
     );
-    println!();
+    let _ = writeln!(std::io::stdout());
 }
 
 /// Print a template category section.
 ///
 /// Helper function to reduce the length of `handle_list_work_guides`.
 fn print_template_category(category_name: &str, templates: &[(&str, &str)], colors: Colors) {
-    println!("{}{}:{}", colors.bold(), category_name, colors.reset());
+    let _ = writeln!(std::io::stdout(), "{}{}:{}", colors.bold(), category_name, colors.reset());
     for (name, description) in templates {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}{}{}  {}",
             colors.cyan(),
             name,
@@ -46,7 +52,7 @@ fn print_template_category(category_name: &str, templates: &[(&str, &str)], colo
             description
         );
     }
-    println!();
+    let _ = writeln!(std::io::stdout());
 }
 
 /// Handle the `--list-work-guides` (or `--list-templates`) flag.
@@ -60,10 +66,10 @@ fn print_template_category(category_name: &str, templates: &[(&str, &str)], colo
 /// # Returns
 ///
 /// Returns `true` if the flag was handled (program should exit after).
-#[must_use] 
+#[must_use]
 pub fn handle_list_work_guides(colors: Colors) -> bool {
-    println!("PROMPT.md Work Guides (use: ralph --init <work-guide>)");
-    println!();
+    let _ = writeln!(std::io::stdout(), "PROMPT.md Work Guides (use: ralph --init <work-guide>)");
+    let _ = writeln!(std::io::stdout());
 
     // Common templates (most frequently used)
     print_template_category(
@@ -143,17 +149,17 @@ pub fn handle_list_work_guides(colors: Colors) -> bool {
         colors,
     );
 
-    println!("Usage: ralph --init <work-guide>");
-    println!();
-    println!("Example:");
-    println!("  ralph --init bug-fix              # Create bug fix Work Guide");
-    println!("  ralph --init feature-spec         # Create feature spec Work Guide");
-    println!("  ralph --init quick                # Create quick change Work Guide");
-    println!();
-    println!("{}Tip:{}", colors.yellow(), colors.reset());
-    println!("  Use --init without a value to auto-detect what you need.");
-    println!("  Use --force-overwrite to overwrite an existing PROMPT.md.");
-    println!("  Run ralph --extended-help to learn about Work Guides vs Agent Prompts.");
+    let _ = writeln!(std::io::stdout(), "Usage: ralph --init <work-guide>");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Example:");
+    let _ = writeln!(std::io::stdout(), "  ralph --init bug-fix              # Create bug fix Work Guide");
+    let _ = writeln!(std::io::stdout(), "  ralph --init feature-spec         # Create feature spec Work Guide");
+    let _ = writeln!(std::io::stdout(), "  ralph --init quick                # Create quick change Work Guide");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "{}Tip:{}", colors.yellow(), colors.reset());
+    let _ = writeln!(std::io::stdout(), "  Use --init without a value to auto-detect what you need.");
+    let _ = writeln!(std::io::stdout(), "  Use --force-overwrite to overwrite an existing PROMPT.md.");
+    let _ = writeln!(std::io::stdout(), "  Run ralph --extended-help to learn about Work Guides vs Agent Prompts.");
 
     true
 }

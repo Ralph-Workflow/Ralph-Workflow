@@ -73,7 +73,7 @@ fn collect_signature_files_with_workspace(
             if scanned_entries >= MAX_FILES_TO_SCAN || collected >= MAX_SIGNATURE_FILES {
                 break;
             }
-            scanned_entries += 1;
+            scanned_entries = scanned_entries.saturating_add(1);
 
             let path = entry.path().to_path_buf();
             let Some(name_os) = entry.file_name() else {
@@ -103,7 +103,7 @@ fn collect_signature_files_with_workspace(
                     .entry(name_lower)
                     .or_default()
                     .push(path);
-                collected += 1;
+                collected = collected.saturating_add(1);
             }
         }
     }

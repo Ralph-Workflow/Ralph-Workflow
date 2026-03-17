@@ -47,7 +47,7 @@ impl RunContext {
         Self {
             run_id: uuid::Uuid::new_v4().to_string(), // New run_id for resumed run
             parent_run_id: Some(checkpoint.run_id.clone()),
-            resume_count: checkpoint.resume_count + 1,
+            resume_count: checkpoint.resume_count.saturating_add(1),
             actual_developer_runs: checkpoint.actual_developer_runs,
             actual_reviewer_runs: checkpoint.actual_reviewer_runs,
         }
@@ -71,12 +71,12 @@ impl RunContext {
 
     /// Record a completed developer iteration.
     pub const fn record_developer_iteration(&mut self) {
-        self.actual_developer_runs += 1;
+        self.actual_developer_runs = self.actual_developer_runs.saturating_add(1);
     }
 
     /// Record a completed reviewer pass.
     pub const fn record_reviewer_pass(&mut self) {
-        self.actual_reviewer_runs += 1;
+        self.actual_reviewer_runs = self.actual_reviewer_runs.saturating_add(1);
     }
 }
 

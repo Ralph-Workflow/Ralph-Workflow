@@ -32,7 +32,8 @@ impl StreamingSession {
                 if *count >= thresholds.consecutive_duplicate_threshold {
                     // This is a resend glitch - drop the delta entirely
                     if self.verbose_warnings {
-                        eprintln!(
+                        let _ = writeln!(
+                            std::io::stderr(),
                             "Warning: Dropping consecutive duplicate delta (count={count}, threshold={}). \
                             This appears to be a resend glitch. Key: '{key_str}', Delta: {delta:?}",
                             thresholds.consecutive_duplicate_threshold
@@ -90,7 +91,8 @@ impl StreamingSession {
         if delta_size > snapshot_threshold() {
             self.large_delta_count = self.large_delta_count.saturating_add(1);
             if self.verbose_warnings {
-                eprintln!(
+                let _ = writeln!(
+                    std::io::stderr(),
                     "Warning: Large delta ({delta_size} chars) for key '{key}'. \
                     This may indicate unusual streaming behavior or a snapshot being sent as a delta."
                 );
@@ -153,7 +155,8 @@ impl StreamingSession {
                 Err(e) => {
                     // Snapshot detection had a false positive - use the original delta
                     if self.verbose_warnings {
-                        eprintln!(
+                        let _ = writeln!(
+                            std::io::stderr(),
                             "Warning: Snapshot extraction failed: {e}. Using original delta."
                         );
                     }
@@ -173,7 +176,8 @@ impl StreamingSession {
                 // Check if at least 3 of the last N deltas were large
                 let large_count = sizes.iter().filter(|&&s| s > snapshot_threshold()).count();
                 if large_count >= DEFAULT_PATTERN_DETECTION_MIN_DELTAS {
-                    eprintln!(
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "Warning: Detected pattern of {large_count} large deltas for key '{key}'. \
                         This strongly suggests a snapshot-as-delta bug where the same \
                         large content is being sent repeatedly. File: streaming_state.rs, Line: {}",

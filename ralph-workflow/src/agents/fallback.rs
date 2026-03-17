@@ -147,18 +147,20 @@ impl ResolvedDrainConfig {
     /// Build a resolved drain config from the legacy role-shaped fallback config.
     #[must_use]
     pub fn from_legacy(fallback: &FallbackConfig) -> Self {
-        let mut bindings = HashMap::new();
-        for drain in AgentDrain::all() {
-            let role = drain.role();
-            let chain_name = fallback.effective_chain_name_for_role(role).to_string();
-            bindings.insert(
-                drain,
-                ResolvedDrainBinding {
-                    chain_name,
-                    agents: fallback.get_fallbacks(role).to_vec(),
-                },
-            );
-        }
+        let bindings = AgentDrain::all()
+            .into_iter()
+            .map(|drain| {
+                let role = drain.role();
+                let chain_name = fallback.effective_chain_name_for_role(role).to_string();
+                (
+                    drain,
+                    ResolvedDrainBinding {
+                        chain_name,
+                        agents: fallback.get_fallbacks(role).to_vec(),
+                    },
+                )
+            })
+            .collect();
 
         Self {
             bindings,
@@ -496,12 +498,11 @@ impl FallbackConfig {
         let base_hundredths = self.retry_delay_ms.saturating_mul(100);
 
         // Calculate: base * (multiplier^cycle) / 100^cycle
-        // Use saturating arithmetic to avoid overflow
-        let mut delay_hundredths = base_hundredths;
-        for _ in 0..cycle {
-            delay_hundredths = delay_hundredths.saturating_mul(multiplier_hundredths);
-            delay_hundredths = delay_hundredths.saturating_div(100);
-        }
+        // Use fold with saturating arithmetic to avoid overflow
+        let delay_hundredths = (0..cycle).fold(base_hundredths, |acc, _| {
+            acc.saturating_mul(multiplier_hundredths)
+                .saturating_div(100)
+        });
 
         // Convert back to milliseconds
         delay_hundredths.div_euclid(100).min(self.max_backoff_ms)

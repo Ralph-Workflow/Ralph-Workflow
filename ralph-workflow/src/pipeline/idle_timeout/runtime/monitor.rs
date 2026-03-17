@@ -505,7 +505,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
         // Require multiple consecutive idle observations before killing to avoid
         // false positives during transient quiet periods (LLM API waits, slow
         // compilations, transitions between work phases, etc.).
-        consecutive_idle_count += 1;
+        consecutive_idle_count = consecutive_idle_count.saturating_add(1);
         if consecutive_idle_count < required_idle_confirmations {
             eprintln!(
                 "Idle confirmed {consecutive_idle_count}/{required_idle_confirmations} times; waiting for next check interval before kill"

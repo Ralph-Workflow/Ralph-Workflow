@@ -98,7 +98,10 @@ fn log_detailed_rebase_state(checkpoint: &PipelineCheckpoint, logger: &Logger) {
                 logger.info(&format!("  - {file}"));
             }
             if files.len() > 10 {
-                logger.info(&format!("  ... and {} more", files.len() - 10));
+                logger.info(&format!(
+                    "  ... and {} more",
+                    files.len().saturating_sub(10)
+                ));
             }
         }
     }
@@ -117,7 +120,7 @@ fn log_detailed_execution_history(checkpoint: &PipelineCheckpoint, logger: &Logg
                 let outcome_str = outcome_marker_ascii(&step.outcome);
                 logger.info(&format!(
                     "  {}. {} {} ({})",
-                    i + 1,
+                    i.saturating_add(1),
                     outcome_str,
                     step.step_type,
                     step.phase
@@ -126,7 +129,7 @@ fn log_detailed_execution_history(checkpoint: &PipelineCheckpoint, logger: &Logg
             if history.steps.len() > 10 {
                 logger.info(&format!(
                     "  ... and {} more steps",
-                    history.steps.len() - 10
+                    history.steps.len().saturating_sub(10)
                 ));
             }
         }
@@ -175,7 +178,7 @@ fn log_detailed_environment_snapshot(checkpoint: &PipelineCheckpoint, logger: &L
             if env_snap.ralph_vars.len() > 10 {
                 logger.info(&format!(
                     "  ... and {} more",
-                    env_snap.ralph_vars.len() - 10
+                    env_snap.ralph_vars.len().saturating_sub(10)
                 ));
             }
         }

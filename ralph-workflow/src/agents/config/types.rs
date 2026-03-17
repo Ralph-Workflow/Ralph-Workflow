@@ -107,46 +107,27 @@ impl AgentConfig {
         verbose: bool,
         model_override: Option<&str>,
     ) -> String {
-        let mut parts = vec![self.cmd.clone()];
-
-        // Add print flag early (for wrappers like `ccs <profile>` where the print flag must
-        // come after the profile argument)
-        if !self.print_flag.is_empty() {
-            parts.push(self.print_flag.clone());
-        }
-
-        if output && !self.output_flag.is_empty() {
-            parts.push(self.output_flag.clone());
-        }
-
-        // Add streaming flag when using stream-json output with print mode.
-        // Claude requires --include-partial-messages to stream JSON in print mode.
-        if output
-            && !self.output_flag.is_empty()
-            && is_stream_json_output(&self.output_flag)
-            && !self.print_flag.is_empty()
-            && !self.streaming_flag.is_empty()
-        {
-            parts.push(self.streaming_flag.clone());
-        }
-        if yolo && !self.yolo_flag.is_empty() {
-            parts.push(self.yolo_flag.clone());
-        }
-
-        // Claude CLI requires --verbose when using --output-format=stream-json
-        let needs_verbose = verbose || self.requires_verbose_for_json(output);
-
-        if needs_verbose && !self.verbose_flag.is_empty() {
-            parts.push(self.verbose_flag.clone());
-        }
-
-        // Add model flag: runtime override takes precedence over config
-        let effective_model = model_override.or(self.model_flag.as_deref());
-        if let Some(model) = effective_model {
-            if !model.is_empty() {
-                parts.push(model.to_string());
-            }
-        }
+        // Build parts using functional style - filter_map for conditional inclusion
+        let parts: Vec<String> = [
+            Some(self.cmd.clone()),
+            (!self.print_flag.is_empty()).then_some(self.print_flag.clone()),
+            (output && !self.output_flag.is_empty()).then_some(self.output_flag.clone()),
+            (output
+                && is_stream_json_output(&self.output_flag)
+                && !self.print_flag.is_empty()
+                && !self.streaming_flag.is_empty())
+            .then_some(self.streaming_flag.clone()),
+            (yolo && !self.yolo_flag.is_empty()).then_some(self.yolo_flag.clone()),
+            (verbose || self.requires_verbose_for_json(output) && !self.verbose_flag.is_empty())
+                .then_some(self.verbose_flag.clone()),
+            model_override
+                .or(self.model_flag.as_deref())
+                .filter(|m| !m.is_empty())
+                .map(|m| m.to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         parts.join(" ")
     }
@@ -164,18 +145,16 @@ impl AgentConfig {
         model_override: Option<&str>,
         session_id: Option<&str>,
     ) -> String {
-        let mut cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
+        let base_cmd = self.build_cmd_with_model(output, yolo, verbose, model_override);
 
         // Add session continuation flag if we have a session ID and the agent supports it
-        if let Some(sid) = session_id {
-            if !self.session_flag.is_empty() {
+        session_id
+            .filter(|_| !self.session_flag.is_empty())
+            .map(|sid| {
                 let session_arg = self.session_flag.replace("{}", sid);
-                cmd.push(' ');
-                cmd.push_str(&session_arg);
-            }
-        }
-
-        cmd
+                format!("{base_cmd} {session_arg}")
+            })
+            .unwrap_or(base_cmd)
     }
 
     /// Check if this agent supports session continuation.
@@ -402,10 +381,8 @@ impl From<AgentConfigToml> for AgentConfig {
 
         // Merge manually specified env vars with CCS env vars
         // CCS env vars take precedence (as documented in ccs_profile field)
-        let mut merged_env_vars = toml.env_vars;
-        for (key, value) in ccs_env_vars {
-            merged_env_vars.insert(key, value);
-        }
+        let merged_env_vars: HashMap<_, _> =
+            toml.env_vars.into_iter().chain(ccs_env_vars).collect();
 
         Self {
             cmd: toml.cmd,

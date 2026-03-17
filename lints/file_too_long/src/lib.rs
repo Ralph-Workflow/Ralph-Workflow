@@ -65,7 +65,7 @@ dylint_linting::impl_early_lint! {
     /// A file with 1500 lines of code should be refactored into
     /// multiple smaller modules.
     pub FILE_TOO_LONG,
-    Warn,
+    Deny,
     "file exceeds recommended line limits",
     FileTooLong::default()
 }

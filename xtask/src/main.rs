@@ -106,7 +106,9 @@ fn main() -> ExitCode {
                 eprintln!("Run all verification checks for the repository.");
                 eprintln!();
                 eprintln!("Options:");
-                eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
+                eprintln!(
+                    "  --gui    Also run GUI cargo, Angular frontend, and release build checks"
+                );
                 return ExitCode::SUCCESS;
             }
             // Total check count = native checks + 1 (native-scan) + all group checks.
@@ -176,7 +178,8 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             // Run custom dylint lints - delegates to boundary module
-            let verbose = args.contains(&"--verbose".to_string()) || args.contains(&"-v".to_string());
+            let verbose =
+                args.contains(&"--verbose".to_string()) || args.contains(&"-v".to_string());
             boundary::dylint::run_dylint(verbose)
         }
         Some("lsp-forbidden-allow-expect") => {

@@ -35,18 +35,23 @@ fn route_to_awaiting_dev_fix(
     let in_recovery_loop = state.phase == PipelinePhase::AwaitingDevFix
         || state.previous_phase == Some(PipelinePhase::AwaitingDevFix);
 
-    let mut new_state = state.clone();
-    new_state.previous_phase = Some(state.phase);
-    new_state.phase = PipelinePhase::AwaitingDevFix;
-    new_state.dev_fix_triggered = false;
-    new_state.failed_phase_for_recovery = Some(failed_phase_for_recovery);
-
-    if !in_recovery_loop {
-        new_state.dev_fix_attempt_count = 0;
-        new_state.recovery_escalation_level = 0;
+    PipelineState {
+        previous_phase: Some(state.phase),
+        phase: PipelinePhase::AwaitingDevFix,
+        dev_fix_triggered: false,
+        failed_phase_for_recovery: Some(failed_phase_for_recovery),
+        dev_fix_attempt_count: if in_recovery_loop {
+            state.dev_fix_attempt_count
+        } else {
+            0
+        },
+        recovery_escalation_level: if in_recovery_loop {
+            state.recovery_escalation_level
+        } else {
+            0
+        },
+        ..state.clone()
     }
-
-    new_state
 }
 
 /// Reduce error events.
@@ -69,17 +74,17 @@ pub(super) fn reduce_error(state: &PipelineState, error: &ErrorEvent) -> Pipelin
         ErrorEvent::UserInterruptRequested => {
             // External termination request: transition to Interrupted so orchestration
             // can restore PROMPT.md permissions and persist a checkpoint deterministically.
-            let mut new_state = state.clone();
-            new_state.previous_phase = Some(state.phase);
-            new_state.phase = PipelinePhase::Interrupted;
-            new_state.interrupted_by_user = true;
-
-            // If we were in a termination sub-flow, clear marker intent. Ctrl+C is not
-            // a programmatic completion marker termination path.
-            new_state.completion_marker_pending = false;
-            new_state.completion_marker_is_failure = false;
-            new_state.completion_marker_reason = None;
-            new_state
+            PipelineState {
+                previous_phase: Some(state.phase),
+                phase: PipelinePhase::Interrupted,
+                interrupted_by_user: true,
+                // If we were in a termination sub-flow, clear marker intent. Ctrl+C is not
+                // a programmatic completion marker termination path.
+                completion_marker_pending: false,
+                completion_marker_is_failure: false,
+                completion_marker_reason: None,
+                ..state.clone()
+            }
         }
 
         // Continuation not supported errors are invariant violations
@@ -110,18 +115,16 @@ pub(super) fn reduce_error(state: &PipelineState, error: &ErrorEvent) -> Pipelin
 
         // Fix prompt file missing is recoverable - tmp artifacts can be cleaned between checkpoints.
         // Clear the "prepared" flag so orchestration re-runs PrepareFixPrompt.
-        ErrorEvent::FixPromptMissing => {
-            let mut new_state = state.clone();
-            new_state.fix_prompt_prepared_pass = None;
-            new_state
-        }
+        ErrorEvent::FixPromptMissing => PipelineState {
+            fix_prompt_prepared_pass: None,
+            ..state.clone()
+        },
 
         // Unknown agent lookup is recoverable - advance the agent chain to preserve
         // unattended-mode fallback behavior.
-        ErrorEvent::AgentNotFound { .. } => {
-            let mut new_state = state.clone();
-            new_state.agent_chain = state.agent_chain.switch_to_next_agent().clear_session_id();
-            new_state.continuation = crate::reducer::state::ContinuationState {
+        ErrorEvent::AgentNotFound { .. } => PipelineState {
+            agent_chain: state.agent_chain.switch_to_next_agent().clear_session_id(),
+            continuation: crate::reducer::state::ContinuationState {
                 xsd_retry_count: 0,
                 xsd_retry_pending: false,
                 xsd_retry_session_reuse_pending: false,
@@ -129,32 +132,28 @@ pub(super) fn reduce_error(state: &PipelineState, error: &ErrorEvent) -> Pipelin
                 same_agent_retry_pending: false,
                 same_agent_retry_reason: None,
                 ..state.continuation.clone()
-            };
-            new_state
-        }
+            },
+            ..state.clone()
+        },
 
         // Missing prompt files are recoverable - tmp artifacts can be cleaned between checkpoints.
         // Clear the corresponding "prepared" flag so the event loop will regenerate the prompt.
-        ErrorEvent::PlanningPromptMissing { .. } => {
-            let mut new_state = state.clone();
-            new_state.planning_prompt_prepared_iteration = None;
-            new_state
-        }
-        ErrorEvent::DevelopmentPromptMissing { .. } => {
-            let mut new_state = state.clone();
-            new_state.development_prompt_prepared_iteration = None;
-            new_state
-        }
-        ErrorEvent::ReviewPromptMissing { .. } => {
-            let mut new_state = state.clone();
-            new_state.review_prompt_prepared_pass = None;
-            new_state
-        }
-        ErrorEvent::CommitPromptMissing { .. } => {
-            let mut new_state = state.clone();
-            new_state.commit_prompt_prepared = false;
-            new_state
-        }
+        ErrorEvent::PlanningPromptMissing { .. } => PipelineState {
+            planning_prompt_prepared_iteration: None,
+            ..state.clone()
+        },
+        ErrorEvent::DevelopmentPromptMissing { .. } => PipelineState {
+            development_prompt_prepared_iteration: None,
+            ..state.clone()
+        },
+        ErrorEvent::ReviewPromptMissing { .. } => PipelineState {
+            review_prompt_prepared_pass: None,
+            ..state.clone()
+        },
+        ErrorEvent::CommitPromptMissing { .. } => PipelineState {
+            commit_prompt_prepared: false,
+            ..state.clone()
+        },
 
         // Workspace/Git operation failures must not cause early pipeline termination.
         // Route these through AwaitingDevFix so TriggerDevFixFlow writes the completion marker

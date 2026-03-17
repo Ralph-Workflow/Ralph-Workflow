@@ -314,7 +314,7 @@ dylint:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
 	'
 
 # Run custom dylint lints with verbose debugging output
@@ -545,7 +545,7 @@ dylint-verbose:
 			fi; \
 		fi; \
 		\
-		RUSTFLAGS="--cap-lints=allow" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
+		RUSTFLAGS="--cap-lints=deny" CARGO_TERM_QUIET=true cargo dylint -q --all -p ralph-workflow -- --lib --quiet >/dev/null 2>&1; \
 	'
 
 # Run the canonical verification contract.

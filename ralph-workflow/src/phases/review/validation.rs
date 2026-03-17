@@ -192,6 +192,8 @@ pub fn post_flight_review_check(
     // Check 3: Verify ISSUES.md has valid structure
     match ReviewMetrics::from_issues_file_with_workspace(workspace) {
         Ok(metrics) => {
+            // Track whether metrics were successfully parsed from the file
+            let _parsed = metrics.issues_file_found;
             // Check if metrics indicate reasonable content
             if metrics.total_issues == 0 && !metrics.no_issues_declared {
                 // Partial recovery: file has content but no parseable issues
@@ -217,6 +219,12 @@ pub fn post_flight_review_check(
                     metrics.medium_issues,
                     metrics.low_issues
                 ));
+                if metrics.resolved_issues > 0 {
+                    logger.info(&format!(
+                        "  {} issues already resolved",
+                        metrics.resolved_issues
+                    ));
+                }
             } else if metrics.no_issues_declared {
                 logger.info("Review declared no issues found.");
             }

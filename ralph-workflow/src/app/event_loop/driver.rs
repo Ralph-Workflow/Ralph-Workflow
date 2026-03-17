@@ -114,7 +114,7 @@ where
     ));
     handler.update_state(new_state.clone());
     runtime.state = new_state;
-    runtime.events_processed += 1;
+    runtime.events_processed = runtime.events_processed.saturating_add(1);
     true
 }
 
@@ -142,7 +142,7 @@ where
                 event_loop_logger: &mut runtime.event_loop_logger,
             };
             runtime.state = handle_unrecoverable_error(&mut recovery_ctx, &err);
-            runtime.events_processed += 1;
+            runtime.events_processed = runtime.events_processed.saturating_add(1);
             EffectExecutionOutcome::Continue
         }
         GuardedEffectResult::Panic => {
@@ -156,7 +156,7 @@ where
                 event_loop_logger: &mut runtime.event_loop_logger,
             };
             runtime.state = handle_panic(&mut recovery_ctx, runtime.events_processed);
-            runtime.events_processed += 1;
+            runtime.events_processed = runtime.events_processed.saturating_add(1);
             EffectExecutionOutcome::Continue
         }
     }
@@ -194,7 +194,7 @@ fn process_primary_event<'ctx, H>(
     ));
     handler.update_state(new_state.clone());
     runtime.state = new_state;
-    runtime.events_processed += 1;
+    runtime.events_processed = runtime.events_processed.saturating_add(1);
 }
 
 fn process_additional_events<'ctx, H>(
@@ -216,7 +216,7 @@ fn process_additional_events<'ctx, H>(
         ));
         handler.update_state(additional_state.clone());
         runtime.state = additional_state;
-        runtime.events_processed += 1;
+        runtime.events_processed = runtime.events_processed.saturating_add(1);
     }
 }
 

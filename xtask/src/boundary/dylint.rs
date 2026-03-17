@@ -158,8 +158,7 @@ fn bootstrap_toolchain(env: &dylint::DylintEnv, verbose: bool) -> Option<dylint:
 
     let nightly_toolchain = dylint::discover_nightly_toolchain()?;
 
-    let nightly_toolchain =
-        ensure_nightly(&nightly_toolchain, rustup_home_writable, verbose)?;
+    let nightly_toolchain = ensure_nightly(&nightly_toolchain, rustup_home_writable, verbose)?;
 
     dylint::add_host_target(&nightly_toolchain);
 

@@ -5,6 +5,7 @@
 
 use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
+use std::io::Write;
 
 /// Handle the `--init-global` flag with a custom path resolver.
 ///
@@ -34,20 +35,30 @@ pub fn handle_init_global_with<R: ConfigEnvironment>(
 
     // Check if config already exists using the environment
     if env.file_exists(&global_path) {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}Unified config already exists:{} {}",
             colors.yellow(),
             colors.reset(),
             global_path.display()
         );
-        println!("Edit the file to customize, or delete it to regenerate from defaults.");
-        println!();
-        println!("Next steps:");
-        println!("  1. Create a PROMPT.md for your task:");
-        println!("       ralph --init <work-guide>");
-        println!("       ralph --list-work-guides  # Show all Work Guides");
-        println!("  2. Or run ralph directly with default settings:");
-        println!("       ralph \"your commit message\"");
+        let _ = writeln!(
+            std::io::stdout(),
+            "Edit the file to customize, or delete it to regenerate from defaults."
+        );
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(std::io::stdout(), "Next steps:");
+        let _ = writeln!(std::io::stdout(), "  1. Create a PROMPT.md for your task:");
+        let _ = writeln!(std::io::stdout(), "       ralph --init <work-guide>");
+        let _ = writeln!(
+            std::io::stdout(),
+            "       ralph --list-work-guides  # Show all Work Guides"
+        );
+        let _ = writeln!(
+            std::io::stdout(),
+            "  2. Or run ralph directly with default settings:"
+        );
+        let _ = writeln!(std::io::stdout(), "       ralph \"your commit message\"");
         return Ok(true);
     }
 
@@ -61,29 +72,51 @@ pub fn handle_init_global_with<R: ConfigEnvironment>(
             )
         })?;
 
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Created unified config: {}{}{}\n",
         colors.green(),
         colors.bold(),
         global_path.display(),
         colors.reset()
     );
-    println!("This is the primary configuration file for Ralph.");
-    println!();
-    println!("Features:");
-    println!("  - General settings (verbosity, iterations, etc.)");
-    println!("  - CCS aliases for Claude Code Switch integration");
-    println!("  - Custom agent definitions");
-    println!("  - Agent chain configuration with fallbacks");
-    println!();
-    println!("Environment variables (RALPH_*) override these settings.");
-    println!();
-    println!("Next steps:");
-    println!("  1. Create a PROMPT.md for your task:");
-    println!("       ralph --init <work-guide>");
-    println!("       ralph --list-work-guides  # Show all Work Guides");
-    println!("  2. Or run ralph directly with default settings:");
-    println!("       ralph \"your commit message\"");
+    let _ = writeln!(
+        std::io::stdout(),
+        "This is the primary configuration file for Ralph."
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Features:");
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - General settings (verbosity, iterations, etc.)"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - CCS aliases for Claude Code Switch integration"
+    );
+    let _ = writeln!(std::io::stdout(), "  - Custom agent definitions");
+    let _ = writeln!(
+        std::io::stdout(),
+        "  - Agent chain configuration with fallbacks"
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "Environment variables (RALPH_*) override these settings."
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Next steps:");
+    let _ = writeln!(std::io::stdout(), "  1. Create a PROMPT.md for your task:");
+    let _ = writeln!(std::io::stdout(), "       ralph --init <work-guide>");
+    let _ = writeln!(
+        std::io::stdout(),
+        "       ralph --list-work-guides  # Show all Work Guides"
+    );
+    let _ = writeln!(
+        std::io::stdout(),
+        "  2. Or run ralph directly with default settings:"
+    );
+    let _ = writeln!(std::io::stdout(), "       ralph \"your commit message\"");
     Ok(true)
 }
 

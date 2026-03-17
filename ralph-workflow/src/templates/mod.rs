@@ -251,26 +251,86 @@ pub fn get_template(name: &str) -> Option<PromptTemplate> {
 #[must_use]
 pub fn list_templates() -> Vec<(&'static str, &'static str)> {
     vec![
-        (PromptTemplate::FeatureSpec.name(), PromptTemplate::FeatureSpec.description()),
-        (PromptTemplate::BugFix.name(), PromptTemplate::BugFix.description()),
-        (PromptTemplate::Refactor.name(), PromptTemplate::Refactor.description()),
-        (PromptTemplate::Test.name(), PromptTemplate::Test.description()),
-        (PromptTemplate::Docs.name(), PromptTemplate::Docs.description()),
-        (PromptTemplate::Quick.name(), PromptTemplate::Quick.description()),
-        (PromptTemplate::PerformanceOptimization.name(), PromptTemplate::PerformanceOptimization.description()),
-        (PromptTemplate::SecurityAudit.name(), PromptTemplate::SecurityAudit.description()),
-        (PromptTemplate::ApiIntegration.name(), PromptTemplate::ApiIntegration.description()),
-        (PromptTemplate::DatabaseMigration.name(), PromptTemplate::DatabaseMigration.description()),
-        (PromptTemplate::DependencyUpdate.name(), PromptTemplate::DependencyUpdate.description()),
-        (PromptTemplate::CliTool.name(), PromptTemplate::CliTool.description()),
-        (PromptTemplate::WebApi.name(), PromptTemplate::WebApi.description()),
-        (PromptTemplate::DataPipeline.name(), PromptTemplate::DataPipeline.description()),
-        (PromptTemplate::UiComponent.name(), PromptTemplate::UiComponent.description()),
-        (PromptTemplate::CodeReview.name(), PromptTemplate::CodeReview.description()),
-        (PromptTemplate::DebugTriage.name(), PromptTemplate::DebugTriage.description()),
-        (PromptTemplate::Release.name(), PromptTemplate::Release.description()),
-        (PromptTemplate::TechDebt.name(), PromptTemplate::TechDebt.description()),
-        (PromptTemplate::Onboarding.name(), PromptTemplate::Onboarding.description()),
+        (
+            PromptTemplate::FeatureSpec.name(),
+            PromptTemplate::FeatureSpec.description(),
+        ),
+        (
+            PromptTemplate::BugFix.name(),
+            PromptTemplate::BugFix.description(),
+        ),
+        (
+            PromptTemplate::Refactor.name(),
+            PromptTemplate::Refactor.description(),
+        ),
+        (
+            PromptTemplate::Test.name(),
+            PromptTemplate::Test.description(),
+        ),
+        (
+            PromptTemplate::Docs.name(),
+            PromptTemplate::Docs.description(),
+        ),
+        (
+            PromptTemplate::Quick.name(),
+            PromptTemplate::Quick.description(),
+        ),
+        (
+            PromptTemplate::PerformanceOptimization.name(),
+            PromptTemplate::PerformanceOptimization.description(),
+        ),
+        (
+            PromptTemplate::SecurityAudit.name(),
+            PromptTemplate::SecurityAudit.description(),
+        ),
+        (
+            PromptTemplate::ApiIntegration.name(),
+            PromptTemplate::ApiIntegration.description(),
+        ),
+        (
+            PromptTemplate::DatabaseMigration.name(),
+            PromptTemplate::DatabaseMigration.description(),
+        ),
+        (
+            PromptTemplate::DependencyUpdate.name(),
+            PromptTemplate::DependencyUpdate.description(),
+        ),
+        (
+            PromptTemplate::CliTool.name(),
+            PromptTemplate::CliTool.description(),
+        ),
+        (
+            PromptTemplate::WebApi.name(),
+            PromptTemplate::WebApi.description(),
+        ),
+        (
+            PromptTemplate::DataPipeline.name(),
+            PromptTemplate::DataPipeline.description(),
+        ),
+        (
+            PromptTemplate::UiComponent.name(),
+            PromptTemplate::UiComponent.description(),
+        ),
+        (
+            PromptTemplate::CodeReview.name(),
+            PromptTemplate::CodeReview.description(),
+        ),
+        (
+            PromptTemplate::DebugTriage.name(),
+            PromptTemplate::DebugTriage.description(),
+        ),
+        (
+            PromptTemplate::Release.name(),
+            PromptTemplate::Release.description(),
+        ),
+        (
+            PromptTemplate::TechDebt.name(),
+            PromptTemplate::TechDebt.description(),
+        ),
+        (
+            PromptTemplate::Onboarding.name(),
+            PromptTemplate::Onboarding.description(),
+        ),
     ]
 }
 

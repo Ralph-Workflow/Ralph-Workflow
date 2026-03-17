@@ -49,11 +49,11 @@ fn git2_to_io_error_impl(err: &git2::Error) -> io::Error {
 
 pub mod branch;
 
+pub mod identity;
+mod rebase;
 /// Runtime module containing OS-boundary code (std::fs, std::process, std::env, Mutex).
 /// This module is exempt from functional Rust dylint rules.
 pub mod runtime;
-pub mod identity;
-mod rebase;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod rebase_checkpoint;
@@ -79,17 +79,19 @@ mod start_commit;
 #[cfg(any(test, feature = "test-utils"))]
 pub use branch::get_default_branch_at;
 pub use branch::{get_default_branch, is_main_or_master_branch};
+pub use rebase::{
+    abort_rebase, continue_rebase, get_conflict_markers_for_file, get_conflicted_files,
+    rebase_in_progress, rebase_onto, RebaseResult,
+};
 #[cfg(any(test, feature = "test-utils"))]
-pub use runtime::hooks::{file_contains_marker_with_workspace, verify_hook_integrity_with_workspace};
+pub use runtime::hooks::{
+    file_contains_marker_with_workspace, verify_hook_integrity_with_workspace,
+};
 pub use runtime::hooks::{
     install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
     uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
 };
 pub use runtime::hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
-pub use rebase::{
-    abort_rebase, continue_rebase, get_conflict_markers_for_file, get_conflicted_files,
-    rebase_in_progress, rebase_onto, RebaseResult,
-};
 
 // Types that are part of the public API but not used in binary
 #[cfg(any(test, feature = "test-utils"))]
@@ -125,12 +127,6 @@ pub use review_baseline::{
     get_baseline_summary, get_review_baseline_info, load_review_baseline, update_review_baseline,
     ReviewBaseline,
 };
-#[cfg(any(test, feature = "test-utils"))]
-pub use start_commit::load_start_point_with_workspace;
-pub use start_commit::{
-    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
-    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
-};
 pub use runtime::wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,
     cleanup_agent_phase_silent_at, cleanup_orphaned_marker, cleanup_orphaned_wrapper_at,
@@ -138,6 +134,12 @@ pub use runtime::wrapper::{
     end_agent_phase, end_agent_phase_in_repo, ensure_agent_phase_protections, start_agent_phase,
     start_agent_phase_in_repo, try_remove_ralph_dir, verify_ralph_dir_removed,
     verify_wrapper_cleaned, GitHelpers, ProtectionCheckResult,
+};
+#[cfg(any(test, feature = "test-utils"))]
+pub use start_commit::load_start_point_with_workspace;
+pub use start_commit::{
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
+    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
 };
 
 // Workspace-aware variants (used by tests and by code paths that must operate

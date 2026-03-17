@@ -47,7 +47,10 @@ fn log_rebase_conflict_summary(checkpoint: &PipelineCheckpoint, logger: &Logger)
             logger.info(&format!("  - {file}"));
         }
         if files.len() > 5 {
-            logger.info(&format!("  ... and {} more", files.len() - 5));
+            logger.info(&format!(
+                "  ... and {} more",
+                files.len().saturating_sub(5)
+            ));
         }
     }
 }
@@ -125,7 +128,9 @@ fn log_recent_activity_step(step: &crate::checkpoint::execution_history::Executi
         let added_count = detail.added.as_ref().map_or(0, |v| v.len());
         let modified_count = detail.modified.as_ref().map_or(0, |v| v.len());
         let deleted_count = detail.deleted.as_ref().map_or(0, |v| v.len());
-        let total_files = added_count + modified_count + deleted_count;
+        let total_files = added_count
+            .saturating_add(modified_count)
+            .saturating_add(deleted_count);
         if total_files > 0 {
             let mut file_summary = String::from("    Files: ");
             let mut parts = Vec::new();
@@ -235,7 +240,7 @@ fn display_checkpoint_summary(checkpoint: &PipelineCheckpoint, logger: &Logger) 
         logger.info(&format!(
             "Resume count: {} (this is resume #{} of this session)",
             checkpoint.resume_count,
-            checkpoint.resume_count + 1
+            checkpoint.resume_count.saturating_add(1)
         ));
     }
     if let Some(ref parent_id) = checkpoint.parent_run_id {
@@ -306,7 +311,10 @@ fn display_checkpoint_summary(checkpoint: &PipelineCheckpoint, logger: &Logger) 
                 logger.warn(&format!("  - {file}"));
             }
             if files.len() > 3 {
-                logger.warn(&format!("  ... and {} more", files.len() - 3));
+                logger.warn(&format!(
+                    "  ... and {} more",
+                    files.len().saturating_sub(3)
+                ));
             }
         }
         _ => {}

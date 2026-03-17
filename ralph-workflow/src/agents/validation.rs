@@ -54,19 +54,21 @@ pub fn validate_opencode_agents_in_resolved_drains(
     catalog: &ApiCatalog,
 ) -> Result<(), String> {
     let opencode_resolver = OpenCodeResolver::new(catalog.clone());
-    let mut errors = Vec::new();
 
     let all_agents = get_opencode_refs_in_resolved_drains(resolved);
 
-    // Validate each opencode/* agent
-    for agent_name in all_agents {
-        if let Some((provider, model)) = parse_opencode_ref(&agent_name) {
-            if let Err(e) = opencode_resolver.validate(&provider, &model) {
-                let msg = opencode_resolver.format_error(&e, &agent_name);
-                errors.push(msg);
-            }
-        }
-    }
+    // Validate each opencode/* agent - collect errors using iterator
+    let errors: Vec<_> = all_agents
+        .iter()
+        .filter_map(|agent_name| {
+            parse_opencode_ref(agent_name).and_then(|(provider, model)| {
+                opencode_resolver
+                    .validate(&provider, &model)
+                    .err()
+                    .map(|e| opencode_resolver.format_error(&e, agent_name))
+            })
+        })
+        .collect();
 
     if errors.is_empty() {
         Ok(())

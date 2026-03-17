@@ -46,9 +46,10 @@ fn compute_post_commit_phase_data(
     };
 
     let continuation = if next_phase == crate::reducer::event::PipelinePhase::Planning {
-        let mut c = state.continuation.clone();
-        c.invalid_output_attempts = 0;
-        c
+        crate::reducer::state::ContinuationState {
+            invalid_output_attempts: 0,
+            ..state.continuation.clone()
+        }
     } else {
         state.continuation.clone()
     };
@@ -345,20 +346,30 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
 
         CommitEvent::PushFailed { error, .. } => {
             let error = crate::cloud::redaction::redact_secrets(&error);
-            let mut next = PipelineState {
-                push_retry_count: state.push_retry_count.saturating_add(1),
-                last_push_error: Some(error),
-                ..state
+            let new_retry_count = state.push_retry_count.saturating_add(1);
+            let at_failure_limit = new_retry_count >= MAX_CONSECUTIVE_PUSH_FAILURES;
+
+            let (pending_push_commit, unpushed_commits, final_retry_count) = if at_failure_limit {
+                let mut commits = state.unpushed_commits.clone();
+                if let Some(commit) = state.pending_push_commit.clone() {
+                    commits.push(commit);
+                }
+                (None, commits, 0)
+            } else {
+                (
+                    state.pending_push_commit.clone(),
+                    state.unpushed_commits.clone(),
+                    new_retry_count,
+                )
             };
 
-            if next.push_retry_count >= MAX_CONSECUTIVE_PUSH_FAILURES {
-                if let Some(commit) = next.pending_push_commit.take() {
-                    next.unpushed_commits.push(commit);
-                }
-                next.push_retry_count = 0;
+            PipelineState {
+                push_retry_count: final_retry_count,
+                last_push_error: Some(error),
+                pending_push_commit,
+                unpushed_commits,
+                ..state
             }
-
-            next
         }
 
         CommitEvent::PullRequestCreated { url, number } => PipelineState {
@@ -535,19 +546,21 @@ fn reduce_residual_files_found(
         let in_recovery_loop = state.phase == crate::reducer::event::PipelinePhase::AwaitingDevFix
             || state.previous_phase == Some(crate::reducer::event::PipelinePhase::AwaitingDevFix);
 
-        let mut new_state = state;
-        new_state.previous_phase = Some(new_state.phase);
-        new_state.phase = crate::reducer::event::PipelinePhase::AwaitingDevFix;
-        new_state.dev_fix_triggered = false;
-        new_state.failed_phase_for_recovery =
-            Some(crate::reducer::event::PipelinePhase::CommitMessage);
+        let (dev_fix_attempt_count, recovery_escalation_level) = if !in_recovery_loop {
+            (0, 0)
+        } else {
+            (state.dev_fix_attempt_count, state.recovery_escalation_level)
+        };
 
-        if !in_recovery_loop {
-            new_state.dev_fix_attempt_count = 0;
-            new_state.recovery_escalation_level = 0;
-        }
-
-        return new_state;
+        return PipelineState {
+            previous_phase: Some(state.phase),
+            phase: crate::reducer::event::PipelinePhase::AwaitingDevFix,
+            dev_fix_triggered: false,
+            failed_phase_for_recovery: Some(crate::reducer::event::PipelinePhase::CommitMessage),
+            dev_fix_attempt_count,
+            recovery_escalation_level,
+            ..state
+        };
     }
 
     if pass < final_pass {

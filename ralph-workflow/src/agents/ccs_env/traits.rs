@@ -61,17 +61,18 @@ impl CcsFilesystem for RealCcsFilesystem {
 
     fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<CcsDirEntry>> {
         let entries = std::fs::read_dir(path)?;
-        let mut result = Vec::new();
-        for entry in entries {
-            let entry = entry?;
-            let ft = entry.file_type()?;
-            result.push(CcsDirEntry {
-                path: entry.path(),
-                file_name: entry.file_name().to_string_lossy().into_owned(),
-                is_file: ft.is_file(),
-            });
-        }
-        Ok(result)
+        // Functional transformation: collect entries into Vec without mutation
+        entries
+            .map(|entry| {
+                let entry = entry?;
+                let ft = entry.file_type()?;
+                Ok(CcsDirEntry {
+                    path: entry.path(),
+                    file_name: entry.file_name().to_string_lossy().into_owned(),
+                    is_file: ft.is_file(),
+                })
+            })
+            .collect()
     }
 }
 
@@ -225,20 +226,18 @@ fn list_ccs_json_files_with_fs(
     fs: &dyn CcsFilesystem,
     ccs_dir: &std::path::Path,
 ) -> Result<Vec<std::path::PathBuf>, std::io::Error> {
-    let entries = fs.read_dir(ccs_dir)?;
-    let mut files = Vec::new();
-    for entry in entries {
-        if !entry.is_file {
-            continue;
-        }
-        if std::path::Path::new(&entry.file_name)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-        {
-            files.push(entry.path);
-        }
-    }
-    Ok(files)
+    fs.read_dir(ccs_dir).map(|entries| {
+        entries
+            .into_iter()
+            .filter(|entry| entry.is_file)
+            .filter(|entry| {
+                std::path::Path::new(&entry.file_name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            })
+            .map(|entry| entry.path)
+            .collect()
+    })
 }
 
 fn ccs_home_dir_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {

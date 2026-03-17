@@ -32,7 +32,8 @@ impl StreamingSession {
             self.protocol_violations = self.protocol_violations.saturating_add(1);
             // Log the contract violation for debugging (only if verbose warnings enabled)
             if self.verbose_warnings {
-                eprintln!(
+                let _ = writeln!(
+                    std::io::stderr(),
                     "Warning: Received MessageStart while state is Streaming. \
                     This indicates a non-standard agent protocol (e.g., GLM sending \
                     repeated MessageStart events). Preserving output_started_for_key \

@@ -135,53 +135,59 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             //   - Preserves: reviewer_pass, total_iterations
 
             // Base state with phase transition
-            let mut new_state = PipelineState {
+            let new_state = PipelineState {
                 phase: target_phase,
                 previous_phase: Some(PipelinePhase::AwaitingDevFix),
                 // Keep recovery tracking fields so we can escalate if this fails
-                ..state
+                ..state.clone()
             };
 
-            // Apply state reset based on escalation level
-            new_state = match level {
+            // Apply state reset based on escalation level (functional style)
+            let new_state = match level {
                 1 => {
                     // Level 1: Simple retry - just transition back, no state reset
                     new_state
                 }
                 2 => {
                     // Level 2: Reset to phase start - clear phase-specific progress flags
-                    let mut reset = new_state.clear_phase_flags(target_phase);
+                    let reset = new_state.clear_phase_flags(target_phase);
 
                     // IMPORTANT: Level 2 is a true "phase start" restart.
                     // Clear continuation/retry flags that have higher orchestration
                     // priority than normal phase sequencing (same-agent retry, XSD retry,
                     // continuation pending, context write/cleanup pending).
-                    reset.continuation = reset.continuation.clone().reset();
+                    let reset = PipelineState {
+                        continuation: reset.continuation.clone().reset(),
+                        ..reset
+                    };
 
                     // Clear phase-scoped materialized prompt inputs so prompt preparation
                     // reruns from scratch for the restarted phase.
-                    reset.prompt_inputs = match target_phase {
-                        PipelinePhase::Planning => reset
-                            .prompt_inputs
-                            .clone()
-                            .with_planning_cleared()
-                            .with_xsd_retry_cleared(),
-                        PipelinePhase::Development => reset
-                            .prompt_inputs
-                            .clone()
-                            .with_development_cleared()
-                            .with_xsd_retry_cleared(),
-                        PipelinePhase::Review => reset
-                            .prompt_inputs
-                            .clone()
-                            .with_review_cleared()
-                            .with_xsd_retry_cleared(),
-                        PipelinePhase::CommitMessage => reset
-                            .prompt_inputs
-                            .clone()
-                            .with_commit_cleared()
-                            .with_xsd_retry_cleared(),
-                        _ => reset.prompt_inputs.clone().with_xsd_retry_cleared(),
+                    let reset = PipelineState {
+                        prompt_inputs: match target_phase {
+                            PipelinePhase::Planning => reset
+                                .prompt_inputs
+                                .clone()
+                                .with_planning_cleared()
+                                .with_xsd_retry_cleared(),
+                            PipelinePhase::Development => reset
+                                .prompt_inputs
+                                .clone()
+                                .with_development_cleared()
+                                .with_xsd_retry_cleared(),
+                            PipelinePhase::Review => reset
+                                .prompt_inputs
+                                .clone()
+                                .with_review_cleared()
+                                .with_xsd_retry_cleared(),
+                            PipelinePhase::CommitMessage => reset
+                                .prompt_inputs
+                                .clone()
+                                .with_commit_cleared()
+                                .with_xsd_retry_cleared(),
+                            _ => reset.prompt_inputs.clone().with_xsd_retry_cleared(),
+                        },
+                        ..reset
                     };
 
                     // Planning phase has global prerequisites at the true phase start.
@@ -189,29 +195,36 @@ pub(super) fn reduce_awaiting_dev_fix_event(
                     // prerequisite effects; otherwise orchestration will skip them and the
                     // "phase start" reset won't actually restart from the beginning.
                     if matches!(target_phase, PipelinePhase::Planning) {
-                        reset.context_cleaned = false;
-                        reset.gitignore_entries_ensured = false;
+                        PipelineState {
+                            context_cleaned: false,
+                            gitignore_entries_ensured: false,
+                            ..reset
+                        }
+                    } else {
+                        reset
                     }
-
-                    reset
                 }
                 3 => {
                     // Level 3: Reset iteration counter - decrement iteration and restart from Planning.
                     // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
                     // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
-                    let mut s = new_state.reset_iteration();
-                    s.recovery_epoch += 1;
-                    s.prompt_history.clear();
-                    s
+                    let s = new_state.reset_iteration();
+                    PipelineState {
+                        recovery_epoch: s.recovery_epoch + 1,
+                        prompt_history: std::collections::HashMap::new(),
+                        ..s
+                    }
                 }
                 _ => {
                     // Level 4+: Complete reset - reset to iteration 0, restart from Planning.
                     // Advance recovery_epoch so PromptScopeKey replay identity changes with scope.
                     // Clear prompt_history atomically so stale prompts are not replayed after scope rotation.
-                    let mut s = new_state.reset_to_iteration_zero();
-                    s.recovery_epoch += 1;
-                    s.prompt_history.clear();
-                    s
+                    let s = new_state.reset_to_iteration_zero();
+                    PipelineState {
+                        recovery_epoch: s.recovery_epoch + 1,
+                        prompt_history: std::collections::HashMap::new(),
+                        ..s
+                    }
                 }
             };
 
@@ -225,10 +238,13 @@ pub(super) fn reduce_awaiting_dev_fix_event(
             // - Also reset for Level 1 if the chain is already exhausted.
             if level >= 2 || new_state.agent_chain.is_exhausted() {
                 let drain = new_state.agent_chain.current_drain;
-                new_state.agent_chain = new_state.agent_chain.reset_for_drain(drain);
+                PipelineState {
+                    agent_chain: new_state.agent_chain.reset_for_drain(drain),
+                    ..new_state
+                }
+            } else {
+                new_state
             }
-
-            new_state
         }
         AwaitingDevFixEvent::RecoveryEscalated {
             from_level: _,

@@ -73,8 +73,10 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
             colors,
             &config,
             &registry,
-            &config_path,
-            &config_sources,
+            crate::cli::ConfigInfo {
+                path: &config_path,
+                sources: &config_sources,
+            },
             &*executor,
             &diagnose_workspace,
         );
@@ -82,7 +84,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     }
 
     // Validate agent chains
-    validate_agent_chains(&registry, &agent_resolution_sources, colors);
+    validate_agent_chains(&registry, &agent_resolution_sources, &logger);
 
     // Create effect handler for production operations
     let mut handler = effect_handler::RealAppEffectHandler::new();

@@ -2,6 +2,18 @@
 
 This repository uses [dylint](https://github.com/trailofbits/dylint) for custom Rust lints.
 
+## Lint Severity Levels
+
+The dylint lints are configured at **Deny** level in their definitions (e.g., `pub FORBID_MUT_BINDING, Deny, ...`). This means violations cause build failures by default. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
+
+- **`--cap-lints=deny`**: Lints stay at their defined level (`Deny`, `Warn`, or `Allow`). If a lint is set to `Deny`, violations cause the build to fail.
+- **`--cap-lints=allow`**: Would cap ALL lints to `Allow`, effectively disabling them. This is never used in this repository.
+
+Using `--cap-lints=deny` is essential because:
+1. It preserves the intended severity of each lint (Deny for functional programming rules)
+2. It ensures violations are caught at compile time rather than silently ignored
+3. It makes the lint system effective as a quality gate
+
 ## Lint policy
 
 The four functional-programming lints (`forbid_mut_binding`, `forbid_imperative_loops`,
@@ -22,6 +34,9 @@ particularly lessons from Haskell:
 | `forbid_imperative_loops` | **Avoid explicit recursion and imperative iteration.** Prefer higher-order combinators (`map`, `filter`, `fold`). | HaskellWiki: "Avoid explicit recursion — prefer `map`, `filter`, `foldr`." |
 | `forbid_mutating_receiver_methods` | **Referential transparency and value semantics.** Data structures are persistent — operations return new values, not mutate in place. | `Data.Map.insert` returns a new map. |
 | `forbid_interior_mutability` | **`&T` must mean truly immutable.** No mechanism to mutate behind a shared reference in pure code. | Haskell values are immutable; `IORef`/`MVar` exist only in `IO`. |
+
+For practical examples of how to rewrite imperative code to satisfy these lints, see
+`docs/code-style/functional-transformations.md`.
 
 ## Available Lints
 

@@ -58,7 +58,7 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
         ctx.colors,
     );
     print_review_guidelines(ctx, review_guidelines.as_ref());
-    println!();
+    let _ = writeln!(std::io::stdout());
 
     let mut timer = Timer::new();
     let mut phase_ctx = create_phase_context_with_config(

@@ -1,7 +1,6 @@
 /// Handle template initialization command.
 ///
 /// Creates the user templates directory and copies all default templates.
-#[expect(clippy::print_stdout, reason = "CLI output handler")]
 fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
     let templates_dir = TemplateRegistry::default_user_templates_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for templates"))?;
@@ -16,38 +15,19 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
     // Use the variables to avoid dead code warnings
     let _ = (source, has_user);
 
-    println!(
-        "{}Initializing user templates directory...{}",
-        colors.bold(),
-        colors.reset()
-    );
-    println!(
-        "  Location: {}{}{}",
-        colors.cyan(),
-        templates_dir.display(),
-        colors.reset()
-    );
-    println!();
+    let _ = writeln!(std::io::stdout(), "{}Initializing user templates directory...{}", colors.bold(), colors.reset());
+    let _ = writeln!(std::io::stdout(), "  Location: {}{}{}", colors.cyan(), templates_dir.display(), colors.reset());
+    let _ = writeln!(std::io::stdout());
 
     // Check if directory already exists
     if templates_dir.exists() {
         if force {
-            println!(
-                "{}Warning: {}Directory already exists. Overwriting...{}",
-                colors.yellow(),
-                colors.reset(),
-                colors.reset()
-            );
+            let _ = writeln!(std::io::stdout(), "{}Warning: {}Directory already exists. Overwriting...{}", colors.yellow(), colors.reset(), colors.reset());
         } else {
-            println!(
-                "{}Error: {}Directory already exists. Use --force to overwrite.{}",
-                colors.red(),
-                colors.reset(),
-                colors.reset()
-            );
-            println!();
-            println!("To reinitialize with defaults, run:");
-            println!("  ralph --template-init --force");
+            let _ = writeln!(std::io::stdout(), "{}Error: {}Directory already exists. Use --force to overwrite.{}", colors.red(), colors.reset(), colors.reset());
+            let _ = writeln!(std::io::stdout());
+            let _ = writeln!(std::io::stdout(), "To reinitialize with defaults, run:");
+            let _ = writeln!(std::io::stdout(), "  ralph --template-init --force");
             return Err(anyhow::anyhow!("Templates directory already exists"));
         }
     }
@@ -105,21 +85,17 @@ fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
         copied += 1;
     }
 
-    println!(
-        "{}Successfully initialized user templates!{}",
-        colors.green(),
-        colors.reset()
-    );
-    println!();
-    println!("  {copied} templates copied");
+    let _ = writeln!(std::io::stdout(), "{}Successfully initialized user templates!{}", colors.green(), colors.reset());
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "  {copied} templates copied");
     if skipped > 0 {
-        println!("  {skipped} templates skipped (already exists)");
+        let _ = writeln!(std::io::stdout(), "  {skipped} templates skipped (already exists)");
     }
-    println!();
-    println!("You can now edit templates in:");
-    println!("  {}", templates_dir.display());
-    println!();
-    println!("Changes to user templates will override the built-in templates.");
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "You can now edit templates in:");
+    let _ = writeln!(std::io::stdout(), "  {}", templates_dir.display());
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(std::io::stdout(), "Changes to user templates will override the built-in templates.");
 
     Ok(())
 }

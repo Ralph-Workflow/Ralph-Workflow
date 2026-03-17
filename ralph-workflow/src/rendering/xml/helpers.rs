@@ -40,22 +40,30 @@ pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
 
 /// Parse unified diff format into per-file sections.
 pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
-    let mut sections: Vec<Vec<&str>> = Vec::new();
-    let mut current: Vec<&str> = Vec::new();
-
-    for line in diff.lines() {
-        if line.starts_with("diff --git ") {
-            if !current.is_empty() {
-                sections.push(current);
+    let (sections, current) = diff.lines().fold(
+        (Vec::new(), Vec::new()),
+        |(mut sections, mut current), line| {
+            if line.starts_with("diff --git ") {
+                if !current.is_empty() {
+                    sections.push(current);
+                }
+                current = vec![line];
+            } else if !current.is_empty() {
+                current.push(line);
             }
-            current = vec![line];
-        } else if !current.is_empty() {
-            current.push(line);
-        }
-    }
-    if !current.is_empty() {
-        sections.push(current);
-    }
+            (sections, current)
+        },
+    );
+
+    // Push the final section if non-empty
+    let sections = if current.is_empty() {
+        sections
+    } else {
+        sections
+            .into_iter()
+            .chain(std::iter::once(current))
+            .collect()
+    };
 
     sections
         .into_iter()
@@ -82,17 +90,18 @@ fn parse_diff_section(lines: &[&str]) -> Option<DiffFileSection> {
     .trim_start_matches("b/")
     .to_string();
 
-    let mut action = ChangeAction::Modify;
-    for line in lines {
-        if line.starts_with("new file mode ") {
-            action = ChangeAction::Create;
-            break;
-        }
-        if line.starts_with("deleted file mode ") {
-            action = ChangeAction::Delete;
-            break;
-        }
-    }
+    let action = lines
+        .iter()
+        .find_map(|line| {
+            if line.starts_with("new file mode ") {
+                Some(ChangeAction::Create)
+            } else if line.starts_with("deleted file mode ") {
+                Some(ChangeAction::Delete)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(ChangeAction::Modify);
 
     Some(DiffFileSection {
         path,
@@ -107,38 +116,35 @@ pub fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String
         return String::new();
     }
 
-    let mut output = String::new();
-    writeln!(output, "\n{title}:").unwrap();
-    writeln!(
-        output,
-        "   Modified {} file(s): {}",
+    let file_list = sections
+        .iter()
+        .map(|s| s.path.as_str())
+        .collect::<Vec<&str>>()
+        .join(", ");
+
+    let sections_output = sections.iter().fold(String::new(), |mut acc, section| {
+        let action_str = match section.action {
+            ChangeAction::Create => "created",
+            ChangeAction::Modify => "modified",
+            ChangeAction::Delete => "deleted",
+        };
+        let diff_lines = section
+            .diff
+            .lines()
+            .map(|line| format!("      {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let _ = writeln!(acc, "\n   📄 {}", section.path);
+        let _ = writeln!(acc, "      Action: {}", action_str);
+        let _ = writeln!(acc, "{}", diff_lines);
+        acc
+    });
+
+    format!(
+        "\n{title}:\n   Modified {} file(s): {}{sections_output}",
         sections.len(),
-        sections
-            .iter()
-            .map(|s| s.path.as_str())
-            .collect::<Vec<&str>>()
-            .join(", ")
+        file_list
     )
-    .unwrap();
-
-    for section in sections {
-        writeln!(output, "\n   📄 {}", section.path).unwrap();
-        writeln!(
-            output,
-            "      Action: {}",
-            match section.action {
-                ChangeAction::Create => "created",
-                ChangeAction::Modify => "modified",
-                ChangeAction::Delete => "deleted",
-            }
-        )
-        .unwrap();
-        for line in section.diff.lines() {
-            writeln!(output, "      {line}").unwrap();
-        }
-    }
-
-    output
 }
 
 /// Parse a simple file list into file paths with actions.

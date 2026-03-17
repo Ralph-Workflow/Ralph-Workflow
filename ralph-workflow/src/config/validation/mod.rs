@@ -21,7 +21,6 @@
 //! - `key_detection`: TOML structure traversal for unknown key detection
 //! - `error_formatting`: User-friendly error message generation
 
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -80,66 +79,64 @@ pub fn validate_config_file(
     path: &Path,
     content: &str,
 ) -> Result<Vec<String>, Vec<ConfigValidationError>> {
-    let mut errors = Vec::new();
-    let mut warnings = Vec::new();
-
     // Step 1: Validate TOML syntax and parse to generic Value for unknown key detection
-    let parsed_value: toml::Value = match toml::from_str(content) {
-        Ok(value) => value,
-        Err(e) => {
-            errors.push(ConfigValidationError::TomlSyntax {
-                file: path.to_path_buf(),
-                error: e,
-            });
-            return Err(errors);
-        }
-    };
+    let parsed_value: toml::Value = toml::from_str(content).map_err(|e| {
+        vec![ConfigValidationError::TomlSyntax {
+            file: path.to_path_buf(),
+            error: e,
+        }]
+    })?;
 
     // Step 2: Detect unknown and deprecated keys by walking the TOML structure
     // This is necessary because #[serde(default)] causes serde to silently ignore unknown fields
     let (unknown_keys, deprecated_keys) =
         key_detection::detect_unknown_and_deprecated_keys(&parsed_value);
 
-    // Unknown keys are errors
-    for (key, location) in unknown_keys {
-        let valid_keys = keys::get_valid_config_keys();
-        let suggestion = levenshtein::suggest_key(&key, &valid_keys);
-        errors.push(ConfigValidationError::UnknownKey {
+    // Collect unknown keys as errors using iterator
+    let valid_keys = keys::get_valid_config_keys();
+    let unknown_errors: Vec<ConfigValidationError> = unknown_keys
+        .iter()
+        .map(|(key, location)| ConfigValidationError::UnknownKey {
             file: path.to_path_buf(),
             key: format!("{location}{key}"),
-            suggestion,
-        });
-    }
+            suggestion: levenshtein::suggest_key(key, &valid_keys),
+        })
+        .collect();
 
-    // Deprecated keys are warnings
-    for (key, location) in deprecated_keys {
-        let full_key = format!("{location}{key}");
-        warnings.push(format!(
-            "Deprecated key '{}' in {} - this key is no longer used and can be safely removed",
-            full_key,
-            path.display()
-        ));
-    }
+    // Collect deprecated keys as warnings using iterator
+    let deprecation_warnings: Vec<String> = deprecated_keys
+        .iter()
+        .map(|(key, location)| {
+            let full_key = format!("{location}{key}");
+            format!(
+                "Deprecated key '{}' in {} - this key is no longer used and can be safely removed",
+                full_key,
+                path.display()
+            )
+        })
+        .collect();
 
     // Step 3: Validate against UnifiedConfig schema for type checking
     // Unknown keys won't cause deserialization to fail due to #[serde(default)],
     // but we've already detected them in Step 2
     match toml::from_str::<crate::config::unified::UnifiedConfig>(content) {
         Ok(config) => {
-            if parsed_value.get("agent_chain").is_some() {
-                if !config.agent_drains.is_empty() && config.agent_chains.is_empty() {
-                    errors.push(ConfigValidationError::InvalidValue {
-                        file: path.to_path_buf(),
-                        key: "agent_chain".to_string(),
-                        message: "found [agent_drains] with singular [agent_chain]; did you mean [agent_chains]? Move retry/backoff settings to [general] (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)".to_string(),
-                    });
-                } else {
-                    warnings.push(format!(
-                        "Deprecated section '[agent_chain]' in {} - Ralph will keep legacy role-keyed behavior by adding the default drain bindings automatically. Migrate agent lists to [agent_chains]/[agent_drains] and move retry/backoff settings to [general]",
-                        path.display()
-                    ));
-                }
-            }
+            // Check for agent_chain vs agent_chains confusion
+            let has_agent_chain = parsed_value.get("agent_chain").is_some();
+            let agent_chain_error = has_agent_chain
+                .then_some(!config.agent_drains.is_empty() && config.agent_chains.is_empty())
+                .and_then(|cond| cond.then_some(ConfigValidationError::InvalidValue {
+                    file: path.to_path_buf(),
+                    key: "agent_chain".to_string(),
+                    message: "found [agent_drains] with singular [agent_chain]; did you mean [agent_chains]? Move retry/backoff settings to [general] (max_retries, retry_delay_ms, backoff_multiplier, max_backoff_ms, max_cycles)".to_string(),
+                }));
+
+            let agent_chain_warning = has_agent_chain
+                .then_some(config.agent_drains.is_empty() || config.agent_chains.is_empty())
+                .and_then(|cond| cond.then_some(format!(
+                    "Deprecated section '[agent_chain]' in {} - Ralph will keep legacy role-keyed behavior by adding the default drain bindings automatically. Migrate agent lists to [agent_chains]/[agent_drains] and move retry/backoff settings to [general]",
+                    path.display()
+                )));
 
             let has_named_chains = !config.agent_chains.is_empty();
             let has_named_drains = !config.agent_drains.is_empty();
@@ -151,8 +148,10 @@ pub fn validate_config_file(
                 || (has_named_chains && has_named_drains)
                 || has_legacy_role_bindings;
 
-            if validate_named_schema_now {
-                if let Err(message) = config.resolve_agent_drains_checked() {
+            let resolve_error: Option<ConfigValidationError> = validate_named_schema_now
+                .then(|| config.resolve_agent_drains_checked())
+                .and_then(|result| result.err())
+                .map(|message| {
                     let key = if message.contains("references unknown chain") {
                         message
                             .split_whitespace()
@@ -163,13 +162,33 @@ pub fn validate_config_file(
                     } else {
                         "agent_drains".to_string()
                     };
-
-                    errors.push(ConfigValidationError::InvalidValue {
+                    ConfigValidationError::InvalidValue {
                         file: path.to_path_buf(),
                         key,
                         message,
-                    });
-                }
+                    }
+                });
+
+            // Combine all errors
+            let schema_errors: Vec<ConfigValidationError> = [agent_chain_error, resolve_error]
+                .into_iter()
+                .flatten()
+                .collect();
+
+            // Combine all warnings
+            let schema_warnings: Vec<String> = agent_chain_warning.into_iter().collect();
+
+            let all_errors: Vec<_> = unknown_errors.into_iter().chain(schema_errors).collect();
+
+            let all_warnings: Vec<_> = deprecation_warnings
+                .into_iter()
+                .chain(schema_warnings)
+                .collect();
+
+            if all_errors.is_empty() {
+                Ok(all_warnings)
+            } else {
+                Err(all_errors)
             }
         }
         Err(e) => {
@@ -177,50 +196,54 @@ pub fn validate_config_file(
             // This could be a type error or missing required field
             let error_str = e.to_string();
 
-            // Parse the error to extract useful information
-            if error_str.contains("missing field") || error_str.contains("invalid type") {
-                // For type mismatches, add a structured error
-                errors.push(ConfigValidationError::InvalidValue {
-                    file: path.to_path_buf(),
-                    key: error_formatting::extract_key_from_toml_error(&error_str),
-                    message: error_formatting::format_invalid_type_message(&error_str),
-                });
+            // Build schema errors based on error type
+            let schema_error: Option<ConfigValidationError> =
+                if error_str.contains("missing field") || error_str.contains("invalid type") {
+                    Some(ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key: error_formatting::extract_key_from_toml_error(&error_str),
+                        message: error_formatting::format_invalid_type_message(&error_str),
+                    })
+                } else {
+                    Some(ConfigValidationError::InvalidValue {
+                        file: path.to_path_buf(),
+                        key: "config".to_string(),
+                        message: error_str,
+                    })
+                };
+
+            let all_errors: Vec<_> = unknown_errors.into_iter().chain(schema_error).collect();
+
+            let all_warnings: Vec<_> = deprecation_warnings.into_iter().collect();
+
+            if all_errors.is_empty() {
+                Ok(all_warnings)
             } else {
-                // Other deserialization errors
-                errors.push(ConfigValidationError::InvalidValue {
-                    file: path.to_path_buf(),
-                    key: "config".to_string(),
-                    message: error_str,
-                });
+                Err(all_errors)
             }
         }
-    }
-
-    if errors.is_empty() {
-        Ok(warnings)
-    } else {
-        Err(errors)
     }
 }
 
 /// Format validation errors for user display.
 #[must_use]
 pub fn format_validation_errors(errors: &[ConfigValidationError]) -> String {
-    let mut output = String::new();
-
-    for error in errors {
-        let _ = writeln!(output, "  {error}");
-
-        if let ConfigValidationError::UnknownKey {
-            suggestion: Some(s),
-            ..
-        } = error
-        {
-            let _ = writeln!(output, "    Did you mean '{s}'?");
-        }
-    }
-
-    output
+    errors
+        .iter()
+        .map(|error| {
+            let error_line = format!("  {error}");
+            if let ConfigValidationError::UnknownKey {
+                suggestion: Some(s),
+                ..
+            } = error
+            {
+                format!("{error_line}\n    Did you mean '{s}'?")
+            } else {
+                error_line
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]

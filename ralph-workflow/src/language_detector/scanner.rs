@@ -110,10 +110,11 @@ pub(super) fn count_extensions_with_workspace(
             if entry.is_dir() {
                 scan_dir_workspace(workspace, path, counts, files_scanned)?;
             } else if entry.is_file() {
-                *files_scanned += 1;
+                *files_scanned = files_scanned.saturating_add(1);
                 if let Some(ext) = path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
-                    *counts.entry(ext_str).or_insert(0) += 1;
+                    let entry = counts.entry(ext_str).or_insert(0);
+                    *entry = entry.saturating_add(1);
                 }
             }
         }
@@ -177,7 +178,7 @@ pub(super) fn detect_tests_with_workspace(
             if !entry.is_file() {
                 continue;
             }
-            scanned_files += 1;
+            scanned_files = scanned_files.saturating_add(1);
 
             let path_components: Vec<String> = path
                 .components()

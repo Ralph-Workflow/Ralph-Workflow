@@ -12,7 +12,8 @@ use crate::config::unified::UnifiedConfig;
 use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
 use std::collections::BTreeMap;
-use std::fmt::Write;
+use std::fmt::Write as FmtWrite;
+use std::io::Write;
 
 /// Generate a local config template populated with effective values.
 ///
@@ -264,15 +265,22 @@ pub fn handle_init_local_config_with<R: ConfigEnvironment>(
 
     // Check if config already exists
     if env.file_exists(&local_path) && !force {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "{}Local config already exists:{} {}",
             colors.yellow(),
             colors.reset(),
             local_path.display()
         );
-        println!("Use --force-overwrite to replace it, or edit the existing file.");
-        println!();
-        println!("Run `ralph --check-config` to see effective configuration.");
+        let _ = writeln!(
+            std::io::stdout(),
+            "Use --force-overwrite to replace it, or edit the existing file."
+        );
+        let _ = writeln!(std::io::stdout());
+        let _ = writeln!(
+            std::io::stdout(),
+            "Run `ralph --check-config` to see effective configuration."
+        );
         return Ok(true);
     }
 
@@ -293,19 +301,27 @@ pub fn handle_init_local_config_with<R: ConfigEnvironment>(
         .canonicalize()
         .unwrap_or_else(|_| local_path.clone());
 
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}Created{} {}",
         colors.green(),
         colors.reset(),
         display_path.display()
     );
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "This local config will override your global settings (~/.config/ralph-workflow.toml)."
     );
-    println!("Edit the file to customize Ralph for this project.");
-    println!();
-    println!("Tip: Run `ralph --check-config` to validate your configuration.");
+    let _ = writeln!(
+        std::io::stdout(),
+        "Edit the file to customize Ralph for this project."
+    );
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
+        "Tip: Run `ralph --check-config` to validate your configuration."
+    );
 
     Ok(true)
 }

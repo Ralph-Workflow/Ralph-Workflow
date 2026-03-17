@@ -19,6 +19,12 @@ use crate::workspace::Workspace;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+/// Groups config path and sources together to reduce function argument count.
+pub struct ConfigInfo<'a> {
+    pub path: &'a Path,
+    pub sources: &'a [ConfigSource],
+}
+
 /// Handle --diagnose command.
 ///
 /// Writes comprehensive diagnostic information to the provided writer.
@@ -30,8 +36,7 @@ use std::path::{Path, PathBuf};
 /// * `colors` - Color configuration for output formatting
 /// * `config` - The current Ralph configuration
 /// * `registry` - The agent registry
-/// * `config_path` - Path to the unified config file
-/// * `config_sources` - List of configuration sources that were loaded
+/// * `config_info` - Path to the unified config file and list of config sources
 /// * `executor` - Process executor for running git commands
 /// * `workspace` - Workspace for explicit file operations
 pub fn handle_diagnose<W: Write>(
@@ -39,11 +44,12 @@ pub fn handle_diagnose<W: Write>(
     colors: Colors,
     config: &Config,
     registry: &AgentRegistry,
-    config_path: &Path,
-    config_sources: &[ConfigSource],
+    config_info: ConfigInfo<'_>,
     executor: &dyn ProcessExecutor,
     workspace: &dyn Workspace,
 ) {
+    let config_path = config_info.path;
+    let config_sources = config_info.sources;
     // Gather diagnostics using the diagnostics module
     let report = run_diagnostics(registry);
 
@@ -95,7 +101,7 @@ pub fn handle_diagnose<W: Write>(
         &report.system.uncommitted_changes,
     );
 
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
     let _ = write!(
         writer,
         "{}Copy this output for bug reports: https://github.com/anthropics/ralph/issues{}\\n",
@@ -106,27 +112,27 @@ pub fn handle_diagnose<W: Write>(
 
 /// Write system information section.
 fn write_system_info<W: Write>(writer: &mut W, colors: Colors) {
-    let _ = write!(writer, "{}System:{}\n", colors.bold(), colors.reset());
-    let _ = write!(
+    let _ = writeln!(writer, "{}System:{}", colors.bold(), colors.reset());
+    let _ = writeln!(
         writer,
-        "  OS: {} {}\n",
+        "  OS: {} {}",
         std::env::consts::OS,
         std::env::consts::ARCH
     );
     if let Ok(cwd) = std::env::current_dir() {
-        let _ = write!(writer, "  Working directory: {}\\n", cwd.display());
+        let _ = writeln!(writer, "  Working directory: {}", cwd.display());
     }
     if let Ok(shell) = std::env::var("SHELL") {
-        let _ = write!(writer, "  Shell: {shell}\\n");
+        let _ = writeln!(writer, "  Shell: {shell}");
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write git information section.
 fn write_git_info<W: Write>(writer: &mut W, colors: Colors, executor: &dyn ProcessExecutor) {
-    let _ = write!(writer, "{}Git:{}\n", colors.bold(), colors.reset());
+    let _ = writeln!(writer, "{}Git:{}", colors.bold(), colors.reset());
     if let Ok(output) = executor.execute("git", &["--version"], &[], None) {
-        let _ = write!(writer, "  Version: {}\\n", output.stdout.trim());
+        let _ = writeln!(writer, "  Version: {}", output.stdout.trim());
     }
     let is_repo = executor
         .execute("git", &["rev-parse", "--git-dir"], &[], None)
@@ -139,14 +145,14 @@ fn write_git_info<W: Write>(writer: &mut W, colors: Colors, executor: &dyn Proce
     );
     if is_repo {
         if let Ok(output) = executor.execute("git", &["branch", "--show-current"], &[], None) {
-            let _ = write!(writer, "  Current branch: {}\\n", output.stdout.trim());
+            let _ = writeln!(writer, "  Current branch: {}", output.stdout.trim());
         }
         if let Ok(output) = executor.execute("git", &["status", "--porcelain"], &[], None) {
             let changes = output.stdout.lines().count();
-            let _ = write!(writer, "  Uncommitted changes: {changes}\\n");
+            let _ = writeln!(writer, "  Uncommitted changes: {changes}");
         }
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write configuration information section.
@@ -158,13 +164,8 @@ fn write_config_info<W: Write>(
     config_sources: &[ConfigSource],
     workspace: &dyn Workspace,
 ) {
-    let _ = write!(
-        writer,
-        "{}Configuration:{}\n",
-        colors.bold(),
-        colors.reset()
-    );
-    let _ = write!(writer, "  Unified config: {}\\n", config_path.display());
+    let _ = writeln!(writer, "{}Configuration:{}", colors.bold(), colors.reset());
+    let _ = writeln!(writer, "  Unified config: {}", config_path.display());
     let exists_status = if config_path.is_absolute() {
         config_path.strip_prefix(workspace.root()).ok().map_or_else(
             || "unknown (outside workspace)".to_string(),
@@ -181,52 +182,52 @@ fn write_config_info<W: Write>(
     } else {
         "no".to_string()
     };
-    let _ = write!(writer, "  Config exists: {exists_status}\\n");
-    let _ = write!(
+    let _ = writeln!(writer, "  Config exists: {exists_status}");
+    let _ = writeln!(
         writer,
-        "  Review depth: {:?} ({})\n",
+        "  Review depth: {:?} ({})",
         config.review_depth,
         config.review_depth.description()
     );
     if !config_sources.is_empty() {
-        let _ = write!(writer, "  Loaded sources:\n");
+        let _ = writeln!(writer, "  Loaded sources:");
         for src in config_sources {
-            let _ = write!(
+            let _ = writeln!(
                 writer,
-                "    - {} ({} agents)\n",
+                "    - {} ({} agents)",
                 src.path.display(),
                 src.agents_loaded
             );
         }
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write agent chain configuration section.
 fn write_agent_chain_info<W: Write>(writer: &mut W, colors: Colors, registry: &AgentRegistry) {
-    let _ = write!(writer, "{}Agent Drains:{}\n", colors.bold(), colors.reset());
+    let _ = writeln!(writer, "{}Agent Drains:{}", colors.bold(), colors.reset());
     let resolved = registry.resolved_drains();
     for drain in crate::agents::AgentDrain::all() {
         if let Some(binding) = resolved.binding(drain) {
-            let _ = write!(
+            let _ = writeln!(
                 writer,
-                "  {} -> {} {:?}\n",
+                "  {} -> {} {:?}",
                 drain.as_str(),
                 binding.chain_name,
                 binding.agents
             );
         }
     }
-    let _ = write!(writer, "  Max retries: {}\n", resolved.max_retries);
-    let _ = write!(writer, "  Retry delay: {}ms\n", resolved.retry_delay_ms);
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer, "  Max retries: {}", resolved.max_retries);
+    let _ = writeln!(writer, "  Retry delay: {}ms", resolved.retry_delay_ms);
+    let _ = writeln!(writer);
 }
 
 /// Write agent availability section.
 fn write_agent_availability<W: Write>(writer: &mut W, colors: Colors, registry: &AgentRegistry) {
-    let _ = write!(
+    let _ = writeln!(
         writer,
-        "{}Agent Availability:{}\n",
+        "{}Agent Availability:{}",
         colors.bold(),
         colors.reset()
     );
@@ -242,9 +243,9 @@ fn write_agent_availability<W: Write>(writer: &mut W, colors: Colors, registry: 
         };
         let status_icon = if available { "✓" } else { "✗" };
         let display_name = registry.display_name(name);
-        let _ = write!(
+        let _ = writeln!(
             writer,
-            "  {}{}{} {} (parser: {}, cmd: {})\n",
+            "  {}{}{} {} (parser: {}, cmd: {})",
             status_color,
             status_icon,
             colors.reset(),
@@ -253,85 +254,80 @@ fn write_agent_availability<W: Write>(writer: &mut W, colors: Colors, registry: 
             cfg.cmd.split_whitespace().next().unwrap_or(&cfg.cmd)
         );
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write PROMPT.md status section.
 fn write_prompt_status<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
-    let _ = write!(writer, "{}PROMPT.md:{}\n", colors.bold(), colors.reset());
+    let _ = writeln!(writer, "{}PROMPT.md:{}", colors.bold(), colors.reset());
     let prompt_path = Path::new("PROMPT.md");
     if workspace.exists(prompt_path) {
         if let Ok(content) = workspace.read(prompt_path) {
-            let _ = write!(writer, "  Exists: yes\n");
-            let _ = write!(writer, "  Size: {} bytes\n", content.len());
-            let _ = write!(writer, "  Lines: {}\n", content.lines().count());
+            let _ = writeln!(writer, "  Exists: yes");
+            let _ = writeln!(writer, "  Size: {} bytes", content.len());
+            let _ = writeln!(writer, "  Lines: {}", content.lines().count());
             let has_goal = content.contains("## Goal") || content.contains("# Goal");
             let has_acceptance =
                 content.contains("## Acceptance") || content.contains("Acceptance Criteria");
-            let _ = write!(
+            let _ = writeln!(
                 writer,
-                "  Has Goal section: {}\n",
+                "  Has Goal section: {}",
                 if has_goal { "yes" } else { "no" }
             );
-            let _ = write!(
+            let _ = writeln!(
                 writer,
-                "  Has Acceptance section: {}\n",
+                "  Has Acceptance section: {}",
                 if has_acceptance { "yes" } else { "no" }
             );
         }
     } else {
-        let _ = write!(writer, "  Exists: no\n");
+        let _ = writeln!(writer, "  Exists: no");
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write checkpoint status section.
 fn write_checkpoint_status<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
-    let _ = write!(writer, "{}Checkpoint:{}\n", colors.bold(), colors.reset());
+    let _ = writeln!(writer, "{}Checkpoint:{}", colors.bold(), colors.reset());
     if crate::checkpoint::checkpoint_exists_with_workspace(workspace) {
-        let _ = write!(writer, "  Exists: yes\n");
+        let _ = writeln!(writer, "  Exists: yes");
         if let Ok(Some(cp)) = load_checkpoint_with_workspace(workspace) {
-            let _ = write!(writer, "  Phase: {:?}\n", cp.phase);
-            let _ = write!(writer, "  Developer agent: {}\n", cp.developer_agent);
-            let _ = write!(writer, "  Reviewer agent: {}\n", cp.reviewer_agent);
-            let _ = write!(
+            let _ = writeln!(writer, "  Phase: {:?}", cp.phase);
+            let _ = writeln!(writer, "  Developer agent: {}", cp.developer_agent);
+            let _ = writeln!(writer, "  Reviewer agent: {}", cp.reviewer_agent);
+            let _ = writeln!(
                 writer,
-                "  Iterations: {}/{} dev, {}/{} review\n",
+                "  Iterations: {}/{} dev, {}/{} review",
                 cp.iteration, cp.total_iterations, cp.reviewer_pass, cp.total_reviewer_passes
             );
         }
     } else {
-        let _ = write!(writer, "  Exists: no (no interrupted run to resume)\n");
+        let _ = writeln!(writer, "  Exists: no (no interrupted run to resume)");
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write project stack detection section.
 fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
-    let _ = write!(
-        writer,
-        "{}Project Stack:{}\n",
-        colors.bold(),
-        colors.reset()
-    );
+    let _ = writeln!(writer, "{}Project Stack:{}", colors.bold(), colors.reset());
     match language_detector::detect_stack(workspace.root()) {
         Ok(stack) => {
-            let _ = write!(writer, "  Primary language: {}\n", stack.primary_language);
+            let _ = writeln!(writer, "  Primary language: {}", stack.primary_language);
             if !stack.secondary_languages.is_empty() {
-                let _ = write!(
+                let _ = writeln!(
                     writer,
-                    "  Secondary languages: {:?}\n",
+                    "  Secondary languages: {:?}",
                     stack.secondary_languages
                 );
             }
             if !stack.frameworks.is_empty() {
-                let _ = write!(writer, "  Frameworks: {:?}\n", stack.frameworks);
+                let _ = writeln!(writer, "  Frameworks: {:?}", stack.frameworks);
             }
             if let Some(pm) = &stack.package_manager {
-                let _ = write!(writer, "  Package manager: {pm}\n");
+                let _ = writeln!(writer, "  Package manager: {pm}");
             }
             if let Some(tf) = &stack.test_framework {
-                let _ = write!(writer, "  Test framework: {tf}\n");
+                let _ = writeln!(writer, "  Test framework: {tf}");
             }
 
             let language_types: Vec<&str> = [
@@ -352,13 +348,13 @@ fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn
             .flatten()
             .collect();
             if !language_types.is_empty() {
-                let _ = write!(writer, "  Language flags: {}\n", language_types.join(", "));
+                let _ = writeln!(writer, "  Language flags: {}", language_types.join(", "));
             }
 
             let guidelines = ReviewGuidelines::for_stack(&stack);
-            let _ = write!(
+            let _ = writeln!(
                 writer,
-                "  Review checks: {} total\n",
+                "  Review checks: {} total",
                 guidelines.total_checks()
             );
 
@@ -372,9 +368,9 @@ fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn
                 .filter(|c| matches!(c.severity, CheckSeverity::High))
                 .count();
             if critical_count > 0 || high_count > 0 {
-                let _ = write!(
+                let _ = writeln!(
                     writer,
-                    "  Check severities: {critical_count} critical, {high_count} high\n"
+                    "  Check severities: {critical_count} critical, {high_count} high"
                 );
             }
 
@@ -384,17 +380,17 @@ fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn
                 .take(3)
                 .collect();
             if !critical_checks.is_empty() {
-                let _ = write!(writer, "  Critical checks (sample):\n");
+                let _ = writeln!(writer, "  Critical checks (sample):");
                 for check in critical_checks {
-                    let _ = write!(writer, "    - {}\n", check.check);
+                    let _ = writeln!(writer, "    - {}", check.check);
                 }
             }
         }
         Err(e) => {
-            let _ = write!(writer, "  Detection failed: {e}\n");
+            let _ = writeln!(writer, "  Detection failed: {e}");
         }
     }
-    let _ = write!(writer, "\n");
+    let _ = writeln!(writer);
 }
 
 /// Write recent log entries section.
@@ -419,9 +415,9 @@ fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn W
         );
 
     if workspace.exists(&log_path) {
-        let _ = write!(
+        let _ = writeln!(
             writer,
-            "{}Recent Log Entries (last 10):{}\n",
+            "{}Recent Log Entries (last 10):{}",
             colors.bold(),
             colors.reset()
         );
@@ -429,13 +425,13 @@ fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn W
             let lines: Vec<&str> = content.lines().collect();
             let start = lines.len().saturating_sub(10);
             for line in &lines[start..] {
-                let _ = write!(writer, "  {line}\n");
+                let _ = writeln!(writer, "  {line}");
             }
         }
     } else {
-        let _ = write!(
+        let _ = writeln!(
             writer,
-            "{}No log file found{}\n",
+            "{}No log file found{}",
             colors.yellow(),
             colors.reset()
         );

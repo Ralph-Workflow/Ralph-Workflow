@@ -66,10 +66,8 @@ pub(super) fn calculate_backoff_delay_ms(
     cycle: u32,
 ) -> u64 {
     let mult_hundredths = multiplier_hundredths(backoff_multiplier);
-    let mut delay_hundredths = retry_delay_ms.saturating_mul(100);
-    for _ in 0..cycle {
-        delay_hundredths = delay_hundredths.saturating_mul(mult_hundredths);
-        delay_hundredths = delay_hundredths.saturating_div(100);
-    }
+    let delay_hundredths = (0..cycle).fold(retry_delay_ms.saturating_mul(100), |acc, _| {
+        acc.saturating_mul(mult_hundredths).saturating_div(100)
+    });
     delay_hundredths.div_euclid(100).min(max_backoff_ms)
 }

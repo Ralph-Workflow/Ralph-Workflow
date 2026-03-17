@@ -118,7 +118,7 @@ fn suggest_next_step(checkpoint: &PipelineCheckpoint) -> String {
             if checkpoint.iteration < checkpoint.total_iterations {
                 format!(
                     "continue development iteration {} of {} (will use same prompts as before)",
-                    checkpoint.iteration + 1,
+                    checkpoint.iteration.saturating_add(1),
                     checkpoint.total_iterations
                 )
             } else {
@@ -129,7 +129,7 @@ fn suggest_next_step(checkpoint: &PipelineCheckpoint) -> String {
             if checkpoint.reviewer_pass < checkpoint.total_reviewer_passes {
                 format!(
                     "continue review pass {} of {} (will review recent changes)",
-                    checkpoint.reviewer_pass + 1,
+                    checkpoint.reviewer_pass.saturating_add(1),
                     checkpoint.total_reviewer_passes
                 )
             } else {
@@ -181,7 +181,11 @@ fn create_progress_bar(current: u32, total: u32) -> String {
 
     let width: u32 = 20;
     let current_clamped = current.min(total);
-    let filled = (current_clamped * width + total / 2) / total;
+    let filled = current_clamped
+        .saturating_mul(width)
+        .saturating_add(total / 2)
+        .checked_div(total)
+        .unwrap_or(0);
 
     let mut bar = String::from("[");
     for i in 0..width {
@@ -193,7 +197,11 @@ fn create_progress_bar(current: u32, total: u32) -> String {
     }
     bar.push(']');
 
-    let percentage = (current_clamped * 100 + total / 2) / total;
+    let percentage = current_clamped
+        .saturating_mul(100)
+        .saturating_add(total / 2)
+        .checked_div(total)
+        .unwrap_or(0);
     format!("{bar} {percentage}%")
 }
 

@@ -42,6 +42,8 @@
 // - `ccs_ansi_stripping_console.rs`: ANSI-stripping console behavior
 // - `codex_reasoning_spam_regression.rs`: Codex reasoning regression
 
+use std::io::Write;
+
 /// Renderer for streaming delta content.
 ///
 /// This trait defines the contract for rendering streaming deltas consistently
@@ -263,7 +265,8 @@ pub fn compute_append_only_suffix<'a>(last_rendered: &str, current: &'a str) -> 
     // Debug assertion to help detect unexpected discontinuities during development
     #[cfg(debug_assertions)]
     if suffix.is_empty() && !current.is_empty() && !last_rendered.is_empty() {
-        eprintln!(
+        let _ = writeln!(
+            std::io::stderr(),
             "Debug: Delta discontinuity detected in compute_append_only_suffix. \
              Last rendered: {:?} (len={}), Current: {:?} (len={}). \
              This may indicate non-monotonic deltas from the provider.",

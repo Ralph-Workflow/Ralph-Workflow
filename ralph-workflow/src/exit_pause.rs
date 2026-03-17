@@ -46,7 +46,7 @@ pub fn detect_launch_context() -> LaunchContext {
 ///
 /// Returns an error when writing the prompt to stderr fails or when stdin cannot be read.
 pub fn pause_for_enter() -> std::io::Result<()> {
-    eprint!("\nPress Enter to close... ");
+    std::io::stderr().write_all(b"\nPress Enter to close... ")?;
     std::io::stderr().flush()?;
 
     let mut line = String::new();

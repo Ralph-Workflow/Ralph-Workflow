@@ -5,6 +5,7 @@
 
 use crate::logger::Colors;
 use crate::logger::Loggable;
+use std::io::Write;
 
 /// Summary data for pipeline completion display.
 ///
@@ -65,14 +66,16 @@ pub struct ReviewSummary {
 /// * `developer_agent` - Name of the developer agent
 /// * `reviewer_agent` - Name of the reviewer agent
 pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agent: &str) {
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}╭────────────────────────────────────────────────────────────╮{}",
         colors.bold(),
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}│{}  {}{}🤖 Ralph{} {}─ PROMPT-driven agent orchestrator{}              {}{}│{}",
         colors.bold(),
         colors.cyan(),
@@ -86,7 +89,8 @@ pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agen
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}│{}  {}{} × {} pipeline for autonomous development{}                 {}{}│{}",
         colors.bold(),
         colors.cyan(),
@@ -99,13 +103,14 @@ pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agen
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}╰────────────────────────────────────────────────────────────╯{}",
         colors.bold(),
         colors.cyan(),
         colors.reset()
     );
-    println!();
+    let _ = writeln!(std::io::stdout());
 }
 
 /// Print the final summary after pipeline completion.
@@ -121,19 +126,22 @@ pub fn print_welcome_banner(colors: Colors, developer_agent: &str, reviewer_agen
 pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummary, logger: &L) {
     logger.header("Pipeline Complete", crate::logger::Colors::green);
 
-    println!();
-    println!(
+    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}📊 Summary{}",
         colors.bold(),
         colors.white(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}──────────────────────────────────{}",
         colors.dim(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}⏱{}  Total time:      {}{}{}",
         colors.cyan(),
         colors.reset(),
@@ -141,7 +149,8 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
         summary.total_time,
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}🔄{}  Dev runs:        {}{}{}/{}",
         colors.blue(),
         colors.reset(),
@@ -150,7 +159,8 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
         colors.reset(),
         summary.dev_runs_total
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}🔍{}  Review passes:   {}{}{}/{}",
         colors.magenta(),
         colors.reset(),
@@ -160,7 +170,8 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
         summary.review_passes_total
     );
     if summary.verbose {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}  {}  (Total runs:     {}{}{}){}",
             colors.dim(),
             colors.magenta(),
@@ -170,7 +181,8 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
             colors.reset()
         );
     }
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}📝{}  Changes detected: {}{}{}",
         colors.green(),
         colors.reset(),
@@ -183,7 +195,7 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
     if let Some(ref review) = summary.review_summary {
         print_review_summary(colors, summary.verbose, review);
     }
-    println!();
+    let _ = writeln!(std::io::stdout());
 
     print_output_files(colors, summary.isolation_mode);
 
@@ -222,7 +234,8 @@ pub fn print_final_summary<L: Loggable>(colors: Colors, summary: &PipelineSummar
 fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
     // No issues case
     if review.unresolved_count == 0 && review.blocking_count == 0 {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}✓{}   Review result:   {}{}{}",
             colors.green(),
             colors.reset(),
@@ -234,7 +247,8 @@ fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
     }
 
     // Issues present
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  {}🔎{}  Review summary:  {}{}{}",
         colors.yellow(),
         colors.reset(),
@@ -245,7 +259,8 @@ fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
 
     // Show unresolved count
     if review.unresolved_count > 0 {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}⚠{}   Unresolved:      {}{}{} issues remaining",
             colors.red(),
             colors.reset(),
@@ -258,27 +273,46 @@ fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
     // Show detailed breakdown in verbose mode
     if verbose {
         if let Some(ref breakdown) = review.detailed_breakdown {
-            println!("  {}📊{}  Breakdown:", colors.dim(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "  {}📊{}  Breakdown:",
+                colors.dim(),
+                colors.reset()
+            );
             for line in breakdown.lines() {
-                println!("      {}{}{}", colors.dim(), line.trim(), colors.reset());
+                let _ = writeln!(
+                    std::io::stdout(),
+                    "      {}{}{}",
+                    colors.dim(),
+                    line.trim(),
+                    colors.reset()
+                );
             }
         }
         // Show sample unresolved issues
         if !review.samples.is_empty() {
-            println!(
+            let _ = writeln!(
+                std::io::stdout(),
                 "  {}🧾{}  Unresolved samples:",
                 colors.dim(),
                 colors.reset()
             );
             for s in &review.samples {
-                println!("      {}- {}{}", colors.dim(), s, colors.reset());
+                let _ = writeln!(
+                    std::io::stdout(),
+                    "      {}- {}{}",
+                    colors.dim(),
+                    s,
+                    colors.reset()
+                );
             }
         }
     }
 
     // Highlight blocking issues
     if review.blocking_count > 0 {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  {}🚨{}  BLOCKING:        {}{}{} critical/high issues unresolved",
             colors.red(),
             colors.reset(),
@@ -291,44 +325,51 @@ fn print_review_summary(colors: Colors, verbose: bool, review: &ReviewSummary) {
 
 /// Print the output files list.
 fn print_output_files(colors: Colors, isolation_mode: bool) {
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}{}📁 Output Files{}",
         colors.bold(),
         colors.white(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "{}──────────────────────────────────{}",
         colors.dim(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  → {}PROMPT.md{}           Goal definition",
         colors.cyan(),
         colors.reset()
     );
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  → {}.agent/STATUS.md{}    Current status",
         colors.cyan(),
         colors.reset()
     );
     // Only show ISSUES.md and NOTES.md when NOT in isolation mode
     if !isolation_mode {
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  → {}.agent/ISSUES.md{}    Review findings",
             colors.cyan(),
             colors.reset()
         );
-        println!(
+        let _ = writeln!(
+            std::io::stdout(),
             "  → {}.agent/NOTES.md{}     Progress notes",
             colors.cyan(),
             colors.reset()
         );
     }
-    println!(
+    let _ = writeln!(
+        std::io::stdout(),
         "  → {}.agent/logs/{}        Detailed logs",
         colors.cyan(),
         colors.reset()
     );
-    println!();
+    let _ = writeln!(std::io::stdout());
 }

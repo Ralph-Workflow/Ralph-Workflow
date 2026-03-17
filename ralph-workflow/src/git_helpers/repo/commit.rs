@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
@@ -368,7 +368,10 @@ fn git_commit_impl(
         } else {
             "system/default"
         };
-        eprintln!("Git identity: {name} <{email}> (source: {identity_source})");
+        let _ = writeln!(
+            std::io::stderr(),
+            "Git identity: {name} <{email}> (source: {identity_source})"
+        );
     }
 
     let sig = git2::Signature::now(&name, &email).map_err(|e| git2_to_io_error(&e))?;

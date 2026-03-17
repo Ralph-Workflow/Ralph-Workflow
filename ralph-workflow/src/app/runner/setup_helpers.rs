@@ -116,22 +116,22 @@ fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
     if config.behavior.interactive && !prompt_exists {
         if let Some(template_name) = prompt_template_selection(colors) {
             create_prompt_from_template(&template_name, colors)?;
-            println!();
+            logger.info(""); // Empty line for spacing
             logger.info(
                 "PROMPT.md created. Please edit it with your task details, then run ralph again.",
             );
             logger.info("Tip: Edit PROMPT.md, then run: ralph");
             return Ok(None);
         }
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.error("PROMPT.md not found in current directory.");
         logger.warn("PROMPT.md is required to run the Ralph pipeline.");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("To get started:");
         logger.info("  ralph --init                    # Smart setup wizard");
         logger.info("  ralph --init bug-fix             # Create from Work Guide");
         logger.info("  ralph --list-work-guides          # See all Work Guides");
-        println!();
+        logger.info(""); // Empty line for spacing
         return Ok(None);
     }
 
@@ -139,14 +139,14 @@ fn setup_git_and_prompt_file<H: effect::AppEffectHandler>(
     if !prompt_exists {
         logger.error("PROMPT.md not found in current directory.");
         logger.warn("PROMPT.md is required to run the Ralph pipeline.");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("Quick start:");
         logger.info("  ralph --init                    # Smart setup wizard");
         logger.info("  ralph --init bug-fix             # Create from Work Guide");
         logger.info("  ralph --list-work-guides          # See all Work Guides");
-        println!();
+        logger.info(""); // Empty line for spacing
         logger.info("Use -i flag for interactive mode to be prompted for template selection.");
-        println!();
+        logger.info(""); // Empty line for spacing
         return Ok(None);
     }
 

@@ -108,15 +108,14 @@ fn build_ccs_agent_config_impl(
     // Check for CCS_DEBUG env var to enable detailed logging
     let debug_mode = std::env::var("RALPH_CCS_DEBUG").is_ok();
 
-    let mut profile_used_for_env: Option<String> = None;
-    let (env_vars, env_vars_loaded) = if alias_name.is_empty() {
-        (HashMap::new(), false)
+    // Compute env vars and track profile used - functional style
+    let ((env_vars, env_vars_loaded), profile_used_for_env) = if alias_name.is_empty() {
+        ((HashMap::new(), false), None)
     } else if is_glm_alias(alias_name) {
         let original_cmd = alias_config.cmd.as_str();
         let profile =
             ccs_profile_from_command(original_cmd).unwrap_or_else(|| alias_name.to_string());
-        profile_used_for_env = Some(profile.clone());
-        match load_ccs_env_vars_with_guess(&profile) {
+        let result = match load_ccs_env_vars_with_guess(&profile) {
             Ok((vars, guessed)) => {
                 if let Some(guessed) = guessed {
                     eprintln!("Info: CCS profile '{profile}' not found; using '{guessed}'");
@@ -129,17 +128,18 @@ fn build_ccs_agent_config_impl(
                 eprintln!("Warning: failed to load CCS env vars for profile '{profile}': {err}");
                 if !suggestions.is_empty() {
                     eprintln!("Tip: available/nearby CCS profiles:");
-                    for s in suggestions {
+                    suggestions.iter().for_each(|s| {
                         eprintln!("  - {s}");
-                    }
+                    });
                 }
                 (HashMap::new(), false)
             }
-        }
+        };
+        (result, Some(profile))
     } else {
         // Non-GLM CCS aliases must execute `ccs ...` directly.
         // Do not inject GLM/Anthropic-style env vars for other providers.
-        (HashMap::new(), false)
+        ((HashMap::new(), false), None)
     };
 
     // Debug logging: Show env vars loaded

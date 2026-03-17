@@ -39,6 +39,7 @@
 // - Effect system: docs/architecture/effect-system.md
 
 use anyhow::Context;
+use std::io::Write;
 
 // Include sub-modules
 include!("initialization.rs");

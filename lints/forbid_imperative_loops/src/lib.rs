@@ -71,7 +71,7 @@ dylint_linting::impl_early_lint! {
     ///     .collect();
     /// ```
     pub FORBID_IMPERATIVE_LOOPS,
-    Warn,
+    Deny,
     "imperative loops (`while`, `loop`, `for`) are forbidden outside boundary modules",
     ForbidImperativeLoops
 }
@@ -126,10 +126,7 @@ impl EarlyLintPass for ForbidImperativeLoops {
             diag.primary_message(format!(
                 "`{kind_name}` loop is forbidden outside boundary modules"
             ));
-            diag.help(
-                "use iterator combinators (map, filter, fold, for_each, etc.) \
-                 instead of imperative loops",
-            );
+            diag.help("replace loop with iterator pipeline: `xs.filter(p).map(f).collect()`, `xs.fold(init, f)`, or `xs.any(p)` / `xs.all(p)`. See quick reference in `docs/code-style/functional-transformations.md`.");
             diag.note(
                 "if a loop is genuinely required for I/O or runtime logic, move this code \
                  into a boundary module (io/, runtime/, ffi/, boundary/)",

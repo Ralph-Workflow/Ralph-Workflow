@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 
 use crate::cli::args::TemplateCommands;
 use crate::logger::Colors;

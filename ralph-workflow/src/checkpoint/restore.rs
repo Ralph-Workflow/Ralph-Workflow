@@ -166,7 +166,7 @@ pub(crate) fn restore_environment_impl(
         return 0;
     };
 
-    let mut restored = 0;
+    let mut restored: usize = 0;
 
     // Restore RALPH_* variables (safe only)
     for (key, value) in &env_snap.ralph_vars {
@@ -174,7 +174,7 @@ pub(crate) fn restore_environment_impl(
             continue;
         }
         set_var(key, value);
-        restored += 1;
+        restored = restored.saturating_add(1);
     }
 
     restored

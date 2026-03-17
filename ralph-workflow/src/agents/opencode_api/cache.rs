@@ -139,7 +139,7 @@ fn load_api_catalog_with_env(env: &dyn CacheEnvironment) -> Result<ApiCatalog, C
 fn emit_cache_warnings(warnings: &[CacheWarning]) {
     use std::io::Write;
     let mut stderr = std::io::stderr();
-    for warning in warnings {
+    warnings.iter().for_each(|warning| {
         match warning {
             CacheWarning::StaleCacheUsed { stale_days, error } => {
                 let _ = writeln!(
@@ -148,7 +148,7 @@ fn emit_cache_warnings(warnings: &[CacheWarning]) {
                 );
             }
         }
-    }
+    });
 }
 
 /// Warnings that can occur during catalog loading.

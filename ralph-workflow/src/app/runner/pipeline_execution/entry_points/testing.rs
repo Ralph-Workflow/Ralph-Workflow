@@ -184,8 +184,10 @@ pub fn run_with_config_and_resolver<
             colors,
             &config,
             &registry,
-            &config_path,
-            &[],
+            crate::cli::ConfigInfo {
+                path: &config_path,
+                sources: &[],
+            },
             &*executor,
             diagnose_workspace,
         );
@@ -442,8 +444,10 @@ where
             colors,
             &config,
             &registry,
-            &config_path,
-            &[],
+            crate::cli::ConfigInfo {
+                path: &config_path,
+                sources: &[],
+            },
             &*executor,
             diagnose_workspace,
         );

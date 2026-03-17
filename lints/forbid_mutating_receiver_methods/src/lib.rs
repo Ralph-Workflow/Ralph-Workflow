@@ -97,7 +97,7 @@ dylint_linting::impl_late_lint! {
     /// let config = config.with_value("key", "value"); // returns new Config
     /// ```
     pub FORBID_MUTATING_RECEIVER_METHODS,
-    Warn,
+    Deny,
     "calls to `&mut self` methods are forbidden outside boundary modules and types",
     ForbidMutatingReceiverMethods
 }
@@ -193,10 +193,7 @@ impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {
                 "call to `&mut self` method `{}` is forbidden outside boundary modules",
                 method_name.ident.name
             ));
-            diag.help(
-                "prefer methods that return a new value instead of mutating in place, \
-                 or move this code into a boundary module (io/, runtime/, ffi/, boundary/)",
-            );
+            diag.help("for collections: rebuild with `.chain([item]).collect()` or use itertools (`.sorted_by_key()`, `.unique()`, `.rev()`). For structs: use builder pattern (`with_*` methods) or struct-update syntax (`..state`). See `docs/code-style/functional-transformations.md`.");
         });
     }
 }

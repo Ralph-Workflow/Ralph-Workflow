@@ -139,7 +139,7 @@ fn can_prompt_user() -> bool {
 fn prompt_user_to_resume(logger: &Logger) -> bool {
     use std::io::Write;
 
-    println!();
+    logger.info(""); // Empty line for spacing
     logger.info("Would you like to resume from where you left off?");
 
     let prompt = "Resume? [y/N] ";
@@ -147,20 +147,19 @@ fn prompt_user_to_resume(logger: &Logger) -> bool {
 
     let mut input = String::new();
     // Print prompt directly to stdout for better UX
-    print!("{}", colors.yellow());
-    let _ = io::stdout().write_all(prompt.as_bytes());
+    let _ = io::stdout().write_all(format!("{}{}", colors.yellow(), prompt).as_bytes());
     let _ = io::stdout().flush();
-    print!("{}", colors.reset());
+    let _ = io::stdout().write_all(colors.reset().as_bytes());
 
     match io::stdin().read_line(&mut input) {
         Ok(0) => {
             // EOF
-            println!();
+            logger.info(""); // Empty line for spacing
             false
         }
         Ok(_) => {
             let response = input.trim().to_lowercase();
-            println!();
+            logger.info(""); // Empty line for spacing
 
             matches!(response.as_str(), "y" | "yes" | "Y" | "YES")
         }

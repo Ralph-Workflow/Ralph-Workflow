@@ -40,6 +40,7 @@ use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::state::{PromptInputRepresentation, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use std::io::Write;
 use std::path::Path;
 
 impl MainEffectHandler {
@@ -131,7 +132,8 @@ impl MainEffectHandler {
                         // This shouldn't happen in practice since prompt generation handles defaults,
                         // but if it does, we need to return something. The validation check below
                         // will catch it and emit the appropriate event.
-                        eprintln!(
+                        let _ = writeln!(
+                            std::io::stderr(),
                             "Warning: Template rendering produced incomplete substitution log: {:?}",
                             rendered.log.unsubstituted
                         );
