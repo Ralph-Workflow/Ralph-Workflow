@@ -14,16 +14,12 @@ pub(super) fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> b
     }
 
     let needle = needle.as_bytes();
-    for window in haystack.as_bytes().windows(needle.len()) {
-        if window
+    haystack.as_bytes().windows(needle.len()).any(|window| {
+        window
             .iter()
             .zip(needle.iter())
             .all(|(a, b)| a.eq_ignore_ascii_case(b))
-        {
-            return true;
-        }
-    }
-    false
+    })
 }
 
 /// File existence state for PROMPT.md validation.
@@ -59,13 +55,13 @@ pub struct PromptValidationResult {
 
 impl PromptValidationResult {
     /// Returns true if PROMPT.md exists.
-    #[must_use] 
+    #[must_use]
     pub const fn exists(&self) -> bool {
         matches!(self.file_state, FileState::Present | FileState::Empty)
     }
 
     /// Returns true if PROMPT.md has non-empty content.
-    #[must_use] 
+    #[must_use]
     pub const fn has_content(&self) -> bool {
         matches!(self.file_state, FileState::Present)
     }
@@ -73,13 +69,13 @@ impl PromptValidationResult {
 
 impl PromptValidationResult {
     /// Returns true if validation passed (no errors).
-    #[must_use] 
+    #[must_use]
     pub const fn is_valid(&self) -> bool {
         self.errors.is_empty()
     }
 
     /// Returns true if validation passed with no warnings.
-    #[must_use] 
+    #[must_use]
     pub const fn is_perfect(&self) -> bool {
         self.errors.is_empty() && self.warnings.is_empty()
     }
@@ -208,7 +204,7 @@ pub(super) fn check_acceptance_section(content: &str) -> bool {
 /// # Returns
 ///
 /// A `PromptValidationResult` containing validation findings.
-#[must_use] 
+#[must_use]
 pub fn validate_prompt_md(strict: bool, interactive: bool) -> PromptValidationResult {
     let root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let workspace = WorkspaceFs::new(root);

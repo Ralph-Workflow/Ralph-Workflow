@@ -1,6 +1,0 @@
-error: unexpected argument '2' found
-
-Usage: cargo dylint [OPTIONS] [-- <ARGS>...]
-       cargo dylint <COMMAND>
-
-For more information, try '--help'.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "agents": {
+  "agent": {
     "primary": {
       "description": "Primary agent with full access to all code areas for coordinating the Ralph workflow refactoring project.",
       "mode": "primary",

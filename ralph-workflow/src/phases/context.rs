@@ -109,13 +109,13 @@ pub struct PhaseContext<'a> {
 
 impl PhaseContext<'_> {
     /// Record a completed developer iteration.
-    pub const fn record_developer_iteration(&mut self) {
-        self.run_context.record_developer_iteration();
+    pub fn record_developer_iteration(&mut self) {
+        self.run_context = self.run_context.clone().record_developer_iteration();
     }
 
     /// Record a completed reviewer pass.
-    pub const fn record_reviewer_pass(&mut self) {
-        self.run_context.record_reviewer_pass();
+    pub fn record_reviewer_pass(&mut self) {
+        self.run_context = self.run_context.clone().record_reviewer_pass();
     }
 }
 

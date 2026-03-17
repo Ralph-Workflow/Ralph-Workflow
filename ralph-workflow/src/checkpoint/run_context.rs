@@ -70,13 +70,17 @@ impl RunContext {
     }
 
     /// Record a completed developer iteration.
-    pub const fn record_developer_iteration(&mut self) {
+    #[must_use]
+    pub const fn record_developer_iteration(mut self) -> Self {
         self.actual_developer_runs = self.actual_developer_runs.saturating_add(1);
+        self
     }
 
     /// Record a completed reviewer pass.
-    pub const fn record_reviewer_pass(&mut self) {
+    #[must_use]
+    pub const fn record_reviewer_pass(mut self) -> Self {
         self.actual_reviewer_runs = self.actual_reviewer_runs.saturating_add(1);
+        self
     }
 }
 
