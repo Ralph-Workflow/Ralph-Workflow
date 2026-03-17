@@ -31,33 +31,30 @@
   },
   "agent": {
     "primary": {
-      "description": "Primary agent with restricted access - only docs allowed for coordination",
+      "description": "Primary agent with full access",
       "mode": "primary",
       "model": "minimax/MiniMax-M2.5-highspeed",
       "permission": {
         "bash": {
-          "*": "deny"
+          "*": "allow"
         },
         "read": {
-          "*": "deny",
-          "docs/**": "allow"
+          "*": "allow"
         },
         "write": {
-          "*": "deny"
+          "*": "allow"
         },
         "edit": {
-          "*": "deny"
+          "*": "allow"
         },
         "glob": {
-          "*": "deny",
-          "docs/**": "allow"
+          "*": "allow"
         },
         "grep": {
-          "*": "deny",
-          "docs/**": "allow"
+          "*": "allow"
         },
         "task": {
-          "*": "deny"
+          "*": "allow"
         }
       }
     },
