@@ -12,13 +12,14 @@ You have a `task(...)` plugin. That is how you launch agents. Here is what it gi
 
 | Plugin Call | What It Does |
 |---|---|
-| `task(subagent_type="...", run_in_background=true, ...)` | Launches an agent. Returns a `task_id` and `session_id`. |
+| `task(subagent_type="...", run_in_background=true, ...)` | Launches a fresh agent. Returns a `task_id` and `session_id`. |
 | `background_output(task_id="...")` | Reads the result after an agent finishes. Call this when the system notifies you. |
 | `background_output(task_id="...", full_session=true, include_tool_results=true, message_limit=20)` | Inspects what a still-running agent is doing. Use if an agent looks stalled. |
 | `background_cancel(taskId="...")` | Cancels ONE specific stuck agent. Never cancel all. |
-| `task(session_id="...", run_in_background=true, ...)` | Continues a previous agent session. The agent keeps all its context. |
 
 **There is no timeout parameter.** Do not invent one.
+
+**Always start fresh.** Do not continue old agent sessions in this workflow. Track `session_id`, but do not reuse it.
 
 **There is no `background_cancel(all=true)`.** Never use it.
 
@@ -53,6 +54,8 @@ The script outputs agent names with error counts:
 **If all agents show 0 errors → YOU'RE DONE. STOP.**
 
 **If any agent has errors → Continue to Step 2.**
+
+**Important rule:** every time you run `python3 .opencode/prepare_agent_dispatch.py`, treat the regenerated instruction files as correct and idempotent. Do not rely on older instruction text.
 
 ### STEP 2: Dispatch ALL Agents With Errors IN PARALLEL
 
@@ -93,12 +96,23 @@ task(
 
 **AFTER EACH DISPATCH, SAVE THE RETURNED `task_id` AND `session_id`.**
 
-Keep a table like this in your head:
+Keep a table like this in your head. Every agent is always in ONE of these states:
 
-| Agent | task_id | session_id | Instruction File | Status |
+| State | Meaning |
+|---|---|
+| `running` | Agent was dispatched and has not reported back yet. |
+| `done` | Agent completed all its work. Confirmed by you via `background_output`. |
+| `stalled` | You inspected the agent and it is not making progress. Needs intervention. |
+| `relaunched` | You cancelled it and dispatched a fresh one. Now treat the new one as `running`. |
+
+Example table:
+
+| Agent | task_id | session_id | Instruction File | State |
 |---|---|---|---|---|
 | workflow-reducer-cargo | task_abc | ses_123 | tmp/agent-instructions-workflow-reducer.txt | running |
 | workflow-config | task_def | ses_456 | tmp/agent-instructions-workflow-config.txt | running |
+
+Update the State column every time something happens. This is how you avoid duplicate dispatches and lost agents.
 
 **PARALLEL DISPATCH EXAMPLE:**
 
@@ -139,11 +153,18 @@ You are event-driven now. That means:
 
 ⚠️ **RE-READ THIS FILE FROM THE TOP BEFORE PROCESSING RESULTS.**
 
+**Which `background_output` call to use:**
+
+| Situation | Call |
+|---|---|
+| System sent a completion notification | `background_output(task_id="...")` — just read the final result. |
+| Agent has been running for 10+ minutes with no completion notification | `background_output(task_id="...", full_session=true, include_tool_results=true, message_limit=20)` — inspect its live session. |
+
 When the system sends you a completion notification for a task:
 
 1. Call `background_output(task_id="<the task_id>")` to read the result.
 2. Check: did the agent actually finish its assigned work?
-3. Record the outcome in your table:
+3. Update the agent's State in your table:
 
 | Outcome | What It Means | What To Do |
 |---|---|---|
@@ -152,29 +173,66 @@ When the system sends you a completion notification for a task:
 | `blocked` | Agent hit a problem it cannot solve alone | Go to STEP 4a. |
 | `failed` | Agent crashed or produced broken output | Go to STEP 4b. |
 
-**IF AN AGENT LOOKS STALLED (no notification for a long time, or the session shows no real progress):**
+**IF AN AGENT LOOKS STALLED:**
 
-Call `background_output(task_id="...", full_session=true, include_tool_results=true, message_limit=20)` to inspect what it is doing.
+Use this exact trigger:
+- If an agent has NO completion notification after 10 minutes -> inspect it once.
+- If an inspection shows no real progress -> it is stalled.
 
-- If it is making progress -> wait longer.
-- If it is repeating itself, doing no real work, or stuck in a loop -> go to STEP 4a.
-- If it is completely wedged -> go to STEP 4b.
+Inspect it:
 
-**STEP 4a: Continue a partial/stuck agent (USE session_id)**
+```
+background_output(task_id="...", full_session=true, include_tool_results=true, message_limit=20)
+```
 
-⚠️ **DO NOT START A FRESH AGENT. CONTINUE THE SAME SESSION.**
+Then follow this exact rule:
+
+1. **First inspection:** Read the session. Is the agent making real progress?
+   - Real progress means at least one of these is true:
+     - editing files
+     - running new commands
+     - producing new reasoning or output tied to the task
+   - YES -> mark it `running`, wait another 10 minutes. Do not inspect again before then unless a completion event arrives.
+   - NO -> mark it `stalled`. Go to STEP 4a to relaunch it as a fresh worker.
+2. **Second inspection after a relaunch:**
+   - If the relaunched agent again shows no real progress after another 10 minutes -> it is irrecoverable. Go to STEP 4b to cancel and relaunch.
+   - If it shows progress -> mark it `running` and keep waiting.
+
+Signs an agent is stalled:
+- Repeating the same edit or command
+- Producing no file changes
+- Stuck reading the same file over and over
+- Looping on a single error without making progress
+- Saying it will do work but not actually doing work
+
+**STEP 4a: Relaunch a partial/stuck agent as a fresh worker**
+
+⚠️ **ALWAYS START FRESH. DO NOT REUSE `session_id`.**
+
+⚠️ **FIRST RERUN THE SCRIPT.** The script regenerates idempotent instructions. Use the fresh instruction file, not memory.
+
+Run:
+
+```bash
+python3 .opencode/prepare_agent_dispatch.py
+```
 
 ```
 task(
-  session_id="<the agent's session_id from your table>",
+  subagent_type="workflow-reducer-cargo",
   run_in_background=true,
   load_skills=[],
-  description="Continue reducer fix",
-  prompt="Fix the remaining issues from tmp/agent-instructions-workflow-reducer.txt. Verification failed because <reason>. Finish the assigned module only and rerun verification before reporting back."
+  description="Retry reducer module",
+  prompt="1. TASK: Read and execute tmp/agent-instructions-workflow-reducer.txt.
+2. EXPECTED OUTCOME: Fix every remaining error assigned to workflow-reducer and report remaining blockers, if any.
+3. REQUIRED TOOLS: Read, Grep, Glob, Edit/apply_patch, Bash, diagnostics.
+4. MUST DO: Stay inside your module boundaries, rerun the verification command from the instruction file, report files changed and verification results, and treat this as a fresh attempt.
+5. MUST NOT DO: Do not rely on prior session context, do not touch unrelated modules, do not commit, do not wait for further user input.
+6. CONTEXT: A previous worker for this module was partial or stalled. The instruction file was regenerated by the script and is the source of truth. Start fresh from the regenerated instruction file and current repo state only."
 )
 ```
 
-The agent keeps all its context. It knows what it already tried. This is faster and smarter than starting over.
+Update the table: old row stays `stalled` or `partial`, new row becomes `running` with the new `task_id` and `session_id`.
 
 **STEP 4b: Cancel and relaunch (ONLY if irrecoverable)**
 
@@ -182,7 +240,7 @@ The agent keeps all its context. It knows what it already tried. This is faster 
 background_cancel(taskId="<the stuck task_id>")
 ```
 
-Then dispatch a fresh agent for that module only (same shape as Step 2).
+Then dispatch a fresh agent for that module only (same shape as Step 2). Update the table: old row becomes `relaunched`, new row becomes `running` with the new `task_id` and `session_id`.
 
 ⚠️ **NEVER use `background_cancel(all=true)`. Cancel ONE task at a time.**
 
@@ -206,7 +264,7 @@ Then use this simple rule:
 
 - If the script shows NEW agents with errors that are not currently running -> dispatch them now
 - If the script shows the SAME agents still need work, but they are already running -> do not duplicate them
-- If the script shows a finished agent still has errors -> continue that agent with its `session_id` or relaunch that one agent
+- If the script shows a finished or stalled agent still has errors -> relaunch that one agent as a fresh worker
 - If the script shows all current work is clean except for still-running agents -> let those running agents continue
 
 This means the orchestrator can redispatch mid-batch. It is NOT forced to wait for every agent.
@@ -226,7 +284,7 @@ Instead, keep looping like this:
 - process it in STEP 4
 - rerun the script if needed
 - dispatch any newly-needed agents
-- continue any partial/stuck agents
+- relaunch any partial/stuck agents as fresh workers
 - repeat
 
 Only stop when STEP 1 shows 0 errors for all agents.
@@ -266,7 +324,9 @@ Before EVERY action, ask yourself:
 - [ ] Did I set `run_in_background=true` on EVERY dispatch?
 - [ ] Did I save the `task_id` and `session_id` for every agent?
 - [ ] Am I using `background_output(task_id=...)` to collect results (not guessing)?
-- [ ] Am I continuing stuck agents with `session_id` (not starting fresh)?
+- [ ] If an agent has been quiet for 10+ minutes, did I inspect it once?
+- [ ] Am I relaunching partial or stuck agents as fresh workers?
+- [ ] Before relaunching, did I rerun the script so the regenerated instruction file is the source of truth?
 - [ ] Did I rerun the script when an agent event changed the situation?
 - [ ] Am I avoiding duplicate dispatch for agents that are already running?
 - [ ] Did I count how many agents have errors and dispatch that exact number?
@@ -283,17 +343,20 @@ Just loop:
 5. Save every `task_id` and `session_id`
 6. End your turn and wait for notifications
 7. On any agent event -> `background_output(task_id=...)` -> check result
-8. Partial/stuck -> continue with `session_id` | Wedged -> cancel that one task and relaunch
-9. If the event may have changed the failing set -> rerun the script immediately
-10. Dispatch any newly-needed agents that are not already running
-11. **Re-read this file** -> keep looping until step 1 shows 0 errors
+8. If an agent is quiet for 10+ minutes -> inspect once with `full_session=true`
+9. Partial/stuck -> rerun the script, then relaunch as a fresh worker | wedged -> cancel that one task, rerun the script, and relaunch
+10. If the event may have changed the failing set -> rerun the script immediately
+11. Dispatch any newly-needed agents that are not already running
+12. **Re-read this file** -> keep looping until step 1 shows 0 errors
 
 **CRITICAL RULES:**
 - ✅ ALWAYS DISPATCH IN PARALLEL (10 agents = 10 parallel `task(...)` calls in ONE message)
 - ✅ ALWAYS USE `run_in_background=true`
 - ✅ ALWAYS SAVE `task_id` AND `session_id`
 - ✅ ALWAYS COLLECT RESULTS WITH `background_output(task_id=...)`
-- ✅ ALWAYS CONTINUE PARTIAL AGENTS WITH `session_id` (not fresh dispatch)
+- ✅ ALWAYS INSPECT AGENTS THAT HAVE BEEN QUIET FOR 10+ MINUTES
+- ✅ ALWAYS RELAUNCH PARTIAL OR STUCK AGENTS AS FRESH WORKERS
+- ✅ ALWAYS RERUN THE SCRIPT BEFORE ANY RELAUNCH SO THE REGENERATED INSTRUCTIONS ARE THE SOURCE OF TRUTH
 - ✅ ALWAYS RERUN THE SCRIPT WHEN AN AGENT EVENT MAY HAVE CHANGED THE FAILING SET
 - ✅ ALWAYS AVOID DUPLICATE DISPATCH FOR AGENTS THAT ARE ALREADY RUNNING
 - ✅ ALWAYS RE-READ THIS FILE AT EACH STEP
