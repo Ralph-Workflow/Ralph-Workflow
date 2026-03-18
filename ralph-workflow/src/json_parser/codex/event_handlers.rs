@@ -1,7 +1,7 @@
-//! Event handlers for Codex parser.
-//!
-//! This module contains individual handler functions for each `CodexEvent` variant.
-//! Each handler is responsible for formatting the output for its specific event type.
+// Event handlers for Codex parser.
+//
+// This module contains individual handler functions for each `CodexEvent` variant.
+// Each handler is responsible for formatting the output for its specific event type.
 
 use crate::common::truncate_text;
 use crate::config::Verbosity;

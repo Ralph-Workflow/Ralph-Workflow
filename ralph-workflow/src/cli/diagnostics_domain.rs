@@ -358,33 +358,42 @@ pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
 
 /// Format project stack section lines.
 pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
-    let mut lines = Vec::new();
-
     let root = workspace.root();
     let stack = match language_detector::detect_stack(root) {
         Ok(s) => s,
-        Err(e) => {
-            lines.push(format!("  Detection failed: {e}"));
-            return lines;
-        }
+        Err(e) => return vec![format!("  Detection failed: {e}")],
     };
 
-    lines.push(format!("  Primary language: {}", stack.primary_language));
-    if !stack.secondary_languages.is_empty() {
-        lines.push(format!(
-            "  Secondary languages: {:?}",
-            stack.secondary_languages
-        ));
-    }
-    if !stack.frameworks.is_empty() {
-        lines.push(format!("  Frameworks: {:?}", stack.frameworks));
-    }
-    if let Some(pm) = &stack.package_manager {
-        lines.push(format!("  Package manager: {pm}"));
-    }
-    if let Some(tf) = &stack.test_framework {
-        lines.push(format!("  Test framework: {tf}"));
-    }
+    let secondary = stack
+        .secondary_languages
+        .is_empty()
+        .then_some(Vec::new())
+        .map(|_| {
+            vec![format!(
+                "  Secondary languages: {:?}",
+                stack.secondary_languages
+            )]
+        })
+        .unwrap_or_default();
+
+    let frameworks = stack
+        .frameworks
+        .is_empty()
+        .then_some(Vec::new())
+        .map(|_| vec![format!("  Frameworks: {:?}", stack.frameworks)])
+        .unwrap_or_default();
+
+    let package_manager = stack
+        .package_manager
+        .as_ref()
+        .map(|pm| vec![format!("  Package manager: {pm}")])
+        .unwrap_or_default();
+
+    let test_framework = stack
+        .test_framework
+        .as_ref()
+        .map(|tf| vec![format!("  Test framework: {tf}")])
+        .unwrap_or_default();
 
     let language_types: Vec<&str> = [
         if stack.is_rust() { Some("Rust") } else { None },
@@ -403,15 +412,13 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
     .into_iter()
     .flatten()
     .collect();
-    if !language_types.is_empty() {
-        lines.push(format!("  Language flags: {}", language_types.join(", ")));
-    }
+    let language_flags = language_types
+        .is_empty()
+        .then_some(Vec::new())
+        .map(|_| vec![format!("  Language flags: {}", language_types.join(", "))])
+        .unwrap_or_default();
 
     let guidelines = ReviewGuidelines::for_stack(&stack);
-    lines.push(format!(
-        "  Review checks: {} total",
-        guidelines.total_checks()
-    ));
 
     let all_checks = guidelines.get_all_checks();
     let critical_count = all_checks
@@ -422,23 +429,45 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
         .iter()
         .filter(|c| matches!(c.severity, CheckSeverity::High))
         .count();
-    if critical_count > 0 || high_count > 0 {
-        lines.push(format!(
-            "  Check severities: {critical_count} critical, {high_count} high"
-        ));
-    }
 
-    let critical_checks: Vec<_> = all_checks
+    let severity_line = (critical_count > 0 || high_count > 0)
+        .then_some(vec![format!(
+            "  Check severities: {critical_count} critical, {high_count} high"
+        )])
+        .unwrap_or_default();
+
+    let critical_checks_lines: Vec<String> = all_checks
         .iter()
         .filter(|c| matches!(c.severity, CheckSeverity::Critical))
         .take(3)
+        .map(|check| format!("    - {}", check.check))
         .collect();
-    if !critical_checks.is_empty() {
-        lines.push("  Critical checks (sample):".to_string());
-        for check in critical_checks {
-            lines.push(format!("    - {}", check.check));
-        }
-    }
 
-    lines
+    let checks_section = critical_checks_lines
+        .is_empty()
+        .then_some(Vec::new())
+        .map(|_| {
+            std::iter::once("  Critical checks (sample):".to_string())
+                .chain(critical_checks_lines.into_iter())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    [
+        vec![format!("  Primary language: {}", stack.primary_language)],
+        secondary,
+        frameworks,
+        package_manager,
+        test_framework,
+        language_flags,
+        vec![format!(
+            "  Review checks: {} total",
+            guidelines.total_checks()
+        )],
+        severity_line,
+        checks_section,
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }

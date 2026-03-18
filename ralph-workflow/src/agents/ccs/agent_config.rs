@@ -1,4 +1,4 @@
-use crate::agents::io::get_env_var;
+use crate::agents::get_env_var;
 
 /// Build the final `AgentConfig` from alias config and defaults.
 fn build_ccs_config_from_flags(

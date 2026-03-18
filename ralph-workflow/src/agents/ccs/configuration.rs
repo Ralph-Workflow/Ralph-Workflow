@@ -201,11 +201,8 @@ pub struct CcsCommandResult {
 /// console output. It should only be called once, at the outermost
 /// call site where CCS configuration is resolved.
 pub fn emit_ccs_diagnostics(debug_mode: bool, diagnostics: &[CcsDiagnostic]) {
-    if !debug_mode {
-        return;
-    }
-    for d in diagnostics {
-        eprintln!("{d}");
+    if debug_mode {
+        diagnostics.iter().for_each(|d| eprintln!("{d}"));
     }
 }
 

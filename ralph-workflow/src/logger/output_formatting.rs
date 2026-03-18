@@ -43,13 +43,13 @@ pub fn argv_requests_json(argv: &[String]) -> bool {
                         .iter()
                         .skip_while(|&&a| a != arg)
                         .nth(1)
-                        .map_or(false, |next| next == "json"))
+                        .map_or(false, |next| *next == "json"))
                 || (arg == "-F"
                     && args
                         .iter()
                         .skip_while(|&&a| a != arg)
                         .nth(1)
-                        .map_or(false, |next| next == "json"))
+                        .map_or(false, |next| *next == "json"))
                 || (arg == "-o"
                     && args
                         .iter()

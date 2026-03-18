@@ -14,7 +14,7 @@ enum PromptOutputTarget {
 }
 
 fn prompt_output_target() -> Option<PromptOutputTarget> {
-    use crate::cli::handlers::boundary::terminal as term;
+    use crate::cli::handlers::boundary as term;
 
     if !term::is_terminal() {
         return None;
@@ -34,7 +34,7 @@ fn with_prompt_writer<T>(
     target: PromptOutputTarget,
     f: impl FnOnce(&mut dyn std::io::Write) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    use crate::cli::handlers::boundary::terminal as term;
+    use crate::cli::handlers::boundary as term;
 
     match target {
         PromptOutputTarget::Stdout => f(&mut term::stdout()),
@@ -60,7 +60,7 @@ pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyh
         Ok(())
     })?;
 
-    let input = crate::cli::handlers::boundary::terminal::read_line();
+    let input = crate::cli::handlers::boundary::read_line();
     let response = input.unwrap_or_default().trim().to_lowercase();
 
     Ok(response == "y" || response == "yes")
@@ -86,7 +86,7 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let input = crate::cli::handlers::boundary::terminal::read_line();
+    let input = crate::cli::handlers::boundary::read_line();
     let response = input.unwrap_or_default().trim().to_lowercase();
 
     if response == "n" || response == "no" || response == "skip" {
@@ -148,7 +148,7 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let template_input = crate::cli::handlers::boundary::terminal::read_line();
+    let template_input = crate::cli::handlers::boundary::read_line();
     let binding = template_input.unwrap_or_default();
     let template_name = binding.trim();
 

@@ -122,11 +122,10 @@ impl RunLogContext {
     pub fn new(workspace: &dyn Workspace) -> Result<Self> {
         let base_run_id = RunId::new();
 
-        let (run_id, run_dir) =
-            crate::logging::io::collision::create_run_dir_with_collision_handling(
-                workspace,
-                &base_run_id,
-            )?;
+        let (run_id, run_dir) = crate::logging::collision::create_run_dir_with_collision_handling(
+            workspace,
+            &base_run_id,
+        )?;
 
         Ok(Self { run_id, run_dir })
     }
@@ -194,11 +193,10 @@ impl RunLogContext {
     ///
     /// Returns error if the operation fails.
     pub fn for_testing(base_run_id: &RunId, workspace: &dyn Workspace) -> Result<Self> {
-        let (run_id, run_dir) =
-            crate::logging::io::collision::create_run_dir_with_collision_handling(
-                workspace,
-                base_run_id,
-            )?;
+        let (run_id, run_dir) = crate::logging::collision::create_run_dir_with_collision_handling(
+            workspace,
+            base_run_id,
+        )?;
 
         Ok(Self { run_id, run_dir })
     }

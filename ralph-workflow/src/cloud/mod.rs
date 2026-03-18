@@ -26,8 +26,8 @@ pub mod redaction;
 pub mod runtime;
 pub mod types;
 
-pub use io::http_client::HttpCloudReporter;
-pub use runtime::heartbeat_worker::HeartbeatGuard;
+pub use io::HttpCloudReporter;
+pub use runtime::HeartbeatGuard;
 pub use types::{CloudError, PipelineResult, ProgressEventType, ProgressUpdate};
 
 pub trait CloudReporter: Send + Sync {

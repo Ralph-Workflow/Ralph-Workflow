@@ -5,11 +5,10 @@
 //! between the functional core and I/O operations.
 //!
 //! Dylint rules are relaxed in this module per docs/code-style/boundaries.md
+//!
+//! Note: This module must remain FLAT. Subdirectories are not allowed per
+//! docs/code-style/boundaries.md. Parser implementations should be in domain
+//! modules (json_parser/claude/, json_parser/gemini/, etc.).
 
-pub mod claude;
-pub mod codex;
-pub mod gemini;
-pub mod health;
 pub mod incremental_parser;
-pub mod opencode;
 pub mod stream_classifier;

@@ -10,7 +10,8 @@ DEAD SIMPLE deterministic system for orchestrating code cleanup agents.
 **Does EVERYTHING automatically:**
 - Runs `cargo xtask dylint-report`
 - Runs `cargo build` (compiles app code)
-- Runs `cargo test` (compiles test code + runs tests)
+- **IF build succeeds** → Runs `cargo test` (compiles test code + runs tests)
+- **IF build succeeds** → Runs `cargo clippy` (catches warnings)
 - Parses all errors and filters by agent
 - Generates instruction files for each agent
 - Prints dispatch summary with correct agent variants
@@ -20,12 +21,17 @@ DEAD SIMPLE deterministic system for orchestrating code cleanup agents.
 ✗ Agent: workflow-reducer-cargo
   Dylint: 234 errors
   Compilation: 27 errors
+  Clippy: 15 warnings
   Command: Read and execute: tmp/agent-instructions-workflow-reducer.txt
 
 ✓ Agent: workflow-config
   Dylint: 57 errors
   Compilation: 0 errors
+  Clippy: 3 warnings
   Command: Read and execute: tmp/agent-instructions-workflow-config.txt
+
+⚠️  TEST FAILURES DETECTED
+  All agents: Read tmp/test-failures.txt and fix failures in YOUR modules only
 ```
 
 ### 2. Orchestrator Instructions (`orch-instruct.md`)
@@ -107,8 +113,12 @@ tmp/
 ├── compilation-errors/
 │   ├── workflow-*.txt                   # Per-agent filtered errors
 │   └── summary.txt                      # Total error count
+├── clippy-warnings/
+│   └── workflow-*.txt                   # Per-agent filtered warnings
+├── test-failures.txt                    # ALL test failures (agents check if in their modules)
 ├── build-current.txt                    # Full cargo build output
-├── test-output.txt                      # Full cargo test output
+├── test-output.txt                      # Full cargo test output (only if build succeeds)
+├── clippy-output.txt                    # Full clippy output (only if build succeeds)
 └── dylint-*.txt                         # 23 module dylint reports
 ```
 
@@ -127,10 +137,19 @@ tmp/
 
 Script shows:
 ```
-✓ workflow-reducer: 0 dylint, 0 compilation errors
-✓ workflow-json: 0 dylint, 0 compilation errors
-✓ workflow-config: 0 dylint, 0 compilation errors
+✓ workflow-reducer: 0 dylint, 0 compilation errors, 0 clippy warnings
+✓ workflow-json: 0 dylint, 0 compilation errors, 0 clippy warnings
+✓ workflow-config: 0 dylint, 0 compilation errors, 0 clippy warnings
 ...
+
+No test failures
 ```
 
 **Then you're done!**
+
+## Key Improvements
+
+1. **Conditional execution**: Tests and clippy only run if build succeeds
+2. **Clippy warnings**: Included and filtered by agent (same logic as compilation errors)
+3. **Test failures**: All failures in one file, agents check if in their modules
+4. **Agent boundaries**: Agents are warned NOT to fix tests outside their modules

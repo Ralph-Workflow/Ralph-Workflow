@@ -157,7 +157,7 @@ impl CodexParser {
         mut reader: R,
         workspace: &dyn Workspace,
     ) -> io::Result<()> {
-        use super::incremental_parser::IncrementalNdjsonParser;
+        use crate::json_parser::io::incremental_parser::IncrementalNdjsonParser;
 
         let monitor = HealthMonitor::new("Codex");
         // Accumulate log content in memory, write to workspace at the end

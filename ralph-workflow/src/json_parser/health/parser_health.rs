@@ -23,7 +23,7 @@ pub struct ParserHealth {
 
 impl ParserHealth {
     /// Create a new health tracker
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -81,7 +81,7 @@ impl ParserHealth {
     /// Get the percentage of parse errors (excluding unknown events)
     ///
     /// Returns percentage using integer-safe arithmetic to avoid precision loss warnings.
-    #[must_use] 
+    #[must_use]
     pub fn parse_error_percentage(&self) -> f64 {
         if self.total_events == 0 {
             return 0.0;
@@ -104,7 +104,7 @@ impl ParserHealth {
     /// Get the percentage of parse errors as a rounded integer.
     ///
     /// This is for display purposes where a whole number is sufficient.
-    #[must_use] 
+    #[must_use]
     pub fn parse_error_percentage_int(&self) -> u32 {
         if self.total_events == 0 {
             return 0;
@@ -123,13 +123,13 @@ impl ParserHealth {
     /// Only returns true if there are actual parse errors (malformed JSON),
     /// not just unknown event types. Unknown events are valid JSON that we
     /// don't have specific handling for, which is not a health concern.
-    #[must_use] 
+    #[must_use]
     pub fn is_concerning(&self) -> bool {
         self.total_events > 10 && self.parse_error_percentage() > 50.0
     }
 
     /// Get a warning message if health is concerning
-    #[must_use] 
+    #[must_use]
     pub fn warning(&self, parser_name: &str, colors: Colors) -> Option<String> {
         if !self.is_concerning() {
             return None;

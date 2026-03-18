@@ -81,22 +81,35 @@
 //! json_parser = "claude"  # Use Claude's JSON parser
 //! ```
 
+pub mod cache_environment;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod ccs;
 #[cfg(not(any(test, feature = "test-utils")))]
 mod ccs;
 mod ccs_env;
+pub mod ccs_environment;
+pub mod ccs_filesystem;
 mod config;
 mod error;
 pub mod fallback;
-pub mod io;
+pub mod network;
 pub mod opencode_api;
 mod opencode_resolver;
 pub mod parser;
 mod providers;
 mod registry;
 mod retry_timer;
+pub mod runtime;
 pub mod validation;
+
+// Re-export I/O implementations for backwards compatibility
+pub use cache_environment::CacheEnvironment;
+pub use cache_environment::RealCacheEnvironment;
+pub use ccs_env::{CcsEnvironment, CcsFilesystem};
+pub use ccs_environment::RealCcsEnvironment;
+pub use ccs_filesystem::RealCcsFilesystem;
+pub use network::{fetch_api_catalog_json, get_env_var};
+pub use runtime::{production_timer, ProductionRetryTimer, RetryTimerProvider};
 
 // Re-export public types for crate-level access
 pub use ccs::is_ccs_ref;
@@ -110,7 +123,6 @@ pub use providers::{
     auth_failure_advice, strip_model_flag_prefix, validate_model_flag, OpenCodeProviderType,
 };
 pub use registry::AgentRegistry;
-pub use retry_timer::RetryTimerProvider;
 
 #[cfg(test)]
 mod tests {

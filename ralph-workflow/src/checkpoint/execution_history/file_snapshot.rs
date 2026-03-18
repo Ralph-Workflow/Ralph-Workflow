@@ -94,7 +94,7 @@ impl FileSnapshot {
             && size < MAX_COMPRESS_SIZE
         {
             workspace.read_bytes(Path::new(path)).ok().and_then(|data| {
-                crate::checkpoint::execution_history::io::compression::compress(&data).ok()
+                crate::checkpoint::execution_history::compression::compress(&data).ok()
             })
         } else {
             None
@@ -115,7 +115,7 @@ impl FileSnapshot {
     pub fn get_content(&self) -> Option<String> {
         self.content.clone().or_else(|| {
             self.compressed_content.as_ref().and_then(|compressed| {
-                crate::checkpoint::execution_history::io::compression::decompress(compressed).ok()
+                crate::checkpoint::execution_history::compression::decompress(compressed).ok()
             })
         })
     }

@@ -1,8 +1,8 @@
 mod tests {
     use super::*;
-    use crate::phases::commit::io::diff_truncation::{
-        truncate_diff_if_large, truncate_lines_to_fit,
-        CLAUDE_MAX_PROMPT_SIZE, GLM_MAX_PROMPT_SIZE, MAX_SAFE_PROMPT_SIZE,
+    use crate::phases::commit::diff_truncation::{
+        truncate_diff_if_large, truncate_lines_to_fit, CLAUDE_MAX_PROMPT_SIZE, GLM_MAX_PROMPT_SIZE,
+        MAX_SAFE_PROMPT_SIZE,
     };
 
     #[test]
@@ -47,7 +47,11 @@ mod tests {
 
     #[test]
     fn test_truncate_lines_to_fit() {
-        let lines = vec!["line1".to_string(), "line2".to_string(), "line3".to_string()];
+        let lines = vec![
+            "line1".to_string(),
+            "line2".to_string(),
+            "line3".to_string(),
+        ];
         let max_size = 12;
 
         let truncated = truncate_lines_to_fit(&lines, max_size);
@@ -68,7 +72,10 @@ mod tests {
     #[test]
     fn test_effective_model_budget_bytes_single_agent() {
         let agents = vec!["claude".to_string()];
-        assert_eq!(effective_model_budget_bytes(&agents), CLAUDE_MAX_PROMPT_SIZE);
+        assert_eq!(
+            effective_model_budget_bytes(&agents),
+            CLAUDE_MAX_PROMPT_SIZE
+        );
     }
 
     #[test]

@@ -46,7 +46,6 @@ use super::{
     XmlOutputContext, XmlOutputType, MAX_INLINE_CONTENT_SIZE,
 };
 
-pub mod runtime;
 
 include!("input_materialization.rs");
 include!("xsd_retry_materialization.rs");

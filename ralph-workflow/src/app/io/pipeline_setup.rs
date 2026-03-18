@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 pub struct GitHelpersAndGuard<'a> {
     pub git_helpers: GitHelpers,
-    pub agent_phase_guard: crate::app::runner::AgentPhaseGuard<'a>,
+    pub agent_phase_guard: crate::pipeline::AgentPhaseGuard<'a>,
 }
 
 pub struct PhaseContextWithTimer<'ctx> {
@@ -32,12 +32,9 @@ pub struct PhaseContextWithTimer<'ctx> {
 
 pub fn setup_git_and_agent_phase<'a>(ctx: &'a PipelineContext) -> GitHelpersAndGuard<'a> {
     let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-    crate::app::runner::pipeline_execution::pipeline::execution_core_phases::prepare_agent_phase(
-        ctx,
-        &mut git_helpers,
-    );
+    crate::app::runner::pipeline_execution::prepare_agent_phase(ctx, &mut git_helpers);
     let agent_phase_guard =
-        crate::app::runner::AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
+        crate::pipeline::AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
     GitHelpersAndGuard {
         git_helpers,
         agent_phase_guard,
@@ -53,16 +50,15 @@ pub fn setup_phase_context_with_timer<'ctx>(
     cloud_reporter: &'ctx dyn crate::cloud::CloudReporter,
 ) -> PhaseContextWithTimer<'ctx> {
     let mut timer = crate::app::io::runtime_factory::create_timer();
-    let phase_ctx =
-        crate::app::runner::pipeline_execution::helpers::create_phase_context_with_config(
-            ctx,
-            config,
-            &mut timer,
-            review_guidelines,
-            run_context,
-            resume_checkpoint,
-            cloud_reporter,
-        );
+    let phase_ctx = crate::app::runner::pipeline_execution::create_phase_context_with_config(
+        ctx,
+        config,
+        &mut timer,
+        review_guidelines,
+        run_context,
+        resume_checkpoint,
+        cloud_reporter,
+    );
     PhaseContextWithTimer { phase_ctx, timer }
 }
 
@@ -109,7 +105,7 @@ pub fn setup_agent_phase_for_workspace_boundary(
     logger: &crate::logger::Logger,
 ) -> GitHelpers {
     let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-    crate::app::runner::pipeline_execution::helpers::prepare_agent_phase_for_workspace(
+    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
         repo_root,
         workspace,
         logger,
@@ -135,7 +131,7 @@ pub fn handle_repo_commands_boundary(
         crate::app::io::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
     if args.recovery.dry_run {
-        crate::app::runner::pipeline_execution::helpers::handle_dry_run(
+        crate::app::runner::pipeline_execution::handle_dry_run(
             logger,
             colors,
             config,
@@ -149,7 +145,7 @@ pub fn handle_repo_commands_boundary(
 
     if args.rebase_flags.rebase_only {
         let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-        crate::app::runner::pipeline_execution::helpers::prepare_agent_phase_for_workspace(
+        crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),
             logger,
@@ -160,7 +156,7 @@ pub fn handle_repo_commands_boundary(
         let template_context = crate::prompts::TemplateContext::from_user_templates_dir(
             config.user_templates_dir().cloned(),
         );
-        crate::app::runner::pipeline_execution::helpers::handle_rebase_only(
+        crate::app::runner::pipeline_execution::handle_rebase_only(
             args,
             config,
             &template_context,
@@ -174,7 +170,7 @@ pub fn handle_repo_commands_boundary(
 
     if args.commit_plumbing.generate_commit_msg {
         let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-        crate::app::runner::pipeline_execution::helpers::prepare_agent_phase_for_workspace(
+        crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),
             logger,
@@ -225,7 +221,7 @@ pub fn run_pipeline_with_handler_boundary(
     template_context: crate::prompts::TemplateContext,
 ) -> anyhow::Result<PipelineAndRepoRoot> {
     use crate::app::effect::{AppEffect, AppEffectResult};
-    use crate::app::runner::pipeline_execution::helpers::{
+    use crate::app::runner::pipeline_execution::{
         command_requires_prompt_setup, handle_plumbing_commands,
         handle_repo_commands_without_prompt_setup, prepare_pipeline_or_exit,
     };

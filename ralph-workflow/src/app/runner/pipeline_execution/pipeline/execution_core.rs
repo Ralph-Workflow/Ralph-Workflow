@@ -34,18 +34,7 @@ include!("execution_core_resume.rs");
 include!("execution_core_phases.rs");
 include!("execution_core_finish.rs");
 
-use crate::app::context::PipelineContext;
 use crate::app::detection::detect_project_stack;
-use crate::app::runner::pipeline_execution::helpers::{
-    print_pipeline_info_with_config, print_review_guidelines, save_start_commit_or_warn,
-    setup_prompt_monitor, validate_prompt_and_setup_backup,
-};
-use crate::app::runner::setup_helpers::{
-    defer_clear_interrupt_context, setup_interrupt_context_for_pipeline,
-    update_interrupt_context_from_phase,
-};
-use crate::banner::print_welcome_banner;
-use crate::checkpoint::PipelinePhase;
 
 /// Runs the pipeline with the default `MainEffectHandler`.
 ///

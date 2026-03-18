@@ -4,16 +4,16 @@
 //! including the Loggable trait implementation.
 
 use crate::checkpoint::timestamp;
-use crate::logger::io::stdout_writer::{stderr_write_line, stdout_write_line};
 use crate::logger::output::Loggable;
+use crate::logger::stdout_writer::{stderr_write_line, stdout_write_line};
 use crate::logger::{
     Colors, ARROW, BOX_BL, BOX_BR, BOX_H, BOX_TL, BOX_TR, BOX_V, CHECK, CROSS, INFO, WARN,
 };
 use crate::workspace::Workspace;
 use std::sync::Arc;
 
-use crate::logger::io::ansi_stripper::strip_ansi_codes;
-use crate::logger::io::file_writer::append_to_file;
+use crate::logger::ansi_stripper::strip_ansi_codes;
+use crate::logger::file_writer::append_to_file;
 
 /// Logger for Ralph output.
 ///

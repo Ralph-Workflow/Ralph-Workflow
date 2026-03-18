@@ -201,6 +201,125 @@ AGENTS = {
 }
 
 
+def extract_clippy_warnings():
+    """Extract clippy warnings from clippy-output.txt and organize by agent."""
+    print("Extracting clippy warnings...")
+    
+    output_dir = Path("tmp/clippy-warnings")
+    output_dir.mkdir(exist_ok=True)
+    
+    # Clear existing files
+    for f in output_dir.glob("*.txt"):
+        f.unlink()
+    
+    warnings_by_agent = defaultdict(list)
+    
+    try:
+        with open("tmp/clippy-output.txt") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        print("  WARNING: tmp/clippy-output.txt not found. Skipping clippy warnings.")
+        return {}
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
+        
+        # Match warning start
+        if line.startswith("warning:"):
+            warning_block = [line]
+            i += 1
+            
+            # Collect warning block (next ~10-20 lines until empty line or next warning)
+            while i < len(lines):
+                next_line = lines[i].rstrip()
+                if not next_line:  # Empty line
+                    break
+                if next_line.startswith("warning:") or next_line.startswith("error:"):
+                    # Next warning/error, don't consume this line
+                    break
+                warning_block.append(next_line)
+                i += 1
+            
+            # Extract module from warning block
+            module = None
+            for block_line in warning_block:
+                match = re.search(r'--> ralph-workflow/src/(\w+)', block_line)
+                if match:
+                    module = match.group(1)
+                    break
+            
+            if module and module in MODULE_TO_AGENT:
+                agent = MODULE_TO_AGENT[module]
+                warnings_by_agent[agent].append("\n".join(warning_block))
+        else:
+            i += 1
+    
+    # Write warnings to files
+    for agent, warnings in warnings_by_agent.items():
+        output_file = output_dir / f"{agent}.txt"
+        with open(output_file, "w") as f:
+            f.write("\n\n".join(warnings))
+            f.write("\n")
+        print(f"  Created {output_file} ({len(warnings)} warnings)")
+    
+    total = sum(len(w) for w in warnings_by_agent.values())
+    print(f"  Summary: {total} total warnings across {len(warnings_by_agent)} agents")
+    
+    return warnings_by_agent
+
+
+def extract_test_failures():
+    """Extract test failures from test-output.txt into a single file."""
+    print("Extracting test failures...")
+    
+    try:
+        with open("tmp/test-output.txt") as f:
+            content = f.read()
+    except FileNotFoundError:
+        print("  WARNING: tmp/test-output.txt not found. Skipping test failures.")
+        return False
+    
+    # Check if there are any test failures
+    if "test result: ok" in content or "running 0 tests" in content:
+        print("  No test failures found")
+        with open("tmp/test-failures.txt", "w") as f:
+            f.write("# Test Failures\n\nNo test failures - all tests passed!\n")
+        return False
+    
+    # Extract failure sections
+    failures = []
+    lines = content.split("\n")
+    
+    # Look for "failures:" section which lists all failed tests
+    in_failures_section = False
+    failure_block = []
+    
+    for line in lines:
+        if line.startswith("failures:"):
+            in_failures_section = True
+            failure_block.append(line)
+        elif in_failures_section:
+            if line.startswith("test result:"):
+                # End of failures section
+                failure_block.append(line)
+                break
+            failure_block.append(line)
+    
+    # Write all failures to one file
+    with open("tmp/test-failures.txt", "w") as f:
+        f.write("# Test Failures\n\n")
+        f.write("⚠️ **IMPORTANT**: Only fix tests in YOUR modules. Do NOT fix tests outside your boundary.\n\n")
+        f.write("Read this file and check if any failures are in your modules:\n")
+        for agent_name, config in AGENTS.items():
+            f.write(f"- {agent_name}: {', '.join(config['modules'])}\n")
+        f.write("\n" + "=" * 60 + "\n\n")
+        f.write("\n".join(failure_block))
+    
+    print(f"  Created tmp/test-failures.txt")
+    return True
+
+
 def extract_compilation_errors():
     """Extract compilation errors from build-current.txt and organize by agent."""
     print("Step 1: Extracting compilation errors...")
@@ -281,9 +400,9 @@ def extract_compilation_errors():
     return errors_by_agent
 
 
-def generate_agent_instructions(errors_by_agent):
+def generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures):
     """Generate agent instruction files with compilation error context."""
-    print("\nStep 2: Generating agent instruction files...")
+    print("\nGenerating agent instruction files...")
     
     template = """# Agent: {agent_name}
 
@@ -304,6 +423,12 @@ Files to read: {dylint_files}
 ### Compilation Errors: {compilation_count}
 {compilation_list}
 {compilation_file_ref}
+
+### Clippy Warnings: {clippy_count}
+{clippy_list}
+
+### Test Failures
+{test_failures_section}
 
 ## Instructions (RE-READ THESE BEFORE EACH FIX)
 
@@ -419,6 +544,22 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
             compilation_list = "- No compilation errors (focus on dylint)"
             compilation_file_ref = ""
         
+        # Get clippy warning info for this agent
+        if agent_name in warnings_by_agent:
+            clippy_count = len(warnings_by_agent[agent_name])
+            clippy_list = f"Read: `tmp/clippy-warnings/{agent_name}.txt`"
+        else:
+            clippy_count = 0
+            clippy_list = "- No clippy warnings"
+        
+        # Test failures section
+        if has_test_failures:
+            test_failures_section = """⚠️ **Read `tmp/test-failures.txt` and check if any failures are in YOUR modules.**
+
+**CRITICAL**: DO NOT fix tests outside your boundary. Only fix tests in your modules listed above."""
+        else:
+            test_failures_section = "✓ No test failures"
+        
         content = template.format(
             agent_name=agent_name,
             write=config['write'],
@@ -428,6 +569,9 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
             compilation_count=error_count,
             compilation_list=compilation_list,
             compilation_file_ref=compilation_file_ref,
+            clippy_count=clippy_count,
+            clippy_list=clippy_list,
+            test_failures_section=test_failures_section,
             dylint_files=dylint_files_str,
             dylint_total=config['total_dylint']
         )
@@ -443,8 +587,10 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
 
 def run_compilation_and_tests():
     """
-    Run cargo build and cargo test to compile both app and test code.
+    Run cargo build, and conditionally run tests and clippy.
     This runs BEFORE parsing so we have fresh output to parse.
+    
+    Returns: (build_success, test_success) tuple of booleans
     """
     import subprocess
     
@@ -462,7 +608,7 @@ def run_compilation_and_tests():
     print("\n" + "=" * 60)
     print("STEP 2: Compiling app code (cargo build)...")
     print("=" * 60)
-    result = subprocess.run(
+    build_result = subprocess.run(
         ["cargo", "build", "-p", "ralph-workflow", "--lib"],
         capture_output=True,
         text=True
@@ -471,18 +617,22 @@ def run_compilation_and_tests():
     # Write build output to tmp/build-current.txt
     Path("tmp").mkdir(exist_ok=True)
     with open("tmp/build-current.txt", "w") as f:
-        f.write(result.stdout)
-        f.write(result.stderr)
+        f.write(build_result.stdout)
+        f.write(build_result.stderr)
     
-    if result.returncode == 0:
+    build_success = build_result.returncode == 0
+    
+    if build_success:
         print("✓ App compilation successful")
     else:
-        print(f"✗ App compilation failed with {result.returncode} errors")
+        print(f"✗ App compilation failed - skipping tests and clippy")
+        return (False, False)
     
+    # Only run tests if build succeeded
     print("\n" + "=" * 60)
     print("STEP 3: Compiling tests and running them (cargo test)...")
     print("=" * 60)
-    result = subprocess.run(
+    test_result = subprocess.run(
         ["cargo", "test", "-p", "ralph-workflow", "--lib"],
         capture_output=True,
         text=True
@@ -490,20 +640,44 @@ def run_compilation_and_tests():
     
     # Write test output to tmp/test-output.txt
     with open("tmp/test-output.txt", "w") as f:
-        f.write(result.stdout)
-        f.write(result.stderr)
+        f.write(test_result.stdout)
+        f.write(test_result.stderr)
     
-    if result.returncode == 0:
+    test_success = test_result.returncode == 0
+    
+    if test_success:
         print("✓ Tests compiled and passed")
     else:
         print(f"✗ Tests failed (compilation or execution)")
     
+    # Only run clippy if build succeeded
     print("\n" + "=" * 60)
-    print("STEP 4: Parsing compilation errors and generating instructions...")
+    print("STEP 4: Running clippy for warnings...")
     print("=" * 60)
+    clippy_result = subprocess.run(
+        ["cargo", "clippy", "-p", "ralph-workflow", "--lib", "--all-targets", "--", "-W", "clippy::all"],
+        capture_output=True,
+        text=True
+    )
+    
+    # Write clippy output to tmp/clippy-output.txt
+    with open("tmp/clippy-output.txt", "w") as f:
+        f.write(clippy_result.stdout)
+        f.write(clippy_result.stderr)
+    
+    if clippy_result.returncode == 0:
+        print("✓ Clippy found no warnings")
+    else:
+        print(f"⚠️  Clippy found warnings")
+    
+    print("\n" + "=" * 60)
+    print("STEP 5: Parsing errors and generating instructions...")
+    print("=" * 60)
+    
+    return (build_success, test_success)
 
 
-def print_dispatch_summary(errors_by_agent):
+def print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures):
     """Print summary of which agents need to be dispatched."""
     print("\n" + "=" * 60)
     print("DISPATCH THESE AGENTS:")
@@ -512,8 +686,9 @@ def print_dispatch_summary(errors_by_agent):
     for agent_name, config in AGENTS.items():
         dylint_total = config['total_dylint']
         compilation_errors = len(errors_by_agent.get(agent_name, []))
+        clippy_warnings = len(warnings_by_agent.get(agent_name, []))
         
-        if dylint_total > 0 or compilation_errors > 0:
+        if dylint_total > 0 or compilation_errors > 0 or clippy_warnings > 0:
             # Determine which agent variant to use
             if compilation_errors > 0:
                 agent_variant = f"{agent_name}-cargo"
@@ -526,7 +701,12 @@ def print_dispatch_summary(errors_by_agent):
             print(f"\n{status} Agent: {agent_variant}")
             print(f"  Dylint: {dylint_total} errors")
             print(f"  Compilation: {compilation_errors} errors")
+            print(f"  Clippy: {clippy_warnings} warnings")
             print(f"  Command: Read and execute: {instruction_file}")
+    
+    if has_test_failures:
+        print(f"\n⚠️  TEST FAILURES DETECTED")
+        print(f"  All agents: Read tmp/test-failures.txt and fix failures in YOUR modules only")
     
     print("\n" + "=" * 60)
     print("NOTES:")
@@ -542,17 +722,27 @@ def main():
     print("AGENT DISPATCH PREPARATION")
     print("=" * 60)
     
-    # Step 1: Run compilation and tests
-    run_compilation_and_tests()
+    # Step 1: Run compilation, tests (if build succeeds), and clippy (if build succeeds)
+    build_success, test_success = run_compilation_and_tests()
     
     # Step 2: Extract compilation errors from the generated files
     errors_by_agent = extract_compilation_errors()
     
-    # Step 3: Generate agent instructions with error context
-    generate_agent_instructions(errors_by_agent)
+    # Step 3: Extract clippy warnings (only if build succeeded)
+    warnings_by_agent = {}
+    if build_success:
+        warnings_by_agent = extract_clippy_warnings()
     
-    # Step 4: Print dispatch summary
-    print_dispatch_summary(errors_by_agent)
+    # Step 4: Extract test failures (only if tests ran)
+    has_test_failures = False
+    if build_success:
+        has_test_failures = extract_test_failures()
+    
+    # Step 5: Generate agent instructions with all error context
+    generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures)
+    
+    # Step 6: Print dispatch summary
+    print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures)
     
     print("\n" + "=" * 60)
     print("READY!")

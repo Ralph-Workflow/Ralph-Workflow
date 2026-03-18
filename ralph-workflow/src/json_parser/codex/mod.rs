@@ -1,7 +1,22 @@
 //! Codex CLI JSON parser.
 //!
-//! This module re-exports from the I/O boundary module where the actual
-//! implementation lives. The boundary module is exempt from functional
-//! programming lints per docs/code-style/boundaries.md.
+//! This module provides the functional core implementation of the Codex parser.
 
-pub use crate::json_parser::io::codex::CodexParser;
+use crate::config::Verbosity;
+use crate::logger::Colors;
+use crate::workspace::Workspace;
+use std::cell::RefCell;
+use std::io::{self, BufRead};
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use crate::json_parser::health::HealthMonitor;
+use crate::json_parser::printer::SharedPrinter;
+use crate::json_parser::types::{CodexEvent, DeltaAccumulator};
+
+pub mod event_handlers;
+
+include!("parser.rs");
+include!("stream_parsing.rs");
+include!("event_parsing.rs");
+include!("event_handlers.rs");

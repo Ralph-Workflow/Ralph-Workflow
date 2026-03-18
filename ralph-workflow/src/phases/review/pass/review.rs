@@ -6,7 +6,7 @@ use super::helpers::{handle_postflight_validation, stderr_contains_auth_error};
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::files::delete_issues_file_for_isolation_with_workspace;
 use crate::phases::context::PhaseContext;
-use crate::phases::runtime::{capture_time, elapsed_seconds};
+use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::{prompt_review_xml_with_references_and_log, PromptContentBuilder};
 use anyhow::Context as _;

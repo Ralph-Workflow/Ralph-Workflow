@@ -69,7 +69,7 @@ pub use prompt_dispatch::get_stored_or_generate_prompt;
 pub use prompt_dispatch::prompt_for_agent;
 pub use prompt_history_entry::PromptHistoryEntry;
 pub use prompt_scope_key::{PromptPhase, PromptScopeKey, RetryMode};
-pub use runtime::resume_note::{generate_resume_note, BriefDescription};
+pub use runtime::{generate_resume_note, BriefDescription};
 
 // Re-export public items for API convenience
 pub use commit::prompt_commit_xsd_retry_with_context;

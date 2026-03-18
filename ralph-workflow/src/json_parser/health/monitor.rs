@@ -14,7 +14,7 @@ pub struct HealthMonitor {
 
 impl HealthMonitor {
     /// Create a new health monitor for a parser
-    #[must_use] 
+    #[must_use]
     pub fn new(parser_name: &'static str) -> Self {
         Self {
             health: Cell::new(ParserHealth::new()),

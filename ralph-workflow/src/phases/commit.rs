@@ -18,9 +18,9 @@ use crate::workspace::Workspace;
 use anyhow::Context as _;
 use std::path::Path;
 
-pub mod io;
+pub mod diff_truncation;
 
-pub use io::{
+pub use diff_truncation::{
     effective_model_budget_bytes, model_budget_bytes_for_agent_name, truncate_diff_to_model_budget,
 };
 

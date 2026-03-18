@@ -29,7 +29,8 @@
 //! - [`path_resolver`] - Configuration path resolution with dependency injection
 
 // pub mod cloud; // Disabled due to module conflict - cloud.rs is used directly
-pub mod boundary;
+#[path = "boundary.rs"]
+mod boundary;
 #[path = "cloud.rs"]
 mod cloud;
 pub mod loader;

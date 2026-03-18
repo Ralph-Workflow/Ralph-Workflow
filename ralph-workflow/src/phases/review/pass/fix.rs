@@ -11,7 +11,7 @@ use crate::files::llm_output_extraction::{
 use crate::files::result_extraction::extract_file_paths_from_issues;
 use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
-use crate::phases::runtime::{capture_time, elapsed_seconds};
+use crate::phases::timing::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::{prompt_fix_xml_with_log, ContextLevel};
 

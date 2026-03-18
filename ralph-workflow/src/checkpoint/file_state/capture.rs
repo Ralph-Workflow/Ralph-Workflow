@@ -1,4 +1,5 @@
-use crate::checkpoint::runtime::io;
+use crate::checkpoint::file_capture;
+use crate::checkpoint::git_capture;
 
 impl FileSystemState {
     /// Create a new file system state.
@@ -92,7 +93,7 @@ impl FileSystemState {
 fn snapshot_for_path(path: &str) -> FileSnapshot {
     let path_obj = Path::new(path);
     if path_obj.exists() {
-        io::read_file_bytes(path_obj).map_or_else(
+        file_capture::read_file_bytes(path_obj).map_or_else(
             || FileSnapshot::not_found(path),
             |content| {
                 let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
@@ -130,10 +131,10 @@ impl FileSystemState {
 
         Self {
             files: HashMap::new(),
-            git_head_oid: io::git_head_oid(executor),
-            git_branch: io::git_branch_name(executor),
-            git_status: io::git_status(executor),
-            git_modified_files: io::git_modified_files(executor),
+            git_head_oid: git_capture::git_head_oid(executor),
+            git_branch: git_capture::git_branch_name(executor),
+            git_status: git_capture::git_status(executor),
+            git_modified_files: git_capture::git_modified_files(executor),
         }
     }
 }

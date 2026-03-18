@@ -34,43 +34,6 @@
 //! - [`detection`]: Project stack detection
 //! - [`finalization`]: Pipeline cleanup and finalization
 
-use crate::agents::AgentRegistry;
-use crate::app::effect_handler::RealAppEffectHandler;
-use crate::app::finalization::finalize_pipeline;
-use crate::banner::print_welcome_banner;
-use crate::checkpoint::{
-    save_checkpoint_with_workspace, CheckpointBuilder, PipelineCheckpoint, PipelinePhase,
-};
-use crate::cli::{
-    create_prompt_from_template, handle_diagnose, handle_dry_run, handle_list_agents,
-    handle_list_available_agents, handle_list_providers, handle_show_baseline,
-    handle_template_commands, prompt_template_selection, Args,
-};
-
-use crate::executor::ProcessExecutor;
-use crate::files::protection::monitoring::PromptMonitor;
-use crate::files::{
-    create_prompt_backup_with_workspace, update_status_with_workspace,
-    validate_prompt_md_with_workspace,
-};
-use crate::git_helpers::{
-    abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
-};
-use crate::logger::Colors;
-use crate::logger::Logger;
-use crate::phases::PhaseContext;
-use crate::pipeline::{AgentPhaseGuard, Timer};
-use crate::prompts::template_context::TemplateContext;
-
-use crate::app::config_init::initialize_config;
-use crate::app::context::PipelineContext;
-use crate::app::detection::detect_project_stack;
-use crate::app::rebase::{run_rebase_to_default, try_resolve_conflicts_without_phase_ctx};
-use crate::app::resume::{handle_resume_with_validation, offer_resume_if_checkpoint_exists};
-use crate::app::validation::{
-    resolve_required_agents, validate_agent_chains, validate_agent_commands, validate_can_commit,
-};
-
 // Include sub-modules
 pub mod command_handlers;
 pub mod pipeline_execution;

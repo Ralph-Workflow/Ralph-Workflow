@@ -1,6 +1,6 @@
 /// Handle template validation command.
 pub fn handle_template_validate(colors: Colors) {
-    use super::boundary::terminal as term;
+    use super::boundary as term;
 
     let _ = writeln!(
         term::stdout(),

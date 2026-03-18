@@ -319,7 +319,7 @@ impl EnvironmentSnapshot {
     /// Capture the current environment variables relevant to Ralph.
     #[must_use]
     pub fn capture_current() -> Self {
-        crate::checkpoint::runtime::capture_environment()
+        crate::checkpoint::env_capture::capture_environment()
     }
 }
 

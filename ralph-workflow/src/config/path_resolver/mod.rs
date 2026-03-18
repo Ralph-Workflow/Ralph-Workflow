@@ -36,6 +36,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+#[path = "boundary.rs"]
 mod boundary;
 // Re-export from boundary for backward compatibility
 pub use boundary::{MemoryConfigEnvironment, RealConfigEnvironment};

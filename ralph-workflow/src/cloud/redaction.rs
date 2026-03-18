@@ -6,35 +6,8 @@
 //! This module provides a conservative sanitizer for untrusted error strings.
 
 use itertools::Itertools;
-use std::sync::LazyLock;
 
-static BEARER_TOKEN_RE: std::sync::LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"(?i)(bearer\s+)\S+").expect("valid regex"));
-
-static COMMON_QUERY_RE: std::sync::LazyLock<regex::Regex> = LazyLock::new(|| {
-    const KEYS: [&str; 5] = [
-        "access_token=",
-        "token=",
-        "password=",
-        "passwd=",
-        "oauth_token=",
-    ];
-    let pattern = format!("(?i)({})([^&\\s]*)", KEYS.join("|"));
-    regex::Regex::new(&pattern).expect("valid regex")
-});
-
-static TOKEN_LIKE_RE: std::sync::LazyLock<regex::Regex> = LazyLock::new(|| {
-    const PREFIXES: [&str; 6] = ["ghp_", "github_pat_", "glpat-", "xoxb-", "xapp-", "ya29."];
-    let pattern = format!(
-        "({})[A-Za-z0-9_\\-\\.]+",
-        PREFIXES
-            .iter()
-            .map(regex::escape)
-            .collect::<Vec<_>>()
-            .join("|")
-    );
-    regex::Regex::new(&pattern).expect("valid regex")
-});
+use crate::cloud::io::redaction as io_redaction;
 
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///
@@ -131,22 +104,15 @@ fn redact_http_url_userinfo(input: &str) -> String {
 }
 
 fn redact_bearer_tokens(input: &str) -> String {
-    BEARER_TOKEN_RE
-        .replace_all(input, "$1<redacted>")
-        .to_string()
+    io_redaction::redact_bearer_tokens(input)
 }
 
 fn redact_common_query_params(input: &str) -> String {
-    COMMON_QUERY_RE
-        .replace_all(input, |caps: &regex::Captures| {
-            let key = caps.get(1).map_or("", |m| m.as_str());
-            format!("{}<redacted>", key)
-        })
-        .to_string()
+    io_redaction::redact_common_query_params(input)
 }
 
 fn redact_token_like_substrings(input: &str) -> String {
-    TOKEN_LIKE_RE.replace_all(input, "<redacted>").to_string()
+    io_redaction::redact_token_like_substrings(input)
 }
 
 #[cfg(test)]

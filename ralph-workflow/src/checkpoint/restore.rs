@@ -146,11 +146,11 @@ pub fn apply_checkpoint_to_config(config: &mut Config, checkpoint: &PipelineChec
 /// Restore environment variables from a checkpoint.
 ///
 /// This function is delegated to the runtime boundary module.
-pub use crate::checkpoint::runtime::restore_environment_from_checkpoint;
+pub use crate::checkpoint::environment::restore_environment_from_checkpoint;
 
 /// Inner implementation for restoring environment variables.
 /// This function is delegated to the runtime boundary module.
-pub use crate::checkpoint::runtime::restore_environment_impl;
+pub use crate::checkpoint::environment::restore_environment_impl;
 
 /// Calculate the starting iteration for development phase resume.
 #[must_use]

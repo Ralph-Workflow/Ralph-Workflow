@@ -18,12 +18,19 @@ pub mod io;
 mod progress;
 pub mod runtime;
 
+mod ansi;
+mod ansi_stripper;
+mod environment;
+mod file_writer;
+mod logger_wrapper;
+mod stdout_writer;
+
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};
 pub use progress::print_progress;
 
 // ===== Colors & Formatting =====
 
-pub use crate::logger::runtime::{ColorEnvironment, RealColorEnvironment};
+pub use crate::logger::environment::{ColorEnvironment, RealColorEnvironment};
 
 /// Check if colors should be enabled using the provided environment.
 ///

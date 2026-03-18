@@ -1,10 +1,10 @@
 //! Retry timer provider for controlling sleep behavior in retry logic.
 //!
 //! This module provides the trait for retry timers. Production code uses
-//! implementations from the `io::runtime` boundary module.
+//! the `runtime` module for actual sleep implementation.
 
 // Re-export from boundary module for convenience
-pub use crate::agents::io::{production_timer, RetryTimerProvider};
+pub use crate::agents::{production_timer, RetryTimerProvider};
 
 #[cfg(test)]
 mod tests {

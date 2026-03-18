@@ -1,10 +1,9 @@
-use super::super::discover_repo_root_for_workspace;
 use crate::agents::AgentRegistry;
 use crate::app::effect::AppEffectHandler;
 use crate::app::effect_handler::RealAppEffectHandler;
-use crate::app::runner::pipeline_execution::helpers::{
-    command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
-    prepare_pipeline_or_exit, RepoCommandParams,
+use crate::app::runner::pipeline_execution::{
+    command_requires_prompt_setup, discover_repo_root_for_workspace,
+    handle_repo_commands_without_prompt_setup, prepare_pipeline_or_exit, RepoCommandParams,
 };
 use crate::app::runner::setup_helpers::{validate_and_setup_agents, AgentSetupParams};
 use crate::config::{Config, ConfigEnvironment};

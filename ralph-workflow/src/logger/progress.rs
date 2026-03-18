@@ -3,7 +3,7 @@
 //! Provides visual progress feedback for long-running operations.
 
 use super::Colors;
-use crate::logger::io::stdout_writer::stdout_write_line;
+use crate::logger::stdout_writer::stdout_write_line;
 
 /// Print a progress bar with percentage and counts.
 ///

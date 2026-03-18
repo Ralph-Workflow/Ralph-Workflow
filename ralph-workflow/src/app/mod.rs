@@ -25,16 +25,28 @@ pub mod context;
 pub mod detection;
 pub mod effect;
 pub mod effect_handler;
+pub mod env_access;
 pub mod effectful;
 pub mod event_loop;
 pub mod finalization;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock_effect_handler;
+pub mod initialization;
 pub mod plumbing;
 pub(crate) mod rebase;
 pub mod resume;
 pub mod runtime;
 pub mod validation;
+
+pub mod cloud_progress;
+pub mod config;
+pub mod core;
+pub mod driver;
+pub mod error_handling;
+pub mod iteration;
+pub mod logging;
+pub mod recovery;
+pub mod trace;
 
 pub mod io;
 pub mod runner;

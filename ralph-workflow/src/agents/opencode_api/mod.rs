@@ -59,7 +59,7 @@ pub struct RealCatalogLoader;
 impl CatalogLoader for RealCatalogLoader {
     fn load(&self) -> Result<ApiCatalog, CacheError> {
         let (catalog, warnings) = load_api_catalog()?;
-        for warning in warnings {
+        warnings.into_iter().for_each(|warning| {
             match warning {
                 CacheWarning::StaleCacheUsed { stale_days, error } => {
                     eprintln!("Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago");
@@ -68,7 +68,7 @@ impl CatalogLoader for RealCatalogLoader {
                     eprintln!("Warning: Failed to cache OpenCode API catalog: {error}");
                 }
             }
-        }
+        });
         Ok(catalog)
     }
 }

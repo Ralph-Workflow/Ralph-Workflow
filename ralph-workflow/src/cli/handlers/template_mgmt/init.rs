@@ -1,6 +1,6 @@
 fn handle_template_init(force: bool, colors: Colors) -> anyhow::Result<()> {
-    use super::boundary::io as fs_io;
-    use super::boundary::terminal as term;
+    use super::boundary as fs_io;
+    use super::boundary as term;
 
     let templates_dir = TemplateRegistry::default_user_templates_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory for templates"))?;

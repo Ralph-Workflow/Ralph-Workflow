@@ -56,7 +56,7 @@ impl FileSystemState {
         executor: &dyn ProcessExecutor,
     ) -> Result<(), ValidationError> {
         if let Some(expected_oid) = &self.git_head_oid {
-            if let Some(current_oid) = crate::checkpoint::runtime::io::git_head_oid(executor) {
+            if let Some(current_oid) = crate::checkpoint::git_capture::git_head_oid(executor) {
                 if current_oid != *expected_oid {
                     return Err(ValidationError::GitHeadChanged {
                         expected: expected_oid.clone(),

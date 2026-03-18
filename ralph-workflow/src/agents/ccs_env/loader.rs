@@ -1,5 +1,5 @@
 // Import production implementations from boundary module
-use crate::agents::io::{RealCcsEnvironment, RealCcsFilesystem};
+use crate::agents::{RealCcsEnvironment, RealCcsFilesystem};
 
 /// List all available CCS profile names from JSON files under `~/.ccs/`.
 ///

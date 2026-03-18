@@ -3,10 +3,10 @@
 //! This module handles HTTP requests to fetch the `OpenCode` model catalog
 //! from <https://models.dev/api.json>.
 
-use crate::agents::io::{fetch_api_catalog_json, get_env_var};
 use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::{API_URL, CACHE_TTL_ENV_VAR, DEFAULT_CACHE_TTL_SECONDS};
+use crate::agents::{fetch_api_catalog_json, get_env_var};
 
 /// Fetch the `OpenCode` API catalog from the remote endpoint.
 ///
@@ -29,12 +29,13 @@ pub fn fetch_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError
         ..catalog
     };
 
-    let mut warnings = Vec::new();
-    if let Err(e) = save_catalog(&catalog) {
-        warnings.push(CacheWarning::CacheSaveFailed {
+    let warnings: Vec<CacheWarning> = save_catalog(&catalog)
+        .err()
+        .map(|e| CacheWarning::CacheSaveFailed {
             error: e.to_string(),
-        });
-    }
+        })
+        .into_iter()
+        .collect();
 
     Ok((catalog, warnings))
 }

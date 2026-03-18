@@ -9,9 +9,11 @@
 
 pub mod conflict_resolution_boundary;
 pub mod effect_handler;
-pub mod env_access;
-pub mod initialization;
 pub mod pipeline_setup;
 pub mod plumbing_boundary;
 pub mod runtime_factory;
 pub mod terminal;
+
+// Re-export modules that were moved to app/ level for backward compatibility
+pub use crate::app::env_access;
+pub use crate::app::initialization;

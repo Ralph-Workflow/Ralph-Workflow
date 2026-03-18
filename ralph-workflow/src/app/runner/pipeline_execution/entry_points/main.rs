@@ -7,7 +7,7 @@
 // - run_with_config_and_handlers: Test-only entry point with both handlers
 // - RunWithHandlersParams: Parameters for test entry points
 
-use crate::app::config_init::{self, initialize_config, ConfigInitResult};
+use crate::app::config_init::{self, initialize_config};
 use crate::app::runner::command_handlers::handle_listing_commands;
 use crate::app::validation::{resolve_required_agents, validate_agent_chains};
 use crate::cli::{handle_diagnose, Args};
@@ -48,7 +48,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     // Set working directory first if override is provided
     // This ensures all subsequent operations (including config init) use the correct directory
     if let Some(ref override_dir) = args.working_dir_override {
-        crate::app::io::env_access::set_current_dir(override_dir)?;
+        crate::app::env_access::set_current_dir(override_dir)?;
     }
 
     // Initialize configuration and agent registry
@@ -77,7 +77,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     // Handle --diagnose
     if args.recovery.diagnose {
         let diagnose_workspace =
-            crate::workspace::WorkspaceFs::new(crate::app::io::env_access::get_current_dir());
+            crate::workspace::WorkspaceFs::new(crate::app::env_access::get_current_dir());
         handle_diagnose(
             &mut std::io::stdout(),
             colors,

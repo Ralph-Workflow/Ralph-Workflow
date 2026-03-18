@@ -1,7 +1,7 @@
 use super::types::{PromptArchiveInfo, PromptSaveOptions};
 use crate::logger::Logger;
 
-use std::io::{self, Write};
+use std::io;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static PROMPT_ARCHIVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -50,7 +50,7 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     // Copy to clipboard if interactive
     if options.interactive {
         if let Some(clipboard_cmd) = super::super::clipboard::get_platform_clipboard_command() {
-            match super::runtime::clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd) {
+            match super::clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd) {
                 Ok(()) => {
                     logger.info(&format!(
                         "Prompt copied to clipboard {}({}){}",
@@ -92,7 +92,7 @@ fn archive_prompt(
     let prompts_dir = PathBuf::from(".agent/prompts");
     workspace.create_dir_all(&prompts_dir)?;
 
-    let timestamp = super::runtime::time::current_timestamp_ms();
+    let timestamp = super::time::current_timestamp_ms();
 
     let archive_filename = build_prompt_archive_filename(
         info.phase_label,

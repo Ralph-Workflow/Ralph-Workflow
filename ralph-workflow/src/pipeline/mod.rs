@@ -27,14 +27,14 @@ mod clipboard;
 pub mod idle_timeout;
 pub mod logfile;
 mod prompt;
-pub mod runtime;
+pub mod timer;
 mod types;
 
 pub use prompt::{
     extract_error_identifier_from_logfile, extract_error_message_from_logfile, run_with_prompt,
     PipelineRuntime, PromptCommand,
 };
-pub use runtime::Timer;
+pub use timer::Timer;
 pub use types::AgentPhaseGuard;
 
 // ===== Tests use the boundary Timer =====

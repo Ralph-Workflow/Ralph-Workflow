@@ -46,9 +46,9 @@ fn extract_issue_snippets(
     workspace: &dyn crate::workspace::Workspace,
 ) -> Vec<XmlCodeSnippet> {
     let location_re =
-        crate::reducer::handler::review::review_flow::runtime::regex_cache::issue_location_regex();
+        crate::reducer::handler::review::review_flow::regex_cache::issue_location_regex();
     let gh_location_re =
-        crate::reducer::handler::review::review_flow::runtime::regex_cache::issue_gh_location_regex(
+        crate::reducer::handler::review::review_flow::regex_cache::issue_gh_location_regex(
         );
 
     #[derive(Debug, Clone)]

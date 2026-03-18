@@ -34,6 +34,7 @@ mod global;
 mod local;
 mod validation;
 
+#[path = "boundary.rs"]
 pub mod boundary;
 
 // Re-export public API for external callers
@@ -42,6 +43,6 @@ pub use local::{handle_init_local_config, handle_init_local_config_with};
 pub use validation::{handle_check_config, handle_check_config_with};
 
 // Re-export prompt handlers from boundary module
-pub use boundary::prompt::{
+pub use boundary::{
     handle_init_state_inference_with_env, handle_init_template_arg_at_path_with_env,
 };

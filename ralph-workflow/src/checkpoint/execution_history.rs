@@ -3,7 +3,7 @@
 //! This module provides structures for tracking the execution history of a pipeline,
 //! enabling idempotent recovery and validation of state.
 
-pub mod io;
+pub mod compression;
 
 use crate::checkpoint::timestamp;
 use crate::workspace::Workspace;

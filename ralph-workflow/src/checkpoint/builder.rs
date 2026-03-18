@@ -417,7 +417,7 @@ impl CheckpointBuilder {
 
         let working_dir = workspace
             .map(|ws| ws.root().to_string_lossy().to_string())
-            .or_else(crate::checkpoint::runtime::get_current_dir)
+            .or_else(crate::checkpoint::current_dir::get_current_dir)
             .unwrap_or_default();
 
         let prompt_md_checksum = workspace.and_then(|ws| {

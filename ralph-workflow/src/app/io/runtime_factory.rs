@@ -76,8 +76,8 @@ pub fn create_cleanup_guard<'a>(
     logger: &'a Logger,
     workspace: &'a dyn crate::workspace::Workspace,
     owned: bool,
-) -> crate::app::runner::pipeline_execution::helpers::CommandExitCleanupGuard<'a> {
-    let guard = crate::app::runner::pipeline_execution::helpers::CommandExitCleanupGuard::new(
+) -> crate::app::runner::pipeline_execution::CommandExitCleanupGuard<'a> {
+    let guard = crate::app::runner::pipeline_execution::CommandExitCleanupGuard::new(
         logger, workspace, owned,
     );
     guard

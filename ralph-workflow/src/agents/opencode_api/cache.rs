@@ -9,10 +9,10 @@
 //! enabling pure unit tests without real filesystem access. Production code
 //! uses [`RealCacheEnvironment`], tests use [`MemoryCacheEnvironment`].
 
-use crate::agents::io::{CacheEnvironment, RealCacheEnvironment};
 use crate::agents::opencode_api::fetch::fetch_api_catalog;
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::DEFAULT_CACHE_TTL_SECONDS;
+use crate::agents::{CacheEnvironment, RealCacheEnvironment};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 

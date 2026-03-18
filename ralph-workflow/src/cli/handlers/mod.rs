@@ -13,6 +13,7 @@
 //! - [`template_selection`]: Interactive template selection when PROMPT.md is missing
 
 pub mod baseline;
+#[path = "boundary.rs"]
 pub mod boundary;
 pub mod dry_run;
 pub mod list;
@@ -20,8 +21,8 @@ pub mod template_mgmt;
 
 // Re-export handlers at module level for convenience
 pub use baseline::handle_show_baseline;
-pub use boundary::diagnose::handle_diagnose;
-pub use boundary::template_selection::{create_prompt_from_template, prompt_template_selection};
+pub use boundary::handle_diagnose;
+pub use boundary::{create_prompt_from_template, prompt_template_selection};
 pub use dry_run::handle_dry_run;
 pub use list::{handle_list_agents, handle_list_available_agents};
 pub use template_mgmt::handle_template_commands;
