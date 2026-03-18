@@ -26,8 +26,6 @@ impl MainEffectHandler {
 
         if matches!(phase, RebasePhase::Initial) {
             let run_context = ctx.run_context.clone();
-            // Start with the current reducer-owned prompt history so rebase conflict
-            // resolution can replay stored prompts and new ones are emitted as events.
             let mut local_prompt_history = self.state.prompt_history.clone();
             let run_result = crate::app::rebase::run_initial_rebase(
                 ctx,
@@ -45,24 +43,23 @@ impl MainEffectHandler {
                 }
             };
 
-            // Emit PromptCaptured events for any prompts newly captured during rebase
-            // conflict resolution, so the reducer-owned PipelineState.prompt_history
-            // stays consistent with what was saved to disk in the interim checkpoints.
-            let mut result = EffectResult::event(event);
-
-            // Observability: emit PromptReplayHit for conflict resolution prompts.
-            for (key, was_replayed) in run_result.prompt_replay_hits {
-                result = result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
-                    key,
-                    was_replayed,
-                });
-            }
-            for ev in prompt_captured_events_for_prompt_history_delta(
+            let result = EffectResult::event(event);
+            let result =
+                run_result
+                    .prompt_replay_hits
+                    .into_iter()
+                    .fold(result, |r, (key, was_replayed)| {
+                        r.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+                            key,
+                            was_replayed,
+                        })
+                    });
+            let result = prompt_captured_events_for_prompt_history_delta(
                 &self.state.prompt_history,
                 &local_prompt_history,
-            ) {
-                result = result.with_additional_event(ev);
-            }
+            )
+            .into_iter()
+            .fold(result, |r, ev| r.with_additional_event(ev));
 
             return Ok(result);
         }

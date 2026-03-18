@@ -1,13 +1,13 @@
 /// Maximum safe prompt size in bytes before pre-truncation.
-const MAX_SAFE_PROMPT_SIZE: u64 = 200_000;
+pub const MAX_SAFE_PROMPT_SIZE: u64 = 200_000;
 
 use itertools::Itertools;
 
 /// Maximum prompt size for GLM-like agents (GLM, Zhipu, Qwen, `DeepSeek`).
-const GLM_MAX_PROMPT_SIZE: u64 = 100_000;
+pub const GLM_MAX_PROMPT_SIZE: u64 = 100_000;
 
 /// Maximum prompt size for Claude-based agents.
-const CLAUDE_MAX_PROMPT_SIZE: u64 = 300_000;
+pub const CLAUDE_MAX_PROMPT_SIZE: u64 = 300_000;
 
 /// Get the maximum safe prompt size for a specific agent.
 #[must_use]
@@ -41,7 +41,7 @@ pub fn effective_model_budget_bytes(agent_names: &[String]) -> u64 {
 }
 
 /// Truncate diff if it's too large for agents with small context windows.
-fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
+pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
     if diff.len() <= max_size {
         return diff.to_string();
     }
@@ -81,7 +81,7 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
             .iter()
             .map(|file| {
                 let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
-                (lines_text, lines_text.len())
+                (lines_text.clone(), lines_text.len())
             })
             .collect();
 
@@ -92,7 +92,7 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
                 .map(|(t, _)| t.clone())
                 .collect::<Vec<_>>()
                 .join("");
-            return (result, sorted_files.len());
+            return result;
         }
 
         let cumulative_sizes: Vec<_> = file_data
@@ -192,7 +192,7 @@ fn truncate_to_utf8_boundary(s: &str, max_bytes: usize) -> String {
     s[..cut].to_string()
 }
 
-fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
+pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     let suffix = " [truncated...]";
     let suffix_len = suffix.len();
 

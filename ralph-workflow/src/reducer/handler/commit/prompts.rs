@@ -216,24 +216,36 @@ impl MainEffectHandler {
             };
 
             // Build events: CommitPromptPrepared is primary, TemplateRendered is additional (if log exists)
-            let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
-                .with_ui_event(
-                    self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
-                )
-                .with_ui_event(UIEvent::PromptReplayHit {
-                    key: prompt_key,
-                    was_replayed,
-                });
-            if let Some(event) = prompt_captured_event {
-                result = result.with_additional_event(event);
-            }
-            if let Some(log) = rendered_log {
-                result = result.with_additional_event(PipelineEvent::template_rendered(
-                    crate::reducer::event::PipelinePhase::CommitMessage,
-                    "commit_xsd_retry".to_string(),
-                    log,
-                ));
-            }
+            let result = prompt_captured_event.map_or_else(
+                || {
+                    EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
+                        .with_ui_event(self.phase_transition_ui(
+                            crate::reducer::event::PipelinePhase::CommitMessage,
+                        ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key.clone(),
+                            was_replayed,
+                        })
+                },
+                |event| {
+                    EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
+                        .with_ui_event(self.phase_transition_ui(
+                            crate::reducer::event::PipelinePhase::CommitMessage,
+                        ))
+                        .with_ui_event(UIEvent::PromptReplayHit {
+                            key: prompt_key.clone(),
+                            was_replayed,
+                        })
+                        .with_additional_event(event)
+                        .maybe_with_additional_event(rendered_log.map(|log| {
+                            PipelineEvent::template_rendered(
+                                crate::reducer::event::PipelinePhase::CommitMessage,
+                                "commit_xsd_retry".to_string(),
+                                log,
+                            )
+                        }))
+                },
+            );
             return Ok(result);
         }
 
@@ -514,24 +526,22 @@ impl MainEffectHandler {
         }
 
         // Build events: CommitPromptPrepared is primary, TemplateRendered is additional (if log exists)
-        let mut result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
+        let result = EffectResult::event(PipelineEvent::commit_prompt_prepared(attempt))
             .with_ui_event(
                 self.phase_transition_ui(crate::reducer::event::PipelinePhase::CommitMessage),
             )
             .with_ui_event(UIEvent::PromptReplayHit {
                 key: prompt_key,
                 was_replayed,
-            });
-        if let Some(event) = prompt_captured_event {
-            result = result.with_additional_event(event);
-        }
-        if let Some(log) = rendered_log {
-            result = result.with_additional_event(PipelineEvent::template_rendered(
-                crate::reducer::event::PipelinePhase::CommitMessage,
-                "commit_message_xml".to_string(),
-                log,
-            ));
-        }
+            })
+            .maybe_with_additional_event(prompt_captured_event)
+            .maybe_with_additional_event(rendered_log.map(|log| {
+                PipelineEvent::template_rendered(
+                    crate::reducer::event::PipelinePhase::CommitMessage,
+                    "commit_message_xml".to_string(),
+                    log,
+                )
+            }));
         Ok(result)
     }
 }

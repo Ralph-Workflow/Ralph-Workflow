@@ -1,4 +1,7 @@
-use super::*;
+use crate::checkpoint::{
+    timestamp, AgentConfigSnapshot, CheckpointParams, CliArgsSnapshot, CloudCheckpointState,
+    PipelineCheckpoint, PipelinePhase, RebaseState,
+};
 
 /// Helper function to create a checkpoint for testing.
 fn make_test_checkpoint(phase: PipelinePhase, iteration: u32) -> PipelineCheckpoint {
@@ -497,8 +500,8 @@ fn test_checkpoint_v1_prompt_history_round_trip_with_content_id() {
         }
     }"#;
 
-    let checkpoint: PipelineCheckpoint = serde_json::from_str(json)
-        .expect("v1 object prompt_history must deserialize successfully");
+    let checkpoint: PipelineCheckpoint =
+        serde_json::from_str(json).expect("v1 object prompt_history must deserialize successfully");
 
     assert_eq!(checkpoint.replay_metadata_version, 1);
 
@@ -526,6 +529,9 @@ fn test_checkpoint_v1_prompt_history_round_trip_with_content_id() {
         serde_json::from_str(&serialized).expect("deserialize must succeed");
 
     let rt_history = roundtrip.prompt_history.expect("must be Some");
-    assert_eq!(rt_history["planning_1"].content_id.as_deref(), Some("sha256abcdef"));
+    assert_eq!(
+        rt_history["planning_1"].content_id.as_deref(),
+        Some("sha256abcdef")
+    );
     assert_eq!(rt_history["development_1"].content_id, None);
 }

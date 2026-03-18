@@ -79,27 +79,26 @@ impl FileSnapshot {
         exists: bool,
         max_size: u64,
     ) -> Self {
-        let mut content = None;
-        let mut compressed_content = None;
+        let content = if exists && size < max_size {
+            workspace.read(Path::new(path)).ok()
+        } else {
+            None
+        };
 
-        if exists {
-            let is_key_file = path.contains("PROMPT.md")
+        let compressed_content = if exists
+            && (path.contains("PROMPT.md")
                 || path.contains("PLAN.md")
                 || path.contains("ISSUES.md")
-                || path.contains("NOTES.md");
-
-            let path_ref = Path::new(path);
-
-            if size < max_size {
-                // For small files, read and store content directly
-                content = workspace.read(path_ref).ok();
-            } else if is_key_file && size < MAX_COMPRESS_SIZE {
-                // For larger key files, compress the content
-                if let Ok(data) = workspace.read_bytes(path_ref) {
-                    compressed_content = compress_data(&data).ok();
-                }
-            }
-        }
+                || path.contains("NOTES.md"))
+            && size >= max_size
+            && size < MAX_COMPRESS_SIZE
+        {
+            workspace.read_bytes(Path::new(path)).ok().and_then(|data| {
+                crate::checkpoint::execution_history::io::compression::compress(&data).ok()
+            })
+        } else {
+            None
+        };
 
         Self {
             path: path.to_string(),
@@ -115,9 +114,9 @@ impl FileSnapshot {
     #[must_use]
     pub fn get_content(&self) -> Option<String> {
         self.content.clone().or_else(|| {
-            self.compressed_content
-                .as_ref()
-                .and_then(|compressed| decompress_data(compressed).ok())
+            self.compressed_content.as_ref().and_then(|compressed| {
+                crate::checkpoint::execution_history::io::compression::decompress(compressed).ok()
+            })
         })
     }
 
@@ -153,66 +152,4 @@ impl FileSnapshot {
         let checksum = crate::checkpoint::state::calculate_checksum_from_bytes(&content);
         checksum == self.checksum
     }
-}
-
-/// Compress data using gzip and encode as base64.
-///
-/// This is used to store larger file content in checkpoints without
-/// bloating the checkpoint file size too much.
-fn compress_data(data: &[u8]) -> Result<String, std::io::Error> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use std::io::Write;
-
-    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(data)?;
-    let compressed = encoder.finish()?;
-
-    Ok(STANDARD.encode(&compressed))
-}
-
-const MAX_DECOMPRESSED_SNAPSHOT_BYTES: usize = 1024 * 1024;
-
-/// Decompress data that was compressed with `compress_data`.
-fn decompress_data(encoded: &str) -> Result<String, std::io::Error> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    use flate2::read::GzDecoder;
-    use std::io::Read;
-
-    let compressed = STANDARD.decode(encoded).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Base64 decode error: {e}"),
-        )
-    })?;
-
-    let mut decoder = GzDecoder::new(compressed.as_slice());
-    let mut decompressed = Vec::new();
-    let mut buf = [0u8; 8 * 1024];
-
-    loop {
-        let n = decoder.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-
-        if decompressed.len().saturating_add(n) > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Decompressed payload exceeds max size ({MAX_DECOMPRESSED_SNAPSHOT_BYTES} bytes)"
-                ),
-            ));
-        }
-
-        decompressed.extend_from_slice(&buf[..n]);
-    }
-
-    String::from_utf8(decompressed).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("UTF-8 decode error: {e}"),
-        )
-    })
 }

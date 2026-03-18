@@ -140,35 +140,32 @@ impl MainEffectHandler {
             ));
         }
 
-        // Build events: DevelopmentPromptPrepared is primary, with additional_events and TemplateRendered as additional
-        let mut result = EffectResult::event(PipelineEvent::development_prompt_prepared(iteration));
-
-        // Emit replay observability event (RFC-007)
-        if let Some((key, replayed)) = replay_key {
-            result = result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
+        let result = EffectResult::event(PipelineEvent::development_prompt_prepared(iteration));
+        let result = if let Some((key, was_replayed)) = replay_key {
+            result.with_ui_event(crate::reducer::ui_event::UIEvent::PromptReplayHit {
                 key,
-                was_replayed: replayed,
-            });
-        }
-
-        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
-        if let Some(event) = prompt_captured_event {
-            result = result.with_additional_event(event);
-        }
-
-        // Add any additional events from XSD retry materialization, etc.
-        for ev in additional_events {
-            result = result.with_additional_event(ev);
-        }
-
-        // Add TemplateRendered if we have a log
-        if let Some(log) = rendered_log {
-            result = result.with_additional_event(PipelineEvent::template_rendered(
+                was_replayed,
+            })
+        } else {
+            result
+        };
+        let result = if let Some(event) = prompt_captured_event {
+            result.with_additional_event(event)
+        } else {
+            result
+        };
+        let result = additional_events
+            .into_iter()
+            .fold(result, |r, ev| r.with_additional_event(ev));
+        let result = if let Some(log) = rendered_log {
+            result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Development,
                 template_name.to_string(),
                 log,
-            ));
-        }
+            ))
+        } else {
+            result
+        };
 
         Ok(result)
     }

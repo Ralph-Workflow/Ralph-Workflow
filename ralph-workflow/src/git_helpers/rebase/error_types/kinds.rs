@@ -75,62 +75,115 @@ pub enum RebaseErrorKind {
 
 impl RebaseErrorKind {
     /// Returns a human-readable description of the error.
-    #[must_use] 
+    #[must_use]
     pub fn description(&self) -> String {
-        match self {
-            Self::InvalidRevision { revision } => {
-                format!("Invalid or unresolvable revision: '{revision}'")
-            }
-            Self::DirtyWorkingTree => "Working tree has uncommitted changes".to_string(),
-            Self::ConcurrentOperation { operation } => {
-                format!("Concurrent Git operation in progress: {operation}")
-            }
-            Self::RepositoryCorrupt { details } => {
-                format!("Repository integrity issue: {details}")
-            }
-            Self::EnvironmentFailure { reason } => {
-                format!("Environment or configuration failure: {reason}")
-            }
-            Self::HookRejection { hook_name } => {
-                format!("Hook '{hook_name}' rejected the operation")
-            }
-            Self::ContentConflict { files } => {
-                format!("Merge conflicts in {} file(s)", files.len())
-            }
-            Self::PatchApplicationFailed { reason } => {
-                format!("Patch application failed: {reason}")
-            }
-            Self::InteractiveStop { command } => {
-                format!("Interactive rebase stopped at command: {command}")
-            }
-            Self::EmptyCommit => "Empty or redundant commit".to_string(),
-            Self::AutostashFailed { reason } => {
-                format!("Autostash failed: {reason}")
-            }
-            Self::CommitCreationFailed { reason } => {
-                format!("Commit creation failed: {reason}")
-            }
-            Self::ReferenceUpdateFailed { reason } => {
-                format!("Reference update failed: {reason}")
-            }
-            #[cfg(any(test, feature = "test-utils"))]
-            Self::ValidationFailed { reason } => {
-                format!("Post-rebase validation failed: {reason}")
-            }
-            #[cfg(any(test, feature = "test-utils"))]
-            Self::ProcessTerminated { reason } => {
-                format!("Rebase process terminated: {reason}")
-            }
-            #[cfg(any(test, feature = "test-utils"))]
-            Self::InconsistentState { details } => {
-                format!("Inconsistent rebase state: {details}")
-            }
-            Self::Unknown { details } => {
-                format!("Unknown rebase error: {details}")
-            }
-        }
+        describe_rebase_error_kind(self)
     }
+}
 
+fn describe_invalid_revision(revision: &str) -> String {
+    format!("Invalid or unresolvable revision: '{revision}'")
+}
+
+fn describe_dirty_working_tree() -> String {
+    "Working tree has uncommitted changes".to_string()
+}
+
+fn describe_concurrent_operation(operation: &str) -> String {
+    format!("Concurrent Git operation in progress: {operation}")
+}
+
+fn describe_repository_corrupt(details: &str) -> String {
+    format!("Repository integrity issue: {details}")
+}
+
+fn describe_environment_failure(reason: &str) -> String {
+    format!("Environment or configuration failure: {reason}")
+}
+
+fn describe_hook_rejection(hook_name: &str) -> String {
+    format!("Hook '{hook_name}' rejected the operation")
+}
+
+fn describe_content_conflict(file_count: usize) -> String {
+    format!("Merge conflicts in {file_count} file(s)",)
+}
+
+fn describe_patch_application_failed(reason: &str) -> String {
+    format!("Patch application failed: {reason}")
+}
+
+fn describe_interactive_stop(command: &str) -> String {
+    format!("Interactive rebase stopped at command: {command}")
+}
+
+fn describe_empty_commit() -> String {
+    "Empty or redundant commit".to_string()
+}
+
+fn describe_autostash_failed(reason: &str) -> String {
+    format!("Autostash failed: {reason}")
+}
+
+fn describe_commit_creation_failed(reason: &str) -> String {
+    format!("Commit creation failed: {reason}")
+}
+
+fn describe_reference_update_failed(reason: &str) -> String {
+    format!("Reference update failed: {reason}")
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn describe_validation_failed(reason: &str) -> String {
+    format!("Post-rebase validation failed: {reason}")
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn describe_process_terminated(reason: &str) -> String {
+    format!("Rebase process terminated: {reason}")
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn describe_inconsistent_state(details: &str) -> String {
+    format!("Inconsistent rebase state: {details}")
+}
+
+fn describe_unknown(details: &str) -> String {
+    format!("Unknown rebase error: {details}")
+}
+
+fn describe_rebase_error_kind(kind: &RebaseErrorKind) -> String {
+    match kind {
+        RebaseErrorKind::InvalidRevision { revision } => describe_invalid_revision(revision),
+        RebaseErrorKind::DirtyWorkingTree => describe_dirty_working_tree(),
+        RebaseErrorKind::ConcurrentOperation { operation } => {
+            describe_concurrent_operation(operation)
+        }
+        RebaseErrorKind::RepositoryCorrupt { details } => describe_repository_corrupt(details),
+        RebaseErrorKind::EnvironmentFailure { reason } => describe_environment_failure(reason),
+        RebaseErrorKind::HookRejection { hook_name } => describe_hook_rejection(hook_name),
+        RebaseErrorKind::ContentConflict { files } => describe_content_conflict(files.len()),
+        RebaseErrorKind::PatchApplicationFailed { reason } => {
+            describe_patch_application_failed(reason)
+        }
+        RebaseErrorKind::InteractiveStop { command } => describe_interactive_stop(command),
+        RebaseErrorKind::EmptyCommit => describe_empty_commit(),
+        RebaseErrorKind::AutostashFailed { reason } => describe_autostash_failed(reason),
+        RebaseErrorKind::CommitCreationFailed { reason } => describe_commit_creation_failed(reason),
+        RebaseErrorKind::ReferenceUpdateFailed { reason } => {
+            describe_reference_update_failed(reason)
+        }
+        #[cfg(any(test, feature = "test-utils"))]
+        RebaseErrorKind::ValidationFailed { reason } => describe_validation_failed(reason),
+        #[cfg(any(test, feature = "test-utils"))]
+        RebaseErrorKind::ProcessTerminated { reason } => describe_process_terminated(reason),
+        #[cfg(any(test, feature = "test-utils"))]
+        RebaseErrorKind::InconsistentState { details } => describe_inconsistent_state(details),
+        RebaseErrorKind::Unknown { details } => describe_unknown(details),
+    }
+}
+
+impl RebaseErrorKind {
     /// Returns whether this error can potentially be recovered automatically.
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
@@ -139,8 +192,7 @@ impl RebaseErrorKind {
             // These are generally recoverable with automatic retry or cleanup
             Self::ConcurrentOperation { .. } => true,
             #[cfg(any(test, feature = "test-utils"))]
-            Self::ProcessTerminated { .. }
-            | Self::InconsistentState { .. } => true,
+            Self::ProcessTerminated { .. } | Self::InconsistentState { .. } => true,
 
             // These require manual conflict resolution
             Self::ContentConflict { .. } => true,
@@ -187,8 +239,7 @@ impl RebaseErrorKind {
             Self::ValidationFailed { .. } => 3,
 
             #[cfg(any(test, feature = "test-utils"))]
-            Self::ProcessTerminated { .. }
-            | Self::InconsistentState { .. } => 4,
+            Self::ProcessTerminated { .. } | Self::InconsistentState { .. } => 4,
 
             Self::Unknown { .. } => 5,
         }
@@ -284,4 +335,3 @@ impl RebaseResult {
         }
     }
 }
-

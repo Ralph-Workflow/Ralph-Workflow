@@ -54,18 +54,17 @@ impl CancelAwareReceiverBufRead {
     }
 
     fn refill_if_needed(&mut self) -> io::Result<()> {
-        if self.cancel.load(Ordering::Acquire) {
-            self.buffer.clear();
-            self.consumed = 0;
-            self.eof = true;
-            return Ok(());
-        }
-
-        if self.eof {
-            return Ok(());
-        }
-
-        if self.consumed < self.buffer.len() {
+        if should_cancel_or_eof(
+            self.cancel.load(Ordering::Acquire),
+            self.eof,
+            self.consumed,
+            &self.buffer,
+        ) {
+            if self.cancel.load(Ordering::Acquire) {
+                self.buffer.clear();
+                self.consumed = 0;
+                self.eof = true;
+            }
             return Ok(());
         }
 
@@ -95,6 +94,10 @@ impl CancelAwareReceiverBufRead {
             }
         }
     }
+}
+
+fn should_cancel_or_eof(cancelled: bool, eof: bool, consumed: usize, buffer: &[u8]) -> bool {
+    cancelled || eof || consumed < buffer.len()
 }
 
 impl Read for CancelAwareReceiverBufRead {
@@ -175,6 +178,14 @@ pub fn spawn_stdout_pump(
     })
 }
 
+fn pump_should_detach(cancelled: bool, parse_err: &io::Result<()>) -> bool {
+    cancelled || parse_err.is_err()
+}
+
+fn detach_message_for_logger(detached: bool) -> Option<&'static str> {
+    detached.then_some("Stdout pump thread did not exit; detaching thread")
+}
+
 /// Clean up the stdout pump thread.
 pub fn cleanup_stdout_pump(
     pump_handle: std::thread::JoinHandle<()>,
@@ -182,16 +193,12 @@ pub fn cleanup_stdout_pump(
     logger: &crate::logger::Logger,
     parse_result: &io::Result<()>,
 ) {
-    // If parsing fails, ensure we proactively signal cancellation so the pump thread
-    // stops reading as soon as possible (rather than continuing to enqueue chunks
-    // while the parser has stopped consuming).
     if parse_result.is_err() {
         cancel.store(true, Ordering::Release);
     }
 
-    let should_detach = cancel.load(Ordering::Acquire) || parse_result.is_err();
+    let should_detach = pump_should_detach(cancel.load(Ordering::Acquire), parse_result);
     if should_detach {
-        // Best-effort: avoid leaking a live pump thread after cancellation.
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while !pump_handle.is_finished() && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(10));
@@ -199,7 +206,9 @@ pub fn cleanup_stdout_pump(
         if pump_handle.is_finished() {
             let _ = pump_handle.join();
         } else {
-            logger.warn("Stdout pump thread did not exit; detaching thread");
+            if let Some(msg) = detach_message_for_logger(true) {
+                logger.warn(msg);
+            }
             drop(pump_handle);
         }
     } else {

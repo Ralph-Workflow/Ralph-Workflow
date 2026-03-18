@@ -40,17 +40,10 @@
 //! - **Total deltas**: Count of deltas per content block
 //! - **Streaming pattern**: Classification as smooth, bursty, or chunked based on size variance
 
-use crate::logger::Colors;
-use std::cell::Cell;
-
-// Streaming quality metrics
-include!("health/metrics.rs");
-
-// Parser health statistics
-include!("health/parser_health.rs");
-
-// Health monitor implementation
-include!("health/monitor.rs");
+// Re-export from io boundary module for backward compatibility
+pub use crate::json_parser::io::health::metrics::{StreamingPattern, StreamingQualityMetrics};
+pub use crate::json_parser::io::health::parser_health::ParserHealth;
+pub use crate::json_parser::io::health::HealthMonitor;
 
 // Tests
 include!("health/tests.rs");

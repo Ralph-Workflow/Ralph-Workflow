@@ -14,28 +14,25 @@ pub struct ConflictResolutionPromptReplay {
 
 /// Attempt to resolve rebase conflicts with AI.
 ///
-/// This function uses the provided `prompt_history` to replay stored prompts
-/// for deterministic resume. Captured prompts are written directly into the
-/// mutable `prompt_history` map so callers can persist them as needed.
+/// This function returns the prompt_history for callers to persist as needed.
 pub fn try_resolve_conflicts(
     conflicted_files: &[String],
     ctx: &ConflictResolutionContext<'_>,
-    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: &str,
     executor: &dyn ProcessExecutor,
-) -> anyhow::Result<(bool, ConflictResolutionPromptReplay)> {
+) -> anyhow::Result<(
+    bool,
+    ConflictResolutionPromptReplay,
+    std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+)> {
     try_resolve_conflicts_with_hook(
         conflicted_files,
         ctx,
-        prompt_history,
         phase,
         executor,
-        |replay, history| {
-            // Default behavior: capture newly generated prompts into the provided history map.
+        |_replay, _captured_entry| {
+            // Default behavior: prompt history is already captured in the returned HashMap.
             // Callers that need custom checkpoint timing can use `try_resolve_conflicts_with_hook`.
-            if let Some(entry) = replay.captured_entry.clone() {
-                history.insert(replay.key.clone(), entry);
-            }
         },
     )
 }
@@ -48,17 +45,22 @@ pub fn try_resolve_conflicts(
 pub fn try_resolve_conflicts_with_hook<F>(
     conflicted_files: &[String],
     ctx: &ConflictResolutionContext<'_>,
-    prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: &str,
     executor: &dyn ProcessExecutor,
     after_prompt_capture: F,
-) -> anyhow::Result<(bool, ConflictResolutionPromptReplay)>
+) -> anyhow::Result<(
+    bool,
+    ConflictResolutionPromptReplay,
+    std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+)>
 where
     F: FnOnce(
         &ConflictResolutionPromptReplay,
-        &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
+        &mut Option<(String, crate::prompts::PromptHistoryEntry)>,
     ),
 {
+    let mut prompt_history = std::collections::HashMap::new();
+    let mut captured_entry_to_insert = None;
     if conflicted_files.is_empty() {
         return Ok((
             false,
@@ -67,6 +69,7 @@ where
                 was_replayed: false,
                 captured_entry: None,
             },
+            prompt_history,
         ));
     }
 
@@ -89,7 +92,7 @@ where
     let prompt_key = scope_key.to_string();
     let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
         &scope_key,
-        prompt_history,
+        &prompt_history,
         Some(&current_content_id),
         || build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
     );
@@ -107,8 +110,11 @@ where
         },
     };
 
-    // Allow callers to checkpoint/capture *before* invoking the agent.
-    after_prompt_capture(&replay, prompt_history);
+    after_prompt_capture(&replay, &mut captured_entry_to_insert);
+
+    if let Some((key, entry)) = captured_entry_to_insert {
+        prompt_history.insert(key, entry);
+    }
 
     let resolved = match run_ai_conflict_resolution(&resolution_prompt, ctx) {
         Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger)?,
@@ -116,7 +122,7 @@ where
         Err(e) => handle_error_resolution(ctx.logger, executor, &e),
     };
 
-    Ok((resolved, replay))
+    Ok((resolved, replay, prompt_history))
 }
 
 fn conflict_resolution_content_id(
@@ -255,23 +261,24 @@ fn run_ai_conflict_resolution(
     resolution_prompt: &str,
     ctx: &ConflictResolutionContext<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {
-    use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
+    use crate::pipeline::{run_with_prompt, PromptCommand};
     use std::path::Path;
 
     let log_dir = ".agent/logs/rebase_conflict_resolution";
     let reviewer_agent = ctx.config.reviewer_agent.as_deref().unwrap_or("codex");
 
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*ctx.executor_arc;
-    let mut runtime = PipelineRuntime {
-        timer: &mut crate::pipeline::Timer::new(),
-        logger: ctx.logger,
-        colors: &ctx.colors,
-        config: ctx.config,
-        executor: executor_ref,
-        executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-        workspace: ctx.workspace,
-        workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-    };
+    let mut timer = crate::app::io::runtime_factory::create_timer();
+    let mut runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
+        &mut timer,
+        ctx.logger,
+        &ctx.colors,
+        ctx.config,
+        executor_ref,
+        std::sync::Arc::clone(&ctx.executor_arc),
+        ctx.workspace,
+        std::sync::Arc::clone(&ctx.workspace_arc),
+    );
 
     ctx.workspace.create_dir_all(Path::new(log_dir))?;
 
@@ -359,16 +366,9 @@ pub fn try_resolve_conflicts_without_phase_ctx(
 
     // Ephemeral prompt history for --rebase-only: prompts are captured for intra-run determinism
     // but not persisted (no checkpoint in this mode).
-    let mut prompt_history = std::collections::HashMap::new();
-
-    let (resolved, _replay) = try_resolve_conflicts(
-        conflicted_files,
-        &ctx,
-        &mut prompt_history,
-        "RebaseOnly",
-        &**executor,
-    )
-    .context("Conflict resolution failed in --rebase-only mode")?;
+    let (resolved, _replay, _prompt_history) =
+        try_resolve_conflicts(conflicted_files, &ctx, "RebaseOnly", &**executor)
+            .context("Conflict resolution failed in --rebase-only mode")?;
 
     Ok(resolved)
 }

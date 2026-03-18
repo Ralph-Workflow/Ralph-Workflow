@@ -92,35 +92,52 @@ const fn libproc_state_indicates_current_activity(
     status == SRUN && cpu_time_ms > 0 && num_running_threads > 0
 }
 
+fn list_child_pids_inner(
+    parent_pid: libc::pid_t,
+    capacity: usize,
+) -> Option<(Vec<u32>, Option<usize>)> {
+    let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
+    let buffer_size = i32::try_from(byte_len).ok()?;
+    let mut buffer = vec![libc::pid_t::default(); capacity];
+
+    let bytes_written = unsafe {
+        proc_listchildpids(
+            parent_pid,
+            buffer.as_mut_ptr().cast::<c_void>(),
+            buffer_size,
+        )
+    };
+    if bytes_written < 0 {
+        return None;
+    }
+    if bytes_written == 0 {
+        return Some((Vec::new(), None));
+    }
+
+    let count = child_pid_entry_count(bytes_written)?;
+    if count < capacity {
+        buffer.truncate(count);
+        let child_pids = buffer
+            .into_iter()
+            .filter_map(|child_pid| u32::try_from(child_pid).ok())
+            .collect();
+        return Some((child_pids, None));
+    }
+
+    Some((Vec::new(), Some(capacity.checked_mul(2)?)))
+}
+
 fn list_child_pids(parent_pid: u32) -> Option<Vec<u32>> {
     let pid = libc::pid_t::try_from(parent_pid).ok()?;
     let mut capacity: usize = 32;
 
     loop {
-        let byte_len = capacity.checked_mul(std::mem::size_of::<libc::pid_t>())?;
-        let buffer_size = i32::try_from(byte_len).ok()?;
-        let mut buffer = vec![libc::pid_t::default(); capacity];
-
-        let bytes_written =
-            unsafe { proc_listchildpids(pid, buffer.as_mut_ptr().cast::<c_void>(), buffer_size) };
-        if bytes_written < 0 {
-            return None;
+        let result = list_child_pids_inner(pid, capacity)?;
+        if let Some(next) = result.1 {
+            capacity = next;
+        } else {
+            return Some(result.0);
         }
-        if bytes_written == 0 {
-            return Some(Vec::new());
-        }
-
-        let count = child_pid_entry_count(bytes_written)?;
-        if count < capacity {
-            buffer.truncate(count);
-            let child_pids = buffer
-                .into_iter()
-                .filter_map(|child_pid| u32::try_from(child_pid).ok())
-                .collect();
-            return Some(child_pids);
-        }
-
-        capacity = capacity.checked_mul(2)?;
     }
 }
 
@@ -190,6 +207,16 @@ fn fetch_task_info(pid: u32) -> Option<ProcTaskInfo> {
 }
 
 pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
+    let descendants = discover_descendants_via_libproc(parent_pid)?;
+
+    if descendants.is_empty() {
+        return None;
+    }
+
+    compute_libproc_child_info(parent_pid, &descendants)
+}
+
+fn discover_descendants_via_libproc(parent_pid: u32) -> Option<Vec<u32>> {
     let mut descendants = Vec::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
@@ -205,26 +232,25 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         }
     }
 
-    if descendants.is_empty() {
-        return None;
-    }
-
     descendants.sort_unstable();
+    Some(descendants)
+}
 
+fn compute_libproc_child_info(parent_pid: u32, descendants: &[u32]) -> Option<ChildProcessInfo> {
     let mut child_count: u32 = 0;
     let mut active_child_count: u32 = 0;
     let mut total_cpu_ms: u64 = 0;
     let mut qualifying_descendants = Vec::new();
 
     for descendant_pid in descendants {
-        let Some(bsd_info) = fetch_bsd_short_info(descendant_pid) else {
+        let Some(bsd_info) = fetch_bsd_short_info(*descendant_pid) else {
             continue;
         };
         if bsd_info.process_group_id != parent_pid || !qualifies_libproc_status(bsd_info.status) {
             continue;
         }
 
-        let task_info = fetch_task_info(descendant_pid);
+        let task_info = fetch_task_info(*descendant_pid);
         let cpu_time_ms = task_info.as_ref().map_or(0, |info| {
             (info.total_user_time + info.total_system_time) / 1_000_000
         });
@@ -243,7 +269,7 @@ pub fn child_info_from_libproc(parent_pid: u32) -> Option<ChildProcessInfo> {
         if counts_as_current_activity {
             active_child_count = active_child_count.saturating_add(1);
         }
-        qualifying_descendants.push(descendant_pid);
+        qualifying_descendants.push(*descendant_pid);
     }
 
     if child_count == 0 {

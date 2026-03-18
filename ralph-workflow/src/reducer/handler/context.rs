@@ -179,12 +179,17 @@ impl MainEffectHandler {
         }
 
         let event = PipelineEvent::prompt_permissions_restored();
-        let mut result = EffectResult::event(event);
+        let warning = make_prompt_writable_with_workspace(ctx.workspace);
 
-        if let Some(msg) = warning {
-            result = result
-                .with_additional_event(PipelineEvent::prompt_permissions_restore_warning(msg));
+        if let Some(ref msg) = warning {
+            ctx.logger.warn(msg);
         }
+
+        let result = EffectResult::event(event).maybe_with_additional_event(
+            warning
+                .as_ref()
+                .map(|msg| PipelineEvent::prompt_permissions_restore_warning(msg.clone())),
+        );
 
         if self.state.phase == PipelinePhase::Finalizing {
             return result.with_ui_event(self.phase_transition_ui(PipelinePhase::Complete));
@@ -390,57 +395,37 @@ impl MainEffectHandler {
             String::new()
         };
 
-        // Check which entries are missing
-        let mut entries_added = Vec::new();
-        let mut already_present = Vec::new();
+        let (already_present, entries_added): (Vec<_>, Vec<_>) =
+            required_entries.partition(|pattern| entry_exists(&existing_content, pattern));
 
-        for pattern in &required_entries {
-            if entry_exists(&existing_content, pattern) {
-                already_present.push(pattern.to_string());
-            } else {
-                entries_added.push(pattern.to_string());
-            }
-        }
+        let entries_added: Vec<String> = entries_added.into_iter().map(String::from).collect();
 
-        // If any entries are missing, update .gitignore
         if entries_added.is_empty() {
             ctx.logger
                 .info("All required .gitignore entries already present");
         } else {
-            let mut new_content = existing_content;
+            let suffix = if existing_content.is_empty() || existing_content.ends_with('\n') {
+                String::new()
+            } else {
+                "\n".to_string()
+            };
+            let entries_str = format!(
+                "# Ralph-workflow artifacts (auto-generated)\n{}\n",
+                entries_added.join("\n")
+            );
+            let new_content = format!("{existing_content}{suffix}{entries_str}");
 
-            // Ensure content ends with newline if not empty
-            if !new_content.is_empty() && !new_content.ends_with('\n') {
-                new_content.push('\n');
-            }
+            let written = ctx.workspace.write(gitignore_path, &new_content).is_ok();
 
-            // Add comment header and new entries
-            if !new_content.is_empty() {
-                new_content.push('\n');
-            }
-            new_content.push_str("# Ralph-workflow artifacts (auto-generated)\n");
-            for entry in &entries_added {
-                new_content.push_str(entry);
-                new_content.push('\n');
-            }
-
-            // Write updated content
-            match ctx.workspace.write(gitignore_path, &new_content) {
-                Ok(()) => {
-                    ctx.logger.success(&format!(
-                        "Added {} entries to .gitignore: {}",
-                        entries_added.len(),
-                        entries_added.join(", ")
-                    ));
-                }
-                Err(err) => {
-                    // Log warning but don't fail pipeline
-                    ctx.logger.warn(&format!(
-                        "Failed to write .gitignore (continuing anyway): {err}"
-                    ));
-                    // Clear entries_added since write failed
-                    entries_added.clear();
-                }
+            if written {
+                ctx.logger.success(&format!(
+                    "Added {} entries to .gitignore: {}",
+                    entries_added.len(),
+                    entries_added.join(", ")
+                ));
+            } else {
+                ctx.logger
+                    .warn(&format!("Failed to write .gitignore (continuing anyway)"));
             }
         }
 

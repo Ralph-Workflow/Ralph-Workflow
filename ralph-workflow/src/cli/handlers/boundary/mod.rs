@@ -8,4 +8,5 @@
 
 pub mod diagnose;
 pub mod io;
+pub mod template_selection;
 pub mod terminal;

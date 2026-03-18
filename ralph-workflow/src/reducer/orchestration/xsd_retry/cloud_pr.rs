@@ -47,63 +47,58 @@ fn try_render_cloud_pr_template(
 }
 
 fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
-    // Supported placeholders are documented as {run_id} and {prompt_summary}.
-    // We render them using the existing template engine's {{var}} syntax.
     const ALLOWED: [&str; 2] = ["run_id", "prompt_summary"];
 
-    let mut out = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
+    fn parse_char_by_char(chars: &[char], pos: usize) -> Option<String> {
+        if pos >= chars.len() {
+            return Some(String::new());
+        }
 
-    while let Some(ch) = chars.next() {
+        let ch = chars[pos];
+
         if ch != '{' {
-            out.push(ch);
-            continue;
+            let mut rest = parse_char_by_char(chars, pos + 1)?;
+            rest.push(ch);
+            return Some(rest);
         }
 
-        // Preserve template-engine escapes/variables like {{run_id}}.
-        if chars.peek() == Some(&'{') {
-            out.push('{');
-            out.push('{');
-            let _ = chars.next();
-            continue;
+        if pos + 1 < chars.len() && chars[pos + 1] == '{' {
+            let mut rest = parse_char_by_char(chars, pos + 2)?;
+            rest.push_str("{{");
+            return Some(rest);
         }
 
-        let mut name = String::new();
-        while let Some(&next) = chars.peek() {
-            if next == '}' {
-                break;
+        let name_end = chars[pos..]
+            .iter()
+            .position(|&c| c == '}')
+            .map(|offset| pos + offset);
+
+        let name: String = match name_end {
+            Some(end) => chars[pos..end].iter().collect(),
+            None => {
+                let mut rest = parse_char_by_char(chars, pos + 1)?;
+                rest.insert(0, '{');
+                return Some(rest);
             }
-            name.push(next);
-            let _ = chars.next();
-        }
-
-        // No closing brace; treat as literal.
-        if chars.peek() != Some(&'}') {
-            out.push('{');
-            out.push_str(&name);
-            continue;
-        }
-        let _ = chars.next();
+        };
 
         let trimmed = name.trim();
-        if is_simple_placeholder_name(trimmed) {
-            if ALLOWED.contains(&trimmed) {
-                out.push_str("{{");
-                out.push_str(trimmed);
-                out.push_str("}}");
-            } else {
-                // Fail-fast: unknown placeholders must not pass through verbatim.
-                return None;
-            }
+        let replacement = if is_simple_placeholder_name(trimmed) && ALLOWED.contains(&trimmed) {
+            format!("{{{{{}}}}}", trimmed)
+        } else if is_simple_placeholder_name(trimmed) {
+            return None;
         } else {
-            // Not a placeholder shape; keep original braces.
-            out.push('{');
-            out.push_str(&name);
-            out.push('}');
-        }
+            format!("{{{}}}", name)
+        };
+
+        let end = name_end.unwrap() + 1;
+        let mut rest = parse_char_by_char(chars, end)?;
+        rest.push_str(&replacement);
+        Some(rest)
     }
 
-    Some(out)
+    let chars: Vec<char> = input.chars().collect();
+    parse_char_by_char(&chars, 0)
 }
 
 fn is_simple_placeholder_name(s: &str) -> bool {

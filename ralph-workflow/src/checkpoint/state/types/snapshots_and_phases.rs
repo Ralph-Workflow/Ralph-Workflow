@@ -33,9 +33,7 @@ fn checkpoint_path() -> String {
 /// This is the core checksum calculation used by both file-based and
 /// workspace-based checksum functions.
 pub(crate) fn calculate_checksum_from_bytes(content: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content);
-    format!("{:x}", hasher.finalize())
+    format!("{:x}", Sha256::digest(content))
 }
 
 /// Snapshot of CLI arguments for exact restoration.
@@ -321,7 +319,7 @@ impl EnvironmentSnapshot {
     /// Capture the current environment variables relevant to Ralph.
     #[must_use]
     pub fn capture_current() -> Self {
-        Self::from_env_vars(std::env::vars())
+        crate::checkpoint::runtime::capture_environment()
     }
 }
 

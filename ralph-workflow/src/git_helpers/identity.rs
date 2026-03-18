@@ -46,31 +46,51 @@ impl GitIdentity {
     ///
     /// Returns error if the operation fails.
     pub fn validate(&self) -> Result<(), String> {
-        if self.name.trim().is_empty() {
-            return Err("Git user name cannot be empty".to_string());
-        }
-        if self.email.trim().is_empty() {
-            return Err("Git user email cannot be empty".to_string());
-        }
-        // Basic email validation - check for @ and at least one . after @
-        let email = self.email.trim();
-        if !email.contains('@') {
-            return Err(format!("Invalid email format: '{email}'"));
-        }
-        let parts: Vec<&str> = email.split('@').collect();
-        if parts.len() != 2 {
-            return Err(format!("Invalid email format: '{email}'"));
-        }
-        if parts[0].trim().is_empty() {
-            return Err(format!(
-                "Invalid email format: '{email}' (missing local part)"
-            ));
-        }
-        if parts[1].trim().is_empty() || !parts[1].contains('.') {
-            return Err(format!("Invalid email format: '{email}' (invalid domain)"));
-        }
-        Ok(())
+        validate_git_identity_fields(&self.name, &self.email)
     }
+}
+
+/// Pure validation of git identity name and email fields.
+fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("Git user name cannot be empty".to_string());
+    }
+    if email.trim().is_empty() {
+        return Err("Git user email cannot be empty".to_string());
+    }
+    let email = email.trim();
+    if !email.contains('@') {
+        return Err(format!("Invalid email format: '{email}'"));
+    }
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid email format: '{email}'"));
+    }
+    if parts[0].trim().is_empty() {
+        return Err(format!(
+            "Invalid email format: '{email}' (missing local part)"
+        ));
+    }
+    if parts[1].trim().is_empty() || !parts[1].contains('.') {
+        return Err(format!("Invalid email format: '{email}' (invalid domain)"));
+    }
+    Ok(())
+}
+
+/// Pure policy: choose username from available sources.
+fn choose_username(env_username: Option<String>, whoami_output: Option<String>) -> String {
+    if let Some(user) = env_username {
+        if !user.is_empty() {
+            return user;
+        }
+    }
+    if let Some(output) = whoami_output {
+        let username = output.trim().to_string();
+        if !username.is_empty() {
+            return username;
+        }
+    }
+    "Unknown User".to_string()
 }
 
 /// Get the system username as a fallback.
@@ -80,59 +100,55 @@ impl GitIdentity {
 /// - On Windows: `%USERNAME%` env var
 #[must_use]
 pub fn fallback_username(executor: Option<&dyn ProcessExecutor>) -> String {
-    // Try environment variables first (fastest) - uses runtime function
-    if let Some(user) = get_system_username() {
-        return user;
-    }
+    let env_username = get_system_username();
+    let whoami_output = if cfg!(unix) {
+        executor.and_then(|exec| {
+            exec.execute("whoami", &[], &[], None)
+                .ok()
+                .map(|o| o.stdout)
+        })
+    } else {
+        None
+    };
+    choose_username(env_username, whoami_output)
+}
 
-    // As a last resort, try to run whoami (Unix only)
-    if cfg!(unix) {
-        if let Some(exec) = executor {
-            if let Ok(output) = exec.execute("whoami", &[], &[], None) {
-                let username = output.stdout.trim().to_string();
-                if !username.is_empty() {
-                    return username;
-                }
-            }
+/// Pure policy: choose hostname from available sources.
+fn choose_hostname(
+    env_hostname: Option<String>,
+    hostname_output: Option<String>,
+) -> Option<String> {
+    if let Some(host) = env_hostname {
+        if !host.is_empty() {
+            return Some(host);
         }
     }
-
-    // Ultimate fallback
-    "Unknown User".to_string()
+    hostname_output.filter(|h| !h.is_empty())
 }
 
 /// Get a fallback email based on the username.
-///
-/// Format: `{username}@{hostname}` or `{username}@localhost`
 #[must_use]
 pub fn fallback_email(username: &str, executor: Option<&dyn ProcessExecutor>) -> String {
-    // Try to get hostname
-    let hostname = match get_hostname(executor) {
-        Some(host) if !host.is_empty() => host,
-        _ => "localhost".to_string(),
-    };
+    let hostname = resolve_hostname_impl(executor);
+    let host = hostname.unwrap_or_else(|| "localhost".to_string());
+    format!("{username}@{host}")
+}
 
-    format!("{username}@{hostname}")
+/// Internal hostname resolution.
+fn resolve_hostname_impl(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
+    let env_hostname = get_system_hostname();
+    let hostname_output = executor.and_then(|exec| {
+        exec.execute("hostname", &[], &[], None)
+            .ok()
+            .map(|o| o.stdout.trim().to_string())
+    });
+    choose_hostname(env_hostname, hostname_output)
 }
 
 /// Get the system hostname.
+#[cfg(test)]
 fn get_hostname(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
-    // Try HOSTNAME environment variable first (fastest) - uses runtime function
-    if let Some(hostname) = get_system_hostname() {
-        return Some(hostname);
-    }
-
-    // Try the `hostname` command
-    if let Some(exec) = executor {
-        if let Ok(output) = exec.execute("hostname", &[], &[], None) {
-            let hostname = output.stdout.trim().to_string();
-            if !hostname.is_empty() {
-                return Some(hostname);
-            }
-        }
-    }
-
-    None
+    resolve_hostname_impl(executor)
 }
 
 /// Get the default git identity (last resort).

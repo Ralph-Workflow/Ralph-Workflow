@@ -8,3 +8,6 @@
 //! As a boundary module, it is exempt from functional programming lints.
 
 pub mod effect_handler;
+pub mod env_access;
+pub mod runtime_factory;
+pub mod terminal;

@@ -32,9 +32,7 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
     config_path: &std::path::Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<ConfigSource>)> {
-    let mut registry = AgentRegistry::new().map_err(|e| {
-        anyhow::anyhow!("Failed to load built-in default agents config (examples/agents.toml): {e}")
-    })?;
+    let mut registry = crate::app::io::runtime_factory::create_agent_registry()?;
 
     // Agent configuration is loaded ONLY from:
     // 1. Built-in defaults (from AgentRegistry::new())

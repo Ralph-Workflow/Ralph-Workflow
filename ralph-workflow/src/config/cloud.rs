@@ -3,7 +3,7 @@
 //! This module defines the cloud runtime configuration and git remote types
 //! used when Ralph is running in cloud-hosted mode.
 
-pub use super::cloud_boundary::load_cloud_config_from_env;
+pub use super::boundary::cloud::load_cloud_config_from_env;
 
 /// Cloud runtime configuration (internal).
 ///

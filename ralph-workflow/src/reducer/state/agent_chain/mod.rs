@@ -384,63 +384,47 @@ impl AgentChainState {
     /// It changes only when the configured consumer set changes.
     #[must_use]
     pub fn consumer_signature_sha256(&self) -> String {
-        let mut pairs: Vec<(&str, &[String])> = self
+        use itertools::Itertools;
+
+        let sorted_pairs: Vec<(String, Vec<String>)> = self
             .agents
             .iter()
             .enumerate()
             .map(|(idx, agent)| {
-                let models: &[String] = self
+                let models: Vec<String> = self
                     .models_per_agent
                     .get(idx)
-                    .map_or([].as_slice(), std::vec::Vec::as_slice);
-                (agent.as_str(), models)
+                    .map_or_else(Vec::new, |m| m.clone());
+                (agent.clone(), models)
             })
+            .sorted_by_key(|(agent, models)| (agent.clone(), models.clone()))
             .collect();
 
-        // Sort so the signature is stable even if callers reorder the configured
-        // consumer set.
-        pairs.sort_by(|(agent_a, models_a), (agent_b, models_b)| {
-            use std::cmp::Ordering;
-
-            let agent_ord = agent_a.cmp(agent_b);
-            if agent_ord != Ordering::Equal {
-                return agent_ord;
-            }
-
-            for (a, b) in models_a.iter().zip(models_b.iter()) {
-                let ord = a.cmp(b);
-                if ord != Ordering::Equal {
-                    return ord;
-                }
-            }
-
-            models_a.len().cmp(&models_b.len())
-        });
-
         let mut hasher = Sha256::new();
-        hasher.update(agent_drain_signature_tag(self.current_drain));
-        for (agent, models) in pairs {
-            hasher.update(agent.as_bytes());
-            hasher.update(b"|");
+        hasher = Digest::chain_update(hasher, agent_drain_signature_tag(self.current_drain));
+        for (agent, models) in &sorted_pairs {
+            hasher = Digest::chain_update(hasher, agent.as_bytes());
+            hasher = Digest::chain_update(hasher, b"|");
             for (idx, model) in models.iter().enumerate() {
                 if idx > 0 {
-                    hasher.update(b",");
+                    hasher = Digest::chain_update(hasher, b",");
                 }
-                hasher.update(model.as_bytes());
+                hasher = Digest::chain_update(hasher, model.as_bytes());
             }
-            hasher.update(b"\n");
+            hasher = Digest::chain_update(hasher, b"\n");
         }
         let digest = hasher.finalize();
-        digest.iter().fold(String::new(), |mut s, b| {
-            use std::fmt::Write;
-            write!(&mut s, "{b:02x}").unwrap();
-            s
-        })
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     }
 
     #[cfg(test)]
     fn legacy_consumer_signature_sha256_for_test(&self) -> String {
-        let mut rendered: Vec<String> = self
+        use itertools::Itertools;
+
+        let rendered: Vec<String> = self
             .agents
             .iter()
             .enumerate()
@@ -451,22 +435,20 @@ impl AgentChainState {
                     .map_or([].as_slice(), std::vec::Vec::as_slice);
                 format!("{}|{}", agent, models.join(","))
             })
+            .sorted()
             .collect();
 
-        rendered.sort();
-
         let mut hasher = Sha256::new();
-        hasher.update(agent_drain_signature_tag(self.current_drain));
+        hasher = Digest::chain_update(hasher, agent_drain_signature_tag(self.current_drain));
         for line in rendered {
-            hasher.update(line.as_bytes());
-            hasher.update(b"\n");
+            hasher = Digest::chain_update(hasher, line.as_bytes());
+            hasher = Digest::chain_update(hasher, b"\n");
         }
         let digest = hasher.finalize();
-        digest.iter().fold(String::new(), |mut s, b| {
-            use std::fmt::Write;
-            write!(&mut s, "{b:02x}").unwrap();
-            s
-        })
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     }
 
     /// Get the currently selected model for the current agent.

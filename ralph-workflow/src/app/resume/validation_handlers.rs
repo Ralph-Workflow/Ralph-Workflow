@@ -54,10 +54,10 @@ pub fn handle_resume_with_validation(
     // Handle --inspect-checkpoint flag
     if args.recovery.inspect_checkpoint {
         match inspect_checkpoint(workspace, logger) {
-            Ok(()) => std::process::exit(0),
+            Ok(()) => crate::app::io::env_access::exit_with_code(0),
             Err(err) => {
                 logger.error(&err.to_string());
-                std::process::exit(1);
+                crate::app::io::env_access::exit_with_code(1);
             }
         }
     }

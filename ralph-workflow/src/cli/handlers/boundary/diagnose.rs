@@ -9,17 +9,14 @@
 
 use crate::agents::{AgentRegistry, ConfigSource};
 use crate::checkpoint::load_checkpoint_with_workspace;
-use crate::cli::diagnostics_domain::{self, ConfigExistsStatus, GitCommandPlan, GitDiagnostics};
+use crate::cli::diagnostics_domain::{self, GitCommandPlan, GitDiagnostics};
 use crate::config::Config;
 use crate::diagnostics::run_diagnostics;
 use crate::executor::ProcessExecutor;
-use crate::guidelines::{CheckSeverity, ReviewGuidelines};
-use crate::language_detector;
 use crate::logger::Colors;
 use crate::workspace::Workspace;
-use itertools::Itertools;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Groups config path and sources together to reduce function argument count.
 pub struct ConfigInfo<'a> {
@@ -155,13 +152,7 @@ fn collect_git_info(executor: &dyn ProcessExecutor) -> GitDiagnostics {
             branch: None,
             uncommitted_changes: None,
         },
-        GitCommandPlan::VersionOnly => GitDiagnostics {
-            version,
-            is_repo: false,
-            branch: None,
-            uncommitted_changes: None,
-        },
-        GitCommandPlan::Partial | GitCommandPlan::Full => {
+        GitCommandPlan::Full => {
             let is_repo = executor
                 .execute("git", &["rev-parse", "--git-dir"], &[], None)
                 .map(|o| o.status.success())
@@ -217,37 +208,15 @@ fn write_config_info<W: Write>(
     workspace: &dyn Workspace,
 ) {
     let _ = writeln!(writer, "{}Configuration:{}", colors.bold(), colors.reset());
-    let _ = writeln!(writer, "  Unified config: {}", config_path.display());
-
-    // Use pure domain function to determine config exists status
-    let exists_status = diagnostics_domain::determine_config_exists(
-        config_path.is_absolute(),
-        workspace,
+    let lines = diagnostics_domain::format_config_section_lines(
+        config,
         config_path,
+        config_sources,
+        workspace,
     );
-    let exists_str = match exists_status {
-        ConfigExistsStatus::Yes => "yes",
-        ConfigExistsStatus::No => "no",
-        ConfigExistsStatus::Unknown(s) => &s,
-    };
-    let _ = writeln!(writer, "  Config exists: {exists_str}");
-    let _ = writeln!(
-        writer,
-        "  Review depth: {:?} ({})",
-        config.review_depth,
-        config.review_depth.description()
-    );
-    if !config_sources.is_empty() {
-        let _ = writeln!(writer, "  Loaded sources:");
-        for src in config_sources {
-            let _ = writeln!(
-                writer,
-                "    - {} ({} agents)",
-                src.path.display(),
-                src.agents_loaded
-            );
-        }
-    }
+    lines.into_iter().for_each(|line| {
+        let _ = writeln!(writer, "{line}");
+    });
     let _ = writeln!(writer);
 }
 
@@ -281,68 +250,20 @@ fn write_agent_availability<W: Write>(writer: &mut W, colors: Colors, registry: 
         colors.bold(),
         colors.reset()
     );
-
-    // Use pure domain function to get sorted agent availability
-    let agents = diagnostics_domain::get_sorted_agent_availability(registry);
-
-    for agent in agents {
-        let status_color = if agent.available {
-            colors.green()
-        } else {
-            colors.red()
-        };
-        let status_icon = if agent.available { "✓" } else { "✗" };
-        let _ = writeln!(
-            writer,
-            "  {}{}{} {} (parser: {}, cmd: {})",
-            status_color,
-            status_icon,
-            colors.reset(),
-            agent.name,
-            agent.json_parser,
-            agent
-                .command
-                .split_whitespace()
-                .next()
-                .unwrap_or(&agent.command)
-        );
-    }
+    let lines = diagnostics_domain::format_agent_availability_section(registry);
+    lines.into_iter().for_each(|line| {
+        let _ = writeln!(writer, "{line}");
+    });
     let _ = writeln!(writer);
 }
 
 /// Write PROMPT.md status section.
 fn write_prompt_status<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
     let _ = writeln!(writer, "{}PROMPT.md:{}", colors.bold(), colors.reset());
-    let prompt_path = Path::new("PROMPT.md");
-    if workspace.exists(prompt_path) {
-        if let Ok(content) = workspace.read(prompt_path) {
-            // Use pure domain function to analyze content
-            let analysis = diagnostics_domain::analyze_prompt_content(&content);
-            let _ = writeln!(writer, "  Exists: yes");
-            let _ = writeln!(writer, "  Size: {} bytes", analysis.size_bytes.unwrap_or(0));
-            let _ = writeln!(writer, "  Lines: {}", analysis.line_count.unwrap_or(0));
-            let _ = writeln!(
-                writer,
-                "  Has Goal section: {}",
-                if analysis.has_goal_section {
-                    "yes"
-                } else {
-                    "no"
-                }
-            );
-            let _ = writeln!(
-                writer,
-                "  Has Acceptance section: {}",
-                if analysis.has_acceptance_section {
-                    "yes"
-                } else {
-                    "no"
-                }
-            );
-        }
-    } else {
-        let _ = writeln!(writer, "  Exists: no");
-    }
+    let lines = diagnostics_domain::format_prompt_status_section(workspace);
+    lines.into_iter().for_each(|line| {
+        let _ = writeln!(writer, "{line}");
+    });
     let _ = writeln!(writer);
 }
 
@@ -370,109 +291,27 @@ fn write_checkpoint_status<W: Write>(writer: &mut W, colors: Colors, workspace: 
 /// Write project stack detection section.
 fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
     let _ = writeln!(writer, "{}Project Stack:{}", colors.bold(), colors.reset());
-    match language_detector::detect_stack(workspace.root()) {
-        Ok(stack) => {
-            let _ = writeln!(writer, "  Primary language: {}", stack.primary_language);
-            if !stack.secondary_languages.is_empty() {
-                let _ = writeln!(
-                    writer,
-                    "  Secondary languages: {:?}",
-                    stack.secondary_languages
-                );
-            }
-            if !stack.frameworks.is_empty() {
-                let _ = writeln!(writer, "  Frameworks: {:?}", stack.frameworks);
-            }
-            if let Some(pm) = &stack.package_manager {
-                let _ = writeln!(writer, "  Package manager: {pm}");
-            }
-            if let Some(tf) = &stack.test_framework {
-                let _ = writeln!(writer, "  Test framework: {tf}");
-            }
-
-            let language_types: Vec<&str> = [
-                if stack.is_rust() { Some("Rust") } else { None },
-                if stack.is_python() {
-                    Some("Python")
-                } else {
-                    None
-                },
-                if stack.is_javascript_or_typescript() {
-                    Some("JS/TS")
-                } else {
-                    None
-                },
-                if stack.is_go() { Some("Go") } else { None },
-            ]
-            .into_iter()
-            .flatten()
-            .collect();
-            if !language_types.is_empty() {
-                let _ = writeln!(writer, "  Language flags: {}", language_types.join(", "));
-            }
-
-            let guidelines = ReviewGuidelines::for_stack(&stack);
-            let _ = writeln!(
-                writer,
-                "  Review checks: {} total",
-                guidelines.total_checks()
-            );
-
-            let all_checks = guidelines.get_all_checks();
-            let critical_count = all_checks
-                .iter()
-                .filter(|c| matches!(c.severity, CheckSeverity::Critical))
-                .count();
-            let high_count = all_checks
-                .iter()
-                .filter(|c| matches!(c.severity, CheckSeverity::High))
-                .count();
-            if critical_count > 0 || high_count > 0 {
-                let _ = writeln!(
-                    writer,
-                    "  Check severities: {critical_count} critical, {high_count} high"
-                );
-            }
-
-            let critical_checks: Vec<_> = all_checks
-                .iter()
-                .filter(|c| matches!(c.severity, CheckSeverity::Critical))
-                .take(3)
-                .collect();
-            if !critical_checks.is_empty() {
-                let _ = writeln!(writer, "  Critical checks (sample):");
-                for check in critical_checks {
-                    let _ = writeln!(writer, "    - {}", check.check);
-                }
-            }
-        }
-        Err(e) => {
-            let _ = writeln!(writer, "  Detection failed: {e}");
-        }
-    }
+    let lines = diagnostics_domain::format_project_stack_section(workspace);
+    lines.into_iter().for_each(|line| {
+        let _ = writeln!(writer, "{line}");
+    });
     let _ = writeln!(writer);
 }
 
 /// Write recent log entries section.
 fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
-    let log_path = crate::checkpoint::load_checkpoint_with_workspace(workspace)
-        .ok()
-        .flatten()
-        .map_or_else(
-            || {
-                find_latest_run_log_directory(workspace)
-                    .unwrap_or_else(|| PathBuf::from(".agent/logs/pipeline.log"))
-            },
-            |checkpoint| {
-                checkpoint.log_run_id.map_or_else(
-                    || {
-                        find_latest_run_log_directory(workspace)
-                            .unwrap_or_else(|| PathBuf::from(".agent/logs/pipeline.log"))
-                    },
-                    |log_run_id| PathBuf::from(format!(".agent/logs-{log_run_id}/pipeline.log")),
-                )
-            },
-        );
+    let log_path = match diagnostics_domain::find_log_path(workspace) {
+        Some(p) => p,
+        None => {
+            let _ = writeln!(
+                writer,
+                "{}No log file found{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            return;
+        }
+    };
 
     if workspace.exists(&log_path) {
         let _ = writeln!(
@@ -482,11 +321,10 @@ fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn W
             colors.reset()
         );
         if let Ok(content) = workspace.read(&log_path) {
-            let lines: Vec<&str> = content.lines().collect();
-            let start = lines.len().saturating_sub(10);
-            for line in &lines[start..] {
-                let _ = writeln!(writer, "  {line}");
-            }
+            let lines = diagnostics_domain::format_recent_log_lines(&content);
+            lines.into_iter().for_each(|line| {
+                let _ = writeln!(writer, "{line}");
+            });
         }
     } else {
         let _ = writeln!(
@@ -496,34 +334,4 @@ fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn W
             colors.reset()
         );
     }
-}
-
-/// Find the latest run log directory by lexicographic sort.
-///
-/// Returns None if no run directories were found.
-fn find_latest_run_log_directory(workspace: &dyn Workspace) -> Option<PathBuf> {
-    let agent_dir = Path::new(".agent");
-    if !workspace.is_dir(agent_dir) {
-        return None;
-    }
-
-    let entries = workspace.read_dir(agent_dir).ok()?;
-
-    entries
-        .into_iter()
-        .filter(|entry| {
-            entry
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|s| s.starts_with("logs-") && entry.is_dir())
-        })
-        .filter_map(|entry| {
-            entry
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(std::string::ToString::to_string)
-        })
-        .sorted()
-        .last()
-        .map(|dir_name| PathBuf::from(format!(".agent/{dir_name}/pipeline.log")))
 }

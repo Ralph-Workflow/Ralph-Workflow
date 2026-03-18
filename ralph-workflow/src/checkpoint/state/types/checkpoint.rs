@@ -290,6 +290,26 @@ impl PipelineCheckpoint {
         }
     }
 
+    /// Apply recovery state from pipeline state.
+    #[must_use]
+    pub fn with_recovery_state(mut self, state: &crate::reducer::state::PipelineState) -> Self {
+        self.dev_fix_attempt_count = state.dev_fix_attempt_count;
+        self.recovery_epoch = state.recovery_epoch;
+        self.recovery_escalation_level = state.recovery_escalation_level;
+        self.failed_phase_for_recovery = state.failed_phase_for_recovery;
+        self.interrupted_by_user = state.interrupted_by_user;
+        self.commit_is_second_pass = state.commit_residual_retry_pass == 2;
+        self.commit_residual_retry_pass = state.commit_residual_retry_pass;
+        self.commit_selected_files = state.commit_selected_files.clone();
+        self.commit_excluded_files = state.commit_excluded_files.clone();
+        self.commit_residual_files = state.commit_residual_files.clone();
+        if state.cloud.enabled {
+            self.cloud_state =
+                Some(crate::checkpoint::state::CloudCheckpointState::from_pipeline_state(state));
+        }
+        self
+    }
+
     /// Get a human-readable description of the checkpoint.
     ///
     /// Returns a string describing the current phase and progress,

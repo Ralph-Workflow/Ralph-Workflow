@@ -98,13 +98,13 @@ fn run_event_loop_with_default_handler(
     initial_state: crate::reducer::PipelineState,
 ) -> anyhow::Result<crate::app::runtime::EventLoopResult> {
     use crate::app::runtime::{run_event_loop_with_handler, EventLoopConfig};
-    use crate::reducer::MainEffectHandler;
 
     let event_loop_config = EventLoopConfig {
         max_iterations: runtime::MAX_EVENT_LOOP_ITERATIONS,
     };
 
-    let mut handler = MainEffectHandler::new(initial_state.clone());
+    let mut handler =
+        crate::app::io::runtime_factory::create_main_effect_handler(initial_state.clone());
     run_event_loop_with_handler(
         phase_ctx,
         Some(initial_state),

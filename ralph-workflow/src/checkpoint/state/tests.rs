@@ -2,6 +2,8 @@
 //
 // Split into topic-specific test modules for maintainability.
 
+use crate::checkpoint::EnvironmentSnapshot;
+
 // =========================================================================
 // Environment snapshot tests
 // =========================================================================

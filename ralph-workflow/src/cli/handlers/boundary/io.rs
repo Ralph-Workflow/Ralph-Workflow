@@ -16,10 +16,6 @@ pub fn write(path: &Path, contents: &str) -> io::Result<()> {
     fs::write(path, contents)
 }
 
-pub fn read_to_string(path: &Path) -> io::Result<String> {
-    fs::read_to_string(path)
-}
-
 pub fn exists(path: &Path) -> bool {
     path.exists()
 }

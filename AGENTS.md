@@ -29,9 +29,11 @@ Run `docs/agents/verification.md` before completion. Zero ERROR/WARNING required
 ---
 
 ## Lint Policy (Strict)
-- **`#[allow(...)]` — Never.** Zero exceptions. Use `#[expect(..., reason = "...")]` only for external proc-macro output.
-- **`.expect()`/`.unwrap()` — Forbidden** except at: `test-helpers/src/lib.rs`, `xtask/src/main.rs`, `ralph-gui/src/main.rs`, boundary modules (`io/`, `runtime/`).
+- **`#[allow(...)]` macro — Forbidden.** Zero exceptions. Use `#[expect(..., reason = "...")]` only for external proc-macro output.
+- **`.expect()`/`.unwrap()` — Forbidden** except at: `test-helpers/src/lib.rs`, `xtask/src/main.rs`, `ralph-gui/src/main.rs`, boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`).
 - **Functional lints:** Never suppress. Don't fake a boundary module just to silence a lint.
+- Check compliance: `cargo xtask lsp-forbidden-allow-expect`
+- See `docs/agents/verification.md` for `#[allow]`/`#[expect]` enforcement; `docs/tooling/dylint.md` for boundary module definitions.
 
 ---
 

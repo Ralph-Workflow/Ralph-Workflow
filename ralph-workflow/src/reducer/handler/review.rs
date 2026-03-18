@@ -16,7 +16,6 @@ use crate::reducer::state::{
 use crate::reducer::ui_event::{UIEvent, XmlCodeSnippet, XmlOutputContext, XmlOutputType};
 use anyhow::Result;
 use regex::Regex;
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::OnceLock;
 

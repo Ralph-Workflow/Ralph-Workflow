@@ -37,10 +37,9 @@
 // - Do NOT contain retry loops (orchestrator controls retries)
 
 // Re-export imports from parent module so included files have access
-use std::fmt::Write;
 
 use super::{
-    sha256_hex_str, xml_paths, AgentEvent, DiffContentReference, EffectResult, ErrorEvent, HashSet,
+    sha256_hex_str, xml_paths, AgentEvent, DiffContentReference, EffectResult, ErrorEvent,
     MainEffectHandler, MaterializedPromptInput, OnceLock, Path, PhaseContext, PipelineEvent,
     PlanContentReference, PromptContentReferences, PromptInputKind, PromptInputRepresentation,
     PromptMaterializationReason, PromptMode, Regex, Result, UIEvent, WorkspaceIoErrorKind,

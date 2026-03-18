@@ -3,184 +3,87 @@
 //! This module handles all filesystem operations for language detection.
 //! The pure detection logic lives in the parent module.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::workspace::Workspace;
 
+use super::scanner::{self, ScanItem, ScanResult, SearchResult};
 use super::signatures::SignatureFiles;
-
-pub(super) struct DetectedFrameworks {
-    pub(super) frameworks: Vec<String>,
-    pub(super) test_frameworks: Vec<String>,
-    pub(super) package_managers: Vec<String>,
-}
-
-impl DetectedFrameworks {
-    pub(super) const fn new() -> Self {
-        Self {
-            frameworks: Vec::new(),
-            test_frameworks: Vec::new(),
-            package_managers: Vec::new(),
-        }
-    }
-
-    pub(super) fn with_framework(mut self, framework: impl Into<String>) -> Self {
-        let framework = framework.into();
-        if !self.frameworks.iter().any(|v| v == &framework) {
-            self.frameworks.push(framework);
-        }
-        self
-    }
-
-    pub(super) fn with_test_framework(mut self, framework: impl Into<String>) -> Self {
-        let framework = framework.into();
-        if !self.test_frameworks.iter().any(|v| v == &framework) {
-            self.test_frameworks.push(framework);
-        }
-        self
-    }
-
-    pub(super) fn with_package_manager(mut self, manager: impl Into<String>) -> Self {
-        let manager = manager.into();
-        if !self.package_managers.iter().any(|v| v == &manager) {
-            self.package_managers.push(manager);
-        }
-        self
-    }
-
-    pub(super) fn finish(self) -> (Vec<String>, Option<String>, Option<String>) {
-        let combine = |items: &[String]| -> Option<String> {
-            match items.len() {
-                0 => None,
-                1 => Some(items[0].clone()),
-                _ => Some(items.iter().cloned().collect::<Vec<_>>().join(" + ")),
-            }
-        };
-
-        (
-            self.frameworks,
-            combine(&self.test_frameworks),
-            combine(&self.package_managers),
-        )
-    }
-}
-
-pub(super) fn read_signature_file_contents(
-    workspace: &dyn Workspace,
-    files: &[PathBuf],
-) -> HashMap<PathBuf, String> {
-    files
-        .iter()
-        .filter_map(|path| {
-            workspace
-                .read(path)
-                .ok()
-                .map(|content| (path.clone(), content))
-        })
-        .collect()
-}
 
 pub(super) fn collect_signature_files_with_workspace(
     workspace: &dyn Workspace,
     root: &Path,
 ) -> SignatureFiles {
-    use super::scanner::{should_skip_dir_name, MAX_SIGNATURE_SEARCH_DEPTH};
-
-    let targets: std::collections::HashSet<&str> = [
-        "cargo.toml",
-        "pyproject.toml",
-        "requirements.txt",
-        "setup.py",
-        "pipfile",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-        "bun.lock",
-        "gemfile",
-        "go.mod",
-        "pom.xml",
-        "build.gradle",
-        "build.gradle.kts",
-        "composer.json",
-        "mix.exs",
-        "pubspec.yaml",
-    ]
-    .into_iter()
-    .collect();
-
     fn scan(
         workspace: &dyn Workspace,
-        items: Vec<(PathBuf, String)>,
+        items: Vec<ScanItem>,
         depth: usize,
-        targets: &std::collections::HashSet<&str>,
     ) -> Vec<(PathBuf, String)> {
-        if items.is_empty() {
-            return Vec::new();
+        match scanner::advance_scan(&items, depth) {
+            ScanResult::Done { matched } => matched,
+            ScanResult::Continue {
+                matched,
+                next_items,
+            } => {
+                let all_entries: Vec<ScanItem> = next_items
+                    .into_iter()
+                    .filter_map(|item| {
+                        workspace.read_dir(&item.path).ok().map(|entries| {
+                            entries
+                                .into_iter()
+                                .filter_map(|entry| {
+                                    let path = entry.path();
+                                    let name = entry.file_name()?.to_string_lossy().to_string();
+                                    Some(ScanItem {
+                                        path: path.to_path_buf(),
+                                        name: name.to_lowercase(),
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .flatten()
+                    .collect();
+                let next_files = scan(workspace, all_entries, depth + 1);
+                matched.into_iter().chain(next_files.into_iter()).collect()
+            }
         }
-
-        let (dirs, files): (Vec<_>, Vec<_>) = items.into_iter().partition(|(p, n)| {
-            p.is_dir() && !should_skip_dir_name(n) && depth < MAX_SIGNATURE_SEARCH_DEPTH
-        });
-
-        let sig_files: Vec<_> = files
-            .into_iter()
-            .filter(|(_, n)| targets.contains(n.as_str()))
-            .collect();
-
-        if dirs.is_empty() {
-            return sig_files;
-        }
-
-        let all_entries: Vec<(PathBuf, String)> = dirs
-            .into_iter()
-            .filter_map(|(p, _)| workspace.read_dir(&p).ok())
-            .flat_map(|entries| {
-                entries.into_iter().filter_map(|entry| {
-                    let path = entry.path().to_path_buf();
-                    let name = entry.file_name()?.to_string_lossy().to_string();
-                    Some((path, name.to_lowercase()))
-                })
-            })
-            .collect();
-
-        let next_files = scan(workspace, all_entries, depth + 1, targets);
-        sig_files
-            .into_iter()
-            .chain(next_files.into_iter())
-            .collect()
     }
 
-    let initial_items: Vec<(PathBuf, String)> = workspace
+    let initial_items: Vec<ScanItem> = workspace
         .read_dir(root)
         .ok()
         .map(|entries| {
             entries
                 .into_iter()
                 .filter_map(|entry| {
-                    let path = entry.path().to_path_buf();
+                    let path = entry.path();
                     let name = entry.file_name()?.to_string_lossy().to_string();
-                    Some((path, name.to_lowercase()))
+                    Some(ScanItem {
+                        path: path.to_path_buf(),
+                        name: name.to_lowercase(),
+                    })
                 })
-                .collect::<Vec<_>>()
+                .collect()
         })
         .unwrap_or_default();
 
-    let matched_files = scan(workspace, initial_items, 0, &targets);
+    let matched_files = scan(workspace, initial_items, 0);
 
     let by_name_lower: std::collections::HashMap<String, Vec<PathBuf>> = matched_files
         .into_iter()
-        .fold(std::collections::HashMap::new(), |mut map, (path, name)| {
-            map.entry(name).or_default().push(path);
-            map
+        .fold(std::collections::HashMap::new(), |map, (path, name)| {
+            let existing = map.get(&name).cloned().unwrap_or_default();
+            let updated: Vec<PathBuf> = existing.into_iter().chain(std::iter::once(path)).collect();
+            map.into_iter()
+                .chain(std::iter::once((name, updated)))
+                .collect()
         });
 
     SignatureFiles { by_name_lower }
 }
 
-pub(super) fn count_extensions_with_workspace(
+pub fn count_extensions_with_workspace(
     workspace: &dyn Workspace,
     relative_root: &Path,
 ) -> std::io::Result<std::collections::HashMap<String, usize>> {
@@ -204,7 +107,7 @@ pub(super) fn count_extensions_with_workspace(
 
         let entries_vec: Vec<_> = entries
             .into_iter()
-            .take(MAX_FILES_TO_SCAN - files_scanned)
+            .take(MAX_FILES_TO_SCAN.saturating_sub(files_scanned))
             .collect();
 
         entries_vec
@@ -252,51 +155,14 @@ pub(super) fn count_extensions_with_workspace(
     scan_dir(workspace, relative_root, 0)
 }
 
-pub(super) fn detect_tests_with_workspace(
+pub fn detect_tests_with_workspace(
     workspace: &dyn Workspace,
     relative_root: &Path,
     primary_lang: &str,
 ) -> bool {
-    use super::scanner::{should_skip_dir_name, MAX_SIGNATURE_SEARCH_DEPTH};
+    use super::scanner::advance_search;
 
     const MAX_FILES_TO_SCAN: usize = 2000;
-
-    fn is_test_file(file_name: &str, primary_lang: &str, path_components: &[String]) -> bool {
-        match primary_lang {
-            "Rust" => {
-                if file_name == "tests.rs" || file_name.ends_with("_test.rs") {
-                    return true;
-                }
-                std::path::Path::new(file_name)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
-                    && path_components.windows(1).any(|w| w[0] == "tests")
-            }
-            "Python" => {
-                let has_py_ext = std::path::Path::new(file_name)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("py"));
-                (file_name.starts_with("test_") && has_py_ext) || file_name.ends_with("_test.py")
-            }
-            "JavaScript" | "TypeScript" => {
-                file_name.ends_with(".test.js")
-                    || file_name.ends_with(".spec.js")
-                    || file_name.ends_with(".test.ts")
-                    || file_name.ends_with(".spec.ts")
-                    || file_name.ends_with(".test.tsx")
-                    || file_name.ends_with(".spec.tsx")
-            }
-            "Go" => file_name.ends_with("_test.go"),
-            "Java" => {
-                path_components
-                    .windows(2)
-                    .any(|w| w[0] == "src" && w[1] == "test")
-                    || file_name.ends_with("test.java")
-            }
-            "Ruby" => file_name.ends_with("_spec.rb") || file_name.ends_with("_test.rb"),
-            _ => file_name.contains("test") || file_name.contains("spec"),
-        }
-    }
 
     fn search(
         workspace: &dyn Workspace,
@@ -311,62 +177,45 @@ pub(super) fn detect_tests_with_workspace(
         let Some((item, rest)) = queue.split_first() else {
             return false;
         };
-        let (dir, depth) = item;
+        let (dir, _depth) = item;
 
         let entries = match workspace.read_dir(dir) {
             Ok(e) => e,
             Err(_) => return search(workspace, rest.to_vec(), scanned_files, primary_lang),
         };
 
-        let found = entries.into_iter().any(|entry| {
-            let Some(name_os) = entry.file_name() else {
-                return false;
-            };
-            let name = name_os.to_string_lossy().to_string();
-            let name_lower = name.to_lowercase();
+        let file_names: Vec<(PathBuf, String)> = entries
+            .into_iter()
+            .filter_map(|entry| {
+                let name_os = entry.file_name()?;
+                let name = name_os.to_string_lossy().to_string();
+                Some((entry.path().to_path_buf(), name.to_lowercase()))
+            })
+            .collect();
 
-            if entry.is_dir() {
-                if should_skip_dir_name(&name_lower) {
-                    return false;
+        match advance_search(
+            &queue,
+            &file_names,
+            scanned_files.saturating_add(file_names.len()),
+            primary_lang,
+        ) {
+            SearchResult::Found => true,
+            SearchResult::Done => {
+                if rest.is_empty() {
+                    false
+                } else {
+                    search(workspace, rest.to_vec(), scanned_files, primary_lang)
                 }
-                if matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__") {
-                    return true;
+            }
+            SearchResult::Continue { new_queue } => {
+                if new_queue.is_empty() {
+                    search(workspace, rest.to_vec(), scanned_files, primary_lang)
+                } else {
+                    let combined: Vec<_> = rest.iter().cloned().chain(new_queue).collect();
+                    search(workspace, combined, scanned_files, primary_lang)
                 }
-                if *depth < MAX_SIGNATURE_SEARCH_DEPTH {
-                    let path = entry.path().to_path_buf();
-                    let new_queue = rest
-                        .iter()
-                        .cloned()
-                        .chain(std::iter::once((path, depth + 1)))
-                        .collect();
-                    return search(workspace, new_queue, scanned_files, primary_lang);
-                }
-                return false;
             }
-
-            if !entry.is_file() {
-                return false;
-            }
-
-            let new_scanned = scanned_files.saturating_add(1);
-            if new_scanned >= MAX_FILES_TO_SCAN {
-                return false;
-            }
-
-            let path_components: Vec<String> = entry
-                .path()
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
-                .collect();
-
-            is_test_file(&name_lower, primary_lang, &path_components)
-        });
-
-        if found {
-            return true;
         }
-
-        search(workspace, rest.to_vec(), scanned_files, primary_lang)
     }
 
     let initial_queue = vec![(relative_root.to_path_buf(), 0)];

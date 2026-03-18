@@ -215,47 +215,53 @@ impl MainEffectHandler {
             reason: diff_reason,
         };
 
-        let mut result = EffectResult::event(PipelineEvent::review_inputs_materialized(
+        let result = EffectResult::event(PipelineEvent::review_inputs_materialized(
             pass,
             plan_input.clone(),
             diff_input.clone(),
         ));
-        if plan_input.original_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Oversize PLAN: {} KB > {} KB; using file reference",
-                    plan_input.original_bytes / 1024,
-                    inline_budget_bytes / 1024
-                ),
-            });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Review,
-                PromptInputKind::Plan,
-                plan_input.content_id_sha256.clone(),
-                plan_input.original_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
-            ));
-        }
-        if diff_input.original_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Oversize DIFF: {} KB > {} KB; using file reference",
-                    diff_input.original_bytes / 1024,
-                    inline_budget_bytes / 1024
-                ),
-            });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Review,
-                PromptInputKind::Diff,
-                diff_input.content_id_sha256.clone(),
-                diff_input.original_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
-            ));
-        }
+        let result = if plan_input.original_bytes > inline_budget_bytes {
+            result
+                .with_ui_event(UIEvent::AgentActivity {
+                    agent: "pipeline".to_string(),
+                    message: format!(
+                        "Oversize PLAN: {} KB > {} KB; using file reference",
+                        plan_input.original_bytes / 1024,
+                        inline_budget_bytes / 1024
+                    ),
+                })
+                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::Review,
+                    PromptInputKind::Plan,
+                    plan_input.content_id_sha256.clone(),
+                    plan_input.original_bytes,
+                    inline_budget_bytes,
+                    "inline-embedding".to_string(),
+                ))
+        } else {
+            result
+        };
+        let result = if diff_input.original_bytes > inline_budget_bytes {
+            result
+                .with_ui_event(UIEvent::AgentActivity {
+                    agent: "pipeline".to_string(),
+                    message: format!(
+                        "Oversize DIFF: {} KB > {} KB; using file reference",
+                        diff_input.original_bytes / 1024,
+                        inline_budget_bytes / 1024
+                    ),
+                })
+                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::Review,
+                    PromptInputKind::Diff,
+                    diff_input.content_id_sha256.clone(),
+                    diff_input.original_bytes,
+                    inline_budget_bytes,
+                    "inline-embedding".to_string(),
+                ))
+        } else {
+            result
+        };
         Ok(result)
     }
 

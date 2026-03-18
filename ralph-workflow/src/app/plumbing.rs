@@ -26,8 +26,7 @@ use crate::git_helpers::git_diff;
 use crate::logger::Colors;
 use crate::logger::Logger;
 use crate::phases::generate_commit_message_with_chain;
-use crate::pipeline::PipelineRuntime;
-use crate::pipeline::Timer;
+
 use crate::prompts::TemplateContext;
 use crate::workspace::Workspace;
 use std::sync::Arc;
@@ -214,20 +213,20 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
     }
 
     // Create a timer for the pipeline runtime
-    let mut timer = Timer::new();
+    let mut timer = crate::app::io::runtime_factory::create_timer();
 
     // Set up pipeline runtime with the injected executor
     let executor_ref: &dyn ProcessExecutor = &*config.executor;
-    let mut runtime = PipelineRuntime {
-        timer: &mut timer,
-        logger: config.logger,
-        colors: &config.colors,
-        config: config.config,
-        executor: executor_ref,
-        executor_arc: Arc::clone(&config.executor),
-        workspace: config.workspace,
-        workspace_arc: Arc::clone(&config.workspace_arc),
-    };
+    let mut runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
+        &mut timer,
+        config.logger,
+        &config.colors,
+        config.config,
+        executor_ref,
+        Arc::clone(&config.executor),
+        config.workspace,
+        Arc::clone(&config.workspace_arc),
+    );
 
     let agents = resolve_commit_message_agents(config);
 

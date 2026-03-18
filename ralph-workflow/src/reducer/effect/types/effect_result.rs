@@ -72,6 +72,15 @@ impl EffectResult {
         }
     }
 
+    /// Conditionally add an additional event.
+    #[must_use]
+    pub fn maybe_with_additional_event(self, event: Option<PipelineEvent>) -> Self {
+        match event {
+            Some(e) => self.with_additional_event(e),
+            None => self,
+        }
+    }
+
     /// Add a UI event to the result.
     #[must_use]
     pub fn with_ui_event(self, ui_event: UIEvent) -> Self {
@@ -84,6 +93,15 @@ impl EffectResult {
             event: self.event,
             additional_events: self.additional_events,
             ui_events,
+        }
+    }
+
+    /// Conditionally add a UI event.
+    #[must_use]
+    pub fn maybe_with_ui_event(self, ui_event: Option<UIEvent>) -> Self {
+        match ui_event {
+            Some(e) => self.with_ui_event(e),
+            None => self,
         }
     }
 }

@@ -130,7 +130,7 @@ pub fn finalize_pipeline(
         }
     };
 
-    let mut cleanup_ok = hook_uninstall_ok && wrapper_ok && hooks_ok;
+    let cleanup_ok_initial = hook_uninstall_ok && wrapper_ok && hooks_ok;
 
     // Note: Individual commits were created per-iteration during development
     // and per-cycle during review. The final commit phase has been removed.
@@ -155,14 +155,16 @@ pub fn finalize_pipeline(
     // other place that calls cleanup_generated_files_with_workspace, and
     // disarm() prevents Drop from running.
     crate::files::cleanup_generated_files_with_workspace(ctx.workspace);
-    if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-        cleanup_ok = false;
+    let cleanup_ok = if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
         let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
         ctx.logger.warn(&format!(
             "Ralph git dir still present after cleanup: {}",
             remaining.join(", ")
         ));
-    }
+        false
+    } else {
+        cleanup_ok_initial
+    };
 
     if cleanup_ok {
         // Clear global mutexes only when cleanup succeeded and the guard is

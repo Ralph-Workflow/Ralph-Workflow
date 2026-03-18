@@ -39,7 +39,7 @@ include!("execution_core_finish.rs");
 /// This is the production entry point - it creates a `MainEffectHandler` internally.
 pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow::Result<()> {
     let resume_state = load_resume_and_config_state(ctx)?;
-    let mut git_helpers = crate::git_helpers::GitHelpers::new();
+    let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
     prepare_agent_phase(ctx, &mut git_helpers);
     let mut agent_phase_guard =
         AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
@@ -60,7 +60,7 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     print_review_guidelines(ctx, review_guidelines.as_ref());
     let _ = writeln!(std::io::stdout());
 
-    let mut timer = Timer::new();
+    let mut timer = crate::app::io::runtime_factory::create_timer();
     let mut phase_ctx = create_phase_context_with_config(
         ctx,
         &resume_state.config,

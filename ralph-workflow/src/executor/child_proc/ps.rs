@@ -12,38 +12,36 @@ struct ProcessSnapshotEntry {
     currently_active: bool,
 }
 
+fn parse_cputime_parts(hours_or_minutes: &str, minutes: &str, seconds_str: &str) -> Option<u64> {
+    let hours = if let Some((days, hours)) = hours_or_minutes.split_once('-') {
+        let days: u64 = days.parse().ok()?;
+        let hours: u64 = hours.parse().ok()?;
+        days.checked_mul(24)?.checked_add(hours)?
+    } else {
+        hours_or_minutes.parse().ok()?
+    };
+    let minutes: u64 = minutes.parse().ok()?;
+    let (secs, frac_ms) = parse_seconds_with_fraction(seconds_str)?;
+    Some((hours * 3600 + minutes * 60 + secs) * 1000 + frac_ms)
+}
+
+fn parse_seconds_with_fraction(s: &str) -> Option<(u64, u64)> {
+    if let Some((secs_str, frac)) = s.split_once('.') {
+        let secs: u64 = secs_str.parse().ok()?;
+        let frac: u64 = frac.get(..2).unwrap_or(frac).parse().ok()?;
+        Some((secs, frac * 10))
+    } else {
+        Some((s.parse().ok()?, 0))
+    }
+}
+
 pub fn parse_cputime_ms(s: &str) -> Option<u64> {
     let parts: Vec<&str> = s.split(':').collect();
     match parts.len() {
-        3 => {
-            let hours = if let Some((days, hours)) = parts[0].split_once('-') {
-                let days: u64 = days.parse().ok()?;
-                let hours: u64 = hours.parse().ok()?;
-                days.checked_mul(24)?.checked_add(hours)?
-            } else {
-                parts[0].parse().ok()?
-            };
-            let minutes: u64 = parts[1].parse().ok()?;
-            let seconds_str = parts[2];
-            let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
-                let secs: u64 = s.parse().ok()?;
-                let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
-                (secs, frac * 10)
-            } else {
-                (seconds_str.parse().ok()?, 0)
-            };
-            Some((hours * 3600 + minutes * 60 + secs) * 1000 + frac_ms)
-        }
+        3 => parse_cputime_parts(parts[0], parts[1], parts[2]),
         2 => {
             let minutes: u64 = parts[0].parse().ok()?;
-            let seconds_str = parts[1];
-            let (secs, frac_ms) = if let Some((s, f)) = seconds_str.split_once('.') {
-                let secs: u64 = s.parse().ok()?;
-                let frac: u64 = f.get(..2).unwrap_or(f).parse().ok()?;
-                (secs, frac * 10)
-            } else {
-                (seconds_str.parse().ok()?, 0)
-            };
+            let (secs, frac_ms) = parse_seconds_with_fraction(parts[1])?;
             Some((minutes * 60 + secs) * 1000 + frac_ms)
         }
         _ => None,
@@ -77,63 +75,72 @@ fn module_level_descendant_pid_signature(descendants: &[u32]) -> u64 {
 }
 
 pub fn parse_ps_output(stdout: &str, parent_pid: u32) -> Option<ChildProcessInfo> {
-    let mut children_of: HashMap<u32, Vec<ProcessSnapshotEntry>> = HashMap::new();
     let parse_results: Vec<_> = stdout
         .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 3 {
-                return None;
-            }
-
-            let Ok(entry_pid) = parts[0].parse::<u32>() else {
-                return None;
-            };
-            let Ok(parent_of_entry) = parts[1].parse::<u32>() else {
-                return None;
-            };
-
-            let (in_scope, currently_active, cputime_text) = if parts.len() >= 5 {
-                let pgid_matches_parent = parts[2]
-                    .parse::<u32>()
-                    .ok()
-                    .is_some_and(|pgid| pgid == parent_pid);
-                let state_qualifies = qualifies_process_state(parts[3]);
-                let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
-                (
-                    pgid_matches_parent && state_qualifies,
-                    state_indicates_current_activity(parts[3], cpu_ms),
-                    parts[4],
-                )
-            } else {
-                (true, false, parts[2])
-            };
-
-            let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
-            Some((
-                parent_of_entry,
-                entry_pid,
-                cpu_ms,
-                in_scope,
-                currently_active,
-            ))
-        })
+        .filter_map(|line| parse_ps_line(line, parent_pid))
         .collect();
 
     if parse_results.is_empty() {
         return None;
     }
 
-    for (parent_of_entry, entry_pid, cpu_ms, in_scope, currently_active) in parse_results {
+    compute_child_info_from_snapshot(parent_pid, &parse_results)
+}
+
+fn parse_ps_line(line: &str, parent_pid: u32) -> Option<(u32, u32, u64, bool, bool)> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 3 {
+        return None;
+    }
+
+    let Ok(entry_pid) = parts[0].parse::<u32>() else {
+        return None;
+    };
+    let Ok(parent_of_entry) = parts[1].parse::<u32>() else {
+        return None;
+    };
+
+    let (in_scope, currently_active, cputime_text) = if parts.len() >= 5 {
+        let pgid_matches_parent = parts[2]
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|pgid| pgid == parent_pid);
+        let state_qualifies = qualifies_process_state(parts[3]);
+        let cpu_ms = parse_cputime_ms(parts[4]).unwrap_or(0);
+        (
+            pgid_matches_parent && state_qualifies,
+            state_indicates_current_activity(parts[3], cpu_ms),
+            parts[4],
+        )
+    } else {
+        (true, false, parts[2])
+    };
+
+    let cpu_ms = parse_cputime_ms(cputime_text).unwrap_or(0);
+    Some((
+        parent_of_entry,
+        entry_pid,
+        cpu_ms,
+        in_scope,
+        currently_active,
+    ))
+}
+
+fn compute_child_info_from_snapshot(
+    parent_pid: u32,
+    entries: &[(u32, u32, u64, bool, bool)],
+) -> Option<ChildProcessInfo> {
+    let mut children_of: HashMap<u32, Vec<ProcessSnapshotEntry>> = HashMap::new();
+    for (parent_of_entry, entry_pid, cpu_ms, in_scope, currently_active) in entries {
         children_of
-            .entry(parent_of_entry)
+            .entry(*parent_of_entry)
             .or_default()
             .push(ProcessSnapshotEntry {
-                pid: entry_pid,
-                parent_pid: parent_of_entry,
-                cpu_time_ms: cpu_ms,
-                in_scope,
-                currently_active,
+                pid: *entry_pid,
+                parent_pid: *parent_of_entry,
+                cpu_time_ms: *cpu_ms,
+                in_scope: *in_scope,
+                currently_active: *currently_active,
             });
     }
 

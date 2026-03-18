@@ -58,14 +58,13 @@ pub fn run_initial_rebase(
         .logger
         .header("Pre-development rebase", Colors::cyan);
 
-    let mut prompt_replay_hits: Vec<(String, bool)> = Vec::new();
-
     record_rebase_start(phase_ctx);
     save_pre_rebase_checkpoint(phase_ctx, run_context, prompt_history);
 
     match run_rebase_to_default(phase_ctx.logger, *phase_ctx.colors, executor) {
         Ok(RebaseResult::Success) => {
             handle_rebase_success(phase_ctx, run_context, prompt_history);
+            let prompt_replay_hits = Vec::new();
             Ok(InitialRebaseRunResult {
                 outcome: InitialRebaseOutcome::Succeeded {
                     new_head: read_repo_head_or_unknown(phase_ctx.workspace),
@@ -75,6 +74,7 @@ pub fn run_initial_rebase(
         }
         Ok(RebaseResult::NoOp { reason }) => {
             handle_rebase_noop(phase_ctx, run_context, &reason, prompt_history);
+            let prompt_replay_hits = Vec::new();
             Ok(InitialRebaseRunResult {
                 outcome: InitialRebaseOutcome::Skipped { reason },
                 prompt_replay_hits,
@@ -83,7 +83,7 @@ pub fn run_initial_rebase(
         Ok(RebaseResult::Conflicts(_)) => {
             let (resolved, replay) =
                 handle_rebase_conflicts(phase_ctx, run_context, executor, prompt_history)?;
-            prompt_replay_hits.push((replay.key, replay.was_replayed));
+            let prompt_replay_hits = vec![(replay.key, replay.was_replayed)];
             if resolved {
                 Ok(InitialRebaseRunResult {
                     outcome: InitialRebaseOutcome::Succeeded {
@@ -102,6 +102,7 @@ pub fn run_initial_rebase(
         }
         Ok(RebaseResult::Failed(err)) => {
             handle_rebase_failed(phase_ctx, &err);
+            let prompt_replay_hits = Vec::new();
             Ok(InitialRebaseRunResult {
                 outcome: InitialRebaseOutcome::Skipped {
                     reason: "Rebase failed".to_string(),
@@ -111,6 +112,7 @@ pub fn run_initial_rebase(
         }
         Err(e) => {
             handle_rebase_error(phase_ctx, &e);
+            let prompt_replay_hits = Vec::new();
             Ok(InitialRebaseRunResult {
                 outcome: InitialRebaseOutcome::Skipped {
                     reason: "Rebase error".to_string(),
@@ -255,21 +257,20 @@ fn handle_rebase_conflicts(
     match crate::app::rebase::conflicts::try_resolve_conflicts_with_hook(
         &conflicted_files,
         &resolution_ctx,
-        prompt_history,
         "PreRebase",
         executor,
-        |replay, prompt_history| {
+        |replay, captured_entry| {
             if let Some(entry) = replay.captured_entry.clone() {
-                prompt_history.insert(replay.key.clone(), entry);
+                *captured_entry = Some((replay.key.clone(), entry));
             }
-            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, prompt_history);
+            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, &prompt_history);
         },
     ) {
-        Ok((true, replay)) => {
+        Ok((true, replay, _)) => {
             handle_conflicts_resolved(phase_ctx, run_context, executor, prompt_history);
             Ok((true, replay))
         }
-        Ok((false, replay)) => {
+        Ok((false, replay, _)) => {
             handle_resolution_failed(phase_ctx, executor);
             Ok((false, replay))
         }

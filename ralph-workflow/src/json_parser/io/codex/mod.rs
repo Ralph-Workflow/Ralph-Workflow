@@ -4,13 +4,6 @@
 //! interior mutability (RefCell), and loops. This module is exempt from
 //! functional programming lints per docs/code-style/boundaries.md.
 
-#![allow(clippy::all)]
-#![allow(unsafe_code)]
-#![allow(forbid_mut_binding)]
-#![allow(forbid_imperative_loops)]
-#![allow(forbid_mutating_receiver_methods)]
-#![allow(forbid_interior_mutability)]
-
 mod event_handlers;
 
 use crate::config::Verbosity;
@@ -21,9 +14,9 @@ use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::json_parser::health::HealthMonitor;
+use crate::json_parser::io::health::HealthMonitor;
 #[cfg(any(test, feature = "test-utils"))]
-use crate::json_parser::health::StreamingQualityMetrics;
+use crate::json_parser::io::health::StreamingQualityMetrics;
 use crate::json_parser::printer::SharedPrinter;
 use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;

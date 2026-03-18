@@ -39,148 +39,138 @@ pub fn git_snapshot_in_repo(repo_root: &Path) -> io::Result<String> {
 /// extraction can pollute carry-forward state.
 #[must_use]
 pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
-    fn unquote_c_style(s: &str) -> Option<String> {
-        let bytes = s.as_bytes();
-        if bytes.len() < 2 || bytes[0] != b'"' || bytes[bytes.len() - 1] != b'"' {
-            return None;
-        }
-
-        // Git porcelain uses C-style quoting. Octal escapes represent BYTES, not Unicode codepoints.
-        // Process bytes using a recursive approach that builds new values
-        let inner = &bytes[1..bytes.len() - 1];
-
-        fn process_bytes(
-            bytes: &[u8],
-            i: usize,
-            in_escape: bool,
-            octal_val: Option<(u32, usize, usize)>, // (value, consumed, start_idx)
-        ) -> Vec<u8> {
-            if i >= bytes.len() {
-                return Vec::new();
-            }
-
-            let b = bytes[i];
-            let mut result = Vec::new();
-
-            if in_escape {
-                // Currently processing escape sequence
-                match b {
-                    b'\\' => {
-                        result.push(b'\\');
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                    }
-                    b'"' => {
-                        result.push(b'"');
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                    }
-                    b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
-                        result.push(b'\\');
-                        result.push(b);
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                    }
-                    b'0'..=b'7' => {
-                        // Start octal sequence
-                        let octal = (u32::from(b - b'0'), 1, i);
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, true, Some(octal)));
-                    }
-                    _ => {
-                        result.push(b'\\');
-                        result.push(b);
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                    }
-                }
-            } else if let Some((val, consumed, start_idx)) = octal_val {
-                // Currently processing octal digits
-                if b.is_ascii_digit() && consumed < 3 {
-                    let new_val = (val * 8) + u32::from(b - b'0');
-                    let new_consumed = consumed + 1;
-                    result.extend_from_slice(&process_bytes(
-                        bytes,
-                        i + 1,
-                        true,
-                        Some((new_val, new_consumed, start_idx)),
-                    ));
-                } else {
-                    // Finish octal processing
-                    if let Ok(byte) = u8::try_from(val) {
-                        if byte < 0x20 || byte == 0x7F {
-                            result.push(b'\\');
-                            result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
-                        } else {
-                            result.push(byte);
-                        }
-                    } else {
-                        result.push(b'\\');
-                        result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
-                    }
-                    // Process current byte
-                    if b == b'\\' {
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
-                    } else {
-                        result.push(b);
-                        result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                    }
-                }
-            } else {
-                // Normal processing
-                if b == b'\\' {
-                    result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
-                } else {
-                    result.push(b);
-                    result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
-                }
-            }
-
-            result
-        }
-
-        let result = process_bytes(inner, 0, false, None);
-        String::from_utf8(result).ok()
-    }
-
-    fn parse_path_component(raw: &str) -> String {
-        let raw = raw.trim_end();
-        unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
-    }
-
-    let out: Vec<String> = snapshot
+    snapshot
         .lines()
-        .filter_map(|line| {
-            let bytes = line.as_bytes();
-            if bytes.len() < 4 {
-                return None;
-            }
-            if bytes[2] != b' ' {
-                return None;
-            }
-            let x = bytes[0] as char;
-            let y = bytes[1] as char;
-            let path_spec = line[3..].trim_end();
-            if path_spec.is_empty() {
-                return None;
-            }
-
-            let path_spec = if x == 'R' || y == 'R' || x == 'C' || y == 'C' {
-                path_spec
-                    .rsplit_once(" -> ")
-                    .map_or(path_spec, |(_, new_part)| new_part.trim_end())
-            } else {
-                path_spec
-            };
-
-            let parsed = parse_path_component(path_spec);
-            if parsed.is_empty() {
-                return None;
-            }
-
-            Some(parsed)
-        })
+        .filter_map(parse_status_line)
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .sorted()
-        .collect();
+        .collect()
+}
 
-    out
+fn unquote_c_style(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 || bytes[0] != b'"' || bytes[bytes.len() - 1] != b'"' {
+        return None;
+    }
+    let inner = &bytes[1..bytes.len() - 1];
+    let result = process_bytes(inner, 0, false, None);
+    String::from_utf8(result).ok()
+}
+
+fn process_bytes(
+    bytes: &[u8],
+    i: usize,
+    in_escape: bool,
+    octal_val: Option<(u32, usize, usize)>,
+) -> Vec<u8> {
+    if i >= bytes.len() {
+        return Vec::new();
+    }
+
+    let b = bytes[i];
+    let mut result = Vec::new();
+
+    if in_escape {
+        match b {
+            b'\\' => {
+                result.push(b'\\');
+                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+            }
+            b'"' => {
+                result.push(b'"');
+                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+            }
+            b'n' | b't' | b'r' | b'b' | b'f' | b'v' => {
+                result.push(b'\\');
+                result.push(b);
+                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+            }
+            b'0'..=b'7' => {
+                let octal = (u32::from(b - b'0'), 1, i);
+                result.extend_from_slice(&process_bytes(bytes, i + 1, true, Some(octal)));
+            }
+            _ => {
+                result.push(b'\\');
+                result.push(b);
+                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+            }
+        }
+    } else if let Some((val, consumed, start_idx)) = octal_val {
+        if b.is_ascii_digit() && consumed < 3 {
+            let new_val = (val * 8) + u32::from(b - b'0');
+            let new_consumed = consumed + 1;
+            result.extend_from_slice(&process_bytes(
+                bytes,
+                i + 1,
+                true,
+                Some((new_val, new_consumed, start_idx)),
+            ));
+        } else {
+            if let Ok(byte) = u8::try_from(val) {
+                if byte < 0x20 || byte == 0x7F {
+                    result.push(b'\\');
+                    result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
+                } else {
+                    result.push(byte);
+                }
+            } else {
+                result.push(b'\\');
+                result.extend_from_slice(&bytes[start_idx..start_idx + consumed]);
+            }
+            if b == b'\\' {
+                result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
+            } else {
+                result.push(b);
+                result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+            }
+        }
+    } else {
+        if b == b'\\' {
+            result.extend_from_slice(&process_bytes(bytes, i + 1, true, None));
+        } else {
+            result.push(b);
+            result.extend_from_slice(&process_bytes(bytes, i + 1, false, None));
+        }
+    }
+
+    result
+}
+
+fn parse_status_line(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    if bytes.len() < 4 {
+        return None;
+    }
+    if bytes[2] != b' ' {
+        return None;
+    }
+    let x = bytes[0] as char;
+    let y = bytes[1] as char;
+    let path_spec = line[3..].trim_end();
+    if path_spec.is_empty() {
+        return None;
+    }
+
+    let path_spec = if x == 'R' || y == 'R' || x == 'C' || y == 'C' {
+        path_spec
+            .rsplit_once(" -> ")
+            .map_or(path_spec, |(_, new_part)| new_part.trim_end())
+    } else {
+        path_spec
+    };
+
+    let parsed = parse_path_component(path_spec);
+    if parsed.is_empty() {
+        return None;
+    }
+
+    Some(parsed)
+}
+
+fn parse_path_component(raw: &str) -> String {
+    let raw = raw.trim_end();
+    unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
 }
 
 /// Implementation of git snapshot.

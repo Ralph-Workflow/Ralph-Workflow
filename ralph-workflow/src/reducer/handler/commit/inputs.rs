@@ -159,45 +159,50 @@ impl MainEffectHandler {
             reason,
         };
 
-        let mut result =
-            EffectResult::event(PipelineEvent::commit_inputs_materialized(attempt, input));
-        if truncated_for_model_budget {
-            result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Truncated DIFF for model budget: {} KB -> {} KB (budget {} KB)",
-                    original_bytes / 1024,
-                    final_bytes / 1024,
-                    model_budget_bytes / 1024
-                ),
-            });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::CommitMessage,
-                PromptInputKind::Diff,
-                content_id_sha256.clone(),
-                original_bytes,
-                model_budget_bytes,
-                "model-context".to_string(),
-            ));
-        }
-        if final_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
-                agent: "pipeline".to_string(),
-                message: format!(
-                    "Oversize DIFF: {} KB > {} KB; using file reference",
-                    final_bytes / 1024,
-                    inline_budget_bytes / 1024
-                ),
-            });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::CommitMessage,
-                PromptInputKind::Diff,
-                content_id_sha256,
-                final_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
-            ));
-        }
+        let result = EffectResult::event(PipelineEvent::commit_inputs_materialized(attempt, input));
+        let result = if truncated_for_model_budget {
+            result
+                .with_ui_event(UIEvent::AgentActivity {
+                    agent: "pipeline".to_string(),
+                    message: format!(
+                        "Truncated DIFF for model budget: {} KB -> {} KB (budget {} KB)",
+                        original_bytes / 1024,
+                        final_bytes / 1024,
+                        model_budget_bytes / 1024
+                    ),
+                })
+                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::CommitMessage,
+                    PromptInputKind::Diff,
+                    content_id_sha256.clone(),
+                    original_bytes,
+                    model_budget_bytes,
+                    "model-context".to_string(),
+                ))
+        } else {
+            result
+        };
+        let result = if final_bytes > inline_budget_bytes {
+            result
+                .with_ui_event(UIEvent::AgentActivity {
+                    agent: "pipeline".to_string(),
+                    message: format!(
+                        "Oversize DIFF: {} KB > {} KB; using file reference",
+                        final_bytes / 1024,
+                        inline_budget_bytes / 1024
+                    ),
+                })
+                .with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::CommitMessage,
+                    PromptInputKind::Diff,
+                    content_id_sha256,
+                    final_bytes,
+                    inline_budget_bytes,
+                    "inline-embedding".to_string(),
+                ))
+        } else {
+            result
+        };
         Ok(result)
     }
 

@@ -3,7 +3,12 @@
 //! This module contains the policy logic extracted from boundary functions.
 //! These functions are pure and testable without I/O.
 
-use crate::agents::AgentDrain;
+use crate::agents::{AgentDrain, AgentRegistry};
+use crate::checkpoint::load_checkpoint_with_workspace;
+use crate::config::Config;
+use crate::guidelines::{CheckSeverity, ReviewGuidelines};
+use crate::language_detector;
+use crate::workspace::Workspace;
 
 /// Git diagnostic information.
 #[derive(Debug, Clone)]
@@ -17,13 +22,7 @@ pub struct GitDiagnostics {
 /// Plan which git commands to execute based on repository state.
 #[derive(Debug, Clone)]
 pub enum GitCommandPlan {
-    /// Full diagnostics: version, repo check, branch, and uncommitted changes.
     Full,
-    /// Partial diagnostics: version and repo check only.
-    Partial,
-    /// Version check only.
-    VersionOnly,
-    /// No commands needed (git not available).
     None,
 }
 
@@ -127,7 +126,6 @@ pub fn determine_config_exists(
 /// PROMPT.md analysis result.
 #[derive(Debug, Clone)]
 pub struct PromptAnalysis {
-    pub exists: bool,
     pub size_bytes: Option<usize>,
     pub line_count: Option<usize>,
     pub has_goal_section: bool,
@@ -141,7 +139,6 @@ pub fn analyze_prompt_content(content: &str) -> PromptAnalysis {
         content.contains("## Acceptance") || content.contains("Acceptance Criteria");
 
     PromptAnalysis {
-        exists: true,
         size_bytes: Some(content.len()),
         line_count: Some(content.lines().count()),
         has_goal_section: has_goal,
@@ -165,7 +162,7 @@ pub fn get_sorted_agent_availability(
     use itertools::Itertools;
 
     let all_agents = registry.list();
-    let mut sorted: Vec<_> = all_agents
+    all_agents
         .into_iter()
         .map(|(name, cfg)| AgentAvailabilityInfo {
             name: name.to_string(),
@@ -174,11 +171,10 @@ pub fn get_sorted_agent_availability(
                 cfg.json_parser,
                 crate::agents::parser::JsonParserType::Generic
             ),
-            command: cfg.cmd,
+            command: cfg.cmd.clone(),
         })
         .sorted_by(|a, b| a.name.cmp(&b.name))
-        .collect();
-    sorted
+        .collect()
 }
 
 /// Agent drain display info.
@@ -202,4 +198,237 @@ pub fn get_drain_bindings(registry: &crate::agents::AgentRegistry) -> Vec<DrainB
             })
         })
         .collect()
+}
+
+/// Resolve the checkpoint log path or find the latest run log directory.
+pub fn find_log_path(workspace: &dyn Workspace) -> Option<std::path::PathBuf> {
+    let checkpoint = load_checkpoint_with_workspace(workspace).ok().flatten()?;
+
+    if let Some(log_run_id) = checkpoint.log_run_id {
+        return Some(std::path::PathBuf::from(format!(
+            ".agent/logs-{log_run_id}/pipeline.log"
+        )));
+    }
+
+    find_latest_run_log_path(workspace)
+}
+
+/// Find the latest run log path by lexicographic sort.
+fn find_latest_run_log_path(workspace: &dyn Workspace) -> Option<std::path::PathBuf> {
+    use itertools::Itertools;
+    use std::path::Path;
+
+    let agent_dir = Path::new(".agent");
+    if !workspace.is_dir(agent_dir) {
+        return None;
+    }
+
+    let entries = workspace.read_dir(agent_dir).ok()?;
+
+    entries
+        .into_iter()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|s| s.starts_with("logs-") && entry.is_dir())
+        })
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(std::string::ToString::to_string)
+        })
+        .sorted()
+        .last()
+        .map(|dir_name| Path::new(".agent").join(dir_name).join("pipeline.log"))
+}
+
+/// Format recent log lines from content string (last 10 lines).
+pub fn format_recent_log_lines(content: &str) -> Vec<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.len().saturating_sub(10);
+    lines[start..].iter().map(|l| format!("  {l}")).collect()
+}
+
+/// Format configuration info section lines.
+pub fn format_config_section_lines(
+    config: &Config,
+    config_path: &std::path::Path,
+    config_sources: &[crate::agents::ConfigSource],
+    workspace: &dyn Workspace,
+) -> Vec<String> {
+    let exists_status = determine_config_exists(config_path.is_absolute(), workspace, config_path);
+    let exists_str: String = match exists_status {
+        ConfigExistsStatus::Yes => "yes".to_string(),
+        ConfigExistsStatus::No => "no".to_string(),
+        ConfigExistsStatus::Unknown(s) => s,
+    };
+
+    let mut lines = Vec::new();
+    lines.push(format!("  Unified config: {}", config_path.display()));
+    lines.push(format!("  Config exists: {exists_str}"));
+    lines.push(format!(
+        "  Review depth: {:?} ({})",
+        config.review_depth,
+        config.review_depth.description()
+    ));
+    if !config_sources.is_empty() {
+        lines.push("  Loaded sources:".to_string());
+        for src in config_sources {
+            lines.push(format!(
+                "    - {} ({} agents)",
+                src.path.display(),
+                src.agents_loaded
+            ));
+        }
+    }
+    lines
+}
+
+/// Format agent availability section lines.
+pub fn format_agent_availability_section(registry: &AgentRegistry) -> Vec<String> {
+    let agents = get_sorted_agent_availability(registry);
+    agents
+        .into_iter()
+        .map(|agent| {
+            let status_icon = if agent.available { "✓" } else { "✗" };
+            let command_name = agent
+                .command
+                .split_whitespace()
+                .next()
+                .unwrap_or(&agent.command);
+            format!(
+                "  {status_icon} {} (parser: {}, cmd: {})",
+                agent.name, agent.json_parser, command_name
+            )
+        })
+        .collect()
+}
+
+/// Format PROMPT.md status section lines.
+pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
+    use std::path::Path;
+
+    let prompt_path = Path::new("PROMPT.md");
+    let mut lines = Vec::new();
+
+    if workspace.exists(prompt_path) {
+        if let Ok(content) = workspace.read(prompt_path) {
+            let analysis = analyze_prompt_content(&content);
+            lines.push("  Exists: yes".to_string());
+            lines.push(format!(
+                "  Size: {} bytes",
+                analysis.size_bytes.unwrap_or(0)
+            ));
+            lines.push(format!("  Lines: {}", analysis.line_count.unwrap_or(0)));
+            lines.push(format!(
+                "  Has Goal section: {}",
+                if analysis.has_goal_section {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ));
+            lines.push(format!(
+                "  Has Acceptance section: {}",
+                if analysis.has_acceptance_section {
+                    "yes"
+                } else {
+                    "no"
+                }
+            ));
+        }
+    } else {
+        lines.push("  Exists: no".to_string());
+    }
+
+    lines
+}
+
+/// Format project stack section lines.
+pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let root = workspace.root();
+    let stack = match language_detector::detect_stack(root) {
+        Ok(s) => s,
+        Err(e) => {
+            lines.push(format!("  Detection failed: {e}"));
+            return lines;
+        }
+    };
+
+    lines.push(format!("  Primary language: {}", stack.primary_language));
+    if !stack.secondary_languages.is_empty() {
+        lines.push(format!(
+            "  Secondary languages: {:?}",
+            stack.secondary_languages
+        ));
+    }
+    if !stack.frameworks.is_empty() {
+        lines.push(format!("  Frameworks: {:?}", stack.frameworks));
+    }
+    if let Some(pm) = &stack.package_manager {
+        lines.push(format!("  Package manager: {pm}"));
+    }
+    if let Some(tf) = &stack.test_framework {
+        lines.push(format!("  Test framework: {tf}"));
+    }
+
+    let language_types: Vec<&str> = [
+        if stack.is_rust() { Some("Rust") } else { None },
+        if stack.is_python() {
+            Some("Python")
+        } else {
+            None
+        },
+        if stack.is_javascript_or_typescript() {
+            Some("JS/TS")
+        } else {
+            None
+        },
+        if stack.is_go() { Some("Go") } else { None },
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !language_types.is_empty() {
+        lines.push(format!("  Language flags: {}", language_types.join(", ")));
+    }
+
+    let guidelines = ReviewGuidelines::for_stack(&stack);
+    lines.push(format!(
+        "  Review checks: {} total",
+        guidelines.total_checks()
+    ));
+
+    let all_checks = guidelines.get_all_checks();
+    let critical_count = all_checks
+        .iter()
+        .filter(|c| matches!(c.severity, CheckSeverity::Critical))
+        .count();
+    let high_count = all_checks
+        .iter()
+        .filter(|c| matches!(c.severity, CheckSeverity::High))
+        .count();
+    if critical_count > 0 || high_count > 0 {
+        lines.push(format!(
+            "  Check severities: {critical_count} critical, {high_count} high"
+        ));
+    }
+
+    let critical_checks: Vec<_> = all_checks
+        .iter()
+        .filter(|c| matches!(c.severity, CheckSeverity::Critical))
+        .take(3)
+        .collect();
+    if !critical_checks.is_empty() {
+        lines.push("  Critical checks (sample):".to_string());
+        for check in critical_checks {
+            lines.push(format!("    - {}", check.check));
+        }
+    }
+
+    lines
 }

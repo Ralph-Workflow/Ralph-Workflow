@@ -123,7 +123,7 @@ impl StreamingQualityMetrics {
     }
 
     /// Format metrics for display.
-    #[must_use] 
+    #[must_use]
     pub fn format(&self, colors: Colors) -> String {
         if self.total_deltas == 0 {
             return format!(
@@ -140,7 +140,7 @@ impl StreamingQualityMetrics {
             StreamingPattern::Bursty => "bursty",
         };
 
-        let mut parts = vec![format!(
+        let base = format!(
             "{}[Streaming]{} {} deltas, avg {} bytes (min {}, max {}), pattern: {}",
             colors.dim(),
             colors.reset(),
@@ -149,64 +149,81 @@ impl StreamingQualityMetrics {
             self.min_delta_size,
             self.max_delta_size,
             pattern_str
-        )];
+        );
 
-        if self.snapshot_repairs_count > 0 {
-            parts.push(format!(
-                "{}snapshot repairs: {}{}",
-                colors.yellow(),
-                self.snapshot_repairs_count,
-                colors.reset()
-            ));
-        }
-
-        if self.large_delta_count > 0 {
-            parts.push(format!(
-                "{}large deltas: {}{}",
-                colors.yellow(),
-                self.large_delta_count,
-                colors.reset()
-            ));
-        }
-
-        if self.protocol_violations > 0 {
-            parts.push(format!(
-                "{}protocol violations: {}{}",
-                colors.red(),
-                self.protocol_violations,
-                colors.reset()
-            ));
-        }
-
-        // Queue metrics (only show if queue is in use)
-        if self.queue_depth > 0
-            || self.queue_dropped_events > 0
-            || self.queue_backpressure_count > 0
-        {
-            let mut queue_parts = Vec::new();
-            if self.queue_depth > 0 {
-                queue_parts.push(format!("depth: {}", self.queue_depth));
-            }
-            if self.queue_dropped_events > 0 {
-                queue_parts.push(format!(
-                    "{}dropped: {}{}",
+        let parts: Vec<String> = std::iter::once(base)
+            .chain(if self.snapshot_repairs_count > 0 {
+                Some(format!(
+                    "{}snapshot repairs: {}{}",
                     colors.yellow(),
-                    self.queue_dropped_events,
+                    self.snapshot_repairs_count,
                     colors.reset()
-                ));
-            }
-            if self.queue_backpressure_count > 0 {
-                queue_parts.push(format!(
-                    "{}backpressure: {}{}",
+                ))
+            } else {
+                None
+            })
+            .chain(if self.large_delta_count > 0 {
+                Some(format!(
+                    "{}large deltas: {}{}",
                     colors.yellow(),
-                    self.queue_backpressure_count,
+                    self.large_delta_count,
                     colors.reset()
-                ));
-            }
-            if !queue_parts.is_empty() {
-                parts.push(format!("queue: {}", queue_parts.join(", ")));
-            }
-        }
+                ))
+            } else {
+                None
+            })
+            .chain(if self.protocol_violations > 0 {
+                Some(format!(
+                    "{}protocol violations: {}{}",
+                    colors.red(),
+                    self.protocol_violations,
+                    colors.reset()
+                ))
+            } else {
+                None
+            })
+            .chain(
+                if self.queue_depth > 0
+                    || self.queue_dropped_events > 0
+                    || self.queue_backpressure_count > 0
+                {
+                    let queue_parts: Vec<String> = std::iter::empty()
+                        .chain(if self.queue_depth > 0 {
+                            Some(format!("depth: {}", self.queue_depth))
+                        } else {
+                            None
+                        })
+                        .chain(if self.queue_dropped_events > 0 {
+                            Some(format!(
+                                "{}dropped: {}{}",
+                                colors.yellow(),
+                                self.queue_dropped_events,
+                                colors.reset()
+                            ))
+                        } else {
+                            None
+                        })
+                        .chain(if self.queue_backpressure_count > 0 {
+                            Some(format!(
+                                "{}backpressure: {}{}",
+                                colors.yellow(),
+                                self.queue_backpressure_count,
+                                colors.reset()
+                            ))
+                        } else {
+                            None
+                        })
+                        .collect();
+                    if queue_parts.is_empty() {
+                        None
+                    } else {
+                        Some(format!("queue: {}", queue_parts.join(", ")))
+                    }
+                } else {
+                    None
+                },
+            )
+            .collect();
 
         parts.join(", ")
     }

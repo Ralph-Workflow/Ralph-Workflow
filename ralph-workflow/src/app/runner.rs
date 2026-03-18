@@ -34,7 +34,7 @@
 //! - [`detection`]: Project stack detection
 //! - [`finalization`]: Pipeline cleanup and finalization
 
-use super::{config_init, effect, effect_handler, effectful, plumbing, runtime};
+use super::{config_init, effect, effectful, plumbing, runtime};
 
 use crate::agents::AgentRegistry;
 use crate::app::finalization::finalize_pipeline;

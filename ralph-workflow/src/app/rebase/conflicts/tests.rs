@@ -97,33 +97,23 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
         workspace_arc,
     };
 
-    let mut prompt_history = std::collections::HashMap::new();
     let hook_called = Cell::new(false);
 
-    let (_resolved, replay) = try_resolve_conflicts_with_hook(
+    let (_resolved, replay, prompt_history) = try_resolve_conflicts_with_hook(
         &["src/lib.rs".to_string()],
         &ctx,
-        &mut prompt_history,
         "PreRebase",
         &*executor,
-        |replay, history| {
+        |replay, captured_entry| {
             hook_called.set(true);
 
             if let Some(entry) = replay.captured_entry.clone() {
-                history.insert(replay.key.clone(), entry);
+                *captured_entry = Some((replay.key.clone(), entry));
             }
 
             assert!(
-                history.contains_key("prerebase_conflict_resolution"),
-                "hook must observe prompt_history after conflict resolution prompt capture"
-            );
-
-            let entry = history
-                .get("prerebase_conflict_resolution")
-                .expect("entry must exist");
-            assert!(
-                entry.content_id.as_deref().is_some_and(|id| id.len() == 64),
-                "expected conflict-resolution prompt history entry to include a sha256 content_id"
+                prompt_history.is_empty(),
+                "hook must observe empty prompt_history before capture"
             );
         },
     )
@@ -137,5 +127,18 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
     assert!(
         hook_called.get(),
         "Expected after_prompt_capture hook to run"
+    );
+
+    assert!(
+        prompt_history.contains_key("prerebase_conflict_resolution"),
+        "prompt_history must contain entry after conflict resolution"
+    );
+
+    let entry = prompt_history
+        .get("prerebase_conflict_resolution")
+        .expect("entry must exist");
+    assert!(
+        entry.content_id.as_deref().is_some_and(|id| id.len() == 64),
+        "expected conflict-resolution prompt history entry to include a sha256 content_id"
     );
 }

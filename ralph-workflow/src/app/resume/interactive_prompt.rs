@@ -42,7 +42,7 @@ pub fn offer_resume_if_checkpoint_exists(
     }
 
     // Skip if RALPH_NO_RESUME_PROMPT env var is set (for CI/automation)
-    if std::env::var("RALPH_NO_RESUME_PROMPT").is_ok() {
+    if crate::app::io::env_access::check_no_resume_prompt() {
         return None;
     }
 
@@ -132,39 +132,15 @@ pub fn offer_resume_if_checkpoint_exists(
 
 /// Check if we can prompt the user (stdin/stdout is a TTY).
 fn can_prompt_user() -> bool {
-    io::stdin().is_terminal() && (io::stdout().is_terminal() || io::stderr().is_terminal())
+    crate::app::io::env_access::is_terminal_io()
 }
 
 /// Prompt user to decide whether to resume or start fresh.
 ///
 /// Returns `true` if user wants to resume, `false` if they want to start fresh.
 fn prompt_user_to_resume(logger: &Logger) -> bool {
-    use std::io::Write;
-
-    logger.info(""); // Empty line for spacing
-    logger.info("Would you like to resume from where you left off?");
-
-    let prompt = "Resume? [y/N] ";
-    let colors = crate::logger::Colors::new();
-
-    let mut input = String::new();
-    // Print prompt directly to stdout for better UX
-    let _ = io::stdout().write_all(format!("{}{}", colors.yellow(), prompt).as_bytes());
-    let _ = io::stdout().flush();
-    let _ = io::stdout().write_all(colors.reset().as_bytes());
-
-    match io::stdin().read_line(&mut input) {
-        Ok(0) => {
-            // EOF
-            logger.info(""); // Empty line for spacing
-            false
-        }
-        Ok(_) => {
-            let response = input.trim().to_lowercase();
-            logger.info(""); // Empty line for spacing
-
-            matches!(response.as_str(), "y" | "yes" | "Y" | "YES")
-        }
-        Err(_) => false,
-    }
+    crate::app::io::terminal::prompt_yes_no(
+        logger,
+        "Would you like to resume from where you left off?",
+    )
 }

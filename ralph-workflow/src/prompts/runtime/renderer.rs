@@ -20,6 +20,103 @@ struct LoopRenderLog {
     unsubstituted: Vec<String>,
 }
 
+// =========================================================================
+// Pure helpers (policy extracted from boundary)
+// =========================================================================
+
+fn parse_loop_header(full_match: &str) -> Option<(&str, &str)> {
+    let in_pos = full_match.find(" in ")?;
+    let header = &full_match[7..in_pos];
+    let body_start = full_match.find("%}").map_or(full_match.len(), |p| p + 2);
+    let body = &full_match[body_start..full_match.len() - 2];
+    Some((header, body))
+}
+
+fn split_loop_items(values: &str) -> Vec<&str> {
+    if values.contains(',') {
+        values.split(',').map(str::trim).collect()
+    } else {
+        values
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+}
+
+fn render_loop_item(
+    body: &str,
+    item: &str,
+    var_name: &str,
+    variables: &HashMap<&str, String>,
+) -> String {
+    let mut item_content = body.to_string();
+    for (key, val) in variables {
+        item_content = item_content.replace(&format!("{{{{{}}}}}", key), val);
+    }
+    item_content.replace(&format!("{{{}}}", var_name), item)
+}
+
+fn find_unsubstituted_vars(item_content: &str, variables: &HashMap<&str, String>) -> Vec<String> {
+    extract_variables(item_content)
+        .iter()
+        .filter(|v| {
+            !variables.contains_key(v.name.as_str())
+                && !item_content.contains(&format!("{{{}}}", v.name))
+        })
+        .map(|v| v.name.clone())
+        .collect()
+}
+
+fn eval_conditional(condition: &str, variables: &HashMap<&str, String>) -> bool {
+    variables
+        .get(condition)
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
+
+fn format_modified_files(
+    added: Option<&[String]>,
+    modified: Option<&[String]>,
+    deleted: Option<&[String]>,
+) -> String {
+    let added_count = added.map_or(0, |v| v.len());
+    let modified_count = modified.map_or(0, |v| v.len());
+    let deleted_count = deleted.map_or(0, |v| v.len());
+    let total = added_count + modified_count + deleted_count;
+    if total == 0 {
+        return String::new();
+    }
+    let mut s = format!("  Files: {total} changed");
+    if added_count > 0 {
+        s.push_str(&format!(" ({added_count} added)"));
+    }
+    if modified_count > 0 {
+        s.push_str(&format!(" ({modified_count} modified)"));
+    }
+    if deleted_count > 0 {
+        s.push_str(&format!(" ({deleted_count} deleted)"));
+    }
+    s.push('\n');
+    s
+}
+
+fn format_issues_summary(found: usize, fixed: usize, description: Option<&str>) -> String {
+    if found == 0 && fixed == 0 {
+        return String::new();
+    }
+    let mut s = format!("  Issues: {found} found, {fixed} fixed");
+    if let Some(desc) = description {
+        s.push_str(&format!(" ({desc})"));
+    }
+    s.push('\n');
+    s
+}
+
+// =========================================================================
+// Thin boundary (wiring only)
+// =========================================================================
+
 impl Template {
     /// Render the template with the provided variables.
     pub fn render(&self, variables: &HashMap<&str, String>) -> Result<String, TemplateError> {
@@ -46,7 +143,7 @@ impl Template {
         }
 
         Ok(Self::restore_literal_segments(
-            result_after_sub,
+            &result_after_sub,
             &literal_segments,
         ))
     }
@@ -79,12 +176,18 @@ impl Template {
         let mut literal_segments = Vec::new();
         let mut result = self.content.clone();
 
-        let partial_refs = extract_partials(&result);
+        let partial_names: Vec<String> = extract_partials(&result);
 
-        for (full_match, partial_name) in partial_refs.into_iter().rev() {
+        for partial_name in partial_names.into_iter().rev() {
+            let full_match = format!("{{{{> {}}}}}", partial_name);
+
             if visited.contains(&partial_name) {
-                let mut chain = visited.clone();
-                chain.push(partial_name);
+                let chain = visited
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
                 return Err(TemplateError::CircularReference(chain));
             }
 
@@ -129,7 +232,7 @@ impl Template {
         }
 
         Ok(Self::restore_literal_segments(
-            result_after_sub,
+            &result_after_sub,
             &literal_segments,
         ))
     }
@@ -149,12 +252,18 @@ impl Template {
         let mut literal_segments = Vec::new();
 
         let mut result = self.content.clone();
-        let partial_refs = extract_partials(&result);
+        let partial_names: Vec<String> = extract_partials(&result);
 
-        for (full_match, partial_name) in partial_refs.into_iter().rev() {
+        for partial_name in partial_names.into_iter().rev() {
+            let full_match = format!("{{{{> {}}}}}", partial_name);
+
             if visited.contains(&partial_name) {
-                let mut chain = visited.clone();
-                chain.push(partial_name);
+                let chain = visited
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
                 return Err(TemplateError::CircularReference(chain));
             }
 
@@ -218,7 +327,7 @@ impl Template {
         log.unsubstituted.extend(new_unsub);
 
         Ok(RenderedTemplate {
-            content: Self::restore_literal_segments(result_after_sub, &literal_segments),
+            content: Self::restore_literal_segments(&result_after_sub, &literal_segments),
             log,
         })
     }
@@ -237,49 +346,18 @@ impl Template {
                 let for_end = for_start + for_end;
                 let full_match = &result[for_start..for_end + 2];
 
-                if let Some(in_pos) = full_match.find(" in ") {
-                    let header = &full_match[7..in_pos];
-                    let in_pos = in_pos - 7;
-                    let body_start = full_match.find("%}").map_or(full_match.len(), |p| p + 2);
-                    let body = &full_match[body_start..full_match.len() - 2];
-
+                if let Some((header, body)) = parse_loop_header(full_match) {
                     if let Some(var_name) = header.trim().split_whitespace().next() {
                         if let Some(values) = variables.get(var_name) {
-                            let items: Vec<&str> = if values.contains(',') {
-                                values.split(',').map(str::trim).collect()
-                            } else {
-                                values
-                                    .lines()
-                                    .map(str::trim)
-                                    .filter(|s| !s.is_empty())
-                                    .collect()
-                            };
-
+                            let items = split_loop_items(values);
                             let mut rendered_items = Vec::new();
                             let mut unsubstituted = Vec::new();
 
                             for item in items {
-                                let mut item_content = body.to_string();
-                                for (key, val) in variables {
-                                    item_content =
-                                        item_content.replace(&format!("{{{{{}}}}}", key), val);
-                                }
-                                item_content =
-                                    item_content.replace(&format!("{{{}}}", var_name), item);
-
-                                let vars_in_item: Vec<&str> = extract_variables(&item_content)
-                                    .iter()
-                                    .map(|v| v.name.as_str())
-                                    .collect();
-
-                                for var in vars_in_item {
-                                    if !variables.contains_key(var)
-                                        && !item_content.contains(&format!("{{{}}}", var))
-                                    {
-                                        unsubstituted.push(var.to_string());
-                                    }
-                                }
-
+                                let item_content =
+                                    render_loop_item(body, item, var_name, variables);
+                                unsubstituted
+                                    .extend(find_unsubstituted_vars(&item_content, variables));
                                 rendered_items.push(item_content);
                             }
 
@@ -335,12 +413,16 @@ impl Template {
 
                     let (condition_true, body) = if let Some(else_pos) = else_block {
                         let cond = condition.trim();
-                        let is_truthy = variables.get(cond).map(|v| !v.is_empty()).unwrap_or(false);
-                        (is_truthy, &full_match[body_start..else_pos])
+                        (
+                            eval_conditional(cond, variables),
+                            &full_match[body_start..else_pos],
+                        )
                     } else if let Some(endif_pos) = endif_block {
                         let cond = condition.trim();
-                        let is_truthy = variables.get(cond).map(|v| !v.is_empty()).unwrap_or(false);
-                        (is_truthy, &full_match[body_start..endif_pos])
+                        (
+                            eval_conditional(cond, variables),
+                            &full_match[body_start..endif_pos],
+                        )
                     } else {
                         break;
                     };
@@ -365,7 +447,7 @@ impl Template {
             }
         }
 
-        while let Some(endif_pos) = result.find("{% endif %}") {
+        while result.contains("{% endif %}") {
             result = result.replace("{% endif %}", "");
         }
 

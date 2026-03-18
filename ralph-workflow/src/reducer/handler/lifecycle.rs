@@ -171,7 +171,7 @@ impl MainEffectHandler {
             },
         };
 
-        let mut result = agent_result.as_ref().map_or_else(
+        let result = agent_result.as_ref().map_or_else(
             |_| {
                 EffectResult::event(PipelineEvent::AwaitingDevFix(
                     crate::reducer::event::AwaitingDevFixEvent::DevFixTriggered {
@@ -193,24 +193,27 @@ impl MainEffectHandler {
             },
         );
 
-        // Add any additional events from the agent result if it succeeded
-        if let Ok(ref result_events) = agent_result {
-            result = result.with_additional_event(result_events.event.clone());
-            for event in &result_events.additional_events {
-                result = result.with_additional_event(event.clone());
-            }
-        }
+        let result = if let Ok(ref result_events) = agent_result {
+            result_events.additional_events.iter().fold(
+                result.with_additional_event(result_events.event.clone()),
+                |r, event| r.with_additional_event(event.clone()),
+            )
+        } else {
+            result
+        };
 
         // Emit an additional event when the dev-fix agent is unavailable.
-        if is_agent_unavailable {
+        let result = if is_agent_unavailable {
             // Agent unavailable (quota/usage limit)
-            result = result.with_additional_event(PipelineEvent::AwaitingDevFix(
+            result.with_additional_event(PipelineEvent::AwaitingDevFix(
                 crate::reducer::event::AwaitingDevFixEvent::DevFixAgentUnavailable {
                     failed_phase,
                     reason: error_reason.unwrap_or_else(|| "unknown".to_string()),
                 },
-            ));
-        }
+            ))
+        } else {
+            result
+        };
         // Note: DevFixCompleted IS emitted here to advance the reducer-visible recovery loop.
         // It represents completion of the dev-fix agent invocation, not a guarantee that the
         // pipeline will succeed on retry.

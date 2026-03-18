@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 
 /// Rebase lock file name.
@@ -21,6 +22,19 @@ fn rebase_lock_path() -> String {
     format!(".agent/{REBASE_LOCK_FILE}")
 }
 
+fn build_lock_content() -> String {
+    let pid = std::process::id();
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    format!("pid={pid}\ntimestamp={timestamp}\n")
+}
+
+fn should_acquire_lock(lock_path: &Path) -> io::Result<bool> {
+    if !lock_path.exists() {
+        return Ok(true);
+    }
+    is_lock_stale().map(|stale| stale)
+}
+
 /// Acquire the rebase lock.
 ///
 /// Creates a lock file with the current process ID and timestamp.
@@ -32,34 +46,27 @@ fn rebase_lock_path() -> String {
 /// - The lock file exists and is not stale
 /// - The lock file cannot be created
 pub fn acquire_rebase_lock() -> io::Result<()> {
-    let lock_path = rebase_lock_path();
-    let path = Path::new(&lock_path);
+    let lock_path_str = rebase_lock_path();
+    let lock_path = Path::new(&lock_path_str);
 
-    // Ensure .agent directory exists
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = lock_path.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    // Check if lock already exists
-    if path.exists() {
-        if !is_lock_stale()? {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Rebase is already in progress. If you believe this is incorrect, \
-                 wait 30 minutes for the lock to expire or manually remove `.agent/rebase.lock`.",
-            ));
-        }
-        // Lock is stale, remove it
-        fs::remove_file(path)?;
+    if !should_acquire_lock(lock_path)? {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Rebase is already in progress. If you believe this is incorrect, \
+             wait 30 minutes for the lock to expire or manually remove `.agent/rebase.lock`.",
+        ));
     }
 
-    // Create lock file with PID and timestamp
-    let pid = std::process::id();
-    let timestamp = chrono::Utc::now().to_rfc3339();
-    let lock_content = format!("pid={pid}\ntimestamp={timestamp}\n");
+    if lock_path.exists() {
+        fs::remove_file(lock_path)?;
+    }
 
-    let mut file = fs::File::create(path)?;
-    use std::io::Write;
+    let lock_content = build_lock_content();
+    let mut file = fs::File::create(lock_path)?;
     file.write_all(lock_content.as_bytes())?;
     file.sync_all()?;
 

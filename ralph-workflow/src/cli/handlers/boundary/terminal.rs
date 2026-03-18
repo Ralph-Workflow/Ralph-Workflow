@@ -34,14 +34,6 @@ pub fn read_line() -> Option<String> {
     io::stdin().lines().next().and_then(|r| r.ok())
 }
 
-pub fn write_stdout(f: impl FnOnce(&mut dyn Write) -> std::io::Result<()>) -> std::io::Result<()> {
-    f(&mut io::stdout())
-}
-
-pub fn write_stderr(f: impl FnOnce(&mut dyn Write) -> std::io::Result<()>) -> std::io::Result<()> {
-    f(&mut io::stderr())
-}
-
 pub fn exit_with_code(code: i32) -> ! {
     std::process::exit(code)
 }

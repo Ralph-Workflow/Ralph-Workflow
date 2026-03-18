@@ -6,13 +6,8 @@
 //!
 //! Dylint rules are relaxed in this module per docs/code-style/boundaries.md
 
-#![allow(clippy::all)]
-#![allow(unsafe_code)]
-#![allow(forbid_mut_binding)]
-#![allow(forbid_imperative_loops)]
-#![allow(forbid_mutating_receiver_methods)]
-#![allow(forbid_interior_mutability)]
-
 pub mod claude;
 pub mod codex;
+pub mod health;
+pub mod incremental_parser;
 pub mod stream_classifier;

@@ -72,9 +72,9 @@ impl TemplateRegistry {
     #[must_use]
     pub fn default_user_templates_dir() -> Option<PathBuf> {
         if let Some(xdg) = get_xdg_config_home() {
-            let xdg = xdg.trim();
-            if !xdg.is_empty() {
-                return Some(PathBuf::from(xdg).join("ralph").join("templates"));
+            let xdg_str = xdg.to_string_lossy().trim().to_string();
+            if !xdg_str.is_empty() {
+                return Some(PathBuf::from(xdg_str).join("ralph").join("templates"));
             }
         }
 

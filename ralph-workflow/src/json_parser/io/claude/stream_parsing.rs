@@ -1,14 +1,9 @@
 // Claude stream parsing methods.
 //
 // Contains parse_stream and event classification methods.
+// This file includes the original stream_parsing implementations from the claude module.
 
-use std::io::{self, BufRead, Write};
-
-use crate::json_parser::health::HealthMonitor;
-use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
-use crate::json_parser::types::{ClaudeEvent, StreamInnerEvent};
-
-use super::ClaudeParser;
+include!("../../claude/stream_parsing.rs");
 
 impl ClaudeParser {
     const fn is_control_event(event: &ClaudeEvent) -> bool {

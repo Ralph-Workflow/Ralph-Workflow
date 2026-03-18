@@ -149,7 +149,8 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
     }
 
     let template_input = crate::cli::handlers::boundary::terminal::read_line();
-    let template_name = template_input.unwrap_or_default().trim();
+    let binding = template_input.unwrap_or_default();
+    let template_name = binding.trim();
 
     // Empty input defaults to 'quick' template
     if template_name.is_empty() {

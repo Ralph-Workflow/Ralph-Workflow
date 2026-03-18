@@ -92,28 +92,7 @@ fn save_checkpoint_from_state(state: &PipelineState, ctx: &PhaseContext<'_>) {
         .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
     if let Some(checkpoint) = builder.build_with_workspace(ctx.workspace) {
-        let mut checkpoint = checkpoint;
-        checkpoint.dev_fix_attempt_count = state.dev_fix_attempt_count;
-        checkpoint.recovery_epoch = state.recovery_epoch;
-        checkpoint.recovery_escalation_level = state.recovery_escalation_level;
-        checkpoint.failed_phase_for_recovery = state.failed_phase_for_recovery;
-        checkpoint.interrupted_by_user = state.interrupted_by_user;
-        checkpoint.commit_is_second_pass = state.commit_residual_retry_pass == 2;
-        checkpoint.commit_residual_retry_pass = state.commit_residual_retry_pass;
-        checkpoint
-            .commit_selected_files
-            .clone_from(&state.commit_selected_files);
-        checkpoint
-            .commit_excluded_files
-            .clone_from(&state.commit_excluded_files);
-        checkpoint
-            .commit_residual_files
-            .clone_from(&state.commit_residual_files);
-
-        if state.cloud.enabled {
-            checkpoint.cloud_state =
-                Some(crate::checkpoint::state::CloudCheckpointState::from_pipeline_state(state));
-        }
+        let checkpoint = checkpoint.with_recovery_state(state);
 
         let _ = save_checkpoint_with_workspace(ctx.workspace, &checkpoint);
     }

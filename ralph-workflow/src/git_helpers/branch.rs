@@ -91,30 +91,34 @@ pub fn get_default_branch_at(repo_root: &Path) -> io::Result<String> {
     Ok(get_default_branch_impl(&repo))
 }
 
+/// Pure policy: determine the default branch name from git repository state.
+fn determine_default_branch(repo: &git2::Repository) -> String {
+    resolve_default_branch_from_origin(repo)
+        .or_else(|| resolve_default_branch_from_local(repo))
+        .unwrap_or_else(|| "main".to_string())
+}
+
+fn resolve_default_branch_from_origin(repo: &git2::Repository) -> Option<String> {
+    let origin_head = repo.find_reference("refs/remotes/origin/HEAD").ok()?;
+    let target = origin_head.symbolic_target()?;
+    target
+        .strip_prefix("refs/remotes/origin/")
+        .map(String::from)
+}
+
+fn resolve_default_branch_from_local(repo: &git2::Repository) -> Option<String> {
+    if repo.find_branch("main", git2::BranchType::Local).is_ok() {
+        return Some("main".to_string());
+    }
+    if repo.find_branch("master", git2::BranchType::Local).is_ok() {
+        return Some("master".to_string());
+    }
+    None
+}
+
 /// Implementation of `get_default_branch`.
 fn get_default_branch_impl(repo: &git2::Repository) -> String {
-    // Try to get the default branch from origin/HEAD
-    // This is set when you clone and represents the default branch
-    if let Ok(origin_head) = repo.find_reference("refs/remotes/origin/HEAD") {
-        if let Some(target) = origin_head.symbolic_target() {
-            // target is usually like "refs/remotes/origin/main"
-            if let Some(branch_name) = target.strip_prefix("refs/remotes/origin/") {
-                return branch_name.to_string();
-            }
-        }
-    }
-
-    // Fallback: check if "main" or "master" exists as a local branch
-    if repo.find_branch("main", git2::BranchType::Local).is_ok() {
-        return "main".to_string();
-    }
-
-    if repo.find_branch("master", git2::BranchType::Local).is_ok() {
-        return "master".to_string();
-    }
-
-    // Ultimate fallback: assume "main"
-    "main".to_string()
+    determine_default_branch(repo)
 }
 
 #[cfg(test)]

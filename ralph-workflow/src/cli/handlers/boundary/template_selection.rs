@@ -3,10 +3,7 @@
 //! Provides functionality for prompting users to select a PROMPT.md template
 //! when one doesn't exist and interactive mode is enabled.
 //!
-//! # Architecture Note
-//!
-//! This module operates at the CLI layer (pre-pipeline) and uses boundary modules
-//! for file and terminal operations. This is acceptable per the effect-system architecture.
+//! This is a **boundary module** for terminal I/O operations.
 
 use std::io::Write;
 use std::path::Path;
@@ -44,7 +41,7 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
         return None;
     }
 
-    let stdout = term::stdout();
+    let mut stdout = term::stdout();
     let _ = writeln!(stdout);
     let _ = writeln!(
         stdout,
@@ -144,7 +141,7 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
     let prompt_path = Path::new("PROMPT.md");
 
     if fs_io::exists(prompt_path) {
-        let stdout = term::stdout();
+        let mut stdout = term::stdout();
         let _ = writeln!(
             stdout,
             "{}PROMPT.md already exists. Skipping creation.{}",
@@ -161,7 +158,7 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
     let content = template.content();
     fs_io::write(prompt_path, content)?;
 
-    let stdout = term::stdout();
+    let mut stdout = term::stdout();
     let _ = writeln!(stdout);
     let _ = writeln!(
         stdout,

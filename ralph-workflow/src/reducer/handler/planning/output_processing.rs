@@ -52,10 +52,10 @@ impl MainEffectHandler {
         iteration: u32,
         valid: bool,
     ) -> EffectResult {
-        let mut ui_events = Vec::new();
-        if valid {
-            ui_events.push(self.phase_transition_ui(PipelinePhase::Development));
-        }
+        let ui_events: Vec<_> = valid
+            .then(|| self.phase_transition_ui(PipelinePhase::Development))
+            .into_iter()
+            .collect();
         EffectResult::with_ui(
             PipelineEvent::plan_generation_completed(iteration, valid),
             ui_events,

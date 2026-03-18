@@ -38,33 +38,33 @@ impl MainEffectHandler {
         iteration: u32,
     ) -> EffectResult {
         let xml_path = Path::new(xml_paths::DEVELOPMENT_RESULT_XML);
-        let mut ui_events = vec![UIEvent::IterationProgress {
+        let initial_event = UIEvent::IterationProgress {
             current: iteration,
             total: self.state.total_iterations,
-        }];
+        };
 
         match ctx.workspace.read(xml_path) {
-            Ok(content) => {
-                ui_events.push(UIEvent::XmlOutput {
-                    xml_type: XmlOutputType::DevelopmentResult,
-                    content,
-                    context: Some(XmlOutputContext {
-                        iteration: Some(iteration),
-                        pass: None,
-                        snippets: Vec::new(),
-                    }),
-                });
-                EffectResult::with_ui(
-                    PipelineEvent::development_xml_extracted(iteration),
-                    ui_events,
-                )
-            }
+            Ok(content) => EffectResult::with_ui(
+                PipelineEvent::development_xml_extracted(iteration),
+                vec![
+                    initial_event,
+                    UIEvent::XmlOutput {
+                        xml_type: XmlOutputType::DevelopmentResult,
+                        content,
+                        context: Some(XmlOutputContext {
+                            iteration: Some(iteration),
+                            pass: None,
+                            snippets: Vec::new(),
+                        }),
+                    },
+                ],
+            ),
             Err(_) => EffectResult::with_ui(
                 PipelineEvent::development_xml_missing(
                     iteration,
                     self.state.continuation.invalid_output_attempts,
                 ),
-                ui_events,
+                vec![initial_event],
             ),
         }
     }

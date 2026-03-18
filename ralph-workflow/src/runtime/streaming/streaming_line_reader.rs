@@ -37,8 +37,6 @@ pub const MAX_BUFFER_SIZE: usize = 1024 * 1024; // 1 MiB
 impl<R: Read> StreamingLineReader<R> {
     /// Create a new streaming line reader with a small buffer for low latency.
     pub fn new(inner: R) -> Self {
-        // Use a smaller buffer (1KB) than default (8KB) for lower latency.
-        // This trades slightly more syscalls for faster response to newlines.
         const BUFFER_SIZE: usize = 1024;
         Self {
             inner: BufReader::with_capacity(BUFFER_SIZE, inner),
@@ -47,48 +45,39 @@ impl<R: Read> StreamingLineReader<R> {
         }
     }
 
-    /// Fill the internal buffer from the underlying reader.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the buffer would exceed `MAX_BUFFER_SIZE`.
     fn fill_buffer(&mut self) -> io::Result<usize> {
-        // Check if we're approaching the limit before reading more
         let current_size = self.buffer.len() - self.consumed;
-        if current_size >= MAX_BUFFER_SIZE {
-            return Err(io::Error::other(format!(
-                "StreamingLineReader buffer exceeded maximum size of {MAX_BUFFER_SIZE} bytes. \
-                 This may indicate malformed input or an agent that is not sending newlines."
-            )));
-        }
+        check_buffer_size_limit(current_size)?;
 
         let mut read_buf = [0u8; 256];
         let n = self.inner.read(&mut read_buf)?;
         if n > 0 {
-            // Check if adding this data would exceed the limit
             let new_size = current_size + n;
-            if new_size > MAX_BUFFER_SIZE {
-                return Err(io::Error::other(format!(
-                    "StreamingLineReader buffer would exceed maximum size of {MAX_BUFFER_SIZE} bytes. \
-                     This may indicate malformed input or an agent that is not sending newlines."
-                )));
-            }
+            check_buffer_size_limit(new_size)?;
             self.buffer.extend_from_slice(&read_buf[..n]);
         }
         Ok(n)
     }
 }
 
+fn check_buffer_size_limit(current_size: usize) -> io::Result<()> {
+    if current_size >= MAX_BUFFER_SIZE {
+        return Err(io::Error::other(format!(
+            "StreamingLineReader buffer exceeded maximum size of {MAX_BUFFER_SIZE} bytes. \
+             This may indicate malformed input or an agent that is not sending newlines."
+        )));
+    }
+    Ok(())
+}
+
 impl<R: Read> Read for StreamingLineReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // First, consume from the buffer
         let available = self.buffer.len() - self.consumed;
         if available > 0 {
             let to_copy = available.min(buf.len());
             buf[..to_copy].copy_from_slice(&self.buffer[self.consumed..self.consumed + to_copy]);
             self.consumed += to_copy;
 
-            // Compact the buffer if we've consumed everything
             if self.consumed == self.buffer.len() {
                 self.buffer.clear();
                 self.consumed = 0;
@@ -96,38 +85,24 @@ impl<R: Read> Read for StreamingLineReader<R> {
             return Ok(to_copy);
         }
 
-        // Buffer empty - read directly from underlying reader
         self.inner.read(buf)
     }
 }
 
 impl<R: Read> BufRead for StreamingLineReader<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        const MAX_ATTEMPTS: usize = 8; // Prevent infinite loop
+        const MAX_ATTEMPTS: usize = 8;
 
-        // If we have unconsumed data, return it
         if self.consumed < self.buffer.len() {
             return Ok(&self.buffer[self.consumed..]);
         }
 
-        // Buffer was fully consumed - clear and try to read more
         self.buffer.clear();
         self.consumed = 0;
 
-        // Try to fill the buffer with at least some data
-        let mut total_read = 0;
-        for _ in 0..MAX_ATTEMPTS {
-            match self.fill_buffer()? {
-                0 if total_read == 0 => return Ok(&[]), // EOF
-                0 => break,                             // No more data available right now
-                n => {
-                    total_read += n;
-                    // Check if we have a newline
-                    if self.buffer.contains(&b'\n') {
-                        break;
-                    }
-                }
-            }
+        let total_read = fill_buffer_with_retry(self, MAX_ATTEMPTS)?;
+        if total_read == 0 {
+            return Ok(&[]);
         }
 
         Ok(&self.buffer[self.consumed..])
@@ -136,7 +111,6 @@ impl<R: Read> BufRead for StreamingLineReader<R> {
     fn consume(&mut self, amt: usize) {
         self.consumed = (self.consumed + amt).min(self.buffer.len());
 
-        // Compact the buffer if we've consumed everything
         if self.consumed == self.buffer.len() {
             self.buffer.clear();
             self.consumed = 0;
@@ -186,4 +160,24 @@ impl<R: Read> BufRead for StreamingLineReader<R> {
             }
         }
     }
+}
+
+fn fill_buffer_with_retry(
+    reader: &mut StreamingLineReader<impl Read>,
+    max_attempts: usize,
+) -> io::Result<usize> {
+    let mut total_read = 0;
+    for _ in 0..max_attempts {
+        match reader.fill_buffer()? {
+            0 if total_read == 0 => return Ok(0),
+            0 => break,
+            n => {
+                total_read += n;
+                if reader.buffer.contains(&b'\n') {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(total_read)
 }

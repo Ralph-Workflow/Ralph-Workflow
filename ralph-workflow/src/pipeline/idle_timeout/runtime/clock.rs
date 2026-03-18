@@ -38,10 +38,10 @@ pub const IDLE_TIMEOUT_SECS: u64 = 300;
 
 pub type SharedActivityTimestamp = Arc<AtomicU64>;
 
-pub type SharedFileActivityTracker = Arc<super::FileActivityTrackerInner>;
+pub type SharedFileActivityTracker = Arc<inner::FileActivityTrackerInner>;
 
 pub mod inner {
-    use super::super::file_activity::FileActivityTracker;
+    use crate::pipeline::idle_timeout::FileActivityTracker;
     use std::sync::Mutex;
 
     pub struct FileActivityTrackerInner(pub Mutex<FileActivityTracker>);

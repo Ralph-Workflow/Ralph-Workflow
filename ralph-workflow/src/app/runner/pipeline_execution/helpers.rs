@@ -24,7 +24,7 @@ const fn command_requires_prompt_setup(args: &Args) -> bool {
         && !args.commit_display.show_baseline
 }
 
-struct CommandExitCleanupGuard<'a> {
+pub struct CommandExitCleanupGuard<'a> {
     logger: &'a Logger,
     workspace: &'a dyn crate::workspace::Workspace,
     owns_cleanup: bool,
@@ -32,7 +32,7 @@ struct CommandExitCleanupGuard<'a> {
 }
 
 impl<'a> CommandExitCleanupGuard<'a> {
-    const fn new(
+    pub const fn new(
         logger: &'a Logger,
         workspace: &'a dyn crate::workspace::Workspace,
         restore_prompt_permissions: bool,
@@ -149,7 +149,8 @@ fn handle_repo_commands_without_prompt_setup(
         repo_root,
         workspace,
     } = params;
-    let mut cleanup_guard = CommandExitCleanupGuard::new(logger, workspace.as_ref(), false);
+    let mut cleanup_guard =
+        crate::app::io::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
     if args.recovery.dry_run {
         handle_dry_run(
@@ -165,7 +166,7 @@ fn handle_repo_commands_without_prompt_setup(
     }
 
     if args.rebase_flags.rebase_only {
-        let mut git_helpers = crate::git_helpers::GitHelpers::new();
+        let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
         prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),
@@ -189,7 +190,7 @@ fn handle_repo_commands_without_prompt_setup(
     }
 
     if args.commit_plumbing.generate_commit_msg {
-        let mut git_helpers = crate::git_helpers::GitHelpers::new();
+        let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
         prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),

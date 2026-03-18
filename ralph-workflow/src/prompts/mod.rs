@@ -57,6 +57,12 @@ mod prompt_dispatch;
 // Re-export ResumeContext for use in prompts
 pub use crate::checkpoint::restore::ResumeContext;
 
+// Backwards compatibility alias: registry used to be in prompts, now in agents
+pub mod registry {
+    pub use crate::agents::AgentRegistry;
+}
+pub use registry::AgentRegistry;
+
 // Re-export items from split modules
 pub use prompt_config::PromptConfig;
 pub use prompt_dispatch::get_stored_or_generate_prompt;

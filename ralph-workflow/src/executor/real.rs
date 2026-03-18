@@ -26,44 +26,49 @@ fn set_nonblocking_fd(fd: std::os::unix::io::RawFd) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+fn terminate_child_best_effort(child: &mut std::process::Child) {
+    let pid = child.id().min(i32::MAX as u32).cast_signed();
+
+    unsafe {
+        let _ = libc::kill(-pid, libc::SIGTERM);
+        let _ = libc::kill(pid, libc::SIGTERM);
+    }
+
+    wait_for_termination_or_send_sigkill(child, pid);
+}
+
+#[cfg(unix)]
+fn wait_for_termination_or_send_sigkill(child: &mut std::process::Child, pid: i32) {
+    use std::time::{Duration, Instant};
+
+    let term_deadline = Instant::now() + Duration::from_millis(250);
+    while Instant::now() < term_deadline {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+
+    unsafe {
+        let _ = libc::kill(-pid, libc::SIGKILL);
+        let _ = libc::kill(pid, libc::SIGKILL);
+    }
+
+    let kill_deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < kill_deadline {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    }
+}
+
+#[cfg(unix)]
 fn ensure_nonblocking_or_terminate(
     child: &mut std::process::Child,
     stdout_fd: std::os::unix::io::RawFd,
     stderr_fd: std::os::unix::io::RawFd,
 ) -> io::Result<()> {
-    fn terminate_child_best_effort(child: &mut std::process::Child) {
-        use std::time::{Duration, Instant};
-
-        let pid = child.id().min(i32::MAX as u32).cast_signed();
-
-        // Prefer killing the process group first (agent is in its own pgid).
-        unsafe {
-            let _ = libc::kill(-pid, libc::SIGTERM);
-            let _ = libc::kill(pid, libc::SIGTERM);
-        }
-
-        let term_deadline = Instant::now() + Duration::from_millis(250);
-        while Instant::now() < term_deadline {
-            match child.try_wait() {
-                Ok(Some(_)) | Err(_) => return,
-                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-            }
-        }
-
-        unsafe {
-            let _ = libc::kill(-pid, libc::SIGKILL);
-            let _ = libc::kill(pid, libc::SIGKILL);
-        }
-
-        let kill_deadline = Instant::now() + Duration::from_millis(500);
-        while Instant::now() < kill_deadline {
-            match child.try_wait() {
-                Ok(Some(_)) | Err(_) => return,
-                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-            }
-        }
-    }
-
     if let Err(e) = set_nonblocking_fd(stdout_fd) {
         terminate_child_best_effort(child);
         return Err(e);
@@ -75,6 +80,14 @@ fn ensure_nonblocking_or_terminate(
     }
 
     Ok(())
+}
+
+fn wrap_process_output(output: std::process::Output) -> ProcessOutput {
+    ProcessOutput {
+        status: output.status,
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    }
 }
 
 /// Real process executor that uses `std::process::Command`.
@@ -99,24 +112,8 @@ impl ProcessExecutor for RealProcessExecutor {
         env: &[(String, String)],
         workdir: Option<&Path>,
     ) -> io::Result<ProcessOutput> {
-        let mut cmd = std::process::Command::new(command);
-        cmd.args(args);
-
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
-        if let Some(dir) = workdir {
-            cmd.current_dir(dir);
-        }
-
-        let output = cmd.output()?;
-
-        Ok(ProcessOutput {
-            status: output.status,
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        })
+        let output = build_and_run_command(command, args, env, workdir)?;
+        Ok(wrap_process_output(output))
     }
 
     fn spawn(
@@ -128,15 +125,12 @@ impl ProcessExecutor for RealProcessExecutor {
     ) -> io::Result<std::process::Child> {
         let mut cmd = std::process::Command::new(command);
         cmd.args(args);
-
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
+        env.iter().for_each(|(k, v)| {
+            cmd.env(k, v);
+        });
         if let Some(dir) = workdir {
             cmd.current_dir(dir);
         }
-
         cmd.stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -146,21 +140,13 @@ impl ProcessExecutor for RealProcessExecutor {
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
         let mut cmd = std::process::Command::new(&config.command);
         cmd.args(&config.args);
-
-        // Set environment variables
-        for (key, value) in &config.env {
-            cmd.env(key, value);
-        }
-
-        // Add the prompt as the final argument
+        config.env.iter().for_each(|(k, v)| {
+            cmd.env(k, v);
+        });
         cmd.arg(&config.prompt);
-
-        // Set buffering variables for real-time streaming
         cmd.env("PYTHONUNBUFFERED", "1");
         cmd.env("NODE_ENV", "production");
 
-        // Put the agent in its own process group so idle-timeout enforcement can
-        // terminate the whole subtree (and not just the direct child PID).
         #[cfg(unix)]
         unsafe {
             use std::os::unix::process::CommandExt;
@@ -172,7 +158,6 @@ impl ProcessExecutor for RealProcessExecutor {
             });
         }
 
-        // Spawn the process with piped stdout/stderr
         let mut child = cmd
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -188,13 +173,14 @@ impl ProcessExecutor for RealProcessExecutor {
             .take()
             .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
 
-        // The stderr collector and stdout pump rely on non-blocking reads so they can
-        // be cancelled promptly (idle timeout, early failures).
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
             ensure_nonblocking_or_terminate(&mut child, stdout.as_raw_fd(), stderr.as_raw_fd())?;
         }
+
+        #[cfg(not(unix))]
+        let _ = (&child, &stdout, &stderr);
 
         Ok(AgentChildHandle {
             stdout: Box::new(stdout),
@@ -202,6 +188,23 @@ impl ProcessExecutor for RealProcessExecutor {
             inner: Box::new(RealAgentChild(child)),
         })
     }
+}
+
+fn build_and_run_command(
+    command: &str,
+    args: &[&str],
+    env: &[(String, String)],
+    workdir: Option<&Path>,
+) -> io::Result<std::process::Output> {
+    let mut cmd = std::process::Command::new(command);
+    cmd.args(args);
+    env.iter().for_each(|(k, v)| {
+        cmd.env(k, v);
+    });
+    if let Some(dir) = workdir {
+        cmd.current_dir(dir);
+    }
+    cmd.output()
 }
 
 #[cfg(test)]
@@ -235,7 +238,6 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        // Ensure we don't leave a live subprocess behind even if the assertion fails.
         if !exited {
             let _ = child.kill();
             let _ = child.wait();

@@ -433,24 +433,26 @@ impl MainEffectHandler {
             ));
         }
 
-        let mut result = EffectResult::event(PipelineEvent::fix_prompt_prepared(pass))
-            .with_ui_event(UIEvent::PromptReplayHit {
+        let result = EffectResult::event(PipelineEvent::fix_prompt_prepared(pass)).with_ui_event(
+            UIEvent::PromptReplayHit {
                 key: prompt_key,
                 was_replayed,
-            });
-
-        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
-        if let Some(event) = prompt_captured_event {
-            result = result.with_additional_event(event);
-        }
-
-        if let Some(log) = rendered_log {
-            result = result.with_additional_event(PipelineEvent::template_rendered(
+            },
+        );
+        let result = if let Some(event) = prompt_captured_event {
+            result.with_additional_event(event)
+        } else {
+            result
+        };
+        let result = if let Some(log) = rendered_log {
+            result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,
                 template_name.to_string(),
                 log,
-            ));
-        }
+            ))
+        } else {
+            result
+        };
 
         Ok(result)
     }

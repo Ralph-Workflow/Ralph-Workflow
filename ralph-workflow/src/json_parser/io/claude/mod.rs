@@ -4,11 +4,5 @@
 //! interior mutability (RefCell), and loops. This module is exempt from
 //! functional programming lints per docs/code-style/boundaries.md.
 
-#![allow(clippy::all)]
-#![allow(unsafe_code)]
-
-mod formatting;
-mod parser;
-mod stream_parsing;
-
-pub use parser::ClaudeParser;
+// Use the original claude module's implementation
+pub use crate::json_parser::claude::ClaudeParser;

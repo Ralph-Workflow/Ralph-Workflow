@@ -137,12 +137,12 @@ fn write_run_metadata_best_effort(
         started_at_utc: chrono::Utc::now().to_rfc3339(),
         command: format!(
             "ralph {}",
-            std::env::args().skip(1).collect::<Vec<_>>().join(" ")
+            crate::app::io::env_access::get_program_args().join(" ")
         ),
         resume: state.args.recovery.resume,
         repo_root: state.repo_root.display().to_string(),
         ralph_version: env!("CARGO_PKG_VERSION").to_string(),
-        pid: Some(std::process::id()),
+        pid: Some(crate::app::io::env_access::get_process_id()),
         config_summary: None,
     };
 

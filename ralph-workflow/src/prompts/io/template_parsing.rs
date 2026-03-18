@@ -4,13 +4,51 @@
 
 use crate::prompts::template_validator::{TemplateMetadata, VariableInfo};
 
-/// Extract all variable references from template content.
-#[must_use]
+fn skip_comment(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start + 2;
+    while i + 1 < bytes.len() && !(bytes[i] == b'#' && bytes[i + 1] == b'}') {
+        i += 1;
+    }
+    if i + 1 < bytes.len() {
+        Some(i + 2)
+    } else {
+        None
+    }
+}
+
+fn parse_variable_spec(var_spec: &str) -> Option<(&str, Option<String>)> {
+    let trimmed = var_spec.trim();
+    if trimmed.starts_with('>') || trimmed.is_empty() {
+        return None;
+    }
+    let (name, default_value) = var_spec.find('|').map_or((trimmed, None), |pipe_pos| {
+        let name = var_spec[..pipe_pos].trim();
+        let rest = &var_spec[pipe_pos + 1..];
+        rest.find('=').map_or((name, None), |eq_pos| {
+            let key = rest[..eq_pos].trim();
+            if key == "default" {
+                let value = rest[eq_pos + 1..].trim();
+                let value = if (value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\''))
+                {
+                    &value[1..value.len() - 1]
+                } else {
+                    value
+                };
+                (name, Some(value.to_string()))
+            } else {
+                (name, None)
+            }
+        })
+    });
+    Some((name, default_value))
+}
+
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "bounds-checked index arithmetic"
 )]
-pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
+fn extract_variables_impl(content: &str) -> Vec<VariableInfo> {
     let bytes = content.as_bytes();
     let mut variables = Vec::new();
     let mut i = 0;
@@ -22,15 +60,9 @@ pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
         }
 
         if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'#' && bytes[i + 1] == b'}') {
-                if bytes[i] == b'\n' {
-                    line += 1;
-                }
-                i += 1;
-            }
-            if i + 1 < bytes.len() {
-                i += 2;
+            match skip_comment(bytes, i) {
+                Some(next) => i = next,
+                None => break,
             }
             continue;
         }
@@ -52,31 +84,7 @@ pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
 
             if i < bytes.len() && bytes[i] == b'}' && i + 1 < bytes.len() && bytes[i + 1] == b'}' {
                 let var_spec = &content[name_start..i];
-                let trimmed_var = var_spec.trim();
-
-                if !trimmed_var.starts_with('>') && !trimmed_var.is_empty() {
-                    let (var_name, default_value) =
-                        var_spec.find('|').map_or((trimmed_var, None), |pipe_pos| {
-                            let name = var_spec[..pipe_pos].trim();
-                            let rest = &var_spec[pipe_pos + 1..];
-                            rest.find('=').map_or((name, None), |eq_pos| {
-                                let key = rest[..eq_pos].trim();
-                                if key == "default" {
-                                    let value = rest[eq_pos + 1..].trim();
-                                    let value = if (value.starts_with('"') && value.ends_with('"'))
-                                        || (value.starts_with('\'') && value.ends_with('\''))
-                                    {
-                                        &value[1..value.len() - 1]
-                                    } else {
-                                        value
-                                    };
-                                    (name, Some(value.to_string()))
-                                } else {
-                                    (name, None)
-                                }
-                            })
-                        });
-
+                if let Some((var_name, default_value)) = parse_variable_spec(var_spec) {
                     variables.push(VariableInfo {
                         name: var_name.to_string(),
                         line,
@@ -84,7 +92,6 @@ pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
                         default_value,
                     });
                 }
-
                 i += 2;
                 continue;
             }
@@ -96,25 +103,32 @@ pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
     variables
 }
 
-/// Extract all partial references from template content.
-#[must_use]
+fn skip_comment_partial(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut i = start + 2;
+    while i + 1 < bytes.len() && !(bytes[i] == b'#' && bytes[i + 1] == b'}') {
+        i += 1;
+    }
+    if i + 1 < bytes.len() {
+        Some(i + 2)
+    } else {
+        None
+    }
+}
+
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "bounds-checked index arithmetic"
 )]
-pub fn extract_partials(content: &str) -> Vec<String> {
+fn extract_partials_impl(content: &str) -> Vec<String> {
     let bytes = content.as_bytes();
     let mut partials = Vec::new();
     let mut i = 0;
 
     while i < bytes.len().saturating_sub(2) {
         if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'#' && bytes[i + 1] == b'}') {
-                i += 1;
-            }
-            if i + 1 < bytes.len() {
-                i += 2;
+            match skip_comment_partial(bytes, i) {
+                Some(next) => i = next,
+                None => break,
             }
             continue;
         }
@@ -160,6 +174,25 @@ pub fn extract_partials(content: &str) -> Vec<String> {
     partials
 }
 
+fn parse_metadata_line(line: &str) -> Option<(Option<String>, Option<String>)> {
+    let inner = line[2..line.len() - 2].trim();
+    let version = inner.strip_prefix("Version:").map(|s| s.trim().to_string());
+    let purpose = inner.strip_prefix("PURPOSE:").map(|s| s.trim().to_string());
+    Some((version, purpose))
+}
+
+/// Extract all variable references from template content.
+#[must_use]
+pub fn extract_variables(content: &str) -> Vec<VariableInfo> {
+    extract_variables_impl(content)
+}
+
+/// Extract all partial references from template content.
+#[must_use]
+pub fn extract_partials(content: &str) -> Vec<String> {
+    extract_partials_impl(content)
+}
+
 /// Extract template metadata from header comments.
 #[must_use]
 #[expect(
@@ -176,12 +209,9 @@ pub fn extract_metadata(content: &str) -> TemplateMetadata {
             continue;
         }
 
-        let inner = line[2..line.len() - 2].trim();
-
-        if let Some(rest) = inner.strip_prefix("Version:") {
-            version = Some(rest.trim().to_string());
-        } else if let Some(rest) = inner.strip_prefix("PURPOSE:") {
-            purpose = Some(rest.trim().to_string());
+        if let Some((v, p)) = parse_metadata_line(line) {
+            version = version.or(v);
+            purpose = purpose.or(p);
         }
     }
 

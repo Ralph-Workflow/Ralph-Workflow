@@ -34,17 +34,17 @@ pub(super) fn detect_signature_files_with_workspace(
 ) -> (Vec<String>, Option<String>, Option<String>) {
     let signatures = collect_signature_files_with_workspace(workspace, root);
 
-    let file_contents =
-        signatures
-            .by_name_lower
-            .values()
-            .flatten()
-            .fold(HashMap::new(), |mut acc, path| {
-                if let Ok(content) = workspace.read(path) {
-                    acc.insert(path.clone(), content);
-                }
-                acc
-            });
+    let file_contents: std::collections::HashMap<PathBuf, String> = signatures
+        .by_name_lower
+        .values()
+        .flatten()
+        .filter_map(|path| {
+            workspace
+                .read(path)
+                .ok()
+                .map(|content| (path.clone(), content))
+        })
+        .collect();
 
     let results = detectors::DetectionResults::new();
 

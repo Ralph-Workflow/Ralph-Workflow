@@ -37,7 +37,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     // Set working directory first if override is provided
     // This ensures all subsequent operations (including config init) use the correct directory
     if let Some(ref override_dir) = args.working_dir_override {
-        std::env::set_current_dir(override_dir)?;
+        crate::app::io::env_access::set_current_dir(override_dir)?;
     }
 
     // Initialize configuration and agent registry
@@ -65,9 +65,8 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
 
     // Handle --diagnose
     if args.recovery.diagnose {
-        let diagnose_workspace = crate::workspace::WorkspaceFs::new(
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
-        );
+        let diagnose_workspace =
+            crate::workspace::WorkspaceFs::new(crate::app::io::env_access::get_current_dir());
         handle_diagnose(
             &mut std::io::stdout(),
             colors,
@@ -87,7 +86,7 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
     validate_agent_chains(&registry, &agent_resolution_sources, &logger);
 
     // Create effect handler for production operations
-    let mut handler = effect_handler::RealAppEffectHandler::new();
+    let mut handler = crate::app::io::runtime_factory::create_effect_handler();
 
     // Get repo root early for workspace creation (needed by plumbing commands)
     // This uses the same logic as setup_working_dir_via_handler but captures the repo_root.

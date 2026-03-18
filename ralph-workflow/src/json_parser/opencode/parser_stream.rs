@@ -46,7 +46,7 @@ impl OpenCodeParser {
         self.fallback_step_counter.set(counter);
         timestamp.map_or_else(
             || format!("{session}:fallback:{counter}"),
-            |ts| format!("{session}:{ts}:{counter}")
+            |ts| format!("{session}:{ts}:{counter}"),
         )
     }
 
@@ -91,13 +91,19 @@ impl OpenCodeParser {
 
         match self.parse_event(line) {
             Some(output) => {
-                Self::record_monitor_event(monitor, Self::classify_successful_parse_for_monitor(line, trimmed));
+                Self::record_monitor_event(
+                    monitor,
+                    Self::classify_successful_parse_for_monitor(line, trimmed),
+                );
                 let mut printer = self.printer.borrow_mut();
                 write!(printer, "{output}")?;
                 printer.flush()?;
             }
             None => {
-                Self::record_monitor_event(monitor, Self::classify_empty_output_for_monitor(line, trimmed));
+                Self::record_monitor_event(
+                    monitor,
+                    Self::classify_empty_output_for_monitor(line, trimmed),
+                );
             }
         }
 
@@ -141,10 +147,7 @@ impl OpenCodeParser {
         MonitorEventClassification::Parsed
     }
 
-    fn classify_empty_output_for_monitor(
-        line: &str,
-        trimmed: &str,
-    ) -> MonitorEventClassification {
+    fn classify_empty_output_for_monitor(line: &str, trimmed: &str) -> MonitorEventClassification {
         if !trimmed.starts_with('{') {
             return MonitorEventClassification::Ignored;
         }
@@ -175,7 +178,7 @@ impl OpenCodeParser {
     fn process_incremental_stream<R: BufRead>(
         &self,
         reader: &mut R,
-        parser: &mut super::incremental_parser::IncrementalNdjsonParser,
+        parser: &mut crate::json_parser::io::incremental_parser::IncrementalNdjsonParser,
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
@@ -298,7 +301,8 @@ impl OpenCodeParser {
             )?;
         }
 
-        if let Some(xml) = crate::files::llm_output_extraction::extract_issues_xml(accumulated_tail) {
+        if let Some(xml) = crate::files::llm_output_extraction::extract_issues_xml(accumulated_tail)
+        {
             Self::persist_extracted_xml(
                 workspace,
                 crate::files::llm_output_extraction::file_based_extraction::paths::ISSUES_XML,
@@ -323,7 +327,7 @@ impl OpenCodeParser {
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
-        use super::incremental_parser::IncrementalNdjsonParser;
+        use crate::json_parser::io::incremental_parser::IncrementalNdjsonParser;
 
         let monitor = HealthMonitor::new("OpenCode");
         let logging_enabled = self.log_path.is_some();

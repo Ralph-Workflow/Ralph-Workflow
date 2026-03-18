@@ -114,38 +114,9 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// configuration for agent-specific needs. Mock implementations should
     /// override this to return mock results without spawning real processes.
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
-        let mut cmd = std::process::Command::new(&config.command);
-        cmd.args(&config.args);
-
-        for (key, value) in &config.env {
-            cmd.env(key, value);
-        }
-
-        cmd.arg(&config.prompt);
-
-        cmd.env("PYTHONUNBUFFERED", "1");
-        cmd.env("NODE_ENV", "production");
-
-        let mut child = cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
-
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
-
-        Ok(AgentChildHandle {
-            stdout: Box::new(stdout),
-            stderr: Box::new(stderr),
-            inner: Box::new(RealAgentChild(child)),
-        })
+        let mut cmd = build_agent_command(config);
+        let child = cmd.spawn()?;
+        wrap_agent_child(child)
     }
 
     /// Check if a command exists and can be executed.
@@ -167,7 +138,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         }
     }
 
-    /// Returns information about child processes of the given parent, including
     /// their cumulative CPU time.
     ///
     /// Used by the idle-timeout monitor to determine whether child processes
@@ -184,64 +154,33 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
         {
-            let discover_descendants_with_pgrep = |parent_pid: u32| -> Option<Vec<u32>> {
-                use std::collections::{HashSet, VecDeque};
-
-                let mut visited = HashSet::new();
-                let mut queue = VecDeque::from([parent_pid]);
-                let mut descendants = Vec::new();
-
-                while let Some(current_pid) = queue.pop_front() {
-                    let output = self
-                        .execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
-                        .ok()?;
-
-                    let child_pids = if output.status.success() {
-                        parse_pgrep_output(&output.stdout)?
-                    } else if output.status.code() == Some(1) {
-                        Vec::new()
-                    } else {
-                        return None;
-                    };
-
-                    for child_pid in child_pids {
-                        if visited.insert(child_pid) {
-                            descendants.push(child_pid);
-                            queue.push_back(child_pid);
-                        }
-                    }
-                }
-
-                descendants.sort_unstable();
-                Some(descendants)
-            };
-
-            let ps_attempts: [&[&str]; 6] = [
-                &[
-                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=", "-o", "comm=",
-                ],
-                &[
-                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=", "-o", "comm=",
-                ],
-                &[
-                    "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=",
-                ],
-                &[
-                    "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                    "cputime=",
-                ],
-                &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-                &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-            ];
-
-            for args in ps_attempts {
-                if let Ok(out) = self.execute("ps", args, &[], None) {
-                    if out.status.success() {
-                        if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
-                            return info;
+            {
+                const PS_ATTEMPTS: [&[&str]; 6] = [
+                    &[
+                        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                        "cputime=", "-o", "comm=",
+                    ],
+                    &[
+                        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                        "cputime=", "-o", "comm=",
+                    ],
+                    &[
+                        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                        "cputime=",
+                    ],
+                    &[
+                        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
+                        "cputime=",
+                    ],
+                    &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+                    &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+                ];
+                for args in PS_ATTEMPTS {
+                    if let Ok(out) = self.execute("ps", args, &[], None) {
+                        if out.status.success() {
+                            if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
+                                return info;
+                            }
                         }
                     }
                 }
@@ -252,11 +191,39 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 return info;
             }
 
-            if let Some(descendants) = discover_descendants_with_pgrep(parent_pid) {
+            {
+                use std::collections::HashSet;
+                let mut visited = HashSet::new();
+                let mut queue = std::collections::VecDeque::from([parent_pid]);
+                let mut descendants = Vec::new();
+                while let Some(current_pid) = queue.pop_front() {
+                    let Ok(output) =
+                        self.execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
+                    else {
+                        return ChildProcessInfo::NONE;
+                    };
+                    let child_pids = if output.status.success() {
+                        match parse_pgrep_output(&output.stdout) {
+                            Some(pids) => pids,
+                            None => return ChildProcessInfo::NONE,
+                        }
+                    } else if output.status.code() == Some(1) {
+                        Vec::new()
+                    } else {
+                        return ChildProcessInfo::NONE;
+                    };
+                    for child_pid in child_pids {
+                        if visited.insert(child_pid) {
+                            descendants.push(child_pid);
+                            queue.push_back(child_pid);
+                        }
+                    }
+                }
+                descendants.sort_unstable();
                 if !descendants.is_empty() {
                     warn_child_process_detection_conservative();
+                    return child_info_from_descendant_pids(&descendants);
                 }
-                return child_info_from_descendant_pids(&descendants);
             }
 
             warn_child_process_detection_degraded();
@@ -268,6 +235,34 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             ChildProcessInfo::NONE
         }
     }
+}
+
+fn build_agent_command(config: &AgentSpawnConfig) -> std::process::Command {
+    let mut cmd = std::process::Command::new(&config.command);
+    cmd.args(&config.args);
+    config.env.iter().for_each(|(k, v)| {
+        cmd.env(k, v);
+    });
+    cmd.arg(&config.prompt);
+    cmd.env("PYTHONUNBUFFERED", "1");
+    cmd.env("NODE_ENV", "production");
+    cmd
+}
+
+fn wrap_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("Failed to capture stderr"))?;
+    Ok(AgentChildHandle {
+        stdout: Box::new(stdout),
+        stderr: Box::new(stderr),
+        inner: Box::new(RealAgentChild(child)),
+    })
 }
 
 #[cfg(test)]

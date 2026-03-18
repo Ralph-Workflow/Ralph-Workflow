@@ -54,25 +54,26 @@ fn extract_issue_snippets(
     issues
         .iter()
         .filter_map(|issue| {
-            let (file, line_start, line_end) = location_re
+            let Some(capture) = location_re
                 .captures(issue)
                 .or_else(|| gh_location_re.captures(issue))
-                .map_or((None, None, None), |cap| {
-                    let file = cap
-                        .name("file")
-                        .map(|m| m.as_str().trim().replace('\\', "/"));
-                    let start = cap
-                        .name("start")
-                        .and_then(|m| m.as_str().parse::<u32>().ok());
-                    let end = cap
-                        .name("end")
-                        .and_then(|m| m.as_str().parse::<u32>().ok())
-                        .or(start);
-                    (file, start, end)
-                })?;
+            else {
+                return None;
+            };
 
-            let file =
-                file.and_then(|f| normalize_issue_file_path_to_workspace_relative(&f, workspace))?;
+            let file: Option<String> = capture
+                .name("file")
+                .map(|m| m.as_str().trim().replace('\\', "/"));
+            let line_start: Option<u32> = capture
+                .name("start")
+                .and_then(|m| m.as_str().parse::<u32>().ok());
+            let line_end: Option<u32> = capture
+                .name("end")
+                .and_then(|m| m.as_str().parse::<u32>().ok())
+                .or(line_start);
+
+            let file = file?;
+            let file = normalize_issue_file_path_to_workspace_relative(&file, workspace)?;
             let start = line_start?;
             let end = line_end.unwrap_or(start);
 
@@ -234,7 +235,10 @@ fn extract_snippet_lines(content: &str, start: u32, end: u32) -> Option<String> 
         .iter()
         .enumerate()
         .map(|(offset, line)| {
-            let line_no = start + u32::try_from(offset).ok()?;
+            let line_no = u32::try_from(offset)
+                .ok()
+                .map(|offset| start + offset)
+                .unwrap_or(0);
             format!("{line_no} | {line}")
         })
         .collect::<Vec<_>>()

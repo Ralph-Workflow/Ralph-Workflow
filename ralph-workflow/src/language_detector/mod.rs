@@ -33,7 +33,7 @@ use crate::workspace::Workspace;
 pub use extensions::extension_to_language;
 use extensions::is_non_primary_language;
 
-use io::{count_extensions_with_workspace, detect_tests_with_workspace};
+pub use io::{count_extensions_with_workspace, detect_tests_with_workspace};
 
 /// Maximum number of secondary languages to include in the stack summary.
 ///

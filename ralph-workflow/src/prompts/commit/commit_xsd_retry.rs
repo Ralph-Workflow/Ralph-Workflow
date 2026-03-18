@@ -233,7 +233,7 @@ pub fn prompt_commit_xsd_retry_with_context(
                 )
                 .chain(if !last_output_exists {
                     if used_processed {
-                        std::iter::once(format!(
+                        Box::new(std::iter::once(format!(
                             "  - Last output: Neither canonical nor processed file exists:\n\
                          \t  Tried: {}\n\
                          \t  Tried: {}\n\
@@ -241,14 +241,14 @@ pub fn prompt_commit_xsd_retry_with_context(
                             workspace.absolute_str(".agent/tmp/commit_message.xml"),
                             workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
                             workspace.root().display()
-                        ))
+                        ))) as Box<dyn Iterator<Item = String>>
                     } else {
                         let processed_note = if processed_output_exists {
                             " (note: .processed file exists but canonical file is missing)"
                         } else {
                             ""
                         };
-                        std::iter::once(format!(
+                        Box::new(std::iter::once(format!(
                             "  - Last output: {}{}\n\
                          \t  (workspace.root() = {})\n",
                             workspace.absolute_str(
@@ -258,10 +258,10 @@ pub fn prompt_commit_xsd_retry_with_context(
                             ),
                             processed_note,
                             workspace.root().display()
-                        ))
+                        ))) as Box<dyn Iterator<Item = String>>
                     }
                 } else {
-                    std::iter::empty()
+                    Box::new(std::iter::empty::<String>()) as Box<dyn Iterator<Item = String>>
                 })
                 .chain(std::iter::once(
                     "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),

@@ -553,31 +553,28 @@ impl MainEffectHandler {
             ));
         }
 
-        // Build events: ReviewPromptPrepared is primary, with additional_events and TemplateRendered as additional
-        let mut result = EffectResult::event(PipelineEvent::review_prompt_prepared(pass))
+        let result = EffectResult::event(PipelineEvent::review_prompt_prepared(pass))
             .with_ui_event(UIEvent::PromptReplayHit {
                 key: prompt_key,
                 was_replayed,
             });
-
-        // Emit PromptCaptured event to update reducer-owned prompt history (RFC-007)
-        if let Some(event) = prompt_captured_event {
-            result = result.with_additional_event(event);
-        }
-
-        // Add any additional events from XSD retry materialization, etc.
-        for ev in additional_events {
-            result = result.with_additional_event(ev);
-        }
-
-        // Add TemplateRendered if we have a log
-        if let Some(log) = rendered_log {
-            result = result.with_additional_event(PipelineEvent::template_rendered(
+        let result = if let Some(event) = prompt_captured_event {
+            result.with_additional_event(event)
+        } else {
+            result
+        };
+        let result = additional_events
+            .into_iter()
+            .fold(result, |r, ev| r.with_additional_event(ev));
+        let result = if let Some(log) = rendered_log {
+            result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,
                 template_name.to_string(),
                 log,
-            ));
-        }
+            ))
+        } else {
+            result
+        };
 
         Ok(result)
     }

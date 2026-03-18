@@ -270,16 +270,16 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
         (".agent/tmp/commit_message.xsd", COMMIT_MESSAGE_XSD_SCHEMA),
     ];
 
-    schemas.iter().try_for_each(|(path, content)| {
+    for (path, content) in schemas {
         match handler.execute(AppEffect::WriteFile {
             path: PathBuf::from(path),
             content: content.to_string(),
         }) {
-            AppEffectResult::Ok => Ok(()),
-            AppEffectResult::Error(e) => Err(format!("Failed to write {path}: {e}")),
-            other => Err(format!("Unexpected result from WriteFile: {other:?}")),
+            AppEffectResult::Ok => {}
+            AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
+            other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
         }
-    })?;
+    }
 
     // Only create context files in non-isolation mode
     if !isolation_mode {
@@ -289,18 +289,17 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
             (".agent/ISSUES.md", VAGUE_ISSUES_LINE),
         ];
 
-        context_files.iter().try_for_each(|(path, line)| {
-            // Match overwrite_one_liner behavior: add trailing newline
+        for (path, line) in context_files {
             let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
             match handler.execute(AppEffect::WriteFile {
                 path: PathBuf::from(path),
                 content,
             }) {
-                AppEffectResult::Ok => Ok(()),
-                AppEffectResult::Error(e) => Err(format!("Failed to write {path}: {e}")),
-                other => Err(format!("Unexpected result from WriteFile: {other:?}")),
+                AppEffectResult::Ok => {}
+                AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
+                other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
             }
-        })?;
+        }
     }
 
     Ok(())

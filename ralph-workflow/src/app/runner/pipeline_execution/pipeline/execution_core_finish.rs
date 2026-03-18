@@ -203,16 +203,16 @@ fn finish_pipeline(
             ));
         }
 
-        let mut cleanup_ok = hook_uninstall_ok && wrapper_ok;
-
-        match crate::git_helpers::verify_hooks_removed(repo_root) {
+        let hooks_ok = match crate::git_helpers::verify_hooks_removed(repo_root) {
             Ok(remaining) => {
                 if !remaining.is_empty() {
-                    cleanup_ok = false;
                     ctx.logger.warn(&format!(
                         "Ralph hooks still present after SIGINT cleanup: {}",
                         remaining.join(", ")
                     ));
+                    false
+                } else {
+                    true
                 }
             }
             Err(err) => {
@@ -220,24 +220,30 @@ fn finish_pipeline(
                     ctx.logger.warn(&format!(
                         "Skipping hook cleanup verification during SIGINT cleanup (repo not present on filesystem): {err}"
                     ));
+                    true
                 } else {
-                    cleanup_ok = false;
                     ctx.logger.warn(&format!(
                         "Failed to verify hook cleanup during SIGINT cleanup: {err}"
                     ));
+                    false
                 }
             }
-        }
+        };
 
         crate::files::cleanup_generated_files_with_workspace(&*ctx.workspace);
-        if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
-            cleanup_ok = false;
+        let ralph_dir_ok = if !crate::git_helpers::try_remove_ralph_dir(repo_root) {
             let remaining = crate::git_helpers::verify_ralph_dir_removed(repo_root);
             ctx.logger.warn(&format!(
                 "Ralph git dir still present after SIGINT cleanup: {}",
                 remaining.join(", ")
             ));
-        }
+            false
+        } else {
+            true
+        };
+
+        let cleanup_ok = hook_uninstall_ok && wrapper_ok && hooks_ok && ralph_dir_ok;
+
         if cleanup_ok {
             // Only clear global fallback paths when explicit cleanup fully
             // succeeded and the guard is being disarmed. If cleanup failed,

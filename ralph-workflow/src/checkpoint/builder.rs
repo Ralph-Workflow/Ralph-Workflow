@@ -282,8 +282,8 @@ impl CheckpointBuilder {
         }
 
         // Capture git identity
-        self.git_user_name.clone_from(&config.git_user_name);
-        self.git_user_email.clone_from(&config.git_user_email);
+        self.git_user_name = config.git_user_name.clone();
+        self.git_user_email = config.git_user_email.clone();
 
         self
     }
@@ -417,11 +417,7 @@ impl CheckpointBuilder {
 
         let working_dir = workspace
             .map(|ws| ws.root().to_string_lossy().to_string())
-            .or_else(|| {
-                std::env::current_dir()
-                    .ok()
-                    .map(|p| p.to_string_lossy().to_string())
-            })
+            .or_else(crate::checkpoint::runtime::get_current_dir)
             .unwrap_or_default();
 
         let prompt_md_checksum = workspace.and_then(|ws| {

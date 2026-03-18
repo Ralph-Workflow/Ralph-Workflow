@@ -1,9 +1,9 @@
 //! Cloud configuration loading from environment.
 //!
 //! This is a **boundary module** that loads cloud configuration from the process environment.
-//! It follows the boundary pattern: pure parsing logic is in `cloud.rs`, environment access here.
+//! It follows the boundary pattern: pure parsing logic is in `../cloud.rs`, environment access here.
 
-use super::cloud::{CloudConfig, GitRemoteConfig};
+use crate::config::cloud::{CloudConfig, GitRemoteConfig};
 
 /// Load cloud configuration from the process environment.
 ///

@@ -1,12 +1,13 @@
 use super::*;
+use crate::checkpoint::{
+    AgentConfigSnapshot, CheckpointParams, CliArgsSnapshot, PipelineCheckpoint, PipelinePhase,
+    RebaseState,
+};
 use crate::workspace::MemoryWorkspace;
 use std::path::Path;
 
 /// Helper function to create a checkpoint for workspace tests.
-fn make_test_checkpoint_for_workspace(
-    phase: PipelinePhase,
-    iteration: u32,
-) -> PipelineCheckpoint {
+fn make_test_checkpoint_for_workspace(phase: PipelinePhase, iteration: u32) -> PipelineCheckpoint {
     let cli_args = CliArgsSnapshot::new(5, 2, None, true, 2, false, None);
     let dev_config =
         AgentConfigSnapshot::new("claude".into(), "cmd".into(), "-o".into(), None, true);
@@ -69,8 +70,7 @@ fn test_calculate_file_checksum_with_workspace_different_content() {
 fn test_calculate_file_checksum_with_workspace_nonexistent() {
     let workspace = MemoryWorkspace::new_test();
 
-    let checksum =
-        calculate_file_checksum_with_workspace(&workspace, Path::new("nonexistent.txt"));
+    let checksum = calculate_file_checksum_with_workspace(&workspace, Path::new("nonexistent.txt"));
     assert!(checksum.is_none());
 }
 
@@ -477,10 +477,9 @@ fn test_optimized_serialization_round_trip_preserves_data() {
             files_modified: Some(vec![format!("file{}.rs", i)].into_boxed_slice()),
             exit_code: Some(0),
         };
-        let step =
-            ExecutionStep::new(&format!("Phase{i}"), i, &format!("step{i}"), outcome)
-                .with_agent(&format!("agent{i}"))
-                .with_duration(100 + u64::from(i));
+        let step = ExecutionStep::new(&format!("Phase{i}"), i, &format!("step{i}"), outcome)
+            .with_agent(&format!("agent{i}"))
+            .with_duration(100 + u64::from(i));
         history.add_step_bounded(step, 1000);
     }
     checkpoint.execution_history = Some(history);
@@ -522,9 +521,10 @@ fn test_optimized_serialization_round_trip_preserves_data() {
                 Some(format!("output{i}").as_str())
             );
             assert_eq!(
-                files_modified
-                    .as_ref()
-                    .map(|f| f.iter().map(std::string::String::as_str).collect::<Vec<_>>()),
+                files_modified.as_ref().map(|f| f
+                    .iter()
+                    .map(std::string::String::as_str)
+                    .collect::<Vec<_>>()),
                 Some(vec![format!("file{i}.rs").as_str()])
             );
             assert_eq!(*exit_code, Some(0));
@@ -654,8 +654,7 @@ fn test_backward_compatibility_with_pretty_printed_checkpoints() {
   "actual_reviewer_runs": 0
 }"#;
 
-    let workspace =
-        MemoryWorkspace::new_test().with_file(".agent/checkpoint.json", pretty_json);
+    let workspace = MemoryWorkspace::new_test().with_file(".agent/checkpoint.json", pretty_json);
 
     let loaded = load_checkpoint_with_workspace(&workspace)
         .unwrap()

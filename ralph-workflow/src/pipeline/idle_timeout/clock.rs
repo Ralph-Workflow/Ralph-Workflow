@@ -8,7 +8,5 @@ pub use super::runtime::clock::{
     MonotonicClock, IDLE_TIMEOUT_SECS,
 };
 
-pub use super::runtime::clock::inner::FileActivityTrackerInner;
-
 pub type SharedActivityTimestamp = super::runtime::clock::SharedActivityTimestamp;
 pub type SharedFileActivityTracker = super::runtime::clock::SharedFileActivityTracker;

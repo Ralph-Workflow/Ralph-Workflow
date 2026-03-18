@@ -9,135 +9,88 @@ use crate::checkpoint::execution_history::StepOutcome;
 use crate::checkpoint::restore::ResumeContext;
 use crate::checkpoint::state::PipelinePhase;
 
-fn append_phase_header(note: &mut String, context: &ResumeContext) {
-    match context.phase {
-        PipelinePhase::Development => {
-            writeln!(
-                note,
-                "Resuming DEVELOPMENT phase (iteration {} of {})",
-                context.iteration + 1,
-                context.total_iterations
-            )
-            .unwrap();
-        }
-        PipelinePhase::Review => {
-            writeln!(
-                note,
-                "Resuming REVIEW phase (pass {} of {})",
-                context.reviewer_pass + 1,
-                context.total_reviewer_passes
-            )
-            .unwrap();
-        }
-        _ => {
-            writeln!(note, "Resuming from phase: {}", context.phase_name()).unwrap();
-        }
+// =========================================================================
+// Pure helpers (policy extracted from boundary)
+// =========================================================================
+
+fn format_resume_state(resume_count: u32, rebase_state: &str) -> String {
+    let mut s = String::new();
+    if resume_count > 0 {
+        s.push_str(&format!(
+            "This session has been resumed {resume_count} time(s)\n"
+        ));
     }
+    if rebase_state != "NotStarted" {
+        s.push_str(&format!("Rebase state: {rebase_state}\n"));
+    }
+    s
 }
 
-fn append_resume_and_rebase_state(note: &mut String, context: &ResumeContext) {
-    if context.resume_count > 0 {
-        writeln!(
-            note,
-            "This session has been resumed {} time(s)",
-            context.resume_count
-        )
-        .unwrap();
-    }
-
-    if !matches!(
-        context.rebase_state,
-        crate::checkpoint::state::RebaseState::NotStarted
-    ) {
-        writeln!(note, "Rebase state: {:?}", context.rebase_state).unwrap();
-    }
-
-    note.push('\n');
-}
-
-fn append_modified_files_summary(
-    note: &mut String,
+fn format_modified_files_summary(
     detail: &crate::checkpoint::execution_history::ModifiedFilesDetail,
-) {
+) -> String {
     let added_count = detail.added.as_ref().map_or(0, |v| v.len());
     let modified_count = detail.modified.as_ref().map_or(0, |v| v.len());
     let deleted_count = detail.deleted.as_ref().map_or(0, |v| v.len());
     let total_files = added_count + modified_count + deleted_count;
     if total_files == 0 {
-        return;
+        return String::new();
     }
 
-    write!(note, "  Files: {total_files} changed").unwrap();
+    let mut s = format!("  Files: {total_files} changed");
     if added_count > 0 {
-        write!(note, " ({added_count} added)").unwrap();
+        s.push_str(&format!(" ({added_count} added)"));
     }
     if modified_count > 0 {
-        write!(note, " ({modified_count} modified)").unwrap();
+        s.push_str(&format!(" ({modified_count} modified)"));
     }
     if deleted_count > 0 {
-        write!(note, " ({deleted_count} deleted)").unwrap();
+        s.push_str(&format!(" ({deleted_count} deleted)"));
     }
-    note.push('\n');
+    s.push('\n');
+    s
 }
 
-fn append_issues_summary(
-    note: &mut String,
-    issues: &crate::checkpoint::execution_history::IssuesSummary,
-) {
+fn format_issues_summary(issues: &crate::checkpoint::execution_history::IssuesSummary) -> String {
     if issues.found == 0 && issues.fixed == 0 {
-        return;
+        return String::new();
     }
 
-    write!(
-        note,
-        "  Issues: {} found, {} fixed",
-        issues.found, issues.fixed
-    )
-    .unwrap();
+    let mut s = format!("  Issues: {} found, {} fixed", issues.found, issues.fixed);
     if let Some(ref desc) = issues.description {
-        write!(note, " ({desc})").unwrap();
+        s.push_str(&format!(" ({desc})"));
     }
-    note.push('\n');
+    s.push('\n');
+    s
 }
 
-fn append_recent_step(
-    note: &mut String,
-    step: &crate::checkpoint::execution_history::ExecutionStep,
-) {
-    writeln!(
-        note,
-        "- [{}] {} (iteration {}): {}",
+fn format_recent_step(step: &crate::checkpoint::execution_history::ExecutionStep) -> String {
+    let mut s = format!(
+        "- [{}] {} (iteration {}): {}\n",
         step.step_type,
         step.phase,
         step.iteration,
         step.outcome.brief_description()
-    )
-    .unwrap();
+    );
 
     if let Some(ref detail) = step.modified_files_detail {
-        append_modified_files_summary(note, detail);
+        s.push_str(&format_modified_files_summary(detail));
     }
 
     if let Some(ref issues) = step.issues_summary {
-        append_issues_summary(note, issues);
+        s.push_str(&format_issues_summary(issues));
     }
 
     if let Some(ref oid) = step.git_commit_oid {
-        writeln!(note, "  Commit: {oid}").unwrap();
+        s.push_str(&format!("  Commit: {oid}\n"));
     }
+
+    s
 }
 
-fn append_recent_activity(note: &mut String, context: &ResumeContext) {
-    let Some(ref history) = context.execution_history else {
-        return;
-    };
-    if history.steps.is_empty() {
-        return;
-    }
-
-    note.push_str("RECENT ACTIVITY:\n");
-    note.push_str("----------------\n");
-
+fn format_recent_activity(
+    history: &crate::checkpoint::execution_history::ExecutionHistory,
+) -> String {
     let recent_steps: Vec<_> = history
         .steps
         .iter()
@@ -148,10 +101,50 @@ fn append_recent_activity(note: &mut String, context: &ResumeContext) {
         .rev()
         .collect();
 
-    for step in &recent_steps {
-        append_recent_step(note, step);
-    }
+    let steps_str: String = recent_steps.iter().map(|s| format_recent_step(s)).collect();
+    format!("RECENT ACTIVITY:\n----------------\n{steps_str}\n")
+}
 
+// =========================================================================
+// Thin boundary (wiring only)
+// =========================================================================
+
+fn append_resume_and_rebase_state(note: &mut String, context: &ResumeContext) {
+    let rebase_str = format!("{:?}", context.rebase_state);
+    let formatted = format_resume_state(context.resume_count, &rebase_str);
+    note.push_str(&formatted);
+    note.push('\n');
+}
+
+fn append_modified_files_summary(
+    note: &mut String,
+    detail: &crate::checkpoint::execution_history::ModifiedFilesDetail,
+) {
+    note.push_str(&format_modified_files_summary(detail));
+}
+
+fn append_issues_summary(
+    note: &mut String,
+    issues: &crate::checkpoint::execution_history::IssuesSummary,
+) {
+    note.push_str(&format_issues_summary(issues));
+}
+
+fn append_recent_step(
+    note: &mut String,
+    step: &crate::checkpoint::execution_history::ExecutionStep,
+) {
+    note.push_str(&format_recent_step(step));
+}
+
+fn append_recent_activity(note: &mut String, context: &ResumeContext) {
+    let Some(ref history) = context.execution_history else {
+        return;
+    };
+    if history.steps.is_empty() {
+        return;
+    }
+    note.push_str(&format_recent_activity(history));
     note.push('\n');
 }
 
@@ -185,7 +178,28 @@ pub fn generate_resume_note(context: &ResumeContext) -> String {
     let mut note = String::from("SESSION RESUME CONTEXT\n");
     note.push_str("====================\n\n");
 
-    append_phase_header(&mut note, context);
+    match context.phase {
+        PipelinePhase::Development => {
+            let _ = writeln!(
+                note,
+                "Resuming DEVELOPMENT phase (iteration {} of {})",
+                context.iteration + 1,
+                context.total_iterations
+            );
+        }
+        PipelinePhase::Review => {
+            let _ = writeln!(
+                note,
+                "Resuming REVIEW phase (pass {} of {})",
+                context.reviewer_pass + 1,
+                context.total_reviewer_passes
+            );
+        }
+        _ => {
+            let _ = writeln!(note, "Resuming from phase: {}", context.phase_name());
+        }
+    }
+
     append_resume_and_rebase_state(&mut note, context);
     append_recent_activity(&mut note, context);
 

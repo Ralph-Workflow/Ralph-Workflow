@@ -1,6 +1,37 @@
 //! Claude CLI JSON parser.
 //!
-//! This module re-exports the Claude parser implementation from the I/O boundary module.
-//! The actual implementation is in `io::claude` which is exempt from functional programming lints.
+//! This module provides the functional core implementation of the Claude parser.
+//! The I/O boundary module at `io::claude` re-exports from here.
 
-pub use crate::json_parser::io::claude::ClaudeParser;
+use crate::common::truncate_text;
+use crate::config::Verbosity;
+use crate::logger::{Colors, CHECK, CROSS};
+use std::cell::RefCell;
+use std::fmt::Write as _;
+use std::io::{self, BufRead, Write};
+use std::rc::Rc;
+
+use super::health::HealthMonitor;
+#[cfg(any(test, feature = "test-utils"))]
+use super::health::StreamingQualityMetrics;
+use super::printer::SharedPrinter;
+use super::streaming_state::StreamingSession;
+use super::terminal::TerminalMode;
+use super::types::{
+    format_tool_input, format_unknown_json_event, ClaudeEvent, ContentBlock, StreamInnerEvent,
+};
+
+// Delta handling submodule
+mod delta_handling;
+
+// Parser core: struct definition and constructor methods
+include!("claude/parser.rs");
+
+// Stream parsing methods
+include!("claude/stream_parsing.rs");
+
+// Formatting methods
+include!("claude/formatting.rs");
+
+// Tests
+include!("claude/tests.rs");

@@ -54,7 +54,7 @@ impl ClaudeParser {
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
-        use super::incremental_parser::IncrementalNdjsonParser;
+        use crate::json_parser::io::incremental_parser::IncrementalNdjsonParser;
 
         let c = &self.colors;
         let monitor = HealthMonitor::new("Claude");
