@@ -6,7 +6,7 @@
 
 fn log_event_loop_outcome(
     ctx: &PipelineContext,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    loop_result: &crate::app::runtime::EventLoopResult,
 ) {
     if loop_result.completed {
         match loop_result.final_phase {
@@ -58,7 +58,7 @@ fn log_event_loop_outcome(
     write_defensive_completion_marker(&*ctx.workspace, &ctx.logger, loop_result.final_phase);
 }
 
-fn should_exit_due_to_sigint(loop_result: &crate::app::event_loop::EventLoopResult) -> bool {
+fn should_exit_due_to_sigint(loop_result: &crate::app::runtime::EventLoopResult) -> bool {
     loop_result.final_state.interrupted_by_user || crate::interrupt::user_interrupted_occurred()
 }
 
@@ -67,7 +67,7 @@ fn save_complete_checkpoint_if_needed(
     config: &crate::config::Config,
     run_context: &crate::checkpoint::RunContext,
     phase_ctx: &PhaseContext<'_>,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    loop_result: &crate::app::runtime::EventLoopResult,
 ) {
     if !config.features.checkpoint_enabled
         || !should_write_complete_checkpoint(loop_result.final_phase)
@@ -119,7 +119,7 @@ fn report_cloud_completion(
     ctx: &PipelineContext,
     config: &crate::config::Config,
     cloud_reporter: &dyn crate::cloud::CloudReporter,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    loop_result: &crate::app::runtime::EventLoopResult,
     timer: &Timer,
 ) -> anyhow::Result<()> {
     if !config.cloud.enabled {
@@ -145,7 +145,7 @@ fn finish_pipeline(
     timer: &Timer,
     agent_phase_guard: &mut AgentPhaseGuard<'_>,
     prompt_monitor: &mut Option<PromptMonitor>,
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    loop_result: &crate::app::runtime::EventLoopResult,
     exit_after_cleanup_due_to_sigint: bool,
 ) -> anyhow::Result<()> {
     check_prompt_restoration(ctx, prompt_monitor, "event loop");
@@ -256,7 +256,7 @@ fn finish_pipeline(
 }
 
 fn build_cloud_completion_payload(
-    loop_result: &crate::app::event_loop::EventLoopResult,
+    loop_result: &crate::app::runtime::EventLoopResult,
     timer: &Timer,
 ) -> crate::cloud::types::PipelineResult {
     let success = loop_result.completed
@@ -305,7 +305,7 @@ mod cloud_completion_payload_tests {
         state.iteration = 4;
         state.reviewer_pass = 3;
 
-        let loop_result = crate::app::event_loop::EventLoopResult {
+        let loop_result = crate::app::runtime::EventLoopResult {
             completed: true,
             events_processed: 0,
             final_phase: crate::reducer::event::PipelinePhase::Complete,
@@ -344,7 +344,7 @@ mod cloud_completion_payload_tests {
             "test precondition: interrupt request should be pending before explicit consume"
         );
 
-        let loop_result = crate::app::event_loop::EventLoopResult {
+        let loop_result = crate::app::runtime::EventLoopResult {
             completed: true,
             events_processed: 0,
             final_phase: crate::reducer::event::PipelinePhase::Complete,
@@ -445,7 +445,7 @@ mod completion_checkpoint_tests {
         let mut final_state = PipelineState::initial(1, 0);
         final_state.recovery_epoch = 5;
 
-        let loop_result = crate::app::event_loop::EventLoopResult {
+        let loop_result = crate::app::runtime::EventLoopResult {
             completed: true,
             events_processed: 0,
             final_phase: PipelinePhase::Complete,

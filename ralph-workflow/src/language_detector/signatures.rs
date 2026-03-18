@@ -3,121 +3,28 @@
 //! Analyzes configuration files like Cargo.toml, package.json, etc.
 //! to detect frameworks, test frameworks, and package managers.
 
-use super::scanner::{should_skip_dir_name, MAX_SIGNATURE_SEARCH_DEPTH};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::workspace::Workspace;
+
+use super::io;
 
 #[path = "signatures/detectors.rs"]
 mod detectors;
 
 /// Container for signature files found during scanning.
 #[derive(Default)]
-struct SignatureFiles {
-    by_name_lower: HashMap<String, Vec<PathBuf>>,
+pub(super) struct SignatureFiles {
+    pub(super) by_name_lower: HashMap<String, Vec<PathBuf>>,
 }
 
 /// Collect signature files using workspace.
-fn collect_signature_files_with_workspace(
+pub(super) fn collect_signature_files_with_workspace(
     workspace: &dyn Workspace,
     root: &Path,
 ) -> SignatureFiles {
-    let targets: HashSet<&str> = [
-        "cargo.toml",
-        "pyproject.toml",
-        "requirements.txt",
-        "setup.py",
-        "pipfile",
-        "package.json",
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "bun.lockb",
-        "bun.lock",
-        "gemfile",
-        "go.mod",
-        "pom.xml",
-        "build.gradle",
-        "build.gradle.kts",
-        "composer.json",
-        "mix.exs",
-        "pubspec.yaml",
-    ]
-    .into_iter()
-    .collect();
-
-    fn scan(
-        workspace: &dyn Workspace,
-        items: Vec<(PathBuf, String)>,
-        depth: usize,
-        targets: &HashSet<&str>,
-    ) -> Vec<(PathBuf, String)> {
-        if items.is_empty() {
-            return Vec::new();
-        }
-
-        let (dirs, files): (Vec<_>, Vec<_>) = items.into_iter().partition(|(p, n)| {
-            p.is_dir() && !should_skip_dir_name(n) && depth < MAX_SIGNATURE_SEARCH_DEPTH
-        });
-
-        let sig_files: Vec<_> = files
-            .into_iter()
-            .filter(|(_, n)| targets.contains(n.as_str()))
-            .collect();
-
-        if dirs.is_empty() {
-            return sig_files;
-        }
-
-        let all_entries: Vec<(PathBuf, String)> = dirs
-            .into_iter()
-            .filter_map(|(p, _)| workspace.read_dir(&p).ok())
-            .flat_map(|entries| {
-                entries.into_iter().filter_map(|entry| {
-                    let path = entry.path().to_path_buf();
-                    let name = entry.file_name()?.to_string_lossy().to_string();
-                    Some((path, name.to_lowercase()))
-                })
-            })
-            .collect();
-
-        let next_files = scan(workspace, all_entries, depth + 1, targets);
-        sig_files
-            .into_iter()
-            .chain(next_files.into_iter())
-            .collect()
-    }
-
-    let initial_items: Vec<(PathBuf, String)> = workspace
-        .read_dir(root)
-        .ok()
-        .map(|entries| {
-            entries
-                .into_iter()
-                .filter_map(|entry| {
-                    let path = entry.path().to_path_buf();
-                    let name = entry.file_name()?.to_string_lossy().to_string();
-                    Some((path, name.to_lowercase()))
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let matched_files = scan(workspace, initial_items, 0, &targets);
-
-    fn build_map(files: Vec<(PathBuf, String)>) -> HashMap<String, Vec<PathBuf>> {
-        files
-            .into_iter()
-            .fold(HashMap::new(), |mut map, (path, name)| {
-                map.entry(name).or_insert_with(Vec::new).push(path);
-                map
-            })
-    }
-
-    let by_name_lower = build_map(matched_files);
-
-    SignatureFiles { by_name_lower }
+    io::collect_signature_files_with_workspace(workspace, root)
 }
 
 /// Detect signature files and return frameworks, test framework, package manager.
@@ -126,18 +33,31 @@ pub(super) fn detect_signature_files_with_workspace(
     root: &Path,
 ) -> (Vec<String>, Option<String>, Option<String>) {
     let signatures = collect_signature_files_with_workspace(workspace, root);
+
+    let file_contents =
+        signatures
+            .by_name_lower
+            .values()
+            .flatten()
+            .fold(HashMap::new(), |mut acc, path| {
+                if let Ok(content) = workspace.read(path) {
+                    acc.insert(path.clone(), content);
+                }
+                acc
+            });
+
     let results = detectors::DetectionResults::new();
 
-    let results = detectors::detect_rust(workspace, &signatures, results);
-    let results = detectors::detect_python(workspace, &signatures, results);
-    let results = detectors::detect_javascript(workspace, &signatures, results);
-    let results = detectors::detect_go(workspace, &signatures, results);
-    let results = detectors::detect_ruby(workspace, &signatures, results);
-    let results = detectors::detect_java(workspace, &signatures, results);
-    let results = detectors::detect_php(workspace, &signatures, results);
+    let results = detectors::detect_rust(&file_contents, &signatures, results);
+    let results = detectors::detect_python(&file_contents, &signatures, results);
+    let results = detectors::detect_javascript(&file_contents, &signatures, results);
+    let results = detectors::detect_go(&file_contents, &signatures, results);
+    let results = detectors::detect_ruby(&file_contents, &signatures, results);
+    let results = detectors::detect_java(&file_contents, &signatures, results);
+    let results = detectors::detect_php(&file_contents, &signatures, results);
     let results = detectors::detect_dotnet(&signatures, results);
-    let results = detectors::detect_elixir(workspace, &signatures, results);
-    let results = detectors::detect_dart(workspace, &signatures, results);
+    let results = detectors::detect_elixir(&file_contents, &signatures, results);
+    let results = detectors::detect_dart(&file_contents, &signatures, results);
 
     results.finish()
 }

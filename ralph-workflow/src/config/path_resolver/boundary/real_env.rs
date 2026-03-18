@@ -11,6 +11,15 @@ use crate::config::ConfigEnvironment;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RealConfigEnvironment;
 
+fn compute_canonical_repo_root(gitdir: &Path) -> Option<PathBuf> {
+    let parent = gitdir.parent()?;
+    if parent.file_name().and_then(|n| n.to_str()) == Some("worktrees") {
+        parent.parent().and_then(|p| p.parent()).map(PathBuf::from)
+    } else {
+        None
+    }
+}
+
 impl ConfigEnvironment for RealConfigEnvironment {
     fn unified_config_path(&self) -> Option<PathBuf> {
         crate::config::unified::unified_config_path()
@@ -43,20 +52,7 @@ impl ConfigEnvironment for RealConfigEnvironment {
         let repo = git2::Repository::discover(".").ok()?;
         let gitdir = repo.path();
 
-        // Detect worktrees: in a git worktree, repo.path() returns something like
-        // <main-repo>/.git/worktrees/<worktree-name>/
-        // We detect this by checking if the gitdir is inside a "worktrees" subdirectory
-        // of the main repo's .git directory.
-        if let Some(parent) = gitdir.parent() {
-            if parent.file_name().and_then(|n| n.to_str()) == Some("worktrees") {
-                // parent is <main-repo>/.git/worktrees
-                // parent.parent() is <main-repo>/.git
-                // parent.parent().parent() is <main-repo> (the canonical root)
-                return parent.parent().and_then(|p| p.parent()).map(PathBuf::from);
-            }
-        }
-
-        repo.workdir().map(PathBuf::from)
+        compute_canonical_repo_root(gitdir).or_else(|| repo.workdir().map(PathBuf::from))
     }
 
     fn local_config_path(&self) -> Option<PathBuf> {

@@ -14,14 +14,16 @@ enum PromptOutputTarget {
 }
 
 fn prompt_output_target() -> Option<PromptOutputTarget> {
-    if !std::io::stdin().is_terminal() {
+    use crate::cli::handlers::boundary::terminal as term;
+
+    if !term::is_terminal() {
         return None;
     }
 
-    if std::io::stdout().is_terminal() {
+    if term::stdout_is_terminal() {
         return Some(PromptOutputTarget::Stdout);
     }
-    if std::io::stderr().is_terminal() {
+    if term::stderr_is_terminal() {
         return Some(PromptOutputTarget::Stderr);
     }
 
@@ -32,17 +34,15 @@ fn with_prompt_writer<T>(
     target: PromptOutputTarget,
     f: impl FnOnce(&mut dyn std::io::Write) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    use std::io;
+    use crate::cli::handlers::boundary::terminal as term;
 
     match target {
-        PromptOutputTarget::Stdout => f(&mut io::stdout().lock()),
-        PromptOutputTarget::Stderr => f(&mut io::stderr().lock()),
+        PromptOutputTarget::Stdout => f(&mut term::stdout()),
+        PromptOutputTarget::Stderr => f(&mut term::stderr()),
     }
 }
 
 pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyhow::Result<bool> {
-    use std::io;
-
     let Some(target) = prompt_output_target() else {
         return Ok(false);
     };
@@ -60,12 +60,8 @@ pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyh
         Ok(())
     })?;
 
-    let input = io::stdin()
-        .lines()
-        .next()
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let response = input.trim().to_lowercase();
+    let input = crate::cli::handlers::boundary::terminal::read_line();
+    let response = input.unwrap_or_default().trim().to_lowercase();
 
     Ok(response == "y" || response == "yes")
 }
@@ -75,8 +71,6 @@ pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyh
 /// Returns `Some(template_name)` if the user selected a template,
 /// or `None` if the user declined or entered invalid input.
 pub fn prompt_for_template(colors: Colors) -> Option<String> {
-    use std::io;
-
     let target = prompt_output_target()?;
     if with_prompt_writer(target, |w| {
         let _ = writeln!(
@@ -92,12 +86,8 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let input = io::stdin()
-        .lines()
-        .next()
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let response = input.trim().to_lowercase();
+    let input = crate::cli::handlers::boundary::terminal::read_line();
+    let response = input.unwrap_or_default().trim().to_lowercase();
 
     if response == "n" || response == "no" || response == "skip" {
         return None;
@@ -158,12 +148,8 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let template_input = io::stdin()
-        .lines()
-        .next()
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let template_name = template_input.trim();
+    let template_input = crate::cli::handlers::boundary::terminal::read_line();
+    let template_name = template_input.unwrap_or_default().trim();
 
     // Empty input defaults to 'quick' template
     if template_name.is_empty() {

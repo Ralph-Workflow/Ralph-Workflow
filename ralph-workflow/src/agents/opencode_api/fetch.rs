@@ -3,10 +3,10 @@
 //! This module handles HTTP requests to fetch the `OpenCode` model catalog
 //! from <https://models.dev/api.json>.
 
+use crate::agents::io::{fetch_api_catalog_json, get_env_var};
 use crate::agents::opencode_api::cache::{save_catalog, CacheError};
 use crate::agents::opencode_api::types::ApiCatalog;
-use crate::agents::opencode_api::{API_URL, DEFAULT_CACHE_TTL_SECONDS};
-use std::time::Duration;
+use crate::agents::opencode_api::{API_URL, CACHE_TTL_ENV_VAR, DEFAULT_CACHE_TTL_SECONDS};
 
 /// Fetch the `OpenCode` API catalog from the remote endpoint.
 ///
@@ -16,34 +16,25 @@ use std::time::Duration;
 /// The fetched catalog is automatically cached to disk for future use.
 #[expect(clippy::print_stderr, reason = "warning for cache save failure")]
 pub fn fetch_api_catalog() -> Result<ApiCatalog, CacheError> {
-    // Build HTTP agent with timeout
-    let agent = ureq::Agent::new_with_config(
-        ureq::config::Config::builder()
-            .timeout_global(Some(Duration::from_secs(10)))
-            .build(),
-    );
+    // Boundary: network I/O
+    let body = fetch_api_catalog_json(API_URL).map_err(CacheError::FetchError)?;
 
-    // Fetch the API catalog and parse directly
-    let body = agent
-        .get(API_URL)
-        .call()
-        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?;
+    // Pure: parse JSON
     let catalog: ApiCatalog = serde_json::from_str(&body)?;
 
-    // Set metadata using struct update syntax
+    // Boundary: get TTL from environment
+    let ttl_seconds = get_env_var(CACHE_TTL_ENV_VAR)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_CACHE_TTL_SECONDS);
+
+    // Pure: construct catalog with metadata
     let catalog = ApiCatalog {
         cached_at: Some(chrono::Utc::now()),
-        ttl_seconds: std::env::var("RALPH_OPENCODE_CACHE_TTL_SECONDS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_CACHE_TTL_SECONDS),
+        ttl_seconds,
         ..catalog
     };
 
-    // Save to cache
+    // Boundary: save to cache
     if let Err(e) = save_catalog(&catalog) {
         eprintln!("Warning: Failed to cache OpenCode API catalog: {e}");
     }
@@ -134,19 +125,16 @@ mod tests {
     fn test_mock_api_catalog_structure() {
         let catalog = mock_api_catalog();
 
-        // Verify providers
         assert_eq!(catalog.providers.len(), 3);
         assert!(catalog.has_provider("opencode"));
         assert!(catalog.has_provider("anthropic"));
         assert!(catalog.has_provider("openai"));
 
-        // Verify models
         assert!(catalog.has_model("opencode", "glm-4.7-free"));
         assert!(catalog.has_model("anthropic", "claude-sonnet-4-5"));
         assert!(catalog.has_model("anthropic", "claude-opus-4"));
         assert!(catalog.has_model("openai", "gpt-4"));
 
-        // Verify model retrieval
         let model = catalog.get_model("anthropic", "claude-sonnet-4-5").unwrap();
         assert_eq!(model.id, "claude-sonnet-4-5");
         assert_eq!(model.context_length, Some(200_000));

@@ -14,23 +14,26 @@
 //! - `extensions` - Extension to language mapping
 //! - `signatures` - Signature file detection for frameworks and package managers
 //! - `scanner` - File system scanning utilities
+//! - `io` - Boundary module for filesystem operations
 
 #![deny(unsafe_code)]
 
 mod extensions;
+mod io;
 mod scanner;
 mod signatures;
 
 use std::collections::BTreeMap;
-use std::io;
 use std::path::Path;
 
 use itertools::Itertools;
 
-use crate::workspace::{Workspace, WorkspaceFs};
+use crate::workspace::Workspace;
 
 pub use extensions::extension_to_language;
 use extensions::is_non_primary_language;
+
+use io::{count_extensions_with_workspace, detect_tests_with_workspace};
 
 /// Maximum number of secondary languages to include in the stack summary.
 ///
@@ -126,7 +129,9 @@ impl ProjectStack {
 /// # Errors
 ///
 /// Returns error if the operation fails.
-pub fn detect_stack(root: &Path) -> io::Result<ProjectStack> {
+pub fn detect_stack(root: &Path) -> std::io::Result<ProjectStack> {
+    use crate::workspace::WorkspaceFs;
+
     let workspace = WorkspaceFs::new(root.to_path_buf());
     detect_stack_with_workspace(&workspace, Path::new(""))
 }
@@ -155,20 +160,19 @@ mod tests;
 pub fn detect_stack_with_workspace(
     workspace: &dyn Workspace,
     root: &Path,
-) -> io::Result<ProjectStack> {
-    // Count file extensions
-    let extension_counts = scanner::count_extensions_with_workspace(workspace, root)?;
+) -> std::io::Result<ProjectStack> {
+    let extension_counts = count_extensions_with_workspace(workspace, root)?;
 
-    // Convert extensions to languages and aggregate
     let language_counts: BTreeMap<String, usize> = extension_counts
         .iter()
         .filter_map(|(ext, count)| {
             extension_to_language(ext).map(|lang| (lang.to_string(), *count))
         })
         .fold(BTreeMap::new(), |acc, (lang, count)| {
-            let mut new_acc = acc;
-            *new_acc.entry(lang).or_insert(0) += count;
-            new_acc
+            let existing = acc.get(&lang).copied().unwrap_or(0);
+            acc.into_iter()
+                .chain(std::iter::once((lang, existing + count)))
+                .collect()
         });
 
     let language_vec: Vec<_> = language_counts
@@ -179,7 +183,6 @@ pub fn detect_stack_with_workspace(
         .map(|(count, lang)| (lang, count))
         .collect();
 
-    // Determine primary and secondary languages
     let primary_language = language_vec
         .iter()
         .find(|(lang, _)| !is_non_primary_language(lang))
@@ -193,13 +196,11 @@ pub fn detect_stack_with_workspace(
         .map(|(lang, _)| (*lang).to_string())
         .collect();
 
-    // Detect signature files for frameworks and test frameworks
     let (frameworks, test_framework, package_manager) =
         signatures::detect_signature_files_with_workspace(workspace, root);
 
-    // Detect if tests exist
-    let has_tests = test_framework.is_some()
-        || scanner::detect_tests_with_workspace(workspace, root, &primary_language);
+    let has_tests =
+        test_framework.is_some() || detect_tests_with_workspace(workspace, root, &primary_language);
 
     Ok(ProjectStack {
         primary_language,

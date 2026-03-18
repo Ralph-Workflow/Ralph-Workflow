@@ -38,6 +38,7 @@ pub mod file_state;
 pub mod recovery;
 pub mod restore;
 pub mod run_context;
+pub mod runtime;
 pub mod size_monitor;
 pub mod state;
 pub mod string_pool;

@@ -162,21 +162,17 @@ fn build_details_output(content: &str) -> String {
     let details = trim_opt(extract_tag_content(content, "ralph-body-details"));
     let footer = trim_opt(extract_tag_content(content, "ralph-body-footer"));
 
-    let mut parts = Vec::new();
+    let separator = SEPARATOR_CHAR.to_string().repeat(45);
 
-    if let Some(ref s) = summary {
+    let summary_section = summary.as_ref().map(|s| {
         let summary_lines: String = s
             .lines()
             .map(|line| format!("  {}\n", line.trim_end()))
             .collect();
-        parts.push(format!(
-            "\n  Summary\n  {}\n{}",
-            SEPARATOR_CHAR.to_string().repeat(45),
-            summary_lines
-        ));
-    }
+        format!("\n  Summary\n  {separator}\n{summary_lines}")
+    });
 
-    if let Some(ref d) = details {
+    let details_section = details.as_ref().map(|d| {
         let details_lines: String = d
             .lines()
             .map(|line| {
@@ -188,26 +184,22 @@ fn build_details_output(content: &str) -> String {
                 }
             })
             .collect();
-        parts.push(format!(
-            "\n  Details\n  {}\n{}",
-            SEPARATOR_CHAR.to_string().repeat(45),
-            details_lines
-        ));
-    }
+        format!("\n  Details\n  {separator}\n{details_lines}")
+    });
 
-    if let Some(ref f) = footer {
+    let footer_section = footer.as_ref().map(|f| {
         let footer_lines: String = f
             .lines()
             .map(|line| format!("  {}\n", line.trim_end()))
             .collect();
-        parts.push(format!(
-            "\n  Footer\n  {}\n{}",
-            SEPARATOR_CHAR.to_string().repeat(45),
-            footer_lines
-        ));
-    }
+        format!("\n  Footer\n  {separator}\n{footer_lines}")
+    });
 
-    parts.join("")
+    [summary_section, details_section, footer_section]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn build_files_output(content: &str) -> String {

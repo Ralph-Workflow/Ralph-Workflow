@@ -37,10 +37,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 mod boundary;
-mod memory_env;
-pub use memory_env::MemoryConfigEnvironment;
 // Re-export from boundary for backward compatibility
-pub use boundary::RealConfigEnvironment;
+pub use boundary::{MemoryConfigEnvironment, RealConfigEnvironment};
 
 /// Trait for configuration environment access.
 ///

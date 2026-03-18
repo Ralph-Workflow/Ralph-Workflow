@@ -2,6 +2,8 @@ use crate::config::types::{Config, ReviewDepth, Verbosity};
 use crate::config::unified::UnifiedConfig;
 use std::path::PathBuf;
 
+use crate::config::cloud::load_cloud_config_from_env;
+
 /// Result of converting UnifiedConfig to Config, including any warnings.
 pub struct ConfigConversionResult {
     pub config: Config,
@@ -85,7 +87,7 @@ pub(super) fn config_from_unified(unified: &UnifiedConfig) -> ConfigConversionRe
         max_same_agent_retries: Some(max_same_agent_retries),
         max_commit_residual_retries: Some(max_commit_residual_retries),
         execution_history_limit: general.execution_history_limit,
-        cloud: crate::config::types::CloudConfig::from_env(),
+        cloud: load_cloud_config_from_env(),
     };
 
     ConfigConversionResult::with_warnings(config, warnings)
@@ -135,6 +137,6 @@ pub fn default_config() -> Config {
         max_same_agent_retries: Some(2),
         max_commit_residual_retries: Some(10),
         execution_history_limit: 1000,
-        cloud: crate::config::types::CloudConfig::from_env(),
+        cloud: load_cloud_config_from_env(),
     }
 }

@@ -137,16 +137,13 @@ fn render_provider_fallback_comments(general: &crate::config::unified::GeneralCo
         return String::new();
     }
 
-    let mut provider_entries: Vec<_> = general.provider_fallback.iter().collect();
-    provider_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-
     let lines: Vec<String> = std::iter::empty()
         .chain(std::iter::once(String::new()))
         .chain(std::iter::once("# [general.provider_fallback]".to_string()))
         .chain(std::iter::once(
             "# Provider/model fallback settings by agent".to_string(),
         ))
-        .chain(provider_entries.iter().map(|(provider, models)| {
+        .chain(general.provider_fallback.iter().map(|(provider, models)| {
             format!("# {provider} = {}", format_toml_string_array(models))
         }))
         .collect();
@@ -241,10 +238,8 @@ fn collect_named_chain_definitions(
         .agent_chains
         .iter()
         .chain(drain_chains.iter())
-        .fold(BTreeMap::new(), |mut acc, (name, agents)| {
-            acc.entry(name.clone()).or_insert_with(|| agents.clone());
-            acc
-        })
+        .map(|(name, agents)| (name.clone(), agents.clone()))
+        .collect()
 }
 
 /// Handle the `--init-local-config` flag with a custom path resolver.

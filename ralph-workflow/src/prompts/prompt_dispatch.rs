@@ -5,7 +5,7 @@
 
 use super::prompt_config::PromptConfig;
 use super::prompt_scope_key::PromptScopeKey;
-use super::resume_note::generate_resume_note;
+use super::runtime::resume_note::generate_resume_note;
 use super::types::{Action, Role};
 use super::ContextLevel;
 use super::TemplateContext;

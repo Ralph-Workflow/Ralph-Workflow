@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::checkpoint::load_checkpoint_with_workspace;
+use crate::interrupt::runtime::INTERRUPT_CONTEXT;
 use crate::workspace::MemoryWorkspace;
 use crate::workspace::Workspace;
 use std::sync::atomic::Ordering;

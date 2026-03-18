@@ -84,23 +84,6 @@ impl UnifiedConfig {
         })
     }
 
-    /// Load unified configuration from a specific path.
-    ///
-    /// **Note:** This method uses `std::fs` directly. For testable code,
-    /// use `load_from_path_with_env` with a `ConfigEnvironment` instead.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The file cannot be read
-    /// - The TOML syntax is invalid
-    /// - Required fields are missing
-    pub fn load_from_path(path: &std::path::Path) -> Result<Self, ConfigLoadError> {
-        let contents = std::fs::read_to_string(path)?;
-        let config: Self = toml::from_str(&contents)?;
-        Ok(config)
-    }
-
     /// Load unified configuration from a specific path using a `ConfigEnvironment`.
     ///
     /// This is the testable version of `load_from_path`.

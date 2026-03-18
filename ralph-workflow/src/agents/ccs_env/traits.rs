@@ -2,41 +2,25 @@
 // Environment and Filesystem Traits for Testability
 // ============================================================================
 
+use std::path::PathBuf;
+
 /// Trait for accessing CCS-related environment variables.
 ///
 /// This trait enables dependency injection for testing without global state pollution.
 pub trait CcsEnvironment {
-    /// Get an environment variable by name.
     fn get_var(&self, name: &str) -> Option<String>;
 
-    /// Get the home directory.
-    fn home_dir(&self) -> Option<std::path::PathBuf>;
-}
-
-/// Production implementation that reads from actual environment.
-pub struct RealCcsEnvironment;
-
-impl CcsEnvironment for RealCcsEnvironment {
-    fn get_var(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
-    }
-
-    fn home_dir(&self) -> Option<std::path::PathBuf> {
-        dirs::home_dir()
-    }
+    fn home_dir(&self) -> Option<PathBuf>;
 }
 
 /// Trait for CCS filesystem operations.
 ///
 /// This trait abstracts filesystem access for testability.
 pub trait CcsFilesystem {
-    /// Check if a path exists.
     fn exists(&self, path: &std::path::Path) -> bool;
 
-    /// Read a file to string.
     fn read_to_string(&self, path: &std::path::Path) -> std::io::Result<String>;
 
-    /// Read directory entries.
     fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<CcsDirEntry>>;
 }
 
@@ -47,41 +31,12 @@ pub struct CcsDirEntry {
     pub is_file: bool,
 }
 
-/// Production implementation that uses real filesystem.
-pub struct RealCcsFilesystem;
-
-impl CcsFilesystem for RealCcsFilesystem {
-    fn exists(&self, path: &std::path::Path) -> bool {
-        path.exists()
-    }
-
-    fn read_to_string(&self, path: &std::path::Path) -> std::io::Result<String> {
-        std::fs::read_to_string(path)
-    }
-
-    fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<CcsDirEntry>> {
-        let entries = std::fs::read_dir(path)?;
-        // Functional transformation: collect entries into Vec without mutation
-        entries
-            .map(|entry| {
-                let entry = entry?;
-                let ft = entry.file_type()?;
-                Ok(CcsDirEntry {
-                    path: entry.path(),
-                    file_name: entry.file_name().to_string_lossy().into_owned(),
-                    is_file: ft.is_file(),
-                })
-            })
-            .collect()
-    }
-}
-
 /// Subset of CCS' legacy `~/.ccs/config.json` format.
 ///
 /// Source (CCS): `dist/types/config.d.ts` and `dist/utils/config-manager.js`.
 #[derive(Debug, serde::Deserialize)]
-struct CcsConfigJson {
-    profiles: std::collections::HashMap<String, String>,
+pub(crate) struct CcsConfigJson {
+    pub(crate) profiles: std::collections::HashMap<String, String>,
 }
 
 /// Errors that can occur when loading CCS environment variables.
@@ -163,13 +118,13 @@ const DANGEROUS_ENV_VAR_NAMES: &[&str] = &[
 ];
 
 /// Check if an environment variable name is dangerous (could be used for injection).
-fn is_dangerous_env_var_name(name: &str) -> bool {
+pub(crate) fn is_dangerous_env_var_name(name: &str) -> bool {
     DANGEROUS_ENV_VAR_NAMES
         .iter()
         .any(|&dangerous| name.eq_ignore_ascii_case(dangerous))
 }
 
-fn is_valid_env_var_name_portable(name: &str) -> bool {
+pub(crate) fn is_valid_env_var_name_portable(name: &str) -> bool {
     if name.is_empty() {
         return false;
     }
@@ -187,9 +142,7 @@ fn is_valid_env_var_name_portable(name: &str) -> bool {
 }
 
 /// Validate environment variable value for safety.
-/// Only allows printable ASCII and common Unicode characters, no control characters
-/// or characters that could escape the value context in shells.
-fn is_safe_env_var_value(value: &str) -> bool {
+pub(crate) fn is_safe_env_var_value(value: &str) -> bool {
     // Reject null bytes and newlines (could be used for injection)
     if value.contains('\0') || value.contains('\n') || value.contains('\r') {
         return false;
@@ -198,12 +151,11 @@ fn is_safe_env_var_value(value: &str) -> bool {
     if value.contains('`') {
         return false;
     }
-    // Allow most other characters - environment variable values typically
-    // don't need strict character restrictions beyond these injection checks
+    // Allow most other characters
     true
 }
 
-fn derive_ccs_profile_name_from_filename(filename: &str) -> Option<String> {
+pub(crate) fn derive_ccs_profile_name_from_filename(filename: &str) -> Option<String> {
     filename
         .strip_suffix(".settings.json")
         .or_else(|| filename.strip_suffix(".setting.json"))
@@ -211,18 +163,18 @@ fn derive_ccs_profile_name_from_filename(filename: &str) -> Option<String> {
         .map(std::string::ToString::to_string)
 }
 
-fn is_ccs_settings_filename(name: &str) -> bool {
+pub(crate) fn is_ccs_settings_filename(name: &str) -> bool {
     name.ends_with(".settings.json") || name.ends_with(".setting.json")
 }
 
-fn is_safe_profile_filename_stem(stem: &str) -> bool {
+pub(crate) fn is_safe_profile_filename_stem(stem: &str) -> bool {
     !stem.is_empty()
         && stem
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
-fn list_ccs_json_files_with_fs(
+pub(crate) fn list_ccs_json_files_with_fs(
     fs: &dyn CcsFilesystem,
     ccs_dir: &std::path::Path,
 ) -> Result<Vec<std::path::PathBuf>, std::io::Error> {
@@ -240,30 +192,31 @@ fn list_ccs_json_files_with_fs(
     })
 }
 
-fn ccs_home_dir_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
-    // Matches CCS behavior: respects CCS_HOME env var for test isolation.
+pub(crate) fn ccs_home_dir_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
     env.get_var("CCS_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| env.home_dir())
 }
 
-fn ccs_dir_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
+pub(crate) fn ccs_dir_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
     ccs_home_dir_with_env(env).map(|home| home.join(".ccs"))
 }
 
-fn ccs_config_json_path_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
-    // Matches CCS behavior: CCS_CONFIG overrides config.json path.
-    // Source (CCS): `dist/utils/config-manager.js` getConfigPath().
+pub(crate) fn ccs_config_json_path_with_env(
+    env: &dyn CcsEnvironment,
+) -> Option<std::path::PathBuf> {
     env.get_var("CCS_CONFIG")
         .map(std::path::PathBuf::from)
         .or_else(|| ccs_dir_with_env(env).map(|d| d.join("config.json")))
 }
 
-fn ccs_config_yaml_path_with_env(env: &dyn CcsEnvironment) -> Option<std::path::PathBuf> {
+pub(crate) fn ccs_config_yaml_path_with_env(
+    env: &dyn CcsEnvironment,
+) -> Option<std::path::PathBuf> {
     ccs_dir_with_env(env).map(|d| d.join("config.yaml"))
 }
 
-fn load_ccs_profiles_from_config_json_with_deps(
+pub(crate) fn load_ccs_profiles_from_config_json_with_deps(
     env: &dyn CcsEnvironment,
     fs: &dyn CcsFilesystem,
 ) -> Result<std::collections::HashMap<String, String>, CcsEnvVarsError> {

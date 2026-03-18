@@ -44,20 +44,30 @@ impl ValidationResult {
 
     /// Add a warning to the result.
     #[must_use]
-    pub fn with_warning(mut self, msg: impl Into<String>) -> Self {
-        self.warnings.push(msg.into());
-        self
+    pub fn with_warning(self, msg: impl Into<String>) -> Self {
+        let warnings = self
+            .warnings
+            .into_iter()
+            .chain(std::iter::once(msg.into()))
+            .collect();
+        Self {
+            warnings,
+            is_valid: self.is_valid,
+            errors: self.errors,
+        }
     }
 
     /// Merge another validation result into this one.
     #[must_use]
-    pub fn merge(mut self, other: Self) -> Self {
-        if !other.is_valid {
-            self.is_valid = false;
+    pub fn merge(self, other: Self) -> Self {
+        let is_valid = self.is_valid && other.is_valid;
+        let warnings = self.warnings.into_iter().chain(other.warnings).collect();
+        let errors = self.errors.into_iter().chain(other.errors).collect();
+        Self {
+            is_valid,
+            warnings,
+            errors,
         }
-        self.warnings.extend(other.warnings);
-        self.errors.extend(other.errors);
-        self
     }
 }
 

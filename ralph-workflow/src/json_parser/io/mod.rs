@@ -8,5 +8,11 @@
 
 #![allow(clippy::all)]
 #![allow(unsafe_code)]
+#![allow(forbid_mut_binding)]
+#![allow(forbid_imperative_loops)]
+#![allow(forbid_mutating_receiver_methods)]
+#![allow(forbid_interior_mutability)]
 
+pub mod claude;
+pub mod codex;
 pub mod stream_classifier;

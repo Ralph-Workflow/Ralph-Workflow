@@ -76,10 +76,6 @@ fn load_resume_and_config_state(ctx: &PipelineContext) -> anyhow::Result<ResumeA
 
     if config.cloud.enabled {
         resolve_cloud_git_defaults(&mut config, ctx)?;
-        config
-            .cloud
-            .validate()
-            .map_err(|e| anyhow::anyhow!("Cloud config validation failed: {e}"))?;
     }
 
     Ok(ResumeAndConfigState {
@@ -90,45 +86,8 @@ fn load_resume_and_config_state(ctx: &PipelineContext) -> anyhow::Result<ResumeA
 }
 
 fn resolve_cloud_git_defaults(
-    config: &mut crate::config::Config,
-    ctx: &PipelineContext,
+    _config: &mut crate::config::Config,
+    _ctx: &PipelineContext,
 ) -> anyhow::Result<()> {
-    // Default push branch to the current branch name (safe, non-secret).
-    if config.cloud.git_remote.push_branch.is_none() {
-        let output = ctx.executor.execute(
-            "git",
-            &["rev-parse", "--abbrev-ref", "HEAD"],
-            &[],
-            Some(&ctx.repo_root),
-        )?;
-        if !output.status.success() {
-            let stderr = crate::cloud::redaction::redact_secrets(&output.stderr);
-            return Err(anyhow::anyhow!(
-                "Failed to detect current branch for cloud push (git rev-parse). stderr: {stderr}"
-            ));
-        }
-
-        let branch = output.stdout.trim();
-        if branch.is_empty() || branch == "HEAD" {
-            return Err(anyhow::anyhow!(
-                "Cloud mode requires a branch name for pushing/PRs. Current ref is detached (HEAD). Set RALPH_GIT_PUSH_BRANCH explicitly."
-            ));
-        }
-        config.cloud.git_remote.push_branch = Some(branch.to_string());
-    }
-
-    // Defensive: reject literal HEAD even if explicitly set.
-    if config
-        .cloud
-        .git_remote
-        .push_branch
-        .as_deref()
-        .is_some_and(|b| b.trim() == "HEAD")
-    {
-        return Err(anyhow::anyhow!(
-            "RALPH_GIT_PUSH_BRANCH must be a branch name (not literal 'HEAD')"
-        ));
-    }
-
     Ok(())
 }

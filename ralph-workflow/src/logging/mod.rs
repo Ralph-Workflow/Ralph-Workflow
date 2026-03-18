@@ -1,4 +1,6 @@
 pub mod io;
+mod run_id;
+mod run_log_context;
 /// Per-run logging infrastructure.
 ///
 /// This module provides types and utilities for organizing all logs from a single
@@ -8,8 +10,7 @@ pub mod io;
 /// - `RunId`: Unique timestamp-based identifier for each pipeline run
 /// - `RunLogContext`: Manages log directory creation and path resolution
 /// - `EventLoopLogger`: Records event loop execution for diagnosability
-mod run_id;
-mod run_log_context;
+pub mod runtime;
 
 pub use io::event_loop_logger::{EventLoopLogger, LogEffectParams};
 pub use run_id::RunId;

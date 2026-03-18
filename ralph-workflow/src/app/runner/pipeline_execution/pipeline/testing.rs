@@ -24,9 +24,9 @@ pub fn run_pipeline_with_effect_handler<'ctx, H>(
     effect_handler: &mut H,
 ) -> anyhow::Result<()>
 where
-    H: crate::reducer::EffectHandler<'ctx> + crate::app::event_loop::StatefulHandler,
+    H: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
 {
-    use crate::app::event_loop::EventLoopConfig;
+    use crate::app::runtime::EventLoopConfig;
     use crate::checkpoint::RunContext;
     use crate::reducer::PipelineState;
 
@@ -170,19 +170,19 @@ where
     let mut initial_state = if let Some(ref checkpoint) = resume_checkpoint {
         // Restore progress from checkpoint, but keep budgets/limits config-driven.
         // Initialize a config-aware base state first, then overlay checkpoint progress.
-        let base_state = crate::app::event_loop::create_initial_state_with_config(&phase_ctx);
+        let base_state = crate::app::runtime::create_initial_state_with_config(&phase_ctx);
         let migrated = PipelineState::from_checkpoint_with_execution_history_limit(
             checkpoint.clone(),
             phase_ctx.config.execution_history_limit,
         );
 
-        crate::app::event_loop::overlay_checkpoint_progress_onto_base_state(
+        crate::app::runtime::overlay_checkpoint_progress_onto_base_state(
             base_state,
             migrated,
             phase_ctx.config.execution_history_limit,
         )
     } else {
-        crate::app::event_loop::create_initial_state_with_config(&phase_ctx)
+        crate::app::runtime::create_initial_state_with_config(&phase_ctx)
     };
 
     if should_run_rebase {
@@ -212,7 +212,7 @@ where
     // Run event loop with the provided handler
     effect_handler.update_state(initial_state.clone());
     let loop_result = {
-        use crate::app::event_loop::run_event_loop_with_handler;
+        use crate::app::runtime::run_event_loop_with_handler;
         let phase_ctx_ref = &mut phase_ctx;
         run_event_loop_with_handler(
             phase_ctx_ref,

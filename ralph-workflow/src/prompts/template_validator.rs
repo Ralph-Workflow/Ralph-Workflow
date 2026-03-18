@@ -26,7 +26,8 @@ pub use syntax_validation::validate_syntax;
 pub use template_extraction::{extract_metadata, extract_partials, extract_variables};
 pub use template_types::{
     RenderedPromptError, RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource,
-    TemplateVariablesInvalidError, ValidationError, ValidationResult, ValidationWarning,
+    TemplateMetadata, TemplateVariablesInvalidError, ValidationError, ValidationResult,
+    ValidationWarning, VariableInfo,
 };
 
 /// Validate a complete template.

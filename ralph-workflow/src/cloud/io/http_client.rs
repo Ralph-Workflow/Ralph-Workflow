@@ -1,6 +1,6 @@
 //! HTTP client implementation for cloud reporting.
 
-use crate::cloud::types::{CloudError, PipelineResult, ProgressUpdate};
+use crate::cloud::types::{interpret_http_response, CloudError, PipelineResult, ProgressUpdate};
 use crate::cloud::CloudReporter;
 use crate::config::types::CloudConfig;
 
@@ -37,6 +37,14 @@ impl HttpCloudReporter {
         path: &str,
         body: &T,
     ) -> Result<(), CloudError> {
+        let (url, api_token) = self.extract_credentials(path)?;
+        let json_body =
+            serde_json::to_value(body).map_err(|e| CloudError::Serialization(e.to_string()))?;
+        let (status, body) = perform_request(&url, &api_token, json_body)?;
+        interpret_http_response(status, body)
+    }
+
+    fn extract_credentials(&self, path: &str) -> Result<(String, String), CloudError> {
         let api_url = self
             .config
             .api_url
@@ -47,37 +55,35 @@ impl HttpCloudReporter {
             .api_token
             .as_ref()
             .ok_or_else(|| CloudError::Configuration("API token not configured".to_string()))?;
-
         let url = Self::build_url(api_url, path)?;
+        Ok((url, api_token.clone()))
+    }
+}
 
-        let agent = ureq::Agent::new_with_config(
-            ureq::config::Config::builder()
-                .timeout_global(Some(std::time::Duration::from_secs(30)))
-                .http_status_as_error(false)
-                .build(),
-        );
+fn perform_request(
+    url: &str,
+    api_token: &str,
+    json_body: serde_json::Value,
+) -> Result<(u16, String), CloudError> {
+    let agent = ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .timeout_global(Some(std::time::Duration::from_secs(30)))
+            .http_status_as_error(false)
+            .build(),
+    );
+    let response = agent
+        .post(url)
+        .header("Authorization", &format!("Bearer {api_token}"))
+        .header("Content-Type", "application/json")
+        .send_json(json_body);
 
-        let json_body =
-            serde_json::to_value(body).map_err(|e| CloudError::Serialization(e.to_string()))?;
-
-        let response = agent
-            .post(&url)
-            .header("Authorization", &format!("Bearer {api_token}"))
-            .header("Content-Type", "application/json")
-            .send_json(json_body);
-
-        match response {
-            Ok(resp) => {
-                let status = resp.status();
-                if status.is_success() {
-                    Ok(())
-                } else {
-                    let body = resp.into_body().read_to_string().unwrap_or_default();
-                    Err(CloudError::HttpError(status.as_u16(), body))
-                }
-            }
-            Err(e) => Err(CloudError::NetworkError(e.to_string())),
+    match response {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.into_body().read_to_string().unwrap_or_default();
+            Ok((status, body))
         }
+        Err(e) => Err(CloudError::NetworkError(e.to_string())),
     }
 }
 

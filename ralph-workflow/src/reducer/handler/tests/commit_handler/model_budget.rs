@@ -6,7 +6,7 @@ use crate::reducer::state::AgentChainState;
 /// the effective budget should be 100KB (the minimum).
 #[test]
 fn test_effective_model_budget_uses_min_across_agent_chain() {
-    use crate::phases::commit::effective_model_budget_bytes;
+    use crate::phases::commit::io::effective_model_budget_bytes;
 
     // claude (300KB) + qwen (100KB) + default (200KB) = min is 100KB
     let agents = vec![

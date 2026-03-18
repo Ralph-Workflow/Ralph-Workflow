@@ -17,7 +17,7 @@
         "list": "allow",
         "webfetch": "allow",
         "websearch": "allow",
-        "question": "allow",
+        "question": "deny",
         "skill": "allow",
         "todoread": "allow",
         "todowrite": "allow",
@@ -51,7 +51,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-gui/*": "allow",
+          "rm *ralph-gui/*": "allow"
         },
         "read": {
           "*": "deny",
@@ -72,24 +74,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-gui/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-gui/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-gui/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -128,7 +121,12 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/*": "allow",
+          "rm *ralph-workflow/src/*": "allow",
+          "rm ralph-workflow/src/io/**": "allow",
+          "rm ralph-workflow/src/boundary/**": "allow",
+          "rm ralph-workflow/src/runtime/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -158,33 +156,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/*": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/*": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/*": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -229,7 +209,11 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/reducer/**": "allow",
+          "rm ralph-workflow/src/pipeline/**": "allow",
+          "rm ralph-workflow/src/checkpoint/**": "allow",
+          "rm ralph-workflow/src/phases/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -259,33 +243,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/reducer/**": "allow",
-          "*ralph-workflow/src/pipeline/**": "allow",
-          "*ralph-workflow/src/checkpoint/**": "allow",
-          "*ralph-workflow/src/phases/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/reducer/**": "allow",
-          "*ralph-workflow/src/pipeline/**": "allow",
-          "*ralph-workflow/src/checkpoint/**": "allow",
-          "*ralph-workflow/src/phases/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/reducer/**": "allow",
-          "*ralph-workflow/src/pipeline/**": "allow",
-          "*ralph-workflow/src/checkpoint/**": "allow",
-          "*ralph-workflow/src/phases/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -326,7 +292,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/executor/**": "allow",
+          "rm ralph-workflow/src/runtime/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -350,27 +318,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/executor/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/executor/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/executor/**": "allow",
-          "*ralph-workflow/src/runtime/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -411,7 +367,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/io/**": "allow",
+          "rm ralph-workflow/src/files/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -435,27 +393,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/files/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/files/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/io/**": "allow",
-          "*ralph-workflow/src/files/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -496,7 +442,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/workspace/**": "allow",
+          "rm ralph-workflow/src/boundary/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -520,27 +468,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/workspace/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/workspace/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/workspace/**": "allow",
-          "*ralph-workflow/src/boundary/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -579,7 +515,8 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/git_helpers/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -600,24 +537,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/git_helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/git_helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/git_helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -658,7 +586,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/config/**": "allow",
+          "rm ralph-workflow/src/cli/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -682,27 +612,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/config/**": "allow",
-          "*ralph-workflow/src/cli/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/config/**": "allow",
-          "*ralph-workflow/src/cli/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/config/**": "allow",
-          "*ralph-workflow/src/cli/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -741,7 +659,8 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/app/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -762,24 +681,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/app/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/app/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/app/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -820,7 +730,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/logging/**": "allow",
+          "rm ralph-workflow/src/logger/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -844,27 +756,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/logging/**": "allow",
-          "*ralph-workflow/src/logger/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/logging/**": "allow",
-          "*ralph-workflow/src/logger/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/logging/**": "allow",
-          "*ralph-workflow/src/logger/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -905,7 +805,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/monitoring/**": "allow",
+          "rm ralph-workflow/src/diagnostics/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -929,27 +831,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/monitoring/**": "allow",
-          "*ralph-workflow/src/diagnostics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/monitoring/**": "allow",
-          "*ralph-workflow/src/diagnostics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/monitoring/**": "allow",
-          "*ralph-workflow/src/diagnostics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -994,7 +884,11 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/common/**": "allow",
+          "rm ralph-workflow/src/platform/**": "allow",
+          "rm ralph-workflow/src/rendering/**": "allow",
+          "rm ralph-workflow/src/templates/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1024,33 +918,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/common/**": "allow",
-          "*ralph-workflow/src/platform/**": "allow",
-          "*ralph-workflow/src/rendering/**": "allow",
-          "*ralph-workflow/src/templates/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/common/**": "allow",
-          "*ralph-workflow/src/platform/**": "allow",
-          "*ralph-workflow/src/rendering/**": "allow",
-          "*ralph-workflow/src/templates/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/common/**": "allow",
-          "*ralph-workflow/src/platform/**": "allow",
-          "*ralph-workflow/src/rendering/**": "allow",
-          "*ralph-workflow/src/templates/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1095,7 +971,11 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/benchmarks/**": "allow",
+          "rm ralph-workflow/src/interrupt/**": "allow",
+          "rm ralph-workflow/src/language_detector/**": "allow",
+          "rm ralph-workflow/src/review_metrics/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1125,33 +1005,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/benchmarks/**": "allow",
-          "*ralph-workflow/src/interrupt/**": "allow",
-          "*ralph-workflow/src/language_detector/**": "allow",
-          "*ralph-workflow/src/review_metrics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/benchmarks/**": "allow",
-          "*ralph-workflow/src/interrupt/**": "allow",
-          "*ralph-workflow/src/language_detector/**": "allow",
-          "*ralph-workflow/src/review_metrics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/benchmarks/**": "allow",
-          "*ralph-workflow/src/interrupt/**": "allow",
-          "*ralph-workflow/src/language_detector/**": "allow",
-          "*ralph-workflow/src/review_metrics/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1190,7 +1052,8 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/agents/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1211,24 +1074,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/agents/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/agents/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/agents/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1269,7 +1123,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/guidelines/**": "allow",
+          "rm ralph-workflow/src/prompts/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1293,27 +1149,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/guidelines/**": "allow",
-          "*ralph-workflow/src/prompts/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/guidelines/**": "allow",
-          "*ralph-workflow/src/prompts/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/guidelines/**": "allow",
-          "*ralph-workflow/src/prompts/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1352,7 +1196,8 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/json_parser/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1373,24 +1218,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/json_parser/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/json_parser/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/json_parser/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1429,7 +1265,8 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm ralph-workflow/src/cloud/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1450,24 +1287,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/cloud/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/cloud/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*ralph-workflow/src/cloud/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1505,7 +1333,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm test-helpers/**": "allow",
+          "rm *test-helpers/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1526,24 +1356,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*test-helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*test-helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*test-helpers/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1582,7 +1403,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm xtask/**": "allow",
+          "rm *xtask/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1603,24 +1426,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*xtask/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*xtask/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*xtask/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1659,7 +1473,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm tests/**": "allow",
+          "rm *tests/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1680,24 +1496,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*tests/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*tests/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*tests/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1739,7 +1546,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm lints/**": "allow",
+          "rm *lints/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1760,24 +1569,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*lints/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*lints/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*lints/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",
@@ -1810,7 +1610,9 @@
           "echo *": "allow",
           "wc *": "allow",
           "find *": "allow",
-          "pwd": "allow"
+          "pwd": "allow",
+          "rm docs/**": "allow",
+          "rm *docs/**": "allow"
         },
         "read": {
           "*": "deny",
@@ -1827,21 +1629,15 @@
           ".opencode/**": "deny"
         },
         "glob": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "list": {
-          "*": "deny",
-          "*tmp/**": "allow",
-          "*docs/**": "allow",
+          "*": "allow",
           ".opencode/**": "deny"
         },
         "webfetch": "deny",

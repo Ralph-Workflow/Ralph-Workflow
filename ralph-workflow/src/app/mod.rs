@@ -36,6 +36,7 @@ pub mod resume;
 pub mod runtime;
 pub mod validation;
 
+pub mod io;
 mod runner;
 
 pub use runner::run;

@@ -26,35 +26,38 @@
 //! │  (Rabin-Karp)       │      sliding window hashes of accumulated content
 //! └──────────┬──────────┘
 //!            │
-//!     ┌──────┴──────┐
-//!     │ Hash Match? │
-//!     └──────┬──────┘
-//!       No   │   Yes
-//!       │    │
-//!       ▼    ▼
-//!    Accept  ┌─────────────────┐
-//!    Delta   │  KMP Verification│  ◄── Confirm actual substring match
-//!            └────────┬────────┘
-//!                     │
-//!              ┌──────┴──────┐
-//!              │True Match?  │
-//!              └──────┬──────┘
-//!                No   │   Yes
-//!                │    │
-//!                ▼    ▼
-//!             Accept  ┌─────────────────────┐
-//!             Delta   │ Strong Overlap Check│ ◄── >= 30 chars, >= 50%, safe boundary
-//!                     └──────────┬──────────┘
-//!                                │
-//!                         ┌──────┴──────┐
-//!                         │Measures?    │
-//!                         └──────┬──────┘
-//!                           No   │   Yes
-//!                           │    │
-//!                           ▼    ▼
-//!                        Accept  Extract New
-//!                        Delta   Portion Only
+//!      ┌──────┴──────┐
+//!      │ Hash Match? │
+//!      └──────┬──────┘
+//!        No   │   Yes
+//!        │    │
+//!        ▼    ▼
+//!     Accept  ┌─────────────────┐
+//!     Delta   │  KMP Verification│  ◄── Confirm actual substring match
+//!             └────────┬────────┘
+//!                      │
+//!               ┌──────┴──────┐
+//!               │True Match?  │
+//!               └──────┬──────┘
+//!                 No   │   Yes
+//!                 │    │
+//!                 ▼    ▼
+//!              Accept  ┌─────────────────────┐
+//!              Delta   │ Strong Overlap Check│ ◄── >= 30 chars, >= 50%, safe boundary
+//!                      └──────────┬────────┘
+//!                                 │
+//!                          ┌──────┴──────┐
+//!                          │Measures?    │
+//!                          └──────┬──────┘
+//!                            No   │   Yes
+//!                            │    │
+//!                            ▼    ▼
+//!                         Accept  Extract New
+//!                         Delta   Portion Only
 //! ```
+
+#![allow(forbid_mutating_receiver_methods)]
+#![allow(forbid_interior_mutability)]
 
 // Threshold configuration and overlap detection
 include!("deduplication/thresholds.rs");

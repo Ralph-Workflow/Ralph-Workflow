@@ -231,36 +231,42 @@ pub fn prompt_developer_iteration_continuation_xml_with_log(
         .read(std::path::Path::new(".agent/PLAN.md"))
         .unwrap_or_else(|_| "(no plan available)".to_string());
 
-    let mut variables: HashMap<&str, String> = HashMap::new();
-    variables.insert("PROMPT_PATH", "PROMPT.md".to_string());
-    variables.insert("PLAN_PATH", ".agent/PLAN.md".to_string());
-    variables.insert("PREVIOUS_STATUS", previous_status);
-    variables.insert("PREVIOUS_SUMMARY", previous_summary);
-    variables.insert("PROMPT", prompt_content.clone());
-    variables.insert("PLAN", plan_content.clone());
-    variables.insert(
-        "CONTINUATION_ATTEMPT",
-        continuation_state.continuation_attempt.to_string(),
-    );
-    variables.insert(
-        "CONTINUATION_PROGRESS",
-        format!(
-            "continuation {} of {}",
-            continuation_state.continuation_attempt, continuation_state.max_continue_count
+    let base_variables: HashMap<&str, String> = HashMap::from([
+        ("PROMPT_PATH", "PROMPT.md".to_string()),
+        ("PLAN_PATH", ".agent/PLAN.md".to_string()),
+        ("PREVIOUS_STATUS", previous_status),
+        ("PREVIOUS_SUMMARY", previous_summary),
+        ("PROMPT", prompt_content.clone()),
+        ("PLAN", plan_content.clone()),
+        (
+            "CONTINUATION_ATTEMPT",
+            continuation_state.continuation_attempt.to_string(),
         ),
-    );
-    variables.insert(
-        "DEVELOPMENT_RESULT_XML_PATH",
-        workspace.absolute_str(".agent/tmp/development_result.xml"),
-    );
-    variables.insert(
-        "DEVELOPMENT_RESULT_XSD_PATH",
-        workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
-    );
+        (
+            "CONTINUATION_PROGRESS",
+            format!(
+                "continuation {} of {}",
+                continuation_state.continuation_attempt, continuation_state.max_continue_count
+            ),
+        ),
+        (
+            "DEVELOPMENT_RESULT_XML_PATH",
+            workspace.absolute_str(".agent/tmp/development_result.xml"),
+        ),
+        (
+            "DEVELOPMENT_RESULT_XSD_PATH",
+            workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
+        ),
+    ]);
 
-    if let Some(next_steps) = previous_next_steps {
-        variables.insert("PREVIOUS_NEXT_STEPS", next_steps);
-    }
+    let variables = if let Some(next_steps) = previous_next_steps {
+        base_variables
+            .into_iter()
+            .chain(std::iter::once(("PREVIOUS_NEXT_STEPS", next_steps)))
+            .collect()
+    } else {
+        base_variables
+    };
 
     template
         .render_with_log(template_name, &variables, &partials)

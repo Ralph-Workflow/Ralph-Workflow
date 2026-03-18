@@ -4,6 +4,7 @@ use crate::logging::EventLoopLogger;
 use crate::phases::PhaseContext;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::PipelineState;
+use chrono::Utc;
 
 /// Log effect execution to the event loop log.
 ///
@@ -29,6 +30,7 @@ pub(super) fn log_effect_execution(
         .map(|(k, v)| (*k, v.as_str()))
         .collect();
 
+    let timestamp = Utc::now().to_rfc3339();
     let (new_logger, _seq) = event_loop_logger
         .clone()
         .log_effect(&crate::logging::LogEffectParams {
@@ -40,6 +42,7 @@ pub(super) fn log_effect_execution(
             extra_events: &extra_events,
             duration_ms,
             context: &context_refs,
+            timestamp: &timestamp,
         })
         .unwrap_or_else(|e| {
             ctx.logger

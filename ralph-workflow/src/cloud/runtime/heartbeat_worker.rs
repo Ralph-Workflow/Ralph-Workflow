@@ -1,5 +1,6 @@
 //! Heartbeat background worker implementation.
 
+use crate::cloud::types::{heartbeat_drop_join_timeout, heartbeat_should_join_thread};
 use crate::cloud::CloudReporter;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -40,22 +41,18 @@ impl HeartbeatGuard {
 
 impl Drop for HeartbeatGuard {
     fn drop(&mut self) {
-        const DROP_JOIN_TIMEOUT: Duration = Duration::from_millis(50);
+        let timeout = heartbeat_drop_join_timeout();
 
         if let Some(tx) = self.stop_tx.take() {
             let _ = tx.send(());
         }
 
-        if let Some(done_rx) = self.done_rx.take() {
-            if done_rx.recv_timeout(DROP_JOIN_TIMEOUT).is_ok() {
-                if let Some(handle) = self.handle.take() {
-                    let _ = handle.join();
-                }
-                return;
+        if let (Some(rx), Some(h)) = (self.done_rx.take(), self.handle.take()) {
+            let done_received = rx.recv_timeout(timeout).is_ok();
+            if heartbeat_should_join_thread(done_received) {
+                let _ = h.join();
             }
         }
-
-        let _ = self.handle.take();
     }
 }
 

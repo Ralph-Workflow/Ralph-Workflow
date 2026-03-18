@@ -143,3 +143,25 @@ pub enum CloudError {
     #[error("Serialization error: {0}")]
     Serialization(String),
 }
+
+impl CloudError {
+    pub fn is_success(&self) -> bool {
+        matches!(self, CloudError::Configuration(_))
+    }
+}
+
+pub fn interpret_http_response(status: u16, body: String) -> Result<(), CloudError> {
+    if status >= 200 && status < 300 {
+        Ok(())
+    } else {
+        Err(CloudError::HttpError(status, body))
+    }
+}
+
+pub const fn heartbeat_drop_join_timeout() -> std::time::Duration {
+    std::time::Duration::from_millis(50)
+}
+
+pub fn heartbeat_should_join_thread(done_received: bool) -> bool {
+    done_received
+}

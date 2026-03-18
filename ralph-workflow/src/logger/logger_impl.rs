@@ -3,14 +3,13 @@
 //! This file contains the Logger struct and all its impl blocks,
 //! including the Loggable trait implementation.
 
-use super::loggable::Loggable;
 use crate::checkpoint::timestamp;
-use crate::json_parser::printer::Printable;
+use crate::logger::io::stdout_writer::{stderr_write_line, stdout_write_line};
+use crate::logger::output::Loggable;
 use crate::logger::{
     Colors, ARROW, BOX_BL, BOX_BR, BOX_H, BOX_TL, BOX_TR, BOX_V, CHECK, CROSS, INFO, WARN,
 };
 use crate::workspace::Workspace;
-use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 
 use crate::logger::io::ansi_stripper::strip_ansi_codes;
@@ -107,8 +106,7 @@ impl Logger {
     /// Log an informational message.
     pub fn info(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -118,14 +116,14 @@ impl Logger {
             c.reset(),
             msg
         );
+        let _ = stdout_write_line(&formatted);
         self.log_to_file(&format!("[{}] [INFO] {}", timestamp(), msg));
     }
 
     /// Log a success message.
     pub fn success(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -137,14 +135,14 @@ impl Logger {
             msg,
             c.reset()
         );
+        let _ = stdout_write_line(&formatted);
         self.log_to_file(&format!("[{}] [OK] {}", timestamp(), msg));
     }
 
     /// Log a warning message.
     pub fn warn(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -156,14 +154,14 @@ impl Logger {
             msg,
             c.reset()
         );
+        let _ = stdout_write_line(&formatted);
         self.log_to_file(&format!("[{}] [WARN] {}", timestamp(), msg));
     }
 
     /// Log an error message.
     pub fn error(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stderr(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -175,14 +173,14 @@ impl Logger {
             msg,
             c.reset()
         );
+        let _ = stderr_write_line(&formatted);
         self.log_to_file(&format!("[{}] [ERROR] {}", timestamp(), msg));
     }
 
     /// Log a step/action message.
     pub fn step(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -192,6 +190,7 @@ impl Logger {
             c.reset(),
             msg
         );
+        let _ = stdout_write_line(&formatted);
         self.log_to_file(&format!("[{}] [STEP] {}", timestamp(), msg));
     }
 
@@ -208,9 +207,8 @@ impl Logger {
         let title_len = title.chars().count();
         let padding = (width - title_len - 2) / 2;
 
-        let _ = writeln!(std::io::stdout());
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line("");
+        let line1 = format!(
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -219,8 +217,8 @@ impl Logger {
             BOX_TR,
             c.reset()
         );
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line(&line1);
+        let line2 = format!(
             "{}{}{}{}{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -233,8 +231,8 @@ impl Logger {
             BOX_V,
             c.reset()
         );
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line(&line2);
+        let line3 = format!(
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -243,28 +241,17 @@ impl Logger {
             BOX_BR,
             c.reset()
         );
+        let _ = stdout_write_line(&line3);
     }
 
     /// Print a sub-header (less prominent than header).
     pub fn subheader(&self, title: &str) {
         let c = &self.colors;
-        let _ = writeln!(std::io::stdout());
-        let _ = writeln!(
-            std::io::stdout(),
-            "{}{}{} {}{}",
-            c.bold(),
-            c.blue(),
-            ARROW,
-            title,
-            c.reset()
-        );
-        let _ = writeln!(
-            std::io::stdout(),
-            "{}{}──{}",
-            c.dim(),
-            "─".repeat(title.len()),
-            c.reset()
-        );
+        let _ = stdout_write_line("");
+        let line1 = format!("{}{}{} {}{}", c.bold(), c.blue(), ARROW, title, c.reset());
+        let _ = stdout_write_line(&line1);
+        let line2 = format!("{}{}──{}", c.dim(), "─".repeat(title.len()), c.reset());
+        let _ = stdout_write_line(&line2);
     }
 }
 
@@ -283,8 +270,7 @@ impl Loggable for Logger {
 
     fn info(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}",
             c.dim(),
             timestamp(),
@@ -294,13 +280,13 @@ impl Loggable for Logger {
             c.reset(),
             msg
         );
+        let _ = stdout_write_line(&formatted);
         self.log(&format!("[{}] [INFO] {msg}", timestamp()));
     }
 
     fn success(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -312,13 +298,13 @@ impl Loggable for Logger {
             msg,
             c.reset()
         );
+        let _ = stdout_write_line(&formatted);
         self.log(&format!("[{}] [OK] {msg}", timestamp()));
     }
 
     fn warn(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stdout(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -330,13 +316,13 @@ impl Loggable for Logger {
             msg,
             c.reset()
         );
+        let _ = stdout_write_line(&formatted);
         self.log(&format!("[{}] [WARN] {msg}", timestamp()));
     }
 
     fn error(&self, msg: &str) {
         let c = &self.colors;
-        let _ = writeln!(
-            std::io::stderr(),
+        let formatted = format!(
             "{}[{}]{} {}{}{} {}{}{}",
             c.dim(),
             timestamp(),
@@ -348,6 +334,7 @@ impl Loggable for Logger {
             msg,
             c.reset()
         );
+        let _ = stderr_write_line(&formatted);
         self.log(&format!("[{}] [ERROR] {msg}", timestamp()));
     }
 
@@ -358,9 +345,8 @@ impl Loggable for Logger {
         let title_len = title.chars().count();
         let padding = (width - title_len - 2) / 2;
 
-        let _ = writeln!(std::io::stdout());
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line("");
+        let line1 = format!(
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -369,8 +355,8 @@ impl Loggable for Logger {
             BOX_TR,
             c.reset()
         );
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line(&line1);
+        let line2 = format!(
             "{}{}{}{}{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -383,8 +369,8 @@ impl Loggable for Logger {
             BOX_V,
             c.reset()
         );
-        let _ = writeln!(
-            std::io::stdout(),
+        let _ = stdout_write_line(&line2);
+        let line3 = format!(
             "{}{}{}{}{}{}",
             color,
             c.bold(),
@@ -393,25 +379,7 @@ impl Loggable for Logger {
             BOX_BR,
             c.reset()
         );
-    }
-}
-
-// ===== Printable and Write Implementations =====
-
-impl std::io::Write for Logger {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        // Write directly to stdout
-        std::io::stdout().write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        std::io::stdout().flush()
-    }
-}
-
-impl Printable for Logger {
-    fn is_terminal(&self) -> bool {
-        std::io::stdout().is_terminal()
+        let _ = stdout_write_line(&line3);
     }
 }
 

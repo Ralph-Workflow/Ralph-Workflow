@@ -8,23 +8,16 @@ use super::Platform;
 use crate::executor::ProcessExecutor;
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
-
-/// Check if a command exists in PATH
-fn has_command(executor: &dyn ProcessExecutor, cmd: &str) -> bool {
-    executor
-        .execute("which", &[cmd], &[], None)
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+use crate::platform::io;
 
 /// Detect Linux distribution based on available package managers
 fn detect_linux_distro(executor: &dyn ProcessExecutor) -> Platform {
     // Check for package managers in order of specificity
-    if has_command(executor, "apt-get") || has_command(executor, "apt") {
+    if io::command_exists(executor, "apt-get") || io::command_exists(executor, "apt") {
         Platform::DebianLinux
-    } else if has_command(executor, "dnf") || has_command(executor, "yum") {
+    } else if io::command_exists(executor, "dnf") || io::command_exists(executor, "yum") {
         Platform::RhelLinux
-    } else if has_command(executor, "pacman") {
+    } else if io::command_exists(executor, "pacman") {
         Platform::ArchLinux
     } else {
         Platform::GenericLinux
@@ -36,7 +29,7 @@ impl Platform {
     pub(crate) fn detect_with_executor(executor: &dyn ProcessExecutor) -> Self {
         match OS {
             "macos" => {
-                if has_command(executor, "brew") {
+                if io::command_exists(executor, "brew") {
                     Self::MacWithBrew
                 } else {
                     Self::MacWithoutBrew

@@ -277,7 +277,7 @@ pub struct RunWithHandlersParams<'a, 'ctx, P, A, E>
 where
     P: crate::config::ConfigEnvironment,
     A: effect::AppEffectHandler,
-    E: crate::reducer::EffectHandler<'ctx> + crate::app::event_loop::StatefulHandler,
+    E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
 {
     pub args: Args,
     pub executor: std::sync::Arc<dyn ProcessExecutor>,
@@ -332,7 +332,7 @@ pub fn run_with_config_and_handlers<'a, 'ctx, P, A, E>(
 where
     P: crate::config::ConfigEnvironment,
     A: effect::AppEffectHandler,
-    E: crate::reducer::EffectHandler<'ctx> + crate::app::event_loop::StatefulHandler,
+    E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
 {
     use crate::cli::{
         handle_extended_help, handle_init_global_with, handle_init_local_config_with,

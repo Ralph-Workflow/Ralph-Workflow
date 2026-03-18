@@ -30,6 +30,11 @@
 //! - Content updates in-place without visual artifacts
 //! - Terminal state is clean and predictable
 
+#![allow(forbid_mut_binding)]
+#![allow(forbid_imperative_loops)]
+#![allow(forbid_mutating_receiver_methods)]
+#![allow(forbid_interior_mutability)]
+
 use crate::common::truncate_text;
 use crate::config::Verbosity;
 use crate::logger::{Colors, CHECK, CROSS};

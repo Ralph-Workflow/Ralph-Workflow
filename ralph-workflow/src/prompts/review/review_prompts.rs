@@ -211,22 +211,33 @@ pub fn prompt_review_xsd_retry_with_context_files(
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
     let diagnostic_prefix = if !schema_exists || !last_output_exists {
-        let mut parts = vec!["⚠️  WARNING: Required XSD retry files are missing:\n".to_string()];
-        if !schema_exists {
-            parts.push(format!(
-                "  - Schema file: {} (workspace.root() = {})\n",
-                workspace.absolute_str(".agent/tmp/issues.xsd"),
-                workspace.root().display()
-            ));
-        }
-        if !last_output_exists {
-            parts.push(format!(
-                "  - Last output: {} (workspace.root() = {})\n",
-                workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()
-            ));
-        }
-        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+        let parts: Vec<String> =
+            std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(
+                    if !schema_exists {
+                        Some(format!(
+                            "  - Schema file: {} (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/issues.xsd"),
+                            workspace.root().display()
+                        ))
+                    } else {
+                        None
+                    }
+                    .into_iter(),
+                )
+                .chain(if !last_output_exists {
+                    Some(format!(
+                        "  - Last output: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/last_output.xml"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
         parts.concat()
     } else {
         String::new()
@@ -304,22 +315,33 @@ pub fn prompt_review_xsd_retry_with_context_files_and_log(
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
     let diagnostic_prefix = if !schema_exists || !last_output_exists {
-        let mut parts = vec!["⚠️  WARNING: Required XSD retry files are missing:\n".to_string()];
-        if !schema_exists {
-            parts.push(format!(
-                "  - Schema file: {} (workspace.root() = {})\n",
-                workspace.absolute_str(".agent/tmp/issues.xsd"),
-                workspace.root().display()
-            ));
-        }
-        if !last_output_exists {
-            parts.push(format!(
-                "  - Last output: {} (workspace.root() = {})\n",
-                workspace.absolute_str(".agent/tmp/last_output.xml"),
-                workspace.root().display()
-            ));
-        }
-        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+        let parts: Vec<String> =
+            std::iter::once("⚠️  WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(
+                    if !schema_exists {
+                        Some(format!(
+                            "  - Schema file: {} (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/issues.xsd"),
+                            workspace.root().display()
+                        ))
+                    } else {
+                        None
+                    }
+                    .into_iter(),
+                )
+                .chain(if !last_output_exists {
+                    Some(format!(
+                        "  - Last output: {} (workspace.root() = {})\n",
+                        workspace.absolute_str(".agent/tmp/last_output.xml"),
+                        workspace.root().display()
+                    ))
+                } else {
+                    None
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
         parts.concat()
     } else {
         String::new()

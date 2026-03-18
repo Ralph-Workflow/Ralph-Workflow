@@ -1,3 +1,6 @@
+// Import production implementations from boundary module
+use crate::agents::io::{RealCcsEnvironment, RealCcsFilesystem};
+
 /// List all available CCS profile names from JSON files under `~/.ccs/`.
 ///
 /// Returns a Vec of profile names (derived from file names like
@@ -160,12 +163,13 @@ pub fn load_ccs_env_vars_with_deps(
                     key: key.clone(),
                 });
             }
-            let str_value = value.as_str().ok_or_else(|| {
-                CcsEnvVarsError::NonStringEnvVarValue {
-                    path: settings_path.clone(),
-                    key: key.clone(),
-                }
-            })?;
+            let str_value =
+                value
+                    .as_str()
+                    .ok_or_else(|| CcsEnvVarsError::NonStringEnvVarValue {
+                        path: settings_path.clone(),
+                        key: key.clone(),
+                    })?;
             if !is_safe_env_var_value(str_value) {
                 return Err(CcsEnvVarsError::UnsafeEnvVarValue {
                     path: settings_path.clone(),

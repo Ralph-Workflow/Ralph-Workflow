@@ -16,37 +16,14 @@ mod output;
 
 pub mod io;
 mod progress;
+pub mod runtime;
 
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};
 pub use progress::print_progress;
 
 // ===== Colors & Formatting =====
 
-use std::io::IsTerminal;
-
-/// Environment abstraction for color detection.
-///
-/// This trait enables testing color detection logic without modifying
-/// real environment variables (which would cause test interference).
-pub trait ColorEnvironment {
-    /// Get an environment variable value.
-    fn get_var(&self, name: &str) -> Option<String>;
-    /// Check if stdout is a terminal.
-    fn is_terminal(&self) -> bool;
-}
-
-/// Real environment implementation for production use.
-pub struct RealColorEnvironment;
-
-impl ColorEnvironment for RealColorEnvironment {
-    fn get_var(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
-    }
-
-    fn is_terminal(&self) -> bool {
-        std::io::stdout().is_terminal()
-    }
-}
+pub use crate::logger::runtime::{ColorEnvironment, RealColorEnvironment};
 
 /// Check if colors should be enabled using the provided environment.
 ///

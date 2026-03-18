@@ -1,6 +1,8 @@
 /// Maximum safe prompt size in bytes before pre-truncation.
 const MAX_SAFE_PROMPT_SIZE: u64 = 200_000;
 
+use itertools::Itertools;
+
 /// Maximum prompt size for GLM-like agents (GLM, Zhipu, Qwen, `DeepSeek`).
 const GLM_MAX_PROMPT_SIZE: u64 = 100_000;
 
@@ -44,11 +46,12 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         return diff.to_string();
     }
 
+    let lines: Vec<_> = diff.lines().collect();
     let mut files: Vec<DiffFile> = Vec::new();
     let mut current_file = DiffFile::default();
     let mut in_file = false;
 
-    for line in diff.lines() {
+    for line in &lines {
         if line.starts_with("diff --git ") {
             if in_file && !current_file.lines.is_empty() {
                 files.push(std::mem::take(&mut current_file));
@@ -69,29 +72,55 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         files.push(current_file);
     }
 
-    files.sort_by(|a, b| b.priority.cmp(&a.priority));
+    let sorted_files: Vec<_> = files.into_iter().sorted_by_key(|f| -f.priority).collect();
 
-    let total_files = files.len();
+    let total_files = sorted_files.len();
 
-    let (result, files_included): (String, usize) =
-        files
+    let (result, files_included) = {
+        let file_data: Vec<_> = sorted_files
             .iter()
-            .fold((String::new(), 0usize), |(mut acc, count), file| {
-                let file_size: usize = file.lines.iter().map(|l| l.len() + 1).sum();
+            .map(|file| {
+                let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
+                (lines_text, lines_text.len())
+            })
+            .collect();
 
-                if acc.len() + file_size <= max_size {
-                    let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
-                    acc.push_str(&lines_text);
-                    (acc, count.saturating_add(1))
-                } else if count == 0 {
-                    let truncated_lines = truncate_lines_to_fit(&file.lines, max_size);
-                    let lines_text: String =
-                        truncated_lines.iter().map(|l| format!("{l}\n")).collect();
-                    (lines_text, 1)
-                } else {
-                    (acc, count)
-                }
-            });
+        let total_chunks_len: usize = file_data.iter().map(|(_, len)| *len).sum();
+        if total_chunks_len <= max_size {
+            let result = file_data
+                .iter()
+                .map(|(t, _)| t.clone())
+                .collect::<Vec<_>>()
+                .join("");
+            return (result, sorted_files.len());
+        }
+
+        let cumulative_sizes: Vec<_> = file_data
+            .iter()
+            .scan(0usize, |acc, (_, len)| {
+                *acc += len;
+                Some(*acc)
+            })
+            .collect();
+
+        let last_fitting_index = cumulative_sizes
+            .iter()
+            .position(|&size| size > max_size)
+            .unwrap_or(file_data.len());
+
+        if last_fitting_index == 0 {
+            let truncated = truncate_lines_to_fit(&sorted_files[0].lines, max_size);
+            let truncated_text: String = truncated.iter().map(|l| format!("{l}\n")).collect();
+            (truncated_text, 1)
+        } else {
+            let included: Vec<_> = file_data
+                .iter()
+                .take(last_fitting_index)
+                .map(|(t, _)| t.clone())
+                .collect();
+            (included.join(""), included.len())
+        }
+    };
 
     if files_included < total_files {
         let summary = format!("\n[Truncated: {files_included} of {total_files} files shown]\n");
@@ -179,22 +208,25 @@ fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     }
 
     let available_for_lines = max_size.saturating_sub(suffix_len);
-    let mut result = Vec::new();
-    let mut current_size = 0;
 
-    for (i, line) in lines.iter().enumerate() {
-        let line_size = line_sizes[i];
-        if current_size + line_size <= available_for_lines {
-            result.push(line.clone());
-            current_size += line_size;
-        } else {
-            break;
-        }
-    }
+    let result: Vec<_> = lines
+        .iter()
+        .scan(0usize, |size, line| {
+            let line_size = line.len() + 1;
+            if *size + line_size <= available_for_lines {
+                *size += line_size;
+                Some(line.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
 
     if result.is_empty() {
         return result;
     }
+
+    let current_size: usize = result.iter().map(|l| l.len() + 1).sum();
 
     let adjusted: Vec<String> = if current_size + suffix_len > max_size {
         let target_bytes = max_size.saturating_sub(suffix_len);

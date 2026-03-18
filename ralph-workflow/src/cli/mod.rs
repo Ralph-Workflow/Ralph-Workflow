@@ -17,6 +17,7 @@
 
 mod args;
 mod completions;
+mod diagnostics_domain;
 mod handlers;
 mod init;
 pub mod presets;

@@ -7,3 +7,5 @@
 //! See `docs/plans/2026-03-16-functional-rust-refactoring-plan.md` for details.
 
 pub mod diagnose;
+pub mod io;
+pub mod terminal;

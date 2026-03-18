@@ -5,16 +5,13 @@
 //!
 //! # Architecture Note
 //!
-//! This module operates at the CLI layer (pre-pipeline) and uses `std::fs` directly
-//! for file operations. This is acceptable per the effect-system architecture because:
-//! - It runs before the repository root is discovered and `Workspace` can be created
-//! - It performs simple, user-initiated file creation (not complex pipeline operations)
-//! - The operation is a one-shot template creation, not part of the main pipeline flow
+//! This module operates at the CLI layer (pre-pipeline) and uses boundary modules
+//! for file and terminal operations. This is acceptable per the effect-system architecture.
 
-use std::fs;
-use std::io::{self, IsTerminal, Write};
+use std::io::Write;
 use std::path::Path;
 
+use crate::cli::handlers::boundary::{io as fs_io, terminal as term};
 use crate::logger::Colors;
 use crate::templates::{get_template, list_templates};
 
@@ -43,52 +40,46 @@ pub type TemplateSelectionResult = Option<String>;
 /// * `None` - User declined, input was not a terminal, or input errored/ended
 #[must_use]
 pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
-    // Interactive prompts require both stdin and stdout to be terminals.
-    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+    if !term::is_terminal() {
         return None;
     }
 
-    let _ = writeln!(std::io::stdout());
+    let stdout = term::stdout();
+    let _ = writeln!(stdout);
     let _ = writeln!(
-        std::io::stdout(),
+        stdout,
         "{}PROMPT.md not found.{}",
         colors.yellow(),
         colors.reset()
     );
-    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(stdout);
     let _ = writeln!(
-        std::io::stdout(),
+        stdout,
         "PROMPT.md contains your task specification for the AI agents."
     );
     let _ = write!(
-        std::io::stdout(),
+        stdout,
         "Would you like to create one from a template? [Y/n]: "
     );
-    if io::stdout().flush().is_err() {
+    if term::flush_stdout().is_err() {
         return None;
     }
 
-    let input = io::stdin()
-        .lines()
-        .next()
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
-    let response = input.trim().to_lowercase();
+    let input = term::read_line();
+    let response = input.unwrap_or_default().trim().to_lowercase();
 
-    // User declined (explicit 'n' or 'no')
     if response == "n" || response == "no" || response == "skip" {
         return None;
     }
 
-    // Empty or 'y'/'yes' means yes - proceed to template selection
-    let _ = writeln!(std::io::stdout());
-    let _ = writeln!(std::io::stdout(), "Available templates:");
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Available templates:");
 
     let templates = list_templates();
 
     templates.iter().for_each(|(name, description)| {
         let _ = writeln!(
-            std::io::stdout(),
+            stdout,
             "  {}{}{}  {}{}{}",
             colors.cyan(),
             name,
@@ -98,34 +89,31 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
             colors.reset()
         );
     });
-    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(stdout);
 
-    // Prompt for template selection with default to feature-spec
     let _ = write!(
-        std::io::stdout(),
+        stdout,
         "Select template {}[default: feature-spec]{}: ",
         colors.dim(),
         colors.reset()
     );
-    if io::stdout().flush().is_err() {
+    if term::flush_stdout().is_err() {
         return None;
     }
 
-    let template_input = io::stdin().lines().next().and_then(|r| r.ok());
+    let template_input = term::read_line();
     let binding = template_input.unwrap_or_default();
     let template_name = binding.trim();
 
-    // Empty input defaults to feature-spec
     let selected = if template_name.is_empty() {
         "feature-spec"
     } else {
         template_name
     };
 
-    // Validate the template exists
     if get_template(selected).is_none() {
         let _ = writeln!(
-            std::io::stdout(),
+            stdout,
             "{}Unknown template: '{}'. Using feature-spec as default.{}",
             colors.yellow(),
             selected,
@@ -155,10 +143,10 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
 pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyhow::Result<()> {
     let prompt_path = Path::new("PROMPT.md");
 
-    // Check if PROMPT.md already exists (shouldn't happen in our flow, but safety check)
-    if prompt_path.exists() {
+    if fs_io::exists(prompt_path) {
+        let stdout = term::stdout();
         let _ = writeln!(
-            std::io::stdout(),
+            stdout,
             "{}PROMPT.md already exists. Skipping creation.{}",
             colors.yellow(),
             colors.reset()
@@ -166,43 +154,36 @@ pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyho
         return Ok(());
     }
 
-    // Get the template
     let Some(template) = get_template(template_name) else {
         return Err(anyhow::anyhow!("Template '{template_name}' not found"));
     };
 
-    // Write the template content to PROMPT.md
     let content = template.content();
-    fs::write(prompt_path, content)?;
+    fs_io::write(prompt_path, content)?;
 
-    let _ = writeln!(std::io::stdout());
+    let stdout = term::stdout();
+    let _ = writeln!(stdout);
     let _ = writeln!(
-        std::io::stdout(),
+        stdout,
         "{}Created PROMPT.md from template: {}{}{}",
         colors.green(),
         colors.bold(),
         template_name,
         colors.reset()
     );
-    let _ = writeln!(std::io::stdout());
+    let _ = writeln!(stdout);
     let _ = writeln!(
-        std::io::stdout(),
+        stdout,
         "Template: {}{}{}  {}",
         colors.cyan(),
         template.name(),
         colors.reset(),
         template.description()
     );
-    let _ = writeln!(std::io::stdout());
-    let _ = writeln!(std::io::stdout(), "Next steps:");
-    let _ = writeln!(
-        std::io::stdout(),
-        "  1. Edit PROMPT.md with your task details"
-    );
-    let _ = writeln!(
-        std::io::stdout(),
-        "  2. Run ralph again with your commit message"
-    );
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Next steps:");
+    let _ = writeln!(stdout, " 1. Edit PROMPT.md with your task details");
+    let _ = writeln!(stdout, " 2. Run ralph again with your commit message");
 
     Ok(())
 }
@@ -213,7 +194,6 @@ mod tests {
 
     #[test]
     fn test_get_template_by_name() {
-        // Verify all our template names are valid
         assert!(get_template("feature-spec").is_some());
         assert!(get_template("bug-fix").is_some());
         assert!(get_template("refactor").is_some());
@@ -225,7 +205,6 @@ mod tests {
 
     #[test]
     fn test_template_has_required_content() {
-        // All templates should have Goal and Acceptance sections
         for (name, _) in list_templates() {
             if let Some(template) = get_template(name) {
                 let content = template.content();

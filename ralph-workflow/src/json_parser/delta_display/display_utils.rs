@@ -24,25 +24,22 @@ pub const CLEAR_LINE: &str = "\x1b[2K";
 ///
 /// # Returns
 /// A sanitized string suitable for single-line display, without truncation.
-#[must_use] 
+#[must_use]
 pub fn sanitize_for_display(content: &str) -> String {
-    // Replace all whitespace (including \n, \r, \t) with spaces, then collapse multiple spaces
-    let mut result = String::with_capacity(content.len());
-    let mut prev_was_whitespace = false;
-
-    for ch in content.chars() {
-        if ch.is_whitespace() {
-            if !prev_was_whitespace {
-                result.push(' ');
-                prev_was_whitespace = true;
+    let result: String = content
+        .chars()
+        .fold((String::new(), false), |(mut result, prev_ws), ch| {
+            if ch.is_whitespace() {
+                if !prev_ws {
+                    result.push(' ');
+                }
+                (result, true)
+            } else {
+                result.push(ch);
+                (result, false)
             }
-            // Skip consecutive whitespace characters
-        } else {
-            result.push(ch);
-            prev_was_whitespace = false;
-        }
-    }
+        })
+        .0;
 
-    // Trim leading and trailing whitespace for display
     result.trim().to_string()
 }

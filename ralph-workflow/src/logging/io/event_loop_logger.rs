@@ -1,6 +1,5 @@
 use crate::reducer::event::PipelinePhase;
 use crate::workspace::Workspace;
-use chrono::Utc;
 use std::path::Path;
 
 /// Parameters for logging an effect execution.
@@ -13,6 +12,7 @@ pub struct LogEffectParams<'a> {
     pub extra_events: &'a [String],
     pub duration_ms: u64,
     pub context: &'a [(&'a str, &'a str)],
+    pub timestamp: &'a str,
 }
 
 /// Pure function to format the log line content.
@@ -44,11 +44,6 @@ fn format_log_line_content(
         "{} ts={} phase={} effect={} event={}{}{} ms={}\n",
         seq, ts, phase, effect, primary_event, extra, ctx, duration_ms
     )
-}
-
-/// Get the current timestamp in RFC3339 format.
-fn get_current_timestamp() -> String {
-    Utc::now().to_rfc3339()
 }
 
 /// Logger for recording event loop execution.
@@ -165,11 +160,9 @@ impl EventLoopLogger {
     ///
     /// Returns error if the operation fails.
     pub fn log_effect(self, params: &LogEffectParams<'_>) -> Result<(Self, u64), std::io::Error> {
-        let ts = get_current_timestamp();
-
         let line = format_log_line_content(
             self.seq,
-            &ts,
+            params.timestamp,
             &params.phase,
             params.effect,
             params.primary_event,
@@ -199,6 +192,8 @@ mod tests {
     use super::*;
     use crate::workspace::WorkspaceFs;
 
+    const TEST_TIMESTAMP: &str = "2026-01-01T00:00:00Z";
+
     #[test]
     fn test_event_loop_logger_basic() {
         let tempdir = tempfile::tempdir().unwrap();
@@ -218,6 +213,7 @@ mod tests {
                 extra_events: &[],
                 duration_ms: 1234,
                 context: &[("iteration", "1")],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -231,6 +227,7 @@ mod tests {
                 extra_events: &["CheckpointSaved".to_string()],
                 duration_ms: 12,
                 context: &[],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -273,6 +270,7 @@ mod tests {
                     extra_events: &[],
                     duration_ms: 10 * i,
                     context: &[],
+                    timestamp: TEST_TIMESTAMP,
                 })
                 .unwrap();
             logger = updated_logger;
@@ -310,6 +308,7 @@ mod tests {
                     ("agent_index", "3"),
                     ("retry_cycle", "1"),
                 ],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -335,6 +334,7 @@ mod tests {
                 extra_events: &[],
                 duration_ms: 100,
                 context: &[],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -366,6 +366,7 @@ mod tests {
                         extra_events: &[],
                         duration_ms: 10 * i,
                         context: &[],
+                        timestamp: TEST_TIMESTAMP,
                     })
                     .unwrap();
                 logger = updated_logger;
@@ -386,6 +387,7 @@ mod tests {
                 extra_events: &[],
                 duration_ms: 100,
                 context: &[],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -422,6 +424,7 @@ mod tests {
                 extra_events: &[],
                 duration_ms: 10,
                 context: &[],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 
@@ -453,6 +456,7 @@ mod tests {
                 extra_events: &[],
                 duration_ms: 10,
                 context: &[],
+                timestamp: TEST_TIMESTAMP,
             })
             .unwrap();
 

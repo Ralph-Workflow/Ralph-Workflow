@@ -3,6 +3,8 @@
 //! This module defines the cloud runtime configuration and git remote types
 //! used when Ralph is running in cloud-hosted mode.
 
+pub use super::cloud_boundary::load_cloud_config_from_env;
+
 /// Cloud runtime configuration (internal).
 ///
 /// This struct is loaded from environment variables when cloud mode is enabled.
@@ -220,13 +222,6 @@ impl CloudConfig {
         }
     }
 
-    /// Load cloud config from environment variables ONLY.
-    /// Returns disabled config when cloud mode is not enabled.
-    #[must_use]
-    pub fn from_env() -> Self {
-        Self::from_env_fn(|k| std::env::var(k).ok())
-    }
-
     #[must_use]
     pub fn disabled() -> Self {
         Self {
@@ -374,12 +369,6 @@ impl GitRemoteConfig {
                 .is_some_and(|v| v.eq_ignore_ascii_case("true") || v == "1"),
             remote_name: get("RALPH_GIT_REMOTE").unwrap_or_else(|| "origin".to_string()),
         }
-    }
-
-    /// Load git-remote configuration from the process environment.
-    #[must_use]
-    pub fn from_env() -> Self {
-        Self::from_env_fn(|k| std::env::var(k).ok())
     }
 }
 

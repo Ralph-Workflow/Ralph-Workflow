@@ -40,6 +40,7 @@ pub mod prompt_scope_key;
 mod rebase;
 pub mod review;
 pub mod reviewer;
+pub mod runtime;
 pub mod template_catalog;
 pub mod template_context;
 pub(crate) mod template_engine;
@@ -52,8 +53,6 @@ mod types;
 mod prompt_config;
 #[path = "prompt_dispatch.rs"]
 mod prompt_dispatch;
-#[path = "resume_note.rs"]
-mod resume_note;
 
 // Re-export ResumeContext for use in prompts
 pub use crate::checkpoint::restore::ResumeContext;
@@ -64,7 +63,7 @@ pub use prompt_dispatch::get_stored_or_generate_prompt;
 pub use prompt_dispatch::prompt_for_agent;
 pub use prompt_history_entry::PromptHistoryEntry;
 pub use prompt_scope_key::{PromptPhase, PromptScopeKey, RetryMode};
-pub use resume_note::{generate_resume_note, BriefDescription};
+pub use runtime::resume_note::{generate_resume_note, BriefDescription};
 
 // Re-export public items for API convenience
 pub use commit::prompt_commit_xsd_retry_with_context;

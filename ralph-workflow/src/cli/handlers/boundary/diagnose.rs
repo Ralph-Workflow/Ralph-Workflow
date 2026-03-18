@@ -2,13 +2,14 @@
 //!
 //! This module provides diagnostic output for troubleshooting Ralph configuration.
 //! It follows the Boundary-First Architecture pattern:
-//! - Pure formatting logic is in `diagnose_format.rs`
+//! - Pure formatting logic is in `../../diagnostics_domain.rs`
 //! - This module contains thin I/O boundary functions that write to `std::io::Write`
 //!
 //! See `docs/plans/2026-03-16-functional-rust-refactoring-plan.md` for details.
 
 use crate::agents::{AgentRegistry, ConfigSource};
 use crate::checkpoint::load_checkpoint_with_workspace;
+use crate::cli::diagnostics_domain::{self, ConfigExistsStatus, GitCommandPlan, GitDiagnostics};
 use crate::config::Config;
 use crate::diagnostics::run_diagnostics;
 use crate::executor::ProcessExecutor;
@@ -16,6 +17,7 @@ use crate::guidelines::{CheckSeverity, ReviewGuidelines};
 use crate::language_detector;
 use crate::logger::Colors;
 use crate::workspace::Workspace;
+use itertools::Itertools;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -128,74 +130,71 @@ fn write_system_info<W: Write>(writer: &mut W, colors: Colors) {
     let _ = writeln!(writer);
 }
 
-/// Git diagnostic information collected from the system.
-pub struct GitDiagnostics {
-    pub version: Option<String>,
-    pub is_repo: bool,
-    pub branch: Option<String>,
-    pub uncommitted_changes: Option<usize>,
-}
-
-/// Collect git diagnostic information.
+/// Collect git diagnostic information using pure policy decisions.
+///
+/// This is a thin boundary function that:
+/// 1. Gets the initial version check result
+/// 2. Uses pure policy functions to decide what commands to run
+/// 3. Executes the planned commands
 fn collect_git_info(executor: &dyn ProcessExecutor) -> GitDiagnostics {
+    // Step 1: Get initial version check (always needed)
     let version = executor
         .execute("git", &["--version"], &[], None)
         .ok()
         .map(|o| o.stdout.trim().to_string());
 
-    let is_repo = executor
-        .execute("git", &["rev-parse", "--git-dir"], &[], None)
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    // Step 2: Use pure policy to decide what to do next
+    let version_available = version.is_some();
+    let plan = diagnostics_domain::plan_git_commands(version_available);
 
-    let branch = if is_repo {
-        executor
-            .execute("git", &["branch", "--show-current"], &[], None)
-            .ok()
-            .map(|o| o.stdout.trim().to_string())
-    } else {
-        None
-    };
+    // Step 3: Execute based on plan
+    match plan {
+        GitCommandPlan::None => GitDiagnostics {
+            version: None,
+            is_repo: false,
+            branch: None,
+            uncommitted_changes: None,
+        },
+        GitCommandPlan::VersionOnly => GitDiagnostics {
+            version,
+            is_repo: false,
+            branch: None,
+            uncommitted_changes: None,
+        },
+        GitCommandPlan::Partial | GitCommandPlan::Full => {
+            let is_repo = executor
+                .execute("git", &["rev-parse", "--git-dir"], &[], None)
+                .map(|o| o.status.success())
+                .unwrap_or(false);
 
-    let uncommitted_changes = if is_repo {
-        executor
-            .execute("git", &["status", "--porcelain"], &[], None)
-            .ok()
-            .map(|o| o.stdout.lines().count())
-    } else {
-        None
-    };
+            // Use pure policy to decide whether to check branch
+            let branch = if diagnostics_domain::should_check_branch(is_repo) {
+                executor
+                    .execute("git", &["branch", "--show-current"], &[], None)
+                    .ok()
+                    .map(|o| o.stdout.trim().to_string())
+            } else {
+                None
+            };
 
-    GitDiagnostics {
-        version,
-        is_repo,
-        branch,
-        uncommitted_changes,
+            // Use pure policy to decide whether to check uncommitted changes
+            let uncommitted_changes = if diagnostics_domain::should_check_uncommitted(is_repo) {
+                executor
+                    .execute("git", &["status", "--porcelain"], &[], None)
+                    .ok()
+                    .map(|o| o.stdout.lines().count())
+            } else {
+                None
+            };
+
+            diagnostics_domain::build_git_diagnostics(version, is_repo, branch, uncommitted_changes)
+        }
     }
 }
 
-/// Format git diagnostic information as lines.
+/// Format git diagnostic information as lines (delegates to pure domain function).
 fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    if let Some(version) = &diagnostics.version {
-        lines.push(format!("  Version: {version}"));
-    }
-
-    lines.push(format!(
-        "  In git repo: {}",
-        if diagnostics.is_repo { "yes" } else { "no" }
-    ));
-
-    if let Some(branch) = &diagnostics.branch {
-        lines.push(format!("  Current branch: {branch}"));
-    }
-
-    if let Some(changes) = diagnostics.uncommitted_changes {
-        lines.push(format!("  Uncommitted changes: {changes}"));
-    }
-
-    lines
+    diagnostics_domain::format_git_info_lines(diagnostics)
 }
 
 /// Write git information section.
@@ -219,23 +218,19 @@ fn write_config_info<W: Write>(
 ) {
     let _ = writeln!(writer, "{}Configuration:{}", colors.bold(), colors.reset());
     let _ = writeln!(writer, "  Unified config: {}", config_path.display());
-    let exists_status = if config_path.is_absolute() {
-        config_path.strip_prefix(workspace.root()).ok().map_or_else(
-            || "unknown (outside workspace)".to_string(),
-            |relative| {
-                if workspace.exists(relative) {
-                    "yes".to_string()
-                } else {
-                    "no".to_string()
-                }
-            },
-        )
-    } else if workspace.exists(config_path) {
-        "yes".to_string()
-    } else {
-        "no".to_string()
+
+    // Use pure domain function to determine config exists status
+    let exists_status = diagnostics_domain::determine_config_exists(
+        config_path.is_absolute(),
+        workspace,
+        config_path,
+    );
+    let exists_str = match exists_status {
+        ConfigExistsStatus::Yes => "yes",
+        ConfigExistsStatus::No => "no",
+        ConfigExistsStatus::Unknown(s) => &s,
     };
-    let _ = writeln!(writer, "  Config exists: {exists_status}");
+    let _ = writeln!(writer, "  Config exists: {exists_str}");
     let _ = writeln!(
         writer,
         "  Review depth: {:?} ({})",
@@ -259,17 +254,19 @@ fn write_config_info<W: Write>(
 /// Write agent chain configuration section.
 fn write_agent_chain_info<W: Write>(writer: &mut W, colors: Colors, registry: &AgentRegistry) {
     let _ = writeln!(writer, "{}Agent Drains:{}", colors.bold(), colors.reset());
+
+    // Use pure domain function to get drain bindings
+    let bindings = diagnostics_domain::get_drain_bindings(registry);
     let resolved = registry.resolved_drains();
-    for drain in crate::agents::AgentDrain::all() {
-        if let Some(binding) = resolved.binding(drain) {
-            let _ = writeln!(
-                writer,
-                "  {} -> {} {:?}",
-                drain.as_str(),
-                binding.chain_name,
-                binding.agents
-            );
-        }
+
+    for binding in bindings {
+        let _ = writeln!(
+            writer,
+            "  {} -> {} {:?}",
+            binding.drain.as_str(),
+            binding.chain_name,
+            binding.agents
+        );
     }
     let _ = writeln!(writer, "  Max retries: {}", resolved.max_retries);
     let _ = writeln!(writer, "  Retry delay: {}ms", resolved.retry_delay_ms);
@@ -284,27 +281,30 @@ fn write_agent_availability<W: Write>(writer: &mut W, colors: Colors, registry: 
         colors.bold(),
         colors.reset()
     );
-    let all_agents = registry.list();
-    let mut sorted_agents: Vec<_> = all_agents.into_iter().collect();
-    sorted_agents.sort_by(|(a, _), (b, _)| a.cmp(b));
-    for (name, cfg) in sorted_agents {
-        let available = registry.is_agent_available(name);
-        let status_color = if available {
+
+    // Use pure domain function to get sorted agent availability
+    let agents = diagnostics_domain::get_sorted_agent_availability(registry);
+
+    for agent in agents {
+        let status_color = if agent.available {
             colors.green()
         } else {
             colors.red()
         };
-        let status_icon = if available { "✓" } else { "✗" };
-        let display_name = registry.display_name(name);
+        let status_icon = if agent.available { "✓" } else { "✗" };
         let _ = writeln!(
             writer,
             "  {}{}{} {} (parser: {}, cmd: {})",
             status_color,
             status_icon,
             colors.reset(),
-            display_name,
-            cfg.json_parser,
-            cfg.cmd.split_whitespace().next().unwrap_or(&cfg.cmd)
+            agent.name,
+            agent.json_parser,
+            agent
+                .command
+                .split_whitespace()
+                .next()
+                .unwrap_or(&agent.command)
         );
     }
     let _ = writeln!(writer);
@@ -316,21 +316,28 @@ fn write_prompt_status<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn
     let prompt_path = Path::new("PROMPT.md");
     if workspace.exists(prompt_path) {
         if let Ok(content) = workspace.read(prompt_path) {
+            // Use pure domain function to analyze content
+            let analysis = diagnostics_domain::analyze_prompt_content(&content);
             let _ = writeln!(writer, "  Exists: yes");
-            let _ = writeln!(writer, "  Size: {} bytes", content.len());
-            let _ = writeln!(writer, "  Lines: {}", content.lines().count());
-            let has_goal = content.contains("## Goal") || content.contains("# Goal");
-            let has_acceptance =
-                content.contains("## Acceptance") || content.contains("Acceptance Criteria");
+            let _ = writeln!(writer, "  Size: {} bytes", analysis.size_bytes.unwrap_or(0));
+            let _ = writeln!(writer, "  Lines: {}", analysis.line_count.unwrap_or(0));
             let _ = writeln!(
                 writer,
                 "  Has Goal section: {}",
-                if has_goal { "yes" } else { "no" }
+                if analysis.has_goal_section {
+                    "yes"
+                } else {
+                    "no"
+                }
             );
             let _ = writeln!(
                 writer,
                 "  Has Acceptance section: {}",
-                if has_acceptance { "yes" } else { "no" }
+                if analysis.has_acceptance_section {
+                    "yes"
+                } else {
+                    "no"
+                }
             );
         }
     } else {
@@ -502,7 +509,7 @@ fn find_latest_run_log_directory(workspace: &dyn Workspace) -> Option<PathBuf> {
 
     let entries = workspace.read_dir(agent_dir).ok()?;
 
-    let mut log_dirs: Vec<String> = entries
+    entries
         .into_iter()
         .filter(|entry| {
             entry
@@ -516,11 +523,7 @@ fn find_latest_run_log_directory(workspace: &dyn Workspace) -> Option<PathBuf> {
                 .and_then(|n| n.to_str())
                 .map(std::string::ToString::to_string)
         })
-        .collect();
-
-    log_dirs.sort();
-
-    log_dirs
+        .sorted()
         .last()
         .map(|dir_name| PathBuf::from(format!(".agent/{dir_name}/pipeline.log")))
 }

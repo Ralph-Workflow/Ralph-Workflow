@@ -11,11 +11,11 @@ use crate::files::llm_output_extraction::{
 use crate::files::result_extraction::extract_file_paths_from_issues;
 use crate::files::update_status_with_workspace;
 use crate::phases::context::PhaseContext;
+use crate::phases::runtime::{capture_time, elapsed_seconds};
 use crate::pipeline::{run_with_prompt, PipelineRuntime, PromptCommand};
 use crate::prompts::{prompt_fix_xml_with_log, ContextLevel};
 
 use std::path::Path;
-use std::time::Instant;
 
 /// Run the fix pass for a single cycle.
 ///
@@ -57,7 +57,7 @@ pub fn run_fix_pass(
     agent: Option<&str>,
 ) -> anyhow::Result<FixPassResult> {
     let active_agent = agent.unwrap_or(ctx.reviewer_agent);
-    let fix_start_time = Instant::now();
+    let fix_start_time = capture_time();
 
     update_status_with_workspace(ctx.workspace, "Applying fixes", ctx.config.isolation_mode)?;
 
@@ -203,7 +203,7 @@ pub fn run_fix_pass(
                 StepOutcome::success(result_elements.summary.clone(), vec![]),
             )
             .with_agent(active_agent)
-            .with_duration(fix_start_time.elapsed().as_secs());
+            .with_duration(elapsed_seconds(fix_start_time));
             ctx.execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 

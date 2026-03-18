@@ -18,7 +18,12 @@ use crate::workspace::Workspace;
 use anyhow::Context as _;
 use std::path::Path;
 
-include!("commit/diff_truncation.rs");
+pub mod io;
+
+pub use io::{
+    effective_model_budget_bytes, model_budget_bytes_for_agent_name, truncate_diff_to_model_budget,
+};
+
 include!("commit/prompt.rs");
 include!("commit/extraction.rs");
 include!("commit/runner.rs");

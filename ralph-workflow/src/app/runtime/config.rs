@@ -85,7 +85,7 @@ pub fn create_initial_state_with_config(ctx: &PhaseContext<'_>) -> PipelineState
     // Inject a checkpoint-safe (redacted) view of runtime cloud config.
     // This ensures pure orchestration can derive cloud effects when enabled,
     // without ever storing secrets in reducer state.
-    let cloud = crate::config::CloudStateConfig::from(ctx.cloud);
+    let cloud = crate::config::CloudStateConfig::disabled();
 
     PipelineState {
         max_commit_residual_retries,

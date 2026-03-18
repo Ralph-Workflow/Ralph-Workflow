@@ -45,58 +45,54 @@ fn extract_issue_snippets(
     issues: &[String],
     workspace: &dyn crate::workspace::Workspace,
 ) -> Vec<XmlCodeSnippet> {
-    let mut snippets = Vec::new();
-    let mut seen = HashSet::new();
-
     let location_re = issue_location_regex();
     let gh_location_re = issue_gh_location_regex();
 
-    for issue in issues {
-        let (file, line_start, line_end) = location_re
-            .captures(issue)
-            .or_else(|| gh_location_re.captures(issue))
-            .map_or((None, None, None), |cap| {
-                let file = cap
-                    .name("file")
-                    .map(|m| m.as_str().trim().replace('\\', "/"));
-                let start = cap
-                    .name("start")
-                    .and_then(|m| m.as_str().parse::<u32>().ok());
-                let end = cap
-                    .name("end")
-                    .and_then(|m| m.as_str().parse::<u32>().ok())
-                    .or(start);
-                (file, start, end)
-            });
+    use std::collections::HashSet;
+    let mut seen: HashSet<(String, u32, u32)> = HashSet::new();
 
-        let Some(file) =
-            file.and_then(|f| normalize_issue_file_path_to_workspace_relative(&f, workspace))
-        else {
-            continue;
-        };
-        let Some(start) = line_start else { continue };
-        let end = line_end.unwrap_or(start);
+    issues
+        .iter()
+        .filter_map(|issue| {
+            let (file, line_start, line_end) = location_re
+                .captures(issue)
+                .or_else(|| gh_location_re.captures(issue))
+                .map_or((None, None, None), |cap| {
+                    let file = cap
+                        .name("file")
+                        .map(|m| m.as_str().trim().replace('\\', "/"));
+                    let start = cap
+                        .name("start")
+                        .and_then(|m| m.as_str().parse::<u32>().ok());
+                    let end = cap
+                        .name("end")
+                        .and_then(|m| m.as_str().parse::<u32>().ok())
+                        .or(start);
+                    (file, start, end)
+                })?;
 
-        let key = (file.clone(), start, end);
-        if !seen.insert(key) {
-            continue;
-        }
+            let file =
+                file.and_then(|f| normalize_issue_file_path_to_workspace_relative(&f, workspace))?;
+            let start = line_start?;
+            let end = line_end.unwrap_or(start);
 
-        let Ok(content) = workspace.read(Path::new(&file)) else {
-            continue;
-        };
+            let key = (file.clone(), start, end);
+            if !seen.insert(key) {
+                return None;
+            }
 
-        if let Some(snippet) = extract_snippet_lines(&content, start, end) {
-            snippets.push(XmlCodeSnippet {
+            let content = workspace.read(Path::new(&file)).ok()?;
+
+            let snippet = extract_snippet_lines(&content, start, end)?;
+
+            Some(XmlCodeSnippet {
                 file,
                 line_start: start,
                 line_end: end,
                 content: snippet,
-            });
-        }
-    }
-
-    snippets
+            })
+        })
+        .collect()
 }
 
 fn normalize_issue_file_path_to_workspace_relative(
@@ -165,8 +161,6 @@ fn is_safe_workspace_relative_path(path_str: &str) -> bool {
         return false;
     }
 
-    // Reject Windows drive prefixes on non-Windows platforms (e.g., "C:/..."), which
-    // would otherwise look like a relative path to Path::is_absolute().
     let bytes = trimmed.as_bytes();
     if bytes.len() >= 2 && bytes[1] == b':' {
         let first = bytes[0] as char;
@@ -175,7 +169,6 @@ fn is_safe_workspace_relative_path(path_str: &str) -> bool {
         }
     }
 
-    // Reject obvious absolute/UNC-like paths.
     if trimmed.starts_with("//") {
         return false;
     }
@@ -185,15 +178,12 @@ fn is_safe_workspace_relative_path(path_str: &str) -> bool {
         return false;
     }
 
-    // Reject parent traversal and any platform-specific prefixes/root components.
-    for component in path.components() {
-        match component {
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return false,
-            Component::CurDir | Component::Normal(_) => {}
-        }
-    }
-
-    true
+    !path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    })
 }
 
 /// Lazy-initialized regex for parsing standard file locations (<file:line-line>).
@@ -239,14 +229,18 @@ fn extract_snippet_lines(content: &str, start: u32, end: u32) -> Option<String> 
 
     let end_idx = end.saturating_sub(1) as usize;
     let end_idx = end_idx.min(lines.len().saturating_sub(1));
-    let mut out = String::new();
-    for (offset, line) in lines[start_idx..=end_idx].iter().enumerate() {
-        let line_no = u32::try_from(offset)
-            .ok()
-            .and_then(|o| start.checked_add(o))?;
-        writeln!(out, "{line_no} | {line}").unwrap();
-    }
-    Some(out.trim_end().to_string())
+
+    let snippet = lines[start_idx..=end_idx]
+        .iter()
+        .enumerate()
+        .map(|(offset, line)| {
+            let line_no = start + u32::try_from(offset).ok()?;
+            format!("{line_no} | {line}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Some(snippet)
 }
 
 /// Render validated issues XML elements to markdown format.
@@ -256,38 +250,35 @@ fn extract_snippet_lines(content: &str, start: u32, end: u32) -> Option<String> 
 fn render_issues_markdown(
     elements: &crate::files::llm_output_extraction::IssuesElements,
 ) -> String {
-    let mut output = String::from("# Issues\n\n");
-
     if let Some(message) = &elements.no_issues_found {
         let trimmed = message.trim();
-        if trimmed.is_empty() {
-            output.push_str("No issues found.\n");
+        return if trimmed.is_empty() {
+            "# Issues\n\nNo issues found.\n".to_string()
         } else {
-            output.push_str(trimmed);
-            output.push('\n');
-        }
-        return output;
+            format!("# Issues\n\n{}\n", trimmed)
+        };
     }
 
     if elements.issues.is_empty() {
-        output.push_str("No issues found.\n");
-        return output;
+        return "# Issues\n\nNo issues found.\n".to_string();
     }
 
-    for issue in &elements.issues {
-        let trimmed = issue.text.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        output.push_str("- [ ] ");
-        output.push_str(trimmed);
-        output.push('\n');
+    let issues_text = elements
+        .issues
+        .iter()
+        .filter_map(|issue| {
+            let trimmed = issue.text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                let skills_mcp_text = render_skills_mcp_markdown(issue.skills_mcp.as_ref());
+                Some(format!("- [ ] {}{}", trimmed, skills_mcp_text))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
-        // Render skills-mcp for this issue if present
-        output.push_str(&render_skills_mcp_markdown(issue.skills_mcp.as_ref()));
-    }
-
-    output
+    format!("# Issues\n\n{}", issues_text)
 }
 
 impl MainEffectHandler {

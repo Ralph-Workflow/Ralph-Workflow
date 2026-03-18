@@ -1,3 +1,5 @@
+use crate::agents::io::get_env_var;
+
 /// Build the final `AgentConfig` from alias config and defaults.
 fn build_ccs_config_from_flags(
     alias_config: &CcsAliasConfig,
@@ -105,8 +107,8 @@ fn build_ccs_agent_config_impl(
     display_name: String,
     alias_name: &str,
 ) -> AgentConfig {
-    // Check for CCS_DEBUG env var to enable detailed logging
-    let debug_mode = std::env::var("RALPH_CCS_DEBUG").is_ok();
+    // Check for CCS_DEBUG env var to enable detailed logging (boundary call)
+    let debug_mode = get_env_var("RALPH_CCS_DEBUG").is_some();
 
     // Compute env vars and track profile used - functional style
     let ((env_vars, env_vars_loaded), profile_used_for_env) = if alias_name.is_empty() {

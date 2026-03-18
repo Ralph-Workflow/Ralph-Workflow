@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use super::io::{get_xdg_config_home, load_template, template_exists};
 
-/// Error type for template loading operations.
+/// Error type for template loading and rendering operations.
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TemplateError {
     /// Template not found in user directory or embedded catalog
@@ -25,6 +25,18 @@ pub enum TemplateError {
     /// Error reading user template file
     #[error("Failed to read template '{name}': {reason}")]
     ReadError { name: String, reason: String },
+
+    /// Missing required variable in template
+    #[error("Missing required variable: {0}")]
+    MissingVariable(String),
+
+    /// Circular reference in partial templates
+    #[error("Circular reference in templates: {0}")]
+    CircularReference(String),
+
+    /// Partial template not found
+    #[error("Partial template not found: {0}")]
+    PartialNotFound(String),
 }
 
 /// Template registry for loading templates from multiple sources.

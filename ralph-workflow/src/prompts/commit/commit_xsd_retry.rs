@@ -217,45 +217,56 @@ pub fn prompt_commit_xsd_retry_with_context(
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
     let diagnostic_prefix = if !schema_exists || !last_output_exists {
-        let mut parts = vec!["WARNING: Required XSD retry files are missing:\n".to_string()];
-        if !schema_exists {
-            parts.push(format!(
-                "  - Schema file: {} (workspace.root() = {})\n",
-                workspace.absolute_str(".agent/tmp/commit_message.xsd"),
-                workspace.root().display()
-            ));
-        }
-        if !last_output_exists {
-            if used_processed {
-                parts.push(format!(
-                    "  - Last output: Neither canonical nor processed file exists:\n\
-                     \t  Tried: {}\n\
-                     \t  Tried: {}\n\
-                     \t  (workspace.root() = {})\n",
-                    workspace.absolute_str(".agent/tmp/commit_message.xml"),
-                    workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
-                    workspace.root().display()
-                ));
-            } else {
-                let processed_note = if processed_output_exists {
-                    " (note: .processed file exists but canonical file is missing)"
+        let parts: Vec<String> =
+            std::iter::once("WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(
+                    if !schema_exists {
+                        Some(format!(
+                            "  - Schema file: {} (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/commit_message.xsd"),
+                            workspace.root().display()
+                        ))
+                    } else {
+                        None
+                    }
+                    .into_iter(),
+                )
+                .chain(if !last_output_exists {
+                    if used_processed {
+                        std::iter::once(format!(
+                            "  - Last output: Neither canonical nor processed file exists:\n\
+                         \t  Tried: {}\n\
+                         \t  Tried: {}\n\
+                         \t  (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/commit_message.xml"),
+                            workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
+                            workspace.root().display()
+                        ))
+                    } else {
+                        let processed_note = if processed_output_exists {
+                            " (note: .processed file exists but canonical file is missing)"
+                        } else {
+                            ""
+                        };
+                        std::iter::once(format!(
+                            "  - Last output: {}{}\n\
+                         \t  (workspace.root() = {})\n",
+                            workspace.absolute_str(
+                                canonical_output_path
+                                    .to_str()
+                                    .unwrap_or(".agent/tmp/commit_message.xml")
+                            ),
+                            processed_note,
+                            workspace.root().display()
+                        ))
+                    }
                 } else {
-                    ""
-                };
-                parts.push(format!(
-                    "  - Last output: {}{}\n\
-                     \t  (workspace.root() = {})\n",
-                    workspace.absolute_str(
-                        canonical_output_path
-                            .to_str()
-                            .unwrap_or(".agent/tmp/commit_message.xml")
-                    ),
-                    processed_note,
-                    workspace.root().display()
-                ));
-            }
-        }
-        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+                    std::iter::empty()
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
         parts.concat()
     } else {
         String::new()
