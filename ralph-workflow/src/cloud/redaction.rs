@@ -5,6 +5,8 @@
 //!
 //! This module provides a conservative sanitizer for untrusted error strings.
 
+use itertools::Itertools;
+
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///
 /// This is intentionally conservative. It may redact non-secret strings if they
@@ -40,19 +42,20 @@ fn redact_http_url_userinfo(input: &str) -> String {
         return input.to_string();
     }
 
-    let sorted_positions = {
-        let mut positions = http_positions;
-        positions.sort_by_key(|(idx, _)| *idx);
-        positions
-    };
+    let sorted_positions: Vec<(usize, &str)> = http_positions
+        .into_iter()
+        .sorted_by_key(|(idx, _)| *idx)
+        .collect();
 
-    let (result_parts, last_end) = sorted_positions.iter().fold(
+    let (result_parts, last_end): (Vec<&str>, usize) = sorted_positions.iter().fold(
         (Vec::new(), 0usize),
-        |(parts, last_end), (start, scheme)| {
-            let new_parts = if *start > last_end {
-                let mut tmp = parts;
-                tmp.push(&input[last_end..*start]);
-                tmp
+        |(parts, last_end): (Vec<&str>, usize), (start, scheme): &(usize, &str)| {
+            let new_parts: Vec<&str> = if *start > last_end {
+                parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(&input[last_end..*start]))
+                    .collect()
             } else {
                 parts
             };
@@ -65,24 +68,34 @@ fn redact_http_url_userinfo(input: &str) -> String {
                 .unwrap_or(input.len());
 
             let authority = &input[authority_start..authority_end];
-            let mut final_parts = new_parts;
-            if let Some(at_pos) = authority.rfind('@') {
-                final_parts.push(scheme);
-                final_parts.push("<redacted>@");
-                final_parts.push(&authority[at_pos + 1..]);
+            let final_parts: Vec<&str> = if let Some(at_pos) = authority.rfind('@') {
+                new_parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(*scheme))
+                    .chain(std::iter::once("<redacted>@"))
+                    .chain(std::iter::once(&authority[at_pos + 1..]))
+                    .collect()
             } else {
-                final_parts.push(scheme);
-                final_parts.push(authority);
-            }
+                new_parts
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(*scheme))
+                    .chain(std::iter::once(authority))
+                    .collect()
+            };
 
             (final_parts, authority_end)
         },
     );
 
     if last_end < input.len() {
-        let mut remaining = result_parts;
-        remaining.push(&input[last_end..]);
-        remaining.concat()
+        result_parts
+            .iter()
+            .copied()
+            .chain(std::iter::once(&input[last_end..]))
+            .collect::<Vec<_>>()
+            .concat()
     } else {
         result_parts.concat()
     }

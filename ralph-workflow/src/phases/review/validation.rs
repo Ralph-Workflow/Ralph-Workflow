@@ -247,9 +247,9 @@ pub fn post_flight_review_check(
                 let preview: String = content.lines().take(5).collect::<Vec<_>>().join("\n");
                 if !preview.is_empty() {
                     logger.info("ISSUES.md preview (first 5 lines):");
-                    for line in preview.lines() {
+                    preview.lines().for_each(|line| {
                         logger.info(&format!("  {line}"));
-                    }
+                    });
                 }
             }
 

@@ -33,32 +33,38 @@ pub fn next_logfile_attempt_index(
     let safe_agent = sanitize_agent_name(&agent_name.to_lowercase());
     let start = format!("{prefix_filename}_{safe_agent}_{model_index}_a");
 
-    let mut max_attempt: Option<u32> = None;
-    if let Ok(entries) = workspace.read_dir(parent) {
-        for entry in entries {
-            if !entry.is_file() {
-                continue;
-            }
-            let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            let has_log_ext = entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-            if !filename.starts_with(&start) || !has_log_ext {
-                continue;
-            }
+    let max_attempt = workspace
+        .read_dir(parent)
+        .ok()
+        .map(|entries: Vec<crate::workspace::DirEntry>| {
+            entries
+                .into_iter()
+                .filter_map(|entry: crate::workspace::DirEntry| {
+                    if !entry.is_file() {
+                        return None;
+                    }
+                    let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
+                        return None;
+                    };
+                    let has_log_ext = entry
+                        .path()
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
+                    if !filename.starts_with(&start) || !has_log_ext {
+                        return None;
+                    }
 
-            let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
-            if attempt_digits.is_empty() || !attempt_digits.chars().all(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            if let Ok(n) = attempt_digits.parse::<u32>() {
-                max_attempt = Some(max_attempt.map_or(n, |prev| prev.max(n)));
-            }
-        }
-    }
+                    let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
+                    if attempt_digits.is_empty()
+                        || !attempt_digits.chars().all(|c| c.is_ascii_digit())
+                    {
+                        return None;
+                    }
+                    attempt_digits.parse::<u32>().ok()
+                })
+                .max()
+        })
+        .flatten();
 
     max_attempt.map_or(0, |n| n.saturating_add(1))
 }
@@ -88,45 +94,58 @@ pub fn next_simplified_logfile_attempt_index(
     let start = format!("{base_filename}_a");
     let base_log_name = format!("{base_filename}.log");
 
-    let mut max_attempt: Option<u32> = None;
-    let mut base_file_exists = false;
+    let (max_attempt, base_file_exists) = workspace
+        .read_dir(parent)
+        .ok()
+        .map(|entries: Vec<crate::workspace::DirEntry>| {
+            entries.into_iter().fold(
+                (None, false),
+                |(max_attempt, base_file_exists): (Option<u32>, bool),
+                 entry: crate::workspace::DirEntry| {
+                    if !entry.is_file() {
+                        return (max_attempt, base_file_exists);
+                    }
+                    let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
+                        return (max_attempt, base_file_exists);
+                    };
 
-    if let Ok(entries) = workspace.read_dir(parent) {
-        for entry in entries {
-            if !entry.is_file() {
-                continue;
-            }
-            let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
-                continue;
-            };
+                    let is_base_file = filename == base_log_name;
+                    let has_log_ext = entry
+                        .path()
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
+                    let is_attempt_file = filename.starts_with(&start)
+                        && filename.len() > start.len() + 4
+                        && has_log_ext;
 
-            // Check if this is the base file (without attempt suffix)
-            if filename == base_log_name {
-                base_file_exists = true;
-                continue;
-            }
+                    if is_base_file {
+                        return (max_attempt, true);
+                    }
 
-            // Check if this is a file with attempt suffix
-            let has_log_ext = entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-            if !filename.starts_with(&start) || !has_log_ext {
-                continue;
-            }
+                    if !is_attempt_file {
+                        return (max_attempt, base_file_exists);
+                    }
 
-            let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
-            if attempt_digits.is_empty() || !attempt_digits.chars().all(|c| c.is_ascii_digit()) {
-                continue;
-            }
-            if let Ok(n) = attempt_digits.parse::<u32>() {
-                max_attempt = Some(max_attempt.map_or(n, |prev| prev.max(n)));
-            }
-        }
-    }
+                    let attempt_digits = &filename[start.len()..filename.len().saturating_sub(4)];
+                    if attempt_digits.is_empty()
+                        || !attempt_digits.chars().all(|c| c.is_ascii_digit())
+                    {
+                        return (max_attempt, base_file_exists);
+                    }
 
-    // If base file exists but no _aN files exist, return 1 (first retry)
-    // If _aN files exist, return max(attempt) + 1
-    // If neither exist, return 0 (first attempt)
+                    attempt_digits.parse::<u32>().ok().map_or(
+                        (max_attempt, base_file_exists),
+                        |n| {
+                            (
+                                max_attempt.map_or(Some(n), |prev| Some(prev.max(n))),
+                                base_file_exists,
+                            )
+                        },
+                    )
+                },
+            )
+        })
+        .unwrap_or((None, false));
+
     max_attempt.map_or_else(|| u32::from(base_file_exists), |max| max.saturating_add(1))
 }

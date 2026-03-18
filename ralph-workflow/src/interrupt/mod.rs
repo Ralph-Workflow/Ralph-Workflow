@@ -20,6 +20,7 @@
 //! ensuring all other termination paths commit uncommitted work before exiting.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(test)]
 use std::sync::Mutex;
 
 use std::path::Path;
@@ -32,7 +33,8 @@ pub use checkpoint::InterruptContext;
 ///
 /// This is set during pipeline initialization and used by the interrupt
 /// handler to save a checkpoint when the user presses Ctrl+C.
-pub(crate) static INTERRUPT_CONTEXT: Mutex<Option<InterruptContext>> = Mutex::new(None);
+pub(crate) static INTERRUPT_CONTEXT: std::sync::OnceLock<Option<InterruptContext>> =
+    std::sync::OnceLock::new();
 
 /// True when a user interrupt (SIGINT / Ctrl+C) has been requested.
 ///
@@ -102,9 +104,8 @@ fn restore_prompt_md_writable_via_std_fs() {
 
 fn remove_repo_root_ralph_dir_via_std_fs() {
     let repo_root = INTERRUPT_CONTEXT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .as_ref()
+        .get()
+        .and_then(|ctx| ctx.as_ref())
         .map(|context| context.workspace.root().to_path_buf())
         .or_else(|| crate::git_helpers::get_repo_root().ok());
 
@@ -236,11 +237,7 @@ pub(crate) fn interrupt_test_lock() -> std::sync::MutexGuard<'static, ()> {
 /// This function is typically called at the start of `run_pipeline()`
 /// to ensure the interrupt handler has the most up-to-date context.
 pub fn set_interrupt_context(context: InterruptContext) {
-    let mut ctx = INTERRUPT_CONTEXT.lock().unwrap_or_else(|poison| {
-        // If mutex is poisoned, recover the guard and clear the state
-        poison.into_inner()
-    });
-    *ctx = Some(context);
+    let _ = INTERRUPT_CONTEXT.set(Some(context));
 }
 
 /// Clear the global interrupt context.
@@ -248,11 +245,7 @@ pub fn set_interrupt_context(context: InterruptContext) {
 /// This should be called when the pipeline completes successfully
 /// to prevent saving an interrupt checkpoint after normal completion.
 pub fn clear_interrupt_context() {
-    let mut ctx = INTERRUPT_CONTEXT.lock().unwrap_or_else(|poison| {
-        // If mutex is poisoned, recover the guard and clear the state
-        poison.into_inner()
-    });
-    *ctx = None;
+    let _ = INTERRUPT_CONTEXT.set(None);
 }
 
 /// Set up the interrupt handler for graceful shutdown with checkpoint saving.
@@ -290,14 +283,9 @@ pub fn setup_interrupt_handler() {
 
         // Clone the entire context (small, Arc-backed) and then perform I/O without
         // holding the mutex.
-        let context = {
-            let ctx = INTERRUPT_CONTEXT
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            ctx.clone()
-        };
+        let context = INTERRUPT_CONTEXT.get().cloned();
 
-        if let Some(ref context) = context {
+        if let Some(Some(ref context)) = context {
             if let Err(e) = checkpoint::save_interrupt_checkpoint(context) {
                 eprintln!("Warning: Failed to save checkpoint: {e}");
             } else {
@@ -314,7 +302,7 @@ pub fn setup_interrupt_handler() {
         //   (e.g., MemoryWorkspace)
         restore_prompt_md_writable_via_std_fs();
 
-        if let Some(ref context) = context {
+        if let Some(Some(context)) = context {
             let _ = context.workspace.set_writable(Path::new("PROMPT.md"));
         }
 

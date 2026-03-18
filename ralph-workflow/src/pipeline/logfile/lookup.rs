@@ -37,46 +37,36 @@ pub fn find_most_recent_logfile(log_prefix: &Path, workspace: &dyn Workspace) ->
     let parent = log_prefix.parent().unwrap_or_else(|| Path::new("."));
     let prefix_str = log_prefix.file_name().and_then(|s| s.to_str())?;
 
-    let mut best_file: Option<(PathBuf, std::time::SystemTime)> = None;
-
-    if let Ok(entries) = workspace.read_dir(parent) {
-        for entry in entries {
-            if entry.is_file() {
-                if let Some(filename) = entry.file_name().and_then(|s| s.to_str()) {
-                    // Match files that start with our prefix, have more content, and end with .log
+    workspace
+        .read_dir(parent)
+        .ok()
+        .and_then(|entries: Vec<crate::workspace::DirEntry>| {
+            entries
+                .into_iter()
+                .filter_map(|entry: crate::workspace::DirEntry| {
+                    if !entry.is_file() {
+                        return None;
+                    }
+                    let Some(filename) = entry.file_name().and_then(|s| s.to_str()) else {
+                        return None;
+                    };
                     let has_log_ext = entry
                         .path()
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("log"));
-                    if filename.starts_with(prefix_str)
-                        && filename.len() > prefix_str.len()
-                        && has_log_ext
+                    if !filename.starts_with(prefix_str)
+                        || filename.len() <= prefix_str.len()
+                        || !has_log_ext
                     {
-                        // Get modification time for this file
-                        if let Some(modified) = entry.modified() {
-                            match &best_file {
-                                None => best_file = Some((entry.path().to_path_buf(), modified)),
-                                Some((_, best_time)) if modified > *best_time => {
-                                    best_file = Some((entry.path().to_path_buf(), modified));
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            // No modification time available, use this if we have no best yet
-                            if best_file.is_none() {
-                                best_file = Some((
-                                    entry.path().to_path_buf(),
-                                    std::time::SystemTime::UNIX_EPOCH,
-                                ));
-                            }
-                        }
+                        return None;
                     }
-                }
-            }
-        }
-    }
-
-    best_file.map(|(path, _)| path)
+                    entry
+                        .modified()
+                        .map(|modified| (entry.path().to_path_buf(), modified))
+                })
+                .max_by_key(|(_, time)| *time)
+                .map(|(path, _)| path)
+        })
 }
 
 /// Read the content of the most recent log file matching a prefix.

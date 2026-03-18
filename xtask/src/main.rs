@@ -32,7 +32,7 @@ mod io;
 mod runtime;
 
 // Re-export for convenient crate-level access
-pub use boundary::{compliance, dylint, lsp_diagnostics};
+pub use boundary::{compliance, dylint, dylint_report, lsp_diagnostics};
 pub use io::cache::CachingCommandRunner;
 pub use io::scanner::{LineIndex, NativeScanCheck, NativeScanCheckResult, NativeScanViolation};
 pub use runtime::verify;
@@ -210,10 +210,19 @@ fn main() -> ExitCode {
                 }
             }
         }
+        Some("dylint-report") => {
+            if args.contains(&"--help".to_string()) || args.contains(&"-h".to_string()) {
+                eprintln!("Usage: cargo xtask dylint-report");
+                eprintln!("  Generate dylint reports organized by module in tmp/");
+                return ExitCode::SUCCESS;
+            }
+            dylint_report::generate_dylint_report()
+        }
         _ => {
             eprintln!("Usage: cargo xtask verify [--gui]");
             eprintln!("       cargo xtask dylint [--verbose]");
             eprintln!("       cargo xtask lsp-forbidden-allow-expect");
+            eprintln!("       cargo xtask dylint-report");
             eprintln!("  --gui    Also run GUI cargo, Angular frontend, and release build checks");
             eprintln!("  --verbose, -v    Show detailed dylint output");
             ExitCode::from(2)

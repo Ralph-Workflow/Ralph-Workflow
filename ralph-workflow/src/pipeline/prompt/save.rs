@@ -52,7 +52,7 @@ pub(super) fn save_prompt_to_file_and_clipboard(
         if let Some(clipboard_cmd) = super::super::clipboard::get_platform_clipboard_command() {
             match executor.spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None) {
                 Ok(mut child) => {
-                    if let Some(mut stdin) = child.stdin.take() {
+                    if let Some(ref mut stdin) = child.stdin {
                         let _ = stdin.write_all(prompt.as_bytes());
                     }
                     let _ = child.wait();
@@ -128,13 +128,11 @@ pub(super) fn build_prompt_archive_filename(
     use crate::pipeline::logfile::sanitize_agent_name;
     use std::path::Path;
 
-    // Ensure uniqueness even when multiple invocations land in the same millisecond.
-    // This is per-process and monotonically increasing.
     let seq = PROMPT_ARCHIVE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
 
     let safe_agent = sanitize_agent_name(&agent_name.to_lowercase());
 
-    let mut prefix_part = Path::new(log_prefix)
+    let prefix_part = Path::new(log_prefix)
         .file_name()
         .and_then(|s| s.to_str())
         .filter(|s| !s.is_empty())
@@ -143,17 +141,22 @@ pub(super) fn build_prompt_archive_filename(
             |s| sanitize_agent_name(&s.to_lowercase()),
         );
 
-    if prefix_part.is_empty() || prefix_part == "unknown" || prefix_part == safe_agent {
-        prefix_part = sanitize_agent_name(&phase_label.to_lowercase());
-    }
+    let prefix_part =
+        if prefix_part.is_empty() || prefix_part == "unknown" || prefix_part == safe_agent {
+            sanitize_agent_name(&phase_label.to_lowercase())
+        } else {
+            prefix_part
+        };
 
-    let mut parts = vec![prefix_part, safe_agent];
-    if let Some(model) = model_index {
-        parts.push(model.to_string());
-    }
-    if let Some(a) = attempt {
-        parts.push(format!("a{a}"));
-    }
+    let parts: Vec<String> = [
+        Some(prefix_part),
+        Some(safe_agent),
+        model_index.map(|m| m.to_string()),
+        attempt.map(|a| format!("a{a}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
     format!("{}_s{}_{}.txt", parts.join("_"), seq, timestamp_ms)
 }

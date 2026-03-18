@@ -1,6 +1,7 @@
 use std::io;
 
 use crate::git_helpers::git2_to_io_error;
+use itertools::Itertools;
 use std::path::Path;
 
 /// Get a snapshot of the current git status.
@@ -142,9 +143,7 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
         unquote_c_style(raw).unwrap_or_else(|| raw.to_string())
     }
 
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    let mut out: Vec<String> = snapshot
+    let out: Vec<String> = snapshot
         .lines()
         .filter_map(|line| {
             let bytes = line.as_bytes();
@@ -176,10 +175,11 @@ pub fn parse_git_status_paths(snapshot: &str) -> Vec<String> {
 
             Some(parsed)
         })
-        .filter(|parsed| seen.insert(parsed.clone()))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .sorted()
         .collect();
 
-    out.sort();
     out
 }
 

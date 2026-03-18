@@ -37,7 +37,7 @@ pub fn split_command(cmd: &str) -> io::Result<Vec<String>> {
     })
 }
 
-static SECRET_LIKE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
+fn secret_like_regex() -> Option<Regex> {
     // Fixed ReDoS vulnerability by:
     // 1. Using \b (word boundary) anchors to prevent overlapping matches
     // 2. Making patterns more specific with exact length ranges
@@ -68,7 +68,7 @@ static SECRET_LIKE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock:
         ",
     )
     .ok()
-});
+}
 
 fn is_sensitive_key(key: &str) -> bool {
     let key = key.trim().trim_start_matches('-').trim_start_matches('-');
@@ -102,7 +102,7 @@ fn redact_arg_value(key: &str, value: &str) -> String {
     if is_sensitive_key(key) {
         return "<redacted>".to_string();
     }
-    SECRET_LIKE_RE.as_ref().map_or_else(
+    secret_like_regex().map_or_else(
         || value.to_string(),
         |re| re.replace_all(value, "<redacted>").to_string(),
     )
@@ -156,7 +156,7 @@ pub fn format_argv_for_log(argv: &[String]) -> String {
                 return arg.to_string();
             }
 
-            let redacted = SECRET_LIKE_RE.as_ref().map_or_else(
+            let redacted = secret_like_regex().map_or_else(
                 || arg.clone(),
                 |re| re.replace_all(arg, "<redacted>").to_string(),
             );

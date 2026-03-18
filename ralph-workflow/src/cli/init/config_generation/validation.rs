@@ -18,21 +18,23 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
     );
     let _ = writeln!(std::io::stdout());
 
-    // Group errors by file for clearer presentation
-    let mut global_errors: Vec<_> = Vec::new();
-    let mut local_errors: Vec<_> = Vec::new();
-    let mut other_errors: Vec<_> = Vec::new();
+    let global_errors: Vec<&ConfigValidationError> = errors
+        .iter()
+        .filter(|e| e.file().to_string_lossy().contains(".config"))
+        .collect();
 
-    for error in errors {
-        let path_str = error.file().to_string_lossy();
-        if path_str.contains(".config") {
-            global_errors.push(error);
-        } else if path_str.contains(".agent") {
-            local_errors.push(error);
-        } else {
-            other_errors.push(error);
-        }
-    }
+    let local_errors: Vec<&ConfigValidationError> = errors
+        .iter()
+        .filter(|e| e.file().to_string_lossy().contains(".agent"))
+        .collect();
+
+    let other_errors: Vec<&ConfigValidationError> = errors
+        .iter()
+        .filter(|e| {
+            let path = e.file().to_string_lossy();
+            !path.contains(".config") && !path.contains(".agent")
+        })
+        .collect();
 
     if !global_errors.is_empty() {
         let _ = writeln!(
@@ -41,9 +43,9 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
             colors.yellow(),
             colors.reset()
         );
-        for error in global_errors {
-            print_config_error(colors, error);
-        }
+        global_errors
+            .iter()
+            .for_each(|error| print_config_error(colors, error));
         let _ = writeln!(std::io::stdout());
     }
 
@@ -54,14 +56,14 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
             colors.yellow(),
             colors.reset()
         );
-        for error in local_errors {
-            print_config_error(colors, error);
-        }
+        local_errors
+            .iter()
+            .for_each(|error| print_config_error(colors, error));
         let _ = writeln!(std::io::stdout());
     }
 
     if !other_errors.is_empty() {
-        for error in other_errors {
+        other_errors.iter().for_each(|error| {
             let _ = writeln!(
                 std::io::stdout(),
                 "{}{}:{}",
@@ -71,7 +73,7 @@ fn print_validation_errors(colors: Colors, errors: &[ConfigValidationError]) {
             );
             print_config_error(colors, error);
             let _ = writeln!(std::io::stdout());
-        }
+        });
     }
 
     let _ = writeln!(
@@ -217,9 +219,9 @@ pub fn handle_check_config_with<R: ConfigEnvironment>(
             colors.yellow(),
             colors.reset()
         );
-        for warning in &warnings {
+        warnings.iter().for_each(|warning| {
             let _ = writeln!(std::io::stdout(), "  {warning}");
-        }
+        });
         let _ = writeln!(std::io::stdout());
     }
 

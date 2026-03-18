@@ -51,12 +51,12 @@ impl std::fmt::Display for TemplateError {
             }
             Self::CircularReference(chain) => {
                 write!(f, "Circular reference detected in partials: ")?;
-                let mut sep = "";
-                for partial in chain {
-                    write!(f, "{sep}{{{{> {partial}}}}}")?;
-                    sep = " -> ";
-                }
-                Ok(())
+                let chain_str = chain
+                    .iter()
+                    .map(|partial| format!("{{{{> {partial}}}}}"))
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                write!(f, "{chain_str}")
             }
         }
     }

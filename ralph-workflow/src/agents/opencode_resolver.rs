@@ -27,6 +27,7 @@
 use crate::agents::config::AgentConfig;
 use crate::agents::opencode_api::ApiCatalog;
 use crate::agents::parser::JsonParserType;
+use itertools::Itertools;
 use strsim::levenshtein;
 
 /// Maximum Levenshtein distance for typo suggestions.
@@ -184,13 +185,7 @@ impl OpenCodeResolver {
                 (p, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .fold(Vec::new(), |mut acc, (p, d)| {
-                // Insert sorted by distance
-                let pos = acc.iter().position(|(_, dd)| d <= *dd).unwrap_or(acc.len());
-                acc.insert(pos, (p, d));
-                acc
-            })
-            .into_iter()
+            .sorted_by_key(|(_, d)| *d)
             .take(MAX_TYPO_DISTANCE)
             .map(|(p, _)| p)
             .collect()
@@ -206,13 +201,7 @@ impl OpenCodeResolver {
                 (m, distance)
             })
             .filter(|(_, d)| *d <= MAX_TYPO_DISTANCE)
-            .fold(Vec::new(), |mut acc, (m, d)| {
-                // Insert sorted by distance
-                let pos = acc.iter().position(|(_, dd)| d <= *dd).unwrap_or(acc.len());
-                acc.insert(pos, (m, d));
-                acc
-            })
-            .into_iter()
+            .sorted_by_key(|(_, d)| *d)
             .take(MAX_TYPO_DISTANCE)
             .map(|(m, _)| m)
             .collect()

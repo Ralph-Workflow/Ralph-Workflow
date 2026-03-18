@@ -8,189 +8,259 @@ use crate::language_detector::ProjectStack;
 
 /// Add JavaScript-specific guidelines to the review
 pub fn add_javascript_guidelines(
-    mut guidelines: ReviewGuidelines,
+    guidelines: ReviewGuidelines,
     stack: &ProjectStack,
 ) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use const/let, never var".to_string(),
-        "Handle Promise rejections".to_string(),
-        "Use async/await over raw Promises".to_string(),
-        "Avoid deeply nested callbacks".to_string(),
-    ]);
+    let base = ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use const/let, never var".to_string(),
+                "Handle Promise rejections".to_string(),
+                "Use async/await over raw Promises".to_string(),
+                "Avoid deeply nested callbacks".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Sanitize user input before DOM insertion".to_string(),
+                "Use Content Security Policy headers".to_string(),
+                "Validate data from external APIs".to_string(),
+                "Check for prototype pollution vulnerabilities".to_string(),
+            ])
+            .collect(),
+        performance_checks: guidelines
+            .performance_checks
+            .into_iter()
+            .chain([
+                "Debounce/throttle frequent event handlers".to_string(),
+                "Use appropriate data structures".to_string(),
+                "Minimize DOM manipulation".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid == for comparisons (use ===)".to_string(),
+                "Don't mutate function arguments".to_string(),
+                "Avoid synchronous I/O in Node.js".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    };
 
-    guidelines.security_checks.extend([
-        "Sanitize user input before DOM insertion".to_string(),
-        "Use Content Security Policy headers".to_string(),
-        "Validate data from external APIs".to_string(),
-        "Check for prototype pollution vulnerabilities".to_string(),
-    ]);
+    let with_frontend = if stack.frameworks.iter().any(|f| f == "React" || f == "Vue") {
+        add_frontend_guidelines(base)
+    } else {
+        base
+    };
 
-    guidelines.performance_checks.extend([
-        "Debounce/throttle frequent event handlers".to_string(),
-        "Use appropriate data structures".to_string(),
-        "Minimize DOM manipulation".to_string(),
-    ]);
-
-    guidelines.anti_patterns.extend([
-        "Avoid == for comparisons (use ===)".to_string(),
-        "Don't mutate function arguments".to_string(),
-        "Avoid synchronous I/O in Node.js".to_string(),
-    ]);
-
-    if stack.frameworks.iter().any(|f| f == "React" || f == "Vue") {
-        guidelines = add_frontend_guidelines(guidelines);
-    }
-
-    add_framework_guidelines(guidelines, stack)
+    add_framework_guidelines(with_frontend, stack)
 }
 
-/// Add TypeScript-specific guidelines to the review
 pub fn add_typescript_guidelines(
-    mut guidelines: ReviewGuidelines,
+    guidelines: ReviewGuidelines,
     stack: &ProjectStack,
 ) -> ReviewGuidelines {
-    guidelines = add_javascript_guidelines(guidelines, stack);
+    let guidelines = add_javascript_guidelines(guidelines, stack);
 
-    guidelines.quality_checks.extend([
-        "Use strict TypeScript mode".to_string(),
-        "Prefer interfaces over type aliases for objects".to_string(),
-        "Use explicit return types for public functions".to_string(),
-        "Avoid 'any' type; use 'unknown' if needed".to_string(),
-    ]);
-
-    guidelines.idioms.extend([
-        "Use union types for discriminated unions".to_string(),
-        "Leverage type inference where clear".to_string(),
-        "Use generics appropriately".to_string(),
-    ]);
-
-    guidelines.anti_patterns.extend([
-        "Don't use 'as' casts to bypass type checking".to_string(),
-        "Avoid non-null assertions (!) without justification".to_string(),
-    ]);
-
-    guidelines
-}
-
-/// Add frontend-specific guidelines (React/Vue)
-fn add_frontend_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Components are properly modularized".to_string(),
-        "State management is predictable".to_string(),
-        "Accessibility (a11y) is considered".to_string(),
-    ]);
-
-    guidelines.performance_checks.extend([
-        "Avoid unnecessary re-renders".to_string(),
-        "Use lazy loading for large components".to_string(),
-        "Optimize bundle size".to_string(),
-    ]);
-
-    guidelines
-}
-
-/// Add framework-specific guidelines based on detected frameworks
-fn add_framework_guidelines(
-    mut guidelines: ReviewGuidelines,
-    stack: &ProjectStack,
-) -> ReviewGuidelines {
-    for framework in &stack.frameworks {
-        guidelines = match framework.as_str() {
-            "React" => add_react_guidelines(guidelines),
-            "Vue" => add_vue_guidelines(guidelines),
-            "Angular" => add_angular_guidelines(guidelines),
-            "Express" | "Fastify" | "NestJS" => add_node_backend_guidelines(guidelines),
-            "Next.js" | "Nuxt" => add_ssr_framework_guidelines(guidelines),
-            _ => guidelines,
-        }
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use strict TypeScript mode".to_string(),
+                "Prefer interfaces over type aliases for objects".to_string(),
+                "Use explicit return types for public functions".to_string(),
+                "Avoid 'any' type; use 'unknown' if needed".to_string(),
+            ])
+            .collect(),
+        idioms: guidelines
+            .idioms
+            .into_iter()
+            .chain([
+                "Use union types for discriminated unions".to_string(),
+                "Leverage type inference where clear".to_string(),
+                "Use generics appropriately".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Don't use 'as' casts to bypass type checking".to_string(),
+                "Avoid non-null assertions (!) without justification".to_string(),
+            ])
+            .collect(),
+        ..guidelines
     }
-    guidelines
 }
 
-/// Add React-specific guidelines
-fn add_react_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use hooks correctly (rules of hooks)".to_string(),
-        "Properly manage component lifecycle".to_string(),
-        "Use React.memo for expensive renders".to_string(),
-    ]);
-
-    guidelines.anti_patterns.extend([
-        "Avoid prop drilling (use context or state management)".to_string(),
-        "Don't mutate state directly".to_string(),
-        "Avoid inline functions in render".to_string(),
-    ]);
-
-    guidelines
+fn add_frontend_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Components are properly modularized".to_string(),
+                "State management is predictable".to_string(),
+                "Accessibility (a11y) is considered".to_string(),
+            ])
+            .collect(),
+        performance_checks: guidelines
+            .performance_checks
+            .into_iter()
+            .chain([
+                "Avoid unnecessary re-renders".to_string(),
+                "Use lazy loading for large components".to_string(),
+                "Optimize bundle size".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add Vue-specific guidelines
-fn add_vue_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use Composition API for complex logic".to_string(),
-        "Follow Vue style guide".to_string(),
-        "Use computed properties appropriately".to_string(),
-    ]);
-
-    guidelines.anti_patterns.extend([
-        "Avoid watchers when computed works".to_string(),
-        "Don't directly mutate props".to_string(),
-    ]);
-
-    guidelines
+fn add_framework_guidelines(
+    guidelines: ReviewGuidelines,
+    stack: &ProjectStack,
+) -> ReviewGuidelines {
+    stack
+        .frameworks
+        .iter()
+        .fold(guidelines, |acc, framework| match framework.as_str() {
+            "React" => add_react_guidelines(acc),
+            "Vue" => add_vue_guidelines(acc),
+            "Angular" => add_angular_guidelines(acc),
+            "Express" | "Fastify" | "NestJS" => add_node_backend_guidelines(acc),
+            "Next.js" | "Nuxt" => add_ssr_framework_guidelines(acc),
+            _ => acc,
+        })
 }
 
-/// Add Angular-specific guidelines
-fn add_angular_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use OnPush change detection where possible".to_string(),
-        "Follow Angular style guide".to_string(),
-        "Use RxJS operators effectively".to_string(),
-    ]);
-
-    guidelines
-        .security_checks
-        .push("Use Angular's built-in sanitization".to_string());
-
-    guidelines.anti_patterns.extend([
-        "Avoid subscribing without unsubscribing".to_string(),
-        "Don't use any type".to_string(),
-    ]);
-
-    guidelines
+fn add_react_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use hooks correctly (rules of hooks)".to_string(),
+                "Properly manage component lifecycle".to_string(),
+                "Use React.memo for expensive renders".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid prop drilling (use context or state management)".to_string(),
+                "Don't mutate state directly".to_string(),
+                "Avoid inline functions in render".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add Node.js backend framework guidelines (Express, Fastify, `NestJS`)
-fn add_node_backend_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use middleware pattern effectively".to_string(),
-        "Handle errors in middleware".to_string(),
-        "Use environment variables for config".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Use helmet for security headers".to_string(),
-        "Implement rate limiting".to_string(),
-        "Validate request body schema".to_string(),
-    ]);
-
-    guidelines
+fn add_vue_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use Composition API for complex logic".to_string(),
+                "Follow Vue style guide".to_string(),
+                "Use computed properties appropriately".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid watchers when computed works".to_string(),
+                "Don't directly mutate props".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add SSR framework guidelines (Next.js, Nuxt)
-fn add_ssr_framework_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use appropriate rendering strategy (SSR/SSG/ISR)".to_string(),
-        "Handle hydration correctly".to_string(),
-        "Optimize for Core Web Vitals".to_string(),
-    ]);
+fn add_angular_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use OnPush change detection where possible".to_string(),
+                "Follow Angular style guide".to_string(),
+                "Use RxJS operators effectively".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain(["Use Angular's built-in sanitization".to_string()])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid subscribing without unsubscribing".to_string(),
+                "Don't use any type".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
+}
 
-    guidelines.performance_checks.extend([
-        "Minimize client-side JavaScript".to_string(),
-        "Use image optimization".to_string(),
-    ]);
+fn add_node_backend_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use middleware pattern effectively".to_string(),
+                "Handle errors in middleware".to_string(),
+                "Use environment variables for config".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Use helmet for security headers".to_string(),
+                "Implement rate limiting".to_string(),
+                "Validate request body schema".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
+}
 
-    guidelines
+fn add_ssr_framework_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use appropriate rendering strategy (SSR/SSG/ISR)".to_string(),
+                "Handle hydration correctly".to_string(),
+                "Optimize for Core Web Vitals".to_string(),
+            ])
+            .collect(),
+        performance_checks: guidelines
+            .performance_checks
+            .into_iter()
+            .chain([
+                "Minimize client-side JavaScript".to_string(),
+                "Use image optimization".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
 #[cfg(test)]

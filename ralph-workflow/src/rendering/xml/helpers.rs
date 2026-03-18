@@ -2,9 +2,6 @@
 //!
 //! This module contains utilities used by multiple XML renderer modules.
 
-/// Action type for file changes.
-use std::fmt::Write;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeAction {
     Create,
@@ -40,34 +37,31 @@ pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
 
 /// Parse unified diff format into per-file sections.
 pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
-    let (sections, current) = diff.lines().fold(
-        (Vec::new(), Vec::new()),
-        |(mut sections, mut current), line| {
-            if line.starts_with("diff --git ") {
-                if !current.is_empty() {
-                    sections.push(current);
-                }
-                current = vec![line];
-            } else if !current.is_empty() {
-                current.push(line);
+    let lines: Vec<&str> = diff.lines().collect();
+
+    let diff_starts: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("diff --git "))
+        .map(|(i, _)| i)
+        .collect();
+
+    if diff_starts.is_empty() {
+        return Vec::new();
+    }
+
+    diff_starts
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, &start)| {
+            let end = diff_starts.get(idx + 1).copied().unwrap_or(lines.len());
+            let section_lines = &lines[start..end];
+            if section_lines.is_empty() {
+                None
+            } else {
+                parse_diff_section(section_lines)
             }
-            (sections, current)
-        },
-    );
-
-    // Push the final section if non-empty
-    let sections = if current.is_empty() {
-        sections
-    } else {
-        sections
-            .into_iter()
-            .chain(std::iter::once(current))
-            .collect()
-    };
-
-    sections
-        .into_iter()
-        .filter_map(|lines| parse_diff_section(&lines))
+        })
         .collect()
 }
 
@@ -75,11 +69,12 @@ pub fn parse_unified_diff_files(diff: &str) -> Vec<DiffFileSection> {
 fn parse_diff_section(lines: &[&str]) -> Option<DiffFileSection> {
     let header = *lines.first()?;
     // Example: "diff --git a/src/main.rs b/src/main.rs"
-    let mut parts = header.split_whitespace();
-    let _ = parts.next()?; // diff
-    let _ = parts.next()?; // --git
-    let a_path = parts.next()?.trim();
-    let b_path = parts.next()?.trim();
+    let parts: Vec<&str> = header.split_whitespace().collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    let a_path = parts[2].trim();
+    let b_path = parts[3].trim();
 
     let path = if b_path == "/dev/null" {
         a_path
@@ -122,23 +117,26 @@ pub fn render_diff_sections(title: &str, sections: &[DiffFileSection]) -> String
         .collect::<Vec<&str>>()
         .join(", ");
 
-    let sections_output = sections.iter().fold(String::new(), |mut acc, section| {
-        let action_str = match section.action {
-            ChangeAction::Create => "created",
-            ChangeAction::Modify => "modified",
-            ChangeAction::Delete => "deleted",
-        };
-        let diff_lines = section
-            .diff
-            .lines()
-            .map(|line| format!("      {line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let _ = writeln!(acc, "\n   📄 {}", section.path);
-        let _ = writeln!(acc, "      Action: {}", action_str);
-        let _ = writeln!(acc, "{}", diff_lines);
-        acc
-    });
+    let sections_output: String = sections
+        .iter()
+        .map(|section| {
+            let action_str = match section.action {
+                ChangeAction::Create => "created",
+                ChangeAction::Modify => "modified",
+                ChangeAction::Delete => "deleted",
+            };
+            let diff_lines = section
+                .diff
+                .lines()
+                .map(|line| format!("      {line}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\n   📄 {}\n      Action: {}\n{}",
+                section.path, action_str, diff_lines
+            )
+        })
+        .collect();
 
     format!(
         "\n{title}:\n   Modified {} file(s): {}{sections_output}",

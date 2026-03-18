@@ -1,4 +1,7 @@
 use super::*;
+use crate::pipeline::prompt::runtime::stderr_collector::{
+    cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
+};
 
 #[derive(Debug)]
 struct CountingReader {
@@ -89,7 +92,7 @@ fn test_cancel_and_join_stderr_collector_does_not_drop_handle_on_timeout() {
         Ok(String::new())
     }));
 
-    super::super::stderr_collector::cancel_and_join_stderr_collector(
+    cancel_and_join_stderr_collector(
         &cancel,
         &mut join_handle,
         std::time::Duration::from_millis(10),

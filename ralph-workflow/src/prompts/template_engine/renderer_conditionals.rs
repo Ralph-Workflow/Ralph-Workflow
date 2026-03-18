@@ -9,50 +9,44 @@ impl Template {
     ///
     /// A variable is considered "truthy" if it exists and is non-empty.
     fn process_conditionals(content: &str, variables: &HashMap<&str, String>) -> String {
-        let mut result = content.to_string();
+        // Find all {% if ... %} blocks with their positions
+        let if_blocks: Vec<(usize, usize, usize, usize, usize)> = content
+            .match_indices("{% if ")
+            .filter_map(|(start, _)| {
+                let if_end_start = start + 6;
+                let if_end = content[if_end_start..]
+                    .find("%}")
+                    .map(|pos| if_end_start + pos + 2)?;
 
-        // Find all {% if ... %} blocks
-        while let Some(start) = result.find("{% if ") {
-            // Find the end of the if condition
-            let if_end_start = start + 6; // "{% if " is 6 chars
-            let if_end = if let Some(pos) = result[if_end_start..].find("%}") {
-                if_end_start + pos + 2
-            } else {
-                // Unclosed if tag - skip it
-                result = result[start + 1..].to_string();
-                continue;
-            };
+                let _condition = content[if_end_start..if_end - 2].trim();
 
-            // Extract the condition
-            let condition = result[if_end_start..if_end - 2].trim().to_string();
+                let endif_start = content[if_end..]
+                    .find("{% endif %}")
+                    .map(|pos| if_end + pos)?;
 
-            // Find the matching {% endif %}
-            let endif_start = if let Some(pos) = result[if_end..].find("{% endif %}") {
-                if_end + pos
-            } else {
-                // Unclosed if block - skip it
-                result = result[start + 1..].to_string();
-                continue;
-            };
+                let endif_end = endif_start + 11;
 
-            let endif_end = endif_start + 11; // "{% endif %}" is 11 chars
+                Some((start, if_end_start, if_end, endif_start, endif_end))
+            })
+            .collect();
 
-            // Extract the content inside the if block
-            let block_content = result[if_end..endif_start].to_string();
+        // Process in reverse order to maintain positions
+        if_blocks.into_iter().rev().fold(
+            content.to_string(),
+            |acc, (start, if_end_start, if_end, endif_start, endif_end)| {
+                let condition = acc[if_end_start..if_end - 2].trim().to_string();
+                let block_content = acc[if_end..endif_start].to_string();
+                let should_show = Self::evaluate_condition(&condition, variables);
 
-            // Evaluate the condition
-            let should_show = Self::evaluate_condition(&condition, variables);
+                let replacement = if should_show {
+                    block_content
+                } else {
+                    String::new()
+                };
 
-            // Replace the entire if block with the content or empty string
-            let replacement = if should_show {
-                block_content
-            } else {
-                String::new()
-            };
-            result.replace_range(start..endif_end, &replacement);
-        }
-
-        result
+                format!("{}{}{}", &acc[..start], replacement, &acc[endif_end..])
+            },
+        )
     }
 
     /// Evaluate a conditional expression.

@@ -33,7 +33,7 @@ mod levenshtein;
 pub use levenshtein::suggest_key;
 
 /// Configuration validation error.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum ConfigValidationError {
     #[error("TOML syntax error in {file}: {error}")]
     TomlSyntax {

@@ -106,29 +106,6 @@ impl MainEffectHandler {
         // - ssh-key: via GIT_SSH_COMMAND (set in ConfigureGitAuth)
         // - token: via ephemeral credential helper that reads token from env
         // - credential-helper: via per-command credential.helper override
-        let mut argv: Vec<String> = Vec::new();
-
-        match &ctx.cloud.git_remote.auth_method {
-            crate::config::types::GitAuthMethod::SshKey { .. } => {}
-            crate::config::types::GitAuthMethod::Token { .. } => {
-                // This helper is executed by git via `sh -c` (leading '!').
-                // It prints credentials without ever storing secrets in repo files.
-                argv.push("-c".to_string());
-                argv.push(
-                    "credential.helper=!f() { echo username=$RALPH_GIT_TOKEN_USERNAME; echo password=$RALPH_GIT_TOKEN; }; f"
-                        .to_string(),
-                );
-                argv.push("-c".to_string());
-                argv.push("credential.useHttpPath=true".to_string());
-            }
-            crate::config::types::GitAuthMethod::CredentialHelper { helper } => {
-                argv.push("-c".to_string());
-                argv.push(format!("credential.helper={helper}"));
-                argv.push("-c".to_string());
-                argv.push("credential.useHttpPath=true".to_string());
-            }
-        }
-
         let Some(refspec) = build_head_push_refspec(&branch) else {
             let error = crate::cloud::redaction::redact_secrets(&format!(
                 "Invalid push branch name: '{branch}'"
@@ -151,12 +128,28 @@ impl MainEffectHandler {
             );
         };
 
-        argv.push("push".to_string());
-        argv.push(remote.clone());
-        argv.push(refspec);
-        if force {
-            argv.push("--force".to_string());
+        let argv: Vec<String> = match &ctx.cloud.git_remote.auth_method {
+            crate::config::types::GitAuthMethod::SshKey { .. } => vec![],
+            crate::config::types::GitAuthMethod::Token { .. } => vec![
+                "-c".to_string(),
+                "credential.helper=!f() { echo username=$RALPH_GIT_TOKEN_USERNAME; echo password=$RALPH_GIT_TOKEN; }; f"
+                    .to_string(),
+                "-c".to_string(),
+                "credential.useHttpPath=true".to_string(),
+            ],
+            crate::config::types::GitAuthMethod::CredentialHelper { helper } => vec![
+                "-c".to_string(),
+                format!("credential.helper={helper}"),
+                "-c".to_string(),
+                "credential.useHttpPath=true".to_string(),
+            ],
         }
+        .into_iter()
+        .chain(std::iter::once("push".to_string()))
+        .chain(std::iter::once(remote.clone()))
+        .chain(std::iter::once(refspec))
+        .chain(force.then(|| "--force".to_string()))
+        .collect();
 
         let git_args: Vec<&str> = argv.iter().map(std::string::String::as_str).collect();
 
@@ -420,19 +413,17 @@ fn build_git_ssh_command(key_path: &str) -> Option<String> {
 }
 
 fn shell_escape_posix(s: &str) -> String {
-    // POSIX shell escaping via single quotes.
-    // Example: abc'def -> 'abc'"'"'def'
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\"'\"'");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
+    let inner: String = s
+        .chars()
+        .flat_map(|ch| {
+            if ch == '\'' {
+                "'\"'\"'".chars().collect::<Vec<_>>()
+            } else {
+                vec![ch]
+            }
+        })
+        .collect();
+    format!("'{inner}'")
 }
 
 #[cfg(test)]

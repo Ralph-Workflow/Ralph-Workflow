@@ -168,6 +168,17 @@ pub fn get_git_diff_for_review_with_workspace(
 
 /// Implementation of git diff.
 fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
+    let mut output = String::new();
+
+    let print_cb = &mut |_delta: git2::DiffDelta<'_>,
+                         _hunk: Option<git2::DiffHunk<'_>>,
+                         line: git2::DiffLine<'_>| {
+        if let Ok(content) = std::str::from_utf8(line.content()) {
+            output.push_str(content);
+        }
+        true
+    };
+
     // Try to get HEAD tree.
     let head_tree = match repo.head() {
         Ok(head) => Some(head.peel_to_tree().map_err(|e| git2_to_io_error(&e))?),
@@ -181,11 +192,10 @@ fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
                 .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
                 .map_err(|e| git2_to_io_error(&e))?;
 
-            let buf = diff
-                .to_buf(git2::DiffFormat::Patch)
+            diff.print(git2::DiffFormat::Patch, print_cb)
                 .map_err(|e| git2_to_io_error(&e))?;
 
-            return Ok(String::from_utf8_lossy(&buf).to_string());
+            return Ok(output);
         }
         Err(e) => return Err(git2_to_io_error(&e)),
     };
@@ -199,11 +209,10 @@ fn git_diff_impl(repo: &git2::Repository) -> io::Result<String> {
         .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let buf = diff
-        .to_buf(git2::DiffFormat::Patch)
+    diff.print(git2::DiffFormat::Patch, print_cb)
         .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&buf).to_string())
+    Ok(output)
 }
 
 fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> io::Result<String> {
@@ -218,11 +227,21 @@ fn git_diff_from_oid(repo: &git2::Repository, oid: git2::Oid) -> io::Result<Stri
         .diff_tree_to_workdir_with_index(Some(&start_tree), Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let buf = diff
-        .to_buf(git2::DiffFormat::Patch)
-        .map_err(|e| git2_to_io_error(&e))?;
+    let mut output = String::new();
+    diff.print(
+        git2::DiffFormat::Patch,
+        &mut |_delta: git2::DiffDelta<'_>,
+              _hunk: Option<git2::DiffHunk<'_>>,
+              line: git2::DiffLine<'_>| {
+            if let Ok(content) = std::str::from_utf8(line.content()) {
+                output.push_str(content);
+            }
+            true
+        },
+    )
+    .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&buf).to_string())
+    Ok(output)
 }
 
 /// Generate a diff from the empty tree (initial commit).
@@ -235,9 +254,19 @@ fn git_diff_from_empty_tree(repo: &git2::Repository) -> io::Result<String> {
         .diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))
         .map_err(|e| git2_to_io_error(&e))?;
 
-    let buf = diff
-        .to_buf(git2::DiffFormat::Patch)
-        .map_err(|e| git2_to_io_error(&e))?;
+    let mut output = String::new();
+    diff.print(
+        git2::DiffFormat::Patch,
+        &mut |_delta: git2::DiffDelta<'_>,
+              _hunk: Option<git2::DiffHunk<'_>>,
+              line: git2::DiffLine<'_>| {
+            if let Ok(content) = std::str::from_utf8(line.content()) {
+                output.push_str(content);
+            }
+            true
+        },
+    )
+    .map_err(|e| git2_to_io_error(&e))?;
 
-    Ok(String::from_utf8_lossy(&buf).to_string())
+    Ok(output)
 }

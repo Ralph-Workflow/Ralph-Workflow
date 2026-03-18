@@ -8,7 +8,6 @@
 //! - Staged files list when `ralph-files` is present
 
 use super::helpers::extract_tag_content;
-use std::fmt::Write;
 
 /// Box width for the commit message display (characters).
 const BOX_WIDTH: usize = 47;
@@ -24,140 +23,207 @@ const SEPARATOR_CHAR: char = '─';
 fn extract_all_tag_content(content: &str, tag_name: &str) -> Vec<String> {
     let start_tag = format!("<{tag_name}>");
     let end_tag = format!("</{tag_name}>");
-    let mut results = Vec::new();
-    let mut search_from = 0;
 
-    while let Some(start_pos) = content[search_from..].find(&start_tag) {
-        let abs_start = search_from + start_pos + start_tag.len();
-        if let Some(end_pos) = content[abs_start..].find(&end_tag) {
-            let value = content[abs_start..abs_start + end_pos].trim().to_string();
-            if !value.is_empty() {
-                results.push(value);
+    extract_tag_positions(content, &start_tag, &end_tag)
+        .into_iter()
+        .map(|(start, end)| content[start..end].trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn extract_tag_positions(content: &str, start_tag: &str, end_tag: &str) -> Vec<(usize, usize)> {
+    fn extract_recursive(
+        content: &str,
+        start_tag: &str,
+        end_tag: &str,
+        search_from: usize,
+    ) -> Vec<(usize, usize)> {
+        if search_from >= content.len() {
+            return Vec::new();
+        }
+
+        let remaining = &content[search_from..];
+        match remaining.find(start_tag) {
+            Some(start_pos) => {
+                let abs_start = search_from + start_pos + start_tag.len();
+                match content[abs_start..].find(end_tag) {
+                    Some(end_pos) => extract_recursive(
+                        content,
+                        start_tag,
+                        end_tag,
+                        abs_start + end_pos + end_tag.len(),
+                    )
+                    .into_iter()
+                    .chain(std::iter::once((abs_start, abs_start + end_pos)))
+                    .collect(),
+                    None => Vec::new(),
+                }
             }
-            search_from = abs_start + end_pos + end_tag.len();
-        } else {
-            break;
+            None => Vec::new(),
         }
     }
 
-    results
+    extract_recursive(content, start_tag, end_tag, 0)
+        .into_iter()
+        .rev()
+        .collect()
 }
 
 fn trim_opt(s: Option<String>) -> Option<String> {
     s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// Write a section label and divider line.
-fn write_section_header(output: &mut String, label: &str) {
-    let separator = SEPARATOR_CHAR.to_string().repeat(BOX_WIDTH - 2);
-    writeln!(output, "\n  {label}").unwrap();
-    writeln!(output, "  {separator}").unwrap();
-}
-
-/// Write the closing border.
-fn write_closing_border(output: &mut String) {
-    let inner = "═".repeat(BOX_WIDTH - 2);
-    writeln!(output, "╚{inner}╝").unwrap();
-}
-
 /// Render commit message XML with structured visual output.
 pub fn render(content: &str) -> String {
-    let mut output = String::new();
+    let header = build_commit_header();
 
-    // Opening border — pad header to fill BOX_WIDTH
-    // "╔═══ Commit Message ══...══╗"
-    let header_label = " Commit Message ";
-    let total_inner = BOX_WIDTH - 2; // width between ╔ and ╗
-    let label_len = header_label.len();
-    let prefix_fill = 3usize; // "═══" before label
-    let suffix_fill = total_inner.saturating_sub(prefix_fill + label_len);
-    let prefix = "═".repeat(prefix_fill);
-    let suffix = "═".repeat(suffix_fill);
-    writeln!(output, "\n╔{prefix}{header_label}{suffix}╗").unwrap();
-    output.push('\n');
-
-    // Skip path
     let skip_reason = trim_opt(extract_tag_content(content, "ralph-skip"));
     if let Some(reason) = skip_reason {
-        writeln!(output, "  ⏭  Skip: {reason}").unwrap();
-        output.push('\n');
-        write_closing_border(&mut output);
-        return output;
+        return format!(
+            "{}  ⏭  Skip: {}\n\n{}",
+            header,
+            reason,
+            build_closing_border()
+        );
     }
 
     let subject = trim_opt(extract_tag_content(content, "ralph-subject"));
 
-    // Fallback: no parseable content at all
     if subject.is_none() {
-        output.push_str("  ⚠️  Unable to parse commit message XML\n\n");
-        output.push_str(content);
-        output.push('\n');
-        write_closing_border(&mut output);
-        return output;
+        return format!(
+            "{}  ⚠️  Unable to parse commit message XML\n\n{}{}",
+            header,
+            content,
+            build_closing_border()
+        );
     }
 
-    // Subject
-    if let Some(ref s) = subject {
-        writeln!(output, "  {s}").unwrap();
-    }
+    let subject_output = subject
+        .as_ref()
+        .map(|s| format!("  {s}\n"))
+        .unwrap_or_default();
 
-    // Body — simple variant
+    let body_output = build_body_output(content);
+    let details_output = build_details_output(content);
+    let files_output = build_files_output(content);
+
+    format!(
+        "{}{}{}{}{}\n{}",
+        header,
+        subject_output,
+        body_output,
+        details_output,
+        files_output,
+        build_closing_border()
+    )
+}
+
+fn build_commit_header() -> String {
+    let header_label = " Commit Message ";
+    let total_inner = BOX_WIDTH - 2;
+    let label_len = header_label.len();
+    let prefix_fill = 3usize;
+    let suffix_fill = total_inner.saturating_sub(prefix_fill + label_len);
+    let prefix = "═".repeat(prefix_fill);
+    let suffix = "═".repeat(suffix_fill);
+    format!("\n╔{prefix}{header_label}{suffix}╗\n")
+}
+
+fn build_closing_border() -> String {
+    let inner = "═".repeat(BOX_WIDTH - 2);
+    format!("╚{inner}╝")
+}
+
+fn build_body_output(content: &str) -> String {
     let body = trim_opt(extract_tag_content(content, "ralph-body"));
     if let Some(ref b) = body {
-        write_section_header(&mut output, "Body");
-        for line in b.lines() {
-            let trimmed = line.trim_end();
-            if trimmed.is_empty() {
-                output.push('\n');
-            } else {
-                writeln!(output, "  {trimmed}").unwrap();
-            }
-        }
+        let body_lines: String = b
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim_end();
+                if trimmed.is_empty() {
+                    "\n".to_string()
+                } else {
+                    format!("  {trimmed}\n")
+                }
+            })
+            .collect();
+        return format!(
+            "\n  Body\n  {}\n{}\n",
+            SEPARATOR_CHAR.to_string().repeat(45),
+            body_lines
+        );
     }
+    String::new()
+}
 
-    // Body — detailed variant (summary / details / footer)
+fn build_details_output(content: &str) -> String {
     let summary = trim_opt(extract_tag_content(content, "ralph-body-summary"));
     let details = trim_opt(extract_tag_content(content, "ralph-body-details"));
     let footer = trim_opt(extract_tag_content(content, "ralph-body-footer"));
 
+    let mut parts = Vec::new();
+
     if let Some(ref s) = summary {
-        write_section_header(&mut output, "Summary");
-        for line in s.lines() {
-            writeln!(output, "  {}", line.trim_end()).unwrap();
-        }
+        let summary_lines: String = s
+            .lines()
+            .map(|line| format!("  {}\n", line.trim_end()))
+            .collect();
+        parts.push(format!(
+            "\n  Summary\n  {}\n{}",
+            SEPARATOR_CHAR.to_string().repeat(45),
+            summary_lines
+        ));
     }
 
     if let Some(ref d) = details {
-        write_section_header(&mut output, "Details");
-        for line in d.lines() {
-            let trimmed = line.trim_end();
-            if trimmed.is_empty() {
-                output.push('\n');
-            } else {
-                writeln!(output, "  {trimmed}").unwrap();
-            }
-        }
+        let details_lines: String = d
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim_end();
+                if trimmed.is_empty() {
+                    "\n".to_string()
+                } else {
+                    format!("  {trimmed}\n")
+                }
+            })
+            .collect();
+        parts.push(format!(
+            "\n  Details\n  {}\n{}",
+            SEPARATOR_CHAR.to_string().repeat(45),
+            details_lines
+        ));
     }
 
     if let Some(ref f) = footer {
-        write_section_header(&mut output, "Footer");
-        for line in f.lines() {
-            writeln!(output, "  {}", line.trim_end()).unwrap();
-        }
+        let footer_lines: String = f
+            .lines()
+            .map(|line| format!("  {}\n", line.trim_end()))
+            .collect();
+        parts.push(format!(
+            "\n  Footer\n  {}\n{}",
+            SEPARATOR_CHAR.to_string().repeat(45),
+            footer_lines
+        ));
     }
 
-    // Staged files section
+    parts.join("")
+}
+
+fn build_files_output(content: &str) -> String {
     let files = extract_all_tag_content(content, "ralph-file");
-    if !files.is_empty() {
-        write_section_header(&mut output, &format!("Staged Files ({})", files.len()));
-        for file in &files {
-            writeln!(output, "  · {file}").unwrap();
-        }
+    if files.is_empty() {
+        return String::new();
     }
 
-    output.push('\n');
-    write_closing_border(&mut output);
-    output
+    let files_lines: String = files.iter().map(|file| format!("  · {file}\n")).collect();
+
+    format!(
+        "\n  Staged Files ({})\n  {}\n{}",
+        files.len(),
+        SEPARATOR_CHAR.to_string().repeat(45),
+        files_lines
+    )
 }
 
 #[cfg(test)]

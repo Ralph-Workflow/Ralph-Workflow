@@ -23,11 +23,14 @@ impl<T> ParsedEnv<T> {
     }
 
     pub fn with_warning(self, warning: impl Into<String>) -> Self {
-        let mut warnings = self.warnings;
-        warnings.push(warning.into());
+        let new_warnings = self
+            .warnings
+            .into_iter()
+            .chain(std::iter::once(warning.into()))
+            .collect();
         Self {
             value: self.value,
-            warnings,
+            warnings: new_warnings,
         }
     }
 }

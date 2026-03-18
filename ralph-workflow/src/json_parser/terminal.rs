@@ -77,10 +77,11 @@ impl TerminalMode {
                     "foot",
                 ];
 
-                for capable in &capable_terminals {
-                    if term_lower.starts_with(capable) {
-                        return Self::Full;
-                    }
+                if capable_terminals
+                    .iter()
+                    .any(|capable| term_lower.starts_with(capable))
+                {
+                    return Self::Full;
                 }
 
                 Self::Basic

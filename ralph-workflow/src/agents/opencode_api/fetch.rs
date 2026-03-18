@@ -23,24 +23,25 @@ pub fn fetch_api_catalog() -> Result<ApiCatalog, CacheError> {
             .build(),
     );
 
-    // Fetch the API catalog
-    let mut response = agent
+    // Fetch the API catalog and parse directly
+    let body = agent
         .get(API_URL)
         .call()
-        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?;
-
-    // Parse the JSON directly from response body
-    let mut catalog: ApiCatalog = response
+        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?
         .body_mut()
-        .read_json()
-        .map_err(|e| CacheError::FetchError(e.to_string()))?;
+        .read_to_string()
+        .map_err(|e: ureq::Error| CacheError::FetchError(e.to_string()))?;
+    let catalog: ApiCatalog = serde_json::from_str(&body)?;
 
-    // Set metadata
-    catalog.cached_at = Some(chrono::Utc::now());
-    catalog.ttl_seconds = std::env::var("RALPH_OPENCODE_CACHE_TTL_SECONDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(DEFAULT_CACHE_TTL_SECONDS);
+    // Set metadata using struct update syntax
+    let catalog = ApiCatalog {
+        cached_at: Some(chrono::Utc::now()),
+        ttl_seconds: std::env::var("RALPH_OPENCODE_CACHE_TTL_SECONDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_CACHE_TTL_SECONDS),
+        ..catalog
+    };
 
     // Save to cache
     if let Err(e) = save_catalog(&catalog) {

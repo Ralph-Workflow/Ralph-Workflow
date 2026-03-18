@@ -60,19 +60,17 @@ fn test_set_and_clear_interrupt_context() {
 
     set_interrupt_context(context);
     {
-        let ctx = INTERRUPT_CONTEXT.lock().unwrap();
+        let ctx = INTERRUPT_CONTEXT.get().unwrap();
         assert!(ctx.is_some());
         assert_eq!(
             ctx.as_ref().unwrap().phase,
             crate::checkpoint::PipelinePhase::Planning
         );
-        drop(ctx);
     }
 
     clear_interrupt_context();
-    let ctx = INTERRUPT_CONTEXT.lock().unwrap();
+    let ctx = INTERRUPT_CONTEXT.get().unwrap();
     assert!(ctx.is_none());
-    drop(ctx);
 }
 
 #[test]
@@ -148,8 +146,8 @@ fn test_interrupt_checkpoint_does_not_overwrite_existing_checkpoint_phase() {
     // Use the full from_params constructor to avoid builder preconditions.
     let run_context = crate::checkpoint::RunContext::new();
     let cli_args = crate::checkpoint::state::CliArgsSnapshotBuilder::new(
-        /* developer_iters */ 3, /* reviewer_reviews */ 1,
-        /* review_depth */ None, /* isolation_mode */ true,
+        /* developer_iters */ 3, /* reviewer_reviews */ 1, /* review_depth */ None,
+        /* isolation_mode */ true,
     )
     .build();
 

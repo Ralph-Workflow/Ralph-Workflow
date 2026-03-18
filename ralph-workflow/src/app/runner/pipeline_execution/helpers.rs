@@ -225,12 +225,14 @@ fn validate_prompt_and_setup_backup(ctx: &PipelineContext) -> anyhow::Result<()>
         ctx.config.behavior.strict_validation,
         ctx.args.interactive,
     );
-    for err in &prompt_validation.errors {
-        ctx.logger.error(err);
-    }
-    for warn in &prompt_validation.warnings {
-        ctx.logger.warn(warn);
-    }
+    prompt_validation
+        .errors
+        .iter()
+        .for_each(|err| ctx.logger.error(err));
+    prompt_validation
+        .warnings
+        .iter()
+        .for_each(|warn| ctx.logger.warn(warn));
     if !prompt_validation.is_valid() {
         anyhow::bail!("PROMPT.md validation errors");
     }
@@ -416,10 +418,10 @@ fn check_prompt_restoration(
     phase: &str,
 ) {
     if let Some(ref mut monitor) = prompt_monitor {
-        for warning in monitor.drain_warnings() {
+        monitor.drain_warnings().iter().for_each(|warning| {
             ctx.logger
                 .warn(&format!("PROMPT.md monitor warning: {warning}"));
-        }
+        });
         if monitor.check_and_restore() {
             ctx.logger.warn(&format!(
                 "PROMPT.md was deleted and restored during {phase} phase"

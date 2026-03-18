@@ -350,10 +350,12 @@ pub(super) fn reduce_commit_event(state: PipelineState, event: CommitEvent) -> P
             let at_failure_limit = new_retry_count >= MAX_CONSECUTIVE_PUSH_FAILURES;
 
             let (pending_push_commit, unpushed_commits, final_retry_count) = if at_failure_limit {
-                let mut commits = state.unpushed_commits.clone();
-                if let Some(commit) = state.pending_push_commit.clone() {
-                    commits.push(commit);
-                }
+                let commits: Vec<_> = state
+                    .unpushed_commits
+                    .iter()
+                    .chain(state.pending_push_commit.iter())
+                    .cloned()
+                    .collect();
                 (None, commits, 0)
             } else {
                 (

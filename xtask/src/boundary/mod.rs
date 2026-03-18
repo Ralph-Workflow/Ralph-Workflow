@@ -4,3 +4,4 @@
 pub mod compliance;
 pub mod dylint;
 pub mod lsp_diagnostics;
+pub mod dylint_report;

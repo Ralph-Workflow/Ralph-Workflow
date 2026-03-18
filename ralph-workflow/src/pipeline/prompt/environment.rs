@@ -30,9 +30,6 @@ pub fn sanitize_command_env(
     agent_env_vars: &std::collections::HashMap<String, String>,
     vars_to_sanitize: &[&str],
 ) {
-    for &var in vars_to_sanitize {
-        if !agent_env_vars.contains_key(var) {
-            env_vars.remove(var);
-        }
-    }
+    let agent_keys: std::collections::HashSet<_> = agent_env_vars.keys().collect();
+    env_vars.retain(|key, _| !vars_to_sanitize.contains(&key.as_str()) || agent_keys.contains(key));
 }

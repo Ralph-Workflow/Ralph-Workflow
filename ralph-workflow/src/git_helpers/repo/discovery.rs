@@ -133,9 +133,7 @@ pub fn quarantine_path_in_place(path: &Path, label: &str) -> io::Result<PathBuf>
         Ok(()) => Ok(tampered_path),
         Err(e) => {
             let is_empty_dir = fs::symlink_metadata(path).ok().is_some_and(|m| m.is_dir())
-                && fs::read_dir(path)
-                    .ok()
-                    .is_some_and(|mut it| it.next().is_none());
+                && fs::read_dir(path).ok().is_some_and(|it| it.count() == 0);
             if is_empty_dir {
                 fs::remove_dir(path)?;
                 Ok(path.to_path_buf())

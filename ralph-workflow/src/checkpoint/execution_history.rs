@@ -387,8 +387,7 @@ impl ExecutionHistory {
         }
 
         let keep_from = len.saturating_sub(limit);
-        let mut steps = VecDeque::with_capacity(limit);
-        steps.extend(self.steps.iter().skip(keep_from).cloned());
+        let steps: VecDeque<_> = self.steps.iter().skip(keep_from).cloned().collect();
         Self {
             steps,
             file_snapshots: self.file_snapshots.clone(),

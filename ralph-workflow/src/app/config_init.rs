@@ -166,9 +166,7 @@ pub fn initialize_config_with<L: CatalogLoader, P: ConfigEnvironment>(
         };
 
     // Display any deprecation warnings from config loading
-    for warning in warnings {
-        logger.warn(&warning);
-    }
+    warnings.iter().for_each(|warning| logger.warn(warning));
 
     let config_path = args
         .config

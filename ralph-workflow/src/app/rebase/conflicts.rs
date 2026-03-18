@@ -124,12 +124,12 @@ fn conflict_resolution_content_id(
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
 ) -> String {
     use crate::reducer::prompt_inputs::sha256_hex_str;
+    use std::collections::BTreeMap;
 
-    let mut keys: Vec<&String> = conflicts.keys().collect();
-    keys.sort();
+    let sorted_keys: BTreeMap<_, ()> = conflicts.keys().map(|k| (k, ())).collect();
 
-    let content_parts: Vec<String> = keys
-        .iter()
+    let content_parts: Vec<String> = sorted_keys
+        .keys()
         .filter_map(|k| {
             conflicts.get(*k).map(|c| {
                 format!(

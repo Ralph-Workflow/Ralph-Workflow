@@ -5,12 +5,18 @@ impl StreamingSession {
             .map(std::string::String::as_str)
     }
 
+    fn compute_hash<T: std::hash::Hash>(value: &T) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Return the set of accumulated keys for a given content type.
     ///
     /// This is used by non-TTY flush logic to render the final accumulated content
     /// once at a completion boundary (e.g., `message_stop`) without relying on
     /// arbitrary index bounds.
-    #[must_use] 
+    #[must_use]
     pub fn accumulated_keys(&self, content_type: ContentType) -> Vec<String> {
         let mut keys: Vec<String> = self
             .accumulated
@@ -63,16 +69,13 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - This exact content has been rendered before
     /// * `false` - This exact content has not been rendered
-    #[must_use] 
+    #[must_use]
     pub fn is_content_rendered(&self, content_type: ContentType, index: &str) -> bool {
         let content_key = (content_type, index.to_string());
 
         // Check if we have accumulated content for this key
         if let Some(current) = self.accumulated.get(&content_key) {
-            // Compute hash of current accumulated content
-            let mut hasher = DefaultHasher::new();
-            current.hash(&mut hasher);
-            let hash = hasher.finish();
+            let hash = Self::compute_hash(&current);
 
             // Check if this hash has been rendered before for this key
             return self
@@ -98,7 +101,7 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - Output has started for this key (do in-place update)
     /// * `false` - Output has not started for this key (show new content)
-    #[must_use] 
+    #[must_use]
     pub fn has_rendered_prefix(&self, content_type: ContentType, index: &str) -> bool {
         let content_key = (content_type, index.to_string());
         self.output_started_for_key.contains(&content_key)
@@ -119,9 +122,7 @@ impl StreamingSession {
         // Add the hash of the accumulated content to the rendered set
         let content_key = (content_type, index.to_string());
         if let Some(current) = self.accumulated.get(&content_key) {
-            let mut hasher = DefaultHasher::new();
-            current.hash(&mut hasher);
-            let hash = hasher.finish();
+            let hash = Self::compute_hash(&current);
             self.rendered_content_hashes
                 .insert((content_type, index.to_string(), hash));
         }
@@ -150,9 +151,7 @@ impl StreamingSession {
         //
         // NOTE: We key by (content_type, index) so `clear_key()` can fully reset
         // per-substream deduplication.
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = Self::compute_hash(&content);
         self.rendered_content_hashes
             .insert((content_type, index.to_string(), hash));
     }
@@ -170,17 +169,14 @@ impl StreamingSession {
     /// # Returns
     /// * `true` - This exact content has been rendered before
     /// * `false` - This exact content has not been rendered
-    #[must_use] 
+    #[must_use]
     pub fn is_content_hash_rendered(
         &self,
         content_type: ContentType,
         index: &str,
         content: &str,
     ) -> bool {
-        // Compute hash of exact content
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        let hash = hasher.finish();
+        let hash = Self::compute_hash(&content);
 
         // Check if this hash has been rendered before for this (content_type, index)
         self.rendered_content_hashes

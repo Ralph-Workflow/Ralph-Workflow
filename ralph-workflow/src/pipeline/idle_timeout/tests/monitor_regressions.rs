@@ -1,3 +1,4 @@
+use super::super::runtime::kill::kill_process;
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex};
@@ -539,7 +540,7 @@ fn kill_sends_signal_to_process_group_not_just_process() {
     let executor = crate::executor::MockProcessExecutor::new();
     let pid = 12345;
 
-    let _ = super::super::kill::kill_process(
+    let _ = kill_process(
         pid,
         &executor,
         Some(&child),

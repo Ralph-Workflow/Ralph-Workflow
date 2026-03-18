@@ -36,8 +36,6 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
         anyhow::anyhow!("Failed to load built-in default agents config (examples/agents.toml): {e}")
     })?;
 
-    let mut sources = Vec::new();
-
     // Agent configuration is loaded ONLY from:
     // 1. Built-in defaults (from AgentRegistry::new())
     // 2. Unified config file (~/.config/ralph-workflow.toml)
@@ -46,7 +44,7 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
     // Legacy agent config files (.agent/agents.toml, ~/.config/ralph/agents.toml)
     // are no longer supported. Use --init-global to create a unified config.
 
-    if let Some(unified_cfg) = unified {
+    let sources = if let Some(unified_cfg) = unified {
         let loaded = registry
             .apply_unified_config(unified_cfg)
             .map_err(|e| anyhow::anyhow!("Invalid unified agent configuration: {e}"))?;
@@ -55,12 +53,16 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
             || !unified_cfg.agent_chains.is_empty()
             || !unified_cfg.agent_drains.is_empty();
         if has_agent_chain_config {
-            sources.push(ConfigSource {
+            vec![ConfigSource {
                 path: config_path.to_path_buf(),
                 agents_loaded: loaded,
-            });
+            }]
+        } else {
+            vec![]
         }
-    }
+    } else {
+        vec![]
+    };
 
     // Load OpenCode API catalog if there are any opencode/* references
     setup_opencode_catalog(&mut registry, catalog_loader)?;

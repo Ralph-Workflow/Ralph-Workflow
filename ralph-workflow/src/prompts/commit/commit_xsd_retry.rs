@@ -38,52 +38,61 @@ pub fn prompt_commit_xsd_retry_with_log(
         };
 
     // Build diagnostic prefix for missing files
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("WARNING: Required XSD retry files are missing:\n");
-        if !schema_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
-                workspace.absolute_str(".agent/tmp/commit_message.xsd"),
-                workspace.root().display()
-            );
-        }
-        if !last_output_exists {
-            if used_processed {
-                let _ = writeln!(
-                    diagnostic_prefix,
-                    "  - Last output: Neither canonical nor processed file exists:\n\
-                     \t  Tried: {}\n\
-                     \t  Tried: {}\n\
-                     \t  (workspace.root() = {})",
-                    workspace.absolute_str(".agent/tmp/commit_message.xml"),
-                    workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
-                    workspace.root().display()
-                );
-            } else {
-                let processed_note = if processed_output_exists {
-                    " (note: .processed file exists but canonical file is missing)"
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let parts: Vec<String> =
+            std::iter::once("WARNING: Required XSD retry files are missing:\n".to_string())
+                .chain(
+                    if !schema_exists {
+                        Some(format!(
+                            "  - Schema file: {} (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/commit_message.xsd"),
+                            workspace.root().display()
+                        ))
+                    } else {
+                        None
+                    }
+                    .into_iter(),
+                )
+                .chain(if !last_output_exists {
+                    std::iter::once(if used_processed {
+                        format!(
+                            "  - Last output: Neither canonical nor processed file exists:\n\
+                        \t  Tried: {}\n\
+                        \t  Tried: {}\n\
+                        \t  (workspace.root() = {})\n",
+                            workspace.absolute_str(".agent/tmp/commit_message.xml"),
+                            workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
+                            workspace.root().display()
+                        )
+                    } else {
+                        let processed_note = if processed_output_exists {
+                            " (note: .processed file exists but canonical file is missing)"
+                        } else {
+                            ""
+                        };
+                        format!(
+                            "  - Last output: {}{}\n\
+                        \t  (workspace.root() = {})\n",
+                            workspace.absolute_str(
+                                canonical_output_path
+                                    .to_str()
+                                    .unwrap_or(".agent/tmp/commit_message.xml")
+                            ),
+                            processed_note,
+                            workspace.root().display()
+                        )
+                    })
                 } else {
-                    ""
-                };
-                let _ = writeln!(
-                    diagnostic_prefix,
-                    "  - Last output: {}{}\n\
-                     \t  (workspace.root() = {})",
-                    workspace.absolute_str(
-                        canonical_output_path
-                            .to_str()
-                            .unwrap_or(".agent/tmp/commit_message.xml")
-                    ),
-                    processed_note,
-                    workspace.root().display()
-                );
-            }
-        }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+                    std::iter::once(String::new())
+                })
+                .chain(std::iter::once(
+                    "This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string(),
+                ))
+                .collect();
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If both files are missing, return fallback with manual log
     if !schema_exists && !last_output_exists {
@@ -130,31 +139,33 @@ pub fn prompt_commit_xsd_retry_with_log(
     ]);
 
     let template = Template::new(&template_content);
-    if let Ok(mut rendered) = template.render_with_log(template_name, &variables, &partials) {
-        // Prepend diagnostic prefix if files were missing but we continued anyway
-        if !diagnostic_prefix.is_empty() {
-            rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
-        }
-        rendered
-    } else {
-        // Fallback with manual log
-        let prompt_content = format!(
-            "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
-             Read .agent/tmp/commit_message.xsd for the schema and .agent/tmp/commit_message.xml for your previous output.\n\
-             Rewrite .agent/tmp/commit_message.xml with valid XML.\n"
-        );
-        RenderedTemplate {
-            content: prompt_content,
-            log: SubstitutionLog {
-                template_name: template_name.to_string(),
-                substituted: vec![SubstitutionEntry {
-                    name: "XSD_ERROR".to_string(),
-                    source: SubstitutionSource::Value,
-                }],
-                unsubstituted: vec![],
-            },
-        }
-    }
+    template
+        .render_with_log(template_name, &variables, &partials)
+        .map(|mut rendered| {
+            if !diagnostic_prefix.is_empty() {
+                rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
+            }
+            rendered
+        })
+        .unwrap_or_else(|_| {
+            // Fallback with manual log
+            let prompt_content = format!(
+                "XSD VALIDATION FAILED - FIX XML ONLY\n\nError: {xsd_error}\n\n\
+                 Read .agent/tmp/commit_message.xsd for the schema and .agent/tmp/commit_message.xml for your previous output.\n\
+                 Rewrite .agent/tmp/commit_message.xml with valid XML.\n"
+            );
+            RenderedTemplate {
+                content: prompt_content,
+                log: SubstitutionLog {
+                    template_name: template_name.to_string(),
+                    substituted: vec![SubstitutionEntry {
+                        name: "XSD_ERROR".to_string(),
+                        source: SubstitutionSource::Value,
+                    }],
+                    unsubstituted: vec![],
+                },
+            }
+        })
 }
 
 /// Generate XSD validation retry prompt for commit message XML.
@@ -205,42 +216,35 @@ pub fn prompt_commit_xsd_retry_with_context(
         };
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("WARNING: Required XSD retry files are missing:\n");
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let mut parts = vec!["WARNING: Required XSD retry files are missing:\n".to_string()];
         if !schema_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
+            parts.push(format!(
+                "  - Schema file: {} (workspace.root() = {})\n",
                 workspace.absolute_str(".agent/tmp/commit_message.xsd"),
                 workspace.root().display()
-            );
+            ));
         }
         if !last_output_exists {
-            // Show both attempted paths for clarity
             if used_processed {
-                // We tried processed as fallback and it's also missing
-                let _ = writeln!(
-                    diagnostic_prefix,
+                parts.push(format!(
                     "  - Last output: Neither canonical nor processed file exists:\n\
                      \t  Tried: {}\n\
                      \t  Tried: {}\n\
-                     \t  (workspace.root() = {})",
+                     \t  (workspace.root() = {})\n",
                     workspace.absolute_str(".agent/tmp/commit_message.xml"),
                     workspace.absolute_str(".agent/tmp/commit_message.xml.processed"),
                     workspace.root().display()
-                );
+                ));
             } else {
-                // Canonical path doesn't exist
                 let processed_note = if processed_output_exists {
                     " (note: .processed file exists but canonical file is missing)"
                 } else {
                     ""
                 };
-                let _ = writeln!(
-                    diagnostic_prefix,
+                parts.push(format!(
                     "  - Last output: {}{}\n\
-                     \t  (workspace.root() = {})",
+                     \t  (workspace.root() = {})\n",
                     workspace.absolute_str(
                         canonical_output_path
                             .to_str()
@@ -248,12 +252,14 @@ pub fn prompt_commit_xsd_retry_with_context(
                     ),
                     processed_note,
                     workspace.root().display()
-                );
+                ));
             }
         }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If both files are missing, return fallback prompt with diagnostics (per AC #5)
     if !schema_exists && !last_output_exists {

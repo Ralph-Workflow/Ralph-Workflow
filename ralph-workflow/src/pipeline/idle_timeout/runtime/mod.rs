@@ -1,5 +1,6 @@
 //! Runtime module for idle timeout - contains OS-boundary code.
 
+pub mod file_activity;
 pub mod kill;
 pub mod monitor;
-pub mod readers;
+mod readers;

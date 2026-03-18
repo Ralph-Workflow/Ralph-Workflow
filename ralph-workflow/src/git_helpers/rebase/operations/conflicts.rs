@@ -25,7 +25,7 @@ fn get_conflicted_files_impl(repo: &git2::Repository) -> io::Result<Vec<String>>
     // Get the list of conflicted files
     let conflicts = index.conflicts().map_err(|e| git2_to_io_error(&e))?;
 
-    conflicts
+    Ok(conflicts
         .filter_map(|conflict| {
             conflict.ok().and_then(|c| c.our).and_then(|our_entry| {
                 std::str::from_utf8(&our_entry.path)
@@ -35,7 +35,7 @@ fn get_conflicted_files_impl(repo: &git2::Repository) -> io::Result<Vec<String>>
         })
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>())
 }
 
 /// Extract conflict markers from a file.
@@ -69,10 +69,10 @@ pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
         .enumerate()
         .scan(
             (ParseState::Normal, Vec::new()),
-            |(state, section), (i, line)| {
+            |(state, section), (_i, line)| {
                 let trimmed = line.trim_start();
                 match (
-                    state,
+                    *state,
                     trimmed.starts_with("<<<<<<<"),
                     trimmed.starts_with("======="),
                     trimmed.starts_with(">>>>>>>"),
@@ -81,17 +81,17 @@ pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
                         *state = ParseState::InConflict;
                         section.clear();
                         section.push(*line);
-                        Some(Some(i))
+                        None
                     }
                     (ParseState::InConflict, _, true, _) => {
                         *state = ParseState::InOurs;
                         section.push(*line);
-                        Some(Some(i))
+                        None
                     }
                     (ParseState::InOurs, _, _, true) => {
                         *state = ParseState::InTheirs;
                         section.push(*line);
-                        Some(Some(i))
+                        None
                     }
                     (ParseState::InTheirs, _, _, true) => {
                         *state = ParseState::Normal;
@@ -107,13 +107,13 @@ pub fn get_conflict_markers_for_file(path: &Path) -> io::Result<String> {
                         _,
                     ) => {
                         section.push(*line);
-                        Some(None)
+                        None
                     }
-                    _ => Some(None),
+                    _ => None,
                 }
             },
         )
-        .flatten()
+        .filter_map(|x| Some(x))
         .collect::<Vec<_>>();
 
     if conflict_sections.is_empty() {

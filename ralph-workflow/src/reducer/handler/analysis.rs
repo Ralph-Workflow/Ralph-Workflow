@@ -80,7 +80,7 @@ impl MainEffectHandler {
         };
 
         // Generate analysis prompt
-        let mut prompt = crate::prompts::analysis::generate_analysis_prompt(
+        let prompt = crate::prompts::analysis::generate_analysis_prompt(
             &plan_content,
             &diff_content,
             self.state.continuation.is_continuation(),
@@ -89,27 +89,31 @@ impl MainEffectHandler {
 
         // XSD retry context: if the last analysis XML was invalid, instruct the agent to
         // read the schema error and previous invalid output from workspace files.
-        if self.state.continuation.xsd_retry_pending {
+        let prompt = if self.state.continuation.xsd_retry_pending {
             let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
             let last_output_path = ".agent/tmp/development_result.xml";
-            prompt = format!(
+            format!(
                 "## XSD Retry Note\n\n\
 Your previous XML output failed XSD validation.\n\
 - Read the validation error: {xsd_error_path}\n\
 - Read your previous invalid output: {last_output_path}\n\
 Then produce a corrected development_result.xml that conforms to the schema.\n\n\
 {prompt}"
-            );
-        }
+            )
+        } else {
+            prompt
+        };
 
         // Same-agent retry context: include retry guidance for analysis retries too.
         // This is especially critical for TimeoutWithContext retries without session support,
         // where the preamble points the agent to the persisted timeout context file.
-        if self.state.continuation.same_agent_retry_pending {
+        let prompt = if self.state.continuation.same_agent_retry_pending {
             let retry_preamble =
                 super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
-            prompt = format!("{retry_preamble}\n{prompt}");
-        }
+            format!("{retry_preamble}\n{prompt}")
+        } else {
+            prompt
+        };
 
         // Normalize agent chain state before invocation for determinism
         self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
@@ -123,7 +127,7 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
         // Invoke agent with analysis role
-        let mut result = self.invoke_agent(
+        let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Analysis,
             AgentRole::Analysis,
@@ -133,16 +137,18 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         )?;
 
         // Emit AnalysisAgentInvoked event if agent invocation succeeded
-        if result.additional_events.iter().any(|e| {
+        let result = if result.additional_events.iter().any(|e| {
             matches!(
                 e,
                 PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
             )
         }) {
-            result = result.with_additional_event(PipelineEvent::Development(
+            result.with_additional_event(PipelineEvent::Development(
                 DevelopmentEvent::AnalysisAgentInvoked { iteration },
-            ));
-        }
+            ))
+        } else {
+            result
+        };
 
         Ok(result)
     }
@@ -202,7 +208,7 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         };
 
         // Generate fix analysis prompt
-        let mut prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
+        let prompt = crate::prompts::analysis::generate_fix_analysis_prompt(
             &issues_content,
             &diff_content,
             &fix_result_content,
@@ -212,25 +218,29 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
 
         // XSD retry context: if the last analysis XML was invalid, instruct the agent to
         // read the schema error and previous invalid output from workspace files.
-        if self.state.continuation.xsd_retry_pending {
+        let prompt = if self.state.continuation.xsd_retry_pending {
             let xsd_error_path = ".agent/tmp/development_xsd_error.txt";
             let last_output_path = ".agent/tmp/development_result.xml";
-            prompt = format!(
+            format!(
                 "## XSD Retry Note\n\n\
 Your previous XML output failed XSD validation.\
 - Read the validation error: {xsd_error_path}\n\
 - Read your previous invalid output: {last_output_path}\n\
 Then produce a corrected development_result.xml that conforms to the schema.\n\n\
 {prompt}"
-            );
-        }
+            )
+        } else {
+            prompt
+        };
 
         // Same-agent retry context
-        if self.state.continuation.same_agent_retry_pending {
+        let prompt = if self.state.continuation.same_agent_retry_pending {
             let retry_preamble =
                 super::retry_guidance::same_agent_retry_preamble(&self.state.continuation);
-            prompt = format!("{retry_preamble}\n{prompt}");
-        }
+            format!("{retry_preamble}\n{prompt}")
+        } else {
+            prompt
+        };
 
         // Normalize agent chain state before invocation for determinism
         self.normalize_agent_chain_for_invocation(ctx, crate::agents::AgentDrain::Analysis);
@@ -244,7 +254,7 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
         // Invoke agent with analysis role
-        let mut result = self.invoke_agent(
+        let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Analysis,
             AgentRole::Analysis,
@@ -254,16 +264,18 @@ Then produce a corrected development_result.xml that conforms to the schema.\n\n
         )?;
 
         // Emit FixAnalysisAgentInvoked event if agent invocation succeeded
-        if result.additional_events.iter().any(|e| {
+        let result = if result.additional_events.iter().any(|e| {
             matches!(
                 e,
                 PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
             )
         }) {
-            result = result.with_additional_event(PipelineEvent::Review(
+            result.with_additional_event(PipelineEvent::Review(
                 ReviewEvent::FixAnalysisAgentInvoked { pass },
-            ));
-        }
+            ))
+        } else {
+            result
+        };
 
         Ok(result)
     }

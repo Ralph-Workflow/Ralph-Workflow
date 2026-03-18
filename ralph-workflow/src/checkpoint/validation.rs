@@ -87,33 +87,23 @@ pub fn validate_checkpoint(
     registry: &AgentRegistry,
     workspace: &dyn Workspace,
 ) -> ValidationResult {
-    let mut result = ValidationResult::ok();
-
-    // Validate working directory
-    result = result.merge(validate_working_directory(checkpoint, workspace));
-
-    // Validate PROMPT.md checksum
-    result = result.merge(validate_prompt_md(checkpoint, workspace));
-
-    // Validate agent configurations
-    result = result.merge(validate_agent_config(
-        &checkpoint.developer_agent_config,
-        &checkpoint.developer_agent,
-        registry,
-    ));
-    result = result.merge(validate_agent_config(
-        &checkpoint.reviewer_agent_config,
-        &checkpoint.reviewer_agent,
-        registry,
-    ));
-
-    // Check for iteration count mismatches (warning only)
-    result = result.merge(validate_iteration_counts(checkpoint, current_config));
-
-    // Note: File system state validation is NOT included here because it requires
-    // recovery strategy handling. It's called separately in the resume flow.
-
-    result
+    [
+        validate_working_directory(checkpoint, workspace),
+        validate_prompt_md(checkpoint, workspace),
+        validate_agent_config(
+            &checkpoint.developer_agent_config,
+            &checkpoint.developer_agent,
+            registry,
+        ),
+        validate_agent_config(
+            &checkpoint.reviewer_agent_config,
+            &checkpoint.reviewer_agent,
+            registry,
+        ),
+        validate_iteration_counts(checkpoint, current_config),
+    ]
+    .into_iter()
+    .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
 }
 
 /// Validate that the working directory matches the checkpoint.
@@ -197,33 +187,39 @@ pub fn validate_agent_config(
         ));
     };
 
-    let mut result = ValidationResult::ok();
+    let config_warnings: Vec<ValidationResult> = [
+        if current_config.cmd != saved_config.cmd {
+            Some(ValidationResult::ok().with_warning(format!(
+                "Agent '{}' command changed: '{}' -> '{}'",
+                agent_name, saved_config.cmd, current_config.cmd
+            )))
+        } else {
+            None
+        },
+        if current_config.output_flag != saved_config.output_flag {
+            Some(ValidationResult::ok().with_warning(format!(
+                "Agent '{}' output flag changed: '{}' -> '{}'",
+                agent_name, saved_config.output_flag, current_config.output_flag
+            )))
+        } else {
+            None
+        },
+        if current_config.can_commit != saved_config.can_commit {
+            Some(ValidationResult::ok().with_warning(format!(
+                "Agent '{}' can_commit flag changed: {} -> {}",
+                agent_name, saved_config.can_commit, current_config.can_commit
+            )))
+        } else {
+            None
+        },
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
-    // Check command
-    if current_config.cmd != saved_config.cmd {
-        result = result.with_warning(format!(
-            "Agent '{}' command changed: '{}' -> '{}'",
-            agent_name, saved_config.cmd, current_config.cmd
-        ));
-    }
-
-    // Check output flag
-    if current_config.output_flag != saved_config.output_flag {
-        result = result.with_warning(format!(
-            "Agent '{}' output flag changed: '{}' -> '{}'",
-            agent_name, saved_config.output_flag, current_config.output_flag
-        ));
-    }
-
-    // Check can_commit flag
-    if current_config.can_commit != saved_config.can_commit {
-        result = result.with_warning(format!(
-            "Agent '{}' can_commit flag changed: {} -> {}",
-            agent_name, saved_config.can_commit, current_config.can_commit
-        ));
-    }
-
-    result
+    config_warnings
+        .into_iter()
+        .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
 }
 
 /// Validate iteration counts between checkpoint and current config.
@@ -235,27 +231,30 @@ pub fn validate_iteration_counts(
     checkpoint: &PipelineCheckpoint,
     current_config: &Config,
 ) -> ValidationResult {
-    let mut result = ValidationResult::ok();
-
-    // Check developer iterations
     let saved_dev_iters = checkpoint.cli_args.developer_iters;
-    if saved_dev_iters > 0 && saved_dev_iters != current_config.developer_iters {
-        result = result.with_warning(format!(
-            "Developer iterations changed: {} (checkpoint) vs {} (current config). Using checkpoint value.",
-            saved_dev_iters, current_config.developer_iters
-        ));
-    }
-
-    // Check reviewer reviews
     let saved_rev_reviews = checkpoint.cli_args.reviewer_reviews;
-    if saved_rev_reviews > 0 && saved_rev_reviews != current_config.reviewer_reviews {
-        result = result.with_warning(format!(
-            "Reviewer reviews changed: {} (checkpoint) vs {} (current config). Using checkpoint value.",
-            saved_rev_reviews, current_config.reviewer_reviews
-        ));
-    }
 
-    result
+    let iteration_warnings: Vec<ValidationResult> = [
+        if saved_dev_iters > 0 && saved_dev_iters != current_config.developer_iters {
+            Some(ValidationResult::ok().with_warning(format!(
+                "Developer iterations changed: {} (checkpoint) vs {} (current config). Using checkpoint value.",
+                saved_dev_iters, current_config.developer_iters
+            )))
+        } else { None },
+        if saved_rev_reviews > 0 && saved_rev_reviews != current_config.reviewer_reviews {
+            Some(ValidationResult::ok().with_warning(format!(
+                "Reviewer reviews changed: {} (checkpoint) vs {} (current config). Using checkpoint value.",
+                saved_rev_reviews, current_config.reviewer_reviews
+            )))
+        } else { None },
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    iteration_warnings
+        .into_iter()
+        .fold(ValidationResult::ok(), |acc, v| acc.merge(v))
 }
 
 #[cfg(test)]

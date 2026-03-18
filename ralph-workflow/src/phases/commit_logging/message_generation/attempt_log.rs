@@ -30,7 +30,7 @@ pub struct CommitAttemptLog {
 
 impl CommitAttemptLog {
     /// Create a new attempt log.
-    #[must_use] 
+    #[must_use]
     pub fn new(attempt_number: usize, agent: &str, strategy: &str) -> Self {
         Self {
             attempt_number,
@@ -235,15 +235,27 @@ impl CommitAttemptLog {
         if self.extraction_attempts.is_empty() {
             let _ = writeln!(s, "[No extraction attempts recorded]");
         } else {
-            for (i, attempt) in self.extraction_attempts.iter().enumerate() {
-                let status = if attempt.success {
-                    "✓ SUCCESS"
-                } else {
-                    "✗ FAILED"
-                };
-                let _ = writeln!(s, "{}. {} [{}]", i + 1, attempt.method, status);
-                let _ = writeln!(s, "   Detail: {}", attempt.detail);
-                let _ = writeln!(s);
+            let attempt_lines: Vec<String> = self
+                .extraction_attempts
+                .iter()
+                .enumerate()
+                .map(|(i, attempt)| {
+                    let status = if attempt.success {
+                        "✓ SUCCESS"
+                    } else {
+                        "✗ FAILED"
+                    };
+                    format!(
+                        "{}. {} [{}]\n   Detail: {}\n",
+                        i + 1,
+                        attempt.method,
+                        status,
+                        attempt.detail
+                    )
+                })
+                .collect();
+            for line in attempt_lines {
+                let _ = writeln!(s, "{}", line);
             }
         }
         let _ = writeln!(s);
@@ -265,14 +277,20 @@ impl CommitAttemptLog {
         if self.validation_checks.is_empty() {
             let _ = writeln!(s, "[No validation checks recorded]");
         } else {
-            for check in &self.validation_checks {
-                let status = if check.passed { "✓ PASS" } else { "✗ FAIL" };
-                let _ = write!(s, "  [{status}] {}", check.name);
-                if let Some(error) = &check.error {
-                    let _ = writeln!(s, ": {error}");
-                } else {
-                    let _ = writeln!(s);
-                }
+            let validation_lines: Vec<String> = self
+                .validation_checks
+                .iter()
+                .map(|check| {
+                    let status = if check.passed { "✓ PASS" } else { "✗ FAIL" };
+                    if let Some(error) = &check.error {
+                        format!("  [{status}] {}: {error}", check.name)
+                    } else {
+                        format!("  [{status}] {}", check.name)
+                    }
+                })
+                .collect();
+            for line in validation_lines {
+                let _ = writeln!(s, "{}", line);
             }
         }
         let _ = writeln!(s);

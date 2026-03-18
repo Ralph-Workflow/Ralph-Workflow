@@ -8,7 +8,6 @@ use crate::prompts::template_engine::Template;
 use crate::prompts::{RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource};
 use crate::workspace::Workspace;
 use std::collections::HashMap;
-use std::fmt::Write;
 
 const COMMIT_MESSAGE_XSD_SCHEMA: &str =
     include_str!("../files/llm_output_extraction/commit_message.xsd");

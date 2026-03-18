@@ -1,11 +1,5 @@
 use crate::cli::PauseOnExitMode;
-use std::io::Write;
-
-pub trait TerminalOutput: Write + Send {}
-impl<W: Write + Send> TerminalOutput for W {}
-
-pub trait TerminalInput: std::io::Read + Send {}
-impl<R: std::io::Read + Send> TerminalInput for R {}
+use crate::io::terminal::{TerminalInput, TerminalOutput};
 
 pub trait EnvironmentReader: Send {
     fn var_os(&self, key: &str) -> Option<std::ffi::OsString>;
@@ -74,17 +68,14 @@ pub fn detect_launch_context_with(
 }
 
 pub fn pause_for_enter() -> std::io::Result<()> {
-    pause_for_enter_with(std::io::stdin(), std::io::stderr())
+    crate::io::terminal::pause_for_enter_with(std::io::stdin(), std::io::stderr())
 }
 
 pub fn pause_for_enter_with(
-    mut input: impl TerminalInput,
-    mut output: impl TerminalOutput,
+    input: impl TerminalInput,
+    output: impl TerminalOutput,
 ) -> std::io::Result<()> {
-    output.write_all(b"\nPress Enter to close... ")?;
-    let mut buf = String::new();
-    input.read_to_string(&mut buf)?;
-    Ok(())
+    crate::io::terminal::pause_for_enter_with(input, output)
 }
 
 fn is_probably_standalone_windows_launch(launch_context: &LaunchContext) -> bool {

@@ -331,29 +331,29 @@ impl PipelineCheckpoint {
                 "Awaiting development agent to fix pipeline failure".to_string()
             }
             PipelinePhase::Interrupted => {
-                // Provide more detailed information for interrupted state
-                let mut parts = vec!["Interrupted".to_string()];
-
-                // Add context about what phase was interrupted
-                if self.iteration > 0 && self.iteration < self.total_iterations {
-                    parts.push(format!(
+                let context = if self.iteration > 0 && self.iteration < self.total_iterations {
+                    Some(format!(
                         "during development (iteration {}/{})",
                         self.iteration, self.total_iterations
-                    ));
+                    ))
                 } else if self.iteration >= self.total_iterations {
                     if self.reviewer_pass > 0 {
-                        parts.push(format!(
+                        Some(format!(
                             "during review (pass {}/{})",
                             self.reviewer_pass, self.total_reviewer_passes
-                        ));
+                        ))
                     } else {
-                        parts.push("after development phase".to_string());
+                        Some("after development phase".to_string())
                     }
                 } else {
-                    parts.push("during pipeline initialization".to_string());
-                }
+                    Some("during pipeline initialization".to_string())
+                };
 
-                parts.join(" ")
+                ["Interrupted".to_string()]
+                    .into_iter()
+                    .chain(context)
+                    .collect::<Vec<_>>()
+                    .join(" ")
             }
         }
     }

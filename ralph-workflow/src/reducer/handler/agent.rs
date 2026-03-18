@@ -312,17 +312,20 @@ impl MainEffectHandler {
         };
 
         // Build result with started event first, then the execution result(s).
-        let mut result =
-            EffectResult::with_ui(started_event, vec![ui_event]).with_additional_event(event);
+        let events: Vec<_> = std::iter::once(event)
+            .chain(session_id.into_iter().flat_map(|sid| {
+                std::iter::once(PipelineEvent::agent_session_established(
+                    role,
+                    effective_agent.clone(),
+                    sid,
+                ))
+            }))
+            .collect();
 
-        // If session_id was extracted, emit SessionEstablished as a separate event.
-        if let Some(sid) = session_id {
-            result = result.with_additional_event(PipelineEvent::agent_session_established(
-                role,
-                effective_agent.clone(),
-                sid,
-            ));
-        }
+        let result = events.into_iter().fold(
+            EffectResult::with_ui(started_event, vec![ui_event]),
+            |r, ev| r.with_additional_event(ev),
+        );
 
         Ok(result)
     }

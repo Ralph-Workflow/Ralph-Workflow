@@ -61,7 +61,7 @@ pub fn handle_diagnose<W: Write>(
     );
 
     write_system_info(&mut writer, colors);
-    write_git_info(&mut writer, colors, executor);
+    write_git_info(&mut writer, colors, &collect_git_info(executor));
     write_config_info(
         &mut writer,
         colors,
@@ -128,29 +128,82 @@ fn write_system_info<W: Write>(writer: &mut W, colors: Colors) {
     let _ = writeln!(writer);
 }
 
-/// Write git information section.
-fn write_git_info<W: Write>(writer: &mut W, colors: Colors, executor: &dyn ProcessExecutor) {
-    let _ = writeln!(writer, "{}Git:{}", colors.bold(), colors.reset());
-    if let Ok(output) = executor.execute("git", &["--version"], &[], None) {
-        let _ = writeln!(writer, "  Version: {}", output.stdout.trim());
-    }
+/// Git diagnostic information collected from the system.
+pub struct GitDiagnostics {
+    pub version: Option<String>,
+    pub is_repo: bool,
+    pub branch: Option<String>,
+    pub uncommitted_changes: Option<usize>,
+}
+
+/// Collect git diagnostic information.
+fn collect_git_info(executor: &dyn ProcessExecutor) -> GitDiagnostics {
+    let version = executor
+        .execute("git", &["--version"], &[], None)
+        .ok()
+        .map(|o| o.stdout.trim().to_string());
+
     let is_repo = executor
         .execute("git", &["rev-parse", "--git-dir"], &[], None)
         .map(|o| o.status.success())
         .unwrap_or(false);
-    let _ = write!(
-        writer,
-        "  In git repo: {}\\n",
-        if is_repo { "yes" } else { "no" }
-    );
-    if is_repo {
-        if let Ok(output) = executor.execute("git", &["branch", "--show-current"], &[], None) {
-            let _ = writeln!(writer, "  Current branch: {}", output.stdout.trim());
-        }
-        if let Ok(output) = executor.execute("git", &["status", "--porcelain"], &[], None) {
-            let changes = output.stdout.lines().count();
-            let _ = writeln!(writer, "  Uncommitted changes: {changes}");
-        }
+
+    let branch = if is_repo {
+        executor
+            .execute("git", &["branch", "--show-current"], &[], None)
+            .ok()
+            .map(|o| o.stdout.trim().to_string())
+    } else {
+        None
+    };
+
+    let uncommitted_changes = if is_repo {
+        executor
+            .execute("git", &["status", "--porcelain"], &[], None)
+            .ok()
+            .map(|o| o.stdout.lines().count())
+    } else {
+        None
+    };
+
+    GitDiagnostics {
+        version,
+        is_repo,
+        branch,
+        uncommitted_changes,
+    }
+}
+
+/// Format git diagnostic information as lines.
+fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if let Some(version) = &diagnostics.version {
+        lines.push(format!("  Version: {version}"));
+    }
+
+    lines.push(format!(
+        "  In git repo: {}",
+        if diagnostics.is_repo { "yes" } else { "no" }
+    ));
+
+    if let Some(branch) = &diagnostics.branch {
+        lines.push(format!("  Current branch: {branch}"));
+    }
+
+    if let Some(changes) = diagnostics.uncommitted_changes {
+        lines.push(format!("  Uncommitted changes: {changes}"));
+    }
+
+    lines
+}
+
+/// Write git information section.
+fn write_git_info<W: Write>(writer: &mut W, colors: Colors, diagnostics: &GitDiagnostics) {
+    let _ = writeln!(writer, "{}Git:{}", colors.bold(), colors.reset());
+    let lines = format_git_info_lines(diagnostics);
+    for line in lines {
+        let _ = writeln!(writer, "{line}");
     }
     let _ = writeln!(writer);
 }

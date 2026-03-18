@@ -106,152 +106,194 @@ pub fn load_config_from_path(
 /// Returns `Err(ConfigLoadWithValidationError)` if any config file has validation errors
 /// (invalid TOML, type mismatches, unknown keys). Per requirements, Ralph refuses to start
 /// if ANY config file has errors.
+struct GlobalLoadResult {
+    unified: Option<UnifiedConfig>,
+    content: Option<String>,
+    warnings: Vec<String>,
+    validation_errors: Vec<ConfigValidationError>,
+}
+
+fn load_global_config(
+    config_path: Option<&std::path::Path>,
+    env: &dyn ConfigEnvironment,
+) -> GlobalLoadResult {
+    let global_config_path = config_path
+        .map(std::path::Path::to_path_buf)
+        .or_else(|| env.unified_config_path());
+
+    if let Some(path) = global_config_path.as_ref() {
+        if env.file_exists(path) {
+            let content = match env.read_file(path) {
+                Ok(c) => c,
+                Err(e) => {
+                    return GlobalLoadResult {
+                        unified: None,
+                        content: None,
+                        warnings: Vec::new(),
+                        validation_errors: vec![ConfigValidationError::InvalidValue {
+                            file: path.clone(),
+                            key: "config".to_string(),
+                            message: format!("Failed to read config file: {e}"),
+                        }],
+                    };
+                }
+            };
+
+            let (warnings, validation_errors) = match validate_config_file(path, &content) {
+                Ok(config_warnings) => (config_warnings, Vec::new()),
+                Err(errors) => (Vec::new(), errors),
+            };
+
+            let (unified, more_errors) = match UnifiedConfig::load_from_content(&content) {
+                Ok(cfg) => (Some(cfg), Vec::new()),
+                Err(e) => (
+                    None,
+                    vec![ConfigValidationError::InvalidValue {
+                        file: path.clone(),
+                        key: "config".to_string(),
+                        message: format!("Failed to parse config: {e}"),
+                    }],
+                ),
+            };
+
+            return GlobalLoadResult {
+                unified,
+                content: Some(content),
+                warnings,
+                validation_errors: [validation_errors, more_errors].concat(),
+            };
+        } else if config_path.is_some() {
+            return GlobalLoadResult {
+                unified: None,
+                content: None,
+                warnings: vec![format!("Global config file not found: {}", path.display())],
+                validation_errors: Vec::new(),
+            };
+        }
+    }
+
+    GlobalLoadResult::default()
+}
+
+impl Default for GlobalLoadResult {
+    fn default() -> Self {
+        Self {
+            unified: None,
+            content: None,
+            warnings: Vec::new(),
+            validation_errors: Vec::new(),
+        }
+    }
+}
+
+struct LocalLoadResult {
+    unified: Option<UnifiedConfig>,
+    content: Option<String>,
+    warnings: Vec<String>,
+    validation_errors: Vec<ConfigValidationError>,
+}
+
+impl Default for LocalLoadResult {
+    fn default() -> Self {
+        Self {
+            unified: None,
+            content: None,
+            warnings: Vec::new(),
+            validation_errors: Vec::new(),
+        }
+    }
+}
+
+fn load_local_config(env: &dyn ConfigEnvironment) -> LocalLoadResult {
+    if let Some(local_path) = env.local_config_path() {
+        if env.file_exists(&local_path) {
+            let content = match env.read_file(&local_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    return LocalLoadResult {
+                        unified: None,
+                        content: None,
+                        warnings: Vec::new(),
+                        validation_errors: vec![ConfigValidationError::InvalidValue {
+                            file: local_path,
+                            key: "config".to_string(),
+                            message: format!("Failed to read config file: {e}"),
+                        }],
+                    };
+                }
+            };
+
+            let (warnings, validation_errors) = match validate_config_file(&local_path, &content) {
+                Ok(config_warnings) => (config_warnings, Vec::new()),
+                Err(errors) => (Vec::new(), errors),
+            };
+
+            let (unified, more_errors) = match UnifiedConfig::load_from_content(&content) {
+                Ok(cfg) => (Some(cfg), Vec::new()),
+                Err(e) => (
+                    None,
+                    vec![ConfigValidationError::InvalidValue {
+                        file: local_path,
+                        key: "config".to_string(),
+                        message: format!("Failed to parse config: {e}"),
+                    }],
+                ),
+            };
+
+            return LocalLoadResult {
+                unified,
+                content: Some(content),
+                warnings,
+                validation_errors: [validation_errors, more_errors].concat(),
+            };
+        }
+    }
+
+    LocalLoadResult::default()
+}
+
 pub fn load_config_from_path_with_env(
     config_path: Option<&std::path::Path>,
     env: &dyn ConfigEnvironment,
 ) -> Result<(super::types::Config, Option<UnifiedConfig>, Vec<String>), ConfigLoadWithValidationError>
 {
-    let mut warnings = Vec::new();
-    let mut validation_errors = Vec::new();
+    // Step 1: Load global config
+    let global = load_global_config(config_path, env);
 
-    // Step 1: Load and validate global config
-    let global_config_path = config_path
-        .map(std::path::Path::to_path_buf)
-        .or_else(|| env.unified_config_path());
-    let mut global_content: Option<String> = None;
-
-    let global_unified = if let Some(path) = global_config_path.as_ref() {
-        if env.file_exists(path) {
-            let content = env.read_file(path)?;
-            // Validate the config file
-            match validate_config_file(path, &content) {
-                Ok(config_warnings) => {
-                    warnings.extend(config_warnings);
-                }
-                Err(errors) => {
-                    validation_errors.extend(errors);
-                }
-            }
-            match UnifiedConfig::load_from_content(&content) {
-                Ok(cfg) => {
-                    global_content = Some(content);
-                    Some(cfg)
-                }
-                Err(e) => {
-                    validation_errors.push(ConfigValidationError::InvalidValue {
-                        file: path.clone(),
-                        key: "config".to_string(),
-                        message: format!("Failed to parse config: {e}"),
-                    });
-                    None
-                }
-            }
-        } else {
-            if config_path.is_some() {
-                warnings.push(format!("Global config file not found: {}", path.display()));
-            }
-            None
-        }
+    // Step 2: Load local config (only when no explicit --config path).
+    let local = if config_path.is_none() {
+        load_local_config(env)
     } else {
-        None
+        LocalLoadResult::default()
     };
 
-    // Step 2: Load and validate local config (only when no explicit --config path).
-    let (local_unified, local_content) = if config_path.is_none() {
-        if let Some(local_path) = env.local_config_path() {
-            if env.file_exists(&local_path) {
-                let content = env.read_file(&local_path)?;
-                // Validate the config file
-                match validate_config_file(&local_path, &content) {
-                    Ok(config_warnings) => {
-                        warnings.extend(config_warnings);
-                    }
-                    Err(errors) => {
-                        validation_errors.extend(errors);
-                    }
-                }
-                match UnifiedConfig::load_from_content(&content) {
-                    Ok(cfg) => (Some(cfg), Some(content)),
-                    Err(e) => {
-                        validation_errors.push(ConfigValidationError::InvalidValue {
-                            file: local_path,
-                            key: "config".to_string(),
-                            message: format!("Failed to parse config: {e}"),
-                        });
-                        (None, None)
-                    }
-                }
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
+    // Combine warnings and validation errors
+    let initial_warnings: Vec<String> = global.warnings.into_iter().chain(local.warnings).collect();
+    let all_validation_errors = [global.validation_errors, local.validation_errors].concat();
 
     // Fail-fast: if there are any validation errors, return them immediately
-    if !validation_errors.is_empty() {
+    if !all_validation_errors.is_empty() {
         return Err(ConfigLoadWithValidationError::ValidationErrors(
-            validation_errors,
+            all_validation_errors,
         ));
     }
 
     // Step 3: Merge configs (local overrides global)
-    let merged_unified = match (global_unified, local_unified, local_content) {
-        (Some(global), Some(local), Some(content)) => {
-            // Both exist: first normalize global agent_chain against built-in defaults
-            // using raw global TOML key presence, then merge local with raw local presence.
-            let normalized_global = global_content.as_ref().map_or_else(
-                || global.clone(),
-                |raw_global_content| {
-                    merge_global_with_built_in_agent_chain_defaults(&global, raw_global_content)
-                },
-            );
-
-            // Pass raw local TOML content for local presence tracking
-            Some(normalized_global.merge_with_content(&content, &local))
+    let merged_unified = match (global.unified, global.content, local.unified, local.content) {
+        (Some(global_cfg), Some(global_raw_content), Some(local_cfg), Some(local_content)) => {
+            let normalized_global =
+                merge_global_with_built_in_agent_chain_defaults(&global_cfg, &global_raw_content);
+            Some(normalized_global.merge_with_content(&local_content, &local_cfg))
         }
-        (Some(_global), Some(_local), None) => {
-            // SAFETY: This case is impossible in production. If local_unified is Some,
-            // then local_content must also be Some (they're set together at line 281).
-            // If we reach here, there's a bug in the config loading logic.
-            unreachable!(
-                "BUG: local_unified is Some but local_content is None. \
-                 This indicates a logic error in config loading - they should always be set together."
-            )
+        (Some(global_cfg), Some(global_raw_content), None, _) => Some(
+            merge_global_with_built_in_agent_chain_defaults(&global_cfg, &global_raw_content),
+        ),
+        (Some(global_cfg), None, None, _) => Some(global_cfg),
+        (None, _, Some(local_cfg), Some(local_content)) => {
+            Some(UnifiedConfig::default().merge_with_content(&local_content, &local_cfg))
         }
-        (Some(global), None, _) => {
-            // Only global exists: preserve explicit global values exactly.
-            // For agent_chain, resolve missing roles through built-in defaults using
-            // raw global key presence so omitted roles inherit defaults while explicit
-            // empty lists still override.
-            if let Some(content) = global_content.as_ref() {
-                Some(merge_global_with_built_in_agent_chain_defaults(
-                    &global, content,
-                ))
-            } else {
-                Some(global)
-            }
-        }
-        (None, Some(local), Some(content)) => {
-            // Only local exists: merge against `UnifiedConfig::default()` so missing keys
-            // still resolve through local > global > defaults semantics in the unified layer.
-            Some(UnifiedConfig::default().merge_with_content(&content, &local))
-        }
-        (None, Some(_local), None) => {
-            // SAFETY: This case is impossible in production. If local_unified is Some,
-            // then local_content must also be Some (they're set together at line 281).
-            unreachable!(
-                "BUG: local_unified is Some but local_content is None. \
-                 This indicates a logic error in config loading - they should always be set together."
-            )
-        }
-        (None, None, _) => {
-            // Neither exists: use defaults
-            None
-        }
+        (None, _, None, _) => None,
+        _ => unreachable!("Unexpected config loading state"),
     };
 
     if let Some(unified_cfg) = merged_unified.as_ref() {
@@ -278,14 +320,11 @@ pub fn load_config_from_path_with_env(
     }
 
     // Step 4: Convert to Config
-    // Build cloud config from the injected env (not the real process env) so that
-    // callers using MemoryConfigEnvironment get a deterministic, isolated cloud config.
     let cloud = super::types::CloudConfig::from_env_fn(|k| env.get_env_var(k));
     let conversion_result = merged_unified.as_ref().map_or_else(
         || ConfigConversionResult::new(default_config()),
         config_from_unified,
     );
-    warnings.extend(conversion_result.warnings);
     let config = Config {
         cloud,
         ..conversion_result.config
@@ -293,7 +332,6 @@ pub fn load_config_from_path_with_env(
 
     // Step 5: Apply environment variable overrides
     let override_result = apply_env_overrides(config, env);
-    warnings.extend(override_result.warnings);
     let config = override_result.config;
 
     // Step 6: Validate cloud configuration (fail-fast)
@@ -307,7 +345,14 @@ pub fn load_config_from_path_with_env(
         ]));
     }
 
-    Ok((config, merged_unified, warnings))
+    // Combine all warnings from all sources
+    let all_warnings: Vec<String> = initial_warnings
+        .into_iter()
+        .chain(conversion_result.warnings)
+        .chain(override_result.warnings)
+        .collect();
+
+    Ok((config, merged_unified, all_warnings))
 }
 
 fn merge_global_with_built_in_agent_chain_defaults(

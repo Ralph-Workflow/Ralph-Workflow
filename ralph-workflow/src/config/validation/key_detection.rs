@@ -77,9 +77,9 @@ fn check_section(
 
     match section {
         "general" => {
-            let keys: Vec<String> = table.keys().cloned().collect();
-            let (deprecated_keys, unknown_keys): (Vec<String>, Vec<String>) = keys
-                .into_iter()
+            let (deprecated_keys, unknown_keys): (Vec<String>, Vec<String>) = table
+                .keys()
+                .cloned()
                 .partition(|key| DEPRECATED_GENERAL_KEYS.contains(&key.as_str()));
 
             let deprecated: KeyLocationList = deprecated_keys

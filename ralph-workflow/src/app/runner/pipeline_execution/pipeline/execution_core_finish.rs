@@ -172,30 +172,38 @@ fn finish_pipeline(
         // all artifact types removed. All operations are idempotent so double-cleanup
         // from the guard's Drop (if it fires) is harmless.
         let repo_root = ctx.workspace.root();
-        let mut cleanup_ok = true;
         crate::git_helpers::end_agent_phase_in_repo(repo_root);
         crate::git_helpers::disable_git_wrapper(agent_phase_guard.git_helpers);
-        if let Err(err) = crate::git_helpers::uninstall_hooks_in_repo(repo_root, &ctx.logger) {
-            if err.kind() == std::io::ErrorKind::NotFound {
+
+        let hook_uninstall_ok = match crate::git_helpers::uninstall_hooks_in_repo(
+            repo_root,
+            &ctx.logger,
+        ) {
+            Ok(()) => true,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                 ctx.logger.warn(&format!(
                     "Skipping hook uninstall during SIGINT cleanup (repo not present on filesystem): {err}"
                 ));
-            } else {
-                cleanup_ok = false;
+                true
+            }
+            Err(err) => {
                 ctx.logger.warn(&format!(
                     "Failed to uninstall Ralph hooks during SIGINT cleanup: {err}"
                 ));
+                false
             }
-        }
+        };
 
         let wrapper_remaining = crate::git_helpers::verify_wrapper_cleaned(repo_root);
-        if !wrapper_remaining.is_empty() {
-            cleanup_ok = false;
+        let wrapper_ok = wrapper_remaining.is_empty();
+        if !wrapper_ok {
             ctx.logger.warn(&format!(
                 "Wrapper artifacts still present after SIGINT cleanup: {}",
                 wrapper_remaining.join(", ")
             ));
         }
+
+        let mut cleanup_ok = hook_uninstall_ok && wrapper_ok;
 
         match crate::git_helpers::verify_hooks_removed(repo_root) {
             Ok(remaining) => {

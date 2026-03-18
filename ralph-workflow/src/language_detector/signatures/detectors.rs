@@ -69,15 +69,15 @@ impl DetectionResults {
 pub(super) fn detect_rust(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(cargo_files) = signatures.by_name_lower.get("cargo.toml") else {
         return results;
     };
 
-    results = results.with_package_manager("Cargo");
+    let mut results = results.with_package_manager("Cargo");
 
-    for path in cargo_files {
+    for path in cargo_files.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
@@ -87,7 +87,7 @@ pub(super) fn detect_rust(
             results = results.with_test_framework("cargo test");
         }
 
-        for (name, framework) in [
+        let frameworks: Vec<_> = [
             ("actix", "Actix"),
             ("axum", "Axum"),
             ("rocket", "Rocket"),
@@ -96,10 +96,14 @@ pub(super) fn detect_rust(
             ("tauri", "Tauri"),
             ("leptos", "Leptos"),
             ("yew", "Yew"),
-        ] {
-            if content_lower.contains(name) {
-                results = results.with_framework(framework);
-            }
+        ]
+        .into_iter()
+        .filter(|(name, _)| content_lower.contains(name))
+        .map(|(_, framework)| framework)
+        .collect();
+
+        for framework in frameworks {
+            results = results.with_framework(framework);
         }
     }
 
@@ -109,44 +113,48 @@ pub(super) fn detect_rust(
 pub(super) fn detect_python(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let paths = if let Some(p) = signatures.by_name_lower.get("pyproject.toml") {
-        results = results.with_package_manager("Poetry/pip");
-        Some(p)
+        Some((p, "Poetry/pip"))
     } else if let Some(p) = signatures.by_name_lower.get("requirements.txt") {
-        results = results.with_package_manager("pip");
-        Some(p)
+        Some((p, "pip"))
     } else if signatures.by_name_lower.contains_key("setup.py") {
-        results = results.with_package_manager("setuptools");
-        None
+        return results.with_package_manager("setuptools");
     } else if signatures.by_name_lower.contains_key("pipfile") {
-        results = results.with_package_manager("Pipenv");
-        None
+        return results.with_package_manager("Pipenv");
     } else {
         None
     };
 
-    if let Some(paths) = paths {
-        for path in paths {
-            let Ok(content) = workspace.read(path) else {
-                continue;
-            };
-            let content_lower = content.to_lowercase();
+    let Some((paths, pkg_mgr)) = paths else {
+        return results;
+    };
 
-            if content_lower.contains("pytest") {
-                results = results.with_test_framework("pytest");
-            }
+    let mut results = results.with_package_manager(pkg_mgr);
 
-            for (name, framework) in [
-                ("django", "Django"),
-                ("fastapi", "FastAPI"),
-                ("flask", "Flask"),
-            ] {
-                if content_lower.contains(name) {
-                    results = results.with_framework(framework);
-                }
-            }
+    for path in paths.iter() {
+        let Ok(content) = workspace.read(path) else {
+            continue;
+        };
+        let content_lower = content.to_lowercase();
+
+        if content_lower.contains("pytest") {
+            results = results.with_test_framework("pytest");
+        }
+
+        let frameworks: Vec<_> = [
+            ("django", "Django"),
+            ("fastapi", "FastAPI"),
+            ("flask", "Flask"),
+        ]
+        .into_iter()
+        .filter(|(name, _)| content_lower.contains(name))
+        .map(|(_, framework)| framework)
+        .collect();
+
+        for framework in frameworks {
+            results = results.with_framework(framework);
         }
     }
 
@@ -156,43 +164,49 @@ pub(super) fn detect_python(
 pub(super) fn detect_javascript(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("package.json") else {
         return results;
     };
 
-    results = if signatures.by_name_lower.contains_key("pnpm-lock.yaml") {
-        results.with_package_manager("pnpm")
+    let pkg_mgr = if signatures.by_name_lower.contains_key("pnpm-lock.yaml") {
+        "pnpm"
     } else if signatures.by_name_lower.contains_key("yarn.lock") {
-        results.with_package_manager("Yarn")
+        "Yarn"
     } else if signatures.by_name_lower.contains_key("bun.lockb")
         || signatures.by_name_lower.contains_key("bun.lock")
     {
-        results.with_package_manager("Bun")
+        "Bun"
     } else {
-        results.with_package_manager("npm")
+        "npm"
     };
 
-    for path in paths {
+    let mut results = results.with_package_manager(pkg_mgr);
+
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
         let content_lower = content.to_lowercase();
 
-        for (pattern, name) in [
+        let test_frameworks: Vec<_> = [
             ("\"jest\"", "Jest"),
             ("\"vitest\"", "Vitest"),
             ("\"mocha\"", "Mocha"),
             ("\"cypress\"", "Cypress"),
             ("\"playwright\"", "Playwright"),
-        ] {
-            if content_lower.contains(pattern) {
-                results = results.with_test_framework(name);
-            }
+        ]
+        .into_iter()
+        .filter(|(pattern, _)| content_lower.contains(pattern))
+        .map(|(_, name)| name)
+        .collect();
+
+        for name in test_frameworks {
+            results = results.with_test_framework(name);
         }
 
-        for (pattern, name) in [
+        let frameworks: Vec<_> = [
             ("\"react\"", "React"),
             ("\"vue\"", "Vue"),
             ("\"angular\"", "Angular"),
@@ -203,10 +217,14 @@ pub(super) fn detect_javascript(
             ("\"fastify\"", "Fastify"),
             ("\"nestjs\"", "NestJS"),
             ("\"gatsby\"", "Gatsby"),
-        ] {
-            if content_lower.contains(pattern) {
-                results = results.with_framework(name);
-            }
+        ]
+        .into_iter()
+        .filter(|(pattern, _)| content_lower.contains(pattern))
+        .map(|(_, name)| name)
+        .collect();
+
+        for name in frameworks {
+            results = results.with_framework(name);
         }
     }
 
@@ -216,31 +234,35 @@ pub(super) fn detect_javascript(
 pub(super) fn detect_go(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("go.mod") else {
         return results;
     };
 
-    results = results.with_package_manager("Go Modules");
+    let mut results = results.with_package_manager("Go Modules");
     results = results.with_test_framework("go test");
 
-    for path in paths {
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
         let content_lower = content.to_lowercase();
 
-        for (pattern, name) in [
+        let frameworks: Vec<_> = [
             ("gin-gonic/gin", "Gin"),
             ("labstack/echo", "Echo"),
             ("gofiber/fiber", "Fiber"),
             ("gorilla/mux", "Gorilla"),
             ("go-chi/chi", "Chi"),
-        ] {
-            if content_lower.contains(pattern) {
-                results = results.with_framework(name);
-            }
+        ]
+        .into_iter()
+        .filter(|(pattern, _)| content_lower.contains(pattern))
+        .map(|(_, name)| name)
+        .collect();
+
+        for name in frameworks {
+            results = results.with_framework(name);
         }
     }
 
@@ -250,15 +272,15 @@ pub(super) fn detect_go(
 pub(super) fn detect_ruby(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("gemfile") else {
         return results;
     };
 
-    results = results.with_package_manager("Bundler");
+    let mut results = results.with_package_manager("Bundler");
 
-    for path in paths {
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
@@ -283,12 +305,14 @@ pub(super) fn detect_ruby(
 pub(super) fn detect_java(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
-    if let Some(paths) = signatures.by_name_lower.get("pom.xml") {
-        results = results.with_package_manager("Maven");
-        results = detect_java_frameworks(workspace, paths, results);
-    }
+    let results = if let Some(paths) = signatures.by_name_lower.get("pom.xml") {
+        let results = results.with_package_manager("Maven");
+        detect_java_frameworks(workspace, paths, results)
+    } else {
+        results
+    };
 
     let gradle_paths: Vec<_> = signatures
         .by_name_lower
@@ -298,12 +322,12 @@ pub(super) fn detect_java(
         .flatten()
         .collect();
 
-    if !gradle_paths.is_empty() {
-        results = results.with_package_manager("Gradle");
-        results = detect_java_frameworks(workspace, &gradle_paths, results);
+    if gradle_paths.is_empty() {
+        return results;
     }
 
-    results
+    let results = results.with_package_manager("Gradle");
+    detect_java_frameworks(workspace, &gradle_paths, results)
 }
 
 fn detect_java_frameworks(
@@ -311,8 +335,9 @@ fn detect_java_frameworks(
     paths: &[impl AsRef<Path>],
     mut results: DetectionResults,
 ) -> DetectionResults {
-    for path in paths {
-        let Ok(content) = workspace.read(path.as_ref()) else {
+    for path in paths.iter() {
+        let path_ref: &Path = path.as_ref();
+        let Ok(content) = workspace.read(path_ref) else {
             continue;
         };
         let content_lower = content.to_lowercase();
@@ -332,15 +357,15 @@ fn detect_java_frameworks(
 pub(super) fn detect_php(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("composer.json") else {
         return results;
     };
 
-    results = results.with_package_manager("Composer");
+    let mut results = results.with_package_manager("Composer");
 
-    for path in paths {
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
@@ -350,10 +375,14 @@ pub(super) fn detect_php(
             results = results.with_test_framework("PHPUnit");
         }
 
-        for (pattern, name) in [("laravel", "Laravel"), ("symfony", "Symfony")] {
-            if content_lower.contains(pattern) {
-                results = results.with_framework(name);
-            }
+        let frameworks: Vec<_> = [("laravel", "Laravel"), ("symfony", "Symfony")]
+            .into_iter()
+            .filter(|(pattern, _)| content_lower.contains(pattern))
+            .map(|(_, name)| name)
+            .collect();
+
+        for name in frameworks {
+            results = results.with_framework(name);
         }
     }
 
@@ -362,32 +391,32 @@ pub(super) fn detect_php(
 
 pub(super) fn detect_dotnet(
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     if signatures
         .by_name_lower
         .keys()
         .any(|k| k.ends_with(".csproj") || k.ends_with(".fsproj"))
     {
-        results = results.with_package_manager("NuGet");
+        results.with_package_manager("NuGet")
+    } else {
+        results
     }
-
-    results
 }
 
 pub(super) fn detect_elixir(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("mix.exs") else {
         return results;
     };
 
-    results = results.with_package_manager("Mix");
+    let mut results = results.with_package_manager("Mix");
     results = results.with_test_framework("ExUnit");
 
-    for path in paths {
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };
@@ -404,15 +433,15 @@ pub(super) fn detect_elixir(
 pub(super) fn detect_dart(
     workspace: &dyn Workspace,
     signatures: &SignatureFiles,
-    mut results: DetectionResults,
+    results: DetectionResults,
 ) -> DetectionResults {
     let Some(paths) = signatures.by_name_lower.get("pubspec.yaml") else {
         return results;
     };
 
-    results = results.with_package_manager("Pub");
+    let mut results = results.with_package_manager("Pub");
 
-    for path in paths {
+    for path in paths.iter() {
         let Ok(content) = workspace.read(path) else {
             continue;
         };

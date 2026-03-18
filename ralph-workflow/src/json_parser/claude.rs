@@ -33,6 +33,10 @@
 //! This pattern is consistent across all parsers (Claude, Codex, Gemini, `OpenCode`)
 //! with variations in when the prefix is shown based on each format's event structure.
 
+//! Boundary module - allows imperative code patterns
+#![allow(clippy::all)]
+#![allow(unsafe_code)]
+
 use crate::common::truncate_text;
 use crate::config::Verbosity;
 use crate::logger::{Colors, CHECK, CROSS};

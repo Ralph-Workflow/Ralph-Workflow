@@ -11,118 +11,73 @@ fn fallback_continuation_prompt(
     prompt_content: &str,
     plan_content: &str,
 ) -> String {
-    let mut prompt = String::new();
-    let _ = writeln!(prompt, "You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.\n");
-    prompt.push_str(include_str!("../templates/shared/_unattended_mode.txt"));
-    prompt.push_str("\n\n");
-    prompt.push_str(include_str!("../templates/shared/_no_git_commit.txt"));
-    prompt.push_str("\n\n");
-    let _ = writeln!(
-        prompt,
-        "═══════════════════════════════════════════════════════════════════════════════"
-    );
-    let _ = writeln!(prompt, "IMPORTANT: EXECUTION CONTEXT");
-    let _ = writeln!(
-        prompt,
+    let sections: Vec<String> = vec![
+        format!(
+            "You are in IMPLEMENTATION MODE. Recover from the previous failure to fully complete the entire plan.\n"
+        ),
+        include_str!("../templates/shared/_unattended_mode.txt").to_string(),
+        "\n\n".to_string(),
+        include_str!("../templates/shared/_no_git_commit.txt").to_string(),
+        "\n\n".to_string(),
+        "═══════════════════════════════════════════════════════════════════════════════\n".to_string(),
+        "IMPORTANT: EXECUTION CONTEXT\n".to_string(),
+        "═══════════════════════════════════════════════════════════════════════════════\n".to_string(),
+        "- No assumptions about downstream processing: do not reason about what happens\n".to_string(),
+        "  next in the pipeline.\n".to_string(),
+        "- Your only job is implementation work in this repository.\n".to_string(),
+        "- What matters is the WORK you do: the files you create/modify and the commands\n".to_string(),
+        "  you run.\n".to_string(),
+        "- There is NO time limit. Take as long as needed to do the work correctly.\n".to_string(),
+        "- Focus on making COMPLETE progress. Don't stop early or leave work half-done.\n".to_string(),
+        "- You are an agent - keep going until the task is fully resolved.\n".to_string(),
+        "COMMUNICATION BOUNDARY (CRITICAL):\n".to_string(),
+        "- Do NOT write summaries, status reports, or handoff notes in markdown files.\n".to_string(),
+        "- Do NOT create STATUS.md, CURRENT_STATUS.md, CURRENT_IMPLEMENTATION.md, or\n".to_string(),
+        "  any similarly named context-transfer file.\n".to_string(),
+        "- Do NOT create any file whose purpose is to communicate \"what happened\".\n".to_string(),
+        "- Keep context in code changes and tests only.\n".to_string(),
+        "═══════════════════════════════════════════════════════════════════════════════\n".to_string(),
+        "CONTINUATION CONTEXT\n".to_string(),
+        "═══════════════════════════════════════════════════════════════════════════════\n".to_string(),
+        format!(
+            "This is continuation attempt #{continuation_attempt}. Continuation is an exception path: it exists only because the previous run did not fully complete the entire plan. The previous attempt returned status \"{status}\".\n"
+        ),
+        format!("Blocker preventing full-plan completion: {summary}\n"),
+        "Success means finishing the entire remaining plan to completion, not merely advancing one blocked area. Going beyond the plan is acceptable when it produces more complete progress. You must do whatever it takes to complete the entire remaining plan and complete the entire remaining plan by whatever work is required. The plan is the goal, not the checklist. Success is completing the plan, not finishing the checklist. You must verify against the entire plan, not just the checklist, and verify that you completed the entire remaining plan before stopping.\n".to_string(),
+        "Use the previous summary and checklist as execution context only. Focus on completing the entire remaining plan. Then give a comprehensive, detailed, ordered, actionable checklist for finishing the remaining plan. The checklist should resolve the remaining plan when completed, must be specific enough for the next run to continue without ambiguity, and should preserve any remaining non-plan follow-up work discovered during verification plus any failed verification commands or checks.\n".to_string(),
+    ];
+
+    let sections = if let Some(next_steps) = next_steps {
+        sections
+            .into_iter()
+            .chain([
+                "Comprehensive, detailed, ordered, actionable checklist for the remaining plan that should resolve the remaining plan when completed. This is an ordered, actionable checklist for the remaining work needed to finish the entire plan. Treat this checklist as a starting point, not the boundary of the remaining work. It must be actionable and specific enough for the next run to continue without ambiguity. The next run must verify completion against the entire plan, not just these checklist items:\n".to_string(),
+                format!("{next_steps}\n"),
+            ])
+            .collect::<Vec<_>>()
+    } else {
+        sections
+    };
+
+    let more_sections = vec![
+        "ORIGINAL REQUEST\n".to_string(),
+        "====================\n".to_string(),
+        format!("{prompt_content}\n"),
+        "IMPLEMENTATION PLAN\n".to_string(),
+        "====================\n".to_string(),
+        format!("{plan_content}\n"),
+        include_str!("../templates/shared/_developer_iteration_guidance.txt").to_string(),
+        "\n\n".to_string(),
         "═══════════════════════════════════════════════════════════════════════════════\n"
-    );
-    let _ = writeln!(
-        prompt,
-        "- No assumptions about downstream processing: do not reason about what happens"
-    );
-    let _ = writeln!(prompt, "  next in the pipeline.");
-    let _ = writeln!(
-        prompt,
-        "- Your only job is implementation work in this repository."
-    );
-    let _ = writeln!(
-        prompt,
-        "- What matters is the WORK you do: the files you create/modify and the commands"
-    );
-    let _ = writeln!(prompt, "  you run.");
-    let _ = writeln!(
-        prompt,
-        "- There is NO time limit. Take as long as needed to do the work correctly."
-    );
-    let _ = writeln!(
-        prompt,
-        "- Focus on making COMPLETE progress. Don't stop early or leave work half-done."
-    );
-    let _ = writeln!(
-        prompt,
-        "- You are an agent - keep going until the task is fully resolved.\n"
-    );
-    let _ = writeln!(prompt, "COMMUNICATION BOUNDARY (CRITICAL):");
-    let _ = writeln!(
-        prompt,
-        "- Do NOT write summaries, status reports, or handoff notes in markdown files."
-    );
-    let _ = writeln!(
-        prompt,
-        "- Do NOT create STATUS.md, CURRENT_STATUS.md, CURRENT_IMPLEMENTATION.md, or"
-    );
-    let _ = writeln!(prompt, "  any similarly named context-transfer file.");
-    let _ = writeln!(
-        prompt,
-        "- Do NOT create any file whose purpose is to communicate \"what happened\"."
-    );
-    let _ = writeln!(prompt, "- Keep context in code changes and tests only.\n");
-    let _ = writeln!(
-        prompt,
-        "═══════════════════════════════════════════════════════════════════════════════"
-    );
-    let _ = writeln!(prompt, "CONTINUATION CONTEXT");
-    let _ = writeln!(
-        prompt,
+            .to_string(),
+        "WHAT MATTERS\n".to_string(),
         "═══════════════════════════════════════════════════════════════════════════════\n"
-    );
-    let _ = writeln!(
-        prompt,
-        "This is continuation attempt #{continuation_attempt}. Continuation is an exception path: it exists only because the previous run did not fully complete the entire plan. The previous attempt returned status \"{status}\".\n"
-    );
-    let _ = writeln!(
-        prompt,
-        "Blocker preventing full-plan completion: {summary}\n"
-    );
-    let _ = writeln!(
-        prompt,
-        "Success means finishing the entire remaining plan to completion, not merely advancing one blocked area. Going beyond the plan is acceptable when it produces more complete progress. You must do whatever it takes to complete the entire remaining plan and complete the entire remaining plan by whatever work is required. The plan is the goal, not the checklist. Success is completing the plan, not finishing the checklist. You must verify against the entire plan, not just the checklist, and verify that you completed the entire remaining plan before stopping."
-    );
-    let _ = writeln!(
-        prompt,
-        "Use the previous summary and checklist as execution context only. Focus on completing the entire remaining plan. Then give a comprehensive, detailed, ordered, actionable checklist for finishing the remaining plan. The checklist should resolve the remaining plan when completed, must be specific enough for the next run to continue without ambiguity, and should preserve any remaining non-plan follow-up work discovered during verification plus any failed verification commands or checks.\n"
-    );
-    if let Some(next_steps) = next_steps {
-        let _ = writeln!(prompt, "Comprehensive, detailed, ordered, actionable checklist for the remaining plan that should resolve the remaining plan when completed. This is an ordered, actionable checklist for the remaining work needed to finish the entire plan. Treat this checklist as a starting point, not the boundary of the remaining work. It must be actionable and specific enough for the next run to continue without ambiguity. The next run must verify completion against the entire plan, not just these checklist items:");
-        let _ = writeln!(prompt, "{next_steps}\n");
-    }
-    let _ = writeln!(prompt, "ORIGINAL REQUEST");
-    let _ = writeln!(prompt, "====================\n");
-    prompt.push_str(prompt_content);
-    let _ = writeln!(prompt, "\n");
-    let _ = writeln!(prompt, "IMPLEMENTATION PLAN");
-    let _ = writeln!(prompt, "====================\n");
-    prompt.push_str(plan_content);
-    prompt.push_str("\n\n");
-    prompt.push_str(include_str!(
-        "../templates/shared/_developer_iteration_guidance.txt"
-    ));
-    prompt.push_str("\n\n");
-    let _ = writeln!(
-        prompt,
-        "═══════════════════════════════════════════════════════════════════════════════"
-    );
-    let _ = writeln!(prompt, "WHAT MATTERS");
-    let _ = writeln!(
-        prompt,
-        "═══════════════════════════════════════════════════════════════════════════════\n"
-    );
-    let _ = writeln!(prompt, "1. Code changes you make");
-    let _ = writeln!(
-        prompt,
-        "2. Meeting ALL requirements from plan and original request"
-    );
-    prompt
+            .to_string(),
+        "1. Code changes you make\n".to_string(),
+        "2. Meeting ALL requirements from plan and original request\n".to_string(),
+    ];
+
+    sections.into_iter().chain(more_sections).collect()
 }
 
 /// Generate continuation prompt for development iteration.
@@ -163,36 +118,43 @@ pub fn prompt_developer_iteration_continuation_xml(
         .read(std::path::Path::new(".agent/PLAN.md"))
         .unwrap_or_else(|_| "(no plan available)".to_string());
 
-    let mut variables: HashMap<&str, String> = HashMap::new();
-    variables.insert("PROMPT_PATH", "PROMPT.md".to_string());
-    variables.insert("PLAN_PATH", ".agent/PLAN.md".to_string());
-    variables.insert("PREVIOUS_STATUS", previous_status);
-    variables.insert("PREVIOUS_SUMMARY", previous_summary);
-    variables.insert("PROMPT", prompt_content.clone());
-    variables.insert("PLAN", plan_content.clone());
-    variables.insert(
-        "CONTINUATION_ATTEMPT",
-        continuation_state.continuation_attempt.to_string(),
-    );
-    variables.insert(
-        "CONTINUATION_PROGRESS",
-        format!(
-            "continuation {} of {}",
-            continuation_state.continuation_attempt, continuation_state.max_continue_count
+    let base_variables = HashMap::from([
+        ("PROMPT_PATH", "PROMPT.md".to_string()),
+        ("PLAN_PATH", ".agent/PLAN.md".to_string()),
+        ("PREVIOUS_STATUS", previous_status),
+        ("PREVIOUS_SUMMARY", previous_summary),
+        ("PROMPT", prompt_content.clone()),
+        ("PLAN", plan_content.clone()),
+        (
+            "CONTINUATION_ATTEMPT",
+            continuation_state.continuation_attempt.to_string(),
         ),
-    );
-    variables.insert(
-        "DEVELOPMENT_RESULT_XML_PATH",
-        workspace.absolute_str(".agent/tmp/development_result.xml"),
-    );
-    variables.insert(
-        "DEVELOPMENT_RESULT_XSD_PATH",
-        workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
-    );
+        (
+            "CONTINUATION_PROGRESS",
+            format!(
+                "continuation {} of {}",
+                continuation_state.continuation_attempt, continuation_state.max_continue_count
+            ),
+        ),
+        (
+            "DEVELOPMENT_RESULT_XML_PATH",
+            workspace.absolute_str(".agent/tmp/development_result.xml"),
+        ),
+        (
+            "DEVELOPMENT_RESULT_XSD_PATH",
+            workspace.absolute_str(".agent/tmp/development_continuation_result.xsd"),
+        ),
+    ]);
 
-    if let Some(next_steps) = previous_next_steps {
-        variables.insert("PREVIOUS_NEXT_STEPS", next_steps);
-    }
+    let variables: HashMap<&str, String> = previous_next_steps
+        .map(|next_steps| {
+            base_variables
+                .clone()
+                .into_iter()
+                .chain(std::iter::once(("PREVIOUS_NEXT_STEPS", next_steps)))
+                .collect()
+        })
+        .unwrap_or(base_variables);
 
     template
         .render_with_partials(&variables, &partials)

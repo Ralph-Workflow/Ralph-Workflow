@@ -10,7 +10,6 @@ struct ResumeAndConfigState {
     resume_checkpoint: Option<crate::checkpoint::PipelineCheckpoint>,
 }
 
-
 fn load_resume_and_config_state(ctx: &PipelineContext) -> anyhow::Result<ResumeAndConfigState> {
     use crate::checkpoint::RunContext;
 
@@ -42,9 +41,9 @@ fn load_resume_and_config_state(ctx: &PipelineContext) -> anyhow::Result<ResumeA
         .as_ref()
         .map_or_else(RunContext::new, RunContext::from_checkpoint);
 
-    let mut config = resume_checkpoint
-        .as_ref()
-        .map_or_else(|| ctx.config.clone(), |checkpoint| {
+    let mut config = resume_checkpoint.as_ref().map_or_else(
+        || ctx.config.clone(),
+        |checkpoint| {
             use crate::checkpoint::apply_checkpoint_to_config;
             let mut restored_config = ctx.config.clone();
             apply_checkpoint_to_config(&mut restored_config, checkpoint);
@@ -62,7 +61,8 @@ fn load_resume_and_config_state(ctx: &PipelineContext) -> anyhow::Result<ResumeA
                 ));
             }
             restored_config
-        });
+        },
+    );
 
     if let Some(ref checkpoint) = resume_checkpoint {
         use crate::checkpoint::restore::restore_environment_from_checkpoint;

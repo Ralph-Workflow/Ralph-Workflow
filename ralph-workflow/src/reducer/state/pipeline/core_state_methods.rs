@@ -230,15 +230,4 @@ impl PipelineState {
         self.execution_history = new_history;
     }
 
-    /// Mutable method for backward compatibility during migration.
-    /// Prefer `with_execution_history` for new code.
-    pub(crate) fn replace_execution_history_bounded(
-        &mut self,
-        history: std::collections::VecDeque<ExecutionStep>,
-        limit: usize,
-    ) {
-        let current = self.execution_history.clone();
-        let new_history = current.with_replaced(history, limit);
-        self.execution_history = new_history;
-    }
 }

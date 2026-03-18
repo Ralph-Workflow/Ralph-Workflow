@@ -31,9 +31,12 @@ pub fn handle_generate_completion(shell: Shell) -> bool {
         Shell::Pwsh => clap_complete::Shell::PowerShell,
     };
 
-    let mut command = crate::cli::Args::command();
-    let mut stdout = std::io::stdout();
-    clap_complete::generate(shell_type, &mut command, "ralph", &mut stdout);
+    clap_complete::generate(
+        shell_type,
+        &mut crate::cli::Args::command(),
+        "ralph",
+        &mut std::io::stdout(),
+    );
 
     // Print installation instructions
     let _ = writeln!(std::io::stderr());

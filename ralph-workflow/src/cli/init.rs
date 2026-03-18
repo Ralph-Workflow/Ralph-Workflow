@@ -14,6 +14,7 @@
 use crate::config::{ConfigEnvironment, RealConfigEnvironment};
 use crate::logger::Colors;
 use crate::templates::{get_template, list_templates, ALL_TEMPLATES};
+use itertools::Itertools;
 use std::io::{IsTerminal, Write};
 use std::path::Path;
 

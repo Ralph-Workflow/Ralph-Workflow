@@ -239,38 +239,30 @@ fn get_diff_stats(repo: &git2::Repository, baseline_oid: Option<&String>) -> io:
         blob_id: git2::Oid,
     }
 
-    let deltas: std::cell::RefCell<Vec<DeltaInfo>> = std::cell::RefCell::new(Vec::new());
-
-    diff.foreach(
-        |delta, _progress| {
+    let deltas: Vec<DeltaInfo> = diff
+        .deltas()
+        .filter_map(|delta| {
             use git2::Delta;
 
             let path = delta
                 .new_file()
                 .path()
                 .or(delta.old_file().path())
-                .map(|p| p.to_string_lossy().to_string());
+                .map(|p: &std::path::Path| p.to_string_lossy().to_string());
 
             let (is_new_or_modified, blob_id) = match delta.status() {
                 Delta::Added | Delta::Modified => (true, delta.new_file().id()),
                 Delta::Deleted => (false, delta.old_file().id()),
-                _ => return true,
+                _ => return None,
             };
 
-            deltas.borrow_mut().push(DeltaInfo {
+            Some(DeltaInfo {
                 path,
                 is_added_or_modified: is_new_or_modified,
                 blob_id,
-            });
-            true
-        },
-        None,
-        None,
-        None,
-    )
-    .map_err(|e| to_io_error(&e))?;
-
-    let deltas = deltas.into_inner();
+            })
+        })
+        .collect();
 
     // Now compute stats from the collected deltas
     let files_changed = deltas.len();

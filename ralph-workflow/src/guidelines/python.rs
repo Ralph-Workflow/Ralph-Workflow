@@ -6,103 +6,152 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Python-specific guidelines to the review
-pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Follow PEP 8 style guide".to_string(),
-        "Use type hints for function signatures".to_string(),
-        "Prefer f-strings over .format()".to_string(),
-        "Use context managers for resources".to_string(),
-    ]);
+pub fn add_guidelines(guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
+    let base = ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Follow PEP 8 style guide".to_string(),
+                "Use type hints for function signatures".to_string(),
+                "Prefer f-strings over .format()".to_string(),
+                "Use context managers for resources".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "No eval() or exec() with untrusted input".to_string(),
+                "Use parameterized queries for database operations".to_string(),
+                "Validate file paths to prevent path traversal".to_string(),
+                "Check pickle/yaml.load usage for untrusted data".to_string(),
+            ])
+            .collect(),
+        performance_checks: guidelines
+            .performance_checks
+            .into_iter()
+            .chain([
+                "Use generators for large data processing".to_string(),
+                "Consider list comprehensions over loops".to_string(),
+                "Profile before optimizing".to_string(),
+            ])
+            .collect(),
+        testing_checks: guidelines
+            .testing_checks
+            .into_iter()
+            .chain([
+                "Use pytest fixtures for test setup".to_string(),
+                "Mock external dependencies".to_string(),
+                "Test exception handling".to_string(),
+            ])
+            .collect(),
+        idioms: guidelines
+            .idioms
+            .into_iter()
+            .chain([
+                "Use Pythonic idioms (EAFP over LBYL)".to_string(),
+                "Leverage standard library (itertools, collections)".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid mutable default arguments".to_string(),
+                "Don't use bare except clauses".to_string(),
+                "Avoid global state".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    };
 
-    guidelines.security_checks.extend([
-        "No eval() or exec() with untrusted input".to_string(),
-        "Use parameterized queries for database operations".to_string(),
-        "Validate file paths to prevent path traversal".to_string(),
-        "Check pickle/yaml.load usage for untrusted data".to_string(),
-    ]);
+    let with_django = if stack.frameworks.contains(&"Django".to_string()) {
+        add_django_guidelines(base)
+    } else {
+        base
+    };
 
-    guidelines.performance_checks.extend([
-        "Use generators for large data processing".to_string(),
-        "Consider list comprehensions over loops".to_string(),
-        "Profile before optimizing".to_string(),
-    ]);
+    let with_fastapi = if stack.frameworks.contains(&"FastAPI".to_string()) {
+        add_fastapi_guidelines(with_django)
+    } else {
+        with_django
+    };
 
-    guidelines.testing_checks.extend([
-        "Use pytest fixtures for test setup".to_string(),
-        "Mock external dependencies".to_string(),
-        "Test exception handling".to_string(),
-    ]);
-
-    guidelines.idioms.extend([
-        "Use Pythonic idioms (EAFP over LBYL)".to_string(),
-        "Leverage standard library (itertools, collections)".to_string(),
-    ]);
-
-    guidelines.anti_patterns.extend([
-        "Avoid mutable default arguments".to_string(),
-        "Don't use bare except clauses".to_string(),
-        "Avoid global state".to_string(),
-    ]);
-
-    if stack.frameworks.contains(&"Django".to_string()) {
-        guidelines = add_django_guidelines(guidelines);
-    }
-    if stack.frameworks.contains(&"FastAPI".to_string()) {
-        guidelines = add_fastapi_guidelines(guidelines);
-    }
     if stack.frameworks.contains(&"Flask".to_string()) {
-        guidelines = add_flask_guidelines(guidelines);
+        add_flask_guidelines(with_fastapi)
+    } else {
+        with_fastapi
     }
-
-    guidelines
 }
 
-/// Add Django-specific guidelines
-fn add_django_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use Django ORM effectively".to_string(),
-        "Follow Django coding style".to_string(),
-        "Use class-based views appropriately".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Use Django's CSRF protection".to_string(),
-        "Validate forms properly".to_string(),
-        "Use Django's authentication system".to_string(),
-    ]);
-
-    guidelines
+fn add_django_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use Django ORM effectively".to_string(),
+                "Follow Django coding style".to_string(),
+                "Use class-based views appropriately".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Use Django's CSRF protection".to_string(),
+                "Validate forms properly".to_string(),
+                "Use Django's authentication system".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add FastAPI-specific guidelines
-fn add_fastapi_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use Pydantic models for validation".to_string(),
-        "Define proper response models".to_string(),
-        "Use dependency injection".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Implement proper OAuth2/JWT handling".to_string(),
-        "Use HTTPSRedirectMiddleware".to_string(),
-    ]);
-
-    guidelines
+fn add_fastapi_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use Pydantic models for validation".to_string(),
+                "Define proper response models".to_string(),
+                "Use dependency injection".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Implement proper OAuth2/JWT handling".to_string(),
+                "Use HTTPSRedirectMiddleware".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add Flask-specific guidelines
-fn add_flask_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use Blueprints for organization".to_string(),
-        "Use Flask-SQLAlchemy properly".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Set SECRET_KEY securely".to_string(),
-        "Use flask-talisman for security headers".to_string(),
-    ]);
-
-    guidelines
+fn add_flask_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use Blueprints for organization".to_string(),
+                "Use Flask-SQLAlchemy properly".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Set SECRET_KEY securely".to_string(),
+                "Use flask-talisman for security headers".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
 #[cfg(test)]

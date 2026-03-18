@@ -8,7 +8,6 @@ use crate::prompts::template_engine::Template;
 use crate::prompts::{RenderedTemplate, SubstitutionEntry, SubstitutionLog, SubstitutionSource};
 use crate::workspace::Workspace;
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::path::Path;
 
 include!("review/xsd_files.rs");

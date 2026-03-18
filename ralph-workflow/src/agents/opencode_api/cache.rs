@@ -137,13 +137,10 @@ fn load_api_catalog_with_env(env: &dyn CacheEnvironment) -> Result<ApiCatalog, C
 /// Emit cache warnings to stderr.
 /// This is a boundary function that handles I/O (console output).
 fn emit_cache_warnings(warnings: &[CacheWarning]) {
-    use std::io::Write;
-    let mut stderr = std::io::stderr();
     warnings.iter().for_each(|warning| {
         match warning {
             CacheWarning::StaleCacheUsed { stale_days, error } => {
-                let _ = writeln!(
-                    stderr,
+                eprintln!(
                     "Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago"
                 );
             }
@@ -188,10 +185,8 @@ fn load_cached_catalog_with_env(
 ) -> Result<LoadCatalogResult, CacheError> {
     let content = env.read_file(path)?;
 
-    let mut catalog: ApiCatalog = serde_json::from_str(&content)?;
-
-    // Set the TTL for expiration checking
-    catalog.ttl_seconds = ttl_seconds;
+    let catalog: ApiCatalog =
+        serde_json::from_str::<ApiCatalog>(&content).map(|c| ApiCatalog { ttl_seconds, ..c })?;
 
     // Check if expired
     if catalog.is_expired() {

@@ -3,6 +3,14 @@ use crate::pipeline::idle_timeout::{
     monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
     time_since_activity, MonitorResult, StderrActivityTracker,
 };
+use crate::pipeline::prompt::runtime::cleanup::{
+    cleanup_after_agent_failure, terminate_child_best_effort,
+};
+use crate::pipeline::prompt::runtime::process_wait::wait_for_completion_and_collect_stderr;
+use crate::pipeline::prompt::runtime::stderr_collector::{
+    cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
+};
+use crate::pipeline::prompt::runtime::streaming::stream_agent_output_from_handle;
 use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -136,7 +144,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
         const STDERR_MAX_BYTES: usize = 512 * 1024;
         let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
         let reader = BufReader::new(tracked_stderr);
-        super::stderr_collector::collect_stderr_with_cap_and_drain(
+        collect_stderr_with_cap_and_drain(
             reader,
             STDERR_MAX_BYTES,
             stderr_cancel_for_thread.as_ref(),
@@ -144,14 +152,10 @@ pub fn run_with_agent_spawn_with_monitor_config(
     }));
 
     let activity_timestamp_for_timeout = activity_timestamp.clone();
-    if let Err(e) = super::streaming::stream_agent_output_from_handle(
-        stdout,
-        cmd,
-        runtime,
-        activity_timestamp,
-        &stdout_cancel,
-    ) {
-        super::cleanup::cleanup_after_agent_failure(
+    if let Err(e) =
+        stream_agent_output_from_handle(stdout, cmd, runtime, activity_timestamp, &stdout_cancel)
+    {
+        cleanup_after_agent_failure(
             &child_shared,
             &monitor_should_stop,
             &mut monitor_handle,
@@ -164,7 +168,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
     }
 
     let (exit_code, stderr_output, monitor_result_early) =
-        match super::process_wait::wait_for_completion_and_collect_stderr(
+        match wait_for_completion_and_collect_stderr(
             &child_shared,
             &mut stderr_join_handle,
             &mut monitor_handle,
@@ -172,7 +176,7 @@ pub fn run_with_agent_spawn_with_monitor_config(
         ) {
             Ok(v) => v,
             Err(e) => {
-                super::cleanup::cleanup_after_agent_failure(
+                cleanup_after_agent_failure(
                     &child_shared,
                     &monitor_should_stop,
                     &mut monitor_handle,
@@ -186,15 +190,12 @@ pub fn run_with_agent_spawn_with_monitor_config(
         };
 
     if matches!(monitor_result_early, Some(MonitorResult::TimedOut { .. })) {
-        let exited = super::cleanup::terminate_child_best_effort(
-            &child_shared,
-            runtime.executor_arc.as_ref(),
-            kill_config,
-        );
+        let exited =
+            terminate_child_best_effort(&child_shared, runtime.executor_arc.as_ref(), kill_config);
         if exited {
             monitor_should_stop.store(true, Ordering::Release);
         }
-        super::stderr_collector::cancel_and_join_stderr_collector(
+        cancel_and_join_stderr_collector(
             &stderr_cancel,
             &mut stderr_join_handle,
             std::time::Duration::from_millis(250),

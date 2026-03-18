@@ -10,12 +10,11 @@ use crate::logger::{
     Colors, ARROW, BOX_BL, BOX_BR, BOX_H, BOX_TL, BOX_TR, BOX_V, CHECK, CROSS, INFO, WARN,
 };
 use crate::workspace::Workspace;
-use std::fs::{self, OpenOptions};
 use std::io::{IsTerminal, Write};
-use std::path::Path;
 use std::sync::Arc;
 
-use crate::logger::output::strip_ansi_codes;
+use crate::logger::io::ansi_stripper::strip_ansi_codes;
+use crate::logger::io::file_writer::append_to_file;
 
 /// Logger for Ralph output.
 ///
@@ -101,15 +100,7 @@ impl Logger {
 
         // Fall back to direct filesystem logging (CLI layer before workspace available)
         if let Some(ref path) = self.log_file {
-            if let Some(parent) = Path::new(path).parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-                let _ = writeln!(file, "{clean_msg}");
-                let _ = file.flush();
-                // Ensure data is written to disk before continuing
-                let _ = file.sync_all();
-            }
+            let _ = append_to_file(path, &clean_msg);
         }
     }
 

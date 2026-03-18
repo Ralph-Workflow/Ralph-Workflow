@@ -4,19 +4,13 @@
 //! to detect frameworks, test frameworks, and package managers.
 
 use super::scanner::{should_skip_dir_name, MAX_SIGNATURE_SEARCH_DEPTH};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::workspace::Workspace;
 
 #[path = "signatures/detectors.rs"]
 mod detectors;
-
-/// Maximum number of files to scan
-const MAX_FILES_TO_SCAN: usize = 2000;
-
-/// Maximum number of signature files to collect (across all types).
-const MAX_SIGNATURE_FILES: usize = 50;
 
 /// Container for signature files found during scanning.
 #[derive(Default)]
@@ -53,62 +47,77 @@ fn collect_signature_files_with_workspace(
     .into_iter()
     .collect();
 
-    let mut result = SignatureFiles::default();
-    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
-    queue.push_back((root.to_path_buf(), 0));
-
-    let mut scanned_entries: usize = 0;
-    let mut collected: usize = 0;
-
-    while let Some((dir, depth)) = queue.pop_front() {
-        if scanned_entries >= MAX_FILES_TO_SCAN || collected >= MAX_SIGNATURE_FILES {
-            break;
+    fn scan(
+        workspace: &dyn Workspace,
+        items: Vec<(PathBuf, String)>,
+        depth: usize,
+        targets: &HashSet<&str>,
+    ) -> Vec<(PathBuf, String)> {
+        if items.is_empty() {
+            return Vec::new();
         }
 
-        let Ok(entries) = workspace.read_dir(&dir) else {
-            continue;
-        };
+        let (dirs, files): (Vec<_>, Vec<_>) = items.into_iter().partition(|(p, n)| {
+            p.is_dir() && !should_skip_dir_name(n) && depth < MAX_SIGNATURE_SEARCH_DEPTH
+        });
 
-        for entry in entries {
-            if scanned_entries >= MAX_FILES_TO_SCAN || collected >= MAX_SIGNATURE_FILES {
-                break;
-            }
-            scanned_entries = scanned_entries.saturating_add(1);
+        let sig_files: Vec<_> = files
+            .into_iter()
+            .filter(|(_, n)| targets.contains(n.as_str()))
+            .collect();
 
-            let path = entry.path().to_path_buf();
-            let Some(name_os) = entry.file_name() else {
-                continue;
-            };
-            let name = name_os.to_string_lossy().to_string();
-            let name_lower = name.to_lowercase();
-
-            if entry.is_dir() {
-                if should_skip_dir_name(&name_lower) {
-                    continue;
-                }
-                if depth < MAX_SIGNATURE_SEARCH_DEPTH {
-                    queue.push_back((path, depth + 1));
-                }
-                continue;
-            }
-
-            if !entry.is_file() {
-                continue;
-            }
-
-            // Check if this is a target signature file
-            if targets.contains(name_lower.as_str()) {
-                result
-                    .by_name_lower
-                    .entry(name_lower)
-                    .or_default()
-                    .push(path);
-                collected = collected.saturating_add(1);
-            }
+        if dirs.is_empty() {
+            return sig_files;
         }
+
+        let all_entries: Vec<(PathBuf, String)> = dirs
+            .into_iter()
+            .filter_map(|(p, _)| workspace.read_dir(&p).ok())
+            .flat_map(|entries| {
+                entries.into_iter().filter_map(|entry| {
+                    let path = entry.path().to_path_buf();
+                    let name = entry.file_name()?.to_string_lossy().to_string();
+                    Some((path, name.to_lowercase()))
+                })
+            })
+            .collect();
+
+        let next_files = scan(workspace, all_entries, depth + 1, targets);
+        sig_files
+            .into_iter()
+            .chain(next_files.into_iter())
+            .collect()
     }
 
-    result
+    let initial_items: Vec<(PathBuf, String)> = workspace
+        .read_dir(root)
+        .ok()
+        .map(|entries| {
+            entries
+                .into_iter()
+                .filter_map(|entry| {
+                    let path = entry.path().to_path_buf();
+                    let name = entry.file_name()?.to_string_lossy().to_string();
+                    Some((path, name.to_lowercase()))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let matched_files = scan(workspace, initial_items, 0, &targets);
+
+    fn build_map(files: Vec<(PathBuf, String)>) -> HashMap<String, Vec<PathBuf>> {
+        files
+            .into_iter()
+            .fold(HashMap::new(), |mut map, (path, name)| {
+                map.entry(name).or_insert_with(Vec::new).push(path);
+                map
+            })
+    }
+
+    let by_name_lower = build_map(matched_files);
+
+    SignatureFiles { by_name_lower }
 }
 
 /// Detect signature files and return frameworks, test framework, package manager.

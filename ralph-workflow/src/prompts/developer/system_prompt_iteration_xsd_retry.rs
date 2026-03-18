@@ -68,28 +68,27 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files(
     let last_output_exists = workspace.exists(last_output_path);
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let mut parts = vec!["⚠️  WARNING: Required XSD retry files are missing:\n".to_string()];
         if !schema_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
+            parts.push(format!(
+                "  - Schema file: {} (workspace.root() = {})\n",
                 workspace.absolute_str(schema_relative_path),
                 workspace.root().display()
-            );
+            ));
         }
         if !last_output_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Last output: {} (workspace.root() = {})",
+            parts.push(format!(
+                "  - Last output: {} (workspace.root() = {})\n",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
                 workspace.root().display()
-            );
+            ));
         }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If any required retry-context file is missing, return the deterministic fallback.
     if !schema_exists || !last_output_exists {
@@ -185,28 +184,27 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     let last_output_exists = workspace.exists(last_output_path);
 
     // Build diagnostic prefix for missing files (per acceptance criteria #3)
-    let mut diagnostic_prefix = String::new();
-    if !schema_exists || !last_output_exists {
-        diagnostic_prefix.push_str("⚠️  WARNING: Required XSD retry files are missing:\n");
+    let diagnostic_prefix = if !schema_exists || !last_output_exists {
+        let mut parts = vec!["⚠️  WARNING: Required XSD retry files are missing:\n".to_string()];
         if !schema_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Schema file: {} (workspace.root() = {})",
+            parts.push(format!(
+                "  - Schema file: {} (workspace.root() = {})\n",
                 workspace.absolute_str(schema_relative_path),
                 workspace.root().display()
-            );
+            ));
         }
         if !last_output_exists {
-            let _ = writeln!(
-                diagnostic_prefix,
-                "  - Last output: {} (workspace.root() = {})",
+            parts.push(format!(
+                "  - Last output: {} (workspace.root() = {})\n",
                 workspace.absolute_str(".agent/tmp/last_output.xml"),
                 workspace.root().display()
-            );
+            ));
         }
-        diagnostic_prefix
-            .push_str("This likely indicates CWD != workspace.root() path mismatch.\n\n");
-    }
+        parts.push("This likely indicates CWD != workspace.root() path mismatch.\n\n".to_string());
+        parts.concat()
+    } else {
+        String::new()
+    };
 
     // If any required retry-context file is missing, return the deterministic fallback.
     if !schema_exists || !last_output_exists {
@@ -263,30 +261,32 @@ pub fn prompt_developer_iteration_xsd_retry_with_context_files_and_log(
     ]);
 
     let template = Template::new(&template_content);
-    if let Ok(mut rendered) = template.render_with_log(actual_template_name, &variables, &partials)
-    {
-        if !diagnostic_prefix.is_empty() {
-            rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
-        }
-        rendered
-    } else {
-        let prompt_content = fallback_xsd_retry_render_error_prompt(
-            xsd_error,
-            schema_relative_path,
-            continuation_mode,
-        );
-        RenderedTemplate {
-            content: prompt_content,
-            log: SubstitutionLog {
-                template_name: actual_template_name.to_string(),
-                substituted: vec![SubstitutionEntry {
-                    name: "XSD_ERROR".to_string(),
-                    source: SubstitutionSource::Value,
-                }],
-                unsubstituted: vec![],
-            },
-        }
-    }
+    template
+        .render_with_log(actual_template_name, &variables, &partials)
+        .map(|mut rendered| {
+            if !diagnostic_prefix.is_empty() {
+                rendered.content = format!("{}\n{}", diagnostic_prefix, rendered.content);
+            }
+            rendered
+        })
+        .unwrap_or_else(|_| {
+            let prompt_content = fallback_xsd_retry_render_error_prompt(
+                xsd_error,
+                schema_relative_path,
+                continuation_mode,
+            );
+            RenderedTemplate {
+                content: prompt_content,
+                log: SubstitutionLog {
+                    template_name: actual_template_name.to_string(),
+                    substituted: vec![SubstitutionEntry {
+                        name: "XSD_ERROR".to_string(),
+                        source: SubstitutionSource::Value,
+                    }],
+                    unsubstituted: vec![],
+                },
+            }
+        })
 }
 
 fn fallback_xsd_retry_prompt(

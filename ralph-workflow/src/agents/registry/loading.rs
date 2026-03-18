@@ -32,12 +32,19 @@ impl AgentRegistry {
                 let count = config.agents.len();
                 let resolved_drains = config.resolve_drains_checked()?;
 
-                let agents_to_register: Vec<_> = config
+                // Collect agents functionally - build new HashMap with chain
+                let agents_to_register: HashMap<_, _> = config
                     .agents
                     .into_iter()
                     .map(|(name, agent_toml)| (name, AgentConfig::from(agent_toml)))
                     .collect();
-                self.agents.extend(agents_to_register);
+                // Rebuild with chain instead of extend
+                self.agents = self
+                    .agents
+                    .clone()
+                    .into_iter()
+                    .chain(agents_to_register)
+                    .collect();
 
                 self.resolved_drains = resolved_drains.unwrap_or_else(|| {
                     Self::merge_general_runtime_settings(
@@ -116,7 +123,10 @@ impl AgentRegistry {
                     .get(name)
                     .cloned()
                     .map(|existing| (name.clone(), Self::merge_agent_config(existing, overrides)))
-                    .or_else(|| Self::create_new_agent_config(overrides).map(|config| (name.clone(), config)))
+                    .or_else(|| {
+                        Self::create_new_agent_config(overrides)
+                            .map(|config| (name.clone(), config))
+                    })
             })
             .collect();
 

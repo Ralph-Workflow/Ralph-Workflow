@@ -287,18 +287,22 @@ impl ContinuationState {
     ///
     /// Use 0 to disable XSD retries (immediate agent fallback on validation failure).
     #[must_use]
-    pub const fn with_max_xsd_retry(mut self, max_xsd_retry_count: u32) -> Self {
-        self.max_xsd_retry_count = max_xsd_retry_count;
-        self
+    pub fn with_max_xsd_retry(self, max_xsd_retry_count: u32) -> Self {
+        Self {
+            max_xsd_retry_count,
+            ..self
+        }
     }
 
     /// Builder: set max same-agent retry count for transient invocation failures.
     ///
     /// Use 0 to disable same-agent retries (immediate agent fallback on timeout/internal error).
     #[must_use]
-    pub const fn with_max_same_agent_retry(mut self, max_same_agent_retry_count: u32) -> Self {
-        self.max_same_agent_retry_count = max_same_agent_retry_count;
-        self
+    pub fn with_max_same_agent_retry(self, max_same_agent_retry_count: u32) -> Self {
+        Self {
+            max_same_agent_retry_count,
+            ..self
+        }
     }
 
     /// Check if this is a continuation attempt (not the first attempt).

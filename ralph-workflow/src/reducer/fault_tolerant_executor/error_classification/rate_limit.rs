@@ -305,28 +305,20 @@ fn extract_error_code(value: &Value) -> Option<String> {
 /// # Returns
 /// `true` if the pattern is found and is followed by a file extension pattern
 fn contains_provider_prefixed_usage_limit(text_lower: &str) -> bool {
-    // Multi-provider gateway forwarding pattern.
-    // Pattern: "<provider>: usage limit" (e.g., "anthropic: usage limit")
-    // IMPORTANT: Some stderr contains multiple occurrences; we must inspect each matching occurrence
-    // rather than only the first "usage limit" substring in the text.
-    for (pos, _) in text_lower.match_indices(": usage limit") {
-        let usage_limit_pos = pos + ": ".len();
-        if !is_followed_by_file_extension_generic_at(text_lower, usage_limit_pos, "usage limit") {
-            return true;
-        }
-    }
-
-    false
+    text_lower
+        .match_indices(": usage limit")
+        .map(|(pos, _)| {
+            let usage_limit_pos = pos + ": ".len();
+            !is_followed_by_file_extension_generic_at(text_lower, usage_limit_pos, "usage limit")
+        })
+        .any(|is_valid| is_valid)
 }
 
 fn has_non_filename_occurrence(text_lower: &str, pattern: &str) -> bool {
-    for (pos, _) in text_lower.match_indices(pattern) {
-        if !is_followed_by_file_extension_generic_at(text_lower, pos, pattern) {
-            return true;
-        }
-    }
-
-    false
+    text_lower
+        .match_indices(pattern)
+        .map(|(pos, _)| !is_followed_by_file_extension_generic_at(text_lower, pos, pattern))
+        .any(|is_valid| is_valid)
 }
 
 fn is_followed_by_file_extension_generic_at(
@@ -334,14 +326,9 @@ fn is_followed_by_file_extension_generic_at(
     pattern_pos: usize,
     pattern: &str,
 ) -> bool {
-    /// `LazyLock` for one-time regex initialization (compiled on first use, then cached).
-    /// Pattern matches: optional whitespace + dot + 1-10 alphanumeric chars + non-alphanumeric or end.
-    /// Matches common file extensions: .rs, .py, .js, .ts, .go, .rb, .java, .cpp, .c, .h, .php, .cs, .swift, .kt, .scala, .sh, .properties, .markdown, .terraform, etc.
-    /// Handles edge case of whitespace between pattern and extension: "usage limit .rs"
-    /// Updated from 1-5 to 1-10 to support longer extensions like .properties, .markdown
-    static EXTENSION_REGEX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^\s*\.[a-z0-9]{1,10}([^a-z0-9]|$)").unwrap()
-    });
+    fn get_extension_regex() -> regex::Regex {
+        regex::Regex::new(r"^\s*\.[a-z0-9]{1,10}([^a-z0-9]|$)").expect("regex should be valid")
+    }
 
     let Some(after_pattern) = text_lower.get(pattern_pos + pattern.len()..) else {
         return false;
@@ -351,5 +338,5 @@ fn is_followed_by_file_extension_generic_at(
         return false;
     }
 
-    EXTENSION_REGEX.is_match(after_pattern)
+    get_extension_regex().is_match(after_pattern)
 }

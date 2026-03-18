@@ -1,6 +1,1 @@
-#!/usr/bin/env sh
-set -eu
-
-# Ensure lint libraries build with nightly + rustc-dev, even if the user's
-# `cargo` comes from Homebrew or another non-rustup installation.
-exec rustup run nightly rustc "$@"
+/Users/mistlight/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/rustc

@@ -88,18 +88,15 @@ struct RawModelLimit {
 
 impl From<HashMap<String, RawProviderEntry>> for ApiCatalog {
     fn from(raw: HashMap<String, RawProviderEntry>) -> Self {
-        // Process all entries functionally - collect providers and models in one pass
-        let (providers, models) = raw
+        let entries: Vec<_> = raw
             .into_iter()
             .map(|(provider_id, entry)| {
-                // Create provider entry
                 let provider = Provider {
                     id: entry.id.clone(),
                     name: entry.name.clone(),
                     description: entry.doc.unwrap_or_default(),
                 };
 
-                // Convert models from HashMap to Vec
                 let model_list: Vec<Model> = entry
                     .models
                     .into_values()
@@ -113,16 +110,23 @@ impl From<HashMap<String, RawProviderEntry>> for ApiCatalog {
 
                 (provider_id, provider, model_list)
             })
-            .fold(
-                (HashMap::new(), HashMap::new()),
-                |(mut providers, mut models), (id, provider, model_list)| {
-                    if !model_list.is_empty() {
-                        models.insert(id.clone(), model_list);
-                    }
-                    providers.insert(id, provider);
-                    (providers, models)
-                },
-            );
+            .collect();
+
+        let providers: HashMap<_, _> = entries
+            .iter()
+            .map(|(id, provider, _)| (id.clone(), provider.clone()))
+            .collect();
+
+        let models: HashMap<_, _> = entries
+            .iter()
+            .filter_map(|(id, _, model_list)| {
+                if model_list.is_empty() {
+                    None
+                } else {
+                    Some((id.clone(), model_list.clone()))
+                }
+            })
+            .collect();
 
         Self {
             providers,

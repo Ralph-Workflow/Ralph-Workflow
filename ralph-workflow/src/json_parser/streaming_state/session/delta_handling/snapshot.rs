@@ -1,5 +1,5 @@
 impl StreamingSession {
-    #[must_use] 
+    #[must_use]
     pub fn is_likely_snapshot(&self, text: &str, key: &str) -> bool {
         let content_key = (ContentType::Text, key.to_string());
 
@@ -82,17 +82,18 @@ impl StreamingSession {
     ///
     /// # Returns
     /// Aggregated metrics across all content types and keys.
-    #[must_use] 
+    #[must_use]
     pub fn get_streaming_quality_metrics(&self) -> StreamingQualityMetrics {
         // Flatten all delta sizes across all content types and keys
         let all_sizes = self.delta_sizes.values().flat_map(|v| v.iter().copied());
-        let mut metrics = StreamingQualityMetrics::from_sizes(all_sizes);
+        let metrics = StreamingQualityMetrics::from_sizes(all_sizes);
 
         // Add session-level metrics
-        metrics.snapshot_repairs_count = self.snapshot_repairs_count;
-        metrics.large_delta_count = self.large_delta_count;
-        metrics.protocol_violations = self.protocol_violations;
-
-        metrics
+        StreamingQualityMetrics {
+            snapshot_repairs_count: self.snapshot_repairs_count,
+            large_delta_count: self.large_delta_count,
+            protocol_violations: self.protocol_violations,
+            ..metrics
+        }
     }
 }

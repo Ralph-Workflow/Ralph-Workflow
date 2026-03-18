@@ -159,9 +159,10 @@ fn print_category(colors: Colors, category: &ProviderCategory) {
         category.name,
         colors.reset()
     );
-    for (provider, alias) in category.providers {
-        print_provider_info(colors, *provider, alias);
-    }
+    category
+        .providers
+        .iter()
+        .for_each(|(provider, alias)| print_provider_info(colors, *provider, alias));
     let _ = writeln!(std::io::stdout());
 }
 
@@ -223,9 +224,9 @@ pub fn handle_list_providers(colors: Colors) {
     );
     let _ = writeln!(std::io::stdout());
 
-    for category in PROVIDER_CATEGORIES {
+    PROVIDER_CATEGORIES.iter().for_each(|category| {
         print_category(colors, category);
-    }
+    });
 
     print_notes(colors);
 }

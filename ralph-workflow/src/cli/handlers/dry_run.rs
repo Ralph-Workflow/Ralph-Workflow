@@ -52,14 +52,13 @@ pub fn handle_dry_run(
         validate_prompt_md_with_workspace(workspace, config.behavior.strict_validation, false);
 
     // Report errors first
-    for err in &validation.errors {
-        logger.error(err);
-    }
+    validation.errors.iter().for_each(|err| logger.error(err));
 
     // Report warnings
-    for warn in &validation.warnings {
-        logger.warn(&format!("{warn} (recommended)"));
-    }
+    validation
+        .warnings
+        .iter()
+        .for_each(|warn| logger.warn(&format!("{warn} (recommended)")));
 
     // Bail if validation failed
     if !validation.is_valid() {

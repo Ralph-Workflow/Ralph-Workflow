@@ -15,7 +15,6 @@ use crate::reducer::effect::{ContinuationContextData, EffectResult};
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
 use crate::workspace::Workspace;
 use anyhow::Result;
-use std::fmt::Write;
 use std::path::Path;
 
 impl MainEffectHandler {
@@ -83,7 +82,7 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.developer_agent.to_string());
 
-        let mut result = self.invoke_agent(
+        let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Development,
             AgentRole::Developer,
@@ -91,15 +90,16 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        if result.additional_events.iter().any(|e| {
+        let result = if result.additional_events.iter().any(|e| {
             matches!(
                 e,
                 PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
             )
         }) {
-            result =
-                result.with_additional_event(PipelineEvent::development_agent_invoked(iteration));
-        }
+            result.with_additional_event(PipelineEvent::development_agent_invoked(iteration))
+        } else {
+            result
+        };
         Ok(result)
     }
 
@@ -224,34 +224,30 @@ pub(in crate::reducer::handler) fn write_continuation_context_to_workspace(
         })?;
     }
 
-    let mut content = String::new();
-    content.push_str("# Development Continuation Context\n\n");
-    writeln!(content, "- Iteration: {}", data.iteration).unwrap();
-    writeln!(content, "- Continuation attempt: {}", data.attempt).unwrap();
-    write!(content, "- Previous status: {}\n\n", data.status).unwrap();
-
-    content.push_str("## Previous summary\n\n");
-    content.push_str(&data.summary);
-    content.push('\n');
-
-    if let Some(ref files) = data.files_changed {
-        content.push_str("\n## Files changed\n\n");
-        for file in files {
-            content.push_str("- ");
-            content.push_str(file);
-            content.push('\n');
-        }
-    }
-
-    if let Some(ref steps) = data.next_steps {
-        content.push_str("\n## Recommended next steps\n\n");
-        content.push_str(steps);
-        content.push('\n');
-    }
-
-    content.push_str("\n## Reference files (do not modify)\n\n");
-    content.push_str("- PROMPT.md\n");
-    content.push_str("- .agent/PLAN.md\n");
+    let content = format!(
+        "# Development Continuation Context\n\n\
+- Iteration: {iteration}\n\
+- Continuation attempt: {attempt}\n\
+- Previous status: {status}\n\n\
+## Previous summary\n\n\
+{summary}\n\
+{files_section}\
+{steps_section}\
+## Reference files (do not modify)\n\n\
+- PROMPT.md\n\
+- .agent/PLAN.md\n",
+        iteration = data.iteration,
+        attempt = data.attempt,
+        status = data.status,
+        summary = data.summary,
+        files_section = data.files_changed.as_ref().map_or(String::new(), |files| {
+            let file_list = files.iter().map(|f| format!("- {f}\n")).collect::<String>();
+            format!("\n## Files changed\n\n{}", file_list)
+        }),
+        steps_section = data.next_steps.as_ref().map_or(String::new(), |steps| {
+            format!("\n## Recommended next steps\n\n{steps}\n")
+        }),
+    );
 
     workspace
         .write(Path::new(".agent/tmp/continuation_context.md"), &content)

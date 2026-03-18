@@ -66,8 +66,8 @@ impl AgentRegistry {
         defaults: CcsConfig,
     ) {
         self.ccs_resolver = CcsAliasResolver::new(aliases.clone(), defaults);
-        // Compute all agents to insert and extend
-        let new_agents: Vec<_> = aliases
+        // Compute all agents to insert - functional style with chain
+        let new_agents: HashMap<_, _> = aliases
             .keys()
             .filter_map(|alias_name| {
                 let agent_name = format!("ccs/{alias_name}");
@@ -76,12 +76,19 @@ impl AgentRegistry {
                     .map(|config| (agent_name, config))
             })
             .collect();
-        self.agents.extend(new_agents);
+        // Rebuild with chain - functional style
+        self.agents = self.agents.clone().into_iter().chain(new_agents).collect();
     }
 
     /// Register a new agent.
     pub fn register(&mut self, name: &str, config: AgentConfig) {
-        self.agents.insert(name.to_string(), config);
+        // Rebuild with chain - functional style instead of mutating insert
+        self.agents = self
+            .agents
+            .clone()
+            .into_iter()
+            .chain(std::iter::once((name.to_string(), config)))
+            .collect();
     }
 
     /// Create a registry with only built-in agents (no config file loading).
@@ -294,10 +301,7 @@ impl AgentRegistry {
         let variations: Vec<String> = match name {
             // ccs variations
             n if n.starts_with("ccs-") => vec![name.replace("ccs-", "ccs/")],
-            n if n.contains('_') => vec![
-                name.replace('_', "-"),
-                name.replace('_', "/"),
-            ],
+            n if n.contains('_') => vec![name.replace('_', "-"), name.replace('_', "/")],
 
             // claude variations
             "claud" | "cloud" => vec!["claude".to_string()],

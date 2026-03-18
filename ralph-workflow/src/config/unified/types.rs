@@ -551,17 +551,15 @@ impl UnifiedConfig {
                         return Ok(current_bindings);
                     }
 
-                    let mut next_bindings = current_bindings.clone();
-                    let mut resolved_any = false;
-
-                    for drain in &unresolved {
-                        if let Some(binding) =
+                    let new_bindings: HashMap<AgentDrain, ResolvedDrainBinding> = unresolved
+                        .iter()
+                        .filter_map(|drain| {
                             default_chain_binding_for_drain(self, &current_bindings, *drain)
-                        {
-                            next_bindings.insert(*drain, binding);
-                            resolved_any = true;
-                        }
-                    }
+                                .map(|binding| (*drain, binding))
+                        })
+                        .collect();
+
+                    let resolved_any = !new_bindings.is_empty();
 
                     if !resolved_any {
                         let missing = unresolved
@@ -574,24 +572,55 @@ impl UnifiedConfig {
                         ));
                     }
 
+                    let next_bindings = current_bindings
+                        .clone()
+                        .into_iter()
+                        .chain(new_bindings)
+                        .collect();
+
                     Ok(next_bindings)
                 },
             )?;
 
-            for drain in AgentDrain::all() {
-                let Some(binding) = bindings.get(&drain) else {
-                    return Err(format!(
+            let all_have_valid_bindings = AgentDrain::all().iter().all(|drain| {
+                bindings
+                    .get(drain)
+                    .map_or(false, |binding| !binding.agents.is_empty())
+            });
+
+            if !all_have_valid_bindings {
+                let all_drains = AgentDrain::all();
+                let invalid_drain = all_drains
+                    .iter()
+                    .find(|drain| {
+                        !bindings
+                            .get(drain)
+                            .map_or(false, |binding| !binding.agents.is_empty())
+                    })
+                    .expect(
+                        "at least one drain must be invalid since all_have_valid_bindings is false",
+                    );
+
+                return Err(
+                    if bindings
+                        .get(invalid_drain)
+                        .map_or(true, |b| b.agents.is_empty())
+                    {
+                        format!(
+                            "agent_drains.{} must not resolve to an empty chain (chain '{}')",
+                            invalid_drain.as_str(),
+                            bindings
+                                .get(invalid_drain)
+                                .map(|b| b.chain_name.as_str())
+                                .unwrap_or("")
+                        )
+                    } else {
+                        format!(
                         "agent_drains does not resolve all built-in drains; missing binding for: {}",
-                        drain.as_str()
-                    ));
-                };
-                if binding.agents.is_empty() {
-                    return Err(format!(
-                        "agent_drains.{} must not resolve to an empty chain (chain '{}')",
-                        drain.as_str(),
-                        binding.chain_name
-                    ));
-                }
+                        invalid_drain.as_str()
+                    )
+                    },
+                );
             }
 
             let provider_fallback = if self.general.provider_fallback.is_empty() {

@@ -59,15 +59,31 @@ impl EffectResult {
     /// agent invocation completes. Each additional event is processed
     /// by the reducer in order.
     #[must_use]
-    pub fn with_additional_event(mut self, event: PipelineEvent) -> Self {
-        self.additional_events.push(event);
-        self
+    pub fn with_additional_event(self, event: PipelineEvent) -> Self {
+        let additional_events = self
+            .additional_events
+            .into_iter()
+            .chain(std::iter::once(event))
+            .collect();
+        Self {
+            event: self.event,
+            additional_events,
+            ui_events: self.ui_events,
+        }
     }
 
     /// Add a UI event to the result.
     #[must_use]
-    pub fn with_ui_event(mut self, ui_event: UIEvent) -> Self {
-        self.ui_events.push(ui_event);
-        self
+    pub fn with_ui_event(self, ui_event: UIEvent) -> Self {
+        let ui_events = self
+            .ui_events
+            .into_iter()
+            .chain(std::iter::once(ui_event))
+            .collect();
+        Self {
+            event: self.event,
+            additional_events: self.additional_events,
+            ui_events,
+        }
     }
 }

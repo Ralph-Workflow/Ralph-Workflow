@@ -8,13 +8,10 @@ pub fn extract_session_id_from_logfile(
     let logfile_path = Path::new(logfile);
     let content = workspace.read(logfile_path).ok()?;
 
-    // Look for session_id in the first few lines (init events come first)
-    for line in content.lines().take(10) {
-        if let Some(session_id) = extract_session_id_from_json_line(line) {
-            return Some(session_id);
-        }
-    }
-    None
+    content
+        .lines()
+        .take(10)
+        .find_map(extract_session_id_from_json_line)
 }
 
 /// Extract `session_id` from a single JSON line.
@@ -70,15 +67,11 @@ pub fn extract_error_message_from_logfile(
     let logfile_path = Path::new(logfile);
     let content = workspace.read(logfile_path).ok()?;
 
-    // Search through all lines for error events
-    // Error events are typically emitted near the end, but we search all lines
-    // to handle cases where multiple attempts are logged to the same file
-    for line in content.lines().rev().take(50) {
-        if let Some(error_msg) = extract_error_message_from_json_line(line) {
-            return Some(error_msg);
-        }
-    }
-    None
+    content
+        .lines()
+        .rev()
+        .take(50)
+        .find_map(extract_error_message_from_json_line)
 }
 
 /// Extract an error identifier from a logfile containing agent JSON output.
@@ -92,12 +85,11 @@ pub fn extract_error_identifier_from_logfile(
     let logfile_path = Path::new(logfile);
     let content = workspace.read(logfile_path).ok()?;
 
-    for line in content.lines().rev().take(50) {
-        if let Some(id) = extract_error_identifier_from_json_line(line) {
-            return Some(id);
-        }
-    }
-    None
+    content
+        .lines()
+        .rev()
+        .take(50)
+        .find_map(extract_error_identifier_from_json_line)
 }
 
 pub(super) fn is_explicit_error_event(value: &serde_json::Value) -> bool {

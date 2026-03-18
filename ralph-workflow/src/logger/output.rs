@@ -94,21 +94,9 @@ pub use output_formatting::{argv_requests_json, format_generic_json_for_display}
 #[cfg(any(test, feature = "test-utils"))]
 pub use test_logger::TestLogger;
 
-/// Strip ANSI escape sequences from a string.
-///
-/// Used when writing to log files where ANSI codes are not supported.
-#[must_use]
-pub fn strip_ansi_codes(s: &str) -> String {
-    static ANSI_RE: std::sync::LazyLock<Result<regex::Regex, regex::Error>> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"\x1b\[[0-9;]*m"));
-    (*ANSI_RE)
-        .as_ref()
-        .map_or_else(|_| s.to_string(), |re| re.replace_all(s, "").to_string())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::logger::io::ansi_stripper::strip_ansi_codes;
 
     #[test]
     fn test_strip_ansi_codes() {

@@ -81,6 +81,7 @@ mod file_activity;
 pub(crate) mod kill;
 mod monitor;
 mod readers;
+pub(crate) mod runtime;
 
 pub use clock::{
     is_idle_timeout_exceeded, is_idle_timeout_exceeded_with_clock, new_activity_timestamp,

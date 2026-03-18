@@ -32,8 +32,8 @@ use agent_spawn::run_with_agent_spawn;
 #[cfg(test)]
 use crate::agents::JsonParserType;
 
-#[cfg(test)]
-use stderr_collector::collect_stderr_with_cap_and_drain;
+// #[cfg(test)]
+// use runtime::stderr_collector::collect_stderr_with_cap_and_drain;
 
 #[cfg(test)]
 use save::build_prompt_archive_filename;

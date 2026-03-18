@@ -6,66 +6,96 @@ use super::base::ReviewGuidelines;
 use crate::language_detector::ProjectStack;
 
 /// Add Ruby-specific guidelines to the review
-pub fn add_guidelines(mut guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Follow Ruby style guide (rubocop)".to_string(),
-        "Use meaningful variable names".to_string(),
-        "Keep methods under 10 lines when possible".to_string(),
-        "Use symbols instead of strings for keys".to_string(),
-    ]);
+pub fn add_guidelines(guidelines: ReviewGuidelines, stack: &ProjectStack) -> ReviewGuidelines {
+    let base = ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Follow Ruby style guide (rubocop)".to_string(),
+                "Use meaningful variable names".to_string(),
+                "Keep methods under 10 lines when possible".to_string(),
+                "Use symbols instead of strings for keys".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Use parameterized queries (avoid string interpolation in SQL)".to_string(),
+                "Escape output in views".to_string(),
+                "Validate strong parameters".to_string(),
+            ])
+            .collect(),
+        anti_patterns: guidelines
+            .anti_patterns
+            .into_iter()
+            .chain([
+                "Avoid monkey patching core classes".to_string(),
+                "Don't use eval with user input".to_string(),
+                "Avoid deeply nested conditionals".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    };
 
-    guidelines.security_checks.extend([
-        "Use parameterized queries (avoid string interpolation in SQL)".to_string(),
-        "Escape output in views".to_string(),
-        "Validate strong parameters".to_string(),
-    ]);
+    let with_rails = if stack.frameworks.contains(&"Rails".to_string()) {
+        add_rails_guidelines(base)
+    } else {
+        base
+    };
 
-    guidelines.anti_patterns.extend([
-        "Avoid monkey patching core classes".to_string(),
-        "Don't use eval with user input".to_string(),
-        "Avoid deeply nested conditionals".to_string(),
-    ]);
-
-    if stack.frameworks.contains(&"Rails".to_string()) {
-        guidelines = add_rails_guidelines(guidelines);
-    }
     if stack.frameworks.contains(&"Sinatra".to_string()) {
-        guidelines = add_sinatra_guidelines(guidelines);
+        add_sinatra_guidelines(with_rails)
+    } else {
+        with_rails
     }
-
-    guidelines
 }
 
-/// Add Rails-specific guidelines
-fn add_rails_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Follow Rails conventions".to_string(),
-        "Use Active Record validations".to_string(),
-        "Keep controllers thin".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Use strong parameters".to_string(),
-        "Protect against mass assignment".to_string(),
-        "Use Rails' built-in CSRF protection".to_string(),
-    ]);
-
-    guidelines
+fn add_rails_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Follow Rails conventions".to_string(),
+                "Use Active Record validations".to_string(),
+                "Keep controllers thin".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Use strong parameters".to_string(),
+                "Protect against mass assignment".to_string(),
+                "Use Rails' built-in CSRF protection".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
-/// Add Sinatra-specific guidelines
-fn add_sinatra_guidelines(mut guidelines: ReviewGuidelines) -> ReviewGuidelines {
-    guidelines.quality_checks.extend([
-        "Use modular Sinatra style for larger apps".to_string(),
-        "Organize routes logically".to_string(),
-    ]);
-
-    guidelines.security_checks.extend([
-        "Enable rack protection".to_string(),
-        "Set session secret securely".to_string(),
-    ]);
-
-    guidelines
+fn add_sinatra_guidelines(guidelines: ReviewGuidelines) -> ReviewGuidelines {
+    ReviewGuidelines {
+        quality_checks: guidelines
+            .quality_checks
+            .into_iter()
+            .chain([
+                "Use modular Sinatra style for larger apps".to_string(),
+                "Organize routes logically".to_string(),
+            ])
+            .collect(),
+        security_checks: guidelines
+            .security_checks
+            .into_iter()
+            .chain([
+                "Enable rack protection".to_string(),
+                "Set session secret securely".to_string(),
+            ])
+            .collect(),
+        ..guidelines
+    }
 }
 
 #[cfg(test)]

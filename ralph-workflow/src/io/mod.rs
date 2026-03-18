@@ -15,6 +15,11 @@
 //! - Use [`crate::workspace::Workspace`] trait for all file operations
 //! - Keep this module focused on transport, not business decisions
 //! - Return raw data, let domain code interpret it
+//!
+//! ## Testing
+//!
+//! This is a boundary module - mutation and I/O are allowed here.
 
 pub mod file_operations;
+pub mod terminal;
 pub mod workspace_ops;

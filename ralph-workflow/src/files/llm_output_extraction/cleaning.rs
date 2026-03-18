@@ -21,26 +21,14 @@
 /// ```
 #[must_use]
 pub fn unescape_json_strings(content: &str) -> String {
-    let mut result = content.to_string();
-
-    // Common JSON escape sequences that might leak
-    // Note: We only replace literal backslash-n patterns, not actual newlines
-    // We need to be careful to only replace literal \n, \t, \r sequences
-    // that appear in the text (which indicates improper JSON unescaping)
-
-    // We use a more careful approach: replace literal backslash followed by n/t/r
-    // But we must be careful not to double-escape already correct content
-
-    // Check if we have literal escape sequences (backslash followed by n/t/r)
-    // This is indicated by the presence of "\n" (two characters: backslash, n)
-    // NOT a newline character
-    if result.contains("\\n") || result.contains("\\t") || result.contains("\\r") {
-        result = result.replace("\\n", "\n"); // newline
-        result = result.replace("\\t", "\t"); // tab
-        result = result.replace("\\r", "\r"); // carriage return
+    if content.contains("\\n") || content.contains("\\t") || content.contains("\\r") {
+        content
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\r", "\r")
+    } else {
+        content.to_string()
     }
-
-    result
 }
 
 /// Aggressively unescape all JSON escape sequences, including multiple passes.
@@ -60,28 +48,18 @@ pub fn unescape_json_strings(content: &str) -> String {
 /// ```
 #[must_use]
 pub fn unescape_json_strings_aggressive(content: &str) -> String {
-    let mut result = content.to_string();
-    let mut previous_len: usize;
-
-    // Multiple passes: handle double-escaped sequences like \\n -> \n -> actual newline
-    loop {
-        previous_len = result.len();
-
-        // Replace all escape sequences
-        result = result.replace("\\\\n", "\n"); // double-escaped newline
-        result = result.replace("\\\\t", "\t"); // double-escaped tab
-        result = result.replace("\\\\r", "\r"); // double-escaped carriage return
-        result = result.replace("\\n", "\n"); // single-escaped newline
-        result = result.replace("\\t", "\t"); // single-escaped tab
-        result = result.replace("\\r", "\r"); // single-escaped carriage return
-
-        // If no changes were made, we're done
-        if result.len() == previous_len {
-            break;
-        }
-    }
-
-    result
+    std::iter::successors(Some(content.to_string()), |prev| {
+        let next = prev
+            .replace("\\\\n", "\n")
+            .replace("\\\\t", "\t")
+            .replace("\\\\r", "\r")
+            .replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace("\\r", "\r");
+        (next != *prev).then_some(next)
+    })
+    .last()
+    .unwrap_or_default()
 }
 
 /// Check if content contains literal escape sequences that indicate improper unescaping.
@@ -92,13 +70,7 @@ pub fn unescape_json_strings_aggressive(content: &str) -> String {
 /// This is used to detect cases where unescaping failed and we need to apply it again.
 #[must_use]
 pub fn contains_literal_escape_sequences(content: &str) -> bool {
-    // We look for literal escape sequences that are likely from improper JSON unescaping
-    // To avoid false positives on legitimate content (like code examples), we check
-    // for patterns that are characteristic of unescaping failures
-
-    let lines: Vec<&str> = content.lines().collect();
-
-    for (i, line) in lines.iter().enumerate() {
+    content.lines().enumerate().any(|(i, line)| {
         let trimmed = line.trim();
 
         // Check for body starting with literal escape sequences (after subject line)
@@ -109,12 +81,8 @@ pub fn contains_literal_escape_sequences(content: &str) -> bool {
 
         // Check for repeated escape sequences that suggest bulk unescaping failure
         // Pattern: "\\n\\n\\n" or "\\n\\n\\n\\n" - multiple escaped newlines
-        if trimmed.contains("\\n\\n\\n") || trimmed.contains("\\n\\n\\n\\n") {
-            return true;
-        }
-    }
-
-    false
+        trimmed.contains("\\n\\n\\n") || trimmed.contains("\\n\\n\\n\\n")
+    })
 }
 
 /// Apply final post-processing to ensure no escape sequences remain in commit message.
@@ -125,17 +93,11 @@ pub fn contains_literal_escape_sequences(content: &str) -> bool {
 /// Returns the cleaned commit message.
 #[must_use]
 pub fn final_escape_sequence_cleanup(message: &str) -> String {
-    let mut result = message.to_string();
-
-    // If we detect literal escape sequences, apply aggressive unescaping
-    if contains_literal_escape_sequences(&result) {
-        result = unescape_json_strings_aggressive(&result);
+    if contains_literal_escape_sequences(message) {
+        unescape_json_strings_aggressive(message)
     } else {
-        // Even without detection, apply standard unescaping to be safe
-        result = unescape_json_strings(&result);
+        unescape_json_strings(message)
     }
-
-    result
 }
 
 /// Pre-process raw log content by applying aggressive escape sequence unescaping.
@@ -149,35 +111,21 @@ pub fn final_escape_sequence_cleanup(message: &str) -> String {
 /// The function is idempotent - calling it multiple times produces the same result.
 #[must_use]
 pub fn preprocess_raw_content(content: &str) -> String {
-    let mut result = content.to_string();
-    let mut previous_len: usize;
-
-    // Multiple passes to handle nested escaping
-    loop {
-        previous_len = result.len();
-
-        // Handle all escape sequence variations using placeholder tokens
-        // This allows us to distinguish between single and double escaped sequences
-        result = result.replace("\\\\n", "\x00NEWLINE\x00"); // Mark double-escaped
-        result = result.replace("\\n", "\n"); // Single to actual
-        result = result.replace("\x00NEWLINE\x00", "\n"); // Double to actual
-
-        // Same for tabs and carriage returns
-        result = result.replace("\\\\t", "\x00TAB\x00");
-        result = result.replace("\\t", "\t");
-        result = result.replace("\x00TAB\x00", "\t");
-
-        result = result.replace("\\\\r", "\x00CR\x00");
-        result = result.replace("\\r", "\r");
-        result = result.replace("\x00CR\x00", "\r");
-
-        // If no changes, we're done
-        if result.len() == previous_len {
-            break;
-        }
-    }
-
-    result
+    std::iter::successors(Some(content.to_string()), |prev| {
+        let next = prev
+            .replace("\\\\n", "\x00NEWLINE\x00")
+            .replace("\\n", "\n")
+            .replace("\x00NEWLINE\x00", "\n")
+            .replace("\\\\t", "\x00TAB\x00")
+            .replace("\\t", "\t")
+            .replace("\x00TAB\x00", "\t")
+            .replace("\\\\r", "\x00CR\x00")
+            .replace("\\r", "\r")
+            .replace("\x00CR\x00", "\r");
+        (next != *prev).then_some(next)
+    })
+    .last()
+    .unwrap_or_default()
 }
 
 #[cfg(test)]

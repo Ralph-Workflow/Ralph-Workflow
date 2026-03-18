@@ -7,18 +7,11 @@
       "model": "anthropic/claude-sonnet-4-5",
       "permission": {
         "bash": {
-          "cargo *": "allow",
-          "git diff *": "allow",
-          "git log *": "allow",
-          "git show *": "allow",
-          "git status *": "allow",
-          "head *": "allow",
-          "make *": "allow",
-          "tail *": "allow"
+          "*": "allow"
         },
         "read": "allow",
-        "write": "deny",
-        "edit": "deny",
+        "write": "allow",
+        "edit": "allow",
         "glob": "allow",
         "grep": "allow",
         "list": "allow",
@@ -44,11 +37,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-gui --lib": "allow",
-          "cargo clippy -p ralph-gui --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-gui/*": "allow",
+          "mkdir -p ralph-gui/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-gui/*": "allow",
+          "rmdir ralph-gui/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-gui/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -56,7 +63,8 @@
         "write": {
           "*": "deny",
           "*ralph-gui/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -65,18 +73,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-gui/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-gui/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-gui/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -103,11 +114,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/*": "allow",
+          "mkdir -p ralph-workflow/src/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/*": "allow",
+          "rmdir ralph-workflow/src/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
@@ -117,6 +142,7 @@
         },
         "write": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
@@ -126,7 +152,6 @@
         "edit": {
           "*": "deny",
           "*ralph-workflow/src/*": "allow",
-          "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
@@ -134,7 +159,7 @@
         },
         "glob": {
           "*": "deny",
-          "*ralph-workflow/src/*": "allow",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
@@ -144,7 +169,7 @@
         },
         "grep": {
           "*": "deny",
-          "*ralph-workflow/src/*": "allow",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
@@ -154,7 +179,7 @@
         },
         "list": {
           "*": "deny",
-          "*ralph-workflow/src/*": "allow",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/*": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
@@ -184,15 +209,35 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/reducer/*": "allow",
+          "mkdir -p ralph-workflow/src/reducer/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/reducer/*": "allow",
+          "rmdir ralph-workflow/src/reducer/*": "allow",
+          "rmdir *ralph-workflow/src/pipeline/*": "allow",
+          "rmdir ralph-workflow/src/pipeline/*": "allow",
+          "rmdir *ralph-workflow/src/checkpoint/*": "allow",
+          "rmdir ralph-workflow/src/checkpoint/*": "allow",
+          "rmdir *ralph-workflow/src/phases/*": "allow",
+          "rmdir ralph-workflow/src/phases/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
-          "*ralph-workflow/src/reducer/**": "allow",
-          "*ralph-workflow/src/pipeline/**": "allow",
-          "*ralph-workflow/src/checkpoint/**": "allow",
-          "*ralph-workflow/src/phases/**": "allow",
+          "*tmp/**": "allow",
+          "*ralph-workflow/src/*": "allow",
+          "*ralph-workflow/src/io/**": "allow",
+          "*ralph-workflow/src/boundary/**": "allow",
+          "*ralph-workflow/src/runtime/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
@@ -202,7 +247,8 @@
           "*ralph-workflow/src/pipeline/**": "allow",
           "*ralph-workflow/src/checkpoint/**": "allow",
           "*ralph-workflow/src/phases/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -214,6 +260,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/reducer/**": "allow",
           "*ralph-workflow/src/pipeline/**": "allow",
           "*ralph-workflow/src/checkpoint/**": "allow",
@@ -223,6 +270,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/reducer/**": "allow",
           "*ralph-workflow/src/pipeline/**": "allow",
           "*ralph-workflow/src/checkpoint/**": "allow",
@@ -232,6 +280,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/reducer/**": "allow",
           "*ralph-workflow/src/pipeline/**": "allow",
           "*ralph-workflow/src/checkpoint/**": "allow",
@@ -261,11 +310,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/executor/*": "allow",
+          "mkdir -p ralph-workflow/src/executor/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/executor/*": "allow",
+          "rmdir ralph-workflow/src/executor/*": "allow",
+          "rmdir *ralph-workflow/src/runtime/*": "allow",
+          "rmdir ralph-workflow/src/runtime/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/executor/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
           "*docs/**": "allow",
@@ -275,7 +340,8 @@
           "*": "deny",
           "*ralph-workflow/src/executor/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -285,6 +351,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/executor/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
           "*docs/**": "allow",
@@ -292,6 +359,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/executor/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
           "*docs/**": "allow",
@@ -299,6 +367,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/executor/**": "allow",
           "*ralph-workflow/src/runtime/**": "allow",
           "*docs/**": "allow",
@@ -326,11 +395,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/io/*": "allow",
+          "mkdir -p ralph-workflow/src/io/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/io/*": "allow",
+          "rmdir ralph-workflow/src/io/*": "allow",
+          "rmdir *ralph-workflow/src/files/*": "allow",
+          "rmdir ralph-workflow/src/files/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/files/**": "allow",
           "*docs/**": "allow",
@@ -340,7 +425,8 @@
           "*": "deny",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/files/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -350,6 +436,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/files/**": "allow",
           "*docs/**": "allow",
@@ -357,6 +444,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/files/**": "allow",
           "*docs/**": "allow",
@@ -364,6 +452,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/io/**": "allow",
           "*ralph-workflow/src/files/**": "allow",
           "*docs/**": "allow",
@@ -391,11 +480,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/workspace/*": "allow",
+          "mkdir -p ralph-workflow/src/workspace/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/workspace/*": "allow",
+          "rmdir ralph-workflow/src/workspace/*": "allow",
+          "rmdir *ralph-workflow/src/boundary/*": "allow",
+          "rmdir ralph-workflow/src/boundary/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/workspace/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
           "*docs/**": "allow",
@@ -405,7 +510,8 @@
           "*": "deny",
           "*ralph-workflow/src/workspace/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -415,6 +521,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/workspace/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
           "*docs/**": "allow",
@@ -422,6 +529,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/workspace/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
           "*docs/**": "allow",
@@ -429,6 +537,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/workspace/**": "allow",
           "*ralph-workflow/src/boundary/**": "allow",
           "*docs/**": "allow",
@@ -456,11 +565,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/git_helpers/*": "allow",
+          "mkdir -p ralph-workflow/src/git_helpers/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/git_helpers/*": "allow",
+          "rmdir ralph-workflow/src/git_helpers/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/git_helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -468,7 +591,8 @@
         "write": {
           "*": "deny",
           "*ralph-workflow/src/git_helpers/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -477,18 +601,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/git_helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/git_helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/git_helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -515,11 +642,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/config/*": "allow",
+          "mkdir -p ralph-workflow/src/config/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/config/*": "allow",
+          "rmdir ralph-workflow/src/config/*": "allow",
+          "rmdir *ralph-workflow/src/cli/*": "allow",
+          "rmdir ralph-workflow/src/cli/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/config/**": "allow",
           "*ralph-workflow/src/cli/**": "allow",
           "*docs/**": "allow",
@@ -529,7 +672,8 @@
           "*": "deny",
           "*ralph-workflow/src/config/**": "allow",
           "*ralph-workflow/src/cli/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -539,6 +683,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/config/**": "allow",
           "*ralph-workflow/src/cli/**": "allow",
           "*docs/**": "allow",
@@ -546,6 +691,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/config/**": "allow",
           "*ralph-workflow/src/cli/**": "allow",
           "*docs/**": "allow",
@@ -553,6 +699,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/config/**": "allow",
           "*ralph-workflow/src/cli/**": "allow",
           "*docs/**": "allow",
@@ -580,11 +727,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/app/*": "allow",
+          "mkdir -p ralph-workflow/src/app/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/app/*": "allow",
+          "rmdir ralph-workflow/src/app/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/app/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -592,7 +753,8 @@
         "write": {
           "*": "deny",
           "*ralph-workflow/src/app/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -601,18 +763,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/app/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/app/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/app/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -639,11 +804,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/logging/*": "allow",
+          "mkdir -p ralph-workflow/src/logging/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/logging/*": "allow",
+          "rmdir ralph-workflow/src/logging/*": "allow",
+          "rmdir *ralph-workflow/src/logger/*": "allow",
+          "rmdir ralph-workflow/src/logger/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/logging/**": "allow",
           "*ralph-workflow/src/logger/**": "allow",
           "*docs/**": "allow",
@@ -653,7 +834,8 @@
           "*": "deny",
           "*ralph-workflow/src/logging/**": "allow",
           "*ralph-workflow/src/logger/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -663,6 +845,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/logging/**": "allow",
           "*ralph-workflow/src/logger/**": "allow",
           "*docs/**": "allow",
@@ -670,6 +853,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/logging/**": "allow",
           "*ralph-workflow/src/logger/**": "allow",
           "*docs/**": "allow",
@@ -677,6 +861,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/logging/**": "allow",
           "*ralph-workflow/src/logger/**": "allow",
           "*docs/**": "allow",
@@ -704,11 +889,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/monitoring/*": "allow",
+          "mkdir -p ralph-workflow/src/monitoring/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/monitoring/*": "allow",
+          "rmdir ralph-workflow/src/monitoring/*": "allow",
+          "rmdir *ralph-workflow/src/diagnostics/*": "allow",
+          "rmdir ralph-workflow/src/diagnostics/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/monitoring/**": "allow",
           "*ralph-workflow/src/diagnostics/**": "allow",
           "*docs/**": "allow",
@@ -718,7 +919,8 @@
           "*": "deny",
           "*ralph-workflow/src/monitoring/**": "allow",
           "*ralph-workflow/src/diagnostics/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -728,6 +930,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/monitoring/**": "allow",
           "*ralph-workflow/src/diagnostics/**": "allow",
           "*docs/**": "allow",
@@ -735,6 +938,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/monitoring/**": "allow",
           "*ralph-workflow/src/diagnostics/**": "allow",
           "*docs/**": "allow",
@@ -742,6 +946,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/monitoring/**": "allow",
           "*ralph-workflow/src/diagnostics/**": "allow",
           "*docs/**": "allow",
@@ -769,11 +974,31 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/common/*": "allow",
+          "mkdir -p ralph-workflow/src/common/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/common/*": "allow",
+          "rmdir ralph-workflow/src/common/*": "allow",
+          "rmdir *ralph-workflow/src/platform/*": "allow",
+          "rmdir ralph-workflow/src/platform/*": "allow",
+          "rmdir *ralph-workflow/src/rendering/*": "allow",
+          "rmdir ralph-workflow/src/rendering/*": "allow",
+          "rmdir *ralph-workflow/src/templates/*": "allow",
+          "rmdir ralph-workflow/src/templates/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/common/**": "allow",
           "*ralph-workflow/src/platform/**": "allow",
           "*ralph-workflow/src/rendering/**": "allow",
@@ -787,7 +1012,8 @@
           "*ralph-workflow/src/platform/**": "allow",
           "*ralph-workflow/src/rendering/**": "allow",
           "*ralph-workflow/src/templates/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -799,6 +1025,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/common/**": "allow",
           "*ralph-workflow/src/platform/**": "allow",
           "*ralph-workflow/src/rendering/**": "allow",
@@ -808,6 +1035,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/common/**": "allow",
           "*ralph-workflow/src/platform/**": "allow",
           "*ralph-workflow/src/rendering/**": "allow",
@@ -817,6 +1045,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/common/**": "allow",
           "*ralph-workflow/src/platform/**": "allow",
           "*ralph-workflow/src/rendering/**": "allow",
@@ -846,11 +1075,31 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/benchmarks/*": "allow",
+          "mkdir -p ralph-workflow/src/benchmarks/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/benchmarks/*": "allow",
+          "rmdir ralph-workflow/src/benchmarks/*": "allow",
+          "rmdir *ralph-workflow/src/interrupt/*": "allow",
+          "rmdir ralph-workflow/src/interrupt/*": "allow",
+          "rmdir *ralph-workflow/src/language_detector/*": "allow",
+          "rmdir ralph-workflow/src/language_detector/*": "allow",
+          "rmdir *ralph-workflow/src/review_metrics/*": "allow",
+          "rmdir ralph-workflow/src/review_metrics/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/benchmarks/**": "allow",
           "*ralph-workflow/src/interrupt/**": "allow",
           "*ralph-workflow/src/language_detector/**": "allow",
@@ -864,7 +1113,8 @@
           "*ralph-workflow/src/interrupt/**": "allow",
           "*ralph-workflow/src/language_detector/**": "allow",
           "*ralph-workflow/src/review_metrics/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -876,6 +1126,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/benchmarks/**": "allow",
           "*ralph-workflow/src/interrupt/**": "allow",
           "*ralph-workflow/src/language_detector/**": "allow",
@@ -885,6 +1136,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/benchmarks/**": "allow",
           "*ralph-workflow/src/interrupt/**": "allow",
           "*ralph-workflow/src/language_detector/**": "allow",
@@ -894,6 +1146,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/benchmarks/**": "allow",
           "*ralph-workflow/src/interrupt/**": "allow",
           "*ralph-workflow/src/language_detector/**": "allow",
@@ -923,11 +1176,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/agents/*": "allow",
+          "mkdir -p ralph-workflow/src/agents/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/agents/*": "allow",
+          "rmdir ralph-workflow/src/agents/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/agents/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -935,7 +1202,8 @@
         "write": {
           "*": "deny",
           "*ralph-workflow/src/agents/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -944,18 +1212,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/agents/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/agents/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/agents/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -982,11 +1253,27 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/guidelines/*": "allow",
+          "mkdir -p ralph-workflow/src/guidelines/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/guidelines/*": "allow",
+          "rmdir ralph-workflow/src/guidelines/*": "allow",
+          "rmdir *ralph-workflow/src/prompts/*": "allow",
+          "rmdir ralph-workflow/src/prompts/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/guidelines/**": "allow",
           "*ralph-workflow/src/prompts/**": "allow",
           "*docs/**": "allow",
@@ -996,7 +1283,8 @@
           "*": "deny",
           "*ralph-workflow/src/guidelines/**": "allow",
           "*ralph-workflow/src/prompts/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1006,6 +1294,7 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/guidelines/**": "allow",
           "*ralph-workflow/src/prompts/**": "allow",
           "*docs/**": "allow",
@@ -1013,6 +1302,7 @@
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/guidelines/**": "allow",
           "*ralph-workflow/src/prompts/**": "allow",
           "*docs/**": "allow",
@@ -1020,6 +1310,7 @@
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/guidelines/**": "allow",
           "*ralph-workflow/src/prompts/**": "allow",
           "*docs/**": "allow",
@@ -1047,11 +1338,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/json_parser/*": "allow",
+          "mkdir -p ralph-workflow/src/json_parser/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/json_parser/*": "allow",
+          "rmdir ralph-workflow/src/json_parser/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/json_parser/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1059,7 +1364,8 @@
         "write": {
           "*": "deny",
           "*ralph-workflow/src/json_parser/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1068,18 +1374,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/json_parser/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/json_parser/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/json_parser/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1106,11 +1415,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow --lib --all-features": "allow",
-          "cargo clippy -p ralph-workflow --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *ralph-workflow/src/cloud/*": "allow",
+          "mkdir -p ralph-workflow/src/cloud/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *ralph-workflow/src/cloud/*": "allow",
+          "rmdir ralph-workflow/src/cloud/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/cloud/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1118,7 +1441,8 @@
         "write": {
           "*": "deny",
           "*ralph-workflow/src/cloud/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1127,18 +1451,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/cloud/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/cloud/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*ralph-workflow/src/cloud/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1165,10 +1492,24 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo clippy -p test-helpers --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *test-helpers/*": "allow",
+          "mkdir -p test-helpers/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *test-helpers/*": "allow",
+          "rmdir test-helpers/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*test-helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1176,7 +1517,8 @@
         "write": {
           "*": "deny",
           "*test-helpers/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1185,18 +1527,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*test-helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*test-helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*test-helpers/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1223,11 +1568,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p xtask": "allow",
-          "cargo clippy -p xtask --all-targets -- -D warnings": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *xtask/*": "allow",
+          "mkdir -p xtask/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *xtask/*": "allow",
+          "rmdir xtask/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*xtask/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1235,7 +1594,8 @@
         "write": {
           "*": "deny",
           "*xtask/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1244,18 +1604,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*xtask/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*xtask/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*xtask/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1282,10 +1645,25 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
-          "cargo test -p ralph-workflow-tests --test integration_tests": "allow"
+          "grep *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *tests/*": "allow",
+          "mkdir -p tests/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *tests/*": "allow",
+          "rmdir tests/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "cargo test *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*tests/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1293,7 +1671,8 @@
         "write": {
           "*": "deny",
           "*tests/**": "allow",
-          ".opencode/**": "deny"
+          ".opencode/**": "deny",
+          "*tmp/**": "allow"
         },
         "edit": {
           "*": "deny",
@@ -1302,18 +1681,21 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*tests/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*tests/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*tests/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
@@ -1340,40 +1722,61 @@
           "cat *": "allow",
           "head *": "allow",
           "tail *": "allow",
+          "grep *": "allow",
           "make dylint": "allow",
-          "cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet": "allow"
+          "make dylint *": "allow",
+          "cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet": "allow",
+          "cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet *": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "mkdir -p *workflow-lints/*": "allow",
+          "mkdir -p workflow-lints/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *lints/*": "allow",
+          "rmdir lints/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo clippy *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*tmp/**": "allow",
+          "*lints/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "write": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*lints/**": "allow",
+          "*tmp/**": "allow",
           ".opencode/**": "deny"
         },
         "edit": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*lints/**": "allow",
           ".opencode/**": "deny"
         },
         "glob": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*tmp/**": "allow",
+          "*lints/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*tmp/**": "allow",
+          "*lints/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
-          "*workflow-lints/*": "allow",
+          "*tmp/**": "allow",
+          "*lints/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
@@ -1396,10 +1799,22 @@
           "ls": "allow",
           "ls *": "allow",
           "cat": "allow",
-          "cat *": "allow"
+          "cat *": "allow",
+          "mkdir -p *docs/*": "allow",
+          "mkdir -p docs/*": "allow",
+          "mkdir -p *tmp/*": "allow",
+          "rmdir *tmp/*": "allow",
+          "cargo check *": "allow",
+          "cargo build *": "allow",
+          "cargo clippy *": "allow",
+          "echo *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "pwd": "allow"
         },
         "read": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
@@ -1413,16 +1828,19 @@
         },
         "glob": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "grep": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },
         "list": {
           "*": "deny",
+          "*tmp/**": "allow",
           "*docs/**": "allow",
           ".opencode/**": "deny"
         },

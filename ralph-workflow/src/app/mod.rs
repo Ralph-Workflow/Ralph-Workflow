@@ -4,6 +4,11 @@
 //! It uses [`AppEffect`][effect::AppEffect] for side effects, which is distinct from
 //! [`Effect`][crate::reducer::effect::Effect] used after repo root discovery.
 //!
+//! # Boundary Module
+//!
+//! This module is a boundary module that handles I/O operations before the repository
+//! root is discovered. As such, it is exempt from functional programming lints.
+//!
 //! # Two Effect Layers
 //!
 //! Ralph has two distinct effect types (see also [`crate`] documentation):
@@ -28,6 +33,7 @@ pub mod mock_effect_handler;
 pub mod plumbing;
 pub(crate) mod rebase;
 pub mod resume;
+pub mod runtime;
 pub mod validation;
 
 mod runner;

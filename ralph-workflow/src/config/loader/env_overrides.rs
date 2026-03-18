@@ -22,9 +22,16 @@ impl EnvOverrideResult {
         Self { config, warnings }
     }
 
-    pub fn with_warning(mut self, warning: impl Into<String>) -> Self {
-        self.warnings.push(warning.into());
-        self
+    pub fn with_warning(self, warning: impl Into<String>) -> Self {
+        let new_warnings = self
+            .warnings
+            .into_iter()
+            .chain(std::iter::once(warning.into()))
+            .collect();
+        Self {
+            config: self.config,
+            warnings: new_warnings,
+        }
     }
 }
 
@@ -80,14 +87,12 @@ fn apply_agent_selection_env(config: Config, env: &dyn ConfigEnvironment) -> Env
         .chain(
             dev_agent_val
                 .is_some_and(|v| v.trim().is_empty())
-                .then_some("Env var RALPH_DEVELOPER_AGENT is empty; ignoring.".to_string())
-                .into_iter(),
+                .then_some("Env var RALPH_DEVELOPER_AGENT is empty; ignoring.".to_string()),
         )
         .chain(
             rev_agent_val
                 .is_some_and(|v| v.trim().is_empty())
-                .then_some("Env var RALPH_REVIEWER_AGENT is empty; ignoring.".to_string())
-                .into_iter(),
+                .then_some("Env var RALPH_REVIEWER_AGENT is empty; ignoring.".to_string()),
         )
         .collect();
 
@@ -142,20 +147,17 @@ fn apply_command_env(result: EnvOverrideResult, env: &dyn ConfigEnvironment) -> 
         .chain(
             dev_cmd_val
                 .is_some_and(|v| v.trim().is_empty())
-                .then_some("Env var RALPH_DEVELOPER_CMD is empty; ignoring.".to_string())
-                .into_iter(),
+                .then_some("Env var RALPH_DEVELOPER_CMD is empty; ignoring.".to_string()),
         )
         .chain(
             rev_cmd_val
                 .is_some_and(|v| v.trim().is_empty())
-                .then_some("Env var RALPH_REVIEWER_CMD is empty; ignoring.".to_string())
-                .into_iter(),
+                .then_some("Env var RALPH_REVIEWER_CMD is empty; ignoring.".to_string()),
         )
         .chain(
             commit_cmd_val
                 .is_some_and(|v| v.trim().is_empty())
-                .then_some("Env var RALPH_COMMIT_CMD is empty; ignoring.".to_string())
-                .into_iter(),
+                .then_some("Env var RALPH_COMMIT_CMD is empty; ignoring.".to_string()),
         )
         .collect();
 
@@ -230,7 +232,7 @@ fn apply_iteration_counts_env(
     let warnings: Vec<String> = developer_parsed
         .warnings
         .into_iter()
-        .chain(reviewer_parsed.warnings.into_iter())
+        .chain(reviewer_parsed.warnings)
         .collect();
 
     EnvOverrideResult::with_warnings(
@@ -378,19 +380,21 @@ fn apply_review_depth_env(
         }
     });
 
-    let warnings: Vec<String> = review_depth
-        .is_none()
-        .then_some(())
-        .and_then(|()| env_val)
-        .filter(|val| !val.trim().is_empty())
-        .map(|val| {
-            format!(
-                "Env var RALPH_REVIEW_DEPTH='{}' is invalid; ignoring.",
-                val.trim()
-            )
-        })
-        .into_iter()
-        .collect();
+    let warnings: Vec<String> = if review_depth.is_none() {
+        env_val
+            .as_ref()
+            .filter(|val| !val.trim().is_empty())
+            .map(|val| {
+                format!(
+                    "Env var RALPH_REVIEW_DEPTH='{}' is invalid; ignoring.",
+                    val.trim()
+                )
+            })
+            .into_iter()
+            .collect()
+    } else {
+        vec![]
+    };
 
     EnvOverrideResult::with_warnings(
         Config {
@@ -444,8 +448,8 @@ fn apply_context_levels_env(
     let warnings: Vec<String> = result
         .warnings
         .into_iter()
-        .chain(developer_parsed.warnings.into_iter())
-        .chain(reviewer_parsed.warnings.into_iter())
+        .chain(developer_parsed.warnings)
+        .chain(reviewer_parsed.warnings)
         .collect();
 
     EnvOverrideResult::with_warnings(

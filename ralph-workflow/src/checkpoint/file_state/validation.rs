@@ -7,21 +7,14 @@ impl FileSystemState {
         workspace: &dyn Workspace,
         executor: Option<&dyn ProcessExecutor>,
     ) -> Vec<ValidationError> {
-        let mut errors = Vec::new();
-
-        // Validate each tracked file
-        for (path, snapshot) in &self.files {
-            if let Err(e) = Self::validate_file_with_workspace(workspace, path, snapshot) {
-                errors.push(e);
-            }
-        }
-
-        // Validate git state if we captured it and executor was provided
-        if let Some(exec) = executor {
-            if let Err(e) = self.validate_git_state_with_executor(exec) {
-                errors.push(e);
-            }
-        }
+        let errors: Vec<ValidationError> = self
+            .files
+            .iter()
+            .filter_map(|(path, snapshot)| {
+                Self::validate_file_with_workspace(workspace, path, snapshot).err()
+            })
+            .chain(executor.and_then(|exec| self.validate_git_state_with_executor(exec).err()))
+            .collect();
 
         errors
     }

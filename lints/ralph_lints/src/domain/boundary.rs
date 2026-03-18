@@ -78,7 +78,15 @@ fn nesting_complexity_points(max_nesting_depth: usize) -> usize {
 /// - `ffi/` — foreign function interface bindings
 /// - `boundary/` — thin composition seams between pure and effectful code
 /// - `executor/` — process execution (part of runtime/execution)
-pub const BOUNDARY_MODULES: &[&str] = &["io", "runtime", "ffi", "boundary", "executor"];
+pub const BOUNDARY_MODULES: &[&str] = &[
+    "boundary",
+    "executor",
+    "ffi",
+    "files",
+    "git_helpers",
+    "io",
+    "runtime",
+];
 
 /// Check whether a path contains a boundary module component.
 ///
@@ -315,7 +323,9 @@ mod tests {
 
     #[test]
     fn file_level_executor_module_is_detected() {
-        assert!(path_contains_boundary_component(Path::new("src/executor.rs")));
+        assert!(path_contains_boundary_component(Path::new(
+            "src/executor.rs"
+        )));
     }
 
     #[test]

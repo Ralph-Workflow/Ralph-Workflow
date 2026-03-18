@@ -29,12 +29,12 @@ impl MainEffectHandler {
         files: &[String],
     ) -> EffectResult {
         // Delete all specified files
-        for file_path in files {
+        files.iter().for_each(|file_path| {
             let path = Path::new(file_path);
             if ctx.workspace.exists(path) {
                 let _ = ctx.workspace.remove_if_exists(path);
             }
-        }
+        });
 
         // Emit the appropriate event based on current phase
         match self.state.phase {

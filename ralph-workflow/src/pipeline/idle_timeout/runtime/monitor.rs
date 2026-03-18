@@ -372,10 +372,7 @@ pub fn monitor_idle_timeout_with_interval_and_kill_config_and_observer(
             let actual_idle = time_since_activity(activity_timestamp);
             let file_window = (actual_idle + scan_overhead_buffer).min(cap);
 
-            let locked_tracker = config
-                .tracker
-                .lock()
-                .expect("file activity tracker mutex poisoned - indicates panic in another thread");
+            let locked_tracker = config.tracker.lock();
 
             match locked_tracker.check_for_recent_activity(config.workspace.as_ref(), file_window) {
                 Ok(true) => {

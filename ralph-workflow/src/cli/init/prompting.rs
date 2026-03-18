@@ -1,4 +1,3 @@
-/// Prompt the user to confirm overwriting an existing PROMPT.md.
 ///
 /// Returns `true` if the user confirms, `false` otherwise.
 ///
@@ -36,14 +35,8 @@ fn with_prompt_writer<T>(
     use std::io;
 
     match target {
-        PromptOutputTarget::Stdout => {
-            let mut out = io::stdout().lock();
-            f(&mut out)
-        }
-        PromptOutputTarget::Stderr => {
-            let mut err = io::stderr().lock();
-            f(&mut err)
-        }
+        PromptOutputTarget::Stdout => f(&mut io::stdout().lock()),
+        PromptOutputTarget::Stderr => f(&mut io::stderr().lock()),
     }
 }
 
@@ -67,13 +60,13 @@ pub fn prompt_overwrite_confirmation(prompt_path: &Path, colors: Colors) -> anyh
         Ok(())
     })?;
 
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(0) | Err(_) => return Ok(false),
-        Ok(_) => {}
-    }
-
+    let input = io::stdin()
+        .lines()
+        .next()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
     let response = input.trim().to_lowercase();
+
     Ok(response == "y" || response == "yes")
 }
 
@@ -99,13 +92,13 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(0) | Err(_) => return None,
-        Ok(_) => {}
-    }
-
+    let input = io::stdin()
+        .lines()
+        .next()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
     let response = input.trim().to_lowercase();
+
     if response == "n" || response == "no" || response == "skip" {
         return None;
     }
@@ -116,21 +109,24 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         let _ = writeln!(w);
         let _ = writeln!(w, "Available Work Guides:");
 
-        for (i, (name, description)) in templates.iter().enumerate() {
-            let _ = writeln!(
-                w,
-                "  {}{}{}  {}{}{}",
-                colors.cyan(),
-                name,
-                colors.reset(),
-                colors.dim(),
-                description,
-                colors.reset()
-            );
-            if (i + 1) % 5 == 0 {
-                let _ = writeln!(w); // Group templates in sets of 5 for readability
-            }
-        }
+        templates
+            .iter()
+            .enumerate()
+            .for_each(|(i, (name, description))| {
+                let _ = writeln!(
+                    w,
+                    "  {}{}{}  {}{}{}",
+                    colors.cyan(),
+                    name,
+                    colors.reset(),
+                    colors.dim(),
+                    description,
+                    colors.reset()
+                );
+                if (i + 1) % 5 == 0 {
+                    let _ = writeln!(w);
+                }
+            });
 
         let _ = writeln!(w);
         let _ = writeln!(w, "Common choices:");
@@ -162,15 +158,15 @@ pub fn prompt_for_template(colors: Colors) -> Option<String> {
         return None;
     }
 
-    let mut template_input = String::new();
-    match io::stdin().read_line(&mut template_input) {
-        Ok(0) | Err(_) => return None,
-        Ok(_) => {}
-    }
-
+    let template_input = io::stdin()
+        .lines()
+        .next()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
     let template_name = template_input.trim();
+
+    // Empty input defaults to 'quick' template
     if template_name.is_empty() {
-        // Default to 'quick' template
         return Some("quick".to_string());
     }
 

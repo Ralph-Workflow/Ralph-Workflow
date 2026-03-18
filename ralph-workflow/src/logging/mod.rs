@@ -1,4 +1,4 @@
-mod event_loop_logger;
+pub mod io;
 /// Per-run logging infrastructure.
 ///
 /// This module provides types and utilities for organizing all logs from a single
@@ -11,6 +11,6 @@ mod event_loop_logger;
 mod run_id;
 mod run_log_context;
 
-pub use event_loop_logger::{EventLoopLogger, LogEffectParams};
+pub use io::event_loop_logger::{EventLoopLogger, LogEffectParams};
 pub use run_id::RunId;
 pub use run_log_context::{ConfigSummary, RunLogContext, RunMetadata};

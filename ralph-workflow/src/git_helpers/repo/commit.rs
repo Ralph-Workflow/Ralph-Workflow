@@ -169,11 +169,11 @@ fn git_add_all_impl(repo: &git2::Repository) -> io::Result<bool> {
     let deletions: Vec<_> = statuses
         .iter()
         .filter(|entry| entry.status().contains(git2::Status::WT_DELETED))
-        .filter_map(|entry| entry.path().map(Path::new))
+        .filter_map(|entry| entry.path().map(|p| std::path::PathBuf::from(p)))
         .collect();
 
     for path in deletions {
-        index.remove_path(path).map_err(|e| git2_to_io_error(&e))?;
+        index.remove_path(&path).map_err(|e| git2_to_io_error(&e))?;
     }
 
     // Add all files (staged, unstaged, and untracked).

@@ -14,6 +14,7 @@ pub mod output;
 #[cfg(not(any(test, feature = "test-utils")))]
 mod output;
 
+pub mod io;
 mod progress;
 
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};

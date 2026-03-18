@@ -1,7 +1,7 @@
 //! Child process detection module.
 
-mod macos;
-mod ps;
+pub mod macos;
+pub mod ps;
 
 pub use macos::child_info_from_libproc;
 pub use ps::{parse_pgrep_output, parse_ps_output};

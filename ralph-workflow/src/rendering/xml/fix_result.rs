@@ -8,17 +8,13 @@
 use super::helpers::{parse_unified_diff_files, render_diff_sections};
 use crate::files::llm_output_extraction::validate_fix_result_xml;
 use crate::reducer::ui_event::XmlOutputContext;
-use std::fmt::Write;
 
 /// Render fix result XML with semantic formatting.
 pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
-    let mut output = String::new();
-
-    if let Some(ctx) = output_context {
-        if let Some(pass) = ctx.pass {
-            writeln!(output, "\n╔═══ Fix Pass {pass} ═══╗\n").unwrap();
-        }
-    }
+    let header = output_context
+        .and_then(|ctx| ctx.pass)
+        .map(|pass| format!("\n╔═══ Fix Pass {pass} ═══╗\n"))
+        .unwrap_or_default();
 
     if let Ok(elements) = validate_fix_result_xml(content) {
         let (emoji, label): (&str, &str) = match elements.status.as_str() {
@@ -27,25 +23,25 @@ pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> Strin
             "no_issues_found" => ("✨", "No Issues Found"),
             _ => ("❓", elements.status.as_str()),
         };
-        writeln!(output, "{emoji} Status: {label}").unwrap();
 
-        if let Some(ref summary) = elements.summary {
-            output.push_str("\n📋 Summary:\n");
+        let summary_part = elements.summary.as_ref().map_or(String::new(), |summary| {
             if summary.contains("diff --git ") {
                 let sections = parse_unified_diff_files(summary);
-                output.push_str(&render_diff_sections("   Changes", &sections));
+                format!(
+                    "\n📋 Summary:\n{}",
+                    render_diff_sections("   Changes", &sections)
+                )
             } else {
-                for line in summary.lines() {
-                    writeln!(output, "   {line}").unwrap();
-                }
+                let summary_lines: String =
+                    summary.lines().map(|line| format!("   {line}\n")).collect();
+                format!("\n📋 Summary:\n{summary_lines}")
             }
-        }
-    } else {
-        output.push_str("⚠️  Unable to parse fix result XML\n\n");
-        output.push_str(content);
-    }
+        });
 
-    output
+        format!("{header}{emoji} Status: {label}{summary_part}")
+    } else {
+        format!("{header}⚠️  Unable to parse fix result XML\n\n{content}")
+    }
 }
 
 #[cfg(test)]

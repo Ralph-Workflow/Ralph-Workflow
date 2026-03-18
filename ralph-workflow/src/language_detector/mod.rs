@@ -21,9 +21,11 @@ mod extensions;
 mod scanner;
 mod signatures;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
+
+use itertools::Itertools;
 
 use crate::workspace::{Workspace, WorkspaceFs};
 
@@ -96,25 +98,23 @@ impl ProjectStack {
 
     /// Format as a summary string for display
     pub(crate) fn summary(&self) -> String {
-        let mut parts = vec![self.primary_language.clone()];
+        let secondary = (!self.secondary_languages.is_empty())
+            .then_some(format!("(+{})", self.secondary_languages.join(", ")));
+        let frameworks =
+            (!self.frameworks.is_empty()).then_some(format!("[{}]", self.frameworks.join(", ")));
+        let tests = self.has_tests.then_some(
+            self.test_framework
+                .as_ref()
+                .map(|tf| format!("tests:{tf}"))
+                .unwrap_or_else(|| "tests:yes".to_string()),
+        );
 
-        if !self.secondary_languages.is_empty() {
-            parts.push(format!("(+{})", self.secondary_languages.join(", ")));
-        }
-
-        if !self.frameworks.is_empty() {
-            parts.push(format!("[{}]", self.frameworks.join(", ")));
-        }
-
-        if self.has_tests {
-            if let Some(ref tf) = self.test_framework {
-                parts.push(format!("tests:{tf}"));
-            } else {
-                parts.push("tests:yes".to_string());
-            }
-        }
-
-        parts.join(" ")
+        std::iter::once(self.primary_language.clone())
+            .chain(secondary.into_iter())
+            .chain(frameworks.into_iter())
+            .chain(tests.into_iter())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -160,19 +160,24 @@ pub fn detect_stack_with_workspace(
     let extension_counts = scanner::count_extensions_with_workspace(workspace, root)?;
 
     // Convert extensions to languages and aggregate
-    let mut language_counts: HashMap<&str, usize> = HashMap::new();
-    for (ext, count) in &extension_counts {
-        if let Some(lang) = extension_to_language(ext) {
-            *language_counts.entry(lang).or_insert(0) += count;
-        }
-    }
+    let language_counts: BTreeMap<String, usize> = extension_counts
+        .iter()
+        .filter_map(|(ext, count)| {
+            extension_to_language(ext).map(|lang| (lang.to_string(), *count))
+        })
+        .fold(BTreeMap::new(), |acc, (lang, count)| {
+            let mut new_acc = acc;
+            *new_acc.entry(lang).or_insert(0) += count;
+            new_acc
+        });
 
-    // Sort languages by count (descending)
-    let mut language_vec: Vec<_> = language_counts
+    let language_vec: Vec<_> = language_counts
         .into_iter()
         .filter(|(_, count)| *count >= MIN_FILES_FOR_DETECTION)
+        .map(|(lang, count)| (count, lang))
+        .sorted_by(|a, b| b.0.cmp(&a.0))
+        .map(|(count, lang)| (lang, count))
         .collect();
-    language_vec.sort_by(|a, b| b.1.cmp(&a.1));
 
     // Determine primary and secondary languages
     let primary_language = language_vec

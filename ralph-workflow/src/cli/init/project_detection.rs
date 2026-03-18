@@ -10,30 +10,42 @@
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
+    let a_len = a_chars.len();
     let b_len = b_chars.len();
 
-    // Use two rows to save memory
-    let mut prev_row: Vec<usize> = (0..=b_len).collect();
-    let mut curr_row = vec![0; b_len + 1];
-
-    for (i, a_char) in a_chars.iter().enumerate() {
-        curr_row[0] = i + 1;
-
-        for (j, b_char) in b_chars.iter().enumerate() {
-            let cost = usize::from(a_char != b_char);
-            curr_row[j + 1] = std::cmp::min(
-                std::cmp::min(
-                    curr_row[j] + 1,     // deletion
-                    prev_row[j + 1] + 1, // insertion
-                ),
-                prev_row[j] + cost, // substitution
-            );
-        }
-
-        std::mem::swap(&mut prev_row, &mut curr_row);
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
     }
 
-    prev_row[b_len]
+    fn compute_row(a_chars: &[char], b_chars: &[char], prev_row: &[usize], i: usize) -> Vec<usize> {
+        (0..=b_chars.len())
+            .map(|j| {
+                if j == 0 {
+                    i
+                } else {
+                    let _cost = usize::from(a_chars[i - 1] != b_chars[j - 1]);
+                    std::cmp::min(
+                        std::cmp::min(prev_row[j] + 1, prev_row[j - 1] + 1),
+                        if a_chars[i - 1] == b_chars[j - 1] {
+                            prev_row[j - 1]
+                        } else {
+                            prev_row[j - 1] + 1
+                        },
+                    )
+                }
+            })
+            .collect()
+    }
+
+    let initial_row: Vec<usize> = (0..=b_len).collect();
+    let final_row = (0..=a_len).fold(initial_row, |prev_row, i| {
+        compute_row(&a_chars, &b_chars, &prev_row, i)
+    });
+
+    final_row[b_len]
 }
 
 /// Calculate similarity score as a percentage (0-100).
@@ -66,7 +78,7 @@ fn similarity_percentage(a: &str, b: &str) -> u32 {
 /// Returns templates that are similar to the input within the threshold.
 pub fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
     let input_lower = input.to_lowercase();
-    let mut matches: Vec<(&'static str, u32)> = ALL_TEMPLATES
+    ALL_TEMPLATES
         .iter()
         .map(|t| {
             let name = t.name();
@@ -74,12 +86,7 @@ pub fn find_similar_templates(input: &str) -> Vec<(&'static str, u32)> {
             (name, sim)
         })
         .filter(|(_, sim)| *sim >= MIN_SIMILARITY_PERCENT)
-        .collect();
-
-    // Sort by similarity (highest first)
-    matches.sort_by(|a, b| b.1.cmp(&a.1));
-
-    // Return top 3 matches
-    matches.truncate(3);
-    matches
+        .sorted_by(|a, b| b.1.cmp(&a.1))
+        .take(3)
+        .collect()
 }

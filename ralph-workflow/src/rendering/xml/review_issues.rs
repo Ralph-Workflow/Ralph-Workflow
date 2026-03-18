@@ -11,51 +11,38 @@ use crate::files::llm_output_extraction::{IssueEntry, SkillsMcp};
 use crate::reducer::ui_event::{XmlCodeSnippet, XmlOutputContext};
 use regex::Regex;
 use std::collections::BTreeMap;
-use std::fmt::Write;
-use std::sync::LazyLock;
 
 /// Render review issues XML with semantic formatting.
 pub fn render(content: &str, output_context: Option<&XmlOutputContext>) -> String {
-    let mut output = String::new();
-
-    // Header with pass context
-    if let Some(ctx) = output_context {
+    let header = if let Some(ctx) = output_context {
         if let Some(pass) = ctx.pass {
-            writeln!(output, "\n╔═══ Review Pass {pass} ═══╗\n").unwrap();
+            format!("\n╔═══ Review Pass {pass} ═══╗\n\n")
         } else {
-            output.push_str("\n╔═══ Review Results ═══╗\n\n");
+            "\n╔═══ Review Results ═══╗\n\n".to_string()
         }
     } else {
-        output.push_str("\n╔═══ Review Results ═══╗\n\n");
-    }
+        "\n╔═══ Review Results ═══╗\n\n".to_string()
+    };
 
     if let Ok(elements) = validate_issues_xml(content) {
         if elements.issues.is_empty() {
-            // Celebration for no issues
-            if let Some(ref msg) = elements.no_issues_found {
-                output.push_str("🎉 ✅ Code Approved!\n\n");
-                writeln!(output, "   {msg}").unwrap();
+            let body = if let Some(ref msg) = elements.no_issues_found {
+                format!("🎉 ✅ Code Approved!\n\n   {msg}\n")
             } else {
-                output.push_str("🎉 ✅ No issues found! Code looks good.\n");
-            }
+                "🎉 ✅ No issues found! Code looks good.\n".to_string()
+            };
+            format!("{}{}", header, body)
         } else {
-            writeln!(
-                output,
-                "🔍 Found {} issue(s) to address:\n",
+            let count_msg = format!(
+                "🔍 Found {} issue(s) to address:\n\n",
                 elements.issues.len()
-            )
-            .unwrap();
-            output.push_str(&render_issues_grouped_by_file(
-                &elements.issues,
-                output_context,
-            ));
+            );
+            let issues_output = render_issues_grouped_by_file(&elements.issues, output_context);
+            format!("{}{}{}", header, count_msg, issues_output)
         }
     } else {
-        output.push_str("⚠️  Unable to parse issues XML\n\n");
-        output.push_str(content);
+        format!("{}⚠️  Unable to parse issues XML\n\n{}", header, content)
     }
-
-    output
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,58 +61,88 @@ fn render_issues_grouped_by_file(
     context: Option<&XmlOutputContext>,
 ) -> String {
     let parsed: Vec<ParsedIssue> = issues.iter().map(parse_issue_entry).collect();
-    let mut grouped: BTreeMap<String, Vec<ParsedIssue>> = BTreeMap::new();
 
-    for issue in parsed {
-        let key = issue
-            .file
-            .clone()
-            .unwrap_or_else(|| "(no file)".to_string());
-        grouped.entry(key).or_default().push(issue);
-    }
-
-    let mut output = String::new();
-    for (file, issues) in grouped {
-        writeln!(output, "📄 {file}").unwrap();
-        for issue in issues {
-            let mut header = String::new();
-            if let Some(sev) = &issue.severity {
-                write!(header, "[{sev}] ").unwrap();
-            }
-            if let Some(start) = issue.line_start {
-                write!(header, "L{start}").unwrap();
-                if let Some(end) = issue.line_end {
-                    if end != start {
-                        write!(header, "-L{end}").unwrap();
-                    }
-                }
-                header.push_str(": ");
-            }
-
-            let desc = issue.description.trim();
-            if header.is_empty() {
-                writeln!(output, "   - {desc}").unwrap();
-            } else {
-                writeln!(output, "   - {header}{desc}").unwrap();
-            }
-
-            let snippet = issue
-                .snippet
+    let grouped: BTreeMap<String, Vec<ParsedIssue>> =
+        parsed.iter().fold(BTreeMap::new(), |groups, issue| {
+            let key = issue
+                .file
                 .clone()
-                .or_else(|| snippet_from_context(&issue, context));
-            if let Some(snippet) = snippet {
-                for line in snippet.lines() {
-                    writeln!(output, "      {line}").unwrap();
-                }
-            }
+                .unwrap_or_else(|| "(no file)".to_string());
+            let existing: Vec<ParsedIssue> = groups.get(&key).cloned().unwrap_or_default();
+            let updated: Vec<ParsedIssue> = existing
+                .into_iter()
+                .chain(std::iter::once(issue.clone()))
+                .collect();
+            groups
+                .into_iter()
+                .chain(std::iter::once((key, updated)))
+                .collect()
+        });
 
-            // Render skills-mcp for this issue if present
-            render_skills_mcp_inline(&mut output, issue.skills_mcp.as_ref());
-        }
-        output.push('\n');
-    }
+    let output = grouped
+        .iter()
+        .map(|(file, issues)| {
+            let file_section = format!("📄 {file}");
+            let issue_sections = issues
+                .iter()
+                .map(|issue| {
+                    let header = build_issue_header(issue);
+                    let desc = issue.description.trim();
+                    let header_prefix = if header.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{header}: ")
+                    };
+                    let main_line = format!("   - {header_prefix}{desc}");
+
+                    let snippet = issue
+                        .snippet
+                        .clone()
+                        .or_else(|| snippet_from_context(issue, context));
+
+                    let snippet_lines: Vec<String> = snippet
+                        .iter()
+                        .flat_map(|s| s.lines())
+                        .map(|line| format!("      {line}"))
+                        .collect();
+
+                    let skills_mcp = render_skills_mcp_inline_to_string(issue.skills_mcp.as_ref());
+
+                    let parts: String = std::iter::once(main_line)
+                        .chain(snippet_lines)
+                        .chain(skills_mcp)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    format!("{}", parts)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            format!("{}\n{}\n", file_section, issue_sections)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     output
+}
+
+fn build_issue_header(issue: &ParsedIssue) -> String {
+    let severity_part = issue
+        .severity
+        .as_ref()
+        .map(|sev| format!("[{sev}] "))
+        .unwrap_or_default();
+
+    let line_part = issue.line_start.map_or(String::new(), |start| {
+        let end_part = issue
+            .line_end
+            .filter(|&end| end != start)
+            .map_or(String::new(), |end| format!("-L{end}"));
+        format!("L{start}{end_part}: ")
+    });
+
+    format!("{severity_part}{line_part}")
 }
 
 fn snippet_from_context(issue: &ParsedIssue, context: Option<&XmlOutputContext>) -> Option<String> {
@@ -171,29 +188,22 @@ const fn ranges_overlap(a_start: u32, a_end: u32, b_start: u32, b_end: u32) -> b
     a_start <= b_end && b_start <= a_end
 }
 
-/// Regex for parsing severity levels from issue text.
-static SEVERITY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^\[(critical|high|medium|low)\]\s*")
-        .expect("invalid severity regex pattern - this is a compile-time constant")
-});
+fn severity_regex() -> Regex {
+    Regex::new(r"(?i)^\[(critical|high|medium|low)\]\s*").unwrap()
+}
 
-/// Regex for parsing file locations in standard format (file.ext:123-456).
-static LOCATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)(?P<file>[-_./A-Za-z0-9]+\.[A-Za-z0-9]+):(?P<start>\d+)(?:[-–—](?P<end>\d+))?(?::(?P<col>\d+))?")
-        .expect("invalid location regex pattern - this is a compile-time constant")
-});
+fn location_regex() -> Regex {
+    Regex::new(r"(?m)(?P<file>[-_./A-Za-z0-9]+\.[A-Za-z0-9]+):(?P<start>\d+)(?:[-–—](?P<end>\d+))?(?::(?P<col>\d+))?").unwrap()
+}
 
-/// Regex for parsing GitHub-style locations (file.ext#L123-L456).
-static GH_LOCATION_RE: LazyLock<Regex> = LazyLock::new(|| {
+fn gh_location_regex() -> Regex {
     Regex::new(r"(?m)(?P<file>[-_./A-Za-z0-9]+\.[A-Za-z0-9]+)#L(?P<start>\d+)(?:-L(?P<end>\d+))?")
-        .expect("invalid GitHub location regex pattern - this is a compile-time constant")
-});
+        .unwrap()
+}
 
-/// Regex for parsing code snippets in markdown fenced code blocks.
-static SNIPPET_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)```(?:[A-Za-z0-9_-]+)?\s*(?P<code>.*?)\s*```")
-        .expect("invalid snippet regex pattern - this is a compile-time constant")
-});
+fn snippet_regex() -> Regex {
+    Regex::new(r"(?s)```(?:[A-Za-z0-9_-]+)?\s*(?P<code>.*?)\s*```").unwrap()
+}
 
 fn parse_issue_entry(issue: &IssueEntry) -> ParsedIssue {
     let parsed = parse_issue(&issue.text);
@@ -211,10 +221,8 @@ fn parse_issue_entry(issue: &IssueEntry) -> ParsedIssue {
 fn parse_issue(issue: &str) -> ParsedIssue {
     let trimmed = issue.trim();
 
-    let mut working = trimmed.to_string();
-
-    let severity = SEVERITY_RE
-        .captures(&working)
+    let severity = severity_regex()
+        .captures(trimmed)
         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_ascii_lowercase()))
         .map(|s| match s.as_str() {
             "critical" => "Critical".to_string(),
@@ -223,20 +231,28 @@ fn parse_issue(issue: &str) -> ParsedIssue {
             "low" => "Low".to_string(),
             _ => s,
         });
-    if severity.is_some() {
-        working = SEVERITY_RE.replace(&working, "").to_string();
-    }
 
-    let snippet = SNIPPET_RE
-        .captures(&working)
+    let working_without_severity = if severity.is_some() {
+        severity_regex().replace(trimmed, "").to_string()
+    } else {
+        trimmed.to_string()
+    };
+
+    let snippet = snippet_regex()
+        .captures(&working_without_severity)
         .and_then(|cap| cap.name("code").map(|m| m.as_str().to_string()));
-    if snippet.is_some() {
-        working = SNIPPET_RE.replace(&working, "").to_string();
-    }
 
-    let (file, line_start, line_end) = LOCATION_RE
+    let working = if snippet.is_some() {
+        snippet_regex()
+            .replace(&working_without_severity, "")
+            .to_string()
+    } else {
+        working_without_severity
+    };
+
+    let (file, line_start, line_end) = location_regex()
         .captures(&working)
-        .or_else(|| GH_LOCATION_RE.captures(&working))
+        .or_else(|| gh_location_regex().captures(&working))
         .map_or_else(
             || {
                 (
@@ -276,32 +292,52 @@ fn parse_issue(issue: &str) -> ParsedIssue {
     }
 }
 
-/// Render skills-mcp recommendations inline under an issue.
-fn render_skills_mcp_inline(output: &mut String, skills_mcp: Option<&SkillsMcp>) {
+fn render_skills_mcp_inline_to_string(skills_mcp: Option<&SkillsMcp>) -> Vec<String> {
     if let Some(sm) = skills_mcp {
         let has_structured = !sm.skills.is_empty() || !sm.mcps.is_empty();
         if has_structured || sm.raw_content.is_some() {
-            for skill in &sm.skills {
-                if let Some(ref reason) = skill.reason {
-                    writeln!(output, "      - skill: {} \u{2014} {}", skill.name, reason).unwrap();
-                } else {
-                    writeln!(output, "      - skill: {}", skill.name).unwrap();
-                }
-            }
-            for mcp in &sm.mcps {
-                if let Some(ref reason) = mcp.reason {
-                    writeln!(output, "      - mcp: {} \u{2014} {}", mcp.name, reason).unwrap();
-                } else {
-                    writeln!(output, "      - mcp: {}", mcp.name).unwrap();
-                }
-            }
-            if let Some(ref raw) = sm.raw_content {
-                let trimmed: &str = raw.trim();
-                if !trimmed.is_empty() && !has_structured {
-                    writeln!(output, "      - {trimmed}").unwrap();
-                }
-            }
+            let skill_lines: Vec<String> = sm
+                .skills
+                .iter()
+                .map(|skill| {
+                    skill
+                        .reason
+                        .as_ref()
+                        .map(|r| format!("      - skill: {} \u{2014} {}", skill.name, r))
+                        .unwrap_or_else(|| format!("      - skill: {}", skill.name))
+                })
+                .collect();
+
+            let mcp_lines: Vec<String> = sm
+                .mcps
+                .iter()
+                .map(|mcp| {
+                    mcp.reason
+                        .as_ref()
+                        .map(|r| format!("      - mcp: {} \u{2014} {}", mcp.name, r))
+                        .unwrap_or_else(|| format!("      - mcp: {}", mcp.name))
+                })
+                .collect();
+
+            let raw_line = sm
+                .raw_content
+                .as_ref()
+                .filter(|raw| {
+                    let trimmed: &str = raw.trim();
+                    !trimmed.is_empty() && !has_structured
+                })
+                .map(|raw| format!("      - {}", raw.trim()));
+
+            std::iter::empty()
+                .chain(skill_lines)
+                .chain(mcp_lines)
+                .chain(raw_line)
+                .collect()
+        } else {
+            Vec::new()
         }
+    } else {
+        Vec::new()
     }
 }
 
@@ -310,25 +346,27 @@ fn render_skills_mcp_inline(output: &mut String, skills_mcp: Option<&SkillsMcp>)
 fn extract_file_from_issue(issue: &str) -> Option<&str> {
     // Common patterns: "in src/file.rs", "at src/file.rs:123", "File: src/file.rs"
     // This is best-effort heuristic parsing
-    for pattern in ["in ", "at ", "File: ", "file "] {
-        if let Some(idx) = issue.find(pattern) {
-            let start = idx.saturating_add(pattern.len());
-            let rest = &issue[start..];
-            // Find end of path (space, comma, colon for line number, or end of string)
-            let end = rest
-                .find(|c: char| c.is_whitespace() || c == ',')
-                .unwrap_or(rest.len());
-            // Handle colon followed by line number (e.g., src/file.rs:123)
-            let path_with_line = &rest[..end];
-            let path = path_with_line
-                .find(':')
-                .map_or(path_with_line, |colon_pos| &path_with_line[..colon_pos]);
-            if path.contains('/') || path.contains('.') {
-                return Some(path);
-            }
+    let patterns = ["in ", "at ", "File: ", "file "];
+
+    patterns.iter().find_map(|pattern| {
+        let idx = issue.find(*pattern)?;
+        let start = idx.saturating_add(pattern.len());
+        let rest = &issue[start..];
+        // Find end of path (space, comma, colon for line number, or end of string)
+        let end = rest
+            .find(|c: char| c.is_whitespace() || c == ',')
+            .unwrap_or(rest.len());
+        // Handle colon followed by line number (e.g., src/file.rs:123)
+        let path_with_line = &rest[..end];
+        let path = path_with_line
+            .find(':')
+            .map_or(path_with_line, |colon_pos| &path_with_line[..colon_pos]);
+        if path.contains('/') || path.contains('.') {
+            Some(path)
+        } else {
+            None
         }
-    }
-    None
+    })
 }
 
 #[cfg(test)]

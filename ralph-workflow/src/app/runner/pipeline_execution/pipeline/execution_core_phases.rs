@@ -70,12 +70,13 @@ fn compute_initial_state(
         ) {
             let default_branch =
                 crate::git_helpers::get_default_branch().unwrap_or_else(|_| "main".to_string());
-            let mut new_state = base_state;
-            new_state.rebase = crate::reducer::state::RebaseState::InProgress {
-                original_head: "HEAD".to_string(),
-                target_branch: default_branch,
-            };
-            new_state
+            crate::reducer::PipelineState {
+                rebase: crate::reducer::state::RebaseState::InProgress {
+                    original_head: "HEAD".to_string(),
+                    target_branch: default_branch,
+                },
+                ..base_state
+            }
         } else {
             base_state
         }
@@ -83,9 +84,10 @@ fn compute_initial_state(
         base_state.rebase,
         crate::reducer::state::RebaseState::NotStarted
     ) {
-        let mut new_state = base_state;
-        new_state.rebase = crate::reducer::state::RebaseState::Skipped;
-        new_state
+        crate::reducer::PipelineState {
+            rebase: crate::reducer::state::RebaseState::Skipped,
+            ..base_state
+        }
     } else {
         base_state
     }

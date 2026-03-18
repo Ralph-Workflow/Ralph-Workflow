@@ -16,7 +16,7 @@ impl MainEffectHandler {
             save_checkpoint_from_state(&self.state, ctx);
         }
 
-        let mut result = EffectResult::event(PipelineEvent::checkpoint_saved(trigger));
+        let result = EffectResult::event(PipelineEvent::checkpoint_saved(trigger));
 
         // If the pipeline reaches a phase boundary but checkpoint writing is disabled (or the
         // checkpoint file write is skipped), orchestration can repeatedly derive the
@@ -24,26 +24,29 @@ impl MainEffectHandler {
         //
         // Emit the phase completion event as a separate reducer event so the state machine
         // always advances past the boundary.
-        if trigger == CheckpointTrigger::PhaseTransition {
+        let additional_event = if trigger == CheckpointTrigger::PhaseTransition {
             match self.state.phase {
                 PipelinePhase::Development
                     if self.state.iteration >= self.state.total_iterations =>
                 {
-                    result =
-                        result.with_additional_event(PipelineEvent::development_phase_completed());
+                    Some(PipelineEvent::development_phase_completed())
                 }
                 PipelinePhase::Review
                     if self.state.reviewer_pass >= self.state.total_reviewer_passes =>
                 {
-                    result = result.with_additional_event(PipelineEvent::review_phase_completed(
+                    Some(PipelineEvent::review_phase_completed(
                         /* early_exit */ false,
-                    ));
+                    ))
                 }
-                _ => {}
+                _ => None,
             }
-        }
+        } else {
+            None
+        };
 
-        result
+        additional_event
+            .map(|ev| result.clone().with_additional_event(ev))
+            .unwrap_or(result)
     }
 }
 

@@ -4,8 +4,6 @@ impl StreamingSession {
             return None;
         }
 
-        let mut hasher = DefaultHasher::new();
-
         // Collect and sort keys for consistent hashing
         // Sort by numeric index (not lexicographic) to preserve actual message order.
         // This is critical for correctness when indices don't sort lexicographically
@@ -21,15 +19,16 @@ impl StreamingSession {
             (index, type_order)
         });
 
-        for key in keys {
-            if let Some(content) = self.accumulated.get(key) {
-                // Hash the key and content together
-                format!("{:?}-{}", key.0, key.1).hash(&mut hasher);
-                content.hash(&mut hasher);
-            }
-        }
+        let hash = keys.iter().fold(0u64, |acc, key| {
+            let content = self.accumulated.get(key);
+            let key_hash = format!("{:?}-{}", key.0, key.1);
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            key_hash.hash(&mut hasher);
+            content.hash(&mut hasher);
+            acc.wrapping_add(hasher.finish())
+        });
 
-        Some(hasher.finish())
+        Some(hash)
     }
 
     /// Check if content matches the previously streamed content by hash.
@@ -73,7 +72,7 @@ impl StreamingSession {
         // Only text content - check if the input content matches ALL accumulated text content combined
         // This handles the case where assistant events arrive during streaming (before message_stop)
         // We collect and combine all text content in index order
-        let mut text_keys: Vec<_> = self
+        let text_keys: Vec<_> = self
             .accumulated
             .keys()
             .filter(|(ct, _)| *ct == ContentType::Text)
@@ -83,10 +82,11 @@ impl StreamingSession {
         // unwrap_or(u64::MAX) handles non-numeric indices by sorting them last; this should
         // never happen in practice since GLM always sends numeric string indices, but if
         // it does occur, it indicates a protocol violation and will be visible in output
-        text_keys.sort_by_key(|k| k.1.parse::<u64>().unwrap_or(u64::MAX));
+        let mut sorted_text_keys = text_keys;
+        sorted_text_keys.sort_by_key(|k| k.1.parse::<u64>().unwrap_or(u64::MAX));
 
         // Combine all accumulated text content in sorted order
-        let combined_content: String = text_keys
+        let combined_content: String = sorted_text_keys
             .iter()
             .filter_map(|key| self.accumulated.get(key))
             .cloned()
@@ -117,7 +117,6 @@ impl StreamingSession {
     ) -> bool {
         // Collect all content blocks in order (text and tool_use interleaved)
         // We need to reconstruct the exact order as it appears in the assistant event
-        let mut reconstructed = String::new();
 
         // Get all accumulated content keys and sort by index
         let mut all_keys: Vec<_> = self.accumulated.keys().collect();
@@ -132,12 +131,14 @@ impl StreamingSession {
             (index, type_order)
         });
 
-        for (ct, index_str) in all_keys {
-            if let Some(accumulated_content) = self.accumulated.get(&(*ct, index_str.clone())) {
+        let reconstructed: String = all_keys
+            .iter()
+            .filter_map(|&(ref ct, ref index_str)| {
+                let accumulated_content = self.accumulated.get(&(*ct, index_str.clone()))?;
                 match ct {
                     ContentType::Text => {
                         // Text content is added as-is
-                        reconstructed.push_str(accumulated_content);
+                        Some(accumulated_content.clone())
                     }
                     ContentType::ToolInput => {
                         // Tool_use content needs normalization with tool name
@@ -153,15 +154,16 @@ impl StreamingSession {
                             .unwrap_or("");
 
                         // Normalize: "TOOL_USE:{name}:{input}"
-                        let _ = write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_content}");
+                        Some(format!("TOOL_USE:{tool_name}:{accumulated_content}"))
                     }
                     ContentType::Thinking => {
                         // Thinking content - not currently used in assistant events
                         // but included for completeness
+                        None
                     }
                 }
-            }
-        }
+            })
+            .collect();
 
         // Check if the reconstructed content matches the input
         normalized_content == reconstructed
@@ -185,10 +187,6 @@ impl StreamingSession {
         normalized_content: &str,
         tool_name_hints: Option<&std::collections::HashMap<usize, String>>,
     ) -> bool {
-        // Reconstruct the normalized representation from accumulated content
-        // For each tool_use index, create "TOOL_USE:{name}:{input}" and check if it's in the content
-        let mut reconstructed = String::new();
-
         // Get all ToolInput keys and sort by index
         let mut tool_keys: Vec<_> = self
             .accumulated
@@ -197,8 +195,10 @@ impl StreamingSession {
             .collect();
         tool_keys.sort_by_key(|k| k.1.parse::<u64>().unwrap_or(u64::MAX));
 
-        for (ct, index_str) in tool_keys {
-            if let Some(accumulated_input) = self.accumulated.get(&(*ct, index_str.clone())) {
+        let reconstructed: String = tool_keys
+            .iter()
+            .filter_map(|&(ref ct, ref index_str)| {
+                let accumulated_input = self.accumulated.get(&(*ct, index_str.clone()))?;
                 // Get the tool name from hints first (from assistant event), then from tracking
                 let index_num = index_str.parse::<u64>().unwrap_or(0);
                 let tool_name = usize::try_from(index_num)
@@ -211,9 +211,9 @@ impl StreamingSession {
                     .unwrap_or("");
 
                 // Normalize: "TOOL_USE:{name}:{input}"
-                let _ = write!(reconstructed, "TOOL_USE:{tool_name}:{accumulated_input}");
-            }
-        }
+                Some(format!("TOOL_USE:{tool_name}:{accumulated_input}"))
+            })
+            .collect();
 
         // Check if the reconstructed content matches the input
         if reconstructed.is_empty() {

@@ -76,56 +76,75 @@ pub(super) fn count_extensions_with_workspace(
     workspace: &dyn Workspace,
     relative_root: &Path,
 ) -> io::Result<HashMap<String, usize>> {
-    fn scan_dir_workspace(
+    fn scan_dir(
         workspace: &dyn Workspace,
         dir: &Path,
-        counts: &mut HashMap<String, usize>,
-        files_scanned: &mut usize,
-    ) -> io::Result<()> {
-        if *files_scanned >= MAX_FILES_TO_SCAN {
-            return Ok(());
+        files_scanned: usize,
+    ) -> io::Result<HashMap<String, usize>> {
+        if files_scanned >= MAX_FILES_TO_SCAN {
+            return Ok(HashMap::new());
         }
 
-        let Ok(entries) = workspace.read_dir(dir) else {
-            return Ok(());
+        let entries = match workspace.read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(HashMap::new()),
         };
 
-        for entry in entries {
-            if *files_scanned >= MAX_FILES_TO_SCAN {
-                return Ok(());
-            }
+        let entries_vec: Vec<_> = entries
+            .into_iter()
+            .take(MAX_FILES_TO_SCAN - files_scanned)
+            .collect();
 
-            let file_name = entry.file_name().map(|s| s.to_string_lossy().to_string());
-            let Some(file_name_str) = file_name else {
-                continue;
-            };
-
-            // Skip hidden directories and common non-source directories
-            let name_lower = file_name_str.to_ascii_lowercase();
-            if should_skip_dir_name(&name_lower) {
-                continue;
-            }
-
-            let path = entry.path();
-            if entry.is_dir() {
-                scan_dir_workspace(workspace, path, counts, files_scanned)?;
-            } else if entry.is_file() {
-                *files_scanned = files_scanned.saturating_add(1);
-                if let Some(ext) = path.extension() {
-                    let ext_str = ext.to_string_lossy().to_lowercase();
-                    let entry = counts.entry(ext_str).or_insert(0);
-                    *entry = entry.saturating_add(1);
+        entries_vec
+            .into_iter()
+            .filter_map(|entry| {
+                let file_name = entry.file_name().map(|s| s.to_string_lossy().to_string())?;
+                let name_lower = file_name.to_ascii_lowercase();
+                if should_skip_dir_name(&name_lower) {
+                    return None;
                 }
-            }
-        }
+                Some((entry, file_name, name_lower))
+            })
+            .try_fold(
+                HashMap::new(),
+                |counts, (entry, _file_name, _name_lower)| {
+                    let path = entry.path();
+                    if entry.is_dir() {
+                        let inner = scan_dir(workspace, path, files_scanned)?;
+                        let merged: HashMap<String, usize> = counts
+                            .into_iter()
+                            .chain(inner.into_iter())
+                            .fold(HashMap::new(), |acc, (k, v)| {
+                                acc.into_iter().chain(std::iter::once((k, v))).fold(
+                                    HashMap::new(),
+                                    |mut m, (key, val)| {
+                                        *m.entry(key).or_insert(0) += val;
+                                        m
+                                    },
+                                )
+                            });
+                        return Ok(merged);
+                    }
 
-        Ok(())
+                    if entry.is_file() {
+                        if let Some(ext) = path.extension() {
+                            let ext_str = ext.to_string_lossy().to_lowercase();
+                            let updated: HashMap<String, usize> = counts
+                                .into_iter()
+                                .chain(std::iter::once((ext_str, 1)))
+                                .fold(HashMap::new(), |mut m, (key, val)| {
+                                    *m.entry(key).or_insert(0) += val;
+                                    m
+                                });
+                            return Ok(updated);
+                        }
+                    }
+                    Ok(counts)
+                },
+            )
     }
 
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    let mut files_scanned = 0;
-    scan_dir_workspace(workspace, relative_root, &mut counts, &mut files_scanned)?;
-    Ok(counts)
+    scan_dir(workspace, relative_root, 0)
 }
 
 /// Detect if tests exist using workspace
@@ -137,61 +156,75 @@ pub(super) fn detect_tests_with_workspace(
     use std::collections::VecDeque;
     use std::path::PathBuf;
 
-    let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
-    queue.push_back((relative_root.to_path_buf(), 0));
-
-    let mut scanned_files = 0usize;
-
-    while let Some((dir, depth)) = queue.pop_front() {
+    fn search(
+        workspace: &dyn Workspace,
+        mut queue: VecDeque<(PathBuf, usize)>,
+        scanned_files: usize,
+        primary_lang: &str,
+    ) -> bool {
         if scanned_files >= MAX_FILES_TO_SCAN {
-            break;
+            return false;
         }
-        let Ok(entries) = workspace.read_dir(&dir) else {
-            continue;
+
+        let Some((dir, depth)) = queue.pop_front() else {
+            return false;
         };
 
-        for entry in entries {
-            if scanned_files >= MAX_FILES_TO_SCAN {
-                break;
-            }
-            let path = entry.path().to_path_buf();
+        let entries = match workspace.read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => return search(workspace, queue, scanned_files, primary_lang),
+        };
+
+        let found = entries.into_iter().any(|entry| {
             let Some(name_os) = entry.file_name() else {
-                continue;
+                return false;
             };
             let name = name_os.to_string_lossy().to_string();
             let name_lower = name.to_lowercase();
 
             if entry.is_dir() {
                 if should_skip_dir_name(&name_lower) {
-                    continue;
+                    return false;
                 }
-                // Common test directories (any language)
                 if matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__") {
                     return true;
                 }
                 if depth < MAX_SIGNATURE_SEARCH_DEPTH {
-                    queue.push_back((path, depth + 1));
+                    let path = entry.path().to_path_buf();
+                    let mut new_queue = queue.clone();
+                    new_queue.push_back((path, depth + 1));
+                    return search(workspace, new_queue, scanned_files, primary_lang);
                 }
-                continue;
+                return false;
             }
 
             if !entry.is_file() {
-                continue;
+                return false;
             }
-            scanned_files = scanned_files.saturating_add(1);
 
-            let path_components: Vec<String> = path
+            let new_scanned = scanned_files.saturating_add(1);
+            if new_scanned >= MAX_FILES_TO_SCAN {
+                return false;
+            }
+
+            let path_components: Vec<String> = entry
+                .path()
                 .components()
                 .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
                 .collect();
 
-            if is_test_file(&name_lower, primary_lang, &path_components) {
-                return true;
-            }
+            is_test_file(&name_lower, primary_lang, &path_components)
+        });
+
+        if found {
+            return true;
         }
+
+        search(workspace, queue, scanned_files, primary_lang)
     }
 
-    false
+    let initial_queue = VecDeque::from([(relative_root.to_path_buf(), 0)]);
+    search(workspace, initial_queue, 0, primary_lang)
 }
 
 #[cfg(test)]

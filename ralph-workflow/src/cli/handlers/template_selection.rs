@@ -68,12 +68,11 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
         return None;
     }
 
-    let mut input = String::new();
-    match io::stdin().read_line(&mut input) {
-        Ok(0) | Err(_) => return None, // EOF or error
-        Ok(_) => {}
-    }
-
+    let input = io::stdin()
+        .lines()
+        .next()
+        .and_then(|r| r.ok())
+        .unwrap_or_default();
     let response = input.trim().to_lowercase();
 
     // User declined (explicit 'n' or 'no')
@@ -87,7 +86,7 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
 
     let templates = list_templates();
 
-    for (name, description) in &templates {
+    templates.iter().for_each(|(name, description)| {
         let _ = writeln!(
             std::io::stdout(),
             "  {}{}{}  {}{}{}",
@@ -98,7 +97,7 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
             description,
             colors.reset()
         );
-    }
+    });
     let _ = writeln!(std::io::stdout());
 
     // Prompt for template selection with default to feature-spec
@@ -112,13 +111,9 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
         return None;
     }
 
-    let mut template_input = String::new();
-    match io::stdin().read_line(&mut template_input) {
-        Ok(0) | Err(_) => return None, // EOF or error
-        Ok(_) => {}
-    }
-
-    let template_name = template_input.trim();
+    let template_input = io::stdin().lines().next().and_then(|r| r.ok());
+    let binding = template_input.unwrap_or_default();
+    let template_name = binding.trim();
 
     // Empty input defaults to feature-spec
     let selected = if template_name.is_empty() {

@@ -17,18 +17,22 @@ use std::io::Write;
 /// CCS aliases (ccs/...) are displayed separately for clarity.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_agents(registry: &AgentRegistry) {
-    let items: Vec<_> = registry
-        .list()
-        .into_iter()
-        .sorted_by(|(a, _), (b, _)| a.cmp(b))
-        .collect();
-
+    let agents: Vec<(&str, _)> = registry.list();
     let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
-        items.into_iter().partition(|(name, _)| is_ccs_ref(name));
+        agents.into_iter().partition(|(name, _)| is_ccs_ref(name));
+
+    let ccs_aliases = ccs_aliases
+        .into_iter()
+        .sorted_by(|(a, _): &(&str, _), (b, _): &(&str, _)| a.cmp(b))
+        .collect::<Vec<_>>();
+    let regular_agents = regular_agents
+        .into_iter()
+        .sorted_by(|(a, _): &(&str, _), (b, _): &(&str, _)| a.cmp(b))
+        .collect::<Vec<_>>();
 
     if !regular_agents.is_empty() {
         let _ = writeln!(std::io::stdout(), "Agents:");
-        for (name, cfg) in regular_agents {
+        regular_agents.iter().for_each(|(name, cfg)| {
             let display_name = registry.display_name(name);
             let _ = writeln!(
                 std::io::stdout(),
@@ -38,15 +42,15 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
                 cfg.json_parser,
                 cfg.can_commit
             );
-        }
+        });
     }
 
     if !ccs_aliases.is_empty() {
         let _ = writeln!(std::io::stdout(), "\nCCS Aliases:");
-        for (name, cfg) in ccs_aliases {
+        ccs_aliases.iter().for_each(|(name, cfg)| {
             let display_name = registry.display_name(name);
             let _ = writeln!(std::io::stdout(), "  {}\t→ \"{}\"", display_name, cfg.cmd);
-        }
+        });
     }
 }
 
@@ -59,28 +63,32 @@ pub fn handle_list_agents(registry: &AgentRegistry) {
 /// CCS aliases are shown separately to distinguish them from regular agents.
 /// Output is sorted alphabetically by agent name within each section.
 pub fn handle_list_available_agents(registry: &AgentRegistry) {
-    let items: Vec<_> = registry
-        .list_available()
+    let available: Vec<&str> = registry.list_available();
+    let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
+        available.into_iter().partition(|name| is_ccs_ref(name));
+
+    let ccs_aliases = ccs_aliases
         .into_iter()
         .sorted_unstable()
-        .collect();
-
-    let (ccs_aliases, regular_agents): (Vec<_>, Vec<_>) =
-        items.into_iter().partition(|name| is_ccs_ref(name));
+        .collect::<Vec<_>>();
+    let regular_agents = regular_agents
+        .into_iter()
+        .sorted_unstable()
+        .collect::<Vec<_>>();
 
     if !regular_agents.is_empty() {
         let _ = writeln!(std::io::stdout(), "Available agents:");
-        for name in regular_agents {
+        regular_agents.iter().for_each(|name| {
             let display_name = registry.display_name(name);
             let _ = writeln!(std::io::stdout(), "  {display_name}");
-        }
+        });
     }
 
     if !ccs_aliases.is_empty() {
         let _ = writeln!(std::io::stdout(), "\nAvailable CCS aliases:");
-        for name in ccs_aliases {
+        ccs_aliases.iter().for_each(|name| {
             let display_name = registry.display_name(name);
             let _ = writeln!(std::io::stdout(), "  {display_name}");
-        }
+        });
     }
 }
