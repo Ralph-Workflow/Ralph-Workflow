@@ -38,7 +38,7 @@ impl MainEffectHandler {
             .cloned()
             .unwrap_or_else(|| ctx.reviewer_agent.to_string());
 
-        let mut result = self.invoke_agent(
+        let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Review,
             AgentRole::Reviewer,
@@ -46,14 +46,17 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            result = result.with_additional_event(PipelineEvent::review_agent_invoked(pass));
-        }
+        let result = result
+            .additional_events
+            .iter()
+            .any(|e| {
+                matches!(
+                    e,
+                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+                )
+            })
+            .then(|| result.with_additional_event(PipelineEvent::review_agent_invoked(pass)))
+            .unwrap_or(result);
         Ok(result)
     }
 }

@@ -5,6 +5,8 @@
 
 use std::path::PathBuf;
 
+mod serde_serialization;
+
 mod template_parsing;
 
 pub use template_parsing::{extract_metadata, extract_partials, extract_variables};
@@ -59,75 +61,6 @@ fn skip_comment(bytes: &[u8], start: usize) -> Option<usize> {
     }
 }
 
-fn parse_conditional_header(bytes: &[u8], start: usize) -> Option<ConditionalResult> {
-    if start.saturating_add(5) < bytes.len()
-        && bytes[start] == b'{'
-        && bytes[start + 1] == b'%'
-        && bytes[start + 2] == b' '
-        && bytes[start + 3] == b'i'
-        && bytes[start + 4] == b'f'
-        && bytes[start.saturating_add(5)] == b' '
-    {
-        let end = find_tag_end(bytes, start + 6)?;
-        return Some(ConditionalResult::IfStart {
-            condition: end,
-            line: count_lines_before(bytes, start),
-        });
-    }
-    if start.saturating_add(9) < bytes.len()
-        && bytes[start] == b'{'
-        && bytes[start + 1] == b'%'
-        && bytes[start + 2] == b' '
-        && bytes[start + 3] == b'e'
-        && bytes[start + 4] == b'n'
-        && bytes[start.saturating_add(5)] == b'd'
-        && bytes[start + 6] == b'i'
-        && bytes[start + 7] == b'f'
-        && bytes[start + 8] == b' '
-        && bytes[start.saturating_add(9)] == b'%'
-    {
-        return Some(ConditionalResult::IfEnd {
-            next_pos: start.saturating_add(11),
-        });
-    }
-    None
-}
-
-fn parse_loop_header(bytes: &[u8], start: usize) -> Option<LoopResult> {
-    if start.saturating_add(6) < bytes.len()
-        && bytes[start] == b'{'
-        && bytes[start + 1] == b'%'
-        && bytes[start + 2] == b' '
-        && bytes[start + 3] == b'f'
-        && bytes[start + 4] == b'o'
-        && bytes[start.saturating_add(5)] == b'r'
-        && bytes[start.saturating_add(6)] == b' '
-    {
-        let end = find_tag_end(bytes, start + 7)?;
-        return Some(LoopResult::ForStart {
-            header_end: end,
-            line: count_lines_before(bytes, start),
-        });
-    }
-    if start.saturating_add(10) < bytes.len()
-        && bytes[start] == b'{'
-        && bytes[start + 1] == b'%'
-        && bytes[start + 2] == b' '
-        && bytes[start + 3] == b'e'
-        && bytes[start + 4] == b'n'
-        && bytes[start.saturating_add(5)] == b'd'
-        && bytes[start + 6] == b'f'
-        && bytes[start + 7] == b'o'
-        && bytes[start + 8] == b'r'
-        && bytes[start.saturating_add(9)] == b' '
-    {
-        return Some(LoopResult::ForEnd {
-            next_pos: start.saturating_add(12),
-        });
-    }
-    None
-}
-
 fn find_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
     let mut i = start;
     while i + 1 < bytes.len() && !(bytes[i] == b'%' && bytes[i + 1] == b'}') {
@@ -138,20 +71,6 @@ fn find_tag_end(bytes: &[u8], start: usize) -> Option<usize> {
     } else {
         None
     }
-}
-
-fn count_lines_before(bytes: &[u8], pos: usize) -> usize {
-    bytes[..pos].iter().filter(|&&b| b == b'\n').count()
-}
-
-enum ConditionalResult {
-    IfStart { condition: usize, line: usize },
-    IfEnd { next_pos: usize },
-}
-
-enum LoopResult {
-    ForStart { header_end: usize, line: usize },
-    ForEnd { next_pos: usize },
 }
 
 // =========================================================================

@@ -270,16 +270,21 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
         (".agent/tmp/commit_message.xsd", COMMIT_MESSAGE_XSD_SCHEMA),
     ];
 
-    for (path, content) in schemas {
-        match handler.execute(AppEffect::WriteFile {
-            path: PathBuf::from(path),
-            content: content.to_string(),
-        }) {
-            AppEffectResult::Ok => {}
-            AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-            other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
-        }
-    }
+    schemas
+        .iter()
+        .try_for_each(|(path, content)| {
+            match handler.execute(AppEffect::WriteFile {
+                path: PathBuf::from(*path),
+                content: (*content).to_string(),
+            }) {
+                AppEffectResult::Ok => Ok(()),
+                AppEffectResult::Error(e) => Err(anyhow::anyhow!("Failed to write {path}: {e}")),
+                other => Err(anyhow::anyhow!(
+                    "Unexpected result from WriteFile: {other:?}"
+                )),
+            }
+        })
+        .map_err(|e| e.to_string())?;
 
     // Only create context files in non-isolation mode
     if !isolation_mode {
@@ -289,17 +294,24 @@ pub fn ensure_files_effectful<H: AppEffectHandler>(
             (".agent/ISSUES.md", VAGUE_ISSUES_LINE),
         ];
 
-        for (path, line) in context_files {
-            let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
-            match handler.execute(AppEffect::WriteFile {
-                path: PathBuf::from(path),
-                content,
-            }) {
-                AppEffectResult::Ok => {}
-                AppEffectResult::Error(e) => return Err(format!("Failed to write {path}: {e}")),
-                other => return Err(format!("Unexpected result from WriteFile: {other:?}")),
-            }
-        }
+        context_files
+            .iter()
+            .try_for_each(|(path, line)| {
+                let content = format!("{}\n", line.lines().next().unwrap_or_default().trim());
+                match handler.execute(AppEffect::WriteFile {
+                    path: PathBuf::from(*path),
+                    content,
+                }) {
+                    AppEffectResult::Ok => Ok(()),
+                    AppEffectResult::Error(e) => {
+                        Err(anyhow::anyhow!("Failed to write {path}: {e}"))
+                    }
+                    other => Err(anyhow::anyhow!(
+                        "Unexpected result from WriteFile: {other:?}"
+                    )),
+                }
+            })
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())

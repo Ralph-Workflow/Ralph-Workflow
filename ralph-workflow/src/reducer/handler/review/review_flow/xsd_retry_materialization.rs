@@ -93,22 +93,27 @@ impl MainEffectHandler {
             reason: PromptMaterializationReason::PolicyForcedReference,
         };
 
-        let mut events = vec![PipelineEvent::xsd_retry_last_output_materialized(
+        let base_event = PipelineEvent::xsd_retry_last_output_materialized(
             crate::reducer::event::PipelinePhase::Review,
             pass,
             input,
-        )];
+        );
 
-        if last_output_bytes > inline_budget_bytes {
-            events.push(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Review,
-                PromptInputKind::LastOutput,
-                content_id_sha256,
-                last_output_bytes,
-                inline_budget_bytes,
-                "xsd-retry-context".to_string(),
-            ));
-        }
+        let events = if last_output_bytes > inline_budget_bytes {
+            vec![
+                base_event,
+                PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::Review,
+                    PromptInputKind::LastOutput,
+                    content_id_sha256,
+                    last_output_bytes,
+                    inline_budget_bytes,
+                    "xsd-retry-context".to_string(),
+                ),
+            ]
+        } else {
+            vec![base_event]
+        };
 
         Ok(events)
     }

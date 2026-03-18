@@ -79,31 +79,44 @@ pub(super) fn advance_search(
     _scanned_files: usize,
     primary_lang: &str,
 ) -> SearchResult {
-    let mut new_queue = Vec::new();
-    let mut found = false;
-
-    for (path, name_lower) in file_names {
+    let found = file_names.iter().any(|(path, name_lower)| {
         let path_components: Vec<String> = path
             .components()
             .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
             .collect();
 
         if should_skip_dir_name(name_lower) {
-            continue;
+            return false;
         }
 
         if path.is_dir() {
-            if matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__") {
-                found = true;
-            } else if let Some((_, depth)) = queue.first() {
-                if *depth < MAX_SIGNATURE_SEARCH_DEPTH {
-                    new_queue.push((path.clone(), depth + 1));
-                }
-            }
-        } else if is_test_file_name(name_lower, primary_lang, &path_components) {
-            found = true;
+            matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__")
+                || (if let Some((_, depth)) = queue.first() {
+                    *depth < MAX_SIGNATURE_SEARCH_DEPTH
+                        && !is_test_file_name(name_lower, primary_lang, &path_components)
+                } else {
+                    false
+                })
+        } else {
+            is_test_file_name(name_lower, primary_lang, &path_components)
         }
-    }
+    });
+
+    let new_queue: Vec<_> = file_names
+        .iter()
+        .filter(|(path, name_lower)| {
+            path.is_dir()
+                && !should_skip_dir_name(name_lower)
+                && !matches!(name_lower.as_str(), "tests" | "test" | "spec" | "__tests__")
+                && queue
+                    .first()
+                    .map_or(false, |(_, depth)| *depth < MAX_SIGNATURE_SEARCH_DEPTH)
+        })
+        .map(|(path, _)| {
+            let depth = queue.first().map_or(0, |(_, d)| *d);
+            (path.clone(), depth + 1)
+        })
+        .collect();
 
     if found {
         SearchResult::Found

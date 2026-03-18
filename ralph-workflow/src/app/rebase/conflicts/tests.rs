@@ -104,17 +104,16 @@ fn try_resolve_conflicts_hook_runs_after_prompt_capture() {
         &ctx,
         "PreRebase",
         &*executor,
-        |replay, captured_entry| {
+        |replay| {
             hook_called.set(true);
-
-            if let Some(entry) = replay.captured_entry.clone() {
-                *captured_entry = Some((replay.key.clone(), entry));
-            }
-
             assert!(
                 prompt_history.is_empty(),
                 "hook must observe empty prompt_history before capture"
             );
+            replay
+                .captured_entry
+                .clone()
+                .map(|entry| (replay.key.clone(), entry))
         },
     )
     .expect("try_resolve_conflicts_with_hook should succeed");

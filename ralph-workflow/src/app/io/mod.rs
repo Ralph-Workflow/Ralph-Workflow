@@ -9,5 +9,6 @@
 
 pub mod effect_handler;
 pub mod env_access;
+pub mod pipeline_setup;
 pub mod runtime_factory;
 pub mod terminal;

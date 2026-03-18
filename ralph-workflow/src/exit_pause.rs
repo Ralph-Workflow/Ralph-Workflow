@@ -100,7 +100,7 @@ fn has_terminal_session_marker_with(env: &impl EnvironmentReader) -> bool {
         "VSCODE_GIT_IPC_HANDLE",
     ];
 
-    TERMINAL_MARKERS.iter().any(|key| {
+    TERMINAL_MARKERS.iter().copied().any(|key| {
         env.var_os(key)
             .is_some_and(|value| !value.to_string_lossy().trim().is_empty())
     })

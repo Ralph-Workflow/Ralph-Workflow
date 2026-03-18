@@ -102,59 +102,73 @@ impl MainEffectHandler {
         ctx.logger
             .info("Cleaning up context files to prevent pollution...");
 
-        let mut cleaned_count: usize = 0;
-
         // Delete PLAN.md via workspace
         let plan_path = Path::new(".agent/PLAN.md");
-        if ctx.workspace.exists(plan_path) {
+        let plan_cleaned = if ctx.workspace.exists(plan_path) {
             ctx.workspace
                 .remove(plan_path)
                 .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
                     path: plan_path.display().to_string(),
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 })?;
-            cleaned_count = cleaned_count.saturating_add(1);
-        }
+            true
+        } else {
+            false
+        };
 
         // Delete ISSUES.md (may not exist if in isolation mode) via workspace
         let issues_path = Path::new(".agent/ISSUES.md");
-        if ctx.workspace.exists(issues_path) {
+        let issues_cleaned = if ctx.workspace.exists(issues_path) {
             ctx.workspace
                 .remove(issues_path)
                 .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
                     path: issues_path.display().to_string(),
                     kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
                 })?;
-            cleaned_count = cleaned_count.saturating_add(1);
-        }
+            true
+        } else {
+            false
+        };
 
         // Delete ALL .xml files in .agent/tmp/ to prevent context pollution via workspace
         let tmp_dir = Path::new(".agent/tmp");
-        if ctx.workspace.exists(tmp_dir) {
-            let entries =
-                ctx.workspace
-                    .read_dir(tmp_dir)
-                    .map_err(|err| ErrorEvent::WorkspaceReadFailed {
-                        path: tmp_dir.display().to_string(),
-                        kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                    })?;
+        let xml_cleaned = if ctx.workspace.exists(tmp_dir) {
+            let entries: Vec<_> = ctx
+                .workspace
+                .read_dir(tmp_dir)
+                .map_err(|err| ErrorEvent::WorkspaceReadFailed {
+                    path: tmp_dir.display().to_string(),
+                    kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
+                })?
+                .into_iter()
+                .collect();
 
-            for entry in entries {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("xml") {
-                    ctx.workspace.remove(path).map_err(|err| {
-                        ErrorEvent::WorkspaceRemoveFailed {
+            let xml_cleaned: Result<usize, ErrorEvent> = entries
+                .into_iter()
+                .filter(|entry| entry.path().extension().and_then(|s| s.to_str()) == Some("xml"))
+                .try_fold(0, |count, entry| {
+                    let path = entry.path();
+                    ctx.workspace
+                        .remove(path)
+                        .map_err(|err| ErrorEvent::WorkspaceRemoveFailed {
                             path: path.display().to_string(),
                             kind: WorkspaceIoErrorKind::from_io_error_kind(err.kind()),
-                        }
-                    })?;
-                    cleaned_count = cleaned_count.saturating_add(1);
-                }
+                        })
+                        .map(|()| count + 1)
+                });
+
+            match xml_cleaned {
+                Ok(count) => count,
+                Err(err) => return Err(err.into()),
             }
-        }
+        } else {
+            0
+        };
 
         // Delete continuation context file (if present) via workspace
         cleanup_continuation_context_file(ctx)?;
+
+        let cleaned_count = plan_cleaned as usize + issues_cleaned as usize + xml_cleaned;
 
         if cleaned_count > 0 {
             ctx.logger.success(&format!(
@@ -395,10 +409,12 @@ impl MainEffectHandler {
             String::new()
         };
 
-        let (already_present, entries_added): (Vec<_>, Vec<_>) =
-            required_entries.partition(|pattern| entry_exists(&existing_content, pattern));
+        let (already_present, entries_added): (Vec<_>, Vec<_>) = required_entries
+            .into_iter()
+            .partition(|pattern| entry_exists(&existing_content, pattern));
 
         let entries_added: Vec<String> = entries_added.into_iter().map(String::from).collect();
+        let already_present: Vec<String> = already_present.into_iter().map(String::from).collect();
 
         if entries_added.is_empty() {
             ctx.logger

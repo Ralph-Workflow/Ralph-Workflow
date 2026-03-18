@@ -212,14 +212,16 @@ impl ReviewGuidelines {
         if items.is_empty() {
             return None;
         }
-        let mut lines: Vec<String> = items
+        let lines: Vec<String> = items
             .iter()
             .take(limit)
             .map(|s| format!("  - {s}"))
+            .chain(if items.len() > limit {
+                Some(format!("  - ... (+{} more)", items.len() - limit))
+            } else {
+                None
+            })
             .collect();
-        if items.len() > limit {
-            lines.push(format!("  - ... (+{} more)", items.len() - limit));
-        }
         Some(format!("{}:\n{}", title, lines.join("\n")))
     }
 
@@ -251,11 +253,12 @@ impl ReviewGuidelines {
                 .iter()
                 .take(limit)
                 .map(|c| format!("  - {}", c.check))
+                .chain(if checks.len() > limit {
+                    Some(format!("  - ... (+{} more)", checks.len() - limit))
+                } else {
+                    None
+                })
                 .collect();
-            let mut items = items;
-            if checks.len() > limit {
-                items.push(format!("  - ... (+{} more)", checks.len() - limit));
-            }
             Some(format!("{}\n{}", header, items.join("\n")))
         }
 

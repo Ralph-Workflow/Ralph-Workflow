@@ -433,65 +433,52 @@ impl CheckpointBuilder {
             (Some(path_string), checksum)
         });
 
-        let mut checkpoint = PipelineCheckpoint::from_params(CheckpointParams {
-            phase,
-            iteration: self.iteration,
-            total_iterations: self.total_iterations,
-            reviewer_pass: self.reviewer_pass,
-            total_reviewer_passes: self.total_reviewer_passes,
-            developer_agent: &developer_agent,
-            reviewer_agent: &reviewer_agent,
-            cli_args,
-            developer_agent_config: developer_config,
-            reviewer_agent_config: reviewer_config,
-            rebase_state: self.rebase_state,
-            git_user_name,
-            git_user_email,
-            run_id: &run_context.run_id,
-            parent_run_id: run_context.parent_run_id.as_deref(),
-            resume_count: run_context.resume_count,
-            actual_developer_runs: run_context.actual_developer_runs.max(self.iteration),
-            actual_reviewer_runs: run_context.actual_reviewer_runs.max(self.reviewer_pass),
-            working_dir,
-            prompt_md_checksum,
-            config_path,
-            config_checksum,
-        });
-
-        // Populate execution history
-        checkpoint.execution_history = self.execution_history;
-
-        // Populate prompt history
-        checkpoint.prompt_history = self.prompt_history;
-
-        // Populate reducer prompt input materialization state
-        checkpoint.prompt_inputs = self.prompt_inputs;
-
-        // Populate prompt permission lifecycle state
-        checkpoint.prompt_permissions = self.prompt_permissions;
-
-        // Populate last substitution log
-        checkpoint.last_substitution_log = self.last_substitution_log;
-
-        // Populate logging run_id
-        checkpoint.log_run_id = self.log_run_id;
-
-        // Capture and populate file system state
-        // Use workspace-based capture when workspace is available (pipeline code),
-        // fall back to CWD-based capture when not (CLI layer code).
         let executor_ref = self.executor.as_ref().map(std::convert::AsRef::as_ref);
-        checkpoint.file_system_state = workspace.map_or_else(
-            || {
-                Some(FileSystemState::capture_with_optional_executor_impl(
-                    executor_ref,
-                ))
-            },
-            |ws| executor_ref.map(|executor| FileSystemState::capture_with_workspace(ws, executor)),
-        );
 
-        // Capture and populate environment snapshot
-        checkpoint.env_snapshot =
-            Some(crate::checkpoint::state::EnvironmentSnapshot::capture_current());
+        let checkpoint = PipelineCheckpoint {
+            execution_history: self.execution_history,
+            prompt_history: self.prompt_history,
+            prompt_inputs: self.prompt_inputs,
+            prompt_permissions: self.prompt_permissions,
+            last_substitution_log: self.last_substitution_log,
+            log_run_id: self.log_run_id,
+            file_system_state: workspace.map_or_else(
+                || {
+                    Some(FileSystemState::capture_with_optional_executor_impl(
+                        executor_ref,
+                    ))
+                },
+                |ws| {
+                    executor_ref
+                        .map(|executor| FileSystemState::capture_with_workspace(ws, executor))
+                },
+            ),
+            env_snapshot: Some(crate::checkpoint::state::EnvironmentSnapshot::capture_current()),
+            ..PipelineCheckpoint::from_params(CheckpointParams {
+                phase,
+                iteration: self.iteration,
+                total_iterations: self.total_iterations,
+                reviewer_pass: self.reviewer_pass,
+                total_reviewer_passes: self.total_reviewer_passes,
+                developer_agent: &developer_agent,
+                reviewer_agent: &reviewer_agent,
+                cli_args,
+                developer_agent_config: developer_config,
+                reviewer_agent_config: reviewer_config,
+                rebase_state: self.rebase_state,
+                git_user_name,
+                git_user_email,
+                run_id: &run_context.run_id,
+                parent_run_id: run_context.parent_run_id.as_deref(),
+                resume_count: run_context.resume_count,
+                actual_developer_runs: run_context.actual_developer_runs.max(self.iteration),
+                actual_reviewer_runs: run_context.actual_reviewer_runs.max(self.reviewer_pass),
+                working_dir,
+                prompt_md_checksum,
+                config_path,
+                config_checksum,
+            })
+        };
 
         Some(checkpoint)
     }

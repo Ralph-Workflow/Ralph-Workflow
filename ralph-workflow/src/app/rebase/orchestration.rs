@@ -11,6 +11,7 @@ use crate::git_helpers::{
 use crate::logger::{Colors, Logger};
 use crate::phases::PhaseContext;
 use crate::workspace::Workspace;
+use std::collections::HashMap;
 
 pub struct InitialRebaseRunResult {
     pub outcome: InitialRebaseOutcome,
@@ -259,11 +260,13 @@ fn handle_rebase_conflicts(
         &resolution_ctx,
         "PreRebase",
         executor,
-        |replay, captured_entry| {
-            if let Some(entry) = replay.captured_entry.clone() {
-                *captured_entry = Some((replay.key.clone(), entry));
-            }
-            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, &prompt_history);
+        |replay| {
+            let captured_entry = replay
+                .captured_entry
+                .clone()
+                .map(|entry| (replay.key.clone(), entry));
+            save_conflict_checkpoint(phase_ctx, run_context, &conflicted_files, &HashMap::new());
+            captured_entry
         },
     ) {
         Ok((true, replay, _)) => {

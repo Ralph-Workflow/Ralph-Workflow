@@ -231,12 +231,9 @@ impl crate::json_parser::claude::ClaudeParser {
                         // Flush accumulated thinking.
                         // We format the output directly here because the renderers now suppress
                         // output in non-TTY modes (to prevent per-delta spam).
-                        let mut thinking_output = String::new();
-                        {
+                        let thinking_output = {
                             let indices: Vec<u64> =
                                 if self.thinking_non_tty_indices.borrow().is_empty() {
-                                    // Backward-compatible fallback: if we never recorded indices (older
-                                    // behavior), flush the single active index.
                                     self.thinking_active_index
                                         .borrow()
                                         .iter()
@@ -250,50 +247,55 @@ impl crate::json_parser::claude::ClaudeParser {
                                         .collect()
                                 };
 
-                            // Reset parser-owned tracking so subsequent messages don't inherit indices.
                             self.thinking_non_tty_indices.borrow_mut().clear();
                             self.thinking_active_index.borrow_mut().take();
 
-                            for index in indices {
-                                let index_str = index.to_string();
-                                let accumulated = session
-                                    .get_accumulated(ContentType::Thinking, &index_str)
-                                    .unwrap_or("");
-                                let sanitized = sanitize_for_display(accumulated);
-                                if sanitized.is_empty() {
-                                    continue;
-                                }
+                            indices
+                                .iter()
+                                .filter_map(|&index| {
+                                    let index_str = index.to_string();
+                                    let accumulated = session
+                                        .get_accumulated(ContentType::Thinking, &index_str)
+                                        .unwrap_or("");
+                                    let sanitized = sanitize_for_display(accumulated);
+                                    if sanitized.is_empty() {
+                                        return None;
+                                    }
 
-                                let prefix_fmt = match terminal_mode {
-                                    TerminalMode::Basic => format!(
-                                        "{}[{}]{} {}",
-                                        c.dim(),
-                                        &self.display_name,
-                                        c.reset(),
-                                        c.dim()
-                                    ),
-                                    TerminalMode::None => format!("[{}] ", &self.display_name),
-                                    TerminalMode::Full => unreachable!(),
-                                };
+                                    let prefix_fmt = match terminal_mode {
+                                        TerminalMode::Basic => format!(
+                                            "{}[{}]{} {}",
+                                            c.dim(),
+                                            &self.display_name,
+                                            c.reset(),
+                                            c.dim()
+                                        ),
+                                        TerminalMode::None => {
+                                            format!("[{}] ", &self.display_name)
+                                        }
+                                        TerminalMode::Full => unreachable!(),
+                                    };
 
-                                let label_fmt = match terminal_mode {
-                                    TerminalMode::Basic => format!("Thinking: {}", c.cyan()),
-                                    TerminalMode::None => "Thinking: ".to_string(),
-                                    TerminalMode::Full => unreachable!(),
-                                };
+                                    let label_fmt = match terminal_mode {
+                                        TerminalMode::Basic => {
+                                            format!("Thinking: {}", c.cyan())
+                                        }
+                                        TerminalMode::None => "Thinking: ".to_string(),
+                                        TerminalMode::Full => unreachable!(),
+                                    };
 
-                                let suffix_fmt = match terminal_mode {
-                                    TerminalMode::Basic => c.reset().to_string(),
-                                    TerminalMode::None => String::new(),
-                                    TerminalMode::Full => unreachable!(),
-                                };
+                                    let suffix_fmt = match terminal_mode {
+                                        TerminalMode::Basic => c.reset().to_string(),
+                                        TerminalMode::None => String::new(),
+                                        TerminalMode::Full => unreachable!(),
+                                    };
 
-                                let _ = writeln!(
-                                    thinking_output,
-                                    "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}"
-                                );
-                            }
-                        }
+                                    Some(format!(
+                                        "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}\n"
+                                    ))
+                                })
+                                .collect::<String>()
+                        };
 
                         // Flush accumulated tool input.
                         // Tool input deltas can arrive as partial JSON chunks; in non-TTY modes we
@@ -301,14 +303,18 @@ impl crate::json_parser::claude::ClaudeParser {
                         //
                         // IMPORTANT: Tool inputs can contain secrets. Respect the global verbosity
                         // policy (same as assistant tool blocks) rather than unconditionally printing.
-                        let mut tool_output = String::new();
-                        if self.verbosity.show_tool_input() {
-                            for index_str in session.accumulated_keys(ContentType::ToolInput) {
-                                let accumulated = session
-                                    .get_accumulated(ContentType::ToolInput, &index_str)
-                                    .unwrap_or("");
-                                let sanitized = sanitize_for_display(accumulated);
-                                if !sanitized.is_empty() {
+                        let tool_output = if self.verbosity.show_tool_input() {
+                            session
+                                .accumulated_keys(ContentType::ToolInput)
+                                .iter()
+                                .filter_map(|index_str| {
+                                    let accumulated = session
+                                        .get_accumulated(ContentType::ToolInput, index_str)
+                                        .unwrap_or("");
+                                    let sanitized = sanitize_for_display(accumulated);
+                                    if sanitized.is_empty() {
+                                        return None;
+                                    }
                                     let prefix_fmt = match terminal_mode {
                                         TerminalMode::Basic => format!(
                                             "{}[{}]{} {}",
@@ -337,24 +343,29 @@ impl crate::json_parser::claude::ClaudeParser {
                                         TerminalMode::Full => unreachable!(),
                                     };
 
-                                    let _ = writeln!(
-                                        tool_output,
-                                        "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}"
-                                    );
-                                }
-                            }
-                        }
+                                    Some(format!(
+                                        "{prefix_fmt}{label_fmt}{sanitized}{suffix_fmt}\n"
+                                    ))
+                                })
+                                .collect::<String>()
+                        } else {
+                            String::new()
+                        };
 
                         // Flush accumulated text content for all content blocks.
                         // We format the output directly here because the renderers now suppress
                         // output in non-TTY modes (to prevent per-delta spam).
-                        let mut text_output = String::new();
-                        for index_str in session.accumulated_keys(ContentType::Text) {
-                            let accumulated = session
-                                .get_accumulated(ContentType::Text, &index_str)
-                                .unwrap_or("");
-                            let sanitized = sanitize_for_display(accumulated);
-                            if !sanitized.is_empty() {
+                        let text_output = session
+                            .accumulated_keys(ContentType::Text)
+                            .iter()
+                            .filter_map(|index_str| {
+                                let accumulated = session
+                                    .get_accumulated(ContentType::Text, index_str)
+                                    .unwrap_or("");
+                                let sanitized = sanitize_for_display(accumulated);
+                                if sanitized.is_empty() {
+                                    return None;
+                                }
                                 let prefix_fmt = match terminal_mode {
                                     TerminalMode::Basic => format!(
                                         "{}[{}]{} {}",
@@ -375,10 +386,9 @@ impl crate::json_parser::claude::ClaudeParser {
                                     TerminalMode::Full => unreachable!(),
                                 };
 
-                                let _ =
-                                    writeln!(text_output, "{prefix_fmt}{sanitized}{suffix_fmt}");
-                            }
-                        }
+                                Some(format!("{prefix_fmt}{sanitized}{suffix_fmt}\n"))
+                            })
+                            .collect::<String>();
 
                         (thinking_output, tool_output, text_output)
                     }

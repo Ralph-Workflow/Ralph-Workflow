@@ -1,9 +1,6 @@
 // Claude stream parsing methods.
 //
 // Contains parse_stream and event classification methods.
-// This file includes the original stream_parsing implementations from the claude module.
-
-include!("../../claude/stream_parsing.rs");
 
 impl ClaudeParser {
     const fn is_control_event(event: &ClaudeEvent) -> bool {

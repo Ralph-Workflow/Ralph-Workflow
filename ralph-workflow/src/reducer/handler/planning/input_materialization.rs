@@ -74,11 +74,11 @@ impl MainEffectHandler {
             reason,
         };
 
-        let mut result = EffectResult::event(PipelineEvent::planning_inputs_materialized(
+        let result = EffectResult::event(PipelineEvent::planning_inputs_materialized(
             iteration, input,
         ));
         if original_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
+            let result = result.with_ui_event(UIEvent::AgentActivity {
                 agent: "pipeline".to_string(),
                 message: format!(
                     "Oversize PROMPT: {} KB > {} KB; using file reference",
@@ -86,13 +86,15 @@ impl MainEffectHandler {
                     inline_budget_bytes / 1024
                 ),
             });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                PipelinePhase::Planning,
-                PromptInputKind::Prompt,
-                content_id_sha256,
-                original_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
+            return Ok(result.with_additional_event(
+                PipelineEvent::prompt_input_oversize_detected(
+                    PipelinePhase::Planning,
+                    PromptInputKind::Prompt,
+                    content_id_sha256,
+                    original_bytes,
+                    inline_budget_bytes,
+                    "inline-embedding".to_string(),
+                ),
             ));
         }
         Ok(result)

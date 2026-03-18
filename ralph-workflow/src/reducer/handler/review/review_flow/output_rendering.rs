@@ -45,47 +45,40 @@ fn extract_issue_snippets(
     issues: &[String],
     workspace: &dyn crate::workspace::Workspace,
 ) -> Vec<XmlCodeSnippet> {
-    let location_re = issue_location_regex();
-    let gh_location_re = issue_gh_location_regex();
+    let location_re =
+        crate::reducer::handler::review::review_flow::runtime::regex_cache::issue_location_regex();
+    let gh_location_re =
+        crate::reducer::handler::review::review_flow::runtime::regex_cache::issue_gh_location_regex(
+        );
 
-    use std::collections::HashSet;
-    let mut seen: HashSet<(String, u32, u32)> = HashSet::new();
+    #[derive(Debug, Clone)]
+    struct ParsedEntry {
+        file: String,
+        start: u32,
+        end: u32,
+    }
 
-    issues
+    let seen: std::collections::HashSet<(String, u32, u32)> = issues
         .iter()
         .filter_map(|issue| {
-            let Some(capture) = location_re
+            let capture = location_re
                 .captures(issue)
-                .or_else(|| gh_location_re.captures(issue))
-            else {
-                return None;
-            };
-
-            let file: Option<String> = capture
-                .name("file")
-                .map(|m| m.as_str().trim().replace('\\', "/"));
-            let line_start: Option<u32> = capture
-                .name("start")
-                .and_then(|m| m.as_str().parse::<u32>().ok());
-            let line_end: Option<u32> = capture
+                .or_else(|| gh_location_re.captures(issue))?;
+            let file = capture.name("file")?.as_str().trim().replace('\\', "/");
+            let file = normalize_issue_file_path_to_workspace_relative(&file, workspace)?;
+            let start = capture.name("start")?.as_str().parse::<u32>().ok()?;
+            let end = capture
                 .name("end")
                 .and_then(|m| m.as_str().parse::<u32>().ok())
-                .or(line_start);
+                .unwrap_or(start);
+            Some((file, start, end))
+        })
+        .collect();
 
-            let file = file?;
-            let file = normalize_issue_file_path_to_workspace_relative(&file, workspace)?;
-            let start = line_start?;
-            let end = line_end.unwrap_or(start);
-
-            let key = (file.clone(), start, end);
-            if !seen.insert(key) {
-                return None;
-            }
-
+    seen.into_iter()
+        .filter_map(|(file, start, end)| {
             let content = workspace.read(Path::new(&file)).ok()?;
-
             let snippet = extract_snippet_lines(&content, start, end)?;
-
             Some(XmlCodeSnippet {
                 file,
                 line_start: start,
@@ -184,28 +177,6 @@ fn is_safe_workspace_relative_path(path_str: &str) -> bool {
             component,
             Component::ParentDir | Component::RootDir | Component::Prefix(_)
         )
-    })
-}
-
-/// Lazy-initialized regex for parsing standard file locations (<file:line-line>).
-fn issue_location_regex() -> &'static Regex {
-    static LOCATION_RE: OnceLock<Regex> = OnceLock::new();
-    LOCATION_RE.get_or_init(|| {
-        Regex::new(
-            r"(?m)(?P<file>[A-Za-z0-9 ._\-/\\:]+\.[A-Za-z0-9]+):(?P<start>\d+)(?:[-–—](?P<end>\d+))?(?::(?P<col>\d+))?",
-        )
-        .expect("valid file location regex pattern")
-    })
-}
-
-/// Lazy-initialized regex for parsing GitHub-style file locations (file#Lline-Lline).
-fn issue_gh_location_regex() -> &'static Regex {
-    static GH_LOCATION_RE: OnceLock<Regex> = OnceLock::new();
-    GH_LOCATION_RE.get_or_init(|| {
-        Regex::new(
-            r"(?m)(?P<file>[A-Za-z0-9 ._\-/\\:]+\.[A-Za-z0-9]+)#L(?P<start>\d+)(?:-L(?P<end>\d+))?",
-        )
-        .expect("valid GitHub location regex pattern")
     })
 }
 

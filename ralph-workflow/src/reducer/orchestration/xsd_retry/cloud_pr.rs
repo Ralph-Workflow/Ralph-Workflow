@@ -56,45 +56,50 @@ fn convert_cloud_pr_template_placeholders(input: &str) -> Option<String> {
 
         let ch = chars[pos];
 
-        if ch != '{' {
-            let mut rest = parse_char_by_char(chars, pos + 1)?;
-            rest.push(ch);
-            return Some(rest);
+        if ch == '}' {
+            return parse_char_by_char(chars, pos + 1);
         }
 
-        if pos + 1 < chars.len() && chars[pos + 1] == '{' {
-            let mut rest = parse_char_by_char(chars, pos + 2)?;
-            rest.push_str("{{");
-            return Some(rest);
+        if ch == '{' && pos + 1 < chars.len() && chars[pos + 1] == '{' {
+            return Some(String::from("{") + &parse_char_by_char(chars, pos + 2)?);
         }
 
-        let name_end = chars[pos..]
-            .iter()
-            .position(|&c| c == '}')
-            .map(|offset| pos + offset);
+        if ch == '{' {
+            let name_end = chars[pos..]
+                .iter()
+                .position(|&c| c == '}')
+                .map(|offset| pos + offset);
 
-        let name: String = match name_end {
-            Some(end) => chars[pos..end].iter().collect(),
-            None => {
-                let mut rest = parse_char_by_char(chars, pos + 1)?;
-                rest.insert(0, '{');
-                return Some(rest);
-            }
-        };
+            let name: String = match name_end {
+                Some(end) => chars[pos..end].iter().collect(),
+                None => {
+                    return Some(format!(
+                        "{{{rest}",
+                        rest = parse_char_by_char(chars, pos + 1)?
+                    ));
+                }
+            };
 
-        let trimmed = name.trim();
-        let replacement = if is_simple_placeholder_name(trimmed) && ALLOWED.contains(&trimmed) {
-            format!("{{{{{}}}}}", trimmed)
-        } else if is_simple_placeholder_name(trimmed) {
-            return None;
-        } else {
-            format!("{{{}}}", name)
-        };
+            let trimmed = name.trim();
+            let replacement = if is_simple_placeholder_name(trimmed) && ALLOWED.contains(&trimmed) {
+                format!("{{{trimmed}}}")
+            } else if is_simple_placeholder_name(trimmed) {
+                return None;
+            } else {
+                format!("{{{name}}}")
+            };
 
-        let end = name_end.unwrap() + 1;
-        let mut rest = parse_char_by_char(chars, end)?;
-        rest.push_str(&replacement);
-        Some(rest)
+            let end = name_end.unwrap() + 1;
+            return Some(format!(
+                "{replacement}{rest}",
+                rest = parse_char_by_char(chars, end)?
+            ));
+        }
+
+        Some(format!(
+            "{ch}{rest}",
+            rest = parse_char_by_char(chars, pos + 1)?
+        ))
     }
 
     let chars: Vec<char> = input.chars().collect();

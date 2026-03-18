@@ -164,6 +164,17 @@ pub fn detect_tests_with_workspace(
 
     const MAX_FILES_TO_SCAN: usize = 2000;
 
+    fn next_search(
+        queue: &[(PathBuf, usize)],
+        new_queue: Vec<(PathBuf, usize)>,
+    ) -> Option<Vec<(PathBuf, usize)>> {
+        if new_queue.is_empty() {
+            None
+        } else {
+            Some(queue.iter().cloned().chain(new_queue).collect())
+        }
+    }
+
     fn search(
         workspace: &dyn Workspace,
         queue: Vec<(PathBuf, usize)>,
@@ -201,20 +212,12 @@ pub fn detect_tests_with_workspace(
         ) {
             SearchResult::Found => true,
             SearchResult::Done => {
-                if rest.is_empty() {
-                    false
-                } else {
-                    search(workspace, rest.to_vec(), scanned_files, primary_lang)
-                }
+                rest.is_empty() || search(workspace, rest.to_vec(), scanned_files, primary_lang)
             }
-            SearchResult::Continue { new_queue } => {
-                if new_queue.is_empty() {
-                    search(workspace, rest.to_vec(), scanned_files, primary_lang)
-                } else {
-                    let combined: Vec<_> = rest.iter().cloned().chain(new_queue).collect();
+            SearchResult::Continue { new_queue } => next_search(&queue, new_queue)
+                .map_or(false, |combined| {
                     search(workspace, combined, scanned_files, primary_lang)
-                }
-            }
+                }),
         }
     }
 

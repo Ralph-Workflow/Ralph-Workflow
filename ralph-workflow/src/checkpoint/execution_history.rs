@@ -360,13 +360,14 @@ impl ExecutionHistory {
     /// This is the preferred method that enforces bounded memory growth.
     /// Use this to prevent unbounded growth.
     pub fn add_step_bounded(&mut self, step: ExecutionStep, limit: usize) {
-        self.steps.push_back(step);
-
-        // Enforce limit by dropping oldest entries.
-        // VecDeque::pop_front is O(1) amortized and avoids repeated memmoves.
-        while self.steps.len() > limit {
-            self.steps.pop_front();
-        }
+        let drop_count = self.steps.len().saturating_sub(limit.saturating_sub(1));
+        self.steps = self
+            .steps
+            .iter()
+            .skip(drop_count)
+            .chain(std::iter::once(&step))
+            .cloned()
+            .collect();
     }
 
     /// Clone this execution history while enforcing a hard step limit.

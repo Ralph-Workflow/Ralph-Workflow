@@ -400,19 +400,23 @@ impl AgentChainState {
             .sorted_by_key(|(agent, models)| (agent.clone(), models.clone()))
             .collect();
 
-        let mut hasher = Sha256::new();
-        hasher = Digest::chain_update(hasher, agent_drain_signature_tag(self.current_drain));
-        for (agent, models) in &sorted_pairs {
-            hasher = Digest::chain_update(hasher, agent.as_bytes());
-            hasher = Digest::chain_update(hasher, b"|");
-            for (idx, model) in models.iter().enumerate() {
-                if idx > 0 {
-                    hasher = Digest::chain_update(hasher, b",");
-                }
-                hasher = Digest::chain_update(hasher, model.as_bytes());
-            }
-            hasher = Digest::chain_update(hasher, b"\n");
-        }
+        let update_chain: Vec<&[u8]> = sorted_pairs
+            .iter()
+            .flat_map(|(agent, models)| {
+                let models_bytes: std::borrow::Cow<[u8]> = models
+                    .iter()
+                    .map(|m| m.as_bytes())
+                    .intersperse(b",")
+                    .collect::<Vec<_>>()
+                    .into();
+                [agent.as_bytes(), b"|", &models_bytes, b"\n"]
+            })
+            .collect();
+
+        let hasher = update_chain.iter().fold(
+            Digest::chain_update(Sha256::new(), agent_drain_signature_tag(self.current_drain)),
+            |h, chunk| Digest::chain_update(h, *chunk),
+        );
         let digest = hasher.finalize();
         digest
             .iter()
@@ -433,17 +437,28 @@ impl AgentChainState {
                     .models_per_agent
                     .get(idx)
                     .map_or([].as_slice(), std::vec::Vec::as_slice);
-                format!("{}|{}", agent, models.join(","))
+                format!(
+                    "{}|{}",
+                    agent,
+                    models
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
             })
             .sorted()
             .collect();
 
-        let mut hasher = Sha256::new();
-        hasher = Digest::chain_update(hasher, agent_drain_signature_tag(self.current_drain));
-        for line in rendered {
-            hasher = Digest::chain_update(hasher, line.as_bytes());
-            hasher = Digest::chain_update(hasher, b"\n");
-        }
+        let update_chain: Vec<&[u8]> = rendered
+            .iter()
+            .flat_map(|line| [line.as_bytes(), b"\n"])
+            .collect();
+
+        let hasher = update_chain.iter().fold(
+            Digest::chain_update(Sha256::new(), agent_drain_signature_tag(self.current_drain)),
+            |h, chunk| Digest::chain_update(h, *chunk),
+        );
         let digest = hasher.finalize();
         digest
             .iter()

@@ -75,44 +75,6 @@ fn eval_conditional(condition: &str, variables: &HashMap<&str, String>) -> bool 
         .unwrap_or(false)
 }
 
-fn format_modified_files(
-    added: Option<&[String]>,
-    modified: Option<&[String]>,
-    deleted: Option<&[String]>,
-) -> String {
-    let added_count = added.map_or(0, |v| v.len());
-    let modified_count = modified.map_or(0, |v| v.len());
-    let deleted_count = deleted.map_or(0, |v| v.len());
-    let total = added_count + modified_count + deleted_count;
-    if total == 0 {
-        return String::new();
-    }
-    let mut s = format!("  Files: {total} changed");
-    if added_count > 0 {
-        s.push_str(&format!(" ({added_count} added)"));
-    }
-    if modified_count > 0 {
-        s.push_str(&format!(" ({modified_count} modified)"));
-    }
-    if deleted_count > 0 {
-        s.push_str(&format!(" ({deleted_count} deleted)"));
-    }
-    s.push('\n');
-    s
-}
-
-fn format_issues_summary(found: usize, fixed: usize, description: Option<&str>) -> String {
-    if found == 0 && fixed == 0 {
-        return String::new();
-    }
-    let mut s = format!("  Issues: {found} found, {fixed} fixed");
-    if let Some(desc) = description {
-        s.push_str(&format!(" ({desc})"));
-    }
-    s.push('\n');
-    s
-}
-
 // =========================================================================
 // Thin boundary (wiring only)
 // =========================================================================

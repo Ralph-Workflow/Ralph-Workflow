@@ -265,25 +265,31 @@ pub fn format_config_section_lines(
         ConfigExistsStatus::Unknown(s) => s,
     };
 
-    let mut lines = Vec::new();
-    lines.push(format!("  Unified config: {}", config_path.display()));
-    lines.push(format!("  Config exists: {exists_str}"));
-    lines.push(format!(
-        "  Review depth: {:?} ({})",
-        config.review_depth,
-        config.review_depth.description()
-    ));
-    if !config_sources.is_empty() {
-        lines.push("  Loaded sources:".to_string());
-        for src in config_sources {
-            lines.push(format!(
+    let base_lines = [
+        format!("  Unified config: {}", config_path.display()),
+        format!("  Config exists: {exists_str}"),
+        format!(
+            "  Review depth: {:?} ({})",
+            config.review_depth,
+            config.review_depth.description()
+        ),
+    ];
+
+    if config_sources.is_empty() {
+        return base_lines.to_vec();
+    }
+
+    let source_lines: Vec<String> = std::iter::once("  Loaded sources:".to_string())
+        .chain(config_sources.iter().map(|src| {
+            format!(
                 "    - {} ({} agents)",
                 src.path.display(),
                 src.agents_loaded
-            ));
-        }
-    }
-    lines
+            )
+        }))
+        .collect();
+
+    base_lines.into_iter().chain(source_lines).collect()
 }
 
 /// Format agent availability section lines.
@@ -311,39 +317,43 @@ pub fn format_prompt_status_section(workspace: &dyn Workspace) -> Vec<String> {
     use std::path::Path;
 
     let prompt_path = Path::new("PROMPT.md");
-    let mut lines = Vec::new();
 
-    if workspace.exists(prompt_path) {
-        if let Ok(content) = workspace.read(prompt_path) {
-            let analysis = analyze_prompt_content(&content);
-            lines.push("  Exists: yes".to_string());
-            lines.push(format!(
-                "  Size: {} bytes",
-                analysis.size_bytes.unwrap_or(0)
-            ));
-            lines.push(format!("  Lines: {}", analysis.line_count.unwrap_or(0)));
-            lines.push(format!(
-                "  Has Goal section: {}",
-                if analysis.has_goal_section {
-                    "yes"
-                } else {
-                    "no"
-                }
-            ));
-            lines.push(format!(
-                "  Has Acceptance section: {}",
-                if analysis.has_acceptance_section {
-                    "yes"
-                } else {
-                    "no"
-                }
-            ));
-        }
-    } else {
-        lines.push("  Exists: no".to_string());
+    if !workspace.exists(prompt_path) {
+        return vec!["  Exists: no".to_string()];
     }
 
-    lines
+    let Ok(content) = workspace.read(prompt_path) else {
+        return vec!["  Exists: no".to_string()];
+    };
+
+    let analysis = analyze_prompt_content(&content);
+    [
+        Some("  Exists: yes".to_string()),
+        Some(format!(
+            "  Size: {} bytes",
+            analysis.size_bytes.unwrap_or(0)
+        )),
+        Some(format!("  Lines: {}", analysis.line_count.unwrap_or(0))),
+        Some(format!(
+            "  Has Goal section: {}",
+            if analysis.has_goal_section {
+                "yes"
+            } else {
+                "no"
+            }
+        )),
+        Some(format!(
+            "  Has Acceptance section: {}",
+            if analysis.has_acceptance_section {
+                "yes"
+            } else {
+                "no"
+            }
+        )),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// Format project stack section lines.

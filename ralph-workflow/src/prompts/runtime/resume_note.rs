@@ -116,27 +116,6 @@ fn append_resume_and_rebase_state(note: &mut String, context: &ResumeContext) {
     note.push('\n');
 }
 
-fn append_modified_files_summary(
-    note: &mut String,
-    detail: &crate::checkpoint::execution_history::ModifiedFilesDetail,
-) {
-    note.push_str(&format_modified_files_summary(detail));
-}
-
-fn append_issues_summary(
-    note: &mut String,
-    issues: &crate::checkpoint::execution_history::IssuesSummary,
-) {
-    note.push_str(&format_issues_summary(issues));
-}
-
-fn append_recent_step(
-    note: &mut String,
-    step: &crate::checkpoint::execution_history::ExecutionStep,
-) {
-    note.push_str(&format_recent_step(step));
-}
-
 fn append_recent_activity(note: &mut String, context: &ResumeContext) {
     let Some(ref history) = context.execution_history else {
         return;

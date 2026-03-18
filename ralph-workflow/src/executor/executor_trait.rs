@@ -3,6 +3,7 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
+use super::boundary::{build_command, collect_descendants, compute_from_descendants};
 #[cfg(target_os = "macos")]
 use super::child_proc::child_info_from_libproc;
 use super::child_proc::{
@@ -10,7 +11,7 @@ use super::child_proc::{
     warn_child_process_detection_degraded,
 };
 use super::child_proc::{parse_pgrep_output, parse_ps_output};
-use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
+use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, RealAgentChild};
 use std::io;
 use std::path::Path;
 
@@ -73,18 +74,8 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
         env: &[(String, String)],
         workdir: Option<&Path>,
     ) -> io::Result<std::process::Child> {
-        let mut cmd = std::process::Command::new(command);
-        cmd.args(args);
-
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
-        if let Some(dir) = workdir {
-            cmd.current_dir(dir);
-        }
-
-        cmd.stdin(std::process::Stdio::piped())
+        build_command(command, args, env, workdir)
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -114,9 +105,23 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     /// configuration for agent-specific needs. Mock implementations should
     /// override this to return mock results without spawning real processes.
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
-        let mut cmd = build_agent_command(config);
-        let child = cmd.spawn()?;
+        let child = self.spawn_agent_command_only(config)?;
         wrap_agent_child(child)
+    }
+
+    /// Build and spawn an agent command, returning the raw Child handle.
+    ///
+    /// This is used internally by `spawn_agent`. Subclasses may override
+    /// this to add platform-specific spawning behavior.
+    fn spawn_agent_command_only(
+        &self,
+        config: &AgentSpawnConfig,
+    ) -> io::Result<std::process::Child> {
+        build_agent_command_internal(&config.command, &config.args, &config.env, &config.prompt)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
     }
 
     /// Check if a command exists and can be executed.
@@ -192,34 +197,7 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             }
 
             {
-                use std::collections::HashSet;
-                let mut visited = HashSet::new();
-                let mut queue = std::collections::VecDeque::from([parent_pid]);
-                let mut descendants = Vec::new();
-                while let Some(current_pid) = queue.pop_front() {
-                    let Ok(output) =
-                        self.execute("pgrep", &["-P", &current_pid.to_string()], &[], None)
-                    else {
-                        return ChildProcessInfo::NONE;
-                    };
-                    let child_pids = if output.status.success() {
-                        match parse_pgrep_output(&output.stdout) {
-                            Some(pids) => pids,
-                            None => return ChildProcessInfo::NONE,
-                        }
-                    } else if output.status.code() == Some(1) {
-                        Vec::new()
-                    } else {
-                        return ChildProcessInfo::NONE;
-                    };
-                    for child_pid in child_pids {
-                        if visited.insert(child_pid) {
-                            descendants.push(child_pid);
-                            queue.push_back(child_pid);
-                        }
-                    }
-                }
-                descendants.sort_unstable();
+                let descendants = collect_descendants(self, parent_pid);
                 if !descendants.is_empty() {
                     warn_child_process_detection_conservative();
                     return child_info_from_descendant_pids(&descendants);
@@ -235,18 +213,6 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             ChildProcessInfo::NONE
         }
     }
-}
-
-fn build_agent_command(config: &AgentSpawnConfig) -> std::process::Command {
-    let mut cmd = std::process::Command::new(&config.command);
-    cmd.args(&config.args);
-    config.env.iter().for_each(|(k, v)| {
-        cmd.env(k, v);
-    });
-    cmd.arg(&config.prompt);
-    cmd.env("PYTHONUNBUFFERED", "1");
-    cmd.env("NODE_ENV", "production");
-    cmd
 }
 
 fn wrap_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {

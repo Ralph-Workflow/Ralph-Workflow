@@ -73,7 +73,7 @@ impl MainEffectHandler {
             .cloned()
             .ok_or(ErrorEvent::CommitAgentNotInitialized { attempt })?;
 
-        let mut result = self.invoke_agent(
+        let result = self.invoke_agent(
             ctx,
             crate::agents::AgentDrain::Commit,
             AgentRole::Commit,
@@ -81,14 +81,17 @@ impl MainEffectHandler {
             None,
             prompt,
         )?;
-        if result.additional_events.iter().any(|e| {
-            matches!(
-                e,
-                PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
-            )
-        }) {
-            result = result.with_additional_event(PipelineEvent::commit_agent_invoked(attempt));
-        }
+        let result = result
+            .additional_events
+            .iter()
+            .any(|e| {
+                matches!(
+                    e,
+                    PipelineEvent::Agent(AgentEvent::InvocationSucceeded { .. })
+                )
+            })
+            .then(|| result.with_additional_event(PipelineEvent::commit_agent_invoked(attempt)))
+            .unwrap_or(result);
         Ok(result)
     }
 }

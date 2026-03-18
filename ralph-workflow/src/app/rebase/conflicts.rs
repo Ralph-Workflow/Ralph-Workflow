@@ -25,16 +25,11 @@ pub fn try_resolve_conflicts(
     ConflictResolutionPromptReplay,
     std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 )> {
-    try_resolve_conflicts_with_hook(
-        conflicted_files,
-        ctx,
-        phase,
-        executor,
-        |_replay, _captured_entry| {
-            // Default behavior: prompt history is already captured in the returned HashMap.
-            // Callers that need custom checkpoint timing can use `try_resolve_conflicts_with_hook`.
-        },
-    )
+    try_resolve_conflicts_with_hook(conflicted_files, ctx, phase, executor, |_replay| {
+        // Default behavior: prompt history is already captured in the returned HashMap.
+        // Callers that need custom checkpoint timing can use `try_resolve_conflicts_with_hook`.
+        None
+    })
 }
 
 /// Attempt to resolve rebase conflicts with AI, invoking a hook after prompt capture.
@@ -47,20 +42,17 @@ pub fn try_resolve_conflicts_with_hook<F>(
     ctx: &ConflictResolutionContext<'_>,
     phase: &str,
     executor: &dyn ProcessExecutor,
-    after_prompt_capture: F,
+    mut after_prompt_capture: F,
 ) -> anyhow::Result<(
     bool,
     ConflictResolutionPromptReplay,
     std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 )>
 where
-    F: FnOnce(
+    F: FnMut(
         &ConflictResolutionPromptReplay,
-        &mut Option<(String, crate::prompts::PromptHistoryEntry)>,
-    ),
+    ) -> Option<(String, crate::prompts::PromptHistoryEntry)>,
 {
-    let mut prompt_history = std::collections::HashMap::new();
-    let mut captured_entry_to_insert = None;
     if conflicted_files.is_empty() {
         return Ok((
             false,
@@ -69,7 +61,7 @@ where
                 was_replayed: false,
                 captured_entry: None,
             },
-            prompt_history,
+            std::collections::HashMap::new(),
         ));
     }
 
@@ -90,6 +82,7 @@ where
     // this helper function is not a reducer.
     let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
     let prompt_key = scope_key.to_string();
+    let mut prompt_history = std::collections::HashMap::new();
     let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
         &scope_key,
         &prompt_history,
@@ -110,10 +103,10 @@ where
         },
     };
 
-    after_prompt_capture(&replay, &mut captured_entry_to_insert);
+    let captured_entry_to_insert = after_prompt_capture(&replay);
 
-    if let Some((key, entry)) = captured_entry_to_insert {
-        prompt_history.insert(key, entry);
+    if let Some(entry) = captured_entry_to_insert {
+        prompt_history.insert(entry.0, entry.1);
     }
 
     let resolved = match run_ai_conflict_resolution(&resolution_prompt, ctx) {

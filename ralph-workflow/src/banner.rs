@@ -191,7 +191,7 @@ pub fn print_final_summary_to<L: Loggable, W: BannerOutput>(
 }
 
 fn build_final_summary_content(colors: Colors, summary: &PipelineSummary) -> String {
-    let lines: Vec<String> = vec![
+    let base_lines: Vec<String> = vec![
         "".to_string(),
         format!(
             "{}{}📊 Summary{}",
@@ -240,21 +240,18 @@ fn build_final_summary_content(colors: Colors, summary: &PipelineSummary) -> Str
         ),
     ];
 
-    let lines = if summary.verbose {
-        lines
-            .into_iter()
-            .chain(std::iter::once(format!(
-                "  {}  {}  (Total runs:     {}{}{}){}",
-                colors.dim(),
-                colors.magenta(),
-                colors.bold(),
-                summary.review_runs,
-                colors.reset(),
-                colors.reset()
-            )))
-            .collect()
+    let verbose_line: Vec<String> = if summary.verbose {
+        vec![format!(
+            "  {}  {}  (Total runs:     {}{}{}){}",
+            colors.dim(),
+            colors.magenta(),
+            colors.bold(),
+            summary.review_runs,
+            colors.reset(),
+            colors.reset()
+        )]
     } else {
-        lines
+        Vec::new()
     };
 
     let review_lines: Vec<String> = summary
@@ -267,19 +264,21 @@ fn build_final_summary_content(colors: Colors, summary: &PipelineSummary) -> Str
                 .collect()
         });
 
-    let lines = lines
+    let output_files_lines: Vec<String> =
+        build_output_files_content(colors, summary.isolation_mode)
+            .lines()
+            .map(String::from)
+            .collect();
+
+    base_lines
         .into_iter()
+        .chain(verbose_line)
         .chain(std::iter::once("".to_string()))
         .chain(review_lines)
         .chain(std::iter::once("".to_string()))
-        .chain(
-            build_output_files_content(colors, summary.isolation_mode)
-                .lines()
-                .map(String::from),
-        )
-        .collect::<Vec<_>>();
-
-    lines.join("\n")
+        .chain(output_files_lines)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn build_review_summary_content(colors: Colors, verbose: bool, review: &ReviewSummary) -> String {
@@ -295,7 +294,7 @@ fn build_review_summary_content(colors: Colors, verbose: bool, review: &ReviewSu
         .join("\n");
     }
 
-    let lines: Vec<String> = vec![format!(
+    let base_line: Vec<String> = vec![format!(
         "  {}🔎{}  Review summary:  {}{}{}",
         colors.yellow(),
         colors.reset(),
@@ -304,91 +303,87 @@ fn build_review_summary_content(colors: Colors, verbose: bool, review: &ReviewSu
         colors.reset()
     )];
 
-    let lines = if review.unresolved_count > 0 {
-        lines
-            .into_iter()
-            .chain(std::iter::once(format!(
-                "  {}⚠{}   Unresolved:      {}{}{} issues remaining",
-                colors.red(),
-                colors.reset(),
-                colors.bold(),
-                review.unresolved_count,
-                colors.reset()
-            )))
-            .collect()
+    let unresolved_line: Vec<String> = if review.unresolved_count > 0 {
+        vec![format!(
+            "  {}⚠{}   Unresolved:      {}{}{} issues remaining",
+            colors.red(),
+            colors.reset(),
+            colors.bold(),
+            review.unresolved_count,
+            colors.reset()
+        )]
     } else {
-        lines
+        Vec::new()
     };
 
-    let lines = if verbose {
-        let breakdown_lines =
+    let verbose_lines: Vec<String> = if verbose {
+        let breakdown_lines: Vec<String> =
             review
                 .detailed_breakdown
                 .as_ref()
-                .map_or(Vec::<String>::new(), |breakdown| {
-                    let lines: Vec<&str> = breakdown.lines().collect();
-                    let dimmed: Vec<String> = lines
+                .map_or_else(Vec::<String>::new, |breakdown| {
+                    let line_strs: Vec<&str> = breakdown.lines().collect();
+                    let dimmed: Vec<String> = line_strs
                         .iter()
                         .map(|line| {
                             format!("      {}{}{}", colors.dim(), line.trim(), colors.reset())
                         })
                         .collect();
-                    let mut result = vec![format!(
+                    std::iter::once(format!(
                         "  {}📊{}  Breakdown:",
                         colors.dim(),
                         colors.reset()
-                    )];
-                    result.extend(dimmed);
-                    result
+                    ))
+                    .chain(dimmed)
+                    .collect()
                 });
 
-        let sample_lines = if !review.samples.is_empty() {
-            let mut samples = vec![format!(
+        let sample_lines: Vec<String> = if !review.samples.is_empty() {
+            std::iter::once(format!(
                 "  {}🧾{}  Unresolved samples:",
                 colors.dim(),
                 colors.reset()
-            )];
-            samples.extend(
+            ))
+            .chain(
                 review
                     .samples
                     .iter()
                     .map(|s| format!("      {}- {}{}", colors.dim(), s, colors.reset())),
-            );
-            samples
+            )
+            .collect()
         } else {
             Vec::new()
         };
 
-        lines
-            .into_iter()
-            .chain(breakdown_lines)
-            .chain(sample_lines)
-            .collect()
+        breakdown_lines.into_iter().chain(sample_lines).collect()
     } else {
-        lines
+        Vec::new()
     };
 
-    let lines = if review.blocking_count > 0 {
-        lines
-            .into_iter()
-            .chain(std::iter::once(format!(
-                "  {}🚨{}  BLOCKING:        {}{}{} critical/high issues unresolved",
-                colors.red(),
-                colors.reset(),
-                colors.bold(),
-                review.blocking_count,
-                colors.reset()
-            )))
-            .collect()
+    let blocking_line: Vec<String> = if review.blocking_count > 0 {
+        vec![format!(
+            "  {}🚨{}  BLOCKING:        {}{}{} critical/high issues unresolved",
+            colors.red(),
+            colors.reset(),
+            colors.bold(),
+            review.blocking_count,
+            colors.reset()
+        )]
     } else {
-        lines
+        Vec::new()
     };
 
-    lines.join("\n")
+    base_line
+        .into_iter()
+        .chain(unresolved_line)
+        .chain(verbose_lines)
+        .chain(blocking_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn build_output_files_content(colors: Colors, isolation_mode: bool) -> String {
-    let lines: Vec<String> = vec![
+    let base_lines: Vec<String> = vec![
         format!(
             "{}{}📁 Output Files{}",
             colors.bold(),
@@ -412,26 +407,26 @@ fn build_output_files_content(colors: Colors, isolation_mode: bool) -> String {
         ),
     ];
 
-    let lines = if !isolation_mode {
-        lines
-            .into_iter()
-            .chain(std::iter::once(format!(
+    let isolation_lines: Vec<String> = if !isolation_mode {
+        vec![
+            format!(
                 "  → {}.agent/ISSUES.md{}    Review findings",
                 colors.cyan(),
                 colors.reset()
-            )))
-            .chain(std::iter::once(format!(
+            ),
+            format!(
                 "  → {}.agent/NOTES.md{}     Progress notes",
                 colors.cyan(),
                 colors.reset()
-            )))
-            .collect()
+            ),
+        ]
     } else {
-        lines
+        Vec::new()
     };
 
-    lines
+    base_lines
         .into_iter()
+        .chain(isolation_lines)
         .chain(std::iter::once(format!(
             "  → {}.agent/logs/{}        Detailed logs",
             colors.cyan(),

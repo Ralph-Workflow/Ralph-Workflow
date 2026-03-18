@@ -3,6 +3,13 @@
 // Contains all the format_*_event methods for the ClaudeParser.
 
 impl ClaudeParser {
+    fn hash_string(text: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        text.hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Format a system event
     fn format_system_event(
         &self,
@@ -15,7 +22,7 @@ impl ClaudeParser {
 
         if subtype.map(std::string::String::as_str) == Some("init") {
             let sid = session_id.unwrap_or_else(|| "unknown".to_string());
-            let mut out = format!(
+            let base = format!(
                 "{}[{}]{} {}Session started{} {}({:.8}...){}\n",
                 c.dim(),
                 prefix,
@@ -27,9 +34,8 @@ impl ClaudeParser {
                 c.reset()
             );
             if let Some(cwd) = cwd {
-                let _ = writeln!(
-                    out,
-                    "{}[{}]{} {}Working dir: {}{}",
+                let extra = format!(
+                    "{}[{}]{} {}Working dir: {}{}\n",
                     c.dim(),
                     prefix,
                     c.reset(),
@@ -37,8 +43,10 @@ impl ClaudeParser {
                     cwd,
                     c.reset()
                 );
+                format!("{base}{extra}")
+            } else {
+                base
             }
-            out
         } else {
             let subtype_str = subtype.map_or("system", |s| s.as_str());
 
@@ -48,7 +56,8 @@ impl ClaudeParser {
             if *self.terminal_mode.borrow() == TerminalMode::Full {
                 use crate::json_parser::delta_display::CLEAR_LINE;
                 format!(
-                    "{CLEAR_LINE}\r{}[{}]{} {}{}{}\n",
+                    "{}\r{}[{}]{} {}{}{}\n",
+                    CLEAR_LINE,
                     c.dim(),
                     prefix,
                     c.reset(),
@@ -95,21 +104,16 @@ impl ClaudeParser {
                         }
                     }
                     ContentBlock::ToolUse { name, input } => {
-                        // Track tool name by index for hash-based deduplication
                         if let Some(name_str) = name.as_deref() {
                             tool_names.insert(index, name_str.to_string());
                         }
 
-                        // Normalize tool_use for hash comparison:
-                        // Format: "TOOL_USE:{name}:{sorted_json_input}"
-                        // Sorting JSON keys ensures identical inputs produce same hash
                         let normalized = format!(
                             "TOOL_USE:{}:{}",
                             name.as_deref().unwrap_or(""),
                             input
                                 .as_ref()
                                 .map(|v| {
-                                    // Sort JSON keys for deterministic serialization
                                     if v.is_object() {
                                         serde_json::to_string(v).ok()
                                     } else if v.is_string() {
@@ -170,9 +174,7 @@ impl ClaudeParser {
         if let Some((ref text_content, _)) = content_for_hash {
             if !text_content.is_empty() {
                 // Compute hash of the assistant event content
-                let mut hasher = DefaultHasher::new();
-                text_content.hash(&mut hasher);
-                let content_hash = hasher.finish();
+                let content_hash = Self::hash_string(text_content);
 
                 // Check if this content was already rendered
                 if session.is_assistant_content_rendered(content_hash) {
@@ -289,24 +291,22 @@ impl ClaudeParser {
         prefix: &str,
         colors: Colors,
     ) {
-        for block in content {
-            match block {
-                ContentBlock::Text { text } => {
-                    if let Some(text) = text {
-                        self.format_text_block(out, text, prefix, colors);
-                    }
+        content.iter().for_each(|block| match block {
+            ContentBlock::Text { text } => {
+                if let Some(text) = text {
+                    self.format_text_block(out, text, prefix, colors);
                 }
-                ContentBlock::ToolUse { name, input } => {
-                    self.format_tool_use_block(out, name.as_ref(), input.as_ref(), prefix, colors);
-                }
-                ContentBlock::ToolResult { content } => {
-                    if let Some(content) = content {
-                        self.format_tool_result_block(out, content, prefix, colors);
-                    }
-                }
-                ContentBlock::Unknown => {}
             }
-        }
+            ContentBlock::ToolUse { name, input } => {
+                self.format_tool_use_block(out, name.as_ref(), input.as_ref(), prefix, colors);
+            }
+            ContentBlock::ToolResult { content } => {
+                if let Some(content) = content {
+                    self.format_tool_result_block(out, content, prefix, colors);
+                }
+            }
+            ContentBlock::Unknown => {}
+        });
     }
 
     /// Format an assistant event
@@ -343,8 +343,7 @@ impl ClaudeParser {
 
                     // Mark the assistant content as rendered by hash to prevent duplicate
                     // assistant events with the same content but different message_ids
-                    if let Some((text_content, _)) = Self::extract_text_content_for_hash(message)
-                    {
+                    if let Some((text_content, _)) = Self::extract_text_content_for_hash(message) {
                         if !text_content.is_empty() {
                             let mut hasher = DefaultHasher::new();
                             text_content.hash(&mut hasher);
@@ -404,7 +403,7 @@ impl ClaudeParser {
         let cost = total_cost_usd.unwrap_or(0.0);
         let turns = num_turns.unwrap_or(0);
 
-        let mut out = if subtype.as_deref() == Some("success") {
+        let base = if subtype.as_deref() == Some("success") {
             format!(
                 "{}[{}]{} {}{} Completed{} {}({}m {}s, {} turns, ${:.4}){}\n",
                 c.dim(),
@@ -439,19 +438,20 @@ impl ClaudeParser {
             )
         };
 
-        if let Some(result) = result {
-            let limit = self.verbosity.truncate_limit("result");
-            let preview = truncate_text(&result, limit);
-            let _ = writeln!(
-                out,
-                "\n{}Result summary:{}\n{}{}{}",
-                c.bold(),
-                c.reset(),
-                c.dim(),
-                preview,
-                c.reset()
-            );
-        }
-        out
+        result
+            .map(|r| {
+                let limit = self.verbosity.truncate_limit("result");
+                let preview = truncate_text(&r, limit);
+                format!(
+                    "{}\n{}Result summary:{}\n{}{}{}",
+                    base,
+                    c.bold(),
+                    c.reset(),
+                    c.dim(),
+                    preview,
+                    c.reset()
+                )
+            })
+            .unwrap_or(base)
     }
 }

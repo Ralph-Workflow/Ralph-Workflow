@@ -127,116 +127,78 @@ impl CommitAttemptLog {
         let log_path = log_dir.join(filename);
 
         // Build content in memory
-        let mut content = String::new();
-        self.write_header_to_string(&mut content);
-        self.write_context_to_string(&mut content);
-        self.write_raw_output_to_string(&mut content);
-        self.write_extraction_attempts_to_string(&mut content);
-        self.write_validation_to_string(&mut content);
-        self.write_outcome_to_string(&mut content);
+        let content: String = [
+            self.header_as_string(),
+            self.context_as_string(),
+            self.raw_output_as_string(),
+            self.extraction_attempts_as_string(),
+            self.validation_as_string(),
+            self.outcome_as_string(),
+        ]
+        .into_iter()
+        .collect();
 
         // Write using workspace
         workspace.write(&log_path, &content)?;
         Ok(log_path)
     }
 
-    // String-based write helpers for workspace support
-    fn write_header_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "========================================================================"
-        );
-        let _ = writeln!(s, "COMMIT GENERATION ATTEMPT LOG");
-        let _ = writeln!(
-            s,
-            "========================================================================"
-        );
-        let _ = writeln!(s);
-        let _ = writeln!(s, "Attempt:   #{}", self.attempt_number);
-        let _ = writeln!(s, "Agent:     {}", self.agent);
-        let _ = writeln!(s, "Strategy:  {}", self.strategy);
-        let _ = writeln!(
-            s,
-            "Timestamp: {}",
+    fn header_as_string(&self) -> String {
+        format!(
+            "========================================================================\n\
+             COMMIT GENERATION ATTEMPT LOG\n\
+             ========================================================================\n\
+             \n\
+             Attempt:   #{}\n\
+             Agent:     {}\n\
+             Strategy:  {}\n\
+             Timestamp: {}\n\
+             \n",
+            self.attempt_number,
+            self.agent,
+            self.strategy,
             self.timestamp.format("%Y-%m-%d %H:%M:%S %Z")
-        );
-        let _ = writeln!(s);
+        )
     }
 
-    fn write_context_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "CONTEXT");
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-        let _ = writeln!(
-            s,
-            "Prompt size: {} bytes ({} KB)",
+    fn context_as_string(&self) -> String {
+        format!(
+            "------------------------------------------------------------------------\n\
+             CONTEXT\n\
+             ---------------------------------------------------------------------------\n\
+             \n\
+             Prompt size: {} bytes ({} KB)\n\
+             Diff size:   {} bytes ({} KB)\n\
+             Diff truncated: {}\n\
+             \n",
             self.prompt_size_bytes,
-            self.prompt_size_bytes / 1024
-        );
-        let _ = writeln!(
-            s,
-            "Diff size:   {} bytes ({} KB)",
+            self.prompt_size_bytes / 1024,
             self.diff_size_bytes,
-            self.diff_size_bytes / 1024
-        );
-        let _ = writeln!(
-            s,
-            "Diff truncated: {}",
+            self.diff_size_bytes / 1024,
             if self.diff_was_truncated { "YES" } else { "NO" }
-        );
-        let _ = writeln!(s);
+        )
     }
 
-    fn write_raw_output_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "RAW AGENT OUTPUT");
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-        match &self.raw_output {
-            Some(output) => {
-                let _ = writeln!(s, "{output}");
-            }
-            None => {
-                let _ = writeln!(s, "[No output captured]");
-            }
-        }
-        let _ = writeln!(s);
+    fn raw_output_as_string(&self) -> String {
+        let output_section = match &self.raw_output {
+            Some(output) => output.as_str(),
+            None => "[No output captured]",
+        };
+        format!(
+            "------------------------------------------------------------------------\n\
+             RAW AGENT OUTPUT\n\
+             ---------------------------------------------------------------------------\n\
+             \n\
+             {output_section}\n\
+             \n"
+        )
     }
 
-    fn write_extraction_attempts_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "EXTRACTION ATTEMPTS");
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-
-        if self.extraction_attempts.is_empty() {
-            let _ = writeln!(s, "[No extraction attempts recorded]");
+    fn extraction_attempts_as_string(&self) -> String {
+        let attempts_section = if self.extraction_attempts.is_empty() {
+            "[No extraction attempts recorded]".to_string()
         } else {
-            let attempt_lines: Vec<String> = self
-                .extraction_attempts
+            self.extraction_attempts
                 .iter()
                 .enumerate()
                 .map(|(i, attempt)| {
@@ -253,32 +215,24 @@ impl CommitAttemptLog {
                         attempt.detail
                     )
                 })
-                .collect();
-            for line in attempt_lines {
-                let _ = writeln!(s, "{}", line);
-            }
-        }
-        let _ = writeln!(s);
+                .collect::<Vec<_>>()
+                .join("")
+        };
+        format!(
+            "------------------------------------------------------------------------\n\
+             EXTRACTION ATTEMPTS\n\
+             ---------------------------------------------------------------------------\n\
+             \n\
+             {attempts_section}\n\
+             \n"
+        )
     }
 
-    fn write_validation_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "VALIDATION RESULTS");
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-
-        if self.validation_checks.is_empty() {
-            let _ = writeln!(s, "[No validation checks recorded]");
+    fn validation_as_string(&self) -> String {
+        let validation_section = if self.validation_checks.is_empty() {
+            "[No validation checks recorded]".to_string()
         } else {
-            let validation_lines: Vec<String> = self
-                .validation_checks
+            self.validation_checks
                 .iter()
                 .map(|check| {
                     let status = if check.passed { "✓ PASS" } else { "✗ FAIL" };
@@ -288,39 +242,33 @@ impl CommitAttemptLog {
                         format!("  [{status}] {}", check.name)
                     }
                 })
-                .collect();
-            for line in validation_lines {
-                let _ = writeln!(s, "{}", line);
-            }
-        }
-        let _ = writeln!(s);
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        format!(
+            "------------------------------------------------------------------------\n\
+             VALIDATION RESULTS\n\
+             ---------------------------------------------------------------------------\n\
+             \n\
+             {validation_section}\n\
+             \n"
+        )
     }
 
-    fn write_outcome_to_string(&self, s: &mut String) {
-        use std::fmt::Write;
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s, "OUTCOME");
-        let _ = writeln!(
-            s,
-            "------------------------------------------------------------------------"
-        );
-        let _ = writeln!(s);
-        match &self.outcome {
-            Some(outcome) => {
-                let _ = writeln!(s, "{outcome}");
-            }
-            None => {
-                let _ = writeln!(s, "[Outcome not recorded]");
-            }
-        }
-        let _ = writeln!(s);
-        let _ = writeln!(
-            s,
-            "========================================================================"
-        );
+    fn outcome_as_string(&self) -> String {
+        let outcome_section = match &self.outcome {
+            Some(outcome) => outcome.to_string(),
+            None => "[Outcome not recorded]".to_string(),
+        };
+        format!(
+            "------------------------------------------------------------------------\n\
+             OUTCOME\n\
+             ---------------------------------------------------------------------------\n\
+             \n\
+             {outcome_section}\n\
+             \n\
+             ========================================================================\n"
+        )
     }
 }
 

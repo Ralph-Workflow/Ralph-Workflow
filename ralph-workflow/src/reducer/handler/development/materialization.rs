@@ -136,14 +136,13 @@ impl MainEffectHandler {
             reason: plan_reason,
         };
 
-        let mut result = EffectResult::event(PipelineEvent::development_inputs_materialized(
+        let result = EffectResult::event(PipelineEvent::development_inputs_materialized(
             iteration,
             prompt_input.clone(),
             plan_input.clone(),
         ));
-
-        if prompt_input.original_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
+        let result = if prompt_input.original_bytes > inline_budget_bytes {
+            let result = result.with_ui_event(UIEvent::AgentActivity {
                 agent: "pipeline".to_string(),
                 message: format!(
                     "Oversize PROMPT: {} KB > {} KB; using file reference",
@@ -151,17 +150,19 @@ impl MainEffectHandler {
                     inline_budget_bytes / 1024
                 ),
             });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
+            result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
                 crate::reducer::event::PipelinePhase::Development,
                 PromptInputKind::Prompt,
                 prompt_input.content_id_sha256.clone(),
                 prompt_input.original_bytes,
                 inline_budget_bytes,
                 "inline-embedding".to_string(),
-            ));
-        }
+            ))
+        } else {
+            result
+        };
         if plan_input.original_bytes > inline_budget_bytes {
-            result = result.with_ui_event(UIEvent::AgentActivity {
+            let result = result.with_ui_event(UIEvent::AgentActivity {
                 agent: "pipeline".to_string(),
                 message: format!(
                     "Oversize PLAN: {} KB > {} KB; using file reference",
@@ -169,13 +170,15 @@ impl MainEffectHandler {
                     inline_budget_bytes / 1024
                 ),
             });
-            result = result.with_additional_event(PipelineEvent::prompt_input_oversize_detected(
-                crate::reducer::event::PipelinePhase::Development,
-                PromptInputKind::Plan,
-                plan_input.content_id_sha256.clone(),
-                plan_input.original_bytes,
-                inline_budget_bytes,
-                "inline-embedding".to_string(),
+            return Ok(result.with_additional_event(
+                PipelineEvent::prompt_input_oversize_detected(
+                    crate::reducer::event::PipelinePhase::Development,
+                    PromptInputKind::Plan,
+                    plan_input.content_id_sha256.clone(),
+                    plan_input.original_bytes,
+                    inline_budget_bytes,
+                    "inline-embedding".to_string(),
+                ),
             ));
         }
 

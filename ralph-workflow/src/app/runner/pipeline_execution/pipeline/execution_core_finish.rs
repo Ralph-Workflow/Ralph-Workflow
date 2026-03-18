@@ -98,19 +98,7 @@ fn save_complete_checkpoint_if_needed(
         .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
     if let Some(checkpoint) = builder.build_with_workspace(&*ctx.workspace) {
-        let mut checkpoint = checkpoint;
-        checkpoint.dev_fix_attempt_count = loop_result.final_state.dev_fix_attempt_count;
-        checkpoint.recovery_epoch = loop_result.final_state.recovery_epoch;
-        checkpoint.recovery_escalation_level = loop_result.final_state.recovery_escalation_level;
-        checkpoint.failed_phase_for_recovery = loop_result.final_state.failed_phase_for_recovery;
-        checkpoint.interrupted_by_user = loop_result.final_state.interrupted_by_user;
-        if loop_result.final_state.cloud.enabled {
-            checkpoint.cloud_state = Some(
-                crate::checkpoint::state::CloudCheckpointState::from_pipeline_state(
-                    &loop_result.final_state,
-                ),
-            );
-        }
+        let checkpoint = checkpoint.with_recovery_state(&loop_result.final_state);
         let _ = save_checkpoint_with_workspace(&*ctx.workspace, &checkpoint);
     }
 }

@@ -40,11 +40,13 @@
 
 use super::{
     sha256_hex_str, xml_paths, AgentEvent, DiffContentReference, EffectResult, ErrorEvent,
-    MainEffectHandler, MaterializedPromptInput, OnceLock, Path, PhaseContext, PipelineEvent,
+    MainEffectHandler, MaterializedPromptInput, Path, PhaseContext, PipelineEvent,
     PlanContentReference, PromptContentReferences, PromptInputKind, PromptInputRepresentation,
-    PromptMaterializationReason, PromptMode, Regex, Result, UIEvent, WorkspaceIoErrorKind,
-    XmlCodeSnippet, XmlOutputContext, XmlOutputType, MAX_INLINE_CONTENT_SIZE,
+    PromptMaterializationReason, PromptMode, Result, UIEvent, WorkspaceIoErrorKind, XmlCodeSnippet,
+    XmlOutputContext, XmlOutputType, MAX_INLINE_CONTENT_SIZE,
 };
+
+pub mod runtime;
 
 include!("input_materialization.rs");
 include!("xsd_retry_materialization.rs");
