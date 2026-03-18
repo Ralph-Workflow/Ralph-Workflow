@@ -126,7 +126,7 @@ impl MainEffectHandler {
             inputs.prompt.consumer_signature_sha256,
             inputs.plan.consumer_signature_sha256
         ));
-        let mut should_validate = false;
+        let should_validate = false;
         let (prompt, was_replayed) = get_stored_or_generate_prompt(
             &scope_key,
             &self.state.prompt_history,
@@ -156,7 +156,6 @@ impl MainEffectHandler {
                             )
                         },
                     );
-                should_validate = local_should_validate;
                 format!("{retry_preamble}\n{base_prompt}")
             },
         );

@@ -7,7 +7,7 @@
 
 use itertools::Itertools;
 
-use crate::cloud::io::redaction as io_redaction;
+use crate::cloud::runtime::io_redaction;
 
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///
@@ -104,15 +104,15 @@ fn redact_http_url_userinfo(input: &str) -> String {
 }
 
 fn redact_bearer_tokens(input: &str) -> String {
-    io_redaction::redact_bearer_tokens(input)
+    io::redact_bearer_tokens(input)
 }
 
 fn redact_common_query_params(input: &str) -> String {
-    io_redaction::redact_common_query_params(input)
+    io::redact_common_query_params(input)
 }
 
 fn redact_token_like_substrings(input: &str) -> String {
-    io_redaction::redact_token_like_substrings(input)
+    io::redact_token_like_substrings(input)
 }
 
 #[cfg(test)]

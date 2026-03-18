@@ -2,6 +2,8 @@
 //
 // Contains the ParserHealth struct for tracking event processing statistics.
 
+use crate::logger::Colors;
+
 /// Parser health statistics
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ParserHealth {

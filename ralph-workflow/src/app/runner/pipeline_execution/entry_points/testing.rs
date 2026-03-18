@@ -1,13 +1,6 @@
 use crate::agents::AgentRegistry;
 use crate::app::effect::AppEffectHandler;
 use crate::app::effect_handler::RealAppEffectHandler;
-use crate::app::runner::pipeline_execution::{
-    command_requires_prompt_setup, discover_repo_root_for_workspace,
-    handle_repo_commands_without_prompt_setup, prepare_pipeline_or_exit, RepoCommandParams,
-};
-use crate::app::runner::setup_helpers::{validate_and_setup_agents, AgentSetupParams};
-use crate::config::{Config, ConfigEnvironment};
-use crate::workspace::WorkspaceFs;
 
 /// Test-only entry point that accepts a pre-built Config.
 ///

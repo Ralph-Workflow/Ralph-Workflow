@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::json_parser::health::HealthMonitor;
 use crate::json_parser::printer::SharedPrinter;
-use crate::json_parser::types::{CodexEvent, DeltaAccumulator};
+use crate::json_parser::types::{format_unknown_json_event, CodexEvent};
 
 pub mod event_handlers;
 

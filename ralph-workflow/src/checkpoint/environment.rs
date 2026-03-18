@@ -27,15 +27,17 @@ pub fn restore_environment_impl(
         return 0;
     };
 
-    let mut restored: usize = 0;
+    let restored = env_snap
+        .ralph_vars
+        .iter()
+        .filter(|(key, _)| !crate::checkpoint::state::is_sensitive_env_key(key))
+        .count();
 
-    for (key, value) in &env_snap.ralph_vars {
-        if crate::checkpoint::state::is_sensitive_env_key(key) {
-            continue;
-        }
-        set_var(key, value);
-        restored = restored.saturating_add(1);
-    }
+    env_snap
+        .ralph_vars
+        .iter()
+        .filter(|(key, _)| !crate::checkpoint::state::is_sensitive_env_key(key))
+        .for_each(|(key, value)| set_var(key, value));
 
     restored
 }

@@ -163,7 +163,7 @@ fn build_ccs_agent_config_impl(
     );
 
     // Build the final AgentConfig
-    build_ccs_config_from_flags(alias_config, defaults, cmd, env_vars, display_name)
+    build_ccs_config_from_flags(alias_config, defaults, cmd.command, env_vars, display_name)
 }
 
 /// CCS alias resolver that can be used by the agent registry.

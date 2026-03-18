@@ -21,12 +21,10 @@
 //! - `runtime/` - Thread spawning for heartbeat background task
 //! - `io/` - HTTP client for cloud API communication
 
-pub mod io;
 pub mod redaction;
 pub mod runtime;
 pub mod types;
 
-pub use io::HttpCloudReporter;
 pub use runtime::HeartbeatGuard;
 pub use types::{CloudError, PipelineResult, ProgressEventType, ProgressUpdate};
 

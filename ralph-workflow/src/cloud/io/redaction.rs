@@ -26,7 +26,7 @@ static TOKEN_LIKE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
         "({})[A-Za-z0-9_\\-\\.]+",
         PREFIXES
             .iter()
-            .map(|&&s| regex::escape(s))
+            .map(|&s| regex::escape(s))
             .collect::<Vec<_>>()
             .join("|")
     );

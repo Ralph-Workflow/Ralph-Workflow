@@ -406,8 +406,8 @@ impl AgentChainState {
                 let models_bytes: std::borrow::Cow<[u8]> = models
                     .iter()
                     .map(|m| m.as_bytes())
-                    .intersperse(b",")
                     .collect::<Vec<_>>()
+                    .join(&b',')
                     .into();
                 [agent.as_bytes(), b"|", &models_bytes, b"\n"]
             })

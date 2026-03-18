@@ -260,11 +260,12 @@ pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     if adjusted.is_empty() {
         adjusted
     } else {
-        let mut result = adjusted;
-        if let Some(last) = result.last_mut() {
-            last.push_str(suffix);
-        }
-        result
+        let last_idx = adjusted.len() - 1;
+        let (init, last) = adjusted.split_at(last_idx);
+        init.iter()
+            .chain(std::iter::once(format!("{last}{suffix}")))
+            .cloned()
+            .collect()
     }
 }
 

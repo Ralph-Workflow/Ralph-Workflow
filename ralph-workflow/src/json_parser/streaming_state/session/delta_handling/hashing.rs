@@ -24,7 +24,7 @@ impl StreamingSession {
                 let content = self.accumulated.get(key);
                 let key_hash = format!("{:?}-{}", key.0, key.1);
                 let key_hash_bytes = key_hash.as_bytes();
-                let content_bytes = content.as_bytes();
+                let content_bytes = content.map(|s| s.as_bytes()).unwrap_or(b"");
                 let hasher = DefaultHasher::default();
                 let mut h = hasher;
                 key_hash_bytes.hash(&mut h);

@@ -2,6 +2,11 @@
 //
 // Contains the HealthMonitor struct for tracking parser health.
 
+use std::cell::Cell;
+
+use crate::json_parser::health::ParserHealth;
+use crate::logger::Colors;
+
 /// A wrapper that monitors parser health and provides graceful degradation
 ///
 /// This wraps any parser function to track how many events are being ignored

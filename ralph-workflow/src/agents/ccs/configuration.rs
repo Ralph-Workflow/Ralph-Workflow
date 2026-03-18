@@ -386,24 +386,28 @@ fn log_ccs_env_vars_loaded(
     let profile = profile_used_for_env.map_or(alias_name, |s| s.as_str());
     if env_vars_loaded {
         let summary = ccs_env_var_debug_summary(env_vars);
-        let mut diagnostics = vec![CcsDiagnostic::EnvVarsLoaded {
+        vec![CcsDiagnostic::EnvVarsLoaded {
             count: env_vars.len(),
             profile: profile.to_string(),
-        }];
-        for key in &summary.whitelisted_keys_present {
-            diagnostics.push(CcsDiagnostic::EnvVarsKeyListed { key: key.clone() });
-        }
-        if summary.redacted_sensitive_keys > 0 {
-            diagnostics.push(CcsDiagnostic::EnvVarsKeyRedacted {
+        }]
+        .into_iter()
+        .chain(
+            summary
+                .whitelisted_keys_present
+                .iter()
+                .map(|key| CcsDiagnostic::EnvVarsKeyListed { key: key.clone() }),
+        )
+        .chain(
+            (summary.redacted_sensitive_keys > 0).then(|| CcsDiagnostic::EnvVarsKeyRedacted {
                 count: summary.redacted_sensitive_keys,
-            });
-        }
-        if summary.hidden_non_whitelisted_keys > 0 {
-            diagnostics.push(CcsDiagnostic::EnvVarsKeysHidden {
+            }),
+        )
+        .chain((summary.hidden_non_whitelisted_keys > 0).then(|| {
+            CcsDiagnostic::EnvVarsKeysHidden {
                 count: summary.hidden_non_whitelisted_keys,
-            });
-        }
-        diagnostics
+            }
+        }))
+        .collect()
     } else {
         vec![CcsDiagnostic::EnvVarsLoadFailed {
             profile: profile.to_string(),
@@ -472,46 +476,26 @@ fn resolve_ccs_command_impl(
 
     find_claude_binary().map_or_else(
         || {
-            let mut diagnostics = Vec::new();
-            if original_cmd.starts_with("ccs ") || original_cmd == "ccs" {
-                if debug_mode {
-                    diagnostics.push(CcsDiagnostic::ClaudeBinaryNotFound);
-                }
-                diagnostics.push(CcsDiagnostic::UsingCcsWrapperWarning);
-                diagnostics.push(CcsDiagnostic::StreamingFlagsWarning);
-                diagnostics.push(CcsDiagnostic::InstallInstructionsWarning);
-            }
+            let is_ccs = original_cmd.starts_with("ccs ") || original_cmd == "ccs";
             CcsCommandResult {
                 command: original_cmd.to_string(),
-                diagnostics,
+                diagnostics: std::iter::empty()
+                    .chain(debug_mode.then_some(CcsDiagnostic::ClaudeBinaryNotFound))
+                    .chain(is_ccs.then_some(vec![
+                        CcsDiagnostic::UsingCcsWrapperWarning,
+                        CcsDiagnostic::StreamingFlagsWarning,
+                        CcsDiagnostic::InstallInstructionsWarning,
+                    ]))
+                    .collect(),
             }
         },
         |claude_path| {
             let can_bypass_wrapper = is_glm_alias(alias_name) && env_vars_loaded;
 
-            let mut diagnostics = Vec::new();
-            if debug_mode {
-                diagnostics.push(CcsDiagnostic::ClaudeBinaryPath {
-                    path: claude_path.to_string_lossy().to_string(),
-                });
-                diagnostics.push(CcsDiagnostic::OriginalCommand {
-                    command: original_cmd.to_string(),
-                });
-                diagnostics.push(CcsDiagnostic::AliasName {
-                    name: alias_name.to_string(),
-                });
-                diagnostics.push(CcsDiagnostic::EnvVarsLoadedFlag {
-                    loaded: env_vars_loaded,
-                });
-                diagnostics.push(CcsDiagnostic::CanBypassFlag {
-                    can_bypass: can_bypass_wrapper,
-                });
-            }
-
             if !can_bypass_wrapper {
-                if debug_mode {
-                    diagnostics.push(CcsDiagnostic::BypassConditionsNotMet);
-                }
+                let diagnostics: Vec<CcsDiagnostic> = debug_mode
+                    .then_some(vec![CcsDiagnostic::BypassConditionsNotMet])
+                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
                     diagnostics,
@@ -519,9 +503,9 @@ fn resolve_ccs_command_impl(
             }
 
             let Ok(parts) = split_command(original_cmd) else {
-                if debug_mode {
-                    diagnostics.push(CcsDiagnostic::CommandParseFailed);
-                }
+                let diagnostics: Vec<CcsDiagnostic> = debug_mode
+                    .then_some(vec![CcsDiagnostic::CommandParseFailed])
+                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
                     diagnostics,
@@ -543,19 +527,10 @@ fn resolve_ccs_command_impl(
             };
             let is_profile_ccs_cmd = is_ccs_cmd && skip.is_some();
 
-            if debug_mode {
-                diagnostics.push(CcsDiagnostic::CommandParts {
-                    parts: parts.clone(),
-                });
-                diagnostics.push(CcsDiagnostic::IsProfileCcs {
-                    is_profile: is_profile_ccs_cmd,
-                });
-            }
-
             if !is_profile_ccs_cmd {
-                if debug_mode {
-                    diagnostics.push(CcsDiagnostic::CommandNotProfileCcs);
-                }
+                let diagnostics: Vec<CcsDiagnostic> = debug_mode
+                    .then_some(vec![CcsDiagnostic::CommandNotProfileCcs])
+                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
                     diagnostics,
@@ -568,17 +543,19 @@ fn resolve_ccs_command_impl(
                 .collect();
             let new_cmd = shell_words::join(&new_parts);
 
-            if debug_mode {
-                diagnostics.push(CcsDiagnostic::CommandParts {
-                    parts: new_parts.clone(),
-                });
-                diagnostics.push(CcsDiagnostic::OriginalCommand {
-                    command: new_cmd.clone(),
-                });
-                diagnostics.push(CcsDiagnostic::BypassingWrapper {
-                    command: new_cmd.clone(),
-                });
-            }
+            let diagnostics: Vec<CcsDiagnostic> = debug_mode
+                .then_some(vec![
+                    CcsDiagnostic::CommandParts {
+                        parts: new_parts.clone(),
+                    },
+                    CcsDiagnostic::OriginalCommand {
+                        command: new_cmd.clone(),
+                    },
+                    CcsDiagnostic::BypassingWrapper {
+                        command: new_cmd.clone(),
+                    },
+                ])
+                .unwrap_or_default();
             CcsCommandResult {
                 command: new_cmd,
                 diagnostics,

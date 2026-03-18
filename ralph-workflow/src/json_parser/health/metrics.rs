@@ -2,6 +2,8 @@
 //
 // Contains StreamingQualityMetrics and StreamingPattern.
 
+use crate::logger::Colors;
+
 /// Streaming quality metrics for analyzing streaming behavior.
 ///
 /// These metrics help diagnose issues with streaming performance and

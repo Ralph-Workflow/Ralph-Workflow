@@ -68,12 +68,13 @@ pub mod gemini;
 #[cfg(test)]
 mod gemini_tests;
 pub mod health;
+pub mod incremental_parser;
 pub mod io;
 pub mod opencode;
 #[cfg(test)]
 mod opencode_tests;
 pub mod printer;
-mod stream_classifier;
+pub mod stream_classifier;
 mod streaming_state;
 pub mod terminal;
 pub mod types;

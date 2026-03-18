@@ -364,23 +364,15 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
         Err(e) => return vec![format!("  Detection failed: {e}")],
     };
 
-    let secondary = stack
-        .secondary_languages
-        .is_empty()
-        .then_some(Vec::new())
-        .map(|_| {
-            vec![format!(
-                "  Secondary languages: {:?}",
-                stack.secondary_languages
-            )]
-        })
+    let secondary = (!stack.secondary_languages.is_empty())
+        .then_some(vec![format!(
+            "  Secondary languages: {:?}",
+            stack.secondary_languages
+        )])
         .unwrap_or_default();
 
-    let frameworks = stack
-        .frameworks
-        .is_empty()
-        .then_some(Vec::new())
-        .map(|_| vec![format!("  Frameworks: {:?}", stack.frameworks)])
+    let frameworks = (!stack.frameworks.is_empty())
+        .then_some(vec![format!("  Frameworks: {:?}", stack.frameworks)])
         .unwrap_or_default();
 
     let package_manager = stack
@@ -412,10 +404,11 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
     .into_iter()
     .flatten()
     .collect();
-    let language_flags = language_types
-        .is_empty()
-        .then_some(Vec::new())
-        .map(|_| vec![format!("  Language flags: {}", language_types.join(", "))])
+    let language_flags = (!language_types.is_empty())
+        .then_some(vec![format!(
+            "  Language flags: {}",
+            language_types.join(", ")
+        )])
         .unwrap_or_default();
 
     let guidelines = ReviewGuidelines::for_stack(&stack);
@@ -443,15 +436,13 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
         .map(|check| format!("    - {}", check.check))
         .collect();
 
-    let checks_section = critical_checks_lines
-        .is_empty()
-        .then_some(Vec::new())
-        .map(|_| {
-            std::iter::once("  Critical checks (sample):".to_string())
-                .chain(critical_checks_lines.into_iter())
-                .collect()
-        })
-        .unwrap_or_default();
+    let checks_section = if critical_checks_lines.is_empty() {
+        vec![]
+    } else {
+        std::iter::once("  Critical checks (sample):".to_string())
+            .chain(critical_checks_lines.into_iter())
+            .collect()
+    };
 
     [
         vec![format!("  Primary language: {}", stack.primary_language)],
