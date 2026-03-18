@@ -144,6 +144,12 @@ pub enum CloudError {
     Serialization(String),
 }
 
+impl From<std::io::Error> for CloudError {
+    fn from(e: std::io::Error) -> Self {
+        CloudError::NetworkError(e.to_string())
+    }
+}
+
 impl CloudError {
     pub fn is_success(&self) -> bool {
         matches!(self, CloudError::Configuration(_))

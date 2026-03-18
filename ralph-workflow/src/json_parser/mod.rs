@@ -74,7 +74,7 @@ pub mod opencode;
 mod opencode_tests;
 pub mod printer;
 mod stream_classifier;
-pub mod streaming_state;
+mod streaming_state;
 pub mod terminal;
 pub mod types;
 

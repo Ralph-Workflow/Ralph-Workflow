@@ -36,10 +36,7 @@ impl SystemInfo {
             .ok()
             .map(|o| o.stdout.trim().to_string());
 
-        let git_repo = executor
-            .execute("git", &["rev-parse", "--git-dir"], &[], None)
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+        let git_repo = rt::is_git_repo(executor);
 
         let git_branch = if git_repo {
             executor

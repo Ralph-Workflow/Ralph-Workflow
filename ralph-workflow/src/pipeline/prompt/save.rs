@@ -50,12 +50,8 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     // Copy to clipboard if interactive
     if options.interactive {
         if let Some(clipboard_cmd) = super::super::clipboard::get_platform_clipboard_command() {
-            match executor.spawn(clipboard_cmd.binary, clipboard_cmd.args, &[], None) {
-                Ok(mut child) => {
-                    if let Some(ref mut stdin) = child.stdin {
-                        let _ = stdin.write_all(prompt.as_bytes());
-                    }
-                    let _ = child.wait();
+            match super::runtime::clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd) {
+                Ok(()) => {
                     logger.info(&format!(
                         "Prompt copied to clipboard {}({}){}",
                         options.colors.dim(),
@@ -96,10 +92,7 @@ fn archive_prompt(
     let prompts_dir = PathBuf::from(".agent/prompts");
     workspace.create_dir_all(&prompts_dir)?;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
+    let timestamp = super::runtime::time::current_timestamp_ms();
 
     let archive_filename = build_prompt_archive_filename(
         info.phase_label,

@@ -85,6 +85,13 @@ impl Default for AgentConfig {
     }
 }
 
+/// Warning that can occur during CCS environment variable loading.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CcsEnvWarning {
+    /// Failed to load environment variables for the specified CCS profile.
+    LoadFailed { profile: String, error: String },
+}
+
 impl AgentConfig {
     /// Create a new `AgentConfig` builder.
     #[must_use]
@@ -177,6 +184,75 @@ impl AgentConfig {
             .and_then(|n| n.to_str())
             .unwrap_or(base);
         matches!(exe_name, "claude" | "ccs")
+    }
+
+    /// Convert from `AgentConfigToml` with CCS environment variable loading.
+    ///
+    /// Returns the constructed config along with any warnings encountered
+    /// during CCS env var loading. The caller should emit warnings at the I/O boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if CCS env var loading fails.
+    pub fn try_from_ccs(toml: AgentConfigToml) -> (Self, Vec<CcsEnvWarning>) {
+        let ccs_env_vars: HashMap<String, String> = toml.ccs_profile.as_deref().map_or_else(
+            HashMap::new,
+            |profile| match load_ccs_env_vars(profile) {
+                Ok(vars) => vars,
+                Err(err) => {
+                    return (
+                        Self {
+                            cmd: toml.cmd,
+                            output_flag: toml.output_flag,
+                            yolo_flag: toml.yolo_flag,
+                            verbose_flag: toml.verbose_flag,
+                            can_commit: toml.can_commit,
+                            json_parser: JsonParserType::parse(&toml.json_parser),
+                            model_flag: toml.model_flag,
+                            print_flag: toml.print_flag,
+                            streaming_flag: toml.streaming_flag,
+                            session_flag: toml.session_flag,
+                            env_vars: toml.env_vars,
+                            display_name: toml.display_name,
+                        },
+                        vec![CcsEnvWarning::LoadFailed {
+                            profile: profile.to_string(),
+                            error: err.to_string(),
+                        }],
+                    );
+                }
+            },
+        );
+
+        let warnings = if ccs_env_vars.is_empty() && toml.ccs_profile.is_some() {
+            vec![CcsEnvWarning::LoadFailed {
+                profile: toml.ccs_profile.clone().unwrap(),
+                error: "no environment variables loaded".to_string(),
+            }]
+        } else {
+            Vec::new()
+        };
+
+        let merged_env_vars: HashMap<_, _> =
+            toml.env_vars.into_iter().chain(ccs_env_vars).collect();
+
+        (
+            Self {
+                cmd: toml.cmd,
+                output_flag: toml.output_flag,
+                yolo_flag: toml.yolo_flag,
+                verbose_flag: toml.verbose_flag,
+                can_commit: toml.can_commit,
+                json_parser: JsonParserType::parse(&toml.json_parser),
+                model_flag: toml.model_flag,
+                print_flag: toml.print_flag,
+                streaming_flag: toml.streaming_flag,
+                session_flag: toml.session_flag,
+                env_vars: merged_env_vars,
+                display_name: toml.display_name,
+            },
+            warnings,
+        )
     }
 }
 
@@ -403,45 +479,9 @@ fn default_streaming_flag() -> String {
 }
 
 impl From<AgentConfigToml> for AgentConfig {
-    #[expect(
-        clippy::print_stderr,
-        reason = "warning for failed CCS env var loading"
-    )]
     fn from(toml: AgentConfigToml) -> Self {
-        // Loading CCS env vars is best-effort: registry initialization should not fail
-        // just because a CCS profile is missing or misconfigured.
-        let ccs_env_vars = toml
-            .ccs_profile
-            .as_deref()
-            .map_or_else(HashMap::new, |profile| match load_ccs_env_vars(profile) {
-                Ok(vars) => vars,
-                Err(err) => {
-                    eprintln!(
-                        "Warning: failed to load CCS env vars for profile '{profile}': {err}"
-                    );
-                    HashMap::new()
-                }
-            });
-
-        // Merge manually specified env vars with CCS env vars
-        // CCS env vars take precedence (as documented in ccs_profile field)
-        let merged_env_vars: HashMap<_, _> =
-            toml.env_vars.into_iter().chain(ccs_env_vars).collect();
-
-        Self {
-            cmd: toml.cmd,
-            output_flag: toml.output_flag,
-            yolo_flag: toml.yolo_flag,
-            verbose_flag: toml.verbose_flag,
-            can_commit: toml.can_commit,
-            json_parser: JsonParserType::parse(&toml.json_parser),
-            model_flag: toml.model_flag,
-            print_flag: toml.print_flag,
-            streaming_flag: toml.streaming_flag,
-            session_flag: toml.session_flag,
-            env_vars: merged_env_vars,
-            display_name: toml.display_name,
-        }
+        let (config, _) = AgentConfig::try_from_ccs(toml);
+        config
     }
 }
 

@@ -32,40 +32,11 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
     config_path: &std::path::Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<ConfigSource>)> {
-    let mut registry = crate::app::io::runtime_factory::create_agent_registry()?;
-
-    // Agent configuration is loaded ONLY from:
-    // 1. Built-in defaults (from AgentRegistry::new())
-    // 2. Unified config file (~/.config/ralph-workflow.toml)
-    // 3. OpenCode API catalog (for opencode/* references)
-    //
-    // Legacy agent config files (.agent/agents.toml, ~/.config/ralph/agents.toml)
-    // are no longer supported. Use --init-global to create a unified config.
-
-    let sources = if let Some(unified_cfg) = unified {
-        let loaded = registry
-            .apply_unified_config(unified_cfg)
-            .map_err(|e| anyhow::anyhow!("Invalid unified agent configuration: {e}"))?;
-        let has_agent_chain_config = loaded > 0
-            || unified_cfg.agent_chain.is_some()
-            || !unified_cfg.agent_chains.is_empty()
-            || !unified_cfg.agent_drains.is_empty();
-        if has_agent_chain_config {
-            vec![ConfigSource {
-                path: config_path.to_path_buf(),
-                agents_loaded: loaded,
-            }]
-        } else {
-            vec![]
-        }
-    } else {
-        vec![]
-    };
-
-    // Load OpenCode API catalog if there are any opencode/* references
-    setup_opencode_catalog(&mut registry, catalog_loader)?;
-
-    Ok((registry, sources))
+    crate::app::io::initialization::load_agent_registry_boundary(
+        unified,
+        config_path,
+        catalog_loader,
+    )
 }
 
 /// Setup `OpenCode` API catalog for dynamic provider/model resolution.

@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::git_helpers::git2_to_io_error;
 use crate::git_helpers::identity::GitIdentity;
+use crate::runtime::environment::Environment;
 
 fn index_has_changes_to_commit(repo: &git2::Repository, index: &git2::Index) -> io::Result<bool> {
     match repo.head() {
@@ -202,10 +203,12 @@ fn resolve_commit_identity(
     provided_name: Option<&str>,
     provided_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
+    env: Option<&dyn Environment>,
 ) -> GitIdentity {
     use crate::git_helpers::identity::{default_identity, fallback_email, fallback_username};
 
-    // Priority 1: Git config (via libgit2) - primary source
+    let env = env.unwrap_or(&crate::runtime::environment::RealEnvironment);
+
     let mut name = String::new();
     let mut email = String::new();
     let mut has_git_config = false;
@@ -220,14 +223,8 @@ fn resolve_commit_identity(
         }
     }
 
-    // Priority order (standard git behavior):
-    // 1. Git config (local .git/config, then global ~/.gitconfig) - primary source
-    // 2. Provided args (provided_name/provided_email) - from Ralph config or CLI override
-    // 3. Env vars (RALPH_GIT_USER_NAME/EMAIL) - fallback if above are missing
-    //
-    // This matches standard git behavior where git config is authoritative.
-    let env_name = std::env::var("RALPH_GIT_USER_NAME").ok();
-    let env_email = std::env::var("RALPH_GIT_USER_EMAIL").ok();
+    let env_name = env.var("RALPH_GIT_USER_NAME");
+    let env_email = env.var("RALPH_GIT_USER_EMAIL");
 
     // Apply in priority order: git config > provided args > env vars.
     let final_name = if has_git_config && !name.is_empty() {
@@ -306,6 +303,7 @@ pub fn git_commit(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
+    env: Option<&dyn Environment>,
 ) -> io::Result<Option<git2::Oid>> {
     git_commit_in_repo(
         Path::new("."),
@@ -313,6 +311,7 @@ pub fn git_commit(
         git_user_name,
         git_user_email,
         executor,
+        env,
     )
 }
 
@@ -330,9 +329,10 @@ pub fn git_commit_in_repo(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
+    env: Option<&dyn Environment>,
 ) -> io::Result<Option<git2::Oid>> {
     let repo = git2::Repository::discover(repo_root).map_err(|e| git2_to_io_error(&e))?;
-    git_commit_impl(&repo, message, git_user_name, git_user_email, executor)
+    git_commit_impl(&repo, message, git_user_name, git_user_email, executor, env)
 }
 
 fn git_commit_impl(
@@ -341,6 +341,7 @@ fn git_commit_impl(
     git_user_name: Option<&str>,
     git_user_email: Option<&str>,
     executor: Option<&dyn crate::executor::ProcessExecutor>,
+    env: Option<&dyn Environment>,
 ) -> io::Result<Option<git2::Oid>> {
     let mut index = repo.index().map_err(|e| git2_to_io_error(&e))?;
 
@@ -354,14 +355,24 @@ fn git_commit_impl(
     let tree = repo.find_tree(tree_oid).map_err(|e| git2_to_io_error(&e))?;
 
     let GitIdentity { name, email } =
-        resolve_commit_identity(repo, git_user_name, git_user_email, executor);
+        resolve_commit_identity(repo, git_user_name, git_user_email, executor, env);
 
     // Debug logging: identity resolution source.
-    if std::env::var("RALPH_DEBUG").is_ok() {
+    if env
+        .unwrap_or(&crate::runtime::environment::RealEnvironment)
+        .var("RALPH_DEBUG")
+        .is_some()
+    {
         let identity_source = if git_user_name.is_some() || git_user_email.is_some() {
             "CLI/config override"
-        } else if std::env::var("RALPH_GIT_USER_NAME").is_ok()
-            || std::env::var("RALPH_GIT_USER_EMAIL").is_ok()
+        } else if env
+            .unwrap_or(&crate::runtime::environment::RealEnvironment)
+            .var("RALPH_GIT_USER_NAME")
+            .is_some()
+            || env
+                .unwrap_or(&crate::runtime::environment::RealEnvironment)
+                .var("RALPH_GIT_USER_EMAIL")
+                .is_some()
         {
             "environment variable"
         } else if repo.signature().is_ok() {

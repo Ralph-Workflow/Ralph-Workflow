@@ -332,13 +332,10 @@ mod tests {
 
     #[test]
     fn test_colors_enabled_term_dumb_case_insensitive() {
-        for term in ["dumb", "DUMB", "Dumb", "DuMb"] {
+        assert!(["dumb", "DUMB", "Dumb", "DuMb"].iter().all(|&term| {
             let env = MockColorEnvironment::new().with_var("TERM", term);
-            assert!(
-                !colors_enabled_with_env(&env),
-                "TERM={term} should disable colors"
-            );
-        }
+            !colors_enabled_with_env(&env)
+        }));
     }
 
     #[test]

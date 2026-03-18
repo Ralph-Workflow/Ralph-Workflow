@@ -519,6 +519,7 @@ mod tests {
         let ws_arc: Arc<dyn Workspace> = Arc::new(ws);
         let workspace_arc = Arc::clone(&ws_arc);
 
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let mut ctx = crate::phases::PhaseContext {
             config: &config,
             registry: &registry,
@@ -539,6 +540,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud,
+            env: &git_env,
         };
 
         let mut handler = MockEffectHandler::new(PipelineState::initial(1, 0));

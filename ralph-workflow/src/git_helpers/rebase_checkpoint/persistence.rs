@@ -69,7 +69,6 @@ pub fn save_rebase_checkpoint(checkpoint: &RebaseCheckpoint) -> io::Result<()> {
 ///
 /// Returns an error if the checkpoint file exists but cannot be read
 /// or contains invalid JSON, and no valid backup exists.
-#[expect(clippy::print_stderr, reason = "checkpoint recovery warning messages")]
 pub fn load_rebase_checkpoint() -> io::Result<Option<RebaseCheckpoint>> {
     let checkpoint = rebase_checkpoint_path();
     let path = Path::new(&checkpoint);
@@ -81,16 +80,34 @@ pub fn load_rebase_checkpoint() -> io::Result<Option<RebaseCheckpoint>> {
     let loaded_checkpoint: RebaseCheckpoint = match serde_json::from_str(&content) {
         Ok(cp) => cp,
         Err(e) => {
-            // Checkpoint is corrupted - try to restore from backup
-            eprintln!("Checkpoint corrupted, attempting restore from backup: {e}");
-            return restore_from_backup();
+            let backup_result = restore_from_backup();
+            return if backup_result.is_err() {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Checkpoint corrupted: {e}; backup restore failed: {}",
+                        backup_result.unwrap_err()
+                    ),
+                ))
+            } else {
+                backup_result
+            };
         }
     };
 
-    // Validate the loaded checkpoint
     if let Err(e) = validate_checkpoint(&loaded_checkpoint) {
-        eprintln!("Checkpoint validation failed, attempting restore from backup: {e}");
-        return restore_from_backup();
+        let backup_result = restore_from_backup();
+        return if backup_result.is_err() {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Checkpoint validation failed: {e}; backup restore failed: {}",
+                    backup_result.unwrap_err()
+                ),
+            ))
+        } else {
+            backup_result
+        };
     }
 
     Ok(Some(loaded_checkpoint))
@@ -319,7 +336,6 @@ pub fn save_rebase_checkpoint_with_workspace(
 /// # Errors
 ///
 /// Returns error if the operation fails.
-#[expect(clippy::print_stderr, reason = "checkpoint recovery warning messages")]
 pub fn load_rebase_checkpoint_with_workspace(
     workspace: &dyn Workspace,
 ) -> io::Result<Option<RebaseCheckpoint>> {
@@ -333,16 +349,34 @@ pub fn load_rebase_checkpoint_with_workspace(
     let loaded_checkpoint: RebaseCheckpoint = match serde_json::from_str(&content) {
         Ok(cp) => cp,
         Err(e) => {
-            // Checkpoint is corrupted - try to restore from backup
-            eprintln!("Checkpoint corrupted, attempting restore from backup: {e}");
-            return restore_from_backup_with_workspace(workspace);
+            let backup_result = restore_from_backup_with_workspace(workspace);
+            return if backup_result.is_err() {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Checkpoint corrupted: {e}; backup restore failed: {}",
+                        backup_result.unwrap_err()
+                    ),
+                ))
+            } else {
+                backup_result
+            };
         }
     };
 
-    // Validate the loaded checkpoint
     if let Err(e) = validate_checkpoint_impl(&loaded_checkpoint) {
-        eprintln!("Checkpoint validation failed, attempting restore from backup: {e}");
-        return restore_from_backup_with_workspace(workspace);
+        let backup_result = restore_from_backup_with_workspace(workspace);
+        return if backup_result.is_err() {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Checkpoint validation failed: {e}; backup restore failed: {}",
+                    backup_result.unwrap_err()
+                ),
+            ))
+        } else {
+            backup_result
+        };
     }
 
     Ok(Some(loaded_checkpoint))

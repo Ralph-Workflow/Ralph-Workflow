@@ -474,6 +474,7 @@ fn dev_fix_agent_unavailable_log_does_not_claim_termination() {
     let cloud = crate::config::types::CloudConfig::disabled();
     let workspace_arc = Arc::clone(&failing_ws) as Arc<dyn Workspace>;
     let mut timer = crate::pipeline::Timer::new();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &fixture.config,
         registry: &fixture.registry,
@@ -494,6 +495,7 @@ fn dev_fix_agent_unavailable_log_does_not_claim_termination() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let mut state = PipelineState::initial(1, 0);

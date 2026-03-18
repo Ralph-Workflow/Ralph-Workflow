@@ -41,11 +41,12 @@ impl TestLogger {
 
     #[must_use]
     pub fn get_logs(&self) -> Vec<String> {
-        let mut result = self.logs.borrow().clone();
-        if !self.buffer.borrow().is_empty() {
-            result.push(self.buffer.borrow().clone());
-        }
-        result
+        self.logs
+            .borrow()
+            .iter()
+            .cloned()
+            .chain((!self.buffer.borrow().is_empty()).then(|| self.buffer.borrow().clone()))
+            .collect()
     }
 
     pub fn clear(&self) {

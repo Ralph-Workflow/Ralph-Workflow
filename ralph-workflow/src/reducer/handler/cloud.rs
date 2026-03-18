@@ -44,10 +44,9 @@ impl MainEffectHandler {
                     ctx.logger
                         .info("Using default SSH authentication (SSH_AUTH_SOCK or ~/.ssh/id_rsa)");
                 } else {
-                    // Set GIT_SSH_COMMAND to use specific key.
+                    // Configure GIT_SSH_COMMAND to use specific key via the git environment.
                     // Git may execute this via a shell; treat the key path as untrusted.
-                    if let Some(cmd) = build_git_ssh_command(param) {
-                        std::env::set_var("GIT_SSH_COMMAND", &cmd);
+                    if let Ok(()) = ctx.env.configure_git_ssh_command(param) {
                         ctx.logger
                             .info("Set GIT_SSH_COMMAND to use provided SSH key");
                     } else {
@@ -65,13 +64,13 @@ impl MainEffectHandler {
                 ctx.logger.info(&format!(
                     "Configuring token authentication for user: {param}"
                 ));
-                std::env::set_var("GIT_TERMINAL_PROMPT", "0");
+                let _ = ctx.env.disable_git_terminal_prompt();
             }
             "credential-helper" => {
                 // Configure external credential helper
                 ctx.logger
                     .info(&format!("Using credential helper: {param}"));
-                std::env::set_var("GIT_TERMINAL_PROMPT", "0");
+                let _ = ctx.env.disable_git_terminal_prompt();
             }
             _ => {
                 ctx.logger.warn(&format!(

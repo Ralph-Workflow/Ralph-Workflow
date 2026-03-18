@@ -67,6 +67,7 @@ fn test_event_loop_does_not_bypass_save_checkpoint_when_checkpointing_disabled()
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -88,6 +89,7 @@ fn test_event_loop_does_not_bypass_save_checkpoint_when_checkpointing_disabled()
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // Construct a terminal state that deterministically derives SaveCheckpoint.
@@ -171,6 +173,7 @@ fn test_event_loop_result_completed_true_for_interrupted_with_checkpoint() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -192,6 +195,7 @@ fn test_event_loop_result_completed_true_for_interrupted_with_checkpoint() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState {
@@ -375,6 +379,7 @@ fn test_max_iterations_in_awaiting_dev_fix_runs_save_checkpoint_effect() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -396,6 +401,7 @@ fn test_max_iterations_in_awaiting_dev_fix_runs_save_checkpoint_effect() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // The interrupt flags are process-global; coordinate all test access so
@@ -518,6 +524,7 @@ fn test_max_iterations_after_completion_marker_runs_save_checkpoint() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -539,6 +546,7 @@ fn test_max_iterations_after_completion_marker_runs_save_checkpoint() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // The interrupt flags are process-global; coordinate all test access so
@@ -605,6 +613,7 @@ fn test_create_initial_state_with_config_plumbs_max_same_agent_retry_count() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let ctx = PhaseContext {
         config: &config,
@@ -626,6 +635,7 @@ fn test_create_initial_state_with_config_plumbs_max_same_agent_retry_count() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -662,6 +672,7 @@ fn test_create_initial_state_with_config_plumbs_commit_residual_retry_budget() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let ctx = PhaseContext {
         config: &config,
@@ -683,6 +694,7 @@ fn test_create_initial_state_with_config_plumbs_commit_residual_retry_budget() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -759,6 +771,7 @@ fn test_event_loop_honors_user_interrupt_by_transitioning_to_interrupted_and_che
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -780,6 +793,7 @@ fn test_event_loop_honors_user_interrupt_by_transitioning_to_interrupted_and_che
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // Start from a post-interrupt state produced by reducer handling of Ctrl+C.
@@ -868,6 +882,7 @@ fn test_run_event_loop_with_mock_handler() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     // Create PhaseContext
     let mut ctx = PhaseContext {
@@ -890,6 +905,7 @@ fn test_run_event_loop_with_mock_handler() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // Create mock handler

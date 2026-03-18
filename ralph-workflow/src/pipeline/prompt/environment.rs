@@ -6,30 +6,28 @@
 ///
 /// # Arguments
 ///
-/// * `env_vars` - Mutable reference to environment variables map
+/// * `env_vars` - Environment variables map to sanitize
 /// * `agent_env_vars` - Environment variables explicitly set by agent config
 /// * `vars_to_sanitize` - List of environment variable names to remove
 ///
 /// # Behavior
 ///
-/// - Removes all vars in `vars_to_sanitize` from `env_vars`
+/// - Removes all vars in `vars_to_sanitize` from env_vars
 /// - EXCEPT for vars that are present in `agent_env_vars` (explicitly set)
 /// - This prevents GLM CCS credentials from leaking into agent subprocesses
 ///
-/// # Example
+/// # Returns
 ///
-/// ```ignore
-/// let mut env = std::env::vars().collect::<HashMap<_, _>>();
-/// let agent_vars = HashMap::from([("ANTHROPIC_API_KEY", "agent-key")]);
-/// sanitize_command_env(&mut env, &agent_vars, ANTHROPIC_VARS);
-/// // env no longer contains ANTHROPIC_BASE_URL (not in agent_vars)
-/// // env still contains ANTHROPIC_API_KEY (explicitly set by agent)
-/// ```
+/// A new `HashMap` with the sanitized environment variables.
+#[must_use]
 pub fn sanitize_command_env(
-    env_vars: &mut std::collections::HashMap<String, String>,
+    env_vars: std::collections::HashMap<String, String>,
     agent_env_vars: &std::collections::HashMap<String, String>,
     vars_to_sanitize: &[&str],
-) {
+) -> std::collections::HashMap<String, String> {
     let agent_keys: std::collections::HashSet<_> = agent_env_vars.keys().collect();
-    env_vars.retain(|key, _| !vars_to_sanitize.contains(&key.as_str()) || agent_keys.contains(key));
+    env_vars
+        .into_iter()
+        .filter(|(key, _)| !vars_to_sanitize.contains(&key.as_str()) || agent_keys.contains(key))
+        .collect()
 }

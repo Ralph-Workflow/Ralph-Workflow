@@ -1,3 +1,15 @@
+use super::super::discover_repo_root_for_workspace;
+use crate::agents::AgentRegistry;
+use crate::app::effect::AppEffectHandler;
+use crate::app::effect_handler::RealAppEffectHandler;
+use crate::app::runner::pipeline_execution::helpers::{
+    command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
+    prepare_pipeline_or_exit, RepoCommandParams,
+};
+use crate::app::runner::setup_helpers::{validate_and_setup_agents, AgentSetupParams};
+use crate::config::{Config, ConfigEnvironment};
+use crate::workspace::WorkspaceFs;
+
 /// Test-only entry point that accepts a pre-built Config.
 ///
 /// This function is for integration testing only. It bypasses environment variable
@@ -32,7 +44,7 @@ pub fn run_with_config(
     registry: AgentRegistry,
 ) -> anyhow::Result<()> {
     // Use real path resolver and effect handler by default
-    let mut handler = effect_handler::RealAppEffectHandler::new();
+    let mut handler = RealAppEffectHandler::new();
     run_with_config_and_resolver(
         args,
         executor,
@@ -74,10 +86,7 @@ pub fn run_with_config(
 /// - Pipeline initialization fails
 /// - Any pipeline phase execution fails
 #[cfg(feature = "test-utils")]
-pub fn run_with_config_and_resolver<
-    P: crate::config::ConfigEnvironment,
-    H: effect::AppEffectHandler,
->(
+pub fn run_with_config_and_resolver<P: crate::config::ConfigEnvironment, H: AppEffectHandler>(
     args: Args,
     executor: std::sync::Arc<dyn ProcessExecutor>,
     config: crate::config::Config,
@@ -276,7 +285,7 @@ pub fn run_with_config_and_resolver<
 pub struct RunWithHandlersParams<'a, 'ctx, P, A, E>
 where
     P: crate::config::ConfigEnvironment,
-    A: effect::AppEffectHandler,
+    A: AppEffectHandler,
     E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
 {
     pub args: Args,
@@ -331,7 +340,7 @@ pub fn run_with_config_and_handlers<'a, 'ctx, P, A, E>(
 ) -> anyhow::Result<()>
 where
     P: crate::config::ConfigEnvironment,
-    A: effect::AppEffectHandler,
+    A: AppEffectHandler,
     E: crate::reducer::EffectHandler<'ctx> + crate::app::runtime::StatefulHandler,
 {
     use crate::cli::{

@@ -4,6 +4,6 @@
 //! filesystem, and other runtime capabilities.
 
 pub mod dylint;
+pub mod dylint_report;
 pub mod process;
 pub mod verify;
-pub mod dylint_report;

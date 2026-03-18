@@ -47,6 +47,34 @@ impl CommitAttemptLog {
         }
     }
 
+    /// Create a new attempt log with basic info already set.
+    ///
+    /// This is the functional equivalent of calling `new()` followed by
+    /// `set_prompt_size()` and `set_diff_info()`, avoiding `let mut`.
+    #[must_use]
+    pub fn with_basics(
+        attempt_number: usize,
+        agent: &str,
+        strategy: &str,
+        prompt_size: usize,
+        diff_size: usize,
+        diff_was_truncated: bool,
+    ) -> Self {
+        Self {
+            attempt_number,
+            agent: agent.to_string(),
+            strategy: strategy.to_string(),
+            timestamp: Local::now(),
+            prompt_size_bytes: prompt_size,
+            diff_size_bytes: diff_size,
+            diff_was_truncated,
+            raw_output: None,
+            extraction_attempts: Vec::new(),
+            validation_checks: Vec::new(),
+            outcome: None,
+        }
+    }
+
     /// Set the prompt size.
     pub const fn set_prompt_size(&mut self, size: usize) {
         self.prompt_size_bytes = size;
@@ -58,21 +86,37 @@ impl CommitAttemptLog {
         self.diff_was_truncated = was_truncated;
     }
 
-    /// Set the raw output from the agent.
+    /// Set the raw output from the agent (consuming builder).
     ///
     /// Truncates very large outputs to prevent log file bloat.
-    pub fn set_raw_output(&mut self, output: &str) {
+    #[must_use]
+    pub fn with_raw_output(mut self, output: &str) -> Self {
         const MAX_OUTPUT_SIZE: usize = 50_000;
-        if output.len() > MAX_OUTPUT_SIZE {
-            self.raw_output = Some(format!(
+        self.raw_output = if output.len() > MAX_OUTPUT_SIZE {
+            Some(format!(
                 "{}\n\n[... truncated {} bytes ...]\n\n{}",
                 &output[..MAX_OUTPUT_SIZE / 2],
                 output.len() - MAX_OUTPUT_SIZE,
                 &output[output.len() - MAX_OUTPUT_SIZE / 2..]
-            ));
+            ))
         } else {
-            self.raw_output = Some(output.to_string());
-        }
+            Some(output.to_string())
+        };
+        self
+    }
+
+    /// Record an extraction attempt (consuming builder).
+    #[must_use]
+    pub fn with_extraction_attempt(mut self, attempt: ExtractionAttempt) -> Self {
+        self.extraction_attempts.push(attempt);
+        self
+    }
+
+    /// Set the final outcome (consuming builder).
+    #[must_use]
+    pub fn with_outcome(mut self, outcome: AttemptOutcome) -> Self {
+        self.outcome = Some(outcome);
+        self
     }
 
     /// Record an extraction attempt.

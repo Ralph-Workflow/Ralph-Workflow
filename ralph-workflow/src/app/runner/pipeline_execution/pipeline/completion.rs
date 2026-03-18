@@ -56,9 +56,9 @@
 ///
 /// See the unit tests in the `completion_tests` module for working examples
 /// of how this function behaves in different scenarios.
-pub(super) fn write_defensive_completion_marker(
+pub(crate) fn write_defensive_completion_marker(
     workspace: &dyn crate::workspace::Workspace,
-    logger: &Logger,
+    logger: &crate::logger::Logger,
     final_phase: crate::reducer::event::PipelinePhase,
 ) -> bool {
     if let Err(err) = workspace.create_dir_all(std::path::Path::new(".agent/tmp")) {
@@ -86,8 +86,8 @@ pub(super) fn write_defensive_completion_marker(
 #[cfg(test)]
 mod completion_tests {
     use super::*;
-    use crate::logger::{Colors, Logger};
-    use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};
+    use crate::logger::Colors;
+    use crate::workspace::{DirEntry, MemoryWorkspace};
     use std::io;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
@@ -115,7 +115,7 @@ mod completion_tests {
         }
     }
 
-    impl Workspace for TrackingWorkspace {
+    impl crate::workspace::Workspace for TrackingWorkspace {
         fn root(&self) -> &Path {
             self.inner.root()
         }
@@ -199,7 +199,7 @@ mod completion_tests {
     #[test]
     fn test_defensive_completion_marker_creates_tmp_dir() {
         let workspace = TrackingWorkspace::new();
-        let logger = Logger::new(Colors { enabled: false });
+        let logger = crate::logger::Logger::new(crate::logger::Colors { enabled: false });
 
         let wrote = write_defensive_completion_marker(
             &workspace,
@@ -221,7 +221,7 @@ mod completion_tests {
     #[test]
     fn test_defensive_completion_marker_content_format() {
         let workspace = MemoryWorkspace::new(PathBuf::from("/test/repo"));
-        let logger = Logger::new(Colors { enabled: false });
+        let logger = crate::logger::Logger::new(crate::logger::Colors { enabled: false });
 
         let wrote = write_defensive_completion_marker(
             &workspace,

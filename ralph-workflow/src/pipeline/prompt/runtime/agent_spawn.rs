@@ -98,12 +98,10 @@ pub(crate) fn run_with_agent_spawn(
     }
     runtime.workspace.write(logfile_path, "")?;
 
-    let complete_env: std::collections::HashMap<String, String> = std::env::vars()
-        .chain(cmd.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())))
-        .collect();
-    let mut complete_env = complete_env;
-    environment::sanitize_command_env(
-        &mut complete_env,
+    let complete_env = environment::sanitize_command_env(
+        std::env::vars()
+            .chain(cmd.env_vars.iter().map(|(k, v)| (k.clone(), v.clone())))
+            .collect(),
         cmd.env_vars,
         anthropic_env_vars_to_sanitize,
     );

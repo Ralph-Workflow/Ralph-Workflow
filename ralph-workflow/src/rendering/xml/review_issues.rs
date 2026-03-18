@@ -188,19 +188,35 @@ const fn ranges_overlap(a_start: u32, a_end: u32, b_start: u32, b_end: u32) -> b
     a_start <= b_end && b_start <= a_end
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "hardcoded regex pattern is guaranteed to compile"
+)]
 fn severity_regex() -> Regex {
     Regex::new(r"(?i)^\[(critical|high|medium|low)\]\s*").unwrap()
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "hardcoded regex pattern is guaranteed to compile"
+)]
 fn location_regex() -> Regex {
     Regex::new(r"(?m)(?P<file>[-_./A-Za-z0-9]+\.[A-Za-z0-9]+):(?P<start>\d+)(?:[-–—](?P<end>\d+))?(?::(?P<col>\d+))?").unwrap()
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "hardcoded regex pattern is guaranteed to compile"
+)]
 fn gh_location_regex() -> Regex {
     Regex::new(r"(?m)(?P<file>[-_./A-Za-z0-9]+\.[A-Za-z0-9]+)#L(?P<start>\d+)(?:-L(?P<end>\d+))?")
         .unwrap()
 }
 
+#[expect(
+    clippy::unwrap_used,
+    reason = "hardcoded regex pattern is guaranteed to compile"
+)]
 fn snippet_regex() -> Regex {
     Regex::new(r"(?s)```(?:[A-Za-z0-9_-]+)?\s*(?P<code>.*?)\s*```").unwrap()
 }

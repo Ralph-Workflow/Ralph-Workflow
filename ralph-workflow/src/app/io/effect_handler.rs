@@ -239,7 +239,7 @@ impl RealAppEffectHandler {
         user_name: Option<&str>,
         user_email: Option<&str>,
     ) -> AppEffectResult {
-        match crate::git_helpers::git_commit(message, user_name, user_email, None) {
+        match crate::git_helpers::git_commit(message, user_name, user_email, None, None) {
             Ok(Some(oid)) => AppEffectResult::Commit(CommitResult::Success(oid.to_string())),
             Ok(None) => AppEffectResult::Commit(CommitResult::NoChanges),
             Err(error) => AppEffectResult::Error(format!("Failed to create commit: {error}")),

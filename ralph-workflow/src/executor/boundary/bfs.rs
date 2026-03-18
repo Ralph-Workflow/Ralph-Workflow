@@ -2,6 +2,7 @@
 //!
 //! Uses imperative loops for efficient child process detection.
 
+use crate::executor::child_proc::parse_pgrep_output;
 use crate::executor::{ChildProcessInfo, ProcessExecutor};
 use std::collections::{HashSet, VecDeque};
 
@@ -18,7 +19,7 @@ pub fn collect_descendants<E: ProcessExecutor>(executor: &E, parent_pid: u32) ->
         };
 
         let child_pids = if output.status.success() {
-            match super::super::parse_pgrep_output(&output.stdout) {
+            match parse_pgrep_output(&output.stdout) {
                 Some(pids) => pids,
                 None => return descendants,
             }

@@ -26,13 +26,16 @@ impl MainEffectHandler {
 
         if matches!(phase, RebasePhase::Initial) {
             let run_context = ctx.run_context.clone();
-            let mut local_prompt_history = self.state.prompt_history.clone();
-            let run_result = crate::app::rebase::run_initial_rebase(
-                ctx,
-                &run_context,
-                ctx.executor,
-                &mut local_prompt_history,
-            )?;
+            let (run_result, local_prompt_history) = {
+                let mut local_prompt_history = self.state.prompt_history.clone();
+                let run_result = crate::app::rebase::run_initial_rebase(
+                    ctx,
+                    &run_context,
+                    ctx.executor,
+                    &mut local_prompt_history,
+                )?;
+                (run_result, local_prompt_history)
+            };
 
             let event = match run_result.outcome {
                 crate::app::rebase::InitialRebaseOutcome::Succeeded { new_head } => {

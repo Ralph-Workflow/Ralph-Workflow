@@ -90,6 +90,8 @@ fn mock_effect_handler_trait_execute_with_phase_context() {
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
+
     // Create PhaseContext
     let mut ctx = PhaseContext {
         config: &config,
@@ -111,6 +113,7 @@ fn mock_effect_handler_trait_execute_with_phase_context() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // Create handler and execute effect via trait method

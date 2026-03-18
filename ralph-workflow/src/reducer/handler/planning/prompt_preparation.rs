@@ -7,6 +7,7 @@
 //!
 //! Each mode handles input materialization, template rendering, and placeholder validation.
 
+use super::super::get_stored_or_generate_prompt_with_validation;
 use super::super::MainEffectHandler;
 use crate::agents::AgentRole;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
@@ -38,7 +39,6 @@ impl MainEffectHandler {
         iteration: u32,
         prompt_mode: PromptMode,
     ) -> Result<EffectResult> {
-        let mut additional_events: Vec<PipelineEvent> = Vec::new();
         let tmp_dir = Path::new(".agent/tmp");
         if !ctx.workspace.exists(tmp_dir) {
             ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
@@ -105,7 +105,7 @@ impl MainEffectHandler {
                                 .exists(std::path::Path::new(".agent/tmp/last_output.xml"))
                     });
 
-                if !already_materialized {
+                let xsd_retry_events: Option<Vec<PipelineEvent>> = if !already_materialized {
                     let last_output_path = Path::new(".agent/tmp/last_output.xml");
                     ctx.workspace
                         .write_atomic(last_output_path, &last_output)
@@ -127,22 +127,29 @@ impl MainEffectHandler {
                         },
                         reason: PromptMaterializationReason::PolicyForcedReference,
                     };
-                    additional_events.push(PipelineEvent::xsd_retry_last_output_materialized(
-                        PipelinePhase::Planning,
-                        iteration,
-                        input,
-                    ));
-                    if last_output_bytes > inline_budget_bytes {
-                        additional_events.push(PipelineEvent::prompt_input_oversize_detected(
+                    let events: Vec<_> =
+                        std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
                             PipelinePhase::Planning,
-                            PromptInputKind::LastOutput,
-                            content_id_sha256.clone(),
-                            last_output_bytes,
-                            inline_budget_bytes,
-                            "xsd-retry-context".to_string(),
-                        ));
-                    }
-                }
+                            iteration,
+                            input,
+                        ))
+                        .chain(
+                            (last_output_bytes > inline_budget_bytes)
+                                .then_some(PipelineEvent::prompt_input_oversize_detected(
+                                    PipelinePhase::Planning,
+                                    PromptInputKind::LastOutput,
+                                    content_id_sha256.clone(),
+                                    last_output_bytes,
+                                    inline_budget_bytes,
+                                    "xsd-retry-context".to_string(),
+                                ))
+                                .into_iter(),
+                        )
+                        .collect();
+                    Some(events)
+                } else {
+                    None
+                };
                 let scope_key = PromptScopeKey::for_planning(
                     iteration,
                     RetryMode::Xsd {
@@ -258,13 +265,13 @@ impl MainEffectHandler {
                     inputs.prompt.content_id_sha256, inputs.prompt.consumer_signature_sha256
                 ));
 
-                let mut should_validate = false;
-                let (prompt, was_replayed) = get_stored_or_generate_prompt(
-                    &scope_key,
-                    &self.state.prompt_history,
-                    Some(&prompt_content_id),
-                    || {
-                        let (base_prompt, local_should_validate) = ctx
+                let (prompt, was_replayed, should_validate) =
+                    get_stored_or_generate_prompt_with_validation(
+                        &scope_key,
+                        &self.state.prompt_history,
+                        Some(&prompt_content_id),
+                        || {
+                            let (base_prompt, local_should_validate) = ctx
                                 .workspace
                                 .read(Path::new(PLANNING_PROMPT_PATH))
                                 .map_or_else(
@@ -288,10 +295,12 @@ impl MainEffectHandler {
                                         )
                                     },
                                 );
-                        should_validate = local_should_validate;
-                        format!("{retry_preamble}\n{base_prompt}")
-                    },
-                );
+                            (
+                                format!("{retry_preamble}\n{base_prompt}"),
+                                local_should_validate,
+                            )
+                        },
+                    );
 
                 let rendered_log = if should_validate && !was_replayed {
                     let rendered = crate::prompts::prompt_planning_xml_with_references_and_log(
@@ -480,8 +489,9 @@ impl MainEffectHandler {
         } else {
             result
         };
-        let result = additional_events
+        let result = xsd_retry_events
             .into_iter()
+            .flatten()
             .fold(result, |r, ev| r.with_additional_event(ev));
         let result = if let Some(log) = rendered_log {
             result.with_additional_event(PipelineEvent::template_rendered(

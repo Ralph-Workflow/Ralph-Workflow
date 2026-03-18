@@ -58,28 +58,28 @@ pub struct CommitGenerationConfig<'a> {
     pub executor: Arc<dyn ProcessExecutor>,
 }
 
-fn resolve_commit_message_agents(config: &CommitGenerationConfig<'_>) -> Vec<String> {
-    if let Some(commit_binding) = config.registry.resolved_drain(AgentDrain::Commit) {
+fn resolve_commit_message_agents(registry: &AgentRegistry, reviewer_agent: &str) -> Vec<String> {
+    if let Some(commit_binding) = registry.resolved_drain(AgentDrain::Commit) {
         return commit_binding.agents.clone();
     }
 
-    let review_chain = config
-        .registry
+    let review_chain = registry
         .resolved_drain(AgentDrain::Review)
         .map_or(&[] as &[String], |binding| binding.agents.as_slice());
     if !review_chain.is_empty() {
         return review_chain.to_vec();
     }
 
-    vec![config.reviewer_agent.to_string()]
+    vec![reviewer_agent.to_string()]
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 #[must_use]
 pub fn resolve_commit_message_agents_for_testing(
-    config: &CommitGenerationConfig<'_>,
+    registry: &AgentRegistry,
+    reviewer_agent: &str,
 ) -> Vec<String> {
-    resolve_commit_message_agents(config)
+    resolve_commit_message_agents(registry, reviewer_agent)
 }
 
 /// Handles the `--show-commit-msg` command using workspace abstraction.
@@ -212,23 +212,9 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         anyhow::bail!("No changes to commit");
     }
 
-    // Create a timer for the pipeline runtime
-    let mut timer = crate::app::io::runtime_factory::create_timer();
+    let runtime = crate::app::io::plumbing_boundary::run_pipeline_for_commit_message(config)?;
 
-    // Set up pipeline runtime with the injected executor
-    let executor_ref: &dyn ProcessExecutor = &*config.executor;
-    let mut runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
-        &mut timer,
-        config.logger,
-        &config.colors,
-        config.config,
-        executor_ref,
-        Arc::clone(&config.executor),
-        config.workspace,
-        Arc::clone(&config.workspace_arc),
-    );
-
-    let agents = resolve_commit_message_agents(config);
+    let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
 
     // Use the chain-aware commit message generation from phases/commit.rs.
     let result = generate_commit_message_with_chain(

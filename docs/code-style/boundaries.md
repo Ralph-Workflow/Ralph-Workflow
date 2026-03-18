@@ -200,6 +200,67 @@ invariants when combined with private fields plus smart constructors,
 
 Use module names as architectural categories, not as lint escape hatches.
 
+## Boundary modules must stay flat
+
+Boundary directories are architectural markers, not containers for deeper module
+trees.
+
+The repository rule is:
+
+> Boundary modules must be flat.
+
+That means directories such as `io/`, `runtime/`, `ffi/`, `boundary/`,
+`executor/`, `files/`, and `git_helpers/` may contain files, but they must not
+contain nested submodules like `io/provider/mod.rs` or
+`runtime/process/wrapper.rs`.
+
+Allowed:
+
+```text
+src/
+  io/
+    mod.rs
+    reader.rs
+    writer.rs
+```
+
+Not allowed:
+
+```text
+src/
+  io/
+    mod.rs
+    provider/
+      mod.rs
+      client.rs
+```
+
+Why this rule exists:
+
+- a boundary name marks where effects happen; it is not a namespace for domain
+  modeling
+- nested boundary trees make it easy to hide policy and parsing logic inside an
+  effectful area
+- flat boundaries keep edge code small, boring, and visibly wiring-focused
+- once code needs internal structure and deeper concepts, that is usually a
+  sign the logic belongs in domain modules, with a thin boundary file calling
+  into them
+
+This rule is inspired by the functional role of Haskell-style boundaries, but
+it is a repository convention, not a property enforced by Haskell itself.
+Haskell allows nested modules. The useful analogy is narrower: `IO` marks an
+effect boundary, so the type communicates that a function performs effects, but
+it does not say that effectful code should own deeper business structure. We
+apply that architectural idea here with a stricter local rule: boundary module
+names are leaf categories, not containers for submodule trees.
+
+If you feel pressure to create `io/foo/`, `runtime/bar/`, or similar, stop and
+split the code differently:
+
+1. move the real decision-making, parsing, and interpretation into non-boundary modules
+2. keep one flat boundary file that gathers inputs and performs the effect
+3. name the boundary file after the specific edge action it performs
+
 ### Domain code
 
 Domain modules own pure logic:

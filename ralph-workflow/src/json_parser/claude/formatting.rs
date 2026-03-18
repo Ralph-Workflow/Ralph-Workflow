@@ -140,9 +140,6 @@ impl ClaudeParser {
         &self,
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> bool {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         let session = self.streaming_session.borrow();
 
         // Extract message_id from the assistant message

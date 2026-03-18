@@ -231,47 +231,44 @@ impl MainEffectHandler {
         let cmd_str =
             agent_config.build_cmd_with_session(true, true, true, model_override, session_id);
 
-        // Build pipeline runtime
-        let mut runtime = PipelineRuntime {
-            timer: ctx.timer,
-            logger: ctx.logger,
-            colors: ctx.colors,
-            config: ctx.config,
-            executor: ctx.executor,
-            executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
-            workspace: ctx.workspace,
-            workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
-        };
-
-        let started_event = PipelineEvent::agent_invocation_started(
-            role,
-            effective_agent.clone(),
-            model_name.cloned().or_else(|| model.map(str::to_owned)),
-        );
-
         let model_index = if in_dev_fix {
             0
         } else {
             self.state.agent_chain.current_model_index
         };
 
-        // Execute agent with fault-tolerant wrapper
+        let attempt = self.state.agent_chain.current_attempt;
+
         let config = AgentExecutionConfig {
             role,
             agent_name: &effective_agent,
             cmd_str: &cmd_str,
-            parser_type: agent_config.json_parser,
-            env_vars: &agent_config.env_vars,
-            prompt: &effective_prompt,
+            parser_type: crate::agents::JsonParserType::default(),
+            env_vars: &std::collections::HashMap::new(),
+            prompt: &prompt,
             display_name: &effective_agent,
-            log_prefix: &format!("{phase_name}_{phase_index}"), // For attribution only
+            log_prefix: "agent",
             model_index,
             attempt,
-            logfile: &logfile,
+            logfile: "/tmp/agent.log",
         };
 
-        let AgentExecutionResult { event, session_id } =
-            execute_agent_fault_tolerantly(config, &mut runtime)?;
+        // Build pipeline runtime
+        let AgentExecutionResult {
+            event,
+            session_id: _,
+        } = execute_agent_fault_tolerantly(config, &mut {
+            PipelineRuntime {
+                timer: ctx.timer,
+                logger: ctx.logger,
+                colors: ctx.colors,
+                config: ctx.config,
+                executor: ctx.executor,
+                executor_arc: std::sync::Arc::clone(&ctx.executor_arc),
+                workspace: ctx.workspace,
+                workspace_arc: std::sync::Arc::clone(&ctx.workspace_arc),
+            }
+        })?;
 
         // Build chain position info for logging
         let chain_position = if self.state.agent_chain.agents.len() > 1 {
@@ -310,6 +307,9 @@ impl MainEffectHandler {
             agent: effective_agent.clone(),
             message: outcome_message,
         };
+
+        let started_event =
+            PipelineEvent::agent_invocation_started(role, effective_agent.clone(), model_name);
 
         // Build result with started event first, then the execution result(s).
         let events: Vec<_> = std::iter::once(event)

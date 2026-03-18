@@ -15,9 +15,7 @@ use crate::reducer::state::{
 };
 use crate::reducer::ui_event::{UIEvent, XmlCodeSnippet, XmlOutputContext, XmlOutputType};
 use anyhow::Result;
-use regex::Regex;
 use std::path::Path;
-use std::sync::OnceLock;
 
 impl MainEffectHandler {
     const DIFF_BASELINE_PATH: &str = ".agent/DIFF.base";

@@ -3,8 +3,11 @@
 // This module handles agent phase preparation, cloud runtime creation,
 // initial state computation, and event loop invocation.
 
-fn prepare_agent_phase(ctx: &PipelineContext, git_helpers: &mut crate::git_helpers::GitHelpers) {
-    prepare_agent_phase_for_workspace(
+fn prepare_agent_phase(
+    ctx: &crate::app::context::PipelineContext,
+    git_helpers: &mut crate::git_helpers::GitHelpers,
+) {
+    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
         &ctx.repo_root,
         &*ctx.workspace,
         &ctx.logger,
@@ -42,7 +45,7 @@ fn create_cloud_runtime(
 }
 
 fn compute_initial_state(
-    phase_ctx: &PhaseContext<'_>,
+    phase_ctx: &crate::phases::PhaseContext<'_>,
     resume_checkpoint: Option<&crate::checkpoint::PipelineCheckpoint>,
     should_run_rebase: bool,
 ) -> crate::reducer::PipelineState {
@@ -94,21 +97,8 @@ fn compute_initial_state(
 }
 
 fn run_event_loop_with_default_handler(
-    phase_ctx: &mut PhaseContext<'_>,
+    phase_ctx: &mut crate::phases::PhaseContext<'_>,
     initial_state: crate::reducer::PipelineState,
 ) -> anyhow::Result<crate::app::runtime::EventLoopResult> {
-    use crate::app::runtime::{run_event_loop_with_handler, EventLoopConfig};
-
-    let event_loop_config = EventLoopConfig {
-        max_iterations: runtime::MAX_EVENT_LOOP_ITERATIONS,
-    };
-
-    let mut handler =
-        crate::app::io::runtime_factory::create_main_effect_handler(initial_state.clone());
-    run_event_loop_with_handler(
-        phase_ctx,
-        Some(initial_state),
-        event_loop_config,
-        &mut handler,
-    )
+    crate::app::io::pipeline_setup::run_event_loop_with_handler_boundary(phase_ctx, initial_state)
 }

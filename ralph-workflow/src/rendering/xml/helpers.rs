@@ -24,6 +24,10 @@ pub struct DiffFileSection {
     clippy::arithmetic_side_effects,
     reason = "bounds-checked index arithmetic"
 )]
+#[expect(
+    clippy::unwrap_used,
+    reason = "Regex::new with a hardcoded pattern is guaranteed to succeed"
+)]
 pub fn extract_tag_content(content: &str, tag_name: &str) -> Option<String> {
     let start_tag = format!("<{tag_name}>");
     let end_tag = format!("</{tag_name}>");

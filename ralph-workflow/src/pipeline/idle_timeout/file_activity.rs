@@ -6,11 +6,7 @@
 
 use crate::workspace::Workspace;
 use std::path::Path;
-use std::time::{Duration, SystemTime};
-
-fn file_age(now: SystemTime, mtime: SystemTime) -> Duration {
-    now.duration_since(mtime).unwrap_or(Duration::ZERO)
-}
+use std::time::Duration;
 
 pub struct FileActivityTracker {
     _private: (),
@@ -27,57 +23,7 @@ impl FileActivityTracker {
         workspace: &dyn Workspace,
         timeout: Duration,
     ) -> std::io::Result<bool> {
-        let now = SystemTime::now();
-        let agent_dir = Path::new(".agent");
-
-        if workspace.exists(agent_dir) {
-            let entries = workspace.read_dir(agent_dir)?;
-
-            let has_recent_activity = entries
-                .into_iter()
-                .filter(|entry| entry.is_file())
-                .filter_map(|entry| {
-                    let path = entry.path();
-                    if !Self::is_ai_generated_file(path) {
-                        return None;
-                    }
-                    entry.modified().map(|mtime| (path.to_path_buf(), mtime))
-                })
-                .any(|(_, mtime)| file_age(now, mtime) <= timeout);
-
-            if has_recent_activity {
-                return Ok(true);
-            }
-        }
-
-        let tmp_dir = Path::new(".agent/tmp");
-        if workspace.exists(tmp_dir) {
-            if let Ok(tmp_entries) = workspace.read_dir(tmp_dir) {
-                let has_recent_xml = tmp_entries
-                    .into_iter()
-                    .filter(|entry| entry.is_file())
-                    .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "xml"))
-                    .filter_map(|entry| entry.modified())
-                    .any(|mtime| file_age(now, mtime) <= timeout);
-
-                if has_recent_xml {
-                    return Ok(true);
-                }
-            }
-        }
-
-        if super::runtime::file_activity::scan_dir_recursive(
-            workspace,
-            Path::new(""),
-            now,
-            timeout,
-            super::runtime::file_activity::MAX_SCAN_DEPTH_CONST,
-            true,
-        )? {
-            return Ok(true);
-        }
-
-        Ok(false)
+        super::runtime::file_activity::check_for_recent_activity(workspace, timeout)
     }
 
     fn is_ai_generated_file(path: &Path) -> bool {

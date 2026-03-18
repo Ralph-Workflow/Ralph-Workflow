@@ -6,6 +6,7 @@
 //! - Secret redaction for logging
 //! - External tool detection
 
+pub mod domain_types;
 pub mod utils;
 
 // Re-export commonly used utility functions

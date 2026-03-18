@@ -7,7 +7,7 @@
 // - Boundary detection (is_safe_boundary)
 // - OverlapScore struct and scoring functions
 
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 // ============================================================================
 // Environment Trait for Testability
@@ -154,8 +154,9 @@ pub fn get_overlap_thresholds_with_env(env: &dyn ThresholdEnvironment) -> Overla
 }
 
 pub fn get_overlap_thresholds() -> OverlapThresholds {
-    static THRESHOLDS: OnceLock<OverlapThresholds> = OnceLock::new();
-    *THRESHOLDS.get_or_init(|| get_overlap_thresholds_with_env(&RealThresholdEnvironment))
+    static THRESHOLDS: LazyLock<OverlapThresholds> =
+        LazyLock::new(|| get_overlap_thresholds_with_env(&RealThresholdEnvironment));
+    *THRESHOLDS
 }
 
 // ============================================================================

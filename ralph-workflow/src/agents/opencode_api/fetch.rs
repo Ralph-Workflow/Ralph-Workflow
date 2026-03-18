@@ -4,7 +4,7 @@
 //! from <https://models.dev/api.json>.
 
 use crate::agents::io::{fetch_api_catalog_json, get_env_var};
-use crate::agents::opencode_api::cache::{save_catalog, CacheError};
+use crate::agents::opencode_api::cache::{save_catalog, CacheError, CacheWarning};
 use crate::agents::opencode_api::types::ApiCatalog;
 use crate::agents::opencode_api::{API_URL, CACHE_TTL_ENV_VAR, DEFAULT_CACHE_TTL_SECONDS};
 
@@ -14,32 +14,29 @@ use crate::agents::opencode_api::{API_URL, CACHE_TTL_ENV_VAR, DEFAULT_CACHE_TTL_
 /// and parses the JSON response into an `ApiCatalog`.
 ///
 /// The fetched catalog is automatically cached to disk for future use.
-#[expect(clippy::print_stderr, reason = "warning for cache save failure")]
-pub fn fetch_api_catalog() -> Result<ApiCatalog, CacheError> {
-    // Boundary: network I/O
+pub fn fetch_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     let body = fetch_api_catalog_json(API_URL).map_err(CacheError::FetchError)?;
 
-    // Pure: parse JSON
     let catalog: ApiCatalog = serde_json::from_str(&body)?;
 
-    // Boundary: get TTL from environment
     let ttl_seconds = get_env_var(CACHE_TTL_ENV_VAR)
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_CACHE_TTL_SECONDS);
 
-    // Pure: construct catalog with metadata
     let catalog = ApiCatalog {
         cached_at: Some(chrono::Utc::now()),
         ttl_seconds,
         ..catalog
     };
 
-    // Boundary: save to cache
+    let mut warnings = Vec::new();
     if let Err(e) = save_catalog(&catalog) {
-        eprintln!("Warning: Failed to cache OpenCode API catalog: {e}");
+        warnings.push(CacheWarning::CacheSaveFailed {
+            error: e.to_string(),
+        });
     }
 
-    Ok(catalog)
+    Ok((catalog, warnings))
 }
 
 #[cfg(test)]

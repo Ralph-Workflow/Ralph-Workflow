@@ -35,6 +35,7 @@ fn test_event_loop_includes_review_when_reviewer_reviews_nonzero() {
     let workspace = MemoryWorkspace::new(repo_root.clone());
 
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -55,6 +56,7 @@ fn test_event_loop_includes_review_when_reviewer_reviews_nonzero() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -111,6 +113,7 @@ fn test_event_loop_skips_review_when_reviewer_reviews_zero_but_still_commits_dev
     let workspace = MemoryWorkspace::new(repo_root.clone());
 
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -131,6 +134,7 @@ fn test_event_loop_skips_review_when_reviewer_reviews_zero_but_still_commits_dev
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -203,6 +207,7 @@ fn test_event_loop_effect_order_dev_then_commit_then_review_then_complete() {
     let workspace = MemoryWorkspace::new(repo_root.clone());
 
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -223,6 +228,7 @@ fn test_event_loop_effect_order_dev_then_commit_then_review_then_complete() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -299,6 +305,7 @@ fn test_event_loop_skips_planning_and_development_when_developer_iters_zero() {
     let workspace = MemoryWorkspace::new(repo_root.clone());
 
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -319,6 +326,7 @@ fn test_event_loop_skips_planning_and_development_when_developer_iters_zero() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);
@@ -395,6 +403,7 @@ fn test_event_loop_reviews_and_commits_when_developer_iters_zero_and_reviewer_re
     let workspace = MemoryWorkspace::new(repo_root.clone());
 
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -415,6 +424,7 @@ fn test_event_loop_reviews_and_commits_when_developer_iters_zero_and_reviewer_re
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = super::create_initial_state_with_config(&ctx);

@@ -156,6 +156,7 @@ mod tests {
         let template_context = TemplateContext::default();
         let executor = Arc::new(MockProcessExecutor::new());
         let mut timer = Timer::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
         // `CheckpointBuilder::capture_from_context` requires the agent configs to exist in the
         // registry, otherwise checkpoint build returns None.
@@ -182,6 +183,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &config.cloud,
+            env: &git_env,
         };
 
         let mut state = PipelineState::initial(1, 0);
@@ -236,6 +238,7 @@ mod tests {
         let template_context = TemplateContext::default();
         let executor = Arc::new(MockProcessExecutor::new());
         let mut timer = Timer::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
         let mut execution_history = ExecutionHistory::new();
         execution_history.add_step_bounded(
@@ -268,6 +271,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &config.cloud,
+            env: &git_env,
         };
 
         let state = PipelineState::initial(1, 0);
@@ -317,6 +321,7 @@ mod tests {
         let template_context = TemplateContext::default();
         let executor = Arc::new(MockProcessExecutor::new());
         let mut timer = Timer::new();
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
         let ctx = PhaseContext {
             config: &config,
@@ -338,6 +343,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &config.cloud,
+            env: &git_env,
         };
 
         let mut state = PipelineState::initial(1, 0);

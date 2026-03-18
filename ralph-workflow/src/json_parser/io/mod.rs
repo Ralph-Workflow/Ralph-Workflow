@@ -8,6 +8,8 @@
 
 pub mod claude;
 pub mod codex;
+pub mod gemini;
 pub mod health;
 pub mod incremental_parser;
+pub mod opencode;
 pub mod stream_classifier;

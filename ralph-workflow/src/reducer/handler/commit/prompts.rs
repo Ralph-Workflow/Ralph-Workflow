@@ -355,7 +355,6 @@ impl MainEffectHandler {
                         self.state.recovery_epoch,
                     );
                     let prompt_key = scope_key.to_string();
-                    let mut should_validate = false;
                     let (prompt, was_replayed) = get_stored_or_generate_prompt(
                         &scope_key,
                         &self.state.prompt_history,

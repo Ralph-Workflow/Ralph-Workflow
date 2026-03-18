@@ -3,6 +3,7 @@ use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
+use std::cell::RefCell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictResolutionPromptReplay {
@@ -82,10 +83,10 @@ where
     // this helper function is not a reducer.
     let scope_key = PromptScopeKey::for_conflict_resolution(phase, 0);
     let prompt_key = scope_key.to_string();
-    let mut prompt_history = std::collections::HashMap::new();
+    let prompt_history_cell = RefCell::new(std::collections::HashMap::new());
     let (resolution_prompt, was_replayed) = get_stored_or_generate_prompt(
         &scope_key,
-        &prompt_history,
+        &prompt_history_cell.borrow(),
         Some(&current_content_id),
         || build_resolution_prompt(&conflicts, ctx.template_context, ctx.workspace),
     );
@@ -103,11 +104,13 @@ where
         },
     };
 
-    let captured_entry_to_insert = after_prompt_capture(&replay);
+    let captured_entry = after_prompt_capture(&replay);
 
-    if let Some(entry) = captured_entry_to_insert {
-        prompt_history.insert(entry.0, entry.1);
+    if let Some(entry) = captured_entry {
+        prompt_history_cell.borrow_mut().insert(entry.0, entry.1);
     }
+
+    let prompt_history = prompt_history_cell.into_inner();
 
     let resolved = match run_ai_conflict_resolution(&resolution_prompt, ctx) {
         Ok(ConflictResolutionResult::FileEditsOnly) => handle_file_edits_resolution(ctx.logger)?,
@@ -254,72 +257,19 @@ fn run_ai_conflict_resolution(
     resolution_prompt: &str,
     ctx: &ConflictResolutionContext<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {
-    use crate::pipeline::{run_with_prompt, PromptCommand};
-    use std::path::Path;
-
-    let log_dir = ".agent/logs/rebase_conflict_resolution";
     let reviewer_agent = ctx.config.reviewer_agent.as_deref().unwrap_or("codex");
 
-    let executor_ref: &dyn crate::executor::ProcessExecutor = &*ctx.executor_arc;
-    let mut timer = crate::app::io::runtime_factory::create_timer();
-    let mut runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
-        &mut timer,
-        ctx.logger,
-        &ctx.colors,
+    crate::app::io::conflict_resolution_boundary::run_ai_conflict_resolution_with_runtime(
+        resolution_prompt,
         ctx.config,
-        executor_ref,
+        ctx.logger,
+        ctx.colors,
         std::sync::Arc::clone(&ctx.executor_arc),
         ctx.workspace,
         std::sync::Arc::clone(&ctx.workspace_arc),
-    );
-
-    ctx.workspace.create_dir_all(Path::new(log_dir))?;
-
-    let agent_config = ctx
-        .registry
-        .resolve_config(reviewer_agent)
-        .ok_or_else(|| anyhow::anyhow!("Agent not found: {reviewer_agent}"))?;
-    let cmd_str = agent_config.build_cmd_with_model(true, true, true, None);
-
-    let log_prefix = format!("{log_dir}/conflict_resolution");
-    let model_index = 0usize;
-    let attempt = crate::pipeline::logfile::next_logfile_attempt_index(
-        Path::new(&log_prefix),
         reviewer_agent,
-        model_index,
-        ctx.workspace,
-    );
-    let logfile = crate::pipeline::logfile::build_logfile_path_with_attempt(
-        &log_prefix,
-        reviewer_agent,
-        model_index,
-        attempt,
-    );
-
-    let prompt_cmd = PromptCommand {
-        label: reviewer_agent,
-        display_name: reviewer_agent,
-        cmd_str: &cmd_str,
-        prompt: resolution_prompt,
-        log_prefix: &log_prefix,
-        model_index: Some(model_index),
-        attempt: Some(attempt),
-        logfile: &logfile,
-        parser_type: agent_config.json_parser,
-        env_vars: &agent_config.env_vars,
-    };
-
-    let result = run_with_prompt(&prompt_cmd, &mut runtime)?;
-    if result.exit_code != 0 {
-        return Ok(ConflictResolutionResult::Failed);
-    }
-
-    let remaining_conflicts = crate::git_helpers::get_conflicted_files()?;
-    if remaining_conflicts.is_empty() {
-        Ok(ConflictResolutionResult::FileEditsOnly)
-    } else {
-        Ok(ConflictResolutionResult::Failed)
-    }
+        ctx.registry,
+    )
 }
 
 /// Wrapper for conflict resolution without a prompt history map.

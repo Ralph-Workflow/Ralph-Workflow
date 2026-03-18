@@ -40,6 +40,93 @@ pub fn effective_model_budget_bytes(agent_names: &[String]) -> u64 {
         .unwrap_or(MAX_SAFE_PROMPT_SIZE)
 }
 
+#[must_use]
+fn extract_file_path_and_priority(line: &str) -> (String, i32) {
+    let path = line
+        .split(" b/")
+        .nth(1)
+        .map(str::to_string)
+        .unwrap_or_default();
+    let priority = prioritize_file_path(&path);
+    (path, priority)
+}
+
+fn parse_diff_into_files(lines: &[&str]) -> Vec<DiffFile> {
+    let (files, last_file): (Vec<DiffFile>, Option<DiffFile>) =
+        lines
+            .iter()
+            .fold((Vec::<DiffFile>::new(), None::<DiffFile>), |acc, line| {
+                let (files, last_file) = acc;
+                if line.starts_with("diff --git ") {
+                    let new_files: Vec<DiffFile> = last_file.map_or_else(
+                        || files.clone(),
+                        |l| files.into_iter().chain(std::iter::once(l)).collect(),
+                    );
+                    let (path, priority) = extract_file_path_and_priority(line);
+                    (
+                        new_files,
+                        Some(DiffFile {
+                            path,
+                            priority,
+                            lines: vec![line.to_string()],
+                        }),
+                    )
+                } else if let Some(mut last) = last_file {
+                    last.lines.push(line.to_string());
+                    (files, Some(last))
+                } else {
+                    (files, None)
+                }
+            });
+    last_file.map_or(files, |last| {
+        files.into_iter().chain(std::iter::once(last)).collect()
+    })
+}
+
+fn select_files_to_fit_budget(sorted_files: &[DiffFile], max_size: usize) -> (String, usize) {
+    let file_data: Vec<_> = sorted_files
+        .iter()
+        .map(|file| {
+            let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
+            (lines_text, lines_text.len())
+        })
+        .collect();
+
+    let total_chunks_len: usize = file_data.iter().map(|(_, len)| *len).sum();
+    if total_chunks_len <= max_size {
+        let result = file_data
+            .iter()
+            .map(|(t, _)| t.clone())
+            .collect::<Vec<_>>()
+            .join("");
+        return (result, sorted_files.len());
+    }
+
+    let cumulative_sizes: Vec<_> = file_data.iter().fold(Vec::new(), |mut acc, (_, len)| {
+        let next = acc.last().copied().unwrap_or(0) + len;
+        acc.push(next);
+        acc
+    });
+
+    let last_fitting_index = cumulative_sizes
+        .iter()
+        .position(|&size| size > max_size)
+        .unwrap_or(file_data.len());
+
+    if last_fitting_index == 0 {
+        let truncated = truncate_lines_to_fit(&sorted_files[0].lines, max_size);
+        let truncated_text: String = truncated.iter().map(|l| format!("{l}\n")).collect();
+        (truncated_text, 1)
+    } else {
+        let included: Vec<_> = file_data
+            .iter()
+            .take(last_fitting_index)
+            .map(|(t, _)| t.clone())
+            .collect();
+        (included.join(""), included.len())
+    }
+}
+
 /// Truncate diff if it's too large for agents with small context windows.
 fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
     if diff.len() <= max_size {
@@ -47,80 +134,14 @@ fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
     }
 
     let lines: Vec<_> = diff.lines().collect();
-    let mut files: Vec<DiffFile> = Vec::new();
-    let mut current_file = DiffFile::default();
-    let mut in_file = false;
 
-    for line in &lines {
-        if line.starts_with("diff --git ") {
-            if in_file && !current_file.lines.is_empty() {
-                files.push(std::mem::take(&mut current_file));
-            }
-            in_file = true;
-            current_file.lines.push(line.to_string());
-
-            if let Some(path) = line.split(" b/").nth(1) {
-                current_file.path = path.to_string();
-                current_file.priority = prioritize_file_path(path);
-            }
-        } else if in_file {
-            current_file.lines.push(line.to_string());
-        }
-    }
-
-    if in_file && !current_file.lines.is_empty() {
-        files.push(current_file);
-    }
+    let files = parse_diff_into_files(&lines);
 
     let sorted_files: Vec<_> = files.into_iter().sorted_by_key(|f| -f.priority).collect();
 
     let total_files = sorted_files.len();
 
-    let (result, files_included) = {
-        let file_data: Vec<_> = sorted_files
-            .iter()
-            .map(|file| {
-                let lines_text: String = file.lines.iter().map(|l| format!("{l}\n")).collect();
-                (lines_text, lines_text.len())
-            })
-            .collect();
-
-        let total_chunks_len: usize = file_data.iter().map(|(_, len)| *len).sum();
-        if total_chunks_len <= max_size {
-            let result = file_data
-                .iter()
-                .map(|(t, _)| t.clone())
-                .collect::<Vec<_>>()
-                .join("");
-            return (result, sorted_files.len());
-        }
-
-        let cumulative_sizes: Vec<_> = file_data
-            .iter()
-            .scan(0usize, |acc, (_, len)| {
-                *acc += len;
-                Some(*acc)
-            })
-            .collect();
-
-        let last_fitting_index = cumulative_sizes
-            .iter()
-            .position(|&size| size > max_size)
-            .unwrap_or(file_data.len());
-
-        if last_fitting_index == 0 {
-            let truncated = truncate_lines_to_fit(&sorted_files[0].lines, max_size);
-            let truncated_text: String = truncated.iter().map(|l| format!("{l}\n")).collect();
-            (truncated_text, 1)
-        } else {
-            let included: Vec<_> = file_data
-                .iter()
-                .take(last_fitting_index)
-                .map(|(t, _)| t.clone())
-                .collect();
-            (included.join(""), included.len())
-        }
-    };
+    let (result, files_included) = select_files_to_fit_budget(&sorted_files, max_size);
 
     if files_included < total_files {
         let summary = format!("\n[Truncated: {files_included} of {total_files} files shown]\n");
@@ -209,18 +230,22 @@ fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
 
     let available_for_lines = max_size.saturating_sub(suffix_len);
 
-    let result: Vec<_> = lines
+    let result: Vec<String> = lines
         .iter()
-        .scan(0usize, |size, line| {
+        .fold((Vec::new(), 0usize), |acc, line| {
             let line_size = line.len() + 1;
-            if *size + line_size <= available_for_lines {
-                *size += line_size;
-                Some(line.clone())
+            if acc.1 + line_size <= available_for_lines {
+                let new_vec: Vec<String> = acc
+                    .0
+                    .into_iter()
+                    .chain(std::iter::once(line.clone()))
+                    .collect();
+                (new_vec, acc.1 + line_size)
             } else {
-                None
+                acc
             }
         })
-        .collect();
+        .0;
 
     if result.is_empty() {
         return result;
@@ -228,43 +253,59 @@ fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
 
     let current_size: usize = result.iter().map(|l| l.len() + 1).sum();
 
-    let adjusted: Vec<String> = if current_size + suffix_len > max_size {
+    if current_size + suffix_len > max_size {
         let target_bytes = max_size.saturating_sub(suffix_len);
-        let kept: Vec<_> = result
-            .iter()
-            .rev()
-            .scan(0usize, |size, line| {
-                let line_size = line.len() + 1;
-                if *size + line_size <= target_bytes {
-                    *size += line_size;
-                    Some(line.clone())
-                } else if *size == 0 {
-                    let max_for_line = target_bytes.saturating_sub(1);
-                    let new_line = truncate_to_utf8_boundary(line, max_for_line);
-                    if !new_line.is_empty() {
-                        *size = new_line.len() + 1;
-                        Some(new_line)
+
+        let total_kept_bytes: usize = result.iter().map(|l| l.len() + 1).sum();
+        let bytes_to_free = total_kept_bytes.saturating_sub(target_bytes);
+
+        let (kept, last_truncated): (Vec<&String>, Option<String>) = result.iter().fold(
+            (Vec::new(), None),
+            |(mut kept, truncated): (Vec<&String>, Option<String>), line| {
+                if truncated.is_some() {
+                    (kept, truncated)
+                } else {
+                    let line_size = line.len() + 1;
+                    if kept.iter().map(|l| l.len() + 1).sum::<usize>() + line_size <= target_bytes {
+                        kept.push(line);
+                        (kept, None)
                     } else {
-                        None
+                        let truncated_line =
+                            truncate_to_utf8_boundary(line, target_bytes.saturating_sub(1));
+                        (kept, Some(truncated_line))
+                    }
+                }
+            },
+        );
+
+        let last_idx = kept.len();
+        kept.iter()
+            .enumerate()
+            .map(|(i, l)| {
+                if i == last_idx - 1 {
+                    if let Some(t) = last_truncated {
+                        format!("{}\n{}", t, suffix)
+                    } else {
+                        format!("{}\n{}", l, suffix)
                     }
                 } else {
-                    None
+                    format!("{}\n", l)
                 }
             })
-            .collect();
-        kept.into_iter().rev().collect()
+            .collect()
     } else {
+        let last_idx = result.len() - 1;
         result
-    };
-
-    if adjusted.is_empty() {
-        adjusted
-    } else {
-        let mut result = adjusted;
-        if let Some(last) = result.last_mut() {
-            last.push_str(suffix);
-        }
-        result
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                if i == last_idx {
+                    format!("{}\n{}", l, suffix)
+                } else {
+                    format!("{}\n", l)
+                }
+            })
+            .collect()
     }
 }
 

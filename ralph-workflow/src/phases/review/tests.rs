@@ -29,6 +29,7 @@ struct TestFixture {
     workspace_arc: Arc<dyn Workspace>,
     run_log_context: crate::logging::RunLogContext,
     cloud: crate::config::types::CloudConfig,
+    git_env: crate::runtime::environment::mock::MockGitEnvironment,
 }
 
 impl TestFixture {
@@ -53,6 +54,7 @@ impl TestFixture {
             workspace_arc,
             run_log_context,
             cloud: crate::config::types::CloudConfig::disabled(),
+            git_env: crate::runtime::environment::mock::MockGitEnvironment::new(),
         }
     }
 
@@ -77,6 +79,7 @@ impl TestFixture {
             run_log_context: &self.run_log_context,
             cloud_reporter: None,
             cloud: &self.cloud,
+            env: &self.git_env,
         }
     }
 }
@@ -149,6 +152,7 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
 
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
@@ -169,6 +173,7 @@ fn test_run_review_pass_uses_unique_logfile_with_attempt_suffix() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let _ =
@@ -206,6 +211,7 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
 
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
@@ -226,6 +232,7 @@ fn test_run_fix_pass_uses_unique_logfile_with_attempt_suffix() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let resume_ctx: Option<&crate::checkpoint::restore::ResumeContext> = None;
@@ -274,6 +281,7 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
 
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
@@ -294,6 +302,7 @@ fn test_run_review_pass_errors_on_missing_template_variables() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let err =
@@ -337,6 +346,7 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
 
     let repo_root = PathBuf::from("/mock/repo");
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = super::super::context::PhaseContext {
         config: &config,
         registry: &registry,
@@ -357,6 +367,7 @@ fn test_run_fix_pass_errors_on_missing_template_variables() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let resume_ctx: Option<&crate::checkpoint::restore::ResumeContext> = None;

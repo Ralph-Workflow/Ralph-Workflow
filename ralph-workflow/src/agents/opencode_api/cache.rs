@@ -52,10 +52,11 @@ fn cache_file_path_with_env(env: &dyn CacheEnvironment) -> Result<PathBuf, Cache
 /// Gracefully degrades on network errors: if fetching fails but a stale
 /// cache exists (< 7 days old), it will be used with a warning.
 ///
-/// # Errors
+/// # Returns
 ///
-/// Returns error if the operation fails.
-pub fn load_api_catalog() -> Result<ApiCatalog, CacheError> {
+/// Returns the catalog along with any warnings encountered during loading.
+/// Warnings should be emitted by the caller at the I/O boundary.
+pub fn load_api_catalog() -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     load_api_catalog_with_ttl(DEFAULT_CACHE_TTL_SECONDS)
 }
 
@@ -63,7 +64,13 @@ pub fn load_api_catalog() -> Result<ApiCatalog, CacheError> {
 ///
 /// This is the boundary entry point that accepts TTL as a parameter
 /// (obtained from environment at the call site).
-pub fn load_api_catalog_with_ttl(ttl_seconds: u64) -> Result<ApiCatalog, CacheError> {
+///
+/// # Returns
+///
+/// Returns the catalog along with any warnings encountered during loading.
+pub fn load_api_catalog_with_ttl(
+    ttl_seconds: u64,
+) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     load_api_catalog_with_env(&RealCacheEnvironment, ttl_seconds)
 }
 
@@ -71,27 +78,16 @@ pub fn load_api_catalog_with_ttl(ttl_seconds: u64) -> Result<ApiCatalog, CacheEr
 fn load_api_catalog_with_env(
     env: &dyn CacheEnvironment,
     ttl_seconds: u64,
-) -> Result<ApiCatalog, CacheError> {
+) -> Result<(ApiCatalog, Vec<CacheWarning>), CacheError> {
     let cache_path = cache_file_path_with_env(env)?;
 
     match load_cached_catalog_with_env(env, &cache_path, ttl_seconds) {
-        Ok(result) => {
-            emit_cache_warnings(&result.warnings);
-            Ok(result.catalog)
+        Ok(result) => Ok((result.catalog, result.warnings)),
+        Err(_) => {
+            let (catalog, warnings) = fetch_api_catalog()?;
+            Ok((catalog, warnings))
         }
-        Err(_) => fetch_api_catalog(),
     }
-}
-
-/// Emit cache warnings to stderr.
-fn emit_cache_warnings(warnings: &[CacheWarning]) {
-    warnings.iter().for_each(|warning| match warning {
-        CacheWarning::StaleCacheUsed { stale_days, error } => {
-            eprintln!(
-                "Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago"
-            );
-        }
-    });
 }
 
 /// Warnings that can occur during catalog loading.
@@ -99,6 +95,8 @@ fn emit_cache_warnings(warnings: &[CacheWarning]) {
 pub enum CacheWarning {
     /// Used stale cache because fresh fetch failed.
     StaleCacheUsed { stale_days: i64, error: String },
+    /// Catalog was fetched but could not be saved to cache.
+    CacheSaveFailed { error: String },
 }
 
 /// Result of loading catalog with associated warnings.
@@ -132,11 +130,17 @@ fn load_cached_catalog_with_env(
 
     if catalog.is_expired() {
         match fetch_api_catalog() {
-            Ok(fresh) => {
+            Ok((fresh, mut fetch_warnings)) => {
+                if let Some(warning) = fetch_warnings.pop() {
+                    return Ok(LoadCatalogResult {
+                        catalog: fresh,
+                        warnings: vec![warning],
+                    });
+                }
                 return Ok(LoadCatalogResult {
                     catalog: fresh,
                     warnings: vec![],
-                })
+                });
             }
             Err(e) => {
                 let error_str = e.to_string();

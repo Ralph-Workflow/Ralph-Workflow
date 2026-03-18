@@ -128,11 +128,39 @@ mod review;
 mod tests;
 
 use crate::phases::PhaseContext;
+use crate::prompts::{PromptHistoryEntry, PromptScopeKey};
 use crate::reducer::effect::{Effect, EffectHandler, EffectResult};
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::state::PipelineState;
 use crate::reducer::ui_event::UIEvent;
 use anyhow::Result;
+use std::hash::BuildHasher;
+
+fn get_stored_or_generate_prompt_with_validation<F, S: BuildHasher>(
+    scope_key: &PromptScopeKey,
+    prompt_history: &std::collections::HashMap<String, PromptHistoryEntry, S>,
+    current_content_id: Option<&str>,
+    generator: F,
+) -> (String, bool, bool)
+where
+    F: FnOnce() -> (String, bool),
+{
+    let key = scope_key.to_string();
+    if let Some(entry) = prompt_history.get(&key) {
+        let content_id_mismatch = current_content_id
+            .is_some_and(|current_id| entry.content_id.as_deref() != Some(current_id));
+
+        if content_id_mismatch {
+            let (prompt, should_validate) = generator();
+            (prompt, false, should_validate)
+        } else {
+            (entry.content.clone(), true, false)
+        }
+    } else {
+        let (prompt, should_validate) = generator();
+        (prompt, false, should_validate)
+    }
+}
 
 /// Main effect handler implementation.
 ///

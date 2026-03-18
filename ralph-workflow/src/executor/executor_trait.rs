@@ -3,15 +3,15 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::boundary::{build_command, collect_descendants, compute_from_descendants};
+use super::boundary::{build_agent_command_internal, build_command, collect_descendants};
 #[cfg(target_os = "macos")]
 use super::child_proc::child_info_from_libproc;
+use super::child_proc::parse_ps_output;
 use super::child_proc::{
     child_info_from_descendant_pids, warn_child_process_detection_conservative,
     warn_child_process_detection_degraded,
 };
-use super::child_proc::{parse_pgrep_output, parse_ps_output};
-use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, RealAgentChild};
+use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
 use std::io;
 use std::path::Path;
 

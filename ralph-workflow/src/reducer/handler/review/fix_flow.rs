@@ -97,7 +97,6 @@ impl MainEffectHandler {
         } else {
             String::new()
         };
-        let mut xsd_error_for_validation: Option<String> = None;
         let (
             prompt_key,
             fix_prompt,
@@ -115,13 +114,11 @@ impl MainEffectHandler {
                     self.state.recovery_epoch,
                 );
                 let prompt_key = scope_key.to_string();
-                // Use the actual XSD error from state, or fall back to generic message
                 let xsd_error = continuation_state
                     .last_fix_xsd_error
                     .as_deref()
                     .filter(|s| !s.trim().is_empty())
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
-                xsd_error_for_validation = Some(xsd_error.to_string());
 
                 let prompt_id = sha256_hex_str(&prompt_content);
                 let plan_id = sha256_hex_str(&plan_content);
@@ -178,8 +175,7 @@ impl MainEffectHandler {
                     continuation_state.same_agent_retry_count
                 ));
 
-                let mut should_validate = false;
-                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                let (prompt, was_replayed, should_validate) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
                     Some(&current_prompt_content_id),
@@ -219,8 +215,10 @@ impl MainEffectHandler {
                                         }
                                     },
                                 );
-                        should_validate = local_should_validate;
-                        format!("{retry_preamble}\n{base_prompt}")
+                        (
+                            format!("{retry_preamble}\n{base_prompt}"),
+                            local_should_validate,
+                        )
                     },
                 );
                 (
@@ -332,12 +330,14 @@ impl MainEffectHandler {
             // Re-generate to get the log for validation
             // Only validate freshly generated prompts, not replayed ones
             let rendered = if matches!(prompt_mode, PromptMode::XsdRetry) {
-                let xsd_error = xsd_error_for_validation
+                let xsd_error_for_validation = continuation_state
+                    .last_fix_xsd_error
                     .as_deref()
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or("XML output failed validation. Provide valid XML output.");
                 crate::prompts::review::prompt_fix_xsd_retry_with_log(
                     ctx.template_context,
-                    xsd_error,
+                    xsd_error_for_validation,
                     &last_output,
                     ctx.workspace,
                     template_name,

@@ -69,6 +69,7 @@ impl TestFixture {
         &'a mut self,
         workspace: &'a dyn crate::workspace::Workspace,
     ) -> crate::phases::PhaseContext<'a> {
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         crate::phases::PhaseContext {
             config: &self.config,
             registry: &self.registry,
@@ -89,11 +90,13 @@ impl TestFixture {
             run_log_context: &self.run_log_context,
             cloud_reporter: None,
             cloud: &self.cloud,
+            env: &git_env,
         }
     }
 
     /// Builds a `PhaseContext` that borrows from this fixture.
     pub fn ctx(&mut self) -> crate::phases::PhaseContext<'_> {
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         crate::phases::PhaseContext {
             config: &self.config,
             registry: &self.registry,
@@ -114,6 +117,7 @@ impl TestFixture {
             run_log_context: &self.run_log_context,
             cloud_reporter: None,
             cloud: &self.cloud,
+            env: &git_env,
         }
     }
 }

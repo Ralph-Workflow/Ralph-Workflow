@@ -6,6 +6,35 @@
 //! This module provides a conservative sanitizer for untrusted error strings.
 
 use itertools::Itertools;
+use std::sync::LazyLock;
+
+static BEARER_TOKEN_RE: std::sync::LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"(?i)(bearer\s+)\S+").expect("valid regex"));
+
+static COMMON_QUERY_RE: std::sync::LazyLock<regex::Regex> = LazyLock::new(|| {
+    const KEYS: [&str; 5] = [
+        "access_token=",
+        "token=",
+        "password=",
+        "passwd=",
+        "oauth_token=",
+    ];
+    let pattern = format!("(?i)({})([^&\\s]*)", KEYS.join("|"));
+    regex::Regex::new(&pattern).expect("valid regex")
+});
+
+static TOKEN_LIKE_RE: std::sync::LazyLock<regex::Regex> = LazyLock::new(|| {
+    const PREFIXES: [&str; 6] = ["ghp_", "github_pat_", "glpat-", "xoxb-", "xapp-", "ya29."];
+    let pattern = format!(
+        "({})[A-Za-z0-9_\\-\\.]+",
+        PREFIXES
+            .iter()
+            .map(regex::escape)
+            .collect::<Vec<_>>()
+            .join("|")
+    );
+    regex::Regex::new(&pattern).expect("valid regex")
+});
 
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///
@@ -102,56 +131,22 @@ fn redact_http_url_userinfo(input: &str) -> String {
 }
 
 fn redact_bearer_tokens(input: &str) -> String {
-    // Replace `Bearer <token>` with `Bearer <redacted>` (case-insensitive match on "bearer").
-    // Use regex for case-insensitive matching
-
-    // Pattern matches "bearer " (case-insensitive) followed by non-whitespace characters (the token)
-    let pattern = regex::Regex::new(r"(?i)(bearer\s+)\S+").expect("valid regex");
-
-    pattern.replace_all(input, "$1<redacted>").to_string()
+    BEARER_TOKEN_RE
+        .replace_all(input, "$1<redacted>")
+        .to_string()
 }
 
 fn redact_common_query_params(input: &str) -> String {
-    // Redact common credential-bearing query params and key/value fragments.
-    // We intentionally handle both '&' separated and whitespace terminated values.
-
-    const KEYS: [&str; 5] = [
-        "access_token=",
-        "token=",
-        "password=",
-        "passwd=",
-        "oauth_token=",
-    ];
-
-    // Build regex pattern from keys
-    let pattern = format!("(?i)({})([^&\\s]*)", KEYS.join("|"));
-    let re = regex::Regex::new(&pattern).expect("valid regex");
-
-    re.replace_all(input, |caps: &regex::Captures| {
-        let key = caps.get(1).map_or("", |m| m.as_str());
-        format!("{}<redacted>", key)
-    })
-    .to_string()
+    COMMON_QUERY_RE
+        .replace_all(input, |caps: &regex::Captures| {
+            let key = caps.get(1).map_or("", |m| m.as_str());
+            format!("{}<redacted>", key)
+        })
+        .to_string()
 }
 
 fn redact_token_like_substrings(input: &str) -> String {
-    // Redact substrings that look like common tokens, even if not in a URL.
-    // Examples: GitHub PATs, GitLab PATs, Slack tokens, Google OAuth tokens.
-
-    const PREFIXES: [&str; 6] = ["ghp_", "github_pat_", "glpat-", "xoxb-", "xapp-", "ya29."];
-
-    // Build regex pattern from prefixes - match prefix followed by token chars
-    let pattern = format!(
-        "({})[A-Za-z0-9_\\-\\.]+",
-        PREFIXES
-            .iter()
-            .map(|p| regex::escape(p))
-            .collect::<Vec<_>>()
-            .join("|")
-    );
-    let re = regex::Regex::new(&pattern).expect("valid regex");
-
-    re.replace_all(input, "<redacted>").to_string()
+    TOKEN_LIKE_RE.replace_all(input, "<redacted>").to_string()
 }
 
 #[cfg(test)]

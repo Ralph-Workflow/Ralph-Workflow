@@ -33,6 +33,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
     // Boundary lints: I/O effects
     boundary::forbid_terminal_output::register_lints(sess, lint_store);
     boundary::forbid_io_effects::register_lints(sess, lint_store);
+    boundary::forbid_nested_boundary_modules::register_lints(sess, lint_store);
     boundary::boundary_function_too_complex::register_lints(sess, lint_store);
 
     // Code quality lints (runtime - uses std::env)

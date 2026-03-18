@@ -146,6 +146,7 @@ fn test_dump_event_loop_trace_creates_parent_dir_before_write() {
     let repo_root = PathBuf::from("/test/repo");
     let strict_workspace = StrictTmpWorkspace::new(MemoryWorkspace::new(repo_root.clone()));
     let run_log_context = crate::logging::RunLogContext::new(&strict_workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let ctx = PhaseContext {
         config: &config,
@@ -167,6 +168,7 @@ fn test_dump_event_loop_trace_creates_parent_dir_before_write() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let mut trace = EventTraceBuffer::new(1);
@@ -268,6 +270,7 @@ fn test_event_loop_dumps_trace_on_unrecoverable_handler_error() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -289,6 +292,7 @@ fn test_event_loop_dumps_trace_on_unrecoverable_handler_error() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState::initial(1, 0);
@@ -362,6 +366,7 @@ fn test_create_initial_state_with_config_counts_total_attempts() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let ctx = PhaseContext {
         config: &config,
@@ -383,6 +388,7 @@ fn test_create_initial_state_with_config_counts_total_attempts() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = create_initial_state_with_config(&ctx);
@@ -424,6 +430,8 @@ fn test_create_initial_state_with_config_allows_explicit_low_continuation_limits
             ..Config::default()
         };
 
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
+
         let ctx = PhaseContext {
             config: &config,
             registry: &registry,
@@ -444,6 +452,7 @@ fn test_create_initial_state_with_config_allows_explicit_low_continuation_limits
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud_config,
+            env: &git_env,
         };
 
         let state = create_initial_state_with_config(&ctx);
@@ -502,6 +511,7 @@ fn test_create_initial_state_with_config_injects_cloud_state() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let ctx = PhaseContext {
         config: &config,
@@ -523,6 +533,7 @@ fn test_create_initial_state_with_config_injects_cloud_state() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = create_initial_state_with_config(&ctx);
@@ -600,6 +611,7 @@ fn test_event_loop_applies_additional_events_in_order() {
     let repo_root = PathBuf::from("/test/repo");
     let workspace = MemoryWorkspace::new(repo_root.clone());
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
     let mut ctx = PhaseContext {
         config: &config,
@@ -621,6 +633,7 @@ fn test_event_loop_applies_additional_events_in_order() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState {

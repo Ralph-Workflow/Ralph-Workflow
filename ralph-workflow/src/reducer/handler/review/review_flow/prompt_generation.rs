@@ -52,7 +52,12 @@ impl MainEffectHandler {
                 }
             })?;
         }
-        let mut additional_events: Vec<PipelineEvent> = Vec::new();
+        let xsd_retry_events: Option<Vec<PipelineEvent>> =
+            if matches!(prompt_mode, PromptMode::XsdRetry) {
+                Some(self.materialize_xsd_retry_last_output(ctx, pass)?)
+            } else {
+                None
+            };
 
         let materialized_inputs = self
             .state
@@ -124,10 +129,6 @@ impl MainEffectHandler {
                 (None, None)
             };
         let continuation_state = &self.state.continuation;
-        if matches!(prompt_mode, PromptMode::XsdRetry) {
-            let xsd_retry_events = self.materialize_xsd_retry_last_output(ctx, pass)?;
-            additional_events.extend(xsd_retry_events);
-        }
         let (
             prompt_key,
             review_prompt_xml,
@@ -214,7 +215,7 @@ impl MainEffectHandler {
                     );
                     if !rendered.log.is_complete() {
                         let missing = rendered.log.unsubstituted.clone();
-                        let mut result = EffectResult::event(PipelineEvent::template_rendered(
+                        let result = EffectResult::event(PipelineEvent::template_rendered(
                             crate::reducer::event::PipelinePhase::Review,
                             "review_xsd_retry".to_string(),
                             rendered.log,
@@ -231,9 +232,12 @@ impl MainEffectHandler {
                                 Vec::new(),
                             ),
                         );
-                        for event in additional_events {
-                            result = result.with_additional_event(event);
-                        }
+                        let result = xsd_retry_events.as_ref().map_or(result, |events| {
+                            events
+                                .iter()
+                                .cloned()
+                                .fold(result, |r, ev| r.with_additional_event(ev))
+                        });
                         return Ok(result);
                     }
                     Some(rendered.log)
@@ -318,8 +322,7 @@ impl MainEffectHandler {
                     self.state.agent_chain.consumer_signature_sha256(),
                 ));
 
-                let mut should_validate = false;
-                let (prompt, was_replayed) = get_stored_or_generate_prompt(
+                let (prompt, was_replayed, should_validate) = get_stored_or_generate_prompt(
                     &scope_key,
                     &self.state.prompt_history,
                     Some(&current_prompt_content_id),
@@ -353,8 +356,10 @@ impl MainEffectHandler {
                                     }
                                 },
                             );
-                        should_validate = local_should_validate;
-                        format!("{retry_preamble}\n{base_prompt}")
+                        (
+                            format!("{retry_preamble}\n{base_prompt}"),
+                            local_should_validate,
+                        )
                     },
                 );
 
@@ -563,9 +568,11 @@ impl MainEffectHandler {
         } else {
             result
         };
-        let result = additional_events
-            .into_iter()
-            .fold(result, |r, ev| r.with_additional_event(ev));
+        let result = xsd_retry_events.map_or(result, |events| {
+            events
+                .into_iter()
+                .fold(result, |r, ev| r.with_additional_event(ev))
+        });
         let result = if let Some(log) = rendered_log {
             result.with_additional_event(PipelineEvent::template_rendered(
                 crate::reducer::event::PipelinePhase::Review,

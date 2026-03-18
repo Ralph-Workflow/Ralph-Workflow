@@ -72,16 +72,10 @@ pub(crate) fn scan_dir_recursive(
             if FileActivityTracker::is_excluded_workspace_dir(path) {
                 continue;
             }
-            if remaining_depth > 0
-                && scan_dir_recursive(
-                    workspace,
-                    entry.path(),
-                    now,
-                    timeout,
-                    remaining_depth - 1,
-                    false,
-                )?
-            {
+            if remaining_depth.checked_sub(1).is_some_and(|remaining| {
+                scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
+                    .is_ok_and(|r| r)
+            }) {
                 return Ok(true);
             }
         }
@@ -90,3 +84,67 @@ pub(crate) fn scan_dir_recursive(
 }
 
 pub(crate) const MAX_SCAN_DEPTH_CONST: usize = MAX_SCAN_DEPTH;
+
+pub(crate) fn check_for_recent_activity_with_time(
+    workspace: &dyn Workspace,
+    timeout: Duration,
+    now: SystemTime,
+) -> std::io::Result<bool> {
+    let agent_dir = Path::new(".agent");
+
+    if workspace.exists(agent_dir) {
+        let entries = workspace.read_dir(agent_dir)?;
+
+        let has_recent_activity = entries
+            .into_iter()
+            .filter(|entry| entry.is_file())
+            .filter_map(|entry| {
+                let path = entry.path();
+                if !FileActivityTracker::is_ai_generated_file(path) {
+                    return None;
+                }
+                entry.modified().map(|mtime| (path.to_path_buf(), mtime))
+            })
+            .any(|(_, mtime)| file_age(now, mtime) <= timeout);
+
+        if has_recent_activity {
+            return Ok(true);
+        }
+    }
+
+    let tmp_dir = Path::new(".agent/tmp");
+    if workspace.exists(tmp_dir) {
+        if let Ok(tmp_entries) = workspace.read_dir(tmp_dir) {
+            let has_recent_xml = tmp_entries
+                .into_iter()
+                .filter(|entry| entry.is_file())
+                .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "xml"))
+                .filter_map(|entry| entry.modified())
+                .any(|mtime| file_age(now, mtime) <= timeout);
+
+            if has_recent_xml {
+                return Ok(true);
+            }
+        }
+    }
+
+    if scan_dir_recursive(
+        workspace,
+        Path::new(""),
+        now,
+        timeout,
+        MAX_SCAN_DEPTH_CONST,
+        true,
+    )? {
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+pub(crate) fn check_for_recent_activity(
+    workspace: &dyn Workspace,
+    timeout: Duration,
+) -> std::io::Result<bool> {
+    check_for_recent_activity_with_time(workspace, timeout, SystemTime::now())
+}

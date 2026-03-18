@@ -41,6 +41,32 @@
 use anyhow::Context;
 use std::io::Write;
 
+use crate::agents::AgentRegistry;
+use crate::app::context::PipelineContext;
+use crate::app::effect::AppEffectHandler;
+use crate::app::effectful;
+use crate::checkpoint::{
+    load_checkpoint_with_workspace, save_checkpoint_with_workspace, CheckpointBuilder,
+    PipelineCheckpoint, PipelinePhase, RunContext,
+};
+use crate::cli::Args;
+use crate::config::Config;
+use crate::executor::ProcessExecutor;
+use crate::files::protection::monitoring::PromptMonitor;
+use crate::files::{
+    create_prompt_backup_with_workspace, update_status_with_workspace,
+    validate_prompt_md_with_workspace,
+};
+use crate::git_helpers::{
+    abort_rebase, continue_rebase, get_conflicted_files, is_main_or_master_branch, RebaseResult,
+};
+use crate::logger::{Colors, Logger};
+use crate::logging::RunLogContext;
+use crate::phases::PhaseContext;
+use crate::pipeline::{prepare_agent_phase_for_workspace, AgentPhaseGuard, Timer};
+use crate::prompts::template_context::TemplateContext;
+use crate::workspace::Workspace;
+
 // Include sub-modules
 include!("initialization.rs");
 include!("execution_core.rs");

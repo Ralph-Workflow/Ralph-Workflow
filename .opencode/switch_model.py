@@ -1,90 +1,58 @@
 #!/usr/bin/env python3
 """
-Script to switch models in opencode.json between GLM and MiniMax.
+Script to switch models in opencode.json.
 
 Usage:
-    python switch_model.py glm          # Switch to GLM
-    python switch_model.py minimax      # Switch to MiniMax
-    python switch_model.py              # Toggle between models
+    python switch_model.py <model_string>  # Switch to specific model
+    python switch_model.py                 # Toggle between defined models
 """
 
 import json
 import sys
 from pathlib import Path
 
-# Model configurations
 MODELS = {
     'glm': 'zai-coding-plan/glm-5',
-    'minimax': 'minimax/MiniMax-M2.5-highspeed'
+    'minimax': 'minimax/MiniMax-M2.7-highspeed'
 }
 
-# Agents that should use subagent models (not the primary agent)
-SUBAGENTS = [
-    'workflow-gui',
-    'workflow-core',
-    'workflow-reducer',
-    'workflow-execution',
-    'workflow-io',
-    'workflow-workspace',
-    'workflow-git',
-    'workflow-config',
-    'workflow-app',
-    'workflow-logging',
-    'workflow-monitoring',
-    'workflow-misc',
-    'workflow-future',
-    'workflow-agents',
-    'workflow-prompts',
-    'workflow-json',
-    'workflow-cloud',
-    'test-helpers',
-    'xtask',
-    'workflow-tests',
-    'workflow-lints',
-    'workflow-docs'
-]
+# Subagents to exclude from model switching
+EXCLUDED_SUBAGENTS = ['build']
 
 def get_config_path():
-    """Get the path to opencode.json."""
     script_dir = Path(__file__).parent
     return script_dir / 'opencode.json'
 
 def load_config(config_path):
-    """Load the opencode.json configuration."""
     with open(config_path, 'r') as f:
         return json.load(f)
 
 def save_config(config_path, config):
-    """Save the opencode.json configuration."""
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-        f.write('\n')  # Add newline at end of file
+        f.write('\n')
 
-def detect_current_model(config):
-    """Detect which model is currently in use."""
-    # Check one of the subagents
-    sample_agent = config['agent'].get('workflow-gui', {})
-    current = sample_agent.get('model', '')
-    
-    if MODELS['glm'] in current:
-        return 'glm'
-    elif MODELS['minimax'] in current:
-        return 'minimax'
+def get_current_model_string(config):
+    """Get the current model string from config."""
+    for agent_name in config['agent']:
+        if agent_name not in EXCLUDED_SUBAGENTS:
+            return config['agent'][agent_name].get('model', '')
+    return ''
+
+def detect_known_model(model_string):
+    """Detect if model string matches a known model alias."""
+    for alias, model in MODELS.items():
+        if model in model_string or model_string.endswith(alias):
+            return alias
     return None
 
-def switch_to_model(config, target_model):
-    """Switch all subagents to the target model."""
-    if target_model not in MODELS:
-        raise ValueError(f"Unknown model: {target_model}. Choose 'glm' or 'minimax'.")
-    
-    model_string = MODELS[target_model]
+def switch_to_model(config, model_string):
+    """Switch all subagents to the target model (except excluded ones)."""
     count = 0
-    
-    for agent_name in SUBAGENTS:
-        if agent_name in config['agent']:
+    for agent_name in config['agent']:
+        if agent_name not in EXCLUDED_SUBAGENTS:
             config['agent'][agent_name]['model'] = model_string
             count += 1
-    
     return count
 
 def main():
@@ -94,34 +62,27 @@ def main():
         print(f"Error: Configuration file not found at {config_path}")
         sys.exit(1)
     
-    # Load configuration
     config = load_config(config_path)
+    current_model = get_current_model_string(config)
     
-    # Determine target model
     if len(sys.argv) > 1:
-        target = sys.argv[1].lower()
-        if target not in MODELS:
-            print(f"Error: Unknown model '{target}'. Use 'glm' or 'minimax'.")
-            sys.exit(1)
-    else:
-        # Toggle mode: detect current and switch to the other
-        current = detect_current_model(config)
-        if current == 'glm':
-            target = 'minimax'
-        elif current == 'minimax':
-            target = 'glm'
+        arg = sys.argv[1].lower()
+        if arg in MODELS:
+            target_model = MODELS[arg]
         else:
-            print("Could not detect current model. Defaulting to minimax.")
-            target = 'minimax'
+            target_model = arg
+    else:
+        current_alias = detect_known_model(current_model)
+        if current_alias == 'glm':
+            target_model = MODELS['minimax']
+        else:
+            target_model = MODELS['glm']
     
-    # Make the switch
-    print(f"Switching to {target.upper()} ({MODELS[target]})...")
-    count = switch_to_model(config, target)
-    
-    # Save configuration
+    print(f"Switching to {target_model}...")
+    count = switch_to_model(config, target_model)
     save_config(config_path, config)
     
-    print(f"✓ Successfully updated {count} agents to use {MODELS[target]}")
+    print(f"Successfully updated {count} agents to use {target_model}")
 
 if __name__ == '__main__':
     main()

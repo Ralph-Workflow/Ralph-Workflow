@@ -31,6 +31,7 @@ fn mock_effect_handler_simulates_empty_diff() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -51,6 +52,7 @@ fn mock_effect_handler_simulates_empty_diff() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // CheckCommitDiff should mark empty diff
@@ -100,6 +102,7 @@ fn mock_effect_handler_captures_materialize_commit_inputs_even_when_diff_missing
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -120,6 +123,7 @@ fn mock_effect_handler_captures_materialize_commit_inputs_even_when_diff_missing
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     // No diff file exists in workspace - should invalidate, but still capture the executed effect.
@@ -170,6 +174,7 @@ fn mock_effect_handler_emits_residual_files_found_when_configured() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -190,6 +195,7 @@ fn mock_effect_handler_emits_residual_files_found_when_configured() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let result = handler
@@ -318,6 +324,7 @@ fn mock_effect_handler_trigger_dev_fix_flow_does_not_write_completion_marker() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
 
     let cloud = crate::config::types::CloudConfig::disabled();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -338,6 +345,7 @@ fn mock_effect_handler_trigger_dev_fix_flow_does_not_write_completion_marker() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState::initial(1, 0);
@@ -394,6 +402,7 @@ fn mock_effect_handler_trigger_dev_fix_flow_emits_events_on_marker_write_failure
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
 
     let cloud = crate::config::types::CloudConfig::disabled();
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -414,6 +423,7 @@ fn mock_effect_handler_trigger_dev_fix_flow_emits_events_on_marker_write_failure
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState::initial(1, 0);
@@ -645,6 +655,7 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -665,6 +676,7 @@ fn mock_save_checkpoint_persists_interrupted_by_user_flag() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let mut state = PipelineState::initial(1, 0);
@@ -734,6 +746,7 @@ fn mock_execute_save_checkpoint_captures_effect_once() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -754,6 +767,7 @@ fn mock_execute_save_checkpoint_captures_effect_once() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState::initial(1, 0);
@@ -806,6 +820,7 @@ fn mock_execute_emit_completion_marker_captures_effect_once() {
     let run_log_context = crate::logging::RunLogContext::new(&workspace).unwrap();
     let cloud = crate::config::types::CloudConfig::disabled();
 
+    let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
     let mut ctx = PhaseContext {
         config: &config,
         registry: &registry,
@@ -826,6 +841,7 @@ fn mock_execute_emit_completion_marker_captures_effect_once() {
         run_log_context: &run_log_context,
         cloud_reporter: None,
         cloud: &cloud,
+        env: &git_env,
     };
 
     let state = PipelineState::initial(1, 0);

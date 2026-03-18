@@ -299,9 +299,7 @@ impl MainEffectHandler {
                         .exists(std::path::Path::new(".agent/tmp/last_output.xml"))
             });
 
-        let mut additional_events: Vec<PipelineEvent> = Vec::new();
-
-        if !already_materialized {
+        let xsd_retry_events: Option<Vec<PipelineEvent>> = if !already_materialized {
             let tmp_dir = Path::new(".agent/tmp");
             if !ctx.workspace.exists(tmp_dir) {
                 ctx.workspace.create_dir_all(tmp_dir).map_err(|err| {
@@ -332,22 +330,29 @@ impl MainEffectHandler {
                 },
                 reason: PromptMaterializationReason::PolicyForcedReference,
             };
-            additional_events.push(PipelineEvent::xsd_retry_last_output_materialized(
-                crate::reducer::event::PipelinePhase::Development,
-                iteration,
-                input,
-            ));
-            if last_output_bytes > inline_budget_bytes {
-                additional_events.push(PipelineEvent::prompt_input_oversize_detected(
+            let events: Vec<_> =
+                std::iter::once(PipelineEvent::xsd_retry_last_output_materialized(
                     crate::reducer::event::PipelinePhase::Development,
-                    PromptInputKind::LastOutput,
-                    content_id_sha256.clone(),
-                    last_output_bytes,
-                    inline_budget_bytes,
-                    "xsd-retry-context".to_string(),
-                ));
-            }
-        }
+                    iteration,
+                    input,
+                ))
+                .chain(
+                    (last_output_bytes > inline_budget_bytes)
+                        .then_some(PipelineEvent::prompt_input_oversize_detected(
+                            crate::reducer::event::PipelinePhase::Development,
+                            PromptInputKind::LastOutput,
+                            content_id_sha256.clone(),
+                            last_output_bytes,
+                            inline_budget_bytes,
+                            "xsd-retry-context".to_string(),
+                        ))
+                        .into_iter(),
+                )
+                .collect();
+            Some(events)
+        } else {
+            None
+        };
 
         let scope_key = PromptScopeKey::for_development(
             iteration,
@@ -421,7 +426,7 @@ impl MainEffectHandler {
             was_replayed,
             prompt_content_id: Some(prompt_content_id),
             rendered_log,
-            additional_events,
+            additional_events: xsd_retry_events.unwrap_or_default(),
         }))
     }
 }

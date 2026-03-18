@@ -61,12 +61,10 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::io::Read",
     "std::io::Write",
     "std::fs::File",
-    
     // ━━━ Network handles ━━━
     // Represent external OS socket resources, inherently effectful
     "std::net::TcpStream",
     "std::net::UdpSocket",
-    
     // ━━━ Process handles ━━━
     // Represent OS process objects, inherently effectful external resources
     "std::process::Command",
@@ -74,12 +72,10 @@ const ALLOWED_RECEIVER_TYPES: &[&str] = &[
     "std::process::ChildStdin",
     "std::process::ChildStdout",
     "std::process::ChildStderr",
-    
     // ━━━ Iterator ━━━
     // Iterator is a state machine where `.next()` advances state (consuming).
     // This is the standard Rust way to traverse sequences.
     "std::iter::Iterator",
-    
     // ━━━ External types ━━━
     // DetectionResults is designed to be mutated during language detection
     "language_detector::signatures::detectors::DetectionResults",
@@ -123,84 +119,81 @@ fn is_allowed_receiver_type(ty: Ty<'_>) -> bool {
 /// to ALLOWED_RECEIVER_TYPES instead of adding the method name here.
 const ALLOWED_METHODS: &[&str] = &[
     // ━━━ Iterator methods ━━━
-    "next",       // Iterator::next() - standard traversal
-    "any",        // Iterator::any() - short-circuit search
-    "all",        // Iterator::all() - short-circuit validation  
-    "find",       // Iterator::find() - standard search
-    "find_map",   // Iterator::find_map() - search with transform
-    "filter",     // Iterator::filter() - conditional selection
-    "map",        // Iterator::map() - transformation
-    "flat_map",   // Iterator::flat_map() - flattening transform
-    "fold",       // Iterator::fold() - accumulation
-    "reduce",     // Iterator::reduce() - accumulation without init
-    "try_fold",   // Iterator::try_fold() - fallible accumulation
-    "position",   // Iterator::position() - index search
-    
+    "next",     // Iterator::next() - standard traversal
+    "any",      // Iterator::any() - short-circuit search
+    "all",      // Iterator::all() - short-circuit validation
+    "find",     // Iterator::find() - standard search
+    "find_map", // Iterator::find_map() - search with transform
+    "filter",   // Iterator::filter() - conditional selection
+    "map",      // Iterator::map() - transformation
+    "flat_map", // Iterator::flat_map() - flattening transform
+    "fold",     // Iterator::fold() - accumulation
+    "reduce",   // Iterator::reduce() - accumulation without init
+    "try_fold", // Iterator::try_fold() - fallible accumulation
+    "position", // Iterator::position() - index search
     // ━━━ I/O operations ━━━
-    "read",              // Read trait
-    "read_json",         // Custom I/O operation
-    "read_to_string",    // Read trait extension
-    "read_tree",         // Custom I/O operation
-    "read_event_into",   // Custom I/O operation
-    "write_all",         // Write trait
-    "write_str",         // Write trait extension
-    "write",             // Write trait
-    "flush",             // Write trait
-    "execute",           // Process execution
-    "try_wait",          // Process::try_wait()
-    
+    "read",            // Read trait
+    "read_json",       // Custom I/O operation
+    "read_to_string",  // Read trait extension
+    "read_tree",       // Custom I/O operation
+    "read_event_into", // Custom I/O operation
+    "write_all",       // Write trait
+    "write_str",       // Write trait extension
+    "write",           // Write trait
+    "flush",           // Write trait
+    "execute",         // Process execution
+    "try_wait",        // Process::try_wait()
     // ━━━ State management in event loop/pipeline ━━━
     // These are in core orchestration code (reducer, pipeline, checkpoint)
     // and manage internal state during event processing
-    "update_state",                           // Reducer state transitions
-    "add_step_bounded",                       // Bounded queue operations
-    "take",                                   // Option::take(), bounded operations
-    "replace_execution_history_bounded",      // Bounded history management
-    "set_current_message_id",                 // Event tracking
-    "on_message_stop",                        // Event lifecycle
-    
+    "update_state",                      // Reducer state transitions
+    "add_step_bounded",                  // Bounded queue operations
+    "take",                              // Option::take(), bounded operations
+    "replace_execution_history_bounded", // Bounded history management
+    "set_current_message_id",            // Event tracking
+    "on_message_stop",                   // Event lifecycle
     // ━━━ Configuration and setup ━━━
     // These mutate configuration objects during app initialization
-    "apply_ccs_aliases",         // Config mutation during setup
-    "apply_agent_overrides",     // Config mutation during setup
-    "set_ccs_aliases",           // Config mutation during setup
-    "apply_unified_config",      // Config mutation during setup
-    "set_opencode_catalog",      // Config mutation during setup
-    "set_readonly",              // Config mutation during setup
-    "config_mut",                // Config accessor
-    "set_mode",                  // Mode configuration
-    
+    "apply_ccs_aliases",     // Config mutation during setup
+    "apply_agent_overrides", // Config mutation during setup
+    "set_ccs_aliases",       // Config mutation during setup
+    "apply_unified_config",  // Config mutation during setup
+    "set_opencode_catalog",  // Config mutation during setup
+    "set_readonly",          // Config mutation during setup
+    "config_mut",            // Config accessor
+    "set_mode",              // Mode configuration
     // ━━━ Workspace and boundary operations ━━━
-    "normalize_agent_chain_for_invocation",  // Agent chain processing
-    "capture_file_with_workspace",           // Workspace operation
-    "capture_file_impl",                     // Workspace operation
-    "trim_text",                             // Text normalization
-    "recurse_untracked_dirs",                // Directory traversal
-    "include_untracked",                     // Git state capture
-    "capture_git_state",                     // Git state capture
-    "add_path",                              // Path management
-    "remove_path",                           // Path management
-    
+    "normalize_agent_chain_for_invocation", // Agent chain processing
+    "capture_file_with_workspace",          // Workspace operation
+    "capture_file_impl",                    // Workspace operation
+    "trim_text",                            // Text normalization
+    "recurse_untracked_dirs",               // Directory traversal
+    "include_untracked",                    // Git state capture
+    "capture_git_state",                    // Git state capture
+    "add_path",                             // Path management
+    "remove_path",                          // Path management
     // ━━━ Logging and monitoring ━━━
-    "log_effect",          // Effect logging
-    "disarm",              // Guard disarm
-    "start",               // Timer/tracer start
-    "register",            // Registration
-    "finish",              // Completion
-    
+    "log_effect", // Effect logging
+    "disarm",     // Guard disarm
+    "start",      // Timer/tracer start
+    "register",   // Registration
+    "finish",     // Completion
     // ━━━ Formatting and debugging ━━━
-    "body_mut",      // HTTP body accessor
-    "mark_owned",    // Ownership marking
-    "field",         // Debug formatter
-    "debug_struct",  // Debug formatter
-    "watch",         // Debugging/monitoring
-    "custom_flags",  // Flag configuration
-    "create_new",    // Creation operation
-    
+    "body_mut",     // HTTP body accessor
+    "mark_owned",   // Ownership marking
+    "field",        // Debug formatter
+    "debug_struct", // Debug formatter
+    "watch",        // Debugging/monitoring
+    "custom_flags", // Flag configuration
+    "create_new",   // Creation operation
     // ━━━ String pool ━━━
-    "intern_str",     // String interning (performance optimization)
-    "intern_string",  // String interning (performance optimization)
+    "intern_str",    // String interning (performance optimization)
+    "intern_string", // String interning (performance optimization)
 ];
+
+fn mutating_receiver_note() -> &'static str {
+    "in-place `&mut self` updates hide state changes behind shared control flow; prefer value semantics so domain transformations return new values and remain easier to reason about, test, and keep referentially transparent. If mutation is genuinely required for I/O handles or process objects, keep it at the boundary. Style guides: `docs/code-style/functional-transformations.md` and `docs/code-style/boundaries.md`."
+}
 
 impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'tcx>) {
@@ -253,19 +246,14 @@ impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {
                  (`with_*` methods) or struct-update syntax (`..state`). \
                  See `docs/code-style/functional-transformations.md`.",
             );
-            diag.note(
-                "if a mutating receiver is genuinely required for I/O handles or process \
-                 objects, keep it at the boundary. Style guides: \
-                 `docs/code-style/functional-transformations.md` and \
-                 `docs/code-style/boundaries.md`.",
-            );
+            diag.note(mutating_receiver_note());
         });
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_allowed_receiver_str;
+    use super::{is_allowed_receiver_str, mutating_receiver_note};
 
     #[test]
     fn allows_bufwriter() {
@@ -302,5 +290,13 @@ mod tests {
     #[test]
     fn rejects_custom_type() {
         assert!(!is_allowed_receiver_str("my_app::Config"));
+    }
+
+    #[test]
+    fn note_explains_why_in_place_mutation_is_forbidden() {
+        let note = mutating_receiver_note();
+
+        assert!(note.contains("value semantics"));
+        assert!(note.contains("referential transparency"));
     }
 }

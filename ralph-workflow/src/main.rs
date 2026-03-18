@@ -167,6 +167,7 @@ mod tests {
                 run_log_context: &self.run_log_context,
                 cloud_reporter: None,
                 cloud: &self.cloud,
+                env: &ralph_workflow::runtime::environment::mock::MockGitEnvironment::new(),
             }
         }
     }

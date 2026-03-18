@@ -6,4 +6,5 @@
 pub mod bfs;
 pub mod command;
 
-pub use bfs::{build_command, collect_descendants};
+pub use bfs::{collect_descendants, compute_from_descendants};
+pub use command::{build_agent_command_internal, build_command};

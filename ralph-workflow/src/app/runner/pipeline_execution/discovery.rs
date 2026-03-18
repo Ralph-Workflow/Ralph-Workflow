@@ -3,11 +3,11 @@
 // This module contains:
 // - discover_repo_root_for_workspace: Discovers repo root using effect handler
 
-fn discover_repo_root_for_workspace<H: effect::AppEffectHandler>(
+pub(crate) fn discover_repo_root_for_workspace<H: crate::app::effect::AppEffectHandler>(
     override_dir: Option<&std::path::Path>,
     handler: &mut H,
 ) -> anyhow::Result<std::path::PathBuf> {
-    use effect::{AppEffect, AppEffectResult};
+    use crate::app::effect::{AppEffect, AppEffectResult};
 
     if let Some(dir) = override_dir {
         match handler.execute(AppEffect::SetCurrentDir {

@@ -1,5 +1,7 @@
 //! HTTP client implementation for cloud reporting.
 
+use std::io::Read;
+
 use crate::cloud::types::{interpret_http_response, CloudError, PipelineResult, ProgressUpdate};
 use crate::cloud::CloudReporter;
 use crate::config::types::CloudConfig;
@@ -80,7 +82,8 @@ fn perform_request(
     match response {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            let body = resp.into_body().read_to_string().unwrap_or_default();
+            let mut body = String::new();
+            resp.into_body().read_to_string(&mut body)?;
             Ok((status, body))
         }
         Err(e) => Err(CloudError::NetworkError(e.to_string())),

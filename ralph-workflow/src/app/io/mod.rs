@@ -7,8 +7,11 @@
 //!
 //! As a boundary module, it is exempt from functional programming lints.
 
+pub mod conflict_resolution_boundary;
 pub mod effect_handler;
 pub mod env_access;
+pub mod initialization;
 pub mod pipeline_setup;
+pub mod plumbing_boundary;
 pub mod runtime_factory;
 pub mod terminal;

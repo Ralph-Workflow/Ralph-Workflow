@@ -56,7 +56,8 @@ impl ClaudeParser {
             if *self.terminal_mode.borrow() == TerminalMode::Full {
                 use crate::json_parser::delta_display::CLEAR_LINE;
                 format!(
-                    "{CLEAR_LINE}\r{}[{}]{} {}{}{}\n",
+                    "{}\r{}[{}]{} {}{}{}\n",
+                    CLEAR_LINE,
                     c.dim(),
                     prefix,
                     c.reset(),
@@ -139,9 +140,6 @@ impl ClaudeParser {
         &self,
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> bool {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         let session = self.streaming_session.borrow();
 
         // Extract message_id from the assistant message
@@ -402,7 +400,7 @@ impl ClaudeParser {
         let cost = total_cost_usd.unwrap_or(0.0);
         let turns = num_turns.unwrap_or(0);
 
-        let mut out = if subtype.as_deref() == Some("success") {
+        let base = if subtype.as_deref() == Some("success") {
             format!(
                 "{}[{}]{} {}{} Completed{} {}({}m {}s, {} turns, ${:.4}){}\n",
                 c.dim(),
@@ -437,19 +435,20 @@ impl ClaudeParser {
             )
         };
 
-        if let Some(result) = result {
-            let limit = self.verbosity.truncate_limit("result");
-            let preview = truncate_text(&result, limit);
-            let _ = writeln!(
-                out,
-                "\n{}Result summary:{}\n{}{}{}",
-                c.bold(),
-                c.reset(),
-                c.dim(),
-                preview,
-                c.reset()
-            );
-        }
-        out
+        result
+            .map(|r| {
+                let limit = self.verbosity.truncate_limit("result");
+                let preview = truncate_text(&r, limit);
+                format!(
+                    "{}\n{}Result summary:{}\n{}{}{}",
+                    base,
+                    c.bold(),
+                    c.reset(),
+                    c.dim(),
+                    preview,
+                    c.reset()
+                )
+            })
+            .unwrap_or(base)
     }
 }

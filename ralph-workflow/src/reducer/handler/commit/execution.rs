@@ -61,7 +61,14 @@ impl MainEffectHandler {
             )?;
         }
 
-        match git_commit_in_repo(ctx.repo_root, &message, None, None, Some(ctx.executor)) {
+        match git_commit_in_repo(
+            ctx.repo_root,
+            &message,
+            None,
+            None,
+            Some(ctx.executor),
+            None,
+        ) {
             Ok(Some(hash)) => Ok(EffectResult::event(PipelineEvent::commit_created(
                 hash.to_string(),
                 message,
@@ -245,6 +252,7 @@ mod tests {
         let run_log_context = crate::logging::RunLogContext::new(&workspace).expect("run log ctx");
         let cloud = crate::config::types::CloudConfig::disabled();
 
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = crate::phases::PhaseContext {
             config: &config,
             registry: &registry,
@@ -265,6 +273,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud,
+            env: &git_env,
         };
 
         let _ = MainEffectHandler::create_commit(
@@ -305,6 +314,7 @@ mod tests {
         let run_log_context = crate::logging::RunLogContext::new(&workspace).expect("run log ctx");
         let cloud = crate::config::types::CloudConfig::disabled();
 
+        let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = crate::phases::PhaseContext {
             config: &config,
             registry: &registry,
@@ -325,6 +335,7 @@ mod tests {
             run_log_context: &run_log_context,
             cloud_reporter: None,
             cloud: &cloud,
+            env: &git_env,
         };
 
         let _ = MainEffectHandler::create_commit(&ctx, "test: commit".to_string(), &[], &[])

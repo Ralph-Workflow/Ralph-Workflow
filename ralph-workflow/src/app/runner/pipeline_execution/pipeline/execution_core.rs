@@ -34,15 +34,33 @@ include!("execution_core_resume.rs");
 include!("execution_core_phases.rs");
 include!("execution_core_finish.rs");
 
+use crate::app::context::PipelineContext;
+use crate::app::detection::detect_project_stack;
+use crate::app::runner::pipeline_execution::helpers::{
+    print_pipeline_info_with_config, print_review_guidelines, save_start_commit_or_warn,
+    setup_prompt_monitor, validate_prompt_and_setup_backup,
+};
+use crate::app::runner::setup_helpers::{
+    defer_clear_interrupt_context, setup_interrupt_context_for_pipeline,
+    update_interrupt_context_from_phase,
+};
+use crate::banner::print_welcome_banner;
+use crate::checkpoint::PipelinePhase;
+
 /// Runs the pipeline with the default `MainEffectHandler`.
 ///
 /// This is the production entry point - it creates a `MainEffectHandler` internally.
 pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow::Result<()> {
+    use crate::app::io::pipeline_setup::{
+        setup_git_and_agent_phase, setup_phase_context_with_timer, GitHelpersAndGuard,
+        PhaseContextWithTimer,
+    };
+
     let resume_state = load_resume_and_config_state(ctx)?;
-    let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-    prepare_agent_phase(ctx, &mut git_helpers);
-    let mut agent_phase_guard =
-        AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
+    let GitHelpersAndGuard {
+        git_helpers: _,
+        agent_phase_guard,
+    } = setup_git_and_agent_phase(ctx);
 
     let (cloud_reporter, _heartbeat_guard) = create_cloud_runtime(&resume_state.config);
 
@@ -50,7 +68,7 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     print_pipeline_info_with_config(ctx, &resume_state.config);
     validate_prompt_and_setup_backup(ctx)?;
 
-    let mut prompt_monitor = setup_prompt_monitor(ctx);
+    let prompt_monitor = setup_prompt_monitor(ctx);
     let (_project_stack, review_guidelines) = detect_project_stack(
         &resume_state.config,
         &ctx.repo_root,
@@ -60,11 +78,9 @@ pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow
     print_review_guidelines(ctx, review_guidelines.as_ref());
     let _ = writeln!(std::io::stdout());
 
-    let mut timer = crate::app::io::runtime_factory::create_timer();
-    let mut phase_ctx = create_phase_context_with_config(
+    let PhaseContextWithTimer { phase_ctx, timer } = setup_phase_context_with_timer(
         ctx,
         &resume_state.config,
-        &mut timer,
         review_guidelines.as_ref(),
         &resume_state.run_context,
         resume_state.resume_checkpoint.as_ref(),

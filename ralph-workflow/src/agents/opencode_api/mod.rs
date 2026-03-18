@@ -20,7 +20,7 @@ mod cache;
 mod fetch;
 mod types;
 
-pub use cache::{load_api_catalog, CacheError};
+pub use cache::{load_api_catalog, CacheError, CacheWarning};
 pub use types::{ApiCatalog, Model, Provider};
 
 /// `OpenCode` API endpoint for model catalog.
@@ -58,6 +58,17 @@ pub struct RealCatalogLoader;
 
 impl CatalogLoader for RealCatalogLoader {
     fn load(&self) -> Result<ApiCatalog, CacheError> {
-        load_api_catalog()
+        let (catalog, warnings) = load_api_catalog()?;
+        for warning in warnings {
+            match warning {
+                CacheWarning::StaleCacheUsed { stale_days, error } => {
+                    eprintln!("Warning: Failed to fetch fresh OpenCode API catalog ({error}), using stale cache from {stale_days} days ago");
+                }
+                CacheWarning::CacheSaveFailed { error } => {
+                    eprintln!("Warning: Failed to cache OpenCode API catalog: {error}");
+                }
+            }
+        }
+        Ok(catalog)
     }
 }

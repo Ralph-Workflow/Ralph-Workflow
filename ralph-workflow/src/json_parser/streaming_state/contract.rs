@@ -4,7 +4,7 @@
 // and the state enums (`StreamingState`, `ContentBlockState`) that define
 // the streaming protocol.
 
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 // Streaming configuration constants
 
@@ -96,8 +96,9 @@ pub(super) fn snapshot_threshold_from_env_fn(get: impl Fn(&str) -> Option<String
 /// Valid range: 50-1000 characters.
 /// Falls back to default of 200 if not set, not parseable, or out of range.
 pub(super) fn snapshot_threshold() -> usize {
-    static THRESHOLD: OnceLock<usize> = OnceLock::new();
-    *THRESHOLD.get_or_init(|| snapshot_threshold_from_env_fn(|k| std::env::var(k).ok()))
+    static THRESHOLD: LazyLock<usize> =
+        LazyLock::new(|| snapshot_threshold_from_env_fn(|k| std::env::var(k).ok()));
+    *THRESHOLD
 }
 
 /// Streaming state for the current message lifecycle.

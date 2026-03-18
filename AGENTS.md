@@ -1,9 +1,14 @@
 # AGENTS.md
 
+## > [!IMPORTANT]
+> 
+THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WITH THEM
+
 ## Context — Re-read When Needed
 - **Current plan:** `.agent/PLAN.md`
 - **Overall objective:** `PROMPT.md`
 
+THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WITH THEM
 ---
 
 ## 🚨 TOP PRIORITY: Fix ALL Pre-existing Issues Immediately It does not matter if something is Pre-existing

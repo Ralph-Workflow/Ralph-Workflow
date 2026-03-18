@@ -4,10 +4,23 @@
 // - handle_listing_commands: Handles --list-agents, --list-providers, etc.
 // - handle_plumbing_commands: Handles --show-commit-msg, --apply-commit, etc.
 
+use crate::agents::AgentRegistry;
+use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult};
+use crate::cli::handlers::template_mgmt::handle_template_commands;
+use crate::cli::{
+    handle_list_agents, handle_list_available_agents, handle_list_providers, handle_show_baseline,
+    Args,
+};
+use crate::logger::{Colors, Logger};
+
 /// Handles listing commands that don't require the full pipeline.
 ///
 /// Returns `true` if a listing command was handled and we should exit.
-fn handle_listing_commands(args: &Args, registry: &AgentRegistry, colors: Colors) -> bool {
+pub(super) fn handle_listing_commands(
+    args: &Args,
+    registry: &AgentRegistry,
+    colors: Colors,
+) -> bool {
     if args.agent_list.list_agents {
         handle_list_agents(registry);
         return true;
@@ -48,21 +61,23 @@ fn handle_listing_commands(args: &Args, registry: &AgentRegistry, colors: Colors
 /// When `workspace` is `Some`, the workspace-aware versions of plumbing commands
 /// are used, enabling testing with `MemoryWorkspace`. When `None`, the direct
 /// filesystem versions are used (production behavior).
-fn handle_plumbing_commands<H: effect::AppEffectHandler>(
+pub(crate) fn handle_plumbing_commands<H: AppEffectHandler>(
     args: &Args,
     logger: &Logger,
     colors: Colors,
     handler: &mut H,
     workspace: Option<&dyn crate::workspace::Workspace>,
 ) -> anyhow::Result<bool> {
-    use plumbing::{get_commit_message_from_workspace, handle_apply_commit_with_handler};
+    use crate::app::plumbing::{
+        get_commit_message_from_workspace, handle_apply_commit_with_handler,
+    };
 
     // Helper to set up working directory for plumbing commands using the effect handler
-    fn setup_working_dir_via_handler<H: effect::AppEffectHandler>(
+    fn setup_working_dir_via_handler<H: crate::app::effect::AppEffectHandler>(
         override_dir: Option<&std::path::Path>,
         handler: &mut H,
     ) -> anyhow::Result<()> {
-        use effect::{AppEffect, AppEffectResult};
+        use crate::app::effect::{AppEffect, AppEffectResult};
 
         if let Some(dir) = override_dir {
             match handler.execute(AppEffect::SetCurrentDir {
@@ -123,15 +138,15 @@ fn handle_plumbing_commands<H: effect::AppEffectHandler>(
         setup_working_dir_via_handler(args.working_dir_override.as_deref(), handler)?;
 
         // Use the effect handler for reset_start_commit
-        return match handler.execute(effect::AppEffect::GitResetStartCommit) {
-            effect::AppEffectResult::String(oid) => {
+        return match handler.execute(AppEffect::GitResetStartCommit) {
+            AppEffectResult::String(oid) => {
                 // Simple case - just got the OID back
                 let short_oid = &oid[..8.min(oid.len())];
                 logger.success(&format!("Starting commit reference reset ({short_oid})"));
                 logger.info(".agent/start_commit has been updated");
                 Ok(true)
             }
-            effect::AppEffectResult::Error(e) => {
+            AppEffectResult::Error(e) => {
                 logger.error(&format!("Failed to reset starting commit: {e}"));
                 anyhow::bail!("Failed to reset starting commit");
             }
