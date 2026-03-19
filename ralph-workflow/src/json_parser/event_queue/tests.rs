@@ -29,8 +29,8 @@ mod tests {
         let queue = queue.send(event.clone());
         assert!(!queue.is_empty());
 
-        let received = queue.recv().unwrap();
-        assert_eq!(received, event);
+        let (queue, received) = queue.recv();
+        assert_eq!(received.unwrap(), event);
     }
 
     #[test]
@@ -39,8 +39,8 @@ mod tests {
             (0..10).fold(BoundedEventQueue::new(), |q, i| q.send(i));
 
         (0..10).for_each(|i| {
-            let received = queue.recv().unwrap();
-            assert_eq!(received, i);
+            let (queue, received) = queue.recv();
+            assert_eq!(received.unwrap(), i);
         });
     }
 
@@ -57,16 +57,10 @@ mod tests {
     }
 
     #[test]
-    fn test_queue_try_recv_empty() {
-        let queue: BoundedEventQueue<String> = BoundedEventQueue::new();
-        assert!(queue.try_recv().is_none());
-    }
-
-    #[test]
     fn test_queue_clear() {
         let queue: BoundedEventQueue<i32> = (0..5).fold(BoundedEventQueue::new(), |q, i| q.send(i));
 
-        queue.clear();
+        let queue = queue.clear();
         assert!(queue.is_empty());
         assert_eq!(queue.depth(), 0);
     }
@@ -110,7 +104,7 @@ mod tests {
     fn test_queue_metrics_depth_tracking() {
         let queue: BoundedEventQueue<i32> = BoundedEventQueue::new().send(1).send(2);
 
-        let queue = queue.recv().map(|_| queue).unwrap_or(queue);
+        let (queue, _) = queue.recv();
 
         assert_eq!(queue.depth(), 1);
     }
@@ -118,8 +112,8 @@ mod tests {
     #[test]
     fn test_queue_recv_blocking() {
         let queue: BoundedEventQueue<String> = BoundedEventQueue::new().send("test".to_string());
-        let received = queue.recv().unwrap();
-        assert_eq!(received, "test");
+        let (_, received) = queue.recv();
+        assert_eq!(received.unwrap(), "test");
     }
 
     #[test]

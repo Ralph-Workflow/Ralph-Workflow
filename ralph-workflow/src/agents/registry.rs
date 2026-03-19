@@ -45,7 +45,7 @@ use super::config::{AgentConfig, AgentConfigError, AgentsConfigFile, DEFAULT_AGE
 use super::fallback::{AgentRole, FallbackConfig};
 use super::opencode_resolver::OpenCodeResolver;
 use super::parser::JsonParserType;
-use super::retry_timer::{production_timer, RetryTimerProvider};
+use super::retry_timer::{production_timer, RetryTimerProvider, RetryTimerProviderDebug};
 use crate::agents::opencode_api::ApiCatalog;
 use crate::config::{CcsAliasConfig, CcsConfig};
 use std::collections::HashMap;

@@ -1,5 +1,8 @@
 //! Basic validation tests for XSD validation of development result XML format.
 
+#[cfg(test)]
+use crate::validate_development_result_xml;
+
 #[test]
 fn test_validate_valid_completed() {
     let xml = r"<ralph-development-result>

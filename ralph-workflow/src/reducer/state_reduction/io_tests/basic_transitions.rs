@@ -128,20 +128,19 @@ fn test_plan_generation_completed_invalid_does_not_transition_to_development() {
 
 #[test]
 fn test_reduce_phase_transitions() {
-    let mut state = create_test_state();
-
-    state = reduce(state, PipelineEvent::planning_phase_completed());
+    let state = create_test_state();
+    let state = reduce(state, PipelineEvent::planning_phase_completed());
     assert_eq!(state.phase, PipelinePhase::Development);
 
-    state = reduce(state, PipelineEvent::development_phase_started());
+    let state = reduce(state, PipelineEvent::development_phase_started());
     assert_eq!(state.phase, PipelinePhase::Development);
 
-    state = reduce(state, PipelineEvent::development_phase_completed());
+    let state = reduce(state, PipelineEvent::development_phase_completed());
     assert_eq!(state.phase, PipelinePhase::Review);
 
-    state = reduce(state, PipelineEvent::review_phase_started());
+    let state = reduce(state, PipelineEvent::review_phase_started());
     assert_eq!(state.phase, PipelinePhase::Review);
 
-    state = reduce(state, PipelineEvent::review_phase_completed(false));
+    let state = reduce(state, PipelineEvent::review_phase_completed(false));
     assert_eq!(state.phase, PipelinePhase::CommitMessage);
 }

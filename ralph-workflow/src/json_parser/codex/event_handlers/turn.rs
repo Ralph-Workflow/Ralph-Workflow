@@ -25,7 +25,11 @@ pub fn handle_thread_started(ctx: &EventHandlerContext<'_>, thread_id: Option<St
 /// Handle `TurnStarted` event.
 pub fn handle_turn_started(ctx: &EventHandlerContext<'_>, turn_id: String) -> String {
     ctx.streaming_session.borrow_mut().on_message_start();
-    ctx.reasoning_accumulator.borrow_mut().clear();
+    let mut acc = ctx.reasoning_accumulator.borrow_mut();
+    let placeholder = crate::json_parser::types::DeltaAccumulator::new();
+    let old = std::mem::replace(&mut *acc, placeholder);
+    let new = old.clear();
+    *acc = new;
 
     // Each Codex turn is a new logical stream. Clear append-only renderer state so the
     // first delta of the new turn re-emits the prefix/label instead of computing a suffix

@@ -7,13 +7,11 @@
 
 use std::collections::HashMap;
 
-#[cfg(test)]
 pub struct KMPMatcher {
     pattern: String,
     failure: Vec<usize>,
 }
 
-#[cfg(test)]
 impl KMPMatcher {
     #[must_use]
     pub fn new(pattern: &str) -> Self {
@@ -129,6 +127,12 @@ impl KMPMatcher {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.pattern.is_empty()
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn failure_table(&self) -> &[usize] {
+        &self.failure
     }
 }
 

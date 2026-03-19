@@ -145,11 +145,11 @@ pub fn handle_agent_message_completed(
             .clear_key(ContentType::Text, "agent_msg");
 
         let out = format!("{flush}{completion}");
-        if show_metrics {
+        return if show_metrics {
             format!("{}\n{}", out, metrics.format(*ctx.colors))
         } else {
             out
-        }
+        };
     }
 
     if let Some(text) = text {
@@ -196,9 +196,11 @@ pub fn handle_reasoning_completed(ctx: &EventHandlerContext<'_>, text: Option<&S
         .borrow()
         .get(ContentType::Thinking, "reasoning")
         .map(std::string::ToString::to_string);
-    ctx.reasoning_accumulator
-        .borrow_mut()
-        .clear_key(ContentType::Thinking, "reasoning");
+    let mut acc = ctx.reasoning_accumulator.borrow_mut();
+    let placeholder = crate::json_parser::types::DeltaAccumulator::new();
+    let old = std::mem::replace(&mut *acc, placeholder);
+    let new = old.clear_key(ContentType::Thinking, "reasoning");
+    *acc = new;
 
     let completion_text = full_reasoning
         .as_deref()

@@ -16,7 +16,7 @@ impl MainEffectHandler {
     ///
     /// A `Vec` of zero or more `PipelineEvent`s to be added to `additional_events`
     /// in the caller.
-    pub(in crate::reducer::handler) fn materialize_xsd_retry_last_output(
+    pub(in crate::reducer::boundary) fn materialize_xsd_retry_last_output(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,

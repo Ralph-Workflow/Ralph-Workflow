@@ -5,7 +5,9 @@
 
 use crate::agents::AgentRole;
 use crate::reducer::event::AgentErrorKind;
-use crate::reducer::tests::*;
+use crate::reducer::io_tests::{
+    create_test_state, reduce, PipelineEvent, PipelinePhase, PipelineState,
+};
 
 #[test]
 fn test_agent_invocation_started_preserves_agent_chain_indices() {

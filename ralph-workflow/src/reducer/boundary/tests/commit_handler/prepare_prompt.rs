@@ -2,8 +2,8 @@ use super::super::common::TestFixture;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
 use crate::prompts::PromptHistoryEntry;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{
     AgentChainState, CommitState, ContinuationState, MaterializedCommitInputs,
     MaterializedPromptInput, PipelineState, PromptInputKind, PromptInputRepresentation,

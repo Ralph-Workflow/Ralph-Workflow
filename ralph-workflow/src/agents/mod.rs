@@ -108,7 +108,9 @@ pub use boundary::runtime::RealCcsFilesystem;
 pub use boundary::runtime::{fetch_api_catalog_json, get_env_var};
 pub use cache_environment::CacheEnvironment;
 pub use ccs_env::{CcsEnvironment, CcsFilesystem};
-pub use runtime::{production_timer, ProductionRetryTimer, RetryTimerProvider};
+pub use runtime::{
+    production_timer, ProductionRetryTimer, RetryTimerProvider, RetryTimerProviderDebug,
+};
 
 // Re-export public types for crate-level access
 pub use ccs::is_ccs_ref;

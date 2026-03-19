@@ -182,16 +182,7 @@ pub fn finalize_pipeline(
 
 #[cfg(test)]
 mod tests {
-    use super::{finalize_pipeline, FinalizeContext};
-    use crate::config::Config;
-    use crate::git_helpers::{
-        agent_phase_test_lock, clear_agent_phase_global_state, get_agent_phase_paths_for_test,
-        set_agent_phase_paths_for_test, GitHelpers,
-    };
-    use crate::logger::{Colors, Logger};
-    use crate::pipeline::{AgentPhaseGuard, Timer};
     use crate::reducer::state::{ContinuationState, PipelineState, RunMetrics};
-    use crate::workspace::WorkspaceFs;
 
     #[test]
     fn test_summary_derives_from_reducer_metrics() {
@@ -325,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_generated_files_includes_all_artifacts() {
-        use crate::files::io::agent_files::GENERATED_FILES;
+        use crate::files::agent_files::GENERATED_FILES;
         // Verify GENERATED_FILES contains all known generated artifacts.
         // If a new artifact is added to the pipeline, add it here too.
         // Workspace cleanup must remove the marker because startup/finalization can operate

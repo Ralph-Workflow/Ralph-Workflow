@@ -4,7 +4,7 @@
 //! the `runtime` module for actual sleep implementation.
 
 // Re-export from boundary module for convenience
-pub use crate::agents::{production_timer, RetryTimerProvider};
+pub use crate::agents::{production_timer, RetryTimerProvider, RetryTimerProviderDebug};
 
 #[cfg(test)]
 mod tests {

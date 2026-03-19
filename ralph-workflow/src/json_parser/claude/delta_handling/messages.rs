@@ -45,7 +45,7 @@ impl crate::json_parser::claude::ClaudeParser {
     /// Uses default index "0" for accumulation and follows append-only rendering.
     pub(in crate::json_parser::claude) fn handle_text_delta(
         &self,
-        session: &mut std::cell::RefMut<'_, StreamingSession>,
+        session: &mut StreamingSession,
         text: &str,
     ) -> String {
         let thinking_finalize = self.finalize_thinking_full_mode(session);
@@ -201,7 +201,7 @@ impl crate::json_parser::claude::ClaudeParser {
     /// skip flushing accumulated deltas to avoid duplicate output.
     pub(in crate::json_parser::claude) fn handle_message_stop(
         &self,
-        session: &mut std::cell::RefMut<'_, StreamingSession>,
+        session: &mut StreamingSession,
     ) -> String {
         let c = &self.colors;
 

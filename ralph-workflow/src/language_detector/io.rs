@@ -130,7 +130,7 @@ pub fn count_extensions_with_workspace(
                     }
                     let path = entry.path();
                     if path.is_dir() {
-                        dirs.push(path);
+                        dirs.push(path.to_path_buf());
                     } else if let Some(ext) = path.extension() {
                         let ext_str = ext.to_string_lossy().to_lowercase();
                         *c.entry(ext_str).or_insert(0) += 1;

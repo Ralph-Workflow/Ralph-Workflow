@@ -4,7 +4,7 @@
 //! verifying that appropriate fallback instructions are generated.
 
 use super::super::super::common::TestFixture;
-use crate::reducer::handler::MainEffectHandler;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::state::{PipelineState, PromptMode};
 use crate::workspace::{MemoryWorkspace, Workspace};
 use std::path::Path;

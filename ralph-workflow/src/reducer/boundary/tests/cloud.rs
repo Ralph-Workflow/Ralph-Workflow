@@ -1,7 +1,7 @@
 use super::common::TestFixture;
 use crate::config::types::{CloudConfig, GitAuthMethod, GitRemoteConfig};
 use crate::executor::MockProcessExecutor;
-use crate::reducer::handler::MainEffectHandler;
+use crate::reducer::boundary::MainEffectHandler;
 use std::sync::Arc;
 
 #[test]

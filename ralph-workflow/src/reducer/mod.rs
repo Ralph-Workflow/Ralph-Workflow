@@ -154,11 +154,16 @@ pub mod ui_event;
 #[cfg(test)]
 mod io_tests;
 
+pub use crate::agents::AgentRole;
 pub use boundary::MainEffectHandler;
 pub use effect::{EffectHandler, EffectResult};
 pub use event::PipelineEvent;
+pub use event::PipelinePhase;
 pub use orchestration::{compute_effect_fingerprint, determine_next_effect};
+pub use state::AgentChainState;
+pub use state::CommitState;
 pub use state::PipelineState;
+pub use state::PromptMode;
 pub use state_reduction::reduce;
 pub use ui_event::UIEvent;
 
@@ -170,3 +175,6 @@ pub use event::{
     AgentEvent, CommitEvent, DevelopmentEvent, LifecycleEvent, PlanningEvent, RebaseEvent,
     ReviewEvent, TimeoutOutputKind,
 };
+
+#[cfg(test)]
+pub use io_tests::create_test_state;

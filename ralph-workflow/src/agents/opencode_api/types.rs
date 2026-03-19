@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_catalog_expired_when_old() {
-        let catalog = create_test_catalog();
+        let mut catalog = create_test_catalog();
         catalog.cached_at = Some(
             chrono::Utc::now()
                 - chrono::Duration::seconds(DEFAULT_CACHE_TTL_SECONDS.cast_signed() + 1),
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_catalog_expired_without_timestamp() {
-        let catalog = create_test_catalog();
+        let mut catalog = create_test_catalog();
         catalog.cached_at = None;
         assert!(catalog.is_expired());
     }

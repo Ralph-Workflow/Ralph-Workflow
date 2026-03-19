@@ -60,7 +60,7 @@ impl MainEffectHandler {
     ///
     /// - `CommitContinuationNotSupported` - Continuation mode not supported for commit
     /// - `CommitInputsNotMaterialized` - Inputs not materialized for this attempt
-    pub(in crate::reducer::handler) fn prepare_commit_prompt(
+    pub(in crate::reducer::boundary) fn prepare_commit_prompt(
         &self,
         ctx: &PhaseContext<'_>,
         prompt_mode: PromptMode,
@@ -313,7 +313,7 @@ impl MainEffectHandler {
     ///
     /// Validates that all template placeholders are resolved. If validation fails,
     /// emits `agent_template_variables_invalid` event.
-    pub(in crate::reducer::handler) fn prepare_commit_prompt_with_diff_and_mode(
+    pub(in crate::reducer::boundary) fn prepare_commit_prompt_with_diff_and_mode(
         &self,
         ctx: &PhaseContext<'_>,
         diff_for_prompt: &str,

@@ -1,9 +1,9 @@
 //! Hook verification and monitoring logic.
 
 use crate::files::file_contains_marker;
+use crate::git_helpers::config_state;
+use crate::git_helpers::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
 use crate::git_helpers::repo::{get_hooks_dir_from, resolve_protection_scope_from};
-use crate::git_helpers::runtime::config_state;
-use crate::git_helpers::runtime::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
 use crate::logger::Logger;
 #[cfg(any(test, feature = "test-utils"))]
 use crate::workspace::Workspace;
@@ -49,7 +49,7 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<bool> {
 
     if needs_reinstall {
         logger.warn("Git hooks tampered with or missing — reinstalling");
-        crate::git_helpers::runtime::install::install_hooks_in_repo(&scope.repo_root)?;
+        crate::git_helpers::install::install_hooks_in_repo(&scope.repo_root)?;
         Ok(true)
     } else {
         Ok(false)
@@ -58,8 +58,6 @@ pub fn reinstall_hooks_if_tampered(logger: &Logger) -> io::Result<bool> {
 
 #[cfg(unix)]
 pub fn enforce_hook_permissions(repo_root: &Path, logger: &Logger) {
-    use std::os::unix::fs::PermissionsExt;
-
     let Ok(hooks_dir) = get_hooks_dir_from(repo_root) else {
         return;
     };
@@ -93,6 +91,8 @@ fn is_symlink_hook(path: &Path, logger: &Logger, hook_name: &str) -> bool {
 
 #[cfg(unix)]
 fn restore_hook_permissions_if_loose(path: &Path, logger: &Logger, hook_name: &str) {
+    use std::os::unix::fs::PermissionsExt;
+
     if let Ok(meta) = fs::metadata(path) {
         let mode = meta.permissions().mode() & 0o777;
         if mode != 0o555 {

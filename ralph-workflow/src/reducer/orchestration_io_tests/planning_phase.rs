@@ -3,7 +3,15 @@
 // Tests for planning phase: agent chain initialization, prompt preparation,
 // XSD retry mode, and transition to development phase.
 
-use super::*;
+use crate::reducer::create_test_state;
+use crate::reducer::determine_next_effect;
+use crate::reducer::effect::Effect;
+use crate::reducer::reduce;
+use crate::reducer::AgentRole;
+use crate::reducer::PipelineEvent;
+use crate::reducer::PipelinePhase;
+use crate::reducer::PipelineState;
+use crate::reducer::PromptMode;
 
 #[test]
 fn test_planning_initializes_agent_chain_when_empty() {

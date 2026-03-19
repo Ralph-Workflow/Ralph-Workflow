@@ -61,9 +61,7 @@ use crate::reducer::effect::Effect;
 use crate::reducer::event::PipelinePhase;
 use crate::reducer::state::PipelineState;
 
-pub(in crate::reducer::orchestration) fn determine_next_effect_for_phase(
-    state: &PipelineState,
-) -> Effect {
+pub fn determine_next_effect_for_phase(state: &PipelineState) -> Effect {
     match state.phase {
         PipelinePhase::Planning => planning::determine_planning_effect(state),
         PipelinePhase::Development => development::determine_development_effect(state),
@@ -211,7 +209,7 @@ mod tests {
             agent_chain: AgentChainState {
                 current_role: AgentRole::Developer,
                 retry_cycle: 7,
-                ..Default::default()
+                ..AgentChainState::default()
             },
             ..state
         };

@@ -1,6 +1,6 @@
 use super::super::common::TestFixture;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{ErrorEvent, PipelineEvent};
-use crate::reducer::handler::MainEffectHandler;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]

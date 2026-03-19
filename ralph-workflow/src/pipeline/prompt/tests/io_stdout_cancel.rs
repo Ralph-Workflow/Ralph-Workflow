@@ -17,7 +17,7 @@ fn test_run_with_agent_spawn_cancels_stdout_pump_promptly_when_idle_timeout_enfo
     use crate::pipeline::Timer;
     use crate::workspace::MemoryWorkspace;
 
-    use super::super::agent_spawn_test::run_with_agent_spawn_with_monitor_config;
+    use super::super::io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;
     use super::super::types::{PipelineRuntime, PromptCommand};
 
     const MAX_ADDITIONAL_READS: usize = 10;

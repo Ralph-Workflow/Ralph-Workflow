@@ -229,6 +229,29 @@ impl<'de> Deserialize<'de> for AgentChainState {
     }
 }
 
+impl Default for AgentChainState {
+    fn default() -> Self {
+        Self {
+            agents: Arc::from(vec![]),
+            current_agent_index: 0,
+            models_per_agent: Arc::from(vec![]),
+            current_model_index: 0,
+            retry_cycle: 0,
+            max_cycles: 3,
+            retry_delay_ms: default_retry_delay_ms(),
+            backoff_multiplier: default_backoff_multiplier(),
+            max_backoff_ms: default_max_backoff_ms(),
+            backoff_pending_ms: None,
+            current_role: AgentRole::Developer,
+            current_drain: default_current_drain(),
+            current_mode: DrainMode::Normal,
+            rate_limit_continuation_prompt: None,
+            last_session_id: None,
+            last_failure_reason: None,
+        }
+    }
+}
+
 const fn default_retry_delay_ms() -> u64 {
     1000
 }
@@ -409,9 +432,9 @@ impl AgentChainState {
                     .collect::<Vec<_>>()
                     .join(&b',');
                 let line: Vec<u8> = std::iter::empty()
-                    .chain(agent.as_bytes())
+                    .chain(agent.as_bytes().iter().copied())
                     .chain([b'|'])
-                    .chain(&models_bytes)
+                    .chain(models_bytes.iter().copied())
                     .chain([b'\n'])
                     .collect();
                 line
@@ -561,7 +584,7 @@ mod legacy_rate_limit_prompt_tests {
             AgentRole::Reviewer,
         );
 
-        let v = serde_json::to_value(&state).expect("serialize AgentChainState");
+        let mut v = serde_json::to_value(&state).expect("serialize AgentChainState");
         v["rate_limit_continuation_prompt"] = serde_json::Value::String("legacy prompt".into());
 
         let json = serde_json::to_string(&v).expect("serialize JSON value");

@@ -75,7 +75,7 @@ impl MainEffectHandler {
     ///
     /// `EffectResult` with `DevelopmentPromptPrepared` event, plus optional
     /// `XsdRetryLastOutputMaterialized` and `PromptInputOversizeDetected` events for XSD retry mode.
-    pub(in crate::reducer::handler) fn prepare_development_prompt(
+    pub(in crate::reducer::boundary) fn prepare_development_prompt(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

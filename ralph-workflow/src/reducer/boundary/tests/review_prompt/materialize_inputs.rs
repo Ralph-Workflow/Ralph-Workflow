@@ -1,7 +1,7 @@
 use super::super::common::TestFixture;
 use super::AtomicWriteEnforcingWorkspace;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::PipelineState;
 use crate::workspace::MemoryWorkspace;
 use crate::workspace::Workspace;

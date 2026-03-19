@@ -2,13 +2,19 @@
 //
 // Contains the ClaudeParser struct and its core methods.
 
+use std::cell::Ref;
+use std::cell::RefCell;
+use std::cell::RefMut;
 use std::collections::HashMap;
+use std::io::BufRead;
+use std::rc::Rc;
 
-use super::io::ParserState;
-use super::printer::{Printable, StdoutPrinter};
-use super::streaming_state::StreamingSession;
-use super::terminal::TerminalMode;
-use super::types::ContentBlock;
+use crate::json_parser::claude::io::ParserState;
+use crate::json_parser::health::StreamingQualityMetrics;
+use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
+use crate::json_parser::printer::Printable;
+use crate::json_parser::printer::StdoutPrinter;
+use crate::json_parser::types::{ContentBlock, ContentBlockDelta};
 
 /// Claude event parser
 ///
@@ -128,8 +134,8 @@ impl ClaudeParser {
     ///
     /// Note: downstream crates should avoid relying on this API in production builds.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn printer(&self) -> StdoutPrinter {
-        self.printer.clone()
+    pub fn printer(&self) -> Rc<RefCell<dyn Printable>> {
+        Rc::new(RefCell::new(self.printer.clone()))
     }
 
     pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
@@ -212,7 +218,7 @@ impl ClaudeParser {
             self.state
                 .with_session_mut(|session| self.finalize_in_place_full_mode(session))
         };
-        let c = &self.colors;
+        let c = self.colors.clone();
         let prefix = &self.display_name;
 
         let output = match event {
@@ -240,7 +246,7 @@ impl ClaudeParser {
             ),
             ClaudeEvent::StreamEvent { event } => self.parse_stream_event(event),
             ClaudeEvent::Unknown => {
-                format_unknown_json_event(line, prefix, *c, self.verbosity.is_verbose())
+                format_unknown_json_event(line, prefix, c, self.verbosity.is_verbose())
             }
         };
 
@@ -312,34 +318,38 @@ impl ClaudeParser {
                 index: Some(index),
                 content_block: Some(block),
             } => {
-                session.on_content_block_start(index);
-                match &block {
-                    ContentBlock::Text { text: Some(t) } if !t.is_empty() => {
-                        session.on_text_delta(index, t);
-                    }
-                    ContentBlock::ToolUse { name, input } => {
-                        if let Some(n) = name {
-                            session.set_tool_name(index, Some(n.clone()));
+                self.state.with_session_mut(|session| {
+                    session.on_content_block_start(index);
+                    match &block {
+                        ContentBlock::Text { text: Some(t) } if !t.is_empty() => {
+                            session.on_text_delta(index, t);
                         }
+                        ContentBlock::ToolUse { name, input } => {
+                            if let Some(n) = name {
+                                session.set_tool_name(index, Some(n.clone()));
+                            }
 
-                        if let Some(i) = input {
-                            let input_str = if let serde_json::Value::String(s) = &i {
-                                s.clone()
-                            } else {
-                                format_tool_input(i)
-                            };
-                            session.on_tool_input_delta(index, &input_str);
+                            if let Some(i) = input {
+                                let input_str = if let serde_json::Value::String(s) = &i {
+                                    s.clone()
+                                } else {
+                                    format_tool_input(i)
+                                };
+                                session.on_tool_input_delta(index, &input_str);
+                            }
                         }
+                        _ => {}
                     }
-                    _ => {}
-                }
+                });
                 String::new()
             }
             StreamInnerEvent::ContentBlockStart {
                 index: Some(index),
                 content_block: None,
             } => {
-                session.on_content_block_start(index);
+                self.state.with_session_mut(|session| {
+                    session.on_content_block_start(index);
+                });
                 String::new()
             }
             StreamInnerEvent::ContentBlockStart { .. } => String::new(),
@@ -347,14 +357,12 @@ impl ClaudeParser {
                 index: Some(index),
                 delta: Some(delta),
             } => {
-                let idx = *index;
+                let idx = index;
                 let del = delta.clone();
-                drop(session);
                 self.handle_content_block_delta_inner(idx, del)
             }
             StreamInnerEvent::TextDelta { text: Some(text) } => {
                 let txt = text.clone();
-                drop(session);
                 self.handle_text_delta_inner(&txt)
             }
             StreamInnerEvent::ContentBlockStop { .. } => String::new(),
@@ -374,11 +382,7 @@ impl ClaudeParser {
         }
     }
 
-    fn handle_content_block_delta_inner(
-        &self,
-        index: u64,
-        delta: crate::json_parser::types::Delta,
-    ) -> String {
+    fn handle_content_block_delta_inner(&self, index: u64, delta: ContentBlockDelta) -> String {
         self.state
             .with_session_mut(|session| self.handle_content_block_delta(session, index, delta))
     }
@@ -391,5 +395,164 @@ impl ClaudeParser {
     fn handle_message_stop_inner(&self) -> String {
         self.state
             .with_session_mut(|session| self.handle_message_stop(session))
+    }
+}
+
+impl ClaudeParser {
+    #[expect(
+        clippy::print_stderr,
+        reason = "debug-only output for verbose debugging"
+    )]
+    pub fn parse_stream<R: BufRead>(
+        &mut self,
+        mut reader: R,
+        workspace: &dyn crate::workspace::Workspace,
+    ) -> std::io::Result<()> {
+        let c = self.colors.clone();
+        let monitor = HealthMonitor::new("Claude");
+        let logging_enabled = self.log_path.is_some();
+        let mut log_buffer: Vec<u8> = Vec::new();
+
+        let mut incremental_parser = IncrementalNdjsonParser::new();
+
+        let seen_success_result = std::cell::Cell::new(false);
+
+        loop {
+            let events = {
+                let chunk = reader.fill_buf()?;
+                if chunk.is_empty() {
+                    break;
+                }
+                let consumed = chunk.len();
+                let data: Vec<u8> = chunk.to_vec();
+                reader.consume(consumed);
+
+                let (new_parser, events) = incremental_parser.feed_and_get_events(&data);
+                incremental_parser = new_parser;
+                events
+            };
+
+            events.into_iter().for_each(|line| {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    return;
+                }
+
+                let should_skip_result = if trimmed.starts_with('{') {
+                    let has_errors_with_content =
+                        serde_json::from_str::<serde_json::Value>(trimmed).is_ok_and(|json| {
+                            json.get("errors")
+                                .and_then(|v| v.as_array())
+                                .is_some_and(|arr| {
+                                    arr.iter()
+                                        .any(|e| e.as_str().is_some_and(|s| !s.trim().is_empty()))
+                                })
+                        });
+
+                    if let Ok(ClaudeEvent::Result {
+                        subtype,
+                        duration_ms,
+                        error,
+                        ..
+                    }) = serde_json::from_str::<ClaudeEvent>(trimmed)
+                    {
+                        let is_error_result = subtype.as_deref() != Some("success");
+
+                        let is_spurious_glm_error = is_error_result
+                            && duration_ms.unwrap_or(0) < 100
+                            && (error.is_none()
+                                || error.as_ref().is_some_and(std::string::String::is_empty))
+                            && !has_errors_with_content;
+
+                        if is_spurious_glm_error && seen_success_result.get() {
+                            true
+                        } else if subtype.as_deref() == Some("success") {
+                            seen_success_result.set(true);
+                            false
+                        } else if is_spurious_glm_error {
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if self.verbosity.is_debug() {
+                    eprintln!(
+                        "{}[DEBUG]{} {}{}{}",
+                        c.dim(),
+                        c.reset(),
+                        c.dim(),
+                        &line,
+                        c.reset()
+                    );
+                }
+
+                if should_skip_result {
+                    if logging_enabled {
+                        let _ = writeln!(log_buffer, "{line}");
+                    }
+                    monitor.record_control_event();
+                    return;
+                }
+
+                match self.parse_event(&line) {
+                    Some(output) => {
+                        if trimmed.starts_with('{') {
+                            if let Ok(event) = serde_json::from_str::<ClaudeEvent>(&line) {
+                                if Self::is_partial_event(&event) {
+                                    monitor.record_partial_event();
+                                } else {
+                                    monitor.record_parsed();
+                                }
+                            } else {
+                                monitor.record_parsed();
+                            }
+                        } else {
+                            monitor.record_parsed();
+                        }
+                        self.with_printer_mut(|printer| {
+                            if write!(printer, "{output}").is_ok() {
+                                printer.flush().ok();
+                            }
+                        });
+                    }
+                    None => {
+                        if trimmed.starts_with('{') {
+                            if let Ok(event) = serde_json::from_str::<ClaudeEvent>(&line) {
+                                if Self::is_control_event(&event) {
+                                    monitor.record_control_event();
+                                } else {
+                                    monitor.record_unknown_event();
+                                }
+                            } else {
+                                monitor.record_parse_error();
+                            }
+                        } else {
+                            monitor.record_ignored();
+                        }
+                    }
+                }
+
+                if logging_enabled {
+                    let _ = writeln!(log_buffer, "{line}");
+                }
+            });
+        }
+
+        if let Some(log_path) = &self.log_path {
+            workspace.append_bytes(log_path, &log_buffer)?;
+        }
+        if let Some(warning) = monitor.check_and_warn(c) {
+            self.with_printer_mut(|printer| {
+                writeln!(printer, "{warning}").ok();
+                printer.flush().ok();
+            });
+        }
+        Ok(())
     }
 }

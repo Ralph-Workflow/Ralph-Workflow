@@ -1,8 +1,8 @@
 use super::super::super::common::TestFixture;
 use super::super::AtomicWriteEnforcingWorkspace;
 use super::ReadFailingWorkspace;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode, SameAgentRetryReason};
 use crate::workspace::MemoryWorkspace;
 use std::io;

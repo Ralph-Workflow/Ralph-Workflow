@@ -9,8 +9,8 @@
 use super::super::common::TestFixture;
 use crate::agents::AgentRole;
 use crate::executor::MockProcessExecutor;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{AgentEvent, PipelineEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{AgentChainState, PipelineState};
 use crate::workspace::MemoryWorkspace;
 use std::sync::Arc;
@@ -89,7 +89,7 @@ fn test_invoke_agent_prefers_same_agent_retry_prompt_over_rate_limit_continuatio
     handler.state.continuation.same_agent_retry_reason =
         Some(crate::reducer::state::SameAgentRetryReason::Timeout);
 
-    let retry_preamble = crate::reducer::handler::retry_guidance::same_agent_retry_preamble(
+    let retry_preamble = crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(
         &handler.state.continuation,
     );
     let retry_prompt = format!(

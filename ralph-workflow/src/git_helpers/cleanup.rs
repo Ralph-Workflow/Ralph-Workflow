@@ -111,11 +111,11 @@ pub(crate) fn cleanup_agent_phase_at(
     cleanup_git_wrapper_dir(ralph_dir);
 
     if crate::git_helpers::repo::resolve_protection_scope_from(repo_root).is_ok() {
-        crate::git_helpers::runtime::hooks::uninstall_hooks_silent_at(repo_root);
+        crate::git_helpers::hooks::uninstall_hooks_silent_at(repo_root);
     } else if let Some(hooks_dir) = resolved_hooks_dir.as_deref() {
-        crate::git_helpers::runtime::hooks::uninstall_hooks_silent_in_hooks_dir(hooks_dir);
+        crate::git_helpers::hooks::uninstall_hooks_silent_in_hooks_dir(hooks_dir);
     } else {
-        crate::git_helpers::runtime::hooks::uninstall_hooks_silent_at(repo_root);
+        crate::git_helpers::hooks::uninstall_hooks_silent_at(repo_root);
     }
 
     cleanup_hook_state_files(ralph_dir);
@@ -135,7 +135,7 @@ pub(crate) fn cleanup_prior_wrapper(repo_root: &Path) {
     }
 
     let wrapper_dir = resolve_wrapper_dir_from_track_file(&ralph_dir);
-    if let Some(dir) = wrapper_dir {
+    if let Some(_dir) = wrapper_dir {
         let _ = fs::remove_file(track_file_path_for_ralph_dir(&ralph_dir));
     }
 }

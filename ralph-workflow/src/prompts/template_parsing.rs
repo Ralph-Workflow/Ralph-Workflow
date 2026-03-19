@@ -152,7 +152,7 @@ pub fn format_issues_summary_impl(issues: &IssuesSummary) -> Option<String> {
     let s = issues
         .description
         .as_ref()
-        .map_or(s.as_str(), |desc| format!("{s} ({desc})"));
+        .map_or_else(|| s.clone(), |desc| format!("{s} ({desc})"));
     Some(format!("{s}\n"))
 }
 
@@ -249,17 +249,17 @@ fn extract_vars_recursive(bytes: &[u8], i: usize, line: usize) -> Vec<VariableIn
 }
 
 pub fn extract_partials_impl(content: &str) -> Vec<String> {
-    extract_partials_recursive(content.as_bytes(), 0)
+    extract_partials_recursive(content.as_bytes(), 0, content)
 }
 
-fn extract_partials_recursive(bytes: &[u8], i: usize) -> Vec<String> {
+fn extract_partials_recursive(bytes: &[u8], i: usize, content: &str) -> Vec<String> {
     if i >= bytes.len().saturating_sub(2) {
         return Vec::new();
     }
 
     if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'#' {
         match skip_comment_partial(bytes, i) {
-            Some(next) => extract_partials_recursive(bytes, next),
+            Some(next) => extract_partials_recursive(bytes, next, content),
             None => Vec::new(),
         }
     } else if bytes[i] == b'{' && bytes[i + 1] == b'{' && i + 2 < bytes.len() {
@@ -289,16 +289,16 @@ fn extract_partials_recursive(bytes: &[u8], i: usize) -> Vec<String> {
 
             if j < bytes.len() && bytes[j] == b'}' && j + 1 < bytes.len() && bytes[j + 1] == b'}' {
                 let name = content[name_start..j].trim();
-                std::iter::once(name.to_string())
+                return std::iter::once(name.to_string())
                     .filter(|s| !s.is_empty())
-                    .chain(extract_partials_recursive(bytes, j + 2))
-                    .collect()
+                    .chain(extract_partials_recursive(bytes, j + 2, content))
+                    .collect::<Vec<_>>();
             }
         }
 
-        extract_partials_recursive(bytes, i + 1)
+        extract_partials_recursive(bytes, i + 1, content)
     } else {
-        extract_partials_recursive(bytes, i + 1)
+        extract_partials_recursive(bytes, i + 1, content)
     }
 }
 
@@ -341,7 +341,7 @@ fn process_byte(
     bytes: &[u8],
     mut state: ValidationState,
     i: usize,
-    byte: u8,
+    _byte: u8,
 ) -> ValidationState {
     if i >= bytes.len() {
         if let Some((line, _)) = state.conditional_stack.first() {

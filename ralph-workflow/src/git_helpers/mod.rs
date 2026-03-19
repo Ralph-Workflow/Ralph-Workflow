@@ -47,21 +47,37 @@ fn git2_to_io_error_impl(err: &git2::Error) -> io::Error {
     io::Error::new(kind, err.to_string())
 }
 
+pub mod agent_phase_state;
 pub mod branch;
-
+pub mod cleanup;
+pub mod config_state;
+pub mod hooks;
+pub mod hooks_dir;
 pub mod identity;
-mod rebase;
+pub mod install;
+pub mod lock;
+pub mod marker;
+pub mod path_wrapper;
+pub mod phase;
+pub mod rebase;
+mod repo;
+mod review_baseline;
 /// Runtime module containing OS-boundary code (std::fs, std::process, std::env, Mutex).
 /// This module is exempt from functional Rust dylint rules.
 pub mod runtime;
+pub mod runtime_identity;
+pub mod script;
+mod start_commit;
+pub mod uninstall;
+pub mod verify;
+pub mod worktree;
+pub mod wrapper;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod rebase_checkpoint;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod rebase_state_machine;
-
-mod repo;
 
 /// # Errors
 ///
@@ -73,25 +89,21 @@ pub fn get_hooks_dir() -> io::Result<std::path::PathBuf> {
 pub(crate) fn get_hooks_dir_in_repo(repo_root: &std::path::Path) -> io::Result<std::path::PathBuf> {
     repo::get_hooks_dir_from(repo_root)
 }
-mod review_baseline;
-mod start_commit;
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use branch::get_default_branch_at;
 pub use branch::{get_default_branch, is_main_or_master_branch};
+#[cfg(any(test, feature = "test-utils"))]
+pub use hooks::{file_contains_marker_with_workspace, verify_hook_integrity_with_workspace};
+pub use hooks::{
+    install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
+    uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
+};
+pub use hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 pub use rebase::{
     abort_rebase, continue_rebase, get_conflict_markers_for_file, get_conflicted_files,
     rebase_in_progress, rebase_onto, RebaseResult,
 };
-#[cfg(any(test, feature = "test-utils"))]
-pub use runtime::hooks::{
-    file_contains_marker_with_workspace, verify_hook_integrity_with_workspace,
-};
-pub use runtime::hooks::{
-    install_hooks_in_repo, reinstall_hooks_if_tampered, uninstall_hooks, uninstall_hooks_in_repo,
-    uninstall_hooks_silent_in_hooks_dir, verify_hooks_removed,
-};
-pub use runtime::hooks::{HOOK_MARKER, RALPH_HOOK_NAMES};
 
 // Types that are part of the public API but not used in binary
 #[cfg(any(test, feature = "test-utils"))]
@@ -127,7 +139,13 @@ pub use review_baseline::{
     get_baseline_summary, get_review_baseline_info, load_review_baseline, update_review_baseline,
     ReviewBaseline,
 };
-pub use runtime::wrapper::{
+#[cfg(any(test, feature = "test-utils"))]
+pub use start_commit::load_start_point_with_workspace;
+pub use start_commit::{
+    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
+    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
+};
+pub use wrapper::{
     capture_head_oid, cleanup_agent_phase_protections_silent_at, cleanup_agent_phase_silent,
     cleanup_agent_phase_silent_at, cleanup_orphaned_marker, cleanup_orphaned_wrapper_at,
     clear_agent_phase_global_state, detect_unauthorized_commit, disable_git_wrapper,
@@ -135,16 +153,10 @@ pub use runtime::wrapper::{
     start_agent_phase_in_repo, try_remove_ralph_dir, verify_ralph_dir_removed,
     verify_wrapper_cleaned, GitHelpers, ProtectionCheckResult,
 };
-#[cfg(any(test, feature = "test-utils"))]
-pub use start_commit::load_start_point_with_workspace;
-pub use start_commit::{
-    get_current_head_oid, get_current_head_oid_at, get_start_commit_summary, load_start_point,
-    reset_start_commit, save_start_commit, save_start_commit_with_workspace, StartPoint,
-};
 
 // Workspace-aware variants (used by tests and by code paths that must operate
 // without requiring a real git repository).
-pub use runtime::wrapper::{
+pub use wrapper::{
     cleanup_orphaned_marker_with_workspace, create_marker_with_workspace,
     marker_exists_with_workspace, remove_marker_with_workspace,
 };
@@ -163,7 +175,7 @@ pub use rebase_state_machine::RecoveryAction;
 
 // Re-export rebase lock functions for tests only
 #[cfg(any(test, feature = "test-utils"))]
-pub use runtime::lock::{acquire_rebase_lock, release_rebase_lock};
+pub use lock::{acquire_rebase_lock, release_rebase_lock};
 
 #[cfg(test)]
 mod tests;

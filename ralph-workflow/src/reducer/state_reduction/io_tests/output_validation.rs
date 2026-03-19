@@ -23,8 +23,16 @@ fn test_output_validation_failed_retries_within_limit() {
 
 #[test]
 fn test_output_validation_failed_increments_attempt_counter() {
-    let mut state = create_test_state();
-    state.continuation.invalid_output_attempts = 1;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            continuation: ContinuationState {
+                invalid_output_attempts: 1,
+                ..base.continuation.clone()
+            },
+            ..base
+        }
+    };
 
     let new_state = reduce(
         state,
@@ -60,17 +68,15 @@ fn test_output_validation_failed_switches_agent_at_limit() {
 
 #[test]
 fn test_output_validation_failed_resets_counter_on_agent_switch() {
-    use crate::reducer::state::ContinuationState;
-
-    let mut state = PipelineState {
+    let state = PipelineState {
         continuation: ContinuationState {
             xsd_retry_count: 1,
             max_xsd_retry_count: 2,
+            invalid_output_attempts: 2,
             ..ContinuationState::new()
         },
         ..create_test_state()
     };
-    state.continuation.invalid_output_attempts = 2;
 
     let new_state = reduce(
         state,
@@ -84,8 +90,13 @@ fn test_output_validation_failed_resets_counter_on_agent_switch() {
 
 #[test]
 fn test_output_validation_failed_stays_in_development_phase() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Development;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Development,
+            ..base
+        }
+    };
 
     let new_state = reduce(
         state,
@@ -135,10 +146,15 @@ fn test_output_validation_failed_respects_configured_xsd_retry_limit() {
 
 #[test]
 fn test_review_output_validation_failed_increments_state_counter() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 2;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 2,
+            ..base
+        }
+    };
 
     let new_state = reduce(
         state,
@@ -156,25 +172,21 @@ fn test_review_output_validation_failed_increments_state_counter() {
 
 #[test]
 fn test_review_output_validation_failed_switches_agent_after_limit() {
-    use crate::reducer::state::ContinuationState;
-
-    let mut state = PipelineState {
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        reviewer_pass: 0,
+        total_reviewer_passes: 2,
         continuation: ContinuationState {
             same_agent_retry_count: 1,
             same_agent_retry_pending: true,
-            same_agent_retry_reason: Some(
-                crate::reducer::state::SameAgentRetryReason::InternalError,
-            ),
+            same_agent_retry_reason: Some(SameAgentRetryReason::InternalError),
             xsd_retry_count: 1,
             max_xsd_retry_count: 2,
+            invalid_output_attempts: 2,
             ..ContinuationState::new()
         },
         ..create_test_state()
     };
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 2;
-    state.continuation.invalid_output_attempts = 2;
 
     let new_state = reduce(
         state,
@@ -207,10 +219,15 @@ fn test_review_output_validation_failed_switches_agent_after_limit() {
 
 #[test]
 fn test_review_pass_completed_clean_exits_review_phase() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 2;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 2,
+            ..base
+        }
+    };
 
     let new_state = reduce(state, PipelineEvent::review_pass_completed_clean(0));
 
@@ -225,11 +242,16 @@ fn test_review_pass_completed_clean_exits_review_phase() {
 
 #[test]
 fn test_review_pass_completed_clean_on_last_pass_clears_previous_phase() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 1;
-    state.previous_phase = Some(PipelinePhase::Development);
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 1,
+            previous_phase: Some(PipelinePhase::Development),
+            ..base
+        }
+    };
 
     let new_state = reduce(state, PipelineEvent::review_pass_completed_clean(0));
 
@@ -240,10 +262,18 @@ fn test_review_pass_completed_clean_on_last_pass_clears_previous_phase() {
 
 #[test]
 fn test_review_pass_started_does_not_reset_invalid_output_attempts_on_retry() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.continuation.invalid_output_attempts = 1;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            continuation: ContinuationState {
+                invalid_output_attempts: 1,
+                ..base.continuation.clone()
+            },
+            ..base
+        }
+    };
 
     let new_state = reduce(state, PipelineEvent::review_pass_started(0));
 
@@ -256,20 +286,21 @@ fn test_review_pass_started_does_not_reset_invalid_output_attempts_on_retry() {
 
 #[test]
 fn test_review_pass_started_preserves_agent_chain_on_retry() {
-    use crate::reducer::state::ContinuationState;
-
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 2;
-    // Set xsd_retry_count to max-1 so next validation failure triggers agent switch.
-    state.continuation = ContinuationState {
-        xsd_retry_count: 1,
-        max_xsd_retry_count: 2,
-        ..ContinuationState::new()
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 2,
+            continuation: ContinuationState {
+                xsd_retry_count: 1,
+                max_xsd_retry_count: 2,
+                ..ContinuationState::new()
+            },
+            ..base
+        }
     };
 
-    // Simulate switching agents due to XSD retry limit reached.
     let state = reduce(
         state,
         PipelineEvent::review_output_validation_failed(0, 0, None),
@@ -279,7 +310,6 @@ fn test_review_pass_started_preserves_agent_chain_on_retry() {
         "Precondition: review_output_validation_failed should have switched agents when XSD retry limit reached"
     );
 
-    // Orchestration can re-emit PassStarted for the same pass during retries.
     let new_state = reduce(state.clone(), PipelineEvent::review_pass_started(0));
 
     assert_eq!(
@@ -290,10 +320,18 @@ fn test_review_pass_started_preserves_agent_chain_on_retry() {
 
 #[test]
 fn test_review_pass_started_resets_invalid_output_attempts_for_new_pass() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.continuation.invalid_output_attempts = 2;
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            continuation: ContinuationState {
+                invalid_output_attempts: 2,
+                ..base.continuation.clone()
+            },
+            ..base
+        }
+    };
 
     let new_state = reduce(state, PipelineEvent::review_pass_started(1));
 
@@ -303,10 +341,15 @@ fn test_review_pass_started_resets_invalid_output_attempts_for_new_pass() {
 
 #[test]
 fn test_review_phase_completed_resets_commit_state() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.commit = CommitState::Committed {
-        hash: "abc123".to_string(),
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            commit: CommitState::Committed {
+                hash: "abc123".to_string(),
+            },
+            ..base
+        }
     };
 
     let new_state = reduce(state, PipelineEvent::review_phase_completed(true));
@@ -318,12 +361,17 @@ fn test_review_phase_completed_resets_commit_state() {
 
 #[test]
 fn test_review_completed_no_issues_on_last_pass_resets_commit_state() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Review;
-    state.reviewer_pass = 0;
-    state.total_reviewer_passes = 1;
-    state.commit = CommitState::Committed {
-        hash: "abc123".to_string(),
+    let state = {
+        let base = create_test_state();
+        PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 0,
+            total_reviewer_passes: 1,
+            commit: CommitState::Committed {
+                hash: "abc123".to_string(),
+            },
+            ..base
+        }
     };
 
     let new_state = reduce(state, PipelineEvent::review_completed(0, false));

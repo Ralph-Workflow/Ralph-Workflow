@@ -39,7 +39,7 @@ impl MainEffectHandler {
     ///
     /// - `GitAddAllFailed` - Failed to stage changes
     /// - `GitAddSpecificFailed` - Failed to stage specific paths
-    pub(in crate::reducer::handler) fn create_commit(
+    pub(in crate::reducer::boundary) fn create_commit(
         ctx: &PhaseContext<'_>,
         message: String,
         files: &[String],
@@ -90,7 +90,7 @@ impl MainEffectHandler {
     /// # Events Emitted
     ///
     /// - `commit_skipped` - Commit skipped with reason
-    pub(in crate::reducer::handler) const fn skip_commit(
+    pub(in crate::reducer::boundary) const fn skip_commit(
         _ctx: &mut PhaseContext<'_>,
         reason: String,
     ) -> EffectResult {
@@ -110,7 +110,7 @@ impl MainEffectHandler {
     /// # Errors
     ///
     /// - `GitStatusFailed` - Unable to determine working directory status
-    pub(in crate::reducer::handler) fn check_uncommitted_changes_before_termination(
+    pub(in crate::reducer::boundary) fn check_uncommitted_changes_before_termination(
         ctx: &PhaseContext<'_>,
     ) -> Result<EffectResult> {
         use crate::git_helpers::git_snapshot_in_repo;
@@ -159,7 +159,7 @@ impl MainEffectHandler {
     /// # Errors
     ///
     /// - `GitStatusFailed` - Unable to determine working directory status
-    pub(in crate::reducer::handler) fn check_residual_files(
+    pub(in crate::reducer::boundary) fn check_residual_files(
         ctx: &PhaseContext<'_>,
         pass: u8,
     ) -> Result<EffectResult> {

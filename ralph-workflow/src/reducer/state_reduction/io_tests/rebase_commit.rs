@@ -4,6 +4,11 @@
 // and commit generation/created state transitions.
 
 use super::*;
+use crate::reducer::create_test_state;
+use crate::reducer::event::{PipelineEvent, PipelinePhase, RebasePhase};
+use crate::reducer::state::{CommitState, PipelineState, RebaseState};
+use crate::reducer::state_reduction::reduce;
+use crate::reducer::AgentRole;
 
 #[test]
 fn test_reduce_rebase_started() {
@@ -72,27 +77,27 @@ fn test_reduce_commit_created() {
 
 #[test]
 fn test_reduce_rebase_full_state_machine() {
-    let mut state = create_test_state();
+    let state = create_test_state();
 
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::rebase_started(RebasePhase::Initial, "main".to_string()),
     );
     assert!(matches!(state.rebase, RebaseState::InProgress { .. }));
 
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::rebase_conflict_detected(vec![std::path::PathBuf::from("file1.txt")]),
     );
     assert!(matches!(state.rebase, RebaseState::Conflicted { .. }));
 
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::rebase_conflict_resolved(vec![std::path::PathBuf::from("file1.txt")]),
     );
     assert!(matches!(state.rebase, RebaseState::InProgress { .. }));
 
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::rebase_succeeded(RebasePhase::Initial, "def456".to_string()),
     );
@@ -101,12 +106,12 @@ fn test_reduce_rebase_full_state_machine() {
 
 #[test]
 fn test_reduce_commit_full_state_machine() {
-    let mut state = create_test_state();
+    let state = create_test_state();
 
-    state = reduce(state, PipelineEvent::commit_generation_started());
+    let state = reduce(state, PipelineEvent::commit_generation_started());
     assert!(matches!(state.commit, CommitState::Generating { .. }));
 
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::commit_created("abc123".to_string(), "test commit".to_string()),
     );

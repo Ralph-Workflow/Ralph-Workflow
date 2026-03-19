@@ -54,7 +54,7 @@ fn termination_decision(
     now: std::time::Instant,
     term_deadline: std::time::Instant,
     kill_deadline: std::time::Instant,
-    pid: i32,
+    _pid: i32,
 ) -> TerminationStage {
     if now < term_deadline {
         TerminationStage::WaitAndTerm
@@ -222,9 +222,10 @@ fn build_agent_command(config: &AgentSpawnConfig) -> std::process::Command {
         });
     }
 
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    cmd
 }
 
 fn spawn_agent_child(cmd: &mut std::process::Command) -> io::Result<std::process::Child> {

@@ -10,27 +10,26 @@ use crate::reducer::state::PipelineState;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// Helper to create a test execution step with string pool.
-fn create_test_step_with_pool(iteration: u32, pool: &mut StringPool) -> ExecutionStep {
-    ExecutionStep::new_with_pool(
+fn create_test_step_with_pool(iteration: u32, pool: StringPool) -> (ExecutionStep, StringPool) {
+    let (step, pool) = ExecutionStep::new_with_pool(
         "Development",
         iteration,
         "agent_invoked",
         StepOutcome::success(Some("output".to_string()), vec!["file.rs".to_string()]),
         pool,
-    )
-    .with_agent_pooled("test-agent", pool)
-    .with_duration(5)
+    );
+    let (step, pool) = step.with_agent_pooled("test-agent", pool);
+    (step.with_duration(5), pool)
 }
 
-/// Helper to create a large test pipeline state.
 fn create_large_state(history_size: usize) -> PipelineState {
     let mut state = PipelineState::initial(1000, 5);
     let mut pool = StringPool::new();
 
     for i in 0..history_size {
-        let step =
-            create_test_step_with_pool(u32::try_from(i).expect("index fits in u32"), &mut pool);
+        let (step, pool_next) =
+            create_test_step_with_pool(u32::try_from(i).expect("index fits in u32"), pool);
+        pool = pool_next;
         state.add_execution_step(step, history_size);
     }
 
@@ -39,8 +38,8 @@ fn create_large_state(history_size: usize) -> PipelineState {
 
 #[test]
 fn regression_test_execution_step_memory_footprint() {
-    let mut pool = StringPool::new();
-    let step = create_test_step_with_pool(1, &mut pool);
+    let pool = StringPool::new();
+    let (step, _pool) = create_test_step_with_pool(1, pool);
     let heap_size = estimate_execution_step_heap_bytes_core_fields(&step);
 
     // After optimizations (Arc<str> + Box<str>), should be <= 60 bytes per entry
@@ -58,11 +57,10 @@ fn regression_test_execution_step_memory_footprint() {
 
 #[test]
 fn regression_test_string_pool_sharing() {
-    let mut pool = StringPool::new();
+    let pool = StringPool::new();
 
-    // Create multiple steps with the same phase and agent
-    let step1 = create_test_step_with_pool(1, &mut pool);
-    let step2 = create_test_step_with_pool(2, &mut pool);
+    let (step1, pool) = create_test_step_with_pool(1, pool);
+    let (step2, pool) = create_test_step_with_pool(2, pool);
 
     // Verify Arc sharing (same pointer)
     assert!(
@@ -160,9 +158,9 @@ fn regression_test_execution_history_bounded_growth() {
     let mut state = PipelineState::initial(u32::try_from(limit).expect("limit fits in u32"), 5);
     let mut pool = StringPool::new();
 
-    // Add more entries than the limit
     for i in 0..1000 {
-        let step = create_test_step_with_pool(i, &mut pool);
+        let (step, pool_next) = create_test_step_with_pool(i, pool);
+        pool = pool_next;
         state.add_execution_step(step, limit);
     }
 
@@ -277,15 +275,10 @@ fn regression_test_checkpoint_size_scaling() {
 
 #[test]
 fn regression_test_string_pool_memory_bounded() {
-    // Verify that string pool doesn't grow unboundedly
-    let mut pool = StringPool::new();
+    let pool = (0..1000).fold(StringPool::new(), |pool, i| {
+        create_test_step_with_pool(i, pool).1
+    });
 
-    // Create many steps with the same phase and agent
-    for i in 0..1000 {
-        let _ = create_test_step_with_pool(i, &mut pool);
-    }
-
-    // Pool should still only contain 2 unique strings (phase and agent)
     assert_eq!(
         pool.len(),
         2,
@@ -297,12 +290,15 @@ fn regression_test_string_pool_memory_bounded() {
 #[test]
 fn regression_test_arc_str_vs_string_memory() {
     // Demonstrate memory savings of Arc<str> vs String for repeated values
-    let mut pool = StringPool::new();
+    let pool = StringPool::new();
+    let mut pool = pool;
     let mut steps = Vec::new();
 
     // Create 100 steps with the same phase
     for i in 0..100 {
-        steps.push(create_test_step_with_pool(i, &mut pool));
+        let (step, pool_next) = create_test_step_with_pool(i, pool);
+        pool = pool_next;
+        steps.push(step);
     }
 
     // All steps should share the same Arc<str> for phase

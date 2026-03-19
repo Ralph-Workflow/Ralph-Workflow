@@ -1,9 +1,9 @@
 //! Hook installation logic.
 
 use crate::files::file_contains_marker;
+use crate::git_helpers::hooks_dir;
 use crate::git_helpers::repo::resolve_protection_scope_from;
-use crate::git_helpers::runtime::hooks_dir;
-use crate::git_helpers::runtime::worktree;
+use crate::git_helpers::worktree;
 use std::fs::{self, File};
 use std::io;
 use std::io::Write;
@@ -14,16 +14,7 @@ pub const HOOK_MARKER: &str = "RALPH_RUST_MANAGED_HOOK";
 pub const RALPH_HOOK_NAMES: &[&str] = &["pre-commit", "pre-push", "pre-merge-commit", "commit-msg"];
 
 fn bash_single_quote_literal(s: &str) -> String {
-    std::iter::once('\'')
-        .chain(s.chars().flat_map(|ch| {
-            if ch == '\'' {
-                "'\\''".chars()
-            } else {
-                std::iter::once(ch)
-            }
-        }))
-        .chain(std::iter::once('\''))
-        .collect()
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 fn make_hook_content(

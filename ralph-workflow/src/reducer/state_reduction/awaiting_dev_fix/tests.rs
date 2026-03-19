@@ -57,7 +57,7 @@ fn recovery_attempted_uses_event_target_phase_not_state_snapshot() {
 #[test]
 fn recovery_attempted_resets_agent_chain_when_exhausted() {
     let state = PipelineState::initial(1, 0);
-    let chain = AgentChainState::initial()
+    let mut chain = AgentChainState::initial()
         .with_agents(
             vec!["dev".to_string()],
             vec![vec!["model".to_string()]],
@@ -357,7 +357,7 @@ fn sequential_level_3_recoveries_each_increment_epoch() {
 #[test]
 fn level_3_recovery_clears_prompt_history() {
     let state = PipelineState::initial(2, 0);
-    let s = PipelineState {
+    let mut s = PipelineState {
         phase: PipelinePhase::AwaitingDevFix,
         recovery_epoch: 0,
         failed_phase_for_recovery: Some(PipelinePhase::Development),
@@ -387,7 +387,7 @@ fn level_3_recovery_clears_prompt_history() {
 #[test]
 fn level_4_recovery_clears_prompt_history() {
     let state = PipelineState::initial(3, 0);
-    let s = PipelineState {
+    let mut s = PipelineState {
         phase: PipelinePhase::AwaitingDevFix,
         recovery_epoch: 0,
         failed_phase_for_recovery: Some(PipelinePhase::Development),
@@ -421,7 +421,7 @@ fn level_4_recovery_clears_prompt_history() {
 #[test]
 fn level_1_and_2_recovery_preserve_prompt_history() {
     let state = PipelineState::initial(1, 0);
-    let s = PipelineState {
+    let mut s = PipelineState {
         phase: PipelinePhase::AwaitingDevFix,
         failed_phase_for_recovery: Some(PipelinePhase::Development),
         ..state

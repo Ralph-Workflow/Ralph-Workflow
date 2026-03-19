@@ -55,7 +55,7 @@ pub struct QueueMetrics {
 }
 
 #[cfg(test)]
-impl<T> BoundedEventQueue<T> {
+impl<T: std::fmt::Debug> BoundedEventQueue<T> {
     // Create a new bounded event queue with default configuration.
     //
     // Example:
@@ -162,17 +162,23 @@ impl<T> BoundedEventQueue<T> {
     // Receive an event, blocking until one is available.
     //
     // Returns:
-    // * `Ok(event)` - An event was received
-    // * `Err(mpsc::RecvError)` - Sender was dropped
+    // * `(Self, Ok(event))` - An event was received, along with the updated queue
+    // * `(Self, Err(mpsc::RecvError))` - Sender was dropped
     //
     // Example:
     // ```ignore
-    // let event = queue.recv()?;
+    // let (queue, result) = queue.recv();
+    // let event = result?;
     // ```
-    pub fn recv(&mut self) -> Result<T, mpsc::RecvError> {
-        let event = self.receiver.recv()?;
-        self.metrics.depth = self.metrics.depth.saturating_sub(1);
-        Ok(event)
+    pub fn recv(self) -> (Self, Result<T, mpsc::RecvError>) {
+        match self.receiver.recv() {
+            Ok(event) => {
+                let mut new_self = self;
+                new_self.metrics.depth = new_self.metrics.depth.saturating_sub(1);
+                (new_self, Ok(event))
+            }
+            Err(e) => (self, Err(e)),
+        }
     }
 
     // Get the current queue metrics.
@@ -210,22 +216,33 @@ impl<T> BoundedEventQueue<T> {
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
-    pub fn clear(&mut self) {
-        super::boundary::clear_via_receiver(&mut self.receiver);
-        self.metrics.depth = 0;
+    pub fn clear(self) -> Self {
+        clear_via_receiver(&mut self.receiver);
+        Self {
+            sender: self.sender,
+            receiver: self.receiver,
+            metrics: QueueMetrics {
+                depth: 0,
+                backpressure_count: self.metrics.backpressure_count,
+                max_depth: self.metrics.max_depth,
+            },
+        }
     }
 
     // Reset metrics while preserving queue contents.
-    pub fn reset_metrics(&mut self) {
-        self.metrics = QueueMetrics {
-            depth: self.metrics.depth,
-            ..Default::default()
-        };
+    pub fn reset_metrics(self) -> Self {
+        Self {
+            metrics: QueueMetrics {
+                depth: self.metrics.depth,
+                ..Default::default()
+            },
+            ..self
+        }
     }
 }
 
 #[cfg(test)]
-impl<T> Default for BoundedEventQueue<T> {
+impl<T: std::fmt::Debug> Default for BoundedEventQueue<T> {
     fn default() -> Self {
         Self::new()
     }

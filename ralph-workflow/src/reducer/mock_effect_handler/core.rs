@@ -97,7 +97,7 @@ impl MockEffectHandler {
     ///
     /// A new `MockEffectHandler` with empty effect/event capture buffers
     #[must_use]
-    pub const fn new(state: PipelineState) -> Self {
+    pub fn new(state: PipelineState) -> Self {
         Self {
             state,
             captured_state: CapturedState::new(),
@@ -186,6 +186,7 @@ impl MockEffectHandler {
                 self.replay_prompt_keys
                     .iter()
                     .flatten()
+                    .cloned()
                     .chain(std::iter::once(key.into()))
                     .collect(),
             ),

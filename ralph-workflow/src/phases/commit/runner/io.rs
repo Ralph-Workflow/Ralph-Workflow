@@ -1,7 +1,3 @@
-use super::commit_logging::CommitLogSession;
-use crate::workspace::Workspace;
-use std::path::Path;
-
 pub fn create_session_and_get_attempt_number(
     log_dir: &Path,
     workspace: &dyn Workspace,

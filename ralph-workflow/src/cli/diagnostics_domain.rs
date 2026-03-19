@@ -491,7 +491,10 @@ pub fn validate_template_name(template_name: &str) -> TemplateValidation {
     if get_template(template_name).is_some() {
         TemplateValidation::Valid
     } else {
-        let similar = crate::cli::init::find_similar_templates(template_name);
+        let similar = crate::cli::init::find_similar_templates(template_name)
+            .into_iter()
+            .map(|(s, n)| (s.to_string(), n as u8))
+            .collect();
         TemplateValidation::Unknown { similar }
     }
 }

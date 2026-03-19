@@ -3,7 +3,23 @@
 // Tests for review phase effect emission: initialize chain, prepare context,
 // prepare prompt, invoke agent, extract/validate XML, write markdown, etc.
 
-use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::orchestration::determine_next_effect;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
+
+fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
+    PipelineState {
+        prompt_permissions: crate::reducer::state::PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(dev_iters, review_passes)
+    }
+}
 
 fn dummy_input(
     kind: crate::reducer::state::PromptInputKind,
@@ -24,10 +40,11 @@ fn dummy_input(
 
 #[test]
 fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
-    // No chain yet => InitializeAgentChain
     let effect = determine_next_effect(&state);
     assert!(matches!(
         effect,
@@ -36,7 +53,6 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
         }
     ));
 
-    // After chain initialized => PrepareReviewContext
     let state = reduce(
         state,
         PipelineEvent::agent_chain_initialized(
@@ -54,11 +70,10 @@ fn test_review_phase_emits_initialize_chain_then_prepare_review_context() {
 
 #[test]
 fn test_review_phase_emits_prepare_review_context_after_chain_initialized() {
-    // This test is the first step in the single-task-effects refactor.
-    // Once the reviewer chain is initialized, the reducer should emit a *single-task*
-    // context preparation effect, not a macro "run review" effect.
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -78,9 +93,10 @@ fn test_review_phase_emits_prepare_review_context_after_chain_initialized() {
 
 #[test]
 fn test_review_phase_emits_cleanup_required_files_after_prompt_prepared() {
-    // Single-task effect chain: PrepareReviewContext -> PrepareReviewPrompt -> CleanupRequiredFiles (issues.xml)
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -113,8 +129,10 @@ fn test_review_phase_emits_cleanup_required_files_after_prompt_prepared() {
 
 #[test]
 fn test_review_phase_emits_extract_review_issues_xml_after_agent_invoked() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -147,8 +165,10 @@ fn test_review_phase_emits_extract_review_issues_xml_after_agent_invoked() {
 
 #[test]
 fn test_review_phase_emits_validate_review_issues_xml_after_extracted() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -185,8 +205,10 @@ fn test_review_phase_emits_validate_review_issues_xml_after_extracted() {
 
 #[test]
 fn test_review_phase_emits_write_issues_markdown_after_validated() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -230,8 +252,10 @@ fn test_review_phase_emits_write_issues_markdown_after_validated() {
 
 #[test]
 fn test_review_phase_emits_extract_issue_snippets_after_markdown_written() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -279,8 +303,10 @@ fn test_review_phase_emits_extract_issue_snippets_after_markdown_written() {
 
 #[test]
 fn test_review_phase_emits_archive_issues_xml_after_snippets_extracted() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -326,8 +352,10 @@ fn test_review_phase_emits_archive_issues_xml_after_snippets_extracted() {
 
 #[test]
 fn test_review_phase_emits_apply_review_outcome_after_issues_xml_archived() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,
@@ -384,8 +412,10 @@ fn test_review_phase_emits_apply_review_outcome_after_issues_xml_archived() {
 
 #[test]
 fn test_review_phase_emits_prepare_review_prompt_after_context_prepared() {
-    let mut state = super::initial_with_locked_permissions(1, 1);
-    state.phase = PipelinePhase::Review;
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..initial_with_locked_permissions(1, 1)
+    };
 
     let state = reduce(
         state,

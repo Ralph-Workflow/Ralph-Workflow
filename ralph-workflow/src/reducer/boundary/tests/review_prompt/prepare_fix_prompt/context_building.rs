@@ -1,8 +1,8 @@
 use super::super::super::common::TestFixture;
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::template_registry::TemplateRegistry;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{PipelineEvent, PipelinePhase, PromptInputEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{PipelineState, PromptMode};
 use crate::reducer::ui_event::UIEvent;
 use crate::workspace::{MemoryWorkspace, Workspace};

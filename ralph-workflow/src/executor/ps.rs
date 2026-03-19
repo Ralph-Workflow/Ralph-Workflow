@@ -1,7 +1,6 @@
 //! PS output parsing for child process detection.
 
 use super::ChildProcessInfo;
-use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone, Copy)]
 struct ProcessEntry {
@@ -79,7 +78,8 @@ fn module_level_descendant_pid_signature(descendants: &[u32]) -> u64 {
 fn build_children_lookup(
     entries: &[ProcessEntry],
 ) -> std::collections::HashMap<u32, Vec<ProcessEntry>> {
-    let mut lookup = std::collections::HashMap::new();
+    let mut lookup: std::collections::HashMap<u32, Vec<ProcessEntry>> =
+        std::collections::HashMap::new();
     for entry in entries {
         lookup.entry(entry.parent_pid).or_default().push(*entry);
     }

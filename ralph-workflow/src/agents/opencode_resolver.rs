@@ -39,6 +39,7 @@ const MAX_TYPO_DISTANCE: usize = 3;
 ///
 /// Validates provider/model combinations against the `OpenCode` API catalog
 /// and generates `AgentConfig` instances with the appropriate command-line flags.
+#[derive(Debug)]
 pub struct OpenCodeResolver {
     /// `OpenCode` API catalog with available providers and models.
     catalog: ApiCatalog,

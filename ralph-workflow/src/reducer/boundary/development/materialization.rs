@@ -41,7 +41,7 @@ impl MainEffectHandler {
     ///
     /// `EffectResult` with `DevelopmentInputsMaterialized` event, plus optional oversize
     /// detection events if either input exceeds the inline budget.
-    pub(in crate::reducer::handler) fn materialize_development_inputs(
+    pub(in crate::reducer::boundary) fn materialize_development_inputs(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

@@ -12,6 +12,9 @@ pub trait RetryTimerProvider: Send + Sync {
     fn sleep(&self, duration: Duration);
 }
 
+pub trait RetryTimerProviderDebug: RetryTimerProvider + std::fmt::Debug {}
+impl<T: RetryTimerProvider + std::fmt::Debug> RetryTimerProviderDebug for T {}
+
 /// Production retry timer that actually sleeps.
 #[derive(Debug, Clone)]
 pub struct ProductionRetryTimer;
@@ -23,6 +26,6 @@ impl RetryTimerProvider for ProductionRetryTimer {
 }
 
 /// Create a new production retry timer.
-pub fn production_timer() -> Arc<dyn RetryTimerProvider> {
+pub fn production_timer() -> Arc<dyn RetryTimerProviderDebug> {
     Arc::new(ProductionRetryTimer)
 }

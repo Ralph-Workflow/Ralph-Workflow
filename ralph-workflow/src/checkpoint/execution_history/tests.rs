@@ -86,7 +86,8 @@ fn test_decompress_data_rejects_oversized_payload() {
 fn test_execution_history_add_step_bounded() {
     let outcome = StepOutcome::success(None, vec![]);
     let step = ExecutionStep::new("Development", 1, "dev_run", outcome);
-    let history = ExecutionHistory::new().add_step_bounded(step, 1000);
+    let history_base = ExecutionHistory::new();
+    let history = history_base.add_step_bounded(step, 1000);
     assert_eq!(history.steps.len(), 1);
     assert_eq!(&*history.steps[0].phase, "Development");
     assert_eq!(history.steps[0].iteration, 1);
@@ -142,7 +143,7 @@ fn test_execution_step_with_string_pool() {
         ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome.clone(), pool);
     let (step1, pool) = step1.with_agent_pooled("claude", pool);
     let (step2, pool) = ExecutionStep::new_with_pool("Development", 2, "dev_run", outcome, pool);
-    let (_step2, _pool) = step2.with_agent_pooled("claude", pool);
+    let (step2, pool) = step2.with_agent_pooled("claude", pool);
 
     assert!(Arc::ptr_eq(&step1.phase, &step2.phase));
     assert!(Arc::ptr_eq(
@@ -163,12 +164,12 @@ fn test_execution_step_memory_optimization() {
     let pool = StringPool::new();
     let outcome = StepOutcome::success(None, vec![]);
 
-    let (step, _pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool)
-        .with_agent_pooled("claude", pool);
+    let (step, pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool);
+    let (step, _pool) = step.with_agent_pooled("claude", pool);
 
     let phase_size = step.phase.len();
     let step_type_size = step.step_type.len();
-    let agent_size = step.agent.as_ref().map_or(0, |s| s.len());
+    let agent_size = step.agent.as_ref().map_or(0, |s: &Arc<str>| s.len());
 
     assert_eq!(phase_size, "Development".len());
     assert_eq!(step_type_size, "dev_run".len());
@@ -185,9 +186,8 @@ fn test_execution_step_serialization_roundtrip() {
     let pool = StringPool::new();
     let outcome = StepOutcome::success(Some("output".to_string()), vec!["file.txt".to_string()]);
 
-    let (step, _pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool)
-        .with_agent_pooled("claude", pool)
-        .with_duration(120);
+    let (step, pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool);
+    let (step, _pool) = step.with_agent_pooled("claude", pool).with_duration(120);
 
     // Serialize to JSON
     let json = serde_json::to_string(&step).unwrap();

@@ -1,7 +1,7 @@
 //! Worktree-scoped hooks management.
 
+use crate::git_helpers::config_state;
 use crate::git_helpers::repo::ProtectionScope;
-use crate::git_helpers::runtime::config_state;
 use std::io;
 
 pub(crate) fn ensure_worktree_hook_scoping(scope: &ProtectionScope) -> io::Result<()> {

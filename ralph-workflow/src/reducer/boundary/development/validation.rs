@@ -32,7 +32,7 @@ impl MainEffectHandler {
     ///
     /// `EffectResult` with `DevelopmentXmlExtracted` or `DevelopmentXmlMissing` event,
     /// plus `IterationProgress` UI event.
-    pub(in crate::reducer::handler) fn extract_development_xml(
+    pub(in crate::reducer::boundary) fn extract_development_xml(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,
@@ -97,7 +97,7 @@ impl MainEffectHandler {
     ///
     /// `EffectResult` with `DevelopmentXmlValidated` (on success) or
     /// `DevelopmentOutputValidationFailed` (on XSD error or missing file).
-    pub(in crate::reducer::handler) fn validate_development_xml(
+    pub(in crate::reducer::boundary) fn validate_development_xml(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

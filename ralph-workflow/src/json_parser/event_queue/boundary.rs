@@ -1,4 +1,4 @@
-use mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::{Receiver, SyncSender};
 
 pub fn drain_queue<T>(receiver: &mut Receiver<T>) -> Vec<T> {
     let mut drained = Vec::new();
@@ -11,18 +11,17 @@ pub fn drain_queue<T>(receiver: &mut Receiver<T>) -> Vec<T> {
 pub fn send_with_backpressure<T>(
     sender: &SyncSender<T>,
     event: T,
-) -> Result<(), mpsc::SendError<T>> {
+) -> Result<(), std::sync::mpsc::SendError<T>> {
     sender.send(event)
 }
 
 pub fn try_send_nonblocking<T>(
     sender: &SyncSender<T>,
     event: T,
-) -> Result<(), mpsc::TrySendError<T>> {
+) -> Result<(), std::sync::mpsc::TrySendError<T>> {
     sender.try_send(event)
 }
 
-#[cfg(test)]
 pub fn clear_via_receiver<T>(receiver: &mut Receiver<T>) {
     while receiver.try_recv().is_ok() {}
 }

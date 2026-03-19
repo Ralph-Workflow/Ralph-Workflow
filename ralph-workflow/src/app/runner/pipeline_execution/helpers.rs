@@ -576,7 +576,7 @@ mod helpers_tests {
         std::fs::write(&marker_path, "").unwrap();
 
         {
-            let guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
+            let mut guard = CommandExitCleanupGuard::new(&logger, &workspace, true);
             guard.mark_owned();
         }
 
@@ -605,7 +605,7 @@ mod helpers_tests {
         std::fs::write(&marker_path, "").unwrap();
 
         {
-            let guard = CommandExitCleanupGuard::new(&logger, &workspace, false);
+            let mut guard = CommandExitCleanupGuard::new(&logger, &workspace, false);
             guard.mark_owned();
         }
 

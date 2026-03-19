@@ -278,18 +278,18 @@ mod tests {
     fn test_memory_optimization_regression() {
         use crate::checkpoint::StringPool;
 
-        let mut pool = StringPool::new();
+        let pool = StringPool::new();
 
         // Create a typical execution step with string pool
-        let step = ExecutionStep::new_with_pool(
+        let (step, pool) = ExecutionStep::new_with_pool(
             "Development",
             1,
             "agent_invoked",
             StepOutcome::success(Some("output".to_string()), vec!["file.rs".to_string()]),
-            &mut pool,
-        )
-        .with_agent_pooled("test-agent", &mut pool)
-        .with_duration(5);
+            pool,
+        );
+        let (step, _pool) = step.with_agent_pooled("test-agent", pool);
+        let step = step.with_duration(5);
 
         let heap_size = estimate_execution_step_heap_bytes_core_fields(&step);
 
@@ -307,26 +307,26 @@ mod tests {
         use crate::checkpoint::StringPool;
         use std::sync::Arc;
 
-        let mut pool = StringPool::new();
+        let pool = StringPool::new();
 
         // Create multiple steps with the same phase and agent
-        let step1 = ExecutionStep::new_with_pool(
+        let (step1, pool) = ExecutionStep::new_with_pool(
             "Development",
             1,
             "dev_run",
             StepOutcome::success(None, vec![]),
-            &mut pool,
-        )
-        .with_agent_pooled("claude", &mut pool);
+            pool,
+        );
+        let (step1, pool) = step1.with_agent_pooled("claude", pool);
 
-        let step2 = ExecutionStep::new_with_pool(
+        let (step2, pool) = ExecutionStep::new_with_pool(
             "Development",
             2,
             "dev_run",
             StepOutcome::success(None, vec![]),
-            &mut pool,
-        )
-        .with_agent_pooled("claude", &mut pool);
+            pool,
+        );
+        let (step2, pool) = step2.with_agent_pooled("claude", pool);
 
         // Verify Arc sharing (same pointer)
         assert!(

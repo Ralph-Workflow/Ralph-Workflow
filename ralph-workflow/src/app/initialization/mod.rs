@@ -28,7 +28,7 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
     config_path: &Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<crate::agents::ConfigSource>)> {
-    let registry = if let Some(unified_config) = unified {
+    let mut registry = if let Some(unified_config) = unified {
         AgentRegistry::new()?.apply_unified_config(unified_config)?
     } else {
         AgentRegistry::new()?

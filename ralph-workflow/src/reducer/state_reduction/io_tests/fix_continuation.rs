@@ -4,11 +4,18 @@
 // template variables invalid, and fix output validation failures.
 
 use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::create_test_state;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::state::AgentChainState;
+use crate::reducer::state::ContinuationState;
+use crate::reducer::state::FixStatus;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_fix_continuation_triggered_sets_pending() {
-    use crate::reducer::state::{ContinuationState, FixStatus};
-
     let state = PipelineState {
         phase: PipelinePhase::Review,
         review_issues_found: true,
@@ -55,8 +62,6 @@ fn test_fix_continuation_triggered_sets_pending() {
 
 #[test]
 fn test_fix_continuation_succeeded_transitions_to_commit() {
-    use crate::reducer::state::{ContinuationState, FixStatus};
-
     let state = PipelineState {
         phase: PipelinePhase::Review,
         review_issues_found: true,
@@ -102,8 +107,6 @@ fn test_fix_continuation_succeeded_transitions_to_commit() {
 
 #[test]
 fn test_fix_continuation_budget_exhausted_transitions_to_commit() {
-    use crate::reducer::state::{ContinuationState, FixStatus};
-
     let state = PipelineState {
         phase: PipelinePhase::Review,
         review_issues_found: true,
@@ -145,8 +148,6 @@ fn test_fix_continuation_budget_exhausted_transitions_to_commit() {
 
 #[test]
 fn test_template_variables_invalid_retries_same_agent_until_budget_exhausted() {
-    use crate::reducer::state::ContinuationState;
-
     let state = PipelineState {
         phase: PipelinePhase::Development,
         agent_chain: AgentChainState::initial()
@@ -198,8 +199,6 @@ fn test_template_variables_invalid_retries_same_agent_until_budget_exhausted() {
 
 #[test]
 fn test_fix_output_validation_failed_sets_xsd_retry_pending() {
-    use crate::reducer::state::ContinuationState;
-
     let state = PipelineState {
         phase: PipelinePhase::Review,
         review_issues_found: true,
@@ -225,8 +224,6 @@ fn test_fix_output_validation_failed_sets_xsd_retry_pending() {
 
 #[test]
 fn test_fix_output_validation_exhausted_switches_agent() {
-    use crate::reducer::state::ContinuationState;
-
     let state = PipelineState {
         phase: PipelinePhase::Review,
         review_issues_found: true,

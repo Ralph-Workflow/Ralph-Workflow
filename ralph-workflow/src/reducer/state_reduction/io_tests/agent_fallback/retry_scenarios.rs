@@ -3,9 +3,14 @@
 //! Tests for rate limit handling, same-agent retry with transient failures,
 //! and retry budget management.
 
-use crate::reducer::event::TimeoutOutputKind;
-use crate::reducer::state::RateLimitContinuationPrompt;
-use crate::reducer::state_reduction::tests::*;
+use crate::agents::AgentRole;
+use crate::reducer::create_test_state;
+use crate::reducer::event::{AgentErrorKind, PipelineEvent, PipelinePhase, TimeoutOutputKind};
+use crate::reducer::state::{
+    AgentChainState, ContinuationState, PipelineState, RateLimitContinuationPrompt,
+    SameAgentRetryReason,
+};
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_rate_limit_fallback_switches_agent() {
@@ -58,12 +63,18 @@ fn test_rate_limit_fallback_with_no_prompt_context() {
 
 #[test]
 fn test_success_clears_rate_limit_continuation_prompt() {
-    let mut state = create_test_state();
-    state.agent_chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "old prompt".to_string(),
-    });
+    let base_state = create_test_state();
+    let state = PipelineState {
+        agent_chain: AgentChainState {
+            rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+                drain: crate::agents::AgentDrain::Development,
+                role: AgentRole::Developer,
+                prompt: "old prompt".to_string(),
+            }),
+            ..base_state.agent_chain
+        },
+        ..base_state
+    };
 
     let new_state = reduce(
         state,
@@ -84,12 +95,18 @@ fn test_legacy_rate_limit_failure_clears_stale_rate_limit_continuation_prompt() 
     // Regression: legacy callers may emit InvocationFailed{ error_kind: RateLimit } without
     // prompt_context. In that case we must NOT carry forward any previously saved continuation
     // prompt, otherwise the next invocation may run with stale prompt context.
-    let mut state = create_test_state();
-    state.agent_chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "stale prompt".to_string(),
-    });
+    let base_state = create_test_state();
+    let state = PipelineState {
+        agent_chain: AgentChainState {
+            rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+                drain: crate::agents::AgentDrain::Development,
+                role: AgentRole::Developer,
+                prompt: "stale prompt".to_string(),
+            }),
+            ..base_state.agent_chain
+        },
+        ..base_state
+    };
 
     let new_state = reduce(
         state,
@@ -220,18 +237,21 @@ fn test_rate_limit_continuation_prompt_is_preserved_until_success_even_across_re
 
 #[test]
 fn test_auth_fallback_clears_session_and_advances_agent() {
-    let mut chain = AgentChainState::initial()
+    let base_chain = AgentChainState::initial()
         .with_agents(
             vec!["agent1".to_string(), "agent2".to_string()],
             vec![vec![], vec![]],
             AgentRole::Developer,
         )
         .with_session_id(Some("session-123".to_string()));
-    chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "some saved prompt".to_string(),
-    });
+    let chain = AgentChainState {
+        rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
+            role: AgentRole::Developer,
+            prompt: "some saved prompt".to_string(),
+        }),
+        ..base_chain
+    };
 
     let state = PipelineState {
         phase: PipelinePhase::Development,
@@ -401,16 +421,19 @@ fn test_timeout_preserves_rate_limit_continuation_prompt_during_same_agent_retry
     // (like timeouts) must preserve that prompt context for retries and fallback so we keep
     // "continue same prompt after 429" semantics across transient failures.
     let base_state = create_test_state();
-    let mut chain = AgentChainState::initial().with_agents(
+    let base_chain = AgentChainState::initial().with_agents(
         vec!["agent1".to_string(), "agent2".to_string()],
         vec![vec![], vec![]],
         AgentRole::Developer,
     );
-    chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "saved prompt".to_string(),
-    });
+    let chain = AgentChainState {
+        rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
+            role: AgentRole::Developer,
+            prompt: "saved prompt".to_string(),
+        }),
+        ..base_chain
+    };
 
     let state = PipelineState {
         phase: PipelinePhase::Development,
@@ -468,16 +491,19 @@ fn test_internal_error_preserves_rate_limit_continuation_prompt_during_same_agen
     // Same regression as above, but via the InvocationFailed { retriable: false, InternalError }
     // path which uses the same-agent retry mechanism.
     let base_state = create_test_state();
-    let mut chain = AgentChainState::initial().with_agents(
+    let base_chain = AgentChainState::initial().with_agents(
         vec!["agent1".to_string(), "agent2".to_string()],
         vec![vec![], vec![]],
         AgentRole::Developer,
     );
-    chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "saved prompt".to_string(),
-    });
+    let chain = AgentChainState {
+        rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
+            role: AgentRole::Developer,
+            prompt: "saved prompt".to_string(),
+        }),
+        ..base_chain
+    };
 
     let state = PipelineState {
         phase: PipelinePhase::Development,
@@ -890,17 +916,19 @@ fn test_no_output_timeout_does_not_consume_retry_budget() {
     // AC-4: Starting with same_agent_retry_count = 1, NoOutput should still switch immediately
     // and reset count to 0 (not increment to 2)
     let base_state = create_test_state();
-    let mut state = PipelineState {
+    let state = PipelineState {
         phase: PipelinePhase::Development,
         agent_chain: AgentChainState::initial().with_agents(
             vec!["agent1".to_string(), "agent2".to_string()],
             vec![vec![], vec![]],
             AgentRole::Developer,
         ),
-        continuation: ContinuationState::with_limits(2, 3, 2),
+        continuation: ContinuationState {
+            same_agent_retry_count: 1,
+            ..ContinuationState::with_limits(2, 3, 2)
+        },
         ..base_state
     };
-    state.continuation.same_agent_retry_count = 1; // One retry already used by a prior PartialOutput timeout
 
     let after_timeout = reduce(
         state,

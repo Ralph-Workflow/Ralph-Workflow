@@ -3,12 +3,16 @@
 // Tests for ReviewPhaseStarted event handling: clearing agent chain,
 // resetting continuation state, and preserving backoff policy.
 
-use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::orchestration::determine_next_effect;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_review_phase_started_clears_agent_chain_for_reviewer_role() {
-    use crate::reducer::orchestration::determine_next_effect;
-
     // Simulate typical state after Development where the agent chain is populated
     // for developer runs.
     let state = create_test_state();

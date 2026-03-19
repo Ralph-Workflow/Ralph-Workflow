@@ -25,7 +25,7 @@
 // - `output_rendering.rs` - Converting validated XML to markdown
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn extract_review_issues_xml(
+    pub(in crate::reducer::boundary) fn extract_review_issues_xml(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,
@@ -60,7 +60,7 @@ impl MainEffectHandler {
         }
     }
 
-    pub(in crate::reducer::handler) fn validate_review_issues_xml(
+    pub(in crate::reducer::boundary) fn validate_review_issues_xml(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,

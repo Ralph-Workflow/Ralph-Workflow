@@ -1,14 +1,19 @@
 //! Tests for prompt permission state transitions.
 
 use super::*;
-use crate::reducer::event::PromptInputEvent;
+use crate::reducer::create_test_state;
+use crate::reducer::event::{PipelineEvent, PipelinePhase, PromptInputEvent};
+use crate::reducer::state::PipelineState;
 use crate::reducer::state::PromptPermissionsState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_reduce_prompt_permissions_locked_sets_flags() {
     // Given: Initial state with no permission tracking
-    let mut state = PipelineState::initial(5, 2);
-    state.phase = PipelinePhase::Planning;
+    let state = PipelineState {
+        phase: PipelinePhase::Planning,
+        ..PipelineState::initial(5, 2)
+    };
 
     // When: PromptPermissionsLocked event is reduced
     let event =

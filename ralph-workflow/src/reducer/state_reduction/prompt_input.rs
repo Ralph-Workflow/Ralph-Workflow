@@ -172,7 +172,7 @@ mod tests {
     use crate::reducer::event::PipelineEvent;
     use crate::reducer::state::PipelineState;
 
-    fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
+    pub(crate) fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
         match event {
             PipelineEvent::PromptInput(e) => reduce_prompt_input_event(state, e),
             _ => panic!("unexpected event in test"),
@@ -210,14 +210,14 @@ mod tests {
         let state = PipelineState::initial(1, 0);
         let history = state
             .prompt_history
-            .iter()
-            .chain([(
+            .into_iter()
+            .chain(std::iter::once((
                 "planning_1".to_string(),
                 crate::prompts::PromptHistoryEntry {
                     content: "original prompt".to_string(),
                     content_id: Some("sha256-same".to_string()),
                 },
-            )])
+            )))
             .collect::<std::collections::HashMap<_, _>>();
         let state = PipelineState {
             prompt_history: history,
@@ -247,14 +247,14 @@ mod tests {
         let state = PipelineState::initial(1, 0);
         let history = state
             .prompt_history
-            .iter()
-            .chain([(
+            .into_iter()
+            .chain(std::iter::once((
                 "planning_1".to_string(),
                 crate::prompts::PromptHistoryEntry {
                     content: "same prompt".to_string(),
                     content_id: Some("sha256-keep".to_string()),
                 },
-            )])
+            )))
             .collect::<std::collections::HashMap<_, _>>();
         let state = PipelineState {
             prompt_history: history,
@@ -283,14 +283,14 @@ mod tests {
         let state = PipelineState::initial(1, 0);
         let history = state
             .prompt_history
-            .iter()
-            .chain([(
+            .into_iter()
+            .chain(std::iter::once((
                 "planning_1".to_string(),
                 crate::prompts::PromptHistoryEntry {
                     content: "stale prompt".to_string(),
                     content_id: Some("sha256-old".to_string()),
                 },
-            )])
+            )))
             .collect::<std::collections::HashMap<_, _>>();
         let state = PipelineState {
             prompt_history: history,
@@ -325,376 +325,14 @@ mod tests {
         let state = PipelineState::initial(1, 0);
         let history = state
             .prompt_history
-            .iter()
-            .chain([(
+            .into_iter()
+            .chain(std::iter::once((
                 "planning_1".to_string(),
                 crate::prompts::PromptHistoryEntry {
                     content: "stale prompt".to_string(),
                     content_id: None,
                 },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: None,
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-        assert_eq!(entry.content, "fresh prompt");
-        assert!(entry.content_id.is_none());
-    }
-}
-
-    #[test]
-    fn test_prompt_captured_overwrites_existing_when_content_id_differs() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "stale prompt".to_string(),
-                    content_id: Some("sha256-old".to_string()),
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: Some("sha256-new".to_string()),
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "fresh prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_legacy_entry_with_new_content_id() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "legacy prompt".to_string(),
-                    content_id: None,
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: Some("sha256-new".to_string()),
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "fresh prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_existing_when_incoming_has_no_content_id_and_content_differs(
-    ) {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "stale prompt".to_string(),
-                    content_id: None,
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: None,
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must still be present");
-
-        assert_eq!(entry.content, "replacement prompt");
-        assert_eq!(entry.content_id, Some("sha256-same".to_string()));
-    }
-
-    #[test]
-    fn test_prompt_captured_does_not_downgrade_existing_content_id_when_content_is_identical() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "same prompt".to_string(),
-                    content_id: Some("sha256-keep".to_string()),
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "same prompt".to_string(),
-                content_id: None,
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-        assert_eq!(entry.content, "same prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-keep"));
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_existing_when_content_id_differs() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "stale prompt".to_string(),
-                    content_id: Some("sha256-old".to_string()),
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: Some("sha256-new".to_string()),
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "fresh prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
-    }
-
-    #[test]
-    fn test_prompt_captured_does_not_downgrade_existing_content_id_when_content_is_identical() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "same prompt".to_string(),
-                    content_id: Some("sha256-keep".to_string()),
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "same prompt".to_string(),
-                content_id: None,
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-        assert_eq!(entry.content, "same prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-keep"));
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_existing_when_content_id_differs() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "stale prompt".to_string(),
-                    content_id: Some("sha256-old".to_string()),
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: Some("sha256-new".to_string()),
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "fresh prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_legacy_entry_with_new_content_id() {
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "legacy prompt".to_string(),
-                    content_id: None,
-                },
-            )])
-            .collect::<std::collections::HashMap<_, _>>();
-        let state = PipelineState {
-            prompt_history: history,
-            ..state
-        };
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "planning_1".to_string(),
-                content: "fresh prompt".to_string(),
-                content_id: Some("sha256-new".to_string()),
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("planning_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "fresh prompt");
-        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
-    }
-
-    #[test]
-    fn test_prompt_captured_with_no_content_id_stores_none() {
-        let state = PipelineState::initial(1, 0);
-
-        let new_state = reduce(
-            state,
-            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
-                key: "development_1".to_string(),
-                content: "dev prompt without id".to_string(),
-                content_id: None,
-            }),
-        );
-
-        let entry = new_state
-            .prompt_history
-            .get("development_1")
-            .expect("entry must be present");
-
-        assert_eq!(entry.content, "dev prompt without id");
-        assert!(
-            entry.content_id.is_none(),
-            "content_id must be None when not provided"
-        );
-    }
-
-    #[test]
-    fn test_prompt_captured_overwrites_existing_when_incoming_has_no_content_id_and_content_differs(
-    ) {
-        // Regression: many handlers emit PromptCaptured with content_id=None.
-        // If a prompt is regenerated under the same key with different content, the
-        // reducer must treat the new capture as authoritative so resume replays the
-        // prompt that was actually used.
-        let state = PipelineState::initial(1, 0);
-        let history = state
-            .prompt_history
-            .iter()
-            .chain([(
-                "planning_1".to_string(),
-                crate::prompts::PromptHistoryEntry {
-                    content: "stale prompt".to_string(),
-                    content_id: None,
-                },
-            )])
+            )))
             .collect::<std::collections::HashMap<_, _>>();
         let state = PipelineState {
             prompt_history: history,

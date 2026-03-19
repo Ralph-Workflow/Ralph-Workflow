@@ -4,12 +4,19 @@
 // Fix -> Commit -> FinalValidation -> Complete, plus edge cases like
 // zero iterations.
 
-use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::determine_next_effect;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::DevelopmentEvent;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::reduce;
+use crate::reducer::state::PipelineState;
 
 #[test]
 fn test_complete_pipeline_flow() {
     // Test Planning → Development → Review → Fix → Commit → FinalValidation → Complete
-    let mut state = PipelineState::initial(2, 1); // 2 dev iterations, 1 review pass
+    let mut state = PipelineState::initial(2, 1);
     state.agent_chain = state.agent_chain.with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -24,7 +31,8 @@ fn test_complete_pipeline_flow() {
     // can change as we add role-specific chain initialization (Developer/Analysis/Commit),
     // so keep a generous step budget.
     let max_steps = 160;
-    for step in 0..max_steps {
+    let mut step = 0;
+    while step < max_steps {
         phase_sequence.push(state.phase);
         let effect = determine_next_effect(&state);
 
@@ -355,6 +363,8 @@ fn test_complete_pipeline_flow() {
             _ => panic!("Unexpected effect at step {step}: {effect:?}"),
         }
 
+        step += 1;
+
         if state.phase == PipelinePhase::Complete {
             break;
         }
@@ -374,19 +384,21 @@ fn test_complete_pipeline_flow() {
 
 #[test]
 fn test_pipeline_skips_planning_dev_when_zero_iterations() {
-    let mut state = PipelineState::initial(0, 2); // 0 dev, 2 review
-    assert_eq!(state.phase, PipelinePhase::Review);
-
-    state.agent_chain = state.agent_chain.with_agents(
-        vec!["claude".to_string()],
-        vec![vec![]],
-        AgentRole::Reviewer,
-    );
+    let base = PipelineState::initial(0, 2); // 0 dev, 2 review
+    assert_eq!(base.phase, PipelinePhase::Review);
+    let mut state = PipelineState {
+        agent_chain: base.agent_chain.with_agents(
+            vec!["claude".to_string()],
+            vec![vec![]],
+            AgentRole::Reviewer,
+        ),
+        ..base
+    };
 
     let mut review_passes = Vec::new();
     let max_steps = 30;
-
-    for _ in 0..max_steps {
+    let mut _step = 0;
+    while _step < max_steps {
         let effect = determine_next_effect(&state);
 
         match effect {
@@ -510,6 +522,8 @@ fn test_pipeline_skips_planning_dev_when_zero_iterations() {
             }
             _ => panic!("Unexpected effect: {effect:?}"),
         }
+
+        _step += 1;
     }
 
     assert_eq!(review_passes, vec![0, 1]);

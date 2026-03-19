@@ -6,7 +6,7 @@
 //! suppress the idle timeout.
 
 use super::super::io::KillConfig;
-use super::super::monitor::MonitorConfig;
+use super::super::runtime::MonitorConfig;
 use super::super::*;
 use crate::executor::{AgentChild, ChildProcessInfo, MockAgentChild, MockProcessExecutor};
 use std::sync::atomic::{AtomicBool, Ordering};

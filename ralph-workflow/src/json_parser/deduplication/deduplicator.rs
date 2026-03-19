@@ -2,6 +2,10 @@
 //
 // Orchestrates rolling hash and KMP for two-phase deduplication.
 
+#[cfg(test)]
+use crate::json_parser::deduplication::kmp_matcher::KMPMatcher;
+use crate::json_parser::deduplication::rolling_hash::RollingHashWindow;
+
 /// Delta deduplicator using rolling hash and KMP.
 ///
 /// Orchestrates the two-phase deduplication approach:

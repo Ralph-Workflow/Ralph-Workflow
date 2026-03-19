@@ -45,7 +45,7 @@ mod xsd_retry_fingerprint_tests {
             phase: PipelinePhase::Development,
             agent_chain: AgentChainState {
                 current_role: AgentRole::Developer,
-                ..Default::default()
+                ..AgentChainState::default()
             },
             iteration: 1,
             reviewer_pass: 0,

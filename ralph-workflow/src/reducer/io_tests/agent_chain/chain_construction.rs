@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::agents::{AgentDrain, AgentRole};
-use crate::reducer::tests::*;
+use crate::reducer::io_tests::{create_test_state, reduce, PipelineEvent, PipelineState};
 
 #[test]
 fn test_agent_chain_initialized_for_developer() {

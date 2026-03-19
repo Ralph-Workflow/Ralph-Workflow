@@ -11,9 +11,9 @@ fn write_prompt(logger: &Logger, prompt_text: &str) {
     logger.info(prompt_text);
     let prompt = "Resume? [y/N] ";
     let colors = crate::logger::Colors::new();
-    let _ = io::stdout().write_all(format!("{}{}", colors.yellow(), prompt).as_bytes());
-    let _ = io::stdout().flush();
-    let _ = io::stdout().write_all(colors.reset().as_bytes());
+    let _ = std::io::stdout().write_all(format!("{}{}", colors.yellow(), prompt).as_bytes());
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stdout().write_all(colors.reset().as_bytes());
 }
 
 pub fn prompt_yes_no(logger: &Logger, prompt_text: &str) -> bool {

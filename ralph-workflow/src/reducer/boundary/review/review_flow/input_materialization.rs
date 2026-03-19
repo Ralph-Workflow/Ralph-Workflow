@@ -25,7 +25,7 @@ impl MainEffectHandler {
     ///
     /// This is used when `.agent/PLAN.md` is missing, which can happen in isolation mode
     /// (`developer_iters=0`, `reviewer_reviews>0`) where no planning occurred.
-    pub(in crate::reducer::handler) fn sentinel_plan_content(isolation_mode: bool) -> String {
+    pub(in crate::reducer::boundary) fn sentinel_plan_content(isolation_mode: bool) -> String {
         if isolation_mode {
             "No PLAN provided (normal in isolation mode)".to_string()
         } else {
@@ -36,7 +36,7 @@ impl MainEffectHandler {
     /// Fallback diff instructions when `.agent/DIFF.backup` is missing.
     ///
     /// These instructions tell the reviewer how to obtain the diff via git commands.
-    pub(in crate::reducer::handler) fn fallback_diff_instructions(baseline_oid: &str) -> String {
+    pub(in crate::reducer::boundary) fn fallback_diff_instructions(baseline_oid: &str) -> String {
         if baseline_oid.is_empty() {
             "[DIFF NOT AVAILABLE - Use git to obtain changes]\n\n\
              Run: git diff HEAD~1..HEAD  # Changes in last commit\n\
@@ -61,7 +61,7 @@ impl MainEffectHandler {
         }
     }
 
-    pub(in crate::reducer::handler) fn materialize_review_inputs(
+    pub(in crate::reducer::boundary) fn materialize_review_inputs(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,
@@ -265,7 +265,7 @@ impl MainEffectHandler {
         Ok(result)
     }
 
-    pub(in crate::reducer::handler) fn prepare_review_context(
+    pub(in crate::reducer::boundary) fn prepare_review_context(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,

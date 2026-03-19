@@ -7,14 +7,12 @@ mod tests {
 
     #[test]
     fn test_stdout_printer() {
-        let mut printer = StdoutPrinter::new();
-        // Just ensure it compiles and works
-        let result = printer.write_all(b"test\n");
-        assert!(result.is_ok());
-        assert!(printer.flush().is_ok());
-
-        // Verify is_terminal() method is accessible
-        let _is_term = printer.is_terminal();
+        let printer = StdoutPrinter::new();
+        let _is_term = printer
+            .write_all(b"test\n")
+            .expect("write should work")
+            .flush()
+            .is_terminal();
     }
 
     #[cfg(test)]
@@ -29,35 +27,33 @@ mod tests {
     #[cfg(any(test, feature = "test-utils"))]
     fn test_stderr_printer() {
         let mut printer = StderrPrinter::new();
-        // Just ensure it compiles and works
-        let result = printer.write_all(b"test\n");
-        assert!(result.is_ok());
-        assert!(printer.flush().is_ok());
+        printer.write_all(b"test\n").expect("write should work");
+        printer.flush();
     }
 
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_captures_output() {
-        let mut printer = TestPrinter::new();
+        let printer = TestPrinter::new();
 
-        printer
+        let output = printer
             .write_all(b"Hello World\n")
-            .expect("Failed to write");
-        printer.flush().expect("Failed to flush");
-
-        let output = printer.get_output();
+            .expect("Failed to write")
+            .flush()
+            .get_output();
         assert!(output.contains("Hello World"));
     }
 
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_get_lines() {
-        let mut printer = TestPrinter::new();
+        let printer = TestPrinter::new();
 
-        printer.write_all(b"Line 1\nLine 2\n").unwrap();
-        printer.flush().unwrap();
-
-        let lines = printer.get_lines();
+        let lines = printer
+            .write_all(b"Line 1\nLine 2\n")
+            .expect("write should work")
+            .flush()
+            .get_lines();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("Line 1"));
         assert!(lines[1].contains("Line 2"));
@@ -66,24 +62,26 @@ mod tests {
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_clear() {
-        let mut printer = TestPrinter::new();
+        let printer = TestPrinter::new();
 
-        printer.write_all(b"Before\n").unwrap();
-        printer.flush().unwrap();
-
+        let printer = printer
+            .write_all(b"Before\n")
+            .expect("write should work")
+            .flush();
         assert!(!printer.get_output().is_empty());
 
-        printer.clear();
-        assert!(printer.get_output().is_empty());
+        assert!(printer.clear().get_output().is_empty());
     }
 
     #[cfg(any(test, feature = "test-utils"))]
     #[test]
     fn test_printer_has_line() {
-        let mut printer = TestPrinter::new();
+        let printer = TestPrinter::new();
 
-        printer.write_all(b"Hello World\n").unwrap();
-        printer.flush().unwrap();
+        let printer = printer
+            .write_all(b"Hello World\n")
+            .expect("write should work")
+            .flush();
 
         assert!(printer.has_line("Hello"));
         assert!(printer.has_line("World"));
@@ -93,10 +91,12 @@ mod tests {
     #[cfg(any(test, feature = "test-utils"))]
     #[test]
     fn test_printer_count_pattern() {
-        let mut printer = TestPrinter::new();
+        let printer = TestPrinter::new();
 
-        printer.write_all(b"test\nmore test\ntest again\n").unwrap();
-        printer.flush().unwrap();
+        let printer = printer
+            .write_all(b"test\nmore test\ntest again\n")
+            .expect("write should work")
+            .flush();
 
         assert_eq!(printer.count_pattern("test"), 3);
     }
@@ -106,8 +106,10 @@ mod tests {
     fn test_printer_detects_duplicates() {
         let mut printer = TestPrinter::new();
 
-        printer.write_all(b"Line 1\nLine 1\nLine 2\n").unwrap();
-        printer.flush().unwrap();
+        printer
+            .write_all(b"Line 1\nLine 1\nLine 2\n")
+            .expect("write should work");
+        printer.flush();
 
         assert!(printer.has_duplicate_consecutive_lines());
     }
@@ -119,8 +121,8 @@ mod tests {
 
         printer
             .write_all(b"Line 1\nLine 1\nLine 2\nLine 3\nLine 3\n")
-            .unwrap();
-        printer.flush().unwrap();
+            .expect("write should work");
+        printer.flush();
 
         let duplicates = printer.find_duplicate_consecutive_lines();
         assert_eq!(duplicates.len(), 2);
@@ -135,8 +137,10 @@ mod tests {
     fn test_printer_no_false_positives() {
         let mut printer = TestPrinter::new();
 
-        printer.write_all(b"Line 1\nLine 2\nLine 3\n").unwrap();
-        printer.flush().unwrap();
+        printer
+            .write_all(b"Line 1\nLine 2\nLine 3\n")
+            .expect("write should work");
+        printer.flush();
 
         assert!(!printer.has_duplicate_consecutive_lines());
     }
@@ -147,15 +151,15 @@ mod tests {
         let mut printer = TestPrinter::new();
 
         // Write without newline - buffer should hold it
-        printer.write_all(b"Partial").unwrap();
+        printer.write_all(b"Partial").expect("write should work");
 
         // Without flush, content is in buffer but accessible via get_output/get_lines
         // The TestPrinter stores partial content in buffer which is included in get_output
         assert!(printer.get_output().contains("Partial"));
 
         // Add newline to complete the line
-        printer.write_all(b" content\n").unwrap();
-        printer.flush().unwrap();
+        printer.write_all(b" content\n").expect("write should work");
+        printer.flush();
 
         // Now should have the complete content
         assert!(printer.has_line("Partial content"));
@@ -170,8 +174,10 @@ mod tests {
     fn test_printer_get_stats() {
         let mut printer = TestPrinter::new();
 
-        printer.write_all(b"Line 1\nLine 2\n").unwrap();
-        printer.flush().unwrap();
+        printer
+            .write_all(b"Line 1\nLine 2\n")
+            .expect("write should work");
+        printer.flush();
 
         let (line_count, char_count) = printer.get_stats();
         assert_eq!(line_count, 2);

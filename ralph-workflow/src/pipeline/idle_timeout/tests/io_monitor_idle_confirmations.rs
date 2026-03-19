@@ -5,7 +5,7 @@
 //! transient quiet periods (LLM API waits, slow compilations, etc.).
 
 use super::super::io::{KillConfig, DEFAULT_KILL_CONFIG};
-use super::super::monitor::MonitorConfig;
+use super::super::runtime::MonitorConfig;
 use super::super::*;
 use crate::executor::{AgentChild, MockAgentChild, MockProcessExecutor};
 use std::sync::atomic::{AtomicBool, Ordering};

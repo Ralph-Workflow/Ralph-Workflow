@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::path::Path;
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn write_planning_markdown(
+    pub(in crate::reducer::boundary) fn write_planning_markdown(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,
@@ -38,7 +38,7 @@ impl MainEffectHandler {
         ))
     }
 
-    pub(in crate::reducer::handler) fn archive_planning_xml(
+    pub(in crate::reducer::boundary) fn archive_planning_xml(
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
@@ -46,7 +46,7 @@ impl MainEffectHandler {
         EffectResult::event(PipelineEvent::planning_xml_archived(iteration))
     }
 
-    pub(in crate::reducer::handler) fn apply_planning_outcome(
+    pub(in crate::reducer::boundary) fn apply_planning_outcome(
         &self,
         _ctx: &mut PhaseContext<'_>,
         iteration: u32,

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Content type for delta accumulation.
 ///
@@ -86,6 +87,7 @@ impl DeltaAccumulator {
         } else {
             delta[..MAX_BUFFER_SIZE].to_string()
         };
+        let composite_key_for_chain = composite_key.clone();
         let new_key_order = if self.key_order.contains(&composite_key) {
             self.key_order.clone()
         } else {
@@ -99,7 +101,7 @@ impl DeltaAccumulator {
             buffers: self
                 .buffers
                 .iter()
-                .chain([(composite_key.clone(), new_value)])
+                .chain(std::iter::once((&composite_key_for_chain, &new_value)))
                 .map(|((ct, s), v)| ((*ct, s.clone()), v.clone()))
                 .collect(),
             key_order: new_key_order,

@@ -8,8 +8,8 @@
 use super::super::common::TestFixture;
 use crate::agents::{AgentDrain, AgentRole};
 use crate::executor::MockProcessExecutor;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{AgentEvent, PipelineEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{AgentChainState, PipelineState};
 use crate::workspace::MemoryWorkspace;
 use std::sync::Arc;

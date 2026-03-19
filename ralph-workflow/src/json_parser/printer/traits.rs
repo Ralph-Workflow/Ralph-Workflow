@@ -2,9 +2,6 @@
 //
 // Contains the Printable trait and StdoutPrinter/StderrPrinter.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 /// Trait for output destinations in parsers.
 ///
 /// This trait allows parsers to write to different output destinations
@@ -193,17 +190,9 @@ impl Printable for StderrPrinter {
 ///
 /// This type alias represents a shared, mutable reference to a printer
 /// that can be used across parser methods.
-#[deprecated(
-    since = "0.6.0",
-    note = "Use pure Printer types with explicit state threading instead"
-)]
 pub type SharedPrinter = Rc<RefCell<dyn Printable>>;
 
 /// Create a shared stdout printer.
-#[deprecated(
-    since = "0.6.0",
-    note = "Use pure Printer types with explicit state threading instead"
-)]
 #[must_use]
 pub fn shared_stdout() -> SharedPrinter {
     Rc::new(RefCell::new(StdoutPrinter::new()))

@@ -6,8 +6,8 @@
 use super::super::super::common::TestFixture;
 use super::super::AtomicWriteEnforcingWorkspace;
 use super::helpers::ReadFailingWorkspace;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{
     MaterializedPromptInput, MaterializedReviewInputs, PipelineState, PromptInputKind,
     PromptInputRepresentation, PromptMaterializationReason, PromptMode,

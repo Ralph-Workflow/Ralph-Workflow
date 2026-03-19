@@ -148,7 +148,7 @@ pub fn detect_concurrent_git_operations() -> io::Result<Option<ConcurrentOperati
             Ok(acc)
         });
 
-    Ok(result?.flatten())
+    Ok(result?)
 }
 
 /// Check if a rebase is currently in progress using Git CLI.

@@ -202,19 +202,36 @@ impl VirtualTerminal {
         }
         let col = self.cursor_col;
         let term = self.ensure_row_exists();
-        let row = self.cursor_row;
-        term.cursor_col += 1;
-        let line = &mut term.screen[row];
+        let row = term.cursor_row;
+        let line = &term.screen[row];
         let current_len = line.chars().count();
-        if current_len < col {
-            line.resize(col, ' ');
-        }
-        let prefix: String = line.chars().take(col).collect();
-        let suffix: String = line.chars().skip(col + 1).collect();
-        *line = format!("{prefix}{c}{suffix}");
+        let new_line = if current_len < col {
+            format!("{}{}", line, " ".repeat(col - current_len))
+        } else {
+            line.clone()
+        };
+        let prefix: String = new_line.chars().take(col).collect();
+        let suffix: String = new_line.chars().skip(col + 1).collect();
+        let updated_line = format!("{prefix}{c}{suffix}");
+        let mut new_screen = term.screen.clone();
+        new_screen[row] = updated_line;
+        let Self {
+            screen: _,
+            cursor_row: cr,
+            cursor_col: cc,
+            simulated_is_terminal: sit,
+            write_history: wh,
+            cols,
+            rows,
+        } = term;
         VirtualTerminal {
-            screen: term.screen,
-            ..term
+            screen: new_screen,
+            cursor_col: cc + 1,
+            cursor_row: cr,
+            simulated_is_terminal: sit,
+            write_history: wh,
+            cols,
+            rows,
         }
     }
 
@@ -245,17 +262,21 @@ impl VirtualTerminal {
             let row = self.cursor_row;
             let col = self.cursor_col;
             let term = self.ensure_row_exists();
-            let line = &mut term.screen[row];
+            let line = &term.screen[row];
             let current_len = line.chars().count();
-            if current_len < col {
-                line.resize(col, ' ');
-            }
-            let prefix: String = line.chars().take(col).collect();
-            let suffix: String = line.chars().skip(col + s.chars().count()).collect();
-            *line = format!("{}{}{}", prefix, s, suffix);
-            term.cursor_col = col + s.chars().count();
+            let new_line = if current_len < col {
+                format!("{}{}", line, " ".repeat(col - current_len))
+            } else {
+                line.clone()
+            };
+            let prefix: String = new_line.chars().take(col).collect();
+            let suffix: String = new_line.chars().skip(col + s.chars().count()).collect();
+            let updated_line = format!("{}{}{}", prefix, s, suffix);
+            let mut new_screen = term.screen.clone();
+            new_screen[row] = updated_line;
             VirtualTerminal {
-                screen: term.screen,
+                screen: new_screen,
+                cursor_col: col + s.chars().count(),
                 ..term
             }
         }
@@ -266,7 +287,7 @@ impl VirtualTerminal {
         let chars: Vec<char> = s.chars().collect();
         let (term, text_buffer, _) = chars.iter().enumerate().fold(
             (self, String::new(), 0),
-            |(mut term, mut text_buffer, i), (idx, &c)| match c {
+            |(mut term, mut text_buffer, _i), (idx, &c)| match c {
                 '\r' => {
                     if !text_buffer.is_empty() {
                         term = term.write_str(&text_buffer);
@@ -304,24 +325,24 @@ impl VirtualTerminal {
                             match cmd {
                                 'A' => {
                                     term.cursor_row = term.cursor_row.saturating_sub(n);
-                                    (term, text_buffer, new_i + 1)
+                                    (term, text_buffer, idx + 1)
                                 }
                                 'B' => {
                                     term.cursor_row += n;
                                     term = term.ensure_row_exists();
-                                    (term, text_buffer, new_i + 1)
+                                    (term, text_buffer, idx + 1)
                                 }
                                 'K' => {
                                     let mode: usize = param.parse().unwrap_or(0);
                                     if mode == 2 {
                                         term = term.clear_line();
                                     }
-                                    (term, text_buffer, new_i + 1)
+                                    (term, text_buffer, idx + 1)
                                 }
-                                _ => (term, text_buffer, new_i + 1),
+                                _ => (term, text_buffer, idx + 1),
                             }
                         } else {
-                            (term, text_buffer, new_i)
+                            (term, text_buffer, idx)
                         }
                     } else {
                         (term, text_buffer, idx + 1)
@@ -345,10 +366,24 @@ impl VirtualTerminal {
     fn clear_line(self) -> Self {
         let row = self.cursor_row;
         let term = self.ensure_row_exists();
-        term.screen[row].clear();
+        let Self {
+            mut screen,
+            cursor_row,
+            cursor_col,
+            simulated_is_terminal,
+            write_history,
+            cols,
+            rows,
+        } = term;
+        screen[row] = String::new();
         VirtualTerminal {
-            screen: term.screen,
-            ..term
+            screen,
+            cursor_row,
+            cursor_col,
+            simulated_is_terminal,
+            write_history,
+            cols,
+            rows,
         }
     }
 }

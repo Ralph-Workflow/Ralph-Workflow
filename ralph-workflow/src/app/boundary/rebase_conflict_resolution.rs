@@ -85,7 +85,7 @@ pub fn try_resolve_conflicts_with_hook_boundary<F>(
     ctx: &crate::app::rebase::types::ConflictResolutionContext<'_>,
     phase: &str,
     executor: &dyn crate::executor::ProcessExecutor,
-    after_prompt_capture: F,
+    mut after_prompt_capture: F,
 ) -> anyhow::Result<(
     bool,
     crate::app::rebase::conflicts::ConflictResolutionPromptReplay,
@@ -96,9 +96,7 @@ where
         &crate::app::rebase::conflicts::ConflictResolutionPromptReplay,
     ) -> Option<(String, crate::prompts::PromptHistoryEntry)>,
 {
-    use crate::app::rebase::types::ConflictResolutionContext;
     use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
-    use crate::workspace::Workspace;
 
     if conflicted_files.is_empty() {
         return Ok((

@@ -82,14 +82,14 @@ pub fn cleanup_after_agent_failure(
         monitor_should_stop.store(true, Ordering::Release);
     }
 
-    super::stderr_collector::cancel_and_join_stderr_collector(
+    super::io_stderr_collector::cancel_and_join_stderr_collector(
         stderr_cancel,
         stderr_join_handle,
         std::time::Duration::from_millis(250),
     );
 
     if stderr_join_handle.is_some() {
-        super::stderr_collector::cancel_and_join_stderr_collector(
+        super::io_stderr_collector::cancel_and_join_stderr_collector(
             stderr_cancel,
             stderr_join_handle,
             std::time::Duration::from_secs(2),

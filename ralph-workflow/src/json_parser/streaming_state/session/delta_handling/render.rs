@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 impl StreamingSession {
     pub fn get_accumulated(&self, content_type: ContentType, index: &str) -> Option<&str> {
         self.accumulated
@@ -5,9 +7,9 @@ impl StreamingSession {
             .map(std::string::String::as_str)
     }
 
-    fn compute_hash<T: std::hash::Hash>(value: &T) -> u64 {
-        let hasher = std::collections::hash_map::DefaultHasher::new();
-        value.hash(&hasher);
+    fn compute_hash(value: &str) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&mut hasher);
         hasher.finish()
     }
 

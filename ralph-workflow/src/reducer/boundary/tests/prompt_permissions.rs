@@ -1,7 +1,7 @@
 use super::common::TestFixture;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::effect::{Effect, EffectHandler};
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::PipelineState;
 use crate::reducer::ui_event::UIEvent;
 

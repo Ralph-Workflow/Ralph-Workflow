@@ -1,5 +1,8 @@
 //! Skills-MCP field tests for XSD validation of development result XML format.
 
+#[cfg(test)]
+use crate::validate_development_result_xml;
+
 #[test]
 fn test_dev_result_with_skills_mcp_parses_entries() {
     let xml = r#"<ralph-development-result>

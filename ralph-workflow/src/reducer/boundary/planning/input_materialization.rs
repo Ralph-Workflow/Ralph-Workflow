@@ -18,7 +18,7 @@ use anyhow::Result;
 use std::path::Path;
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn materialize_planning_inputs(
+    pub(in crate::reducer::boundary) fn materialize_planning_inputs(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

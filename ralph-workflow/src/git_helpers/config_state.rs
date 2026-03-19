@@ -86,10 +86,10 @@ fn remove_config_file_if_no_entries(path: &Path) -> io::Result<()> {
     }
 
     let config = Config::open(path).map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
-    let entries = config
+    let mut entries = config
         .entries(None)
         .map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
-    if entries.count() == 0 {
+    if entries.next().is_none() {
         fs::remove_file(path)?;
     }
 
@@ -135,8 +135,7 @@ fn collect_config_entries(
     entries: git2::ConfigEntries,
 ) -> io::Result<Vec<(String, Option<String>)>> {
     entries
-        .iter()
-        .map(|entry| {
+        .map(|entry: git2::ConfigEntry| {
             let name = entry
                 .name()
                 .ok_or_else(|| {
@@ -231,7 +230,7 @@ fn protected_config_paths(scope: &ProtectionScope) -> Vec<PathBuf> {
     let worktree_paths: Vec<PathBuf> = fs::read_dir(worktrees_dir)
         .into_iter()
         .flatten()
-        .map(|entry| entry.path().join("config.worktree"))
+        .map(|entry| entry.unwrap().path().join("config.worktree"))
         .collect();
 
     std::iter::once(scope.common_git_dir.join("config.worktree"))
@@ -302,20 +301,6 @@ fn other_active_ralph_hooks_path_overrides_exist(scope: &ProtectionScope) -> io:
     })
 }
 
-            let Some(expected_hooks_dir) =
-                scoped_hooks_dir_for_config(config_path, &scope.common_git_dir)
-            else {
-                return Ok(());
-            };
-
-            if read_config_path(config_path)?.is_some_and(|value| value == expected_hooks_dir) {
-                return Err(io::Error::other(true));
-            }
-            Ok(())
-        })
-        .and_then(|_| Ok(false))
-}
-
 fn config_worktree_is_safe_to_activate(
     scope: &ProtectionScope,
     config_path: &Path,
@@ -325,12 +310,13 @@ fn config_worktree_is_safe_to_activate(
         return Ok(true);
     }
 
-    is_single_ralph_hooks_path_for_scope(&entries, scope)
+    is_single_ralph_hooks_path_for_scope(&entries, scope, config_path)
 }
 
 fn is_single_ralph_hooks_path_for_scope(
     entries: &[(String, Option<String>)],
     scope: &ProtectionScope,
+    config_path: &Path,
 ) -> io::Result<bool> {
     let expected_hooks_path = scope.hooks_dir.to_str().ok_or_else(|| {
         io::Error::new(
@@ -513,23 +499,21 @@ mod tests {
         let _wt_two = main_repo.worktree("wt-two", &worktree_two, None).unwrap();
         let common_config = root_repo_path.join(".git/config");
 
-        crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_one).unwrap();
-        crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_two).unwrap();
+        crate::git_helpers::install::install_hooks_in_repo(&worktree_one).unwrap();
+        crate::git_helpers::install::install_hooks_in_repo(&worktree_two).unwrap();
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             Some("true".to_string())
         );
 
         let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
-        crate::git_helpers::runtime::uninstall::uninstall_hooks_in_repo(&worktree_one, &logger)
-            .unwrap();
+        crate::git_helpers::uninstall::uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             Some("true".to_string())
         );
 
-        crate::git_helpers::runtime::uninstall::uninstall_hooks_in_repo(&worktree_two, &logger)
-            .unwrap();
+        crate::git_helpers::uninstall::uninstall_hooks_in_repo(&worktree_two, &logger).unwrap();
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             None
@@ -554,7 +538,7 @@ mod tests {
             .path()
             .join("config.worktree");
 
-        crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_one).unwrap();
+        crate::git_helpers::install::install_hooks_in_repo(&worktree_one).unwrap();
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             Some("true".to_string())
@@ -563,8 +547,7 @@ mod tests {
         let mut sibling_cfg = open_config(&sibling_config).unwrap();
         sibling_cfg.set_str("core.fsmonitor", "true").unwrap();
 
-        crate::git_helpers::runtime::uninstall::uninstall_hooks_in_repo(&worktree_one, &logger)
-            .unwrap();
+        crate::git_helpers::uninstall::uninstall_hooks_in_repo(&worktree_one, &logger).unwrap();
         assert_eq!(
             read_config_string(&common_config, "extensions.worktreeConfig").unwrap(),
             Some("true".to_string())
@@ -596,7 +579,7 @@ mod tests {
             .path()
             .join("config.worktree");
 
-        let err = crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_one)
+        let err = crate::git_helpers::install::install_hooks_in_repo(&worktree_one)
             .expect_err(
                 "install must refuse to enable shared worktreeConfig when another config.worktree would become active",
             );
@@ -632,7 +615,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         symlink(outside.path(), &scope.ralph_dir).unwrap();
 
-        crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_path).unwrap();
+        crate::git_helpers::install::install_hooks_in_repo(&worktree_path).unwrap();
 
         let ralph_meta = fs::symlink_metadata(&scope.ralph_dir).unwrap();
         assert!(
@@ -663,10 +646,9 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         symlink(outside.path(), &scope.hooks_dir).unwrap();
 
-        let err = crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_path)
-            .expect_err(
-                "install must reject hook dirs that resolve outside the scoped ralph metadata dir",
-            );
+        let err = crate::git_helpers::install::install_hooks_in_repo(&worktree_path).expect_err(
+            "install must reject hook dirs that resolve outside the scoped ralph metadata dir",
+        );
 
         assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
         assert!(
@@ -710,7 +692,7 @@ mod tests {
         let mut sibling_cfg = open_config(&sibling_config).unwrap();
         sibling_cfg.set_str("core.fsmonitor", "true").unwrap();
 
-        let err = crate::git_helpers::runtime::install::install_hooks_in_repo(&worktree_one)
+        let err = crate::git_helpers::install::install_hooks_in_repo(&worktree_one)
             .expect_err("unsafe shared worktreeConfig activation should fail");
 
         assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
@@ -723,7 +705,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_uninstall_hooks_in_repo_rejects_symlinked_scoped_hooks_dir() {
-        use crate::git_helpers::runtime::install::HOOK_MARKER;
+        use crate::git_helpers::install::HOOK_MARKER;
         use std::os::unix::fs::symlink;
 
         let tmp = tempfile::tempdir().unwrap();
@@ -746,11 +728,8 @@ mod tests {
         symlink(outside.path(), &scope.hooks_dir).unwrap();
 
         let logger = crate::logger::Logger::new(crate::logger::Colors::with_enabled(false));
-        let err = crate::git_helpers::runtime::uninstall::uninstall_hooks_in_repo(
-            &worktree_path,
-            &logger,
-        )
-        .expect_err("cleanup must refuse symlinked scoped hook dirs");
+        let err = crate::git_helpers::uninstall::uninstall_hooks_in_repo(&worktree_path, &logger)
+            .expect_err("cleanup must refuse symlinked scoped hook dirs");
 
         assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
         assert!(
@@ -762,7 +741,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_uninstall_hooks_silent_at_skips_symlinked_scoped_hooks_dir() {
-        use crate::git_helpers::runtime::install::HOOK_MARKER;
+        use crate::git_helpers::install::HOOK_MARKER;
         use std::os::unix::fs::symlink;
 
         let tmp = tempfile::tempdir().unwrap();
@@ -784,7 +763,7 @@ mod tests {
         .unwrap();
         symlink(outside.path(), &scope.hooks_dir).unwrap();
 
-        crate::git_helpers::runtime::uninstall::uninstall_hooks_silent_at(&worktree_path);
+        crate::git_helpers::uninstall::uninstall_hooks_silent_at(&worktree_path);
 
         assert!(
             outside_hook.exists(),

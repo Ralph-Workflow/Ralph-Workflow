@@ -3,7 +3,10 @@
 // Tests for the GitignoreEntriesEnsured event that ensures .gitignore
 // contains required agent artifact entries.
 
-use super::*;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_gitignore_entries_ensured_sets_flag() {

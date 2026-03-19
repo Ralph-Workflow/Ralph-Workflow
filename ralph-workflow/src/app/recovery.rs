@@ -103,8 +103,8 @@ where
 
 fn apply_checkpoint_effect_result<'ctx, H>(
     handler: &mut H,
-    mut state: PipelineState,
-    mut events_processed: usize,
+    state: PipelineState,
+    events_processed: usize,
     trace: &mut EventTraceBuffer,
     save_effect_str: &str,
     result: crate::reducer::effect::EffectResult,
@@ -247,7 +247,7 @@ pub(super) fn handle_forced_checkpoint_after_completion<'ctx, H>(
     ctx: &mut PhaseContext<'_>,
     handler: &mut H,
     state: PipelineState,
-    mut events_processed: usize,
+    events_processed: usize,
     trace: &mut EventTraceBuffer,
 ) -> RecoveryResult
 where

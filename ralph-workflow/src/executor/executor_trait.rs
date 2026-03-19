@@ -3,14 +3,17 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::{build_agent_command_internal, build_command, collect_descendants};
 use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
 #[cfg(target_os = "macos")]
 use crate::executor::macos::child_info_from_libproc;
 use crate::executor::ps::parse_ps_output;
 use crate::executor::{
-    child_info_from_descendant_pids, warn_child_process_detection_conservative,
-    warn_child_process_detection_degraded,
+    bfs::collect_descendants,
+    command::{build_agent_command_internal, build_command},
+    ps::{
+        child_info_from_descendant_pids, warn_child_process_detection_conservative,
+        warn_child_process_detection_degraded,
+    },
 };
 use std::io;
 use std::path::Path;

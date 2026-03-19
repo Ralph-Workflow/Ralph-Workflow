@@ -1,10 +1,8 @@
 use super::types::{ConflictResolutionContext, ConflictResolutionResult};
-use crate::app::boundary::conflict_resolution;
 use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::template_context::TemplateContext;
 use crate::prompts::{get_stored_or_generate_prompt, PromptScopeKey};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictResolutionPromptReplay {
@@ -121,7 +119,7 @@ where
     Ok((resolved, replay, prompt_history))
 }
 
-fn conflict_resolution_content_id(
+pub fn conflict_resolution_content_id(
     phase: &str,
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
 ) -> String {
@@ -150,7 +148,7 @@ fn conflict_resolution_content_id(
     sha256_hex_str(&s)
 }
 
-fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
+pub fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
     logger.info("Agent resolved conflicts via file edits (no JSON output)");
 
     let remaining_conflicts = crate::git_helpers::get_conflicted_files()?;
@@ -166,7 +164,7 @@ fn handle_file_edits_resolution(logger: &Logger) -> anyhow::Result<bool> {
     }
 }
 
-fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
+pub fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> bool {
     logger.warn("AI conflict resolution failed");
     logger.info("Attempting to continue rebase anyway...");
 
@@ -182,7 +180,7 @@ fn handle_failed_resolution(logger: &Logger, executor: &dyn ProcessExecutor) -> 
     }
 }
 
-fn handle_error_resolution(
+pub fn handle_error_resolution(
     logger: &Logger,
     executor: &dyn ProcessExecutor,
     e: &anyhow::Error,
@@ -202,7 +200,7 @@ fn handle_error_resolution(
     }
 }
 
-fn collect_conflict_info_or_error(
+pub fn collect_conflict_info_or_error(
     conflicted_files: &[String],
     workspace: &dyn crate::workspace::Workspace,
     logger: &Logger,
@@ -218,7 +216,7 @@ fn collect_conflict_info_or_error(
     }
 }
 
-fn build_resolution_prompt(
+pub fn build_resolution_prompt(
     conflicts: &std::collections::HashMap<String, crate::prompts::FileConflict>,
     template_context: &TemplateContext,
     workspace: &dyn crate::workspace::Workspace,
@@ -253,7 +251,7 @@ fn build_enhanced_resolution_prompt(
     )
 }
 
-fn run_ai_conflict_resolution(
+pub fn run_ai_conflict_resolution(
     resolution_prompt: &str,
     ctx: &ConflictResolutionContext<'_>,
 ) -> anyhow::Result<ConflictResolutionResult> {

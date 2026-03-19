@@ -408,14 +408,14 @@ where
             runtime.events_processed,
             &mut runtime.trace,
         );
-        let (trace_already_dumped, recovery_failed) =
+        let (_trace_already_dumped, recovery_failed) =
             apply_recovery_result(dev_fix_result, runtime, trace_already_dumped);
         !recovery_failed
     } else {
         false
     };
 
-    let trace_already_dumped = if trace_already_dumped {
+    let _trace_already_dumped = if trace_already_dumped {
         true
     } else {
         let dumped = dump_event_loop_trace(ctx, &runtime.trace, &runtime.state, "max_iterations");

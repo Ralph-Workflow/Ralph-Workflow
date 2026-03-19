@@ -1,11 +1,11 @@
 //! Hook uninstallation logic.
 
 use crate::files::file_contains_marker;
+use crate::git_helpers::config_state;
+use crate::git_helpers::hooks_dir;
+use crate::git_helpers::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
 use crate::git_helpers::repo::resolve_protection_scope_from;
-use crate::git_helpers::runtime::config_state;
-use crate::git_helpers::runtime::hooks_dir;
-use crate::git_helpers::runtime::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
-use crate::git_helpers::runtime::worktree;
+use crate::git_helpers::worktree;
 use crate::logger::Logger;
 use std::fs;
 use std::io;
@@ -56,14 +56,14 @@ pub fn uninstall_hooks_in_repo(repo_root: &Path, logger: &Logger) -> io::Result<
 
     hooks_dir::validate_hooks_dir_for_scope(&scope, false)?;
 
-    let restored = RALPH_HOOK_NAMES
+    let restored: usize = RALPH_HOOK_NAMES
         .iter()
         .try_fold(0usize, |count, hook_name| {
             let hook_path = hooks_dir.join(hook_name);
             if hook_path.exists() && uninstall_hook(&hook_path, logger)? {
-                Ok(count.saturating_add(1))
+                Ok::<usize, std::io::Error>(count.saturating_add(1))
             } else {
-                Ok(count)
+                Ok::<usize, std::io::Error>(count)
             }
         })?;
 
@@ -140,7 +140,7 @@ fn make_hook_writable(hook_path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git_helpers::runtime::install::HOOK_MARKER;
+    use crate::git_helpers::install::HOOK_MARKER;
 
     #[test]
     fn test_uninstall_hooks_silent_at_removes_ralph_hooks() {

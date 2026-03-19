@@ -79,8 +79,8 @@
 mod clock;
 mod file_activity;
 pub(crate) mod io;
-mod runtime;
 mod readers;
+mod runtime;
 
 pub use clock::{
     is_idle_timeout_exceeded, is_idle_timeout_exceeded_with_clock, new_activity_timestamp,
@@ -90,13 +90,13 @@ pub use clock::{
 };
 pub use file_activity::FileActivityTracker;
 pub use io::{KillConfig, DEFAULT_KILL_CONFIG};
-pub(crate) use monitor::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
-pub use monitor::{
+pub use readers::{ActivityTrackingReader, StderrActivityTracker};
+pub(crate) use runtime::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
+pub use runtime::{
     monitor_idle_timeout, monitor_idle_timeout_with_interval,
     monitor_idle_timeout_with_interval_and_kill_config, FileActivityConfig, MonitorConfig,
     MonitorResult,
 };
-pub use readers::{ActivityTrackingReader, StderrActivityTracker};
 
 #[cfg(test)]
 mod tests;

@@ -3,33 +3,49 @@
 // Tests for review phase: pass count, fix triggers, and skipping fix
 // when no issues found.
 
-use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::orchestration::determine_next_effect;
+use crate::reducer::state::AgentChainState;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_review_runs_exactly_n_passes() {
-    let mut state = PipelineState::initial(0, 3); // 0 dev, 3 review passes
-    state.agent_chain = state.agent_chain.with_agents(
+    let agent_chain = PipelineState::initial(0, 3).agent_chain.with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
         AgentRole::Reviewer,
     );
+    let state = PipelineState::initial(0, 3);
 
     let mut passes_run = Vec::new();
     let max_steps = 30;
+    let mut current_state = PipelineState {
+        agent_chain,
+        ..state
+    };
 
-    for _ in 0..max_steps {
-        let effect = determine_next_effect(&state);
+    let mut step = 0;
+    while step < max_steps {
+        let effect = determine_next_effect(&current_state);
 
         match effect {
             Effect::LockPromptPermissions => {
-                state = reduce(state, PipelineEvent::prompt_permissions_locked(None));
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::prompt_permissions_locked(None),
+                );
             }
             Effect::RestorePromptPermissions => {
-                state = reduce(state, PipelineEvent::prompt_permissions_restored());
+                current_state = reduce(current_state, PipelineEvent::prompt_permissions_restored());
             }
             Effect::InitializeAgentChain { drain, .. } => {
-                state = reduce(
-                    state,
+                current_state = reduce(
+                    current_state,
                     PipelineEvent::agent_chain_initialized(
                         drain,
                         vec!["claude".to_string()],
@@ -42,14 +58,19 @@ fn test_review_runs_exactly_n_passes() {
             }
             Effect::PrepareReviewContext { pass } => {
                 passes_run.push(pass);
-                // Simulate a full clean pass through the single-task review chain.
-                state = reduce(state, PipelineEvent::review_context_prepared(pass));
-                state = reduce(state, PipelineEvent::review_prompt_prepared(pass));
-                state = reduce(state, PipelineEvent::review_issues_xml_cleaned(pass));
-                state = reduce(state, PipelineEvent::review_agent_invoked(pass));
-                state = reduce(state, PipelineEvent::review_issues_xml_extracted(pass));
-                state = reduce(
-                    state,
+                current_state = reduce(current_state, PipelineEvent::review_context_prepared(pass));
+                current_state = reduce(current_state, PipelineEvent::review_prompt_prepared(pass));
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_issues_xml_cleaned(pass),
+                );
+                current_state = reduce(current_state, PipelineEvent::review_agent_invoked(pass));
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_issues_xml_extracted(pass),
+                );
+                current_state = reduce(
+                    current_state,
                     PipelineEvent::review_issues_xml_validated(
                         pass,
                         false,
@@ -58,13 +79,26 @@ fn test_review_runs_exactly_n_passes() {
                         Some("ok".to_string()),
                     ),
                 );
-                state = reduce(state, PipelineEvent::review_issues_markdown_written(pass));
-                state = reduce(state, PipelineEvent::review_issue_snippets_extracted(pass));
-                state = reduce(state, PipelineEvent::review_issues_xml_archived(pass));
-                state = reduce(state, PipelineEvent::review_pass_completed_clean(pass));
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_issues_markdown_written(pass),
+                );
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_issue_snippets_extracted(pass),
+                );
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_issues_xml_archived(pass),
+                );
+                current_state = reduce(
+                    current_state,
+                    PipelineEvent::review_pass_completed_clean(pass),
+                );
             }
             _ => break,
         }
+        step += 1;
     }
 
     assert_eq!(
@@ -74,7 +108,7 @@ fn test_review_runs_exactly_n_passes() {
     );
     assert_eq!(passes_run, vec![0, 1, 2], "Should run passes 0-2");
     assert_eq!(
-        state.phase,
+        current_state.phase,
         PipelinePhase::CommitMessage,
         "Should transition to CommitMessage after reviews"
     );
@@ -306,12 +340,13 @@ fn test_review_with_issues_initializes_fix_drain_when_chain_targets_review() {
 
 #[test]
 fn test_review_context_prepared_invalidates_materialized_review_inputs() {
-    // Regression test: if review context is prepared again (diff backup rewritten),
-    // previously materialized review inputs must be invalidated to avoid reusing
-    // stale PLAN/DIFF materialization for the same pass.
-    use crate::reducer::state::AgentChainState;
-
-    let mut state = PipelineState {
+    let agent_chain = AgentChainState::initial().with_agents(
+        vec!["reviewer".to_string()],
+        vec![vec![]],
+        AgentRole::Reviewer,
+    );
+    let sig = agent_chain.consumer_signature_sha256();
+    let state = PipelineState {
         phase: PipelinePhase::Review,
         reviewer_pass: 0,
         total_reviewer_passes: 1,
@@ -322,7 +357,7 @@ fn test_review_context_prepared_invalidates_materialized_review_inputs() {
                 plan: crate::reducer::state::MaterializedPromptInput {
                     kind: crate::reducer::state::PromptInputKind::Plan,
                     content_id_sha256: "plan".to_string(),
-                    consumer_signature_sha256: String::new(),
+                    consumer_signature_sha256: sig.clone(),
                     original_bytes: 1,
                     final_bytes: 1,
                     model_budget_bytes: None,
@@ -333,7 +368,7 @@ fn test_review_context_prepared_invalidates_materialized_review_inputs() {
                 diff: crate::reducer::state::MaterializedPromptInput {
                     kind: crate::reducer::state::PromptInputKind::Diff,
                     content_id_sha256: "old-diff".to_string(),
-                    consumer_signature_sha256: String::new(),
+                    consumer_signature_sha256: sig,
                     original_bytes: 1,
                     final_bytes: 1,
                     model_budget_bytes: None,
@@ -344,26 +379,12 @@ fn test_review_context_prepared_invalidates_materialized_review_inputs() {
             }),
             ..Default::default()
         },
-        agent_chain: AgentChainState::initial().with_agents(
-            vec!["reviewer".to_string()],
-            vec![vec![]],
-            AgentRole::Reviewer,
-        ),
+        agent_chain,
         ..create_test_state()
     };
 
-    // Make consumer signatures match so inputs would otherwise be considered valid.
-    let sig = state.agent_chain.consumer_signature_sha256();
-    {
-        let inputs = state.prompt_inputs.review.as_mut().unwrap();
-        inputs.plan.consumer_signature_sha256 = sig.clone();
-        inputs.diff.consumer_signature_sha256 = sig;
-    }
+    let state = reduce(state, PipelineEvent::review_context_prepared(0));
 
-    // Re-prepare context for the same pass.
-    state = reduce(state, PipelineEvent::review_context_prepared(0));
-
-    // Next effect should rematerialize inputs.
     let effect = determine_next_effect(&state);
     assert!(
         matches!(effect, Effect::MaterializeReviewInputs { pass: 0 }),

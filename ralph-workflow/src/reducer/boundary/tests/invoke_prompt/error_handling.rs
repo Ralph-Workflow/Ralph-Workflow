@@ -8,8 +8,8 @@
 use super::super::common::TestFixture;
 use super::ReadFailingWorkspace;
 use crate::executor::MockProcessExecutor;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{AgentEvent, ErrorEvent, PipelineEvent, WorkspaceIoErrorKind};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{AgentChainState, PipelineState};
 use crate::workspace::MemoryWorkspace;
 use std::path::PathBuf;

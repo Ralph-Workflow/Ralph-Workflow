@@ -5,8 +5,8 @@
 
 use super::super::common::TestFixture;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{AgentChainState, CommitState, PipelineState};
 use crate::workspace::Workspace;
 use std::path::Path;

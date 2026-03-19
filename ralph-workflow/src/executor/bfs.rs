@@ -2,6 +2,7 @@
 //!
 //! Uses functional iteration for child process detection.
 
+use crate::executor::ps::child_info_from_descendant_pids;
 use crate::executor::ps::parse_pgrep_output;
 use crate::executor::{ChildProcessInfo, ProcessExecutor};
 use std::collections::{HashSet, VecDeque};
@@ -21,7 +22,7 @@ fn pgrep_children<E: ProcessExecutor + ?Sized>(executor: &E, current_pid: u32) -
 
 fn bfs_step(
     current: u32,
-    visited: &HashSet<u32>,
+    visited: &mut HashSet<u32>,
     get_children: impl Fn(u32) -> Option<Vec<u32>>,
 ) -> Option<(Vec<u32>, Vec<u32>)> {
     let child_pids = get_children(current)?;
@@ -39,7 +40,8 @@ fn bfs_traverse(start: u32, get_children: impl Fn(u32) -> Option<Vec<u32>>) -> V
     let _ = visited.insert(start);
 
     while let Some(current) = queue.pop_front() {
-        if let Some((new_queue_items, new_descendants)) = bfs_step(current, &visited, &get_children)
+        if let Some((new_queue_items, new_descendants)) =
+            bfs_step(current, &mut visited, &get_children)
         {
             descendants.extend(new_descendants);
             queue.extend(new_queue_items);
@@ -57,8 +59,6 @@ pub fn collect_descendants<E: ProcessExecutor + ?Sized>(executor: &E, parent_pid
 
 /// Compute child process info from descendants.
 pub fn compute_from_descendants(_parent_pid: u32, descendants: &[u32]) -> ChildProcessInfo {
-    use crate::executor::child_info_from_descendant_pids;
-
     if descendants.is_empty() {
         return ChildProcessInfo::NONE;
     }

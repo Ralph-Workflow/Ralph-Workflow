@@ -3,7 +3,7 @@
 // This file contains the `StreamingSession` struct and all its implementation
 // methods for tracking streaming state across all parsers.
 
-use crate::json_parser::deduplication::RollingHashWindow;
+use crate::json_parser::deduplication::rolling_hash::RollingHashWindow;
 use crate::json_parser::deduplication::{get_overlap_thresholds, DeltaDeduplicator};
 use crate::json_parser::health::StreamingQualityMetrics;
 use itertools::Itertools;

@@ -31,7 +31,7 @@ impl MainEffectHandler {
     /// # Returns
     ///
     /// `EffectResult` with `DevelopmentContextPrepared` event.
-    pub(in crate::reducer::handler) fn prepare_development_context(
+    pub(in crate::reducer::boundary) fn prepare_development_context(
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
@@ -62,7 +62,7 @@ impl MainEffectHandler {
     ///
     /// `EffectResult` with `AgentEvent::InvocationSucceeded` or `AgentEvent::InvocationFailed`,
     /// plus `DevelopmentAgentInvoked` event on success.
-    pub(in crate::reducer::handler) fn invoke_development_agent(
+    pub(in crate::reducer::boundary) fn invoke_development_agent(
         &mut self,
         ctx: &mut PhaseContext<'_>,
         iteration: u32,
@@ -117,7 +117,7 @@ impl MainEffectHandler {
     /// # Returns
     ///
     /// `EffectResult` with `DevelopmentXmlArchived` event.
-    pub(in crate::reducer::handler) fn archive_development_xml(
+    pub(in crate::reducer::boundary) fn archive_development_xml(
         ctx: &PhaseContext<'_>,
         iteration: u32,
     ) -> EffectResult {
@@ -147,7 +147,7 @@ impl MainEffectHandler {
     /// # Returns
     ///
     /// `EffectResult` with `DevelopmentOutcomeApplied` event, or error if no validated outcome exists.
-    pub(in crate::reducer::handler) fn apply_development_outcome(
+    pub(in crate::reducer::boundary) fn apply_development_outcome(
         &self,
         _ctx: &mut PhaseContext<'_>,
         iteration: u32,
@@ -209,7 +209,7 @@ impl MainEffectHandler {
 /// # Returns
 ///
 /// Ok on success, or `ErrorEvent::WorkspaceWriteFailed` if writing fails.
-pub(in crate::reducer::handler) fn write_continuation_context_to_workspace(
+pub(in crate::reducer::boundary) fn write_continuation_context_to_workspace(
     workspace: &dyn Workspace,
     logger: &crate::logger::Logger,
     data: &ContinuationContextData,

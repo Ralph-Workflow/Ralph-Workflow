@@ -45,7 +45,7 @@ mod xml;
 const COMMIT_XSD_ERROR_PATH: &str = ".agent/tmp/commit_xsd_error.txt";
 
 /// Get the current commit attempt number from commit state.
-pub(in crate::reducer::handler) const fn current_commit_attempt(
+pub(in crate::reducer::boundary) const fn current_commit_attempt(
     commit: &crate::reducer::state::CommitState,
 ) -> u32 {
     use crate::reducer::state::CommitState;

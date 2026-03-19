@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 pub fn set_current_dir(path: &Path) -> Result<(), io::Error> {
@@ -84,7 +85,7 @@ pub fn exit_with_code(code: i32) -> ! {
 }
 
 pub fn read_user_input() -> String {
-    use std::io::{self, BufRead};
+    use std::io;
     let mut input = String::new();
     let _ = io::stdin().read_line(&mut input);
     input

@@ -81,7 +81,7 @@ impl OpenCodeParser {
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             return Ok(());
@@ -114,12 +114,12 @@ impl OpenCodeParser {
         Ok(())
     }
 
-    fn maybe_write_debug_event(&mut self, line: &str) -> io::Result<()> {
+    fn maybe_write_debug_event(&mut self, line: &str) -> std::io::Result<()> {
         if !self.verbosity.is_debug() {
             return Ok(());
         }
 
-        let c = &self.colors;
+        let c = self.colors.clone();
         self.with_printer_mut(|printer| {
             writeln!(
                 printer,
@@ -184,7 +184,7 @@ impl OpenCodeParser {
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
-    ) -> io::Result<crate::json_parser::incremental_parser::IncrementalNdjsonParser> {
+    ) -> std::io::Result<crate::json_parser::incremental_parser::IncrementalNdjsonParser> {
         loop {
             let chunk = reader.fill_buf()?;
             if chunk.is_empty() {
@@ -192,11 +192,13 @@ impl OpenCodeParser {
             }
 
             let consumed = chunk.len();
+            let data: Vec<u8> = chunk.to_vec();
             reader.consume(consumed);
 
-            parser = parser.feed(chunk);
+            let (new_parser, batch) = parser.feed_and_get_events(&data);
+            parser = new_parser;
 
-            parser.get_results().into_iter().try_for_each(|line| {
+            batch.into_iter().try_for_each(|line| {
                 self.process_stream_json_line(&line, monitor, logging_enabled, log_buffer)
             })?;
         }
@@ -209,7 +211,7 @@ impl OpenCodeParser {
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         let trimmed = remaining.trim();
         if trimmed.is_empty()
             || !trimmed.starts_with('{')
@@ -244,7 +246,7 @@ impl OpenCodeParser {
         &self,
         workspace: &dyn crate::workspace::Workspace,
         log_buffer: &[u8],
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         if let Some(log_path) = &self.log_path {
             workspace.append_bytes(log_path, log_buffer)?;
         }
@@ -266,7 +268,7 @@ impl OpenCodeParser {
         workspace: &dyn crate::workspace::Workspace,
         output_path: &str,
         xml: &str,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         if xml.len() > MAX_XML_BYTES {
             return Ok(());
         }
@@ -279,15 +281,15 @@ impl OpenCodeParser {
     fn persist_extracted_xml_artifacts(
         &self,
         workspace: &dyn crate::workspace::Workspace,
-    ) -> io::Result<()> {
-        let maybe_accumulated = self
-            .state
-            .streaming_session
-            .borrow()
-            .get_accumulated(ContentType::Text, "main")
-            .map(str::to_owned);
+    ) -> std::io::Result<()> {
+        let accumulated: Option<String> = {
+            let session = self.state.streaming_session.borrow();
+            session
+                .get_accumulated(ContentType::Text, "main")
+                .map(str::to_string)
+        };
 
-        let Some(accumulated) = maybe_accumulated else {
+        let Some(accumulated) = accumulated else {
             return Ok(());
         };
 
@@ -315,7 +317,7 @@ impl OpenCodeParser {
         Ok(())
     }
 
-    fn write_monitor_warning_if_needed(&mut self, monitor: &HealthMonitor) -> io::Result<()> {
+    fn write_monitor_warning_if_needed(&mut self, monitor: &HealthMonitor) -> std::io::Result<()> {
         if let Some(warning) = monitor.check_and_warn(self.colors) {
             self.with_printer_mut(|printer| {
                 writeln!(printer, "{warning}").ok();
@@ -329,12 +331,12 @@ impl OpenCodeParser {
         &mut self,
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 
         let monitor = HealthMonitor::new("OpenCode");
         let logging_enabled = self.log_path.is_some();
-        let log_buffer: Vec<u8> = Vec::new();
+        let mut log_buffer: Vec<u8> = Vec::new();
         let incremental_parser = IncrementalNdjsonParser::new();
 
         let incremental_parser = self.process_incremental_stream(

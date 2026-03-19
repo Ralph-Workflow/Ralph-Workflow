@@ -27,7 +27,7 @@ impl MainEffectHandler {
     ///
     /// - `commit_xml_extracted` - XML file found
     /// - `commit_xml_missing` - XML file not found (agent didn't write output)
-    pub(in crate::reducer::handler) fn extract_commit_xml(
+    pub(in crate::reducer::boundary) fn extract_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
@@ -47,7 +47,7 @@ impl MainEffectHandler {
     /// # Events Emitted
     ///
     /// - `commit_xml_archived` - XML file archived successfully
-    pub(in crate::reducer::handler) fn archive_commit_xml(
+    pub(in crate::reducer::boundary) fn archive_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {

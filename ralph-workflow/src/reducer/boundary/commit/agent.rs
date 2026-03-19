@@ -41,7 +41,7 @@ impl MainEffectHandler {
     /// - `CommitPromptMissing` - Prompt file not found
     /// - `WorkspaceReadFailed` - Error reading prompt file
     /// - `CommitAgentNotInitialized` - Agent chain not initialized
-    pub(in crate::reducer::handler) fn invoke_commit_agent(
+    pub(in crate::reducer::boundary) fn invoke_commit_agent(
         &mut self,
         ctx: &mut PhaseContext<'_>,
     ) -> Result<EffectResult> {

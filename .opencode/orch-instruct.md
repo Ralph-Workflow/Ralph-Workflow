@@ -6,6 +6,13 @@
 
 ⚠️ **ALL AGENTS RUN IN BACKGROUND: `run_in_background=true`. NO EXCEPTIONS.**
 
+⚠️ **RE-READ THE FP STYLE GUIDES BEFORE EVERY DISPATCH BATCH:**
+- `docs/code-style/functional-transformations.md`
+- `docs/code-style/boundaries.md`
+- `docs/code-style/coding-patterns.md`
+
+These guides change what "correct" looks like. If you work from memory, you will miss violations.
+
 ---
 
 ## 🚨 STYLE COMPLIANCE: SCAN EVERY AGENT RESULT IN STEP 4
@@ -107,6 +114,27 @@ Agents must NEVER run any cargo command during their work:
 - API changes from Phase 1 (e.g. `string_pool` now returns tuples) must be propagated with functional call-site patterns, not quick hacks
 
 **NEVER run the dispatch script until you are confident all dylint violations have been addressed.**
+
+### Phase 2 Compilation Review (MANDATORY after EVERY agent result)
+
+⚠️ **RE-READ `docs/code-style/functional-transformations.md` AND `docs/code-style/boundaries.md` BEFORE reviewing any result.**
+
+After collecting each agent's result via `background_output`, scan the result text for these red flags BEFORE re-running the script or launching more agents:
+
+| Red Flag in Agent Output | Violation | Action |
+|---|---|---|
+| `let mut` in a non-boundary file | Style violation | Relaunch as fresh agent with explicit correction |
+| `for` / `while` loop in domain code | Style violation | Relaunch as fresh agent |
+| `.push(` / `.insert(` on mutable receiver in domain code | Style violation | Relaunch |
+| `RefCell` / `Mutex` / `LazyLock` in domain code | Style violation | Relaunch |
+| `#[allow(` anywhere | Lint suppression | Relaunch |
+| `simplified` / `workaround` / `quick fix` | Avoidance | Relaunch |
+| `cargo check` / `cargo build` / `cargo test` | Cargo forbidden | Tell agent: "Cargo is disabled. Continue editing files only." |
+| `TODO` / `FIXME` left in changed code | Incomplete | Relaunch to finish |
+
+If ANY red flag is found: mark agent `partial`, rerun the script, relaunch as a fresh worker with explicit statement of what was wrong.
+
+**The orchestrator is responsible for catching style violations that agents introduce. Do not let bad fixes accumulate.**
 
 ---
 

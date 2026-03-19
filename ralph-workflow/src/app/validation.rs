@@ -234,8 +234,6 @@ pub fn validate_agent_chains(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CcsConfig;
-    use std::collections::HashMap;
 
     #[test]
     fn validate_can_commit_uses_fuzzy_resolution() {

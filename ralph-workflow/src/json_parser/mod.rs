@@ -55,6 +55,7 @@
 //!
 //! For detailed streaming contract documentation, see `README.md` in this directory.
 
+pub mod boundary;
 pub mod claude;
 #[cfg(test)]
 mod claude_io_tests;

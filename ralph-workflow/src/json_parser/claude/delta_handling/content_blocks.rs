@@ -69,7 +69,7 @@ impl crate::json_parser::claude::ClaudeParser {
     /// Formatted output string (may be empty if suppressed or deduplicated)
     pub(in crate::json_parser::claude) fn handle_content_block_delta(
         &self,
-        session: &mut std::cell::RefMut<'_, StreamingSession>,
+        session: &mut StreamingSession,
         index: u64,
         delta: ContentBlockDelta,
     ) -> String {

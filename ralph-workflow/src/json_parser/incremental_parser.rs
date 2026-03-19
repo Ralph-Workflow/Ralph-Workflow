@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_incremental_parser_single_json() {
         let parser = IncrementalNdjsonParser::new();
-        let (parser, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n");
+        let (_, events) = parser.feed_and_get_events(b"{\"type\": \"delta\"}\n");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], "{\"type\": \"delta\"}");
     }
@@ -333,16 +333,14 @@ mod tests {
     #[test]
     fn test_incremental_parser_byte_by_byte() {
         let input = b"{\"type\": \"delta\"}\n";
-        let events: Vec<String> = input.iter().fold(Vec::new(), |evs, &b| {
-            let parser = IncrementalNdjsonParser::new();
-            let parser = parser.feed(b);
-            evs.into_iter()
-                .chain(parser.drain_results())
-                .collect::<Vec<_>>()
-        });
+        let all_events: Vec<String> = input
+            .iter()
+            .map(|&b| IncrementalNdjsonParser::new().feed(b))
+            .flat_map(|parser| parser.drain_results())
+            .collect();
 
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0], "{\"type\": \"delta\"}");
+        assert_eq!(all_events.len(), 1);
+        assert_eq!(all_events[0], "{\"type\": \"delta\"}");
     }
 
     #[test]
@@ -357,9 +355,8 @@ mod tests {
 
     #[test]
     fn test_incremental_parser_depth_limit() {
-        let parser = IncrementalNdjsonParser::new();
         let input = "{".repeat(MAX_JSON_DEPTH + 1);
-        let (_, events) = parser.feed_and_get_events(input.as_bytes());
+        let (parser, events) = IncrementalNdjsonParser::new().feed_and_get_events(input.as_bytes());
         assert_eq!(events.len(), 0);
         assert!(!parser.is_parsing());
     }

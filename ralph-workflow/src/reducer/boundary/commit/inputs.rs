@@ -68,7 +68,7 @@ impl MainEffectHandler {
     /// - `commit_inputs_materialized` - Inputs successfully materialized
     /// - `commit_diff_invalidated` - Diff file missing; needs recomputation
     /// - `prompt_input_oversize_detected` - Diff exceeds budget (UI observability)
-    pub(in crate::reducer::handler) fn materialize_commit_inputs(
+    pub(in crate::reducer::boundary) fn materialize_commit_inputs(
         &self,
         ctx: &PhaseContext<'_>,
         attempt: u32,
@@ -210,7 +210,7 @@ impl MainEffectHandler {
     ///
     /// This is the main entry point for diff checking. It runs `git diff` and
     /// delegates to `check_commit_diff_with_result`.
-    pub(in crate::reducer::handler) fn check_commit_diff(
+    pub(in crate::reducer::boundary) fn check_commit_diff(
         ctx: &PhaseContext<'_>,
     ) -> Result<EffectResult> {
         let diff = crate::git_helpers::git_diff_in_repo(ctx.repo_root).map_err(anyhow::Error::from);
@@ -220,7 +220,7 @@ impl MainEffectHandler {
     /// Check commit diff with a pre-computed diff result.
     ///
     /// This variant allows testing with mocked diff results.
-    pub(in crate::reducer::handler) fn check_commit_diff_with_result(
+    pub(in crate::reducer::boundary) fn check_commit_diff_with_result(
         ctx: &PhaseContext<'_>,
         diff: Result<String, anyhow::Error>,
     ) -> Result<EffectResult> {
@@ -263,7 +263,7 @@ Example skip reasons:
     /// Check commit diff with pre-computed diff content.
     ///
     /// Writes diff to `.agent/tmp/commit_diff.txt` and emits `commit_diff_prepared`.
-    pub(in crate::reducer::handler) fn check_commit_diff_with_content(
+    pub(in crate::reducer::boundary) fn check_commit_diff_with_content(
         ctx: &PhaseContext<'_>,
         diff: &str,
     ) -> Result<EffectResult> {

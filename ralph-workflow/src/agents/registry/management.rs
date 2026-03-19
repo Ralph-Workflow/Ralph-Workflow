@@ -9,6 +9,7 @@
 ///
 /// `OpenCode` provider/model combinations are resolved on-the-fly using
 /// the `opencode/` prefix.
+#[derive(Debug)]
 pub struct AgentRegistry {
     agents: HashMap<String, AgentConfig>,
     resolved_drains: crate::agents::fallback::ResolvedDrainConfig,
@@ -17,7 +18,7 @@ pub struct AgentRegistry {
     /// `OpenCode` resolver for `opencode/provider/model` syntax.
     opencode_resolver: Option<OpenCodeResolver>,
     /// Retry timer provider for controlling sleep behavior in retry logic.
-    retry_timer: Arc<dyn RetryTimerProvider>,
+    retry_timer: Arc<dyn RetryTimerProviderDebug>,
 }
 
 impl AgentRegistry {
@@ -61,34 +62,47 @@ impl AgentRegistry {
     /// This eagerly registers CCS aliases as agents so they can be
     /// resolved with `resolve_config()`.
     pub fn set_ccs_aliases(
-        &mut self,
+        self,
         aliases: &HashMap<String, CcsAliasConfig>,
         defaults: CcsConfig,
-    ) {
-        self.ccs_resolver = CcsAliasResolver::new(aliases.clone(), defaults);
+    ) -> Self {
+        let ccs_resolver = CcsAliasResolver::new(aliases.clone(), defaults);
         // Compute all agents to insert - functional style with chain
         let new_agents: HashMap<_, _> = aliases
             .keys()
             .filter_map(|alias_name| {
                 let agent_name = format!("ccs/{alias_name}");
-                self.ccs_resolver
+                ccs_resolver
                     .try_resolve(&agent_name)
                     .map(|config| (agent_name, config))
             })
             .collect();
         // Rebuild with chain - functional style
-        self.agents = self.agents.clone().into_iter().chain(new_agents).collect();
+        let agents = self.agents.into_iter().chain(new_agents).collect();
+        Self {
+            agents,
+            resolved_drains: self.resolved_drains,
+            ccs_resolver,
+            opencode_resolver: self.opencode_resolver,
+            retry_timer: self.retry_timer,
+        }
     }
 
     /// Register a new agent.
-    pub fn register(&mut self, name: &str, config: AgentConfig) {
+    pub fn register(self, name: &str, config: AgentConfig) -> Self {
         // Rebuild with chain - functional style instead of mutating insert
-        self.agents = self
+        let agents = self
             .agents
-            .clone()
             .into_iter()
             .chain(std::iter::once((name.to_string(), config)))
             .collect();
+        Self {
+            agents,
+            resolved_drains: self.resolved_drains,
+            ccs_resolver: self.ccs_resolver,
+            opencode_resolver: self.opencode_resolver,
+            retry_timer: self.retry_timer,
+        }
     }
 
     /// Create a registry with only built-in agents (no config file loading).
@@ -380,7 +394,7 @@ impl AgentRegistry {
     /// Get the retry timer provider.
     #[must_use]
     pub fn retry_timer(&self) -> Arc<dyn RetryTimerProvider> {
-        Arc::clone(&self.retry_timer)
+        Arc::clone(&self.retry_timer) as Arc<dyn RetryTimerProvider>
     }
 
     /// Set the retry timer provider (for testing purposes).
@@ -388,7 +402,7 @@ impl AgentRegistry {
     /// This is used to inject a test timer that doesn't actually sleep,
     /// enabling fast test execution without waiting for retry delays.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn set_retry_timer(&mut self, timer: Arc<dyn RetryTimerProvider>) {
+    pub fn set_retry_timer(&mut self, timer: Arc<dyn RetryTimerProviderDebug>) {
         self.retry_timer = timer;
     }
 

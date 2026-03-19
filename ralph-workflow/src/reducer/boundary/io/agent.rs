@@ -8,10 +8,8 @@ use crate::phases::PhaseContext;
 use crate::pipeline::PipelineRuntime;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::AgentEvent;
-use crate::reducer::event::ErrorEvent;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::event::WorkspaceIoErrorKind;
 use crate::reducer::fault_tolerant_executor::{
     execute_agent_fault_tolerantly, AgentExecutionConfig, AgentExecutionResult,
 };
@@ -20,7 +18,7 @@ use anyhow::Result;
 
 pub(super) fn invoke_agent_impl(
     ctx: &mut PhaseContext<'_>,
-    drain: AgentDrain,
+    _drain: AgentDrain,
     role: AgentRole,
     agent: &str,
     model: Option<&str>,
@@ -28,14 +26,14 @@ pub(super) fn invoke_agent_impl(
     in_dev_fix: bool,
     current_agent: Option<&str>,
     current_model_index: usize,
-    phase: PipelinePhase,
+    _phase: PipelinePhase,
     agent_chain_agents: &[String],
     agent_chain_index: usize,
 ) -> Result<EffectResult> {
     let effective_agent = if in_dev_fix {
         agent.to_owned()
     } else {
-        current_agent.map_or_else(|| agent.to_owned(), Clone::clone)
+        current_agent.map_or_else(|| agent.to_owned(), |s| s.to_owned())
     };
 
     let cmd_str = format!("agent_command_{}", effective_agent);
@@ -65,9 +63,9 @@ pub(super) fn invoke_agent_impl(
         role,
         agent_name: &effective_agent,
         cmd_str: &cmd_str,
-        parser_type: crate::agents::AgentJsonParser::default(),
-        env_vars: &[],
-        prompt: &effective_prompt,
+        parser_type: crate::agents::JsonParserType::default(),
+        env_vars: &std::collections::HashMap::new(),
+        prompt: &prompt,
         display_name: &effective_agent,
         log_prefix: "agent",
         model_index,
@@ -123,5 +121,8 @@ pub(super) fn invoke_agent_impl(
         }))
         .collect();
 
-    Ok(EffectResult::events(started_event, ui_event, events))
+    Ok(events.into_iter().fold(
+        EffectResult::event(started_event).with_ui_event(ui_event),
+        |result, e| result.with_additional_event(e),
+    ))
 }

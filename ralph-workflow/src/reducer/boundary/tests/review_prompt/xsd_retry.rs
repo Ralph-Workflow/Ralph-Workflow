@@ -1,10 +1,10 @@
 use super::super::common::TestFixture;
 use super::prepare_review_prompt::helpers::ReadFailingWorkspace;
 use crate::prompts::PromptHistoryEntry;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{
     AgentEvent, PipelineEvent, PipelinePhase, PromptInputEvent, ReviewEvent,
 };
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::prompt_inputs::sha256_hex_str;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptInputKind, PromptMode};
 use crate::reducer::ui_event::UIEvent;

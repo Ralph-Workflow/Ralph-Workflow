@@ -3,13 +3,33 @@
 // Tests for development phase: iteration count, continuation prompt mode,
 // and agent chain exhaustion.
 
-use super::*;
-use crate::reducer::event::TimeoutOutputKind;
+use crate::agents::AgentRole;
+use crate::reducer::create_test_state;
+use crate::reducer::determine_next_effect;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::DevelopmentEvent;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::reduce;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state::PromptMode;
+use crate::reducer::state::PromptPermissionsState;
+
+fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
+    PipelineState {
+        prompt_permissions: PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(dev_iters, review_passes)
+    }
+}
 
 #[test]
 fn test_development_runs_exactly_n_iterations() {
     // When total_iterations=5, should run iterations 0,1,2,3,4 (5 total)
-    let mut state = super::initial_with_locked_permissions(5, 0);
+    let mut state = initial_with_locked_permissions(5, 0);
     state.agent_chain = state.agent_chain.with_agents(
         vec!["claude".to_string()],
         vec![vec![]],
@@ -298,7 +318,7 @@ fn test_development_runs_exactly_n_iterations() {
 
 #[test]
 fn test_development_continuation_emits_prompt_mode_continuation() {
-    let mut state = super::initial_with_locked_permissions(1, 0);
+    let mut state = initial_with_locked_permissions(1, 0);
     state.phase = PipelinePhase::Development;
     state.iteration = 0;
     state.total_iterations = 1;
@@ -356,7 +376,7 @@ fn test_development_continuation_emits_prompt_mode_continuation() {
 fn test_development_timeout_retry_does_not_use_xsd_retry_prompt_mode() {
     // Timeouts should retry the same agent with timeout-aware guidance, not via XSD retry.
     // This test asserts orchestration does not select PromptMode::XsdRetry after a timeout.
-    let mut state = super::initial_with_locked_permissions(1, 0);
+    let mut state = initial_with_locked_permissions(1, 0);
     state.phase = PipelinePhase::Development;
     state.iteration = 0;
     state.total_iterations = 1;
@@ -424,26 +444,31 @@ fn test_same_agent_retry_in_development_retries_analysis_when_chain_role_is_anal
         Effect::InvokeAnalysisAgent { iteration: 0 }
     ));
 
-    let mut stale_continuation_state = super::initial_with_locked_permissions(1, 0);
-    stale_continuation_state.phase = PipelinePhase::Development;
-    stale_continuation_state.iteration = 0;
-    stale_continuation_state.total_iterations = 1;
-    stale_continuation_state.development_context_prepared_iteration = Some(0);
-    stale_continuation_state.development_prompt_prepared_iteration = Some(0);
-    stale_continuation_state.development_required_files_cleaned_iteration = Some(0);
-    stale_continuation_state.development_agent_invoked_iteration = Some(0);
-    stale_continuation_state.analysis_agent_invoked_iteration = None;
-    stale_continuation_state.agent_chain = crate::reducer::state::AgentChainState::initial()
-        .with_agents(
-            vec!["claude".to_string()],
-            vec![vec![]],
-            AgentRole::Analysis,
-        )
-        .with_drain(crate::agents::AgentDrain::Analysis);
-    stale_continuation_state.continuation = crate::reducer::state::ContinuationState {
-        continue_pending: true,
-        continuation_attempt: 1,
-        ..crate::reducer::state::ContinuationState::default()
+    let stale_continuation_state = {
+        let base = initial_with_locked_permissions(1, 0);
+        PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 0,
+            total_iterations: 1,
+            development_context_prepared_iteration: Some(0),
+            development_prompt_prepared_iteration: Some(0),
+            development_required_files_cleaned_iteration: Some(0),
+            development_agent_invoked_iteration: Some(0),
+            analysis_agent_invoked_iteration: None,
+            agent_chain: crate::reducer::state::AgentChainState::initial()
+                .with_agents(
+                    vec!["claude".to_string()],
+                    vec![vec![]],
+                    AgentRole::Analysis,
+                )
+                .with_drain(crate::agents::AgentDrain::Analysis),
+            continuation: crate::reducer::state::ContinuationState {
+                continue_pending: true,
+                continuation_attempt: 1,
+                ..crate::reducer::state::ContinuationState::default()
+            },
+            ..base
+        }
     };
 
     let effect = determine_next_effect(&stale_continuation_state);
@@ -486,7 +511,7 @@ fn test_development_initializes_analysis_chain_before_invoking_analysis() {
 
 #[test]
 fn test_development_with_agent_chain_exhaustion() {
-    let mut chain = super::initial_with_locked_permissions(5, 2)
+    let mut chain = initial_with_locked_permissions(5, 2)
         .agent_chain
         .with_agents(
             vec!["claude".to_string()],

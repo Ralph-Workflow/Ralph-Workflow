@@ -1,6 +1,6 @@
 use super::super::common::TestFixture;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{ErrorEvent, WorkspaceIoErrorKind};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{CommitState, PipelineState};
 
 #[test]

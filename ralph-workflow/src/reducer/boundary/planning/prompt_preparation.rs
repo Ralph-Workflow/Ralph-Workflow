@@ -33,7 +33,7 @@ use std::path::Path;
 const PLANNING_PROMPT_PATH: &str = ".agent/tmp/planning_prompt.txt";
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn prepare_planning_prompt(
+    pub(in crate::reducer::boundary) fn prepare_planning_prompt(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

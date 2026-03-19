@@ -167,7 +167,7 @@ impl OpenCodeParser {
                 return String::new();
             }
             return format!(
-                "{}[{}]{} {}  └─ Output:{} {}{}\n",
+                "{}[{}]{} {}  └─ Output:{} {}\n",
                 c.dim(),
                 prefix,
                 c.reset(),
@@ -358,10 +358,10 @@ impl OpenCodeParser {
             format!(
                 "{}{}{}{}{}",
                 Self::format_tool_event_header(tool_name, status, prefix, c),
-                Self::format_tool_title_to_string(title, prefix, c),
-                Self::format_tool_input_to_string(part, tool_name, prefix, c),
-                Self::format_tool_error_to_string(part, status, prefix, c),
-                Self::format_tool_output_to_string(part, status, prefix, c),
+                self.format_tool_title_to_string(title, prefix, c),
+                self.format_tool_input_to_string(part, tool_name, prefix, c),
+                self.format_tool_error_to_string(part, status, prefix, c),
+                self.format_tool_output_to_string(part, status, prefix, c),
             )
         })
     }

@@ -17,18 +17,18 @@ impl GeminiParser {
         &mut self,
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 
-        let c = &self.colors;
+        let c = self.colors.clone();
         let monitor = HealthMonitor::new("Gemini");
         // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();
-        let log_buffer: Vec<u8> = Vec::new();
+        let mut log_buffer: Vec<u8> = Vec::new();
 
         // Use incremental parser for true real-time streaming
         // This processes JSON as soon as it's complete, not waiting for newlines
-        let incremental_parser = IncrementalNdjsonParser::new();
+        let mut incremental_parser = IncrementalNdjsonParser::new();
 
         loop {
             // Read available bytes
@@ -39,13 +39,13 @@ impl GeminiParser {
 
             // Process all bytes immediately
             let consumed = chunk.len();
+
+            let (new_parser, batch) = incremental_parser.feed_and_get_events(chunk);
+            incremental_parser = new_parser;
+
             reader.consume(consumed);
 
-            // Feed bytes to incremental parser
-            incremental_parser = incremental_parser.feed(chunk);
-
-            // Process each complete JSON event immediately
-            incremental_parser.get_results().into_iter().for_each(|line| {
+            batch.into_iter().for_each(|line| {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     return;
@@ -62,7 +62,9 @@ impl GeminiParser {
                             c.dim(),
                             &line,
                             c.reset()
-                        ).is_ok() {
+                        )
+                        .is_ok()
+                        {
                             printer.flush().ok();
                         }
                     });
@@ -104,12 +106,13 @@ impl GeminiParser {
                     writeln!(log_buffer, "{line}").ok();
                 }
             });
+        }
 
         // Write accumulated log content to workspace
         if let Some(log_path) = &self.log_path {
             workspace.append_bytes(log_path, &log_buffer)?;
         }
-        if let Some(warning) = monitor.check_and_warn(*c) {
+        if let Some(warning) = monitor.check_and_warn(c) {
             self.with_printer_mut(|printer| {
                 writeln!(printer, "{warning}\n").ok();
             });

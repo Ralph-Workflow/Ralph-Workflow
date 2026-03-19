@@ -1,7 +1,7 @@
 use super::super::common::TestFixture;
 use crate::files::llm_output_extraction::file_based_extraction::paths as xml_paths;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{CommitEvent, PipelineEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::PipelineState;
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
 use crate::workspace::MemoryWorkspace;

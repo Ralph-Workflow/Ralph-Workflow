@@ -85,7 +85,7 @@ pub fn handle_agent_message_started(
         });
 
         // Sanitize for display
-        let sanitized = crate::json_parser::delta_display::sanitize_for_display(accumulated_text);
+        let sanitized = crate::json_parser::delta_display::sanitize_for_display(&accumulated_text);
 
         // Skip rendering if empty
         if sanitized.is_empty() {
@@ -105,7 +105,7 @@ pub fn handle_agent_message_started(
             if last_rendered.is_empty() {
                 // First delta: emit prefix + content (no newline)
                 let rendered = TextDeltaRenderer::render_first_delta(
-                    accumulated_text,
+                    &accumulated_text,
                     ctx.display_name,
                     *ctx.colors,
                     ctx.terminal_mode,
@@ -242,7 +242,10 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
             // Accumulate for backward compatibility with reasoning_completed
             // For backward compat, use the full text not just delta
             ctx.with_reasoning_accumulator_mut(|acc| {
-                acc.add_delta(ContentType::Thinking, "reasoning", &incremental_delta);
+                let placeholder = crate::json_parser::types::DeltaAccumulator::new();
+                let old = std::mem::replace(acc, placeholder);
+                let new = old.add_delta(ContentType::Thinking, "reasoning", &incremental_delta);
+                *acc = new;
             });
 
             // Sanitize for display

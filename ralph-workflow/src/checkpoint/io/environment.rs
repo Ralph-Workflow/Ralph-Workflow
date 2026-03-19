@@ -2,10 +2,11 @@ pub fn restore_environment_from_checkpoint(
     checkpoint: &crate::checkpoint::PipelineCheckpoint,
 ) -> usize {
     let vars = restore_environment_impl(checkpoint);
+    let count = vars.len();
     for (key, value) in vars {
         std::env::set_var(&key, &value);
     }
-    vars.len()
+    count
 }
 
 pub fn restore_environment_impl(

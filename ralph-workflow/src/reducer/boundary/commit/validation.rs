@@ -49,7 +49,7 @@ impl MainEffectHandler {
     ///
     /// - On failure: Writes error to `.agent/tmp/commit_xsd_error.txt`
     /// - On success: Removes `.agent/tmp/commit_xsd_error.txt` if present
-    pub(in crate::reducer::handler) fn validate_commit_xml(
+    pub(in crate::reducer::boundary) fn validate_commit_xml(
         &self,
         ctx: &PhaseContext<'_>,
     ) -> EffectResult {
@@ -129,7 +129,7 @@ impl MainEffectHandler {
     /// # Errors
     ///
     /// - `ValidatedCommitOutcomeMissing` - No validated outcome in state
-    pub(in crate::reducer::handler) fn apply_commit_message_outcome(
+    pub(in crate::reducer::boundary) fn apply_commit_message_outcome(
         &self,
         _ctx: &mut PhaseContext<'_>,
     ) -> Result<EffectResult> {

@@ -668,67 +668,84 @@ impl BriefDescription for StepOutcome {
                 files_modified,
                 output,
                 ..
-            } => OutcomeDescription::from_outcome(
-                files_modified,
-                output,
-                &None,
-                &None,
-                &None,
-                &None,
-                &None,
-            )
-            .as_string(),
-            Self::Failure {
-                error, recoverable, ..
-            } => OutcomeDescription::from_outcome(
-                &None,
-                &None,
-                Some(error),
-                Some(recoverable),
-                &None,
-                &None,
-                &None,
-            )
-            .failure_recoverable
-            .or_else(|| {
+            } => {
+                let files: Option<Vec<String>> =
+                    files_modified.as_ref().map(|b| b.iter().cloned().collect());
+                let output_str: Option<String> = output.as_ref().map(|b| b.to_string());
                 OutcomeDescription::from_outcome(
+                    &files,
+                    &output_str,
                     &None,
                     &None,
-                    Some(error),
-                    Some(recoverable),
                     &None,
                     &None,
                     &None,
                 )
-                .failure_fatal
-            })
-            .unwrap_or_default(),
+                .as_string()
+            }
+            Self::Failure {
+                error, recoverable, ..
+            } => {
+                let error_str: Option<String> = Some((*error).to_string());
+                let recoverable_val = Some(*recoverable);
+                let recoverable_ref = &recoverable_val;
+                OutcomeDescription::from_outcome(
+                    &None,
+                    &None,
+                    &error_str,
+                    recoverable_ref,
+                    &None,
+                    &None,
+                    &None,
+                )
+                .failure_recoverable
+                .or_else(|| {
+                    OutcomeDescription::from_outcome(
+                        &None,
+                        &None,
+                        &error_str,
+                        recoverable_ref,
+                        &None,
+                        &None,
+                        &None,
+                    )
+                    .failure_fatal
+                })
+                .unwrap_or_default()
+            }
             Self::Partial {
                 completed,
                 remaining,
                 ..
-            } => OutcomeDescription::from_outcome(
-                &None,
-                &None,
-                &None,
-                &None,
-                Some(completed),
-                Some(remaining),
-                &None,
-            )
-            .partial
-            .unwrap_or_default(),
-            Self::Skipped { reason } => OutcomeDescription::from_outcome(
-                &None,
-                &None,
-                &None,
-                &None,
-                &None,
-                &None,
-                Some(reason),
-            )
-            .skipped
-            .unwrap_or_default(),
+            } => {
+                let completed_str: Option<String> = Some((*completed).to_string());
+                let remaining_str: Option<String> = Some((*remaining).to_string());
+                OutcomeDescription::from_outcome(
+                    &None,
+                    &None,
+                    &None,
+                    &None,
+                    &completed_str,
+                    &remaining_str,
+                    &None,
+                )
+                .partial
+                .unwrap_or_default()
+            }
+            Self::Skipped { reason } => {
+                let reason_str: Option<String> = Some((*reason).to_string());
+                OutcomeDescription::from_outcome(
+                    &None,
+                    &None,
+                    &None,
+                    &None,
+                    &None,
+                    &None,
+                    &reason_str,
+                )
+                .skipped
+                .unwrap_or_default()
+            }
         }
     }
 }

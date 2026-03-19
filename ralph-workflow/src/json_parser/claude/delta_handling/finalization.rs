@@ -30,7 +30,7 @@ impl crate::json_parser::claude::ClaudeParser {
     /// cursor state is cleared even if protocol violations reset higher-level flags.
     pub(in crate::json_parser::claude) fn finalize_in_place_full_mode(
         &self,
-        session: &std::cell::RefMut<'_, StreamingSession>,
+        session: &mut StreamingSession,
     ) -> String {
         let terminal_mode = *self.state.terminal_mode.borrow();
         if terminal_mode != TerminalMode::Full {
@@ -66,7 +66,7 @@ impl crate::json_parser::claude::ClaudeParser {
     /// Clears `thinking_active_index` and `cursor_up_active` flags.
     pub(in crate::json_parser::claude) fn finalize_thinking_full_mode(
         &self,
-        session: &std::cell::RefMut<'_, StreamingSession>,
+        session: &mut StreamingSession,
     ) -> String {
         let terminal_mode = *self.state.terminal_mode.borrow();
         match terminal_mode {

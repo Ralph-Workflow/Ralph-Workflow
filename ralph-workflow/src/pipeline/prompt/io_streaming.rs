@@ -51,7 +51,7 @@ pub(crate) fn stream_agent_output_from_handle(
 
             match cmd.parser_type {
                 JsonParserType::Claude => {
-                    let p = crate::json_parser::ClaudeParser::new(
+                    let mut p = crate::json_parser::ClaudeParser::new(
                         *runtime.colors,
                         runtime.config.verbosity,
                     )
@@ -61,7 +61,7 @@ pub(crate) fn stream_agent_output_from_handle(
                     p.parse_stream(reader, runtime.workspace)?;
                 }
                 JsonParserType::Codex => {
-                    let p = crate::json_parser::CodexParser::new(
+                    let mut p = crate::json_parser::CodexParser::new(
                         *runtime.colors,
                         runtime.config.verbosity,
                     )
@@ -71,7 +71,7 @@ pub(crate) fn stream_agent_output_from_handle(
                     p.parse_stream(reader, runtime.workspace)?;
                 }
                 JsonParserType::Gemini => {
-                    let p = crate::json_parser::GeminiParser::new(
+                    let mut p = crate::json_parser::GeminiParser::new(
                         *runtime.colors,
                         runtime.config.verbosity,
                     )
@@ -81,7 +81,7 @@ pub(crate) fn stream_agent_output_from_handle(
                     p.parse_stream(reader, runtime.workspace)?;
                 }
                 JsonParserType::OpenCode => {
-                    let p = crate::json_parser::OpenCodeParser::new(
+                    let mut p = crate::json_parser::OpenCodeParser::new(
                         *runtime.colors,
                         runtime.config.verbosity,
                     )

@@ -7,16 +7,12 @@ use crate::common::truncate_text;
 use crate::config::Verbosity;
 use crate::logger::{Colors, CHECK, CROSS};
 use std::fmt::Write as _;
-use std::io::{self, BufRead, Write};
+use std::io::Write;
 
-use super::health::HealthMonitor;
-#[cfg(any(test, feature = "test-utils"))]
-use super::health::StreamingQualityMetrics;
 use super::streaming_state::StreamingSession;
 use super::terminal::TerminalMode;
-use super::types::{
-    format_tool_input, format_unknown_json_event, ClaudeEvent, ContentBlock, StreamInnerEvent,
-};
+use super::types::{format_tool_input, format_unknown_json_event, ClaudeEvent, StreamInnerEvent};
+use crate::json_parser::health::monitor::HealthMonitor;
 
 // Delta handling submodule
 mod delta_handling;

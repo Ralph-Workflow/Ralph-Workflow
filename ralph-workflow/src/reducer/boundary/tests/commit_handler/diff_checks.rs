@@ -1,6 +1,6 @@
 use super::super::common::TestFixture;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::PipelineEvent;
-use crate::reducer::handler::MainEffectHandler;
 use crate::workspace::{MemoryWorkspace, Workspace};
 use std::path::PathBuf;
 

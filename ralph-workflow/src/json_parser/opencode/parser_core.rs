@@ -1,7 +1,7 @@
 // OpenCode parser core: struct definition and constructor methods.
 
-use super::io::OpenCodeParserState;
 use super::printer::StdoutPrinter;
+use io::OpenCodeParserState;
 
 /// `OpenCode` event parser
 pub struct OpenCodeParser {

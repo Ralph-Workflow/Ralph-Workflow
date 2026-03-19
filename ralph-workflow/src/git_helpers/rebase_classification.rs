@@ -315,14 +315,14 @@ fn extract_hook_name(output: &str) -> String {
     .iter()
     .find(|(pattern, _)| output.contains(pattern))
     .map(|(_, name)| name)
-    .unwrap_or("hook")
+    .unwrap_or(&"hook")
     .to_string()
 }
 
 fn extract_command(output: &str) -> String {
     ["edit", "reword", "break", "exec"]
         .iter()
-        .find(|cmd| output.contains(cmd))
+        .find(|cmd| output.contains(*cmd))
         .copied()
         .unwrap_or("unknown")
         .to_string()

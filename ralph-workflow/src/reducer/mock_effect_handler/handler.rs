@@ -499,7 +499,7 @@ mod tests {
 
         let colors = Colors { enabled: false };
         let logger = Logger::new(colors);
-        let timer = Timer::new();
+        let mut timer = Timer::new();
 
         let config = Config::default();
         let registry = AgentRegistry::new().unwrap();
@@ -516,7 +516,7 @@ mod tests {
         let workspace_arc = Arc::clone(&ws_arc);
 
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-        let ctx = crate::phases::PhaseContext {
+        let mut ctx = crate::phases::PhaseContext {
             config: &config,
             registry: &registry,
             logger: &logger,
@@ -539,7 +539,7 @@ mod tests {
             env: &git_env,
         };
 
-        let handler = MockEffectHandler::new(PipelineState::initial(1, 0));
+        let mut handler = MockEffectHandler::new(PipelineState::initial(1, 0));
         let result = handler.execute(Effect::MaterializeCommitInputs { attempt: 1 }, &mut ctx);
         assert!(
             result.is_err(),

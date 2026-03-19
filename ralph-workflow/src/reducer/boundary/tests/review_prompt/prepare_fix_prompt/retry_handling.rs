@@ -1,7 +1,7 @@
 use super::super::super::common::TestFixture;
 use crate::prompts::{PromptHistoryEntry, PromptScopeKey, RetryMode};
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::event::{PipelineEvent, PromptInputEvent};
-use crate::reducer::handler::MainEffectHandler;
 use crate::reducer::state::{ContinuationState, PipelineState, PromptMode, SameAgentRetryReason};
 use crate::reducer::ui_event::UIEvent;
 use crate::workspace::MemoryWorkspace;

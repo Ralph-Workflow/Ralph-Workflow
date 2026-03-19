@@ -393,11 +393,14 @@ mod tests {
 
         assert!(!catalog.is_expired());
 
-        catalog.cached_at = Some(
-            chrono::Utc::now()
-                - chrono::Duration::seconds(DEFAULT_CACHE_TTL_SECONDS.cast_signed() + 1),
-        );
-        assert!(catalog.is_expired());
+        let expired_catalog = ApiCatalog {
+            cached_at: Some(
+                chrono::Utc::now()
+                    - chrono::Duration::seconds(DEFAULT_CACHE_TTL_SECONDS.cast_signed() + 1),
+            ),
+            ..catalog
+        };
+        assert!(expired_catalog.is_expired());
     }
 
     #[test]

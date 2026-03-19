@@ -145,7 +145,7 @@ mod tests {
         use crate::checkpoint::state::{AgentConfigSnapshot, CliArgsSnapshot, RebaseState};
         use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
 
-        let checkpoint = CheckpointBuilder::new()
+        let mut checkpoint = CheckpointBuilder::new()
             .phase(CheckpointPhase::AwaitingDevFix, 2, 5)
             .reviewer_pass(1, 2)
             .agents("dev", "rev")
@@ -212,7 +212,7 @@ mod tests {
         use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
         use crate::config::{CloudStateConfig, GitAuthStateMethod, GitRemoteStateConfig};
 
-        let checkpoint = CheckpointBuilder::new()
+        let mut checkpoint = CheckpointBuilder::new()
             .phase(CheckpointPhase::Development, 1, 3)
             .reviewer_pass(0, 1)
             .agents("dev", "rev")
@@ -303,7 +303,7 @@ mod tests {
         use crate::checkpoint::state::{AgentConfigSnapshot, CliArgsSnapshot, RebaseState};
         use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
 
-        let checkpoint = CheckpointBuilder::new()
+        let mut checkpoint = CheckpointBuilder::new()
             .phase(CheckpointPhase::CommitMessage, 1, 1)
             .reviewer_pass(0, 0)
             .agents("dev", "rev")
@@ -363,7 +363,7 @@ mod tests {
         use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
         use crate::reducer::state::pipeline::{ExcludedFile, ExcludedFileReason};
 
-        let checkpoint = CheckpointBuilder::new()
+        let mut checkpoint = CheckpointBuilder::new()
             .phase(CheckpointPhase::CommitMessage, 1, 1)
             .reviewer_pass(0, 0)
             .agents("dev", "rev")

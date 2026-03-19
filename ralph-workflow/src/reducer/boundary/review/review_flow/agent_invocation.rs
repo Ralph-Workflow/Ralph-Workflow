@@ -3,7 +3,7 @@
 // Contains the invoke_review_agent method for invoking the reviewer agent.
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn invoke_review_agent(
+    pub(in crate::reducer::boundary) fn invoke_review_agent(
         &mut self,
         ctx: &mut PhaseContext<'_>,
         pass: u32,

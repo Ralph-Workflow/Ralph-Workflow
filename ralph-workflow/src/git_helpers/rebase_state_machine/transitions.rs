@@ -3,7 +3,7 @@
 // This file contains the RebaseLock RAII guard and lock acquisition/release functions.
 // Lock file I/O operations have been moved to the runtime boundary module.
 
-use crate::git_helpers::runtime::lock::{acquire_rebase_lock, release_rebase_lock};
+use crate::git_helpers::lock::{acquire_rebase_lock, release_rebase_lock};
 
 /// RAII-style guard for rebase lock.
 ///
@@ -43,4 +43,3 @@ impl RebaseLock {
         owned
     }
 }
-

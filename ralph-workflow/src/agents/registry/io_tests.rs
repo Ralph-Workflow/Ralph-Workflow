@@ -20,8 +20,7 @@ fn test_registry_new() {
 
 #[test]
 fn test_registry_register() {
-    let mut registry = AgentRegistry::new().unwrap();
-    registry.register(
+    let registry = AgentRegistry::new().unwrap().register(
         "testbot",
         AgentConfig {
             cmd: "testbot run".to_string(),
@@ -44,45 +43,44 @@ fn test_registry_register() {
 
 #[test]
 fn test_registry_display_name() {
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // Agent without custom display name uses registry key
-    registry.register(
-        "claude",
-        AgentConfig {
-            cmd: "claude -p".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
-
-    // Agent with custom display name uses that
-    registry.register(
-        "claude",
-        AgentConfig {
-            cmd: "claude -p".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
+    let registry = AgentRegistry::new()
+        .unwrap()
+        // Agent without custom display name uses registry key
+        .register(
+            "claude",
+            AgentConfig {
+                cmd: "claude -p".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        )
+        // Agent with custom display name uses that
+        .register(
+            "claude",
+            AgentConfig {
+                cmd: "claude -p".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        );
 
     // Test display names
     assert_eq!(registry.display_name("claude"), "claude");
@@ -94,64 +92,62 @@ fn test_registry_display_name() {
 
 #[test]
 fn test_resolve_from_logfile_name() {
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // Register a CCS agent with slash in name
-    registry.register(
-        "ccs/glm",
-        AgentConfig {
-            cmd: "ccs glm".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: "-p".to_string(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: Some("ccs-glm".to_string()),
-        },
-    );
-
-    // Register a plain agent without slash
-    registry.register(
-        "claude",
-        AgentConfig {
-            cmd: "claude -p".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
-
-    // Register an OpenCode agent with multiple slashes
-    registry.register(
-        "opencode/anthropic/claude-sonnet-4",
-        AgentConfig {
-            cmd: "opencode run".to_string(),
-            output_flag: "--format json".to_string(),
-            yolo_flag: String::new(),
-            verbose_flag: "--log-level DEBUG".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::OpenCode,
-            model_flag: Some("-p anthropic -m claude-sonnet-4".to_string()),
-            print_flag: String::new(),
-            streaming_flag: String::new(),
-            session_flag: "-s {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: Some("OpenCode (anthropic)".to_string()),
-        },
-    );
+    let registry = AgentRegistry::new()
+        .unwrap()
+        // Register a CCS agent with slash in name
+        .register(
+            "ccs/glm",
+            AgentConfig {
+                cmd: "ccs glm".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: "-p".to_string(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: Some("ccs-glm".to_string()),
+            },
+        )
+        // Register a plain agent without slash
+        .register(
+            "claude",
+            AgentConfig {
+                cmd: "claude -p".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        )
+        // Register an OpenCode agent with multiple slashes
+        .register(
+            "opencode/anthropic/claude-sonnet-4",
+            AgentConfig {
+                cmd: "opencode run".to_string(),
+                output_flag: "--format json".to_string(),
+                yolo_flag: String::new(),
+                verbose_flag: "--log-level DEBUG".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::OpenCode,
+                model_flag: Some("-p anthropic -m claude-sonnet-4".to_string()),
+                print_flag: String::new(),
+                streaming_flag: String::new(),
+                session_flag: "-s {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: Some("OpenCode (anthropic)".to_string()),
+            },
+        );
 
     // Test: Agent names that don't need sanitization
     assert_eq!(
@@ -192,60 +188,60 @@ fn test_registry_available_fallbacks() {
     // Test that available_fallbacks filters to only agents with commands in PATH.
     // Uses system commands (echo, cat) that exist on all systems to avoid
     // creating real executables or modifying PATH.
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // Register agents using commands that exist on all systems
-    registry.register(
-        "echo-agent",
-        AgentConfig {
-            cmd: "echo test".to_string(),
-            output_flag: String::new(),
-            yolo_flag: String::new(),
-            verbose_flag: String::new(),
-            can_commit: true,
-            json_parser: JsonParserType::Generic,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: String::new(),
-            session_flag: String::new(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
-    registry.register(
-        "cat-agent",
-        AgentConfig {
-            cmd: "cat --version".to_string(),
-            output_flag: String::new(),
-            yolo_flag: String::new(),
-            verbose_flag: String::new(),
-            can_commit: true,
-            json_parser: JsonParserType::Generic,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: String::new(),
-            session_flag: String::new(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
-    registry.register(
-        "nonexistent-agent",
-        AgentConfig {
-            cmd: "this-command-definitely-does-not-exist-xyz123".to_string(),
-            output_flag: String::new(),
-            yolo_flag: String::new(),
-            verbose_flag: String::new(),
-            can_commit: true,
-            json_parser: JsonParserType::Generic,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: String::new(),
-            session_flag: String::new(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
+    let registry = AgentRegistry::new()
+        .unwrap()
+        // Register agents using commands that exist on all systems
+        .register(
+            "echo-agent",
+            AgentConfig {
+                cmd: "echo test".to_string(),
+                output_flag: String::new(),
+                yolo_flag: String::new(),
+                verbose_flag: String::new(),
+                can_commit: true,
+                json_parser: JsonParserType::Generic,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: String::new(),
+                session_flag: String::new(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        )
+        .register(
+            "cat-agent",
+            AgentConfig {
+                cmd: "cat --version".to_string(),
+                output_flag: String::new(),
+                yolo_flag: String::new(),
+                verbose_flag: String::new(),
+                can_commit: true,
+                json_parser: JsonParserType::Generic,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: String::new(),
+                session_flag: String::new(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        )
+        .register(
+            "nonexistent-agent",
+            AgentConfig {
+                cmd: "this-command-definitely-does-not-exist-xyz123".to_string(),
+                output_flag: String::new(),
+                yolo_flag: String::new(),
+                verbose_flag: String::new(),
+                can_commit: true,
+                json_parser: JsonParserType::Generic,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: String::new(),
+                session_flag: String::new(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        );
 
     // Set fallback chain using registered agents
     let toml_str = r#"
@@ -261,7 +257,7 @@ fn test_registry_available_fallbacks() {
         commit = "shared_dev"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     let fallbacks = registry.available_fallbacks(AgentRole::Developer);
     assert!(
@@ -280,7 +276,7 @@ fn test_registry_available_fallbacks() {
 
 #[test]
 fn test_validate_agent_chains() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
 
     // Both chains configured should pass - use apply_unified_config (public API)
     let toml_str = r#"
@@ -297,14 +293,13 @@ fn test_validate_agent_chains() {
         commit = "shared_review"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
     assert!(registry.validate_agent_chains(TEST_SOURCES).is_ok());
 }
 
 #[test]
 fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
-    let mut registry = AgentRegistry::new().unwrap();
-    registry.register(
+    let registry = AgentRegistry::new().unwrap().register(
         "chat-only",
         AgentConfig {
             cmd: "echo chat-only".to_string(),
@@ -338,7 +333,7 @@ fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     let err = registry.validate_agent_chains(TEST_SOURCES).unwrap_err();
     assert!(
@@ -353,7 +348,7 @@ fn test_validate_agent_chains_rejects_non_workflow_capable_commit_drain() {
 
 #[test]
 fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback_compatibility() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
 
     let toml_str = r#"
         [agent_chains]
@@ -372,7 +367,7 @@ fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     assert_eq!(
         registry.fallback_config().developer,
@@ -386,7 +381,7 @@ fn test_apply_unified_config_named_schema_projects_resolved_drains_into_fallback
 
 #[test]
 fn test_apply_unified_config_rejects_invalid_named_drain_config() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
 
     let toml_str = r#"
         [agent_chains]
@@ -409,7 +404,7 @@ fn test_apply_unified_config_rejects_invalid_named_drain_config() {
 
 #[test]
 fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_names() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
 
     let toml_str = r#"
         [agent_chains]
@@ -434,7 +429,7 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     let commit = registry
         .resolved_drain(crate::agents::AgentDrain::Commit)
@@ -465,7 +460,8 @@ fn test_apply_unified_config_keeps_drain_defaults_when_named_chains_use_shared_n
 }
 
 #[test]
-fn test_load_from_file_metadata_only_legacy_agent_chain_preserves_provider_fallback() {
+fn test_load_from_file_metadata_only_legacy_agent_chain_preserves_provider_fallback(
+) -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir().unwrap();
     let config_path = tmp.path().join("agents.toml");
     std::fs::write(
@@ -477,22 +473,21 @@ max_retries = 7
 [agent_chain.provider_fallback]
 opencode = ["-m opencode/glm-4.7-free"]
 "#,
-    )
-    .unwrap();
+    )?;
 
-    let mut registry = AgentRegistry::new().unwrap();
-    registry.load_from_file(&config_path).unwrap();
+    let registry = AgentRegistry::new()?.load_from_file(&config_path)?;
 
     assert_eq!(registry.resolved_drains().max_retries, 7);
     assert_eq!(
         registry.resolved_drains().provider_fallback.get("opencode"),
         Some(&vec!["-m opencode/glm-4.7-free".to_string()])
     );
+    Ok(())
 }
 
 #[test]
 fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
 
     let toml_str = r#"
         [agent_chains]
@@ -509,7 +504,7 @@ fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     assert_eq!(
         registry.available_fallbacks_for_drain(crate::agents::AgentDrain::Review),
@@ -523,7 +518,7 @@ fn test_available_fallbacks_for_drain_preserves_distinct_review_and_fix_bindings
 
 #[test]
 fn test_apply_unified_config_accepts_legacy_agent_chain_schema() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
     let toml_str = "\n[agent_chain]\ndeveloper = []\nreviewer = []\n";
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
     registry
@@ -533,7 +528,7 @@ fn test_apply_unified_config_accepts_legacy_agent_chain_schema() {
 
 #[test]
 fn test_apply_unified_config_suggests_agent_chains_for_singular_typo() {
-    let mut registry = AgentRegistry::new().unwrap();
+    let registry = AgentRegistry::new().unwrap();
     let toml_str = r#"
 [agent_chain]
 shared_dev = ["claude"]
@@ -557,8 +552,6 @@ development = "shared_dev"
 #[test]
 fn test_ccs_aliases_registration() {
     // Test that CCS aliases are registered correctly
-    let mut registry = AgentRegistry::new().unwrap();
-
     let mut aliases = HashMap::new();
     aliases.insert(
         "work".to_string(),
@@ -582,7 +575,9 @@ fn test_ccs_aliases_registration() {
         },
     );
 
-    registry.set_ccs_aliases(&aliases, default_ccs());
+    let registry = AgentRegistry::new()
+        .unwrap()
+        .set_ccs_aliases(&aliases, default_ccs());
 
     // CCS aliases should be registered as agents - behavioral test: they resolve
     assert!(registry.resolve_config("ccs/work").is_some());
@@ -606,9 +601,6 @@ fn test_ccs_in_fallback_chain() {
     // Test that CCS aliases can be used in fallback chains.
     // Uses `echo` command which exists on all systems to avoid creating
     // real executables or modifying PATH.
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // Register CCS aliases using echo command (exists on all systems)
     let mut aliases = HashMap::new();
     aliases.insert(
         "work".to_string(),
@@ -617,26 +609,28 @@ fn test_ccs_in_fallback_chain() {
             ..CcsAliasConfig::default()
         },
     );
-    registry.set_ccs_aliases(&aliases, default_ccs());
 
-    // Register a system command agent for comparison
-    registry.register(
-        "echo-agent",
-        AgentConfig {
-            cmd: "echo test".to_string(),
-            output_flag: String::new(),
-            yolo_flag: String::new(),
-            verbose_flag: String::new(),
-            can_commit: true,
-            json_parser: JsonParserType::Generic,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: String::new(),
-            session_flag: String::new(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
+    let registry = AgentRegistry::new()
+        .unwrap()
+        .set_ccs_aliases(&aliases, default_ccs())
+        // Register a system command agent for comparison
+        .register(
+            "echo-agent",
+            AgentConfig {
+                cmd: "echo test".to_string(),
+                output_flag: String::new(),
+                yolo_flag: String::new(),
+                verbose_flag: String::new(),
+                can_commit: true,
+                json_parser: JsonParserType::Generic,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: String::new(),
+                session_flag: String::new(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        );
 
     // Set fallback chain with CCS alias using apply_unified_config (public API)
     let toml_str = r#"
@@ -653,7 +647,7 @@ fn test_ccs_in_fallback_chain() {
         commit = "shared_review"
     "#;
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     // ccs/work should be in available fallbacks (since echo is in PATH)
     let fallbacks = registry.available_fallbacks(AgentRole::Developer);
@@ -672,15 +666,15 @@ fn test_ccs_in_fallback_chain() {
 
 #[test]
 fn test_ccs_aliases_with_registry_constructor() {
-    let mut registry = AgentRegistry::new().unwrap();
-    registry.set_ccs_aliases(&HashMap::new(), default_ccs());
+    let registry = AgentRegistry::new()
+        .unwrap()
+        .set_ccs_aliases(&HashMap::new(), default_ccs());
 
     // Should have built-in agents - behavioral test: they resolve
     assert!(registry.resolve_config("claude").is_some());
     assert!(registry.resolve_config("codex").is_some());
 
     // Now test with actual aliases
-    let mut registry2 = AgentRegistry::new().unwrap();
     let mut aliases = HashMap::new();
     aliases.insert(
         "work".to_string(),
@@ -690,15 +684,15 @@ fn test_ccs_aliases_with_registry_constructor() {
         },
     );
 
-    registry2.set_ccs_aliases(&aliases, default_ccs());
+    let registry2 = AgentRegistry::new()
+        .unwrap()
+        .set_ccs_aliases(&aliases, default_ccs());
     // Behavioral test: CCS alias should resolve
     assert!(registry2.resolve_config("ccs/work").is_some());
 }
 
 #[test]
 fn test_list_includes_ccs_aliases() {
-    let mut registry = AgentRegistry::new().unwrap();
-
     let mut aliases = HashMap::new();
     aliases.insert(
         "work".to_string(),
@@ -714,7 +708,10 @@ fn test_list_includes_ccs_aliases() {
             ..CcsAliasConfig::default()
         },
     );
-    registry.set_ccs_aliases(&aliases, default_ccs());
+
+    let registry = AgentRegistry::new()
+        .unwrap()
+        .set_ccs_aliases(&aliases, default_ccs());
 
     let all_agents = registry.list();
 
@@ -851,40 +848,40 @@ fn test_apply_unified_config_does_not_inherit_env_vars() {
     // Regression test for CCS env vars leaking between agents.
     // Ensures that when apply_unified_config merges agent configurations,
     // env_vars from the existing agent are NOT inherited into the merged agent.
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // First, manually register a "claude" agent with some env vars (simulating
-    // a previously-loaded agent with CCS env vars or manually-specified vars)
-    registry.register(
-        "claude",
-        AgentConfig {
-            cmd: "claude -p".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            // Simulate CCS env vars from a previous load
-            env_vars: {
-                let mut vars = std::collections::HashMap::new();
-                vars.insert(
-                    "ANTHROPIC_BASE_URL".to_string(),
-                    "https://api.z.ai/api/anthropic".to_string(),
-                );
-                vars.insert(
-                    "ANTHROPIC_AUTH_TOKEN".to_string(),
-                    "test-token-glm".to_string(),
-                );
-                vars.insert("ANTHROPIC_MODEL".to_string(), "glm-4.7".to_string());
-                vars
+    let registry = AgentRegistry::new()
+        .unwrap()
+        // First, manually register a "claude" agent with some env vars (simulating
+        // a previously-loaded agent with CCS env vars or manually-specified vars)
+        .register(
+            "claude",
+            AgentConfig {
+                cmd: "claude -p".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                // Simulate CCS env vars from a previous load
+                env_vars: {
+                    let mut vars = std::collections::HashMap::new();
+                    vars.insert(
+                        "ANTHROPIC_BASE_URL".to_string(),
+                        "https://api.z.ai/api/anthropic".to_string(),
+                    );
+                    vars.insert(
+                        "ANTHROPIC_AUTH_TOKEN".to_string(),
+                        "test-token-glm".to_string(),
+                    );
+                    vars.insert("ANTHROPIC_MODEL".to_string(), "glm-4.7".to_string());
+                    vars
+                },
+                display_name: None,
             },
-            display_name: None,
-        },
-    );
+        );
 
     // Verify the "claude" agent has the GLM env vars
     let claude_config = registry.resolve_config("claude").unwrap();
@@ -912,7 +909,7 @@ fn test_apply_unified_config_does_not_inherit_env_vars() {
     let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
 
     // Apply the unified config
-    registry.apply_unified_config(&unified).unwrap();
+    let registry = registry.apply_unified_config(&unified).unwrap();
 
     // Verify that the "claude" agent's env_vars are now empty (NOT inherited)
     let claude_config_after = registry.resolve_config("claude").unwrap();
@@ -938,57 +935,56 @@ fn test_resolve_config_does_not_share_env_vars_between_agents() {
     // This test verifies that resolve_config() returns independent AgentConfig
     // instances with separate env_vars HashMaps - i.e., modifications to one
     // agent's env_vars don't affect another agent's config.
-    let mut registry = AgentRegistry::new().unwrap();
-
-    // Register ccs/glm with GLM environment variables
-    registry.register(
-        "ccs/glm",
-        AgentConfig {
-            cmd: "ccs glm".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: "-p".to_string(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: {
-                let mut vars = std::collections::HashMap::new();
-                vars.insert(
-                    "ANTHROPIC_BASE_URL".to_string(),
-                    "https://api.z.ai/api/anthropic".to_string(),
-                );
-                vars.insert(
-                    "ANTHROPIC_AUTH_TOKEN".to_string(),
-                    "test-token-glm".to_string(),
-                );
-                vars.insert("ANTHROPIC_MODEL".to_string(), "glm-4.7".to_string());
-                vars
+    let registry = AgentRegistry::new()
+        .unwrap()
+        // Register ccs/glm with GLM environment variables
+        .register(
+            "ccs/glm",
+            AgentConfig {
+                cmd: "ccs glm".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: "-p".to_string(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: {
+                    let mut vars = std::collections::HashMap::new();
+                    vars.insert(
+                        "ANTHROPIC_BASE_URL".to_string(),
+                        "https://api.z.ai/api/anthropic".to_string(),
+                    );
+                    vars.insert(
+                        "ANTHROPIC_AUTH_TOKEN".to_string(),
+                        "test-token-glm".to_string(),
+                    );
+                    vars.insert("ANTHROPIC_MODEL".to_string(), "glm-4.7".to_string());
+                    vars
+                },
+                display_name: Some("ccs-glm".to_string()),
             },
-            display_name: Some("ccs-glm".to_string()),
-        },
-    );
-
-    // Register claude with empty env_vars (typical configuration)
-    registry.register(
-        "claude",
-        AgentConfig {
-            cmd: "claude -p".to_string(),
-            output_flag: "--output-format=stream-json".to_string(),
-            yolo_flag: "--dangerously-skip-permissions".to_string(),
-            verbose_flag: "--verbose".to_string(),
-            can_commit: true,
-            json_parser: JsonParserType::Claude,
-            model_flag: None,
-            print_flag: String::new(),
-            streaming_flag: "--include-partial-messages".to_string(),
-            session_flag: "--resume {}".to_string(),
-            env_vars: std::collections::HashMap::new(),
-            display_name: None,
-        },
-    );
+        )
+        // Register claude with empty env_vars (typical configuration)
+        .register(
+            "claude",
+            AgentConfig {
+                cmd: "claude -p".to_string(),
+                output_flag: "--output-format=stream-json".to_string(),
+                yolo_flag: "--dangerously-skip-permissions".to_string(),
+                verbose_flag: "--verbose".to_string(),
+                can_commit: true,
+                json_parser: JsonParserType::Claude,
+                model_flag: None,
+                print_flag: String::new(),
+                streaming_flag: "--include-partial-messages".to_string(),
+                session_flag: "--resume {}".to_string(),
+                env_vars: std::collections::HashMap::new(),
+                display_name: None,
+            },
+        );
 
     // Resolve ccs/glm config first
     let glm_config = registry.resolve_config("ccs/glm").unwrap();

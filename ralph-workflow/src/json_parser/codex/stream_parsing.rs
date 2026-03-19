@@ -51,7 +51,7 @@ impl CodexParser {
     fn write_synthetic_result_event(
         file: &mut impl std::io::Write,
         accumulated: &str,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         let result_event = CodexEvent::Result {
             result: Some(accumulated.to_string()),
         };
@@ -62,7 +62,10 @@ impl CodexParser {
     }
 
     /// Write a synthetic result event to a byte buffer.
-    fn write_synthetic_result_to_buffer(buffer: &mut Vec<u8>, accumulated: &str) -> io::Result<()> {
+    fn write_synthetic_result_to_buffer(
+        buffer: &mut Vec<u8>,
+        accumulated: &str,
+    ) -> std::io::Result<()> {
         Self::write_synthetic_result_event(buffer, accumulated)
     }
 
@@ -73,22 +76,23 @@ impl CodexParser {
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
-    ) -> io::Result<bool> {
+    ) -> std::io::Result<bool> {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             return Ok(false);
         }
 
         if self.verbosity.is_debug() {
+            let colors = self.colors.clone();
             self.with_printer_mut(|printer| {
                 writeln!(
                     printer,
                     "{}[DEBUG]{} {}{}{}",
-                    self.colors.dim(),
-                    self.colors.reset(),
-                    self.colors.dim(),
+                    colors.dim(),
+                    colors.reset(),
+                    colors.dim(),
                     line,
-                    self.colors.reset()
+                    colors.reset()
                 )?;
                 printer.flush()
             })?;
@@ -159,15 +163,15 @@ impl CodexParser {
         &mut self,
         mut reader: R,
         workspace: &dyn Workspace,
-    ) -> io::Result<()> {
+    ) -> std::io::Result<()> {
         use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 
         let monitor = HealthMonitor::new("Codex");
         // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();
-        let log_buffer: Vec<u8> = Vec::new();
+        let mut log_buffer: Vec<u8> = Vec::new();
 
-        let incremental_parser = IncrementalNdjsonParser::new();
+        let mut incremental_parser = IncrementalNdjsonParser::new();
         // Track whether we've written a synthetic result event for the current turn
         let result_written_for_current_turn = std::cell::Cell::new(false);
 
@@ -176,41 +180,41 @@ impl CodexParser {
             if chunk.is_empty() {
                 break;
             }
-            let consumed = chunk.len();
+            let chunk_data: Vec<u8> = chunk.to_vec();
+            let consumed = chunk_data.len();
+            drop(chunk);
             reader.consume(consumed);
 
-            incremental_parser = incremental_parser.feed(chunk);
+            let (new_parser, batch) = incremental_parser.feed_and_get_events(&chunk_data);
+            incremental_parser = new_parser;
 
-            incremental_parser
-                .get_results()
-                .into_iter()
-                .try_for_each(|line| {
-                    // Check if this is a turn.completed or turn.started event before processing
-                    let is_turn_completed = line.trim().starts_with('{')
-                        && serde_json::from_str::<CodexEvent>(line.trim())
-                            .ok()
-                            .is_some_and(|e| matches!(e, CodexEvent::TurnCompleted { .. }));
-                    let is_turn_started = line.trim().starts_with('{')
-                        && serde_json::from_str::<CodexEvent>(line.trim())
-                            .ok()
-                            .is_some_and(|e| matches!(e, CodexEvent::TurnStarted { .. }));
+            batch.into_iter().try_for_each(|line| {
+                // Check if this is a turn.completed or turn.started event before processing
+                let is_turn_completed = line.trim().starts_with('{')
+                    && serde_json::from_str::<CodexEvent>(line.trim())
+                        .ok()
+                        .is_some_and(|e| matches!(e, CodexEvent::TurnCompleted { .. }));
+                let is_turn_started = line.trim().starts_with('{')
+                    && serde_json::from_str::<CodexEvent>(line.trim())
+                        .ok()
+                        .is_some_and(|e| matches!(e, CodexEvent::TurnStarted { .. }));
 
-                    self.process_event_line_with_buffer(
-                        &line,
-                        &monitor,
-                        logging_enabled,
-                        &mut log_buffer,
-                    )?;
+                self.process_event_line_with_buffer(
+                    &line,
+                    &monitor,
+                    logging_enabled,
+                    &mut log_buffer,
+                )?;
 
-                    // Track result event writes - reset flag when new turn starts
-                    if is_turn_started {
-                        result_written_for_current_turn.set(false);
-                    } else if is_turn_completed {
-                        result_written_for_current_turn.set(true);
-                    }
+                // Track result event writes - reset flag when new turn starts
+                if is_turn_started {
+                    result_written_for_current_turn.set(false);
+                } else if is_turn_completed {
+                    result_written_for_current_turn.set(true);
+                }
 
-                    Ok::<(), io::Error>(())
-                })?;
+                Ok::<(), std::io::Error>(())
+            })?;
         }
 
         // Handle any remaining buffered data when the stream ends.

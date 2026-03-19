@@ -76,10 +76,7 @@ pub fn run_commit_attempt(
         .join("debug")
         .join("commit_generation");
     let (session, attempt_number) =
-        crate::phases::commit::runner::io::create_session_and_get_attempt_number(
-            &log_dir,
-            ctx.workspace,
-        );
+        crate::phases::commit::create_session_and_get_attempt_number(&log_dir, ctx.workspace);
     let diff_was_truncated =
         model_safe_diff.contains("[Truncated:") || model_safe_diff.contains("[truncated...]");
     let attempt_log = CommitAttemptLog::with_basics(
@@ -231,7 +228,7 @@ pub fn run_commit_attempt(
         };
 
     let attempt_log = attempt_log
-        .with_extraction_attempt(if extraction_succeeded {
+        .add_extraction_attempt(if extraction_succeeded {
             ExtractionAttempt::success("XML", detail.clone())
         } else {
             ExtractionAttempt::failure("XML", detail.clone())

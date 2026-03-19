@@ -70,8 +70,8 @@ impl StringPool {
     /// ```
     #[must_use]
     pub fn intern_str(self, s: &str) -> (Self, Arc<str>) {
-        if let Some(existing) = self.pool.get(s) {
-            return (self, Arc::clone(existing));
+        if let Some(existing) = self.pool.get(s).map(Arc::clone) {
+            return (self, existing);
         }
 
         let interned: Arc<str> = Arc::from(s);
@@ -87,8 +87,8 @@ impl StringPool {
     /// This path can reuse the allocation of the provided `String` when inserting.
     #[must_use]
     pub fn intern_string(self, s: String) -> (Self, Arc<str>) {
-        if let Some(existing) = self.pool.get(s.as_str()) {
-            return (self, Arc::clone(existing));
+        if let Some(existing) = self.pool.get(s.as_str()).map(Arc::clone) {
+            return (self, existing);
         }
 
         let interned: Arc<str> = Arc::from(s);
@@ -101,22 +101,9 @@ impl StringPool {
 
     /// Backward-compatible convenience: accepts any `Into<String>`.
     ///
-    /// This path can reuse the allocation of the provided `String` when inserting.
-    pub fn intern_string(&mut self, s: String) -> Arc<str> {
-        if let Some(existing) = self.pool.get(s.as_str()) {
-            return Arc::clone(existing);
-        }
-
-        let interned: Arc<str> = Arc::from(s);
-        self.pool.insert(Arc::clone(&interned));
-        interned
-    }
-
-    /// Backward-compatible convenience: accepts any `Into<String>`.
-    ///
     /// Note: callers passing `&str` should prefer `intern_str()` to avoid
     /// allocating a temporary `String` on repeated lookups.
-    pub fn intern(&mut self, s: impl Into<String>) -> Arc<str> {
+    pub fn intern(self, s: impl Into<String>) -> (Self, Arc<str>) {
         self.intern_string(s.into())
     }
 
@@ -192,12 +179,11 @@ mod tests {
 
     #[test]
     fn test_intern_different_string_types() {
-        let (mut pool, s1) = StringPool::new().intern_str("test");
+        let (pool, s1) = StringPool::new().intern_str("test");
 
         // Test with &str
-        let s2 = pool.intern("test".to_string());
-        // Test with owned String
-        let s3 = pool.intern(String::from("test"));
+        let (pool, s2) = pool.intern("test".to_string());
+        let (pool, s3) = pool.intern(String::from("test"));
 
         // All should point to the same allocation
         assert!(Arc::ptr_eq(&s1, &s2));
@@ -209,10 +195,10 @@ mod tests {
     fn test_intern_str_and_intern_string_share_entries() {
         // Regression test: the pool should store a single interned Arc<str> per
         // unique string, regardless of whether callers use &str or String.
-        let (mut pool, s1) = StringPool::new().intern_str("test");
+        let (pool, s1) = StringPool::new().intern_str("test");
 
-        let s2 = pool.intern("test".to_string());
-        let s3 = pool.intern(String::from("test"));
+        let (pool, s2) = pool.intern("test".to_string());
+        let (pool, s3) = pool.intern(String::from("test"));
 
         assert!(Arc::ptr_eq(&s1, &s2));
         assert!(Arc::ptr_eq(&s2, &s3));

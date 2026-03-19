@@ -11,7 +11,7 @@ use crate::pipeline::idle_timeout::{
     new_file_activity_tracker, time_since_activity, FileActivityConfig, MonitorConfig,
     MonitorResult, StderrActivityTracker, DEFAULT_KILL_CONFIG, IDLE_TIMEOUT_SECS,
 };
-use crate::pipeline::prompt::streaming;
+use crate::pipeline::prompt::io_streaming;
 use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
 use std::io::{self, BufReader};
 use std::path::Path;
@@ -201,7 +201,7 @@ pub(crate) fn run_with_agent_spawn(
         const STDERR_MAX_BYTES: usize = 512 * 1024;
         let tracked_stderr = StderrActivityTracker::new(stderr, stderr_activity_timestamp);
         let reader = BufReader::new(tracked_stderr);
-        super::stderr_collector::collect_stderr_with_cap_and_drain(
+        super::io_stderr_collector::collect_stderr_with_cap_and_drain(
             reader,
             STDERR_MAX_BYTES,
             stderr_cancel_for_thread.as_ref(),
@@ -209,14 +209,14 @@ pub(crate) fn run_with_agent_spawn(
     }));
 
     let activity_timestamp_for_timeout = activity_timestamp.clone();
-    if let Err(e) = super::streaming::stream_agent_output_from_handle(
+    if let Err(e) = super::io_streaming::stream_agent_output_from_handle(
         stdout,
         cmd,
         runtime,
         activity_timestamp,
         &stdout_cancel,
     ) {
-        super::cleanup::cleanup_after_agent_failure(
+        super::runtime::cleanup_after_agent_failure(
             &child_shared,
             &monitor_should_stop,
             &mut monitor_handle,
@@ -229,7 +229,7 @@ pub(crate) fn run_with_agent_spawn(
     }
 
     let (exit_code, stderr_output, monitor_result_early) =
-        match super::process_wait::wait_for_completion_and_collect_stderr(
+        match super::io_process_wait::wait_for_completion_and_collect_stderr(
             &child_shared,
             &mut stderr_join_handle,
             &mut monitor_handle,
@@ -237,7 +237,7 @@ pub(crate) fn run_with_agent_spawn(
         ) {
             Ok(v) => v,
             Err(e) => {
-                super::cleanup::cleanup_after_agent_failure(
+                super::runtime::cleanup_after_agent_failure(
                     &child_shared,
                     &monitor_should_stop,
                     &mut monitor_handle,
@@ -251,13 +251,13 @@ pub(crate) fn run_with_agent_spawn(
         };
 
     if monitor_result_early.is_none() && crate::interrupt::is_user_interrupt_requested() {
-        super::cleanup::terminate_child_best_effort(
+        super::runtime::terminate_child_best_effort(
             &child_shared,
             runtime.executor_arc.as_ref(),
             INTERRUPT_KILL_CONFIG,
         );
         monitor_should_stop.store(true, Ordering::Release);
-        super::stderr_collector::cancel_and_join_stderr_collector(
+        super::io_stderr_collector::cancel_and_join_stderr_collector(
             &stderr_cancel,
             &mut stderr_join_handle,
             std::time::Duration::from_millis(250),
@@ -266,7 +266,7 @@ pub(crate) fn run_with_agent_spawn(
             let _ = stderr_join_handle.take();
         }
     } else if matches!(monitor_result_early, Some(MonitorResult::TimedOut { .. })) {
-        let exited = super::cleanup::terminate_child_best_effort(
+        let exited = super::runtime::terminate_child_best_effort(
             &child_shared,
             runtime.executor_arc.as_ref(),
             crate::pipeline::idle_timeout::DEFAULT_KILL_CONFIG,
@@ -276,14 +276,14 @@ pub(crate) fn run_with_agent_spawn(
             monitor_should_stop.store(true, Ordering::Release);
         }
 
-        super::stderr_collector::cancel_and_join_stderr_collector(
+        super::io_stderr_collector::cancel_and_join_stderr_collector(
             &stderr_cancel,
             &mut stderr_join_handle,
             std::time::Duration::from_millis(250),
         );
 
         if stderr_join_handle.is_some() {
-            super::stderr_collector::cancel_and_join_stderr_collector(
+            super::io_stderr_collector::cancel_and_join_stderr_collector(
                 &stderr_cancel,
                 &mut stderr_join_handle,
                 std::time::Duration::from_secs(2),
@@ -382,7 +382,7 @@ pub(crate) fn run_with_agent_spawn(
         ));
     }
 
-    let session_id = streaming::extract_session_id_from_logfile(cmd.logfile, runtime.workspace);
+    let session_id = io_streaming::extract_session_id_from_logfile(cmd.logfile, runtime.workspace);
 
     Ok(CommandResult {
         exit_code: final_exit_code,

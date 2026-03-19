@@ -35,6 +35,7 @@ use crate::reducer::effect::Effect;
 use crate::reducer::event::{PipelineEvent, PipelinePhase};
 use crate::reducer::state::{CommitState, PromptMode};
 use crate::reducer::ui_event::{UIEvent, XmlOutputType};
+use crate::reducer::PipelineState;
 
 use super::super::MockEffectHandler;
 
@@ -267,8 +268,12 @@ mod tests {
     fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
         let state = {
             let s = crate::reducer::state::PipelineState::initial(1, 0);
-            s.continuation.xsd_retry_count = 3;
-            s
+            let continuation = s
+                .continuation
+                .trigger_xsd_retry()
+                .trigger_xsd_retry()
+                .trigger_xsd_retry();
+            PipelineState { continuation, ..s }
         };
 
         let handler = MockEffectHandler::new(state);

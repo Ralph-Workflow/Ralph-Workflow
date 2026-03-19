@@ -3,12 +3,15 @@
 // Tests that verify deterministic behavior: same events produce same state,
 // validation failures trigger correct agent switches, etc.
 
-use super::*;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::state::ContinuationState;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_event_sequence_output_validation_retry_then_success() {
-    use crate::reducer::state::ContinuationState;
-
     let mut state = PipelineState {
         continuation: ContinuationState {
             max_xsd_retry_count: 3,

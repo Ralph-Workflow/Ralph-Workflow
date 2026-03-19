@@ -3,8 +3,14 @@
 //! Tests simple scenarios where agents fail and the pipeline falls back
 //! to the next agent in the chain.
 
-use crate::reducer::state::RateLimitContinuationPrompt;
-use crate::reducer::state_reduction::tests::*;
+use crate::agents::AgentRole;
+use crate::reducer::create_test_state;
+use crate::reducer::event::{AgentErrorKind, PipelineEvent, PipelinePhase};
+use crate::reducer::state::{
+    AgentChainState, ContinuationState, PipelineState, RateLimitContinuationPrompt,
+    SameAgentRetryReason,
+};
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_reduce_agent_fallback_to_next_model() {
@@ -134,7 +140,7 @@ fn test_reduce_model_fallback_triggers_for_network_error() {
 #[test]
 fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
     let base_state = create_test_state();
-    let mut chain = AgentChainState::initial().with_agents(
+    let base_chain = AgentChainState::initial().with_agents(
         vec![
             "agent1".to_string(),
             "agent2".to_string(),
@@ -143,12 +149,15 @@ fn test_fallback_triggered_respects_to_agent_and_resets_retry_state() {
         vec![vec![], vec![], vec![]],
         AgentRole::Developer,
     );
-    chain.rate_limit_continuation_prompt = Some(RateLimitContinuationPrompt {
-        drain: crate::agents::AgentDrain::Development,
-        role: AgentRole::Developer,
-        prompt: "saved prompt".to_string(),
-    });
-    chain.last_session_id = Some("session-xyz".to_string());
+    let chain = AgentChainState {
+        rate_limit_continuation_prompt: Some(RateLimitContinuationPrompt {
+            drain: crate::agents::AgentDrain::Development,
+            role: AgentRole::Developer,
+            prompt: "saved prompt".to_string(),
+        }),
+        last_session_id: Some("session-xyz".to_string()),
+        ..base_chain
+    };
 
     let state = PipelineState {
         phase: PipelinePhase::Development,

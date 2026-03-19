@@ -46,9 +46,9 @@ fn extract_issue_snippets(
     workspace: &dyn crate::workspace::Workspace,
 ) -> Vec<XmlCodeSnippet> {
     let location_re =
-        crate::reducer::handler::review::review_flow::regex_cache::issue_location_regex();
+        crate::reducer::boundary::review::review_flow::regex_cache::issue_location_regex();
     let gh_location_re =
-        crate::reducer::handler::review::review_flow::regex_cache::issue_gh_location_regex();
+        crate::reducer::boundary::review::review_flow::regex_cache::issue_gh_location_regex();
 
     let seen: std::collections::HashSet<(String, u32, u32)> = issues
         .iter()
@@ -249,7 +249,7 @@ fn render_issues_markdown(
 }
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn write_issues_markdown(
+    pub(in crate::reducer::boundary) fn write_issues_markdown(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,
@@ -296,7 +296,7 @@ impl MainEffectHandler {
         ))
     }
 
-    pub(in crate::reducer::handler) fn extract_review_issue_snippets(
+    pub(in crate::reducer::boundary) fn extract_review_issue_snippets(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,
@@ -343,7 +343,7 @@ impl MainEffectHandler {
         ))
     }
 
-    pub(in crate::reducer::handler) fn archive_review_issues_xml(
+    pub(in crate::reducer::boundary) fn archive_review_issues_xml(
         ctx: &PhaseContext<'_>,
         pass: u32,
     ) -> EffectResult {
@@ -355,7 +355,7 @@ impl MainEffectHandler {
         EffectResult::event(PipelineEvent::review_issues_xml_archived(pass))
     }
 
-    pub(in crate::reducer::handler) const fn apply_review_outcome(
+    pub(in crate::reducer::boundary) const fn apply_review_outcome(
         _ctx: &mut PhaseContext<'_>,
         pass: u32,
         issues_found: bool,

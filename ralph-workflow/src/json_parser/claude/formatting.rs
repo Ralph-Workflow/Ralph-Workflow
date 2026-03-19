@@ -320,33 +320,36 @@ impl ClaudeParser {
             return String::new();
         }
 
-        let out = String::new();
+        let mut out = String::new();
         if let Some(msg) = message {
             if let Some(content) = msg.content.as_ref() {
                 self.format_content_blocks(&mut out, content, &self.display_name, self.colors);
 
                 // If we successfully rendered content, mark it as rendered
                 if !out.is_empty() {
-                    self.state.with_session_mut(|session| {
-                        // Mark the message as pre-rendered so that ALL subsequent streaming
-                        // deltas for this message are suppressed.
-                        // This handles the case where assistant event arrives BEFORE streaming starts.
-                        if let Some(ref message_id) = msg.id {
-                            session.mark_message_pre_rendered(message_id);
-                        }
-
-                        // Mark the assistant content as rendered by hash to prevent duplicate
-                        // assistant events with the same content but different message_ids
-                        if let Some((text_content, _)) =
-                            Self::extract_text_content_for_hash(message)
-                        {
-                            if !text_content.is_empty() {
-                                let content_hash =
-                                    crate::json_parser::boundary::compute_hash_str(&text_content);
-                                session.mark_assistant_content_rendered(content_hash);
+                    self.state
+                        .with_session_mut(|session: &mut StreamingSession| {
+                            // Mark the message as pre-rendered so that ALL subsequent streaming
+                            // deltas for this message are suppressed.
+                            // This handles the case where assistant event arrives BEFORE streaming starts.
+                            if let Some(ref message_id) = msg.id {
+                                session.mark_message_pre_rendered(message_id);
                             }
-                        }
-                    });
+
+                            // Mark the assistant content as rendered by hash to prevent duplicate
+                            // assistant events with the same content but different message_ids
+                            if let Some((text_content, _)) =
+                                Self::extract_text_content_for_hash(message)
+                            {
+                                if !text_content.is_empty() {
+                                    let content_hash =
+                                        crate::json_parser::boundary::compute_hash_str(
+                                            &text_content,
+                                        );
+                                    session.mark_assistant_content_rendered(content_hash);
+                                }
+                            }
+                        });
                 }
             }
         }

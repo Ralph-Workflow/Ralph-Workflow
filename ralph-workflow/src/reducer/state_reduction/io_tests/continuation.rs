@@ -4,6 +4,9 @@
 // and continuation state management during development iterations.
 
 use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::state::{DevelopmentStatus, PipelineState};
 use crate::reducer::{determine_next_effect, effect::Effect};
 
 #[test]
@@ -99,15 +102,17 @@ fn test_continuation_triggered_with_failed_status() {
 
 #[test]
 fn test_continuation_succeeded_resets_state() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = create_test_state();
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
+    let state = PipelineState {
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
+        ..create_test_state()
+    };
     assert!(state.continuation.is_continuation());
 
     let new_state = reduce(
@@ -126,19 +131,19 @@ fn test_continuation_succeeded_resets_state() {
 
 #[test]
 fn test_continuation_succeeded_sets_iteration_from_event() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = PipelineState {
+    let state = PipelineState {
         phase: PipelinePhase::Development,
         iteration: 99,
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
         ..create_test_state()
     };
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
 
     let new_state = reduce(
         state,
@@ -150,15 +155,17 @@ fn test_continuation_succeeded_sets_iteration_from_event() {
 
 #[test]
 fn test_iteration_started_resets_continuation() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = create_test_state();
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
+    let state = PipelineState {
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
+        ..create_test_state()
+    };
     assert!(state.continuation.is_continuation());
 
     let new_state = reduce(state, PipelineEvent::development_iteration_started(2));
@@ -169,16 +176,18 @@ fn test_iteration_started_resets_continuation() {
 
 #[test]
 fn test_iteration_completed_resets_continuation() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Development;
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
+        ..create_test_state()
+    };
 
     let new_state = reduce(
         state,
@@ -191,16 +200,18 @@ fn test_iteration_completed_resets_continuation() {
 
 #[test]
 fn test_development_phase_completed_resets_continuation() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Development;
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
+        ..create_test_state()
+    };
 
     let new_state = reduce(state, PipelineEvent::development_phase_completed());
 
@@ -214,8 +225,10 @@ fn test_development_phase_completed_resets_continuation() {
 
 #[test]
 fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Development;
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        ..create_test_state()
+    };
 
     let retrying_state = reduce(
         state,
@@ -247,11 +260,14 @@ fn test_same_agent_retry_uses_same_agent_retry_mode_until_success() {
 
 #[test]
 fn test_xsd_retry_uses_xsd_retry_mode_until_success() {
-    let mut state = create_test_state();
-    state.phase = PipelinePhase::Development;
-    state.agent_chain = state
-        .agent_chain
-        .with_drain(crate::agents::AgentDrain::Analysis);
+    let base = create_test_state();
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        agent_chain: base
+            .agent_chain
+            .with_drain(crate::agents::AgentDrain::Analysis),
+        ..base
+    };
 
     let retrying_state = reduce(
         state,
@@ -348,15 +364,17 @@ fn test_continuation_budget_exhausted_switches_to_next_agent() {
 
 #[test]
 fn test_continuation_budget_exhausted_resets_continuation_state() {
-    use crate::reducer::state::{ContinuationState, DevelopmentStatus};
+    use crate::reducer::state::ContinuationState;
 
-    let mut state = create_test_state();
-    state.continuation = ContinuationState::new().trigger_continuation(
-        DevelopmentStatus::Partial,
-        "Work".to_string(),
-        None,
-        None,
-    );
+    let state = PipelineState {
+        continuation: ContinuationState::new().trigger_continuation(
+            DevelopmentStatus::Partial,
+            "Work".to_string(),
+            None,
+            None,
+        ),
+        ..create_test_state()
+    };
     assert!(state.continuation.is_continuation());
 
     let new_state = reduce(
@@ -377,7 +395,10 @@ fn test_continuation_budget_exhausted_resets_continuation_state() {
 fn test_continuation_budget_exhausted_preserves_iteration() {
     use crate::reducer::state::DevelopmentStatus;
 
-    let mut state = create_test_state();
+    let mut state = PipelineState {
+        iteration: 5,
+        ..create_test_state()
+    };
     state.iteration = 5;
 
     let new_state = reduce(
@@ -393,7 +414,7 @@ fn test_continuation_budget_exhausted_preserves_iteration() {
 #[test]
 fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
     use crate::agents::AgentRole;
-    use crate::reducer::state::{AgentChainState, DevelopmentStatus};
+    use crate::reducer::state::{AgentChainState, DevelopmentStatus, PromptPermissionsState};
 
     let agent_chain = AgentChainState::initial()
         .with_agents(
@@ -403,12 +424,19 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
         )
         .with_max_cycles(1); // Only 1 cycle allowed
 
-    let mut state = PipelineState::initial(5, 3);
-    state.agent_chain = agent_chain;
-    state.phase = PipelinePhase::Development;
-    // Simulate mid-pipeline (permissions already locked at startup)
-    state.prompt_permissions.locked = true;
-    state.prompt_permissions.restore_needed = true;
+    let state = {
+        let base = PipelineState::initial(5, 3);
+        PipelineState {
+            agent_chain,
+            phase: PipelinePhase::Development,
+            prompt_permissions: PromptPermissionsState {
+                locked: true,
+                restore_needed: true,
+                ..base.prompt_permissions
+            },
+            ..base
+        }
+    };
 
     // UPDATED (wt-39 fix): After continuation budget exhaustion, the system now completes
     // the iteration and transitions to CommitMessage rather than staying in Development
@@ -421,7 +449,7 @@ fn test_orchestration_detects_exhaustion_after_all_agents_tried() {
     // 2. Transitions to next pipeline phase
     //
     // This ensures bounded execution per iteration and prevents unbounded agent fallback cycles.
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::development_continuation_budget_exhausted(0, 3, DevelopmentStatus::Failed),
     );
@@ -532,28 +560,38 @@ fn test_orchestration_fires_budget_exhausted_at_cap() {
     use crate::reducer::state::DevelopmentStatus;
 
     let continuation = ContinuationState::with_limits(10, 3, 2);
-    let mut state = PipelineState::initial_with_continuation(1, 0, &continuation);
-    state.phase = PipelinePhase::Development;
+    let state = PipelineState::initial_with_continuation(1, 0, &continuation);
 
-    // Simulate 2 continuation triggers (attempts 1, 2)
-    for _ in 1..=2 {
-        state = reduce(
-            state,
-            PipelineEvent::development_iteration_continuation_triggered(
-                0,
-                DevelopmentStatus::Partial,
-                "partial".to_string(),
-                None,
-                None,
-            ),
-        );
-    }
+    let state = reduce(
+        PipelineState {
+            phase: PipelinePhase::Development,
+            ..state.clone()
+        },
+        PipelineEvent::development_iteration_continuation_triggered(
+            0,
+            DevelopmentStatus::Partial,
+            "partial".to_string(),
+            None,
+            None,
+        ),
+    );
+
+    let state = reduce(
+        state,
+        PipelineEvent::development_iteration_continuation_triggered(
+            0,
+            DevelopmentStatus::Partial,
+            "partial".to_string(),
+            None,
+            None,
+        ),
+    );
 
     assert_eq!(state.continuation.continuation_attempt, 2);
     assert!(!state.continuation.continuations_exhausted());
 
     // Attempt third continuation (defensive check prevents increment)
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::development_iteration_continuation_triggered(
             0,
@@ -607,29 +645,39 @@ fn test_trigger_continuation_at_boundary_does_not_increment() {
     use crate::reducer::state::DevelopmentStatus;
 
     let continuation = ContinuationState::with_limits(10, 3, 2);
-    let mut state = PipelineState::initial_with_continuation(1, 0, &continuation);
-    state.phase = PipelinePhase::Development;
+    let state = PipelineState::initial_with_continuation(1, 0, &continuation);
 
-    // Simulate 2 continuation triggers (attempts 1, 2)
-    for _ in 1..=2 {
-        state = reduce(
-            state,
-            PipelineEvent::development_iteration_continuation_triggered(
-                0,
-                DevelopmentStatus::Partial,
-                "partial".to_string(),
-                None,
-                None,
-            ),
-        );
-    }
+    let state = reduce(
+        PipelineState {
+            phase: PipelinePhase::Development,
+            ..state.clone()
+        },
+        PipelineEvent::development_iteration_continuation_triggered(
+            0,
+            DevelopmentStatus::Partial,
+            "partial".to_string(),
+            None,
+            None,
+        ),
+    );
+
+    let state = reduce(
+        state,
+        PipelineEvent::development_iteration_continuation_triggered(
+            0,
+            DevelopmentStatus::Partial,
+            "partial".to_string(),
+            None,
+            None,
+        ),
+    );
 
     assert_eq!(state.continuation.continuation_attempt, 2);
     assert!(!state.continuation.continuations_exhausted());
 
     // Attempt third continuation (defensive check should prevent increment)
     let old_counter = state.continuation.continuation_attempt;
-    state = reduce(
+    let state = reduce(
         state,
         PipelineEvent::development_iteration_continuation_triggered(
             0,
@@ -674,34 +722,44 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
     use crate::reducer::state::{DevelopmentStatus, DevelopmentValidatedOutcome};
 
     let continuation = ContinuationState::with_limits(10, 3, 2);
-    let mut state = PipelineState::initial_with_continuation(5, 0, &continuation);
-    state.phase = PipelinePhase::Development;
-    state = reduce(state, PipelineEvent::development_iteration_started(0));
+    let initial_state = PipelineState::initial_with_continuation(5, 0, &continuation);
+
+    let state = reduce(
+        PipelineState {
+            phase: PipelinePhase::Development,
+            ..initial_state.clone()
+        },
+        PipelineEvent::development_iteration_started(0),
+    );
 
     // Attempt 0 (initial) completes with Partial
-    state.development_validated_outcome = Some(DevelopmentValidatedOutcome {
-        iteration: 0,
-        status: DevelopmentStatus::Partial,
-        summary: "partial work".to_string(),
-        files_changed: None,
-        next_steps: None,
-    });
-    state = reduce(
-        state,
+    let state = reduce(
+        PipelineState {
+            development_validated_outcome: Some(DevelopmentValidatedOutcome {
+                iteration: 0,
+                status: DevelopmentStatus::Partial,
+                summary: "partial work".to_string(),
+                files_changed: None,
+                next_steps: None,
+            }),
+            ..state.clone()
+        },
         PipelineEvent::Development(DevelopmentEvent::OutcomeApplied { iteration: 0 }),
     );
     assert_eq!(state.continuation.continuation_attempt, 1);
 
     // Attempt 1 completes with Partial
-    state.development_validated_outcome = Some(DevelopmentValidatedOutcome {
-        iteration: 0,
-        status: DevelopmentStatus::Partial,
-        summary: "more partial work".to_string(),
-        files_changed: None,
-        next_steps: None,
-    });
-    state = reduce(
-        state,
+    let state = reduce(
+        PipelineState {
+            development_validated_outcome: Some(DevelopmentValidatedOutcome {
+                iteration: 0,
+                status: DevelopmentStatus::Partial,
+                summary: "more partial work".to_string(),
+                files_changed: None,
+                next_steps: None,
+            }),
+            ..state.clone()
+        },
         PipelineEvent::Development(DevelopmentEvent::OutcomeApplied { iteration: 0 }),
     );
     assert_eq!(state.continuation.continuation_attempt, 2);
@@ -709,15 +767,17 @@ fn test_outcome_applied_exhausts_before_triggering_third_continuation() {
     // Attempt 2 completes with Partial
     // CRITICAL: OutcomeApplied should detect exhaustion here via (2 + 1 >= 3) check
     // and emit ContinuationBudgetExhausted, NOT ContinuationTriggered
-    state.development_validated_outcome = Some(DevelopmentValidatedOutcome {
-        iteration: 0,
-        status: DevelopmentStatus::Partial,
-        summary: "still more partial work".to_string(),
-        files_changed: None,
-        next_steps: None,
-    });
-    state = reduce(
-        state,
+    let state = reduce(
+        PipelineState {
+            development_validated_outcome: Some(DevelopmentValidatedOutcome {
+                iteration: 0,
+                status: DevelopmentStatus::Partial,
+                summary: "still more partial work".to_string(),
+                files_changed: None,
+                next_steps: None,
+            }),
+            ..state.clone()
+        },
         PipelineEvent::Development(DevelopmentEvent::OutcomeApplied { iteration: 0 }),
     );
 

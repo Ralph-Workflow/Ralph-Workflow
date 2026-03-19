@@ -55,33 +55,37 @@ impl OpenCodeParser {
         match terminal_mode {
             TerminalMode::Full => String::new(),
             TerminalMode::Basic | TerminalMode::None => {
-                let lines: Vec<String> = session
-                    .accumulated_keys(ContentType::Text)
-                    .filter_map(|key| {
-                        let accumulated = session
-                            .get_accumulated(ContentType::Text, &key)
-                            .unwrap_or("");
-                        let sanitized =
-                            crate::json_parser::delta_display::sanitize_for_display(accumulated);
-                        if sanitized.is_empty() {
-                            return None;
-                        }
+                let lines: Vec<String> = self.state.with_session_mut(|session| {
+                    session
+                        .accumulated_keys(ContentType::Text)
+                        .into_iter()
+                        .filter_map(|key| {
+                            let accumulated = session
+                                .get_accumulated(ContentType::Text, &key)
+                                .unwrap_or("");
+                            let sanitized = crate::json_parser::delta_display::sanitize_for_display(
+                                accumulated,
+                            );
+                            if sanitized.is_empty() {
+                                return None;
+                            }
 
-                        Some(match terminal_mode {
-                            TerminalMode::Basic => format!(
-                                "{}[{}]{} {}{}{}",
-                                colors.dim(),
-                                prefix,
-                                colors.reset(),
-                                colors.white(),
-                                sanitized,
-                                colors.reset()
-                            ),
-                            TerminalMode::None => format!("[{prefix}] {sanitized}"),
-                            TerminalMode::Full => unreachable!(),
+                            Some(match terminal_mode {
+                                TerminalMode::Basic => format!(
+                                    "{}[{}]{} {}{}{}",
+                                    colors.dim(),
+                                    prefix,
+                                    colors.reset(),
+                                    colors.white(),
+                                    sanitized,
+                                    colors.reset()
+                                ),
+                                TerminalMode::None => format!("[{prefix}] {sanitized}"),
+                                TerminalMode::Full => unreachable!(),
+                            })
                         })
-                    })
-                    .collect();
+                        .collect()
+                });
                 lines.join("\n")
             }
         }
@@ -177,11 +181,10 @@ impl OpenCodeParser {
         let session = event.session_id.as_deref().unwrap_or("unknown");
         let step_id = self.derive_step_id(event, session);
 
-        let current_msg_id = self
-            .state
-            .streaming_session
-            .borrow()
-            .get_current_message_id();
+        let current_msg_id: Option<String> = {
+            let session = self.state.streaming_session.borrow();
+            session.get_current_message_id().map(str::to_string)
+        };
         if current_msg_id.is_some_and(|current| current == step_id) {
             return String::new();
         }

@@ -1,6 +1,8 @@
-use super::io::CodexParserState;
-use super::printer::StdoutPrinter;
-use super::streaming_state::StreamingSession;
+use super::printer::{SharedPrinter, StdoutPrinter};
+use crate::json_parser::printer::Printable;
+use io::CodexParserState;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Codex event parser
 pub struct CodexParser {
@@ -10,18 +12,22 @@ pub struct CodexParser {
     display_name: String,
     state: CodexParserState,
     show_streaming_metrics: bool,
-    printer: StdoutPrinter,
+    printer: SharedPrinter,
 }
 
 impl CodexParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, StdoutPrinter::new())
+        Self::with_printer(
+            colors,
+            verbosity,
+            Rc::new(RefCell::new(StdoutPrinter::new())),
+        )
     }
 
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
 
@@ -53,7 +59,7 @@ impl CodexParser {
 
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
-    pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
+    pub fn with_terminal_mode(self, mode: crate::json_parser::TerminalMode) -> Self {
         *self.state.terminal_mode.borrow_mut() = mode;
         self
     }
@@ -83,7 +89,7 @@ impl CodexParser {
 
     #[cfg(any(test, feature = "test-utils"))]
     pub fn parse_stream_for_test<R: std::io::BufRead>(
-        &self,
+        &mut self,
         reader: R,
         workspace: &dyn Workspace,
     ) -> std::io::Result<()> {
@@ -95,12 +101,13 @@ impl CodexParser {
         self.printer.clone()
     }
 
-    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
-        f(&mut self.printer)
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
     }
 
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
+    pub fn streaming_metrics(&self) -> crate::json_parser::health::StreamingQualityMetrics {
         self.state
             .streaming_session
             .borrow()

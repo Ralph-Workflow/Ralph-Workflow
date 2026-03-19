@@ -3,7 +3,25 @@
 // Tests for fix chain effect emission: prepare fix prompt, cleanup XML,
 // invoke agent, extract/validate XML, archive XML, apply outcome.
 
-use super::*;
+use crate::agents::AgentRole;
+use crate::reducer::effect::Effect;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::orchestration::determine_next_effect;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
+
+fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
+    PipelineState {
+        prompt_permissions: crate::reducer::state::PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(dev_iters, review_passes)
+    }
+}
 
 #[test]
 fn test_review_with_issues_emits_prepare_fix_prompt() {
@@ -17,7 +35,7 @@ fn test_review_with_issues_emits_prepare_fix_prompt() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Fix),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);
@@ -36,7 +54,7 @@ fn test_fix_chain_emits_cleanup_fix_result_xml_after_fix_prompt_prepared() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Fix),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);
@@ -60,7 +78,7 @@ fn test_fix_chain_emits_extract_fix_result_xml_after_fix_agent_invoked() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Analysis),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);
@@ -83,7 +101,7 @@ fn test_fix_chain_emits_validate_fix_result_xml_after_extracted() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Analysis),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);
@@ -113,7 +131,7 @@ fn test_fix_chain_applies_all_issues_addressed_to_fix_attempt_completed() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Analysis),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     // When: orchestration applies fix outcome
@@ -155,7 +173,7 @@ fn test_fix_chain_emits_archive_fix_result_xml_after_validated() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Analysis),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);
@@ -184,7 +202,7 @@ fn test_fix_chain_emits_apply_fix_outcome_after_fix_result_xml_archived() {
             .agent_chain
             .with_agents(vec!["mock".to_string()], vec![vec![]], AgentRole::Reviewer)
             .with_drain(crate::agents::AgentDrain::Analysis),
-        ..super::initial_with_locked_permissions(1, 1)
+        ..initial_with_locked_permissions(1, 1)
     };
 
     let effect = determine_next_effect(&state);

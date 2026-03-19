@@ -59,7 +59,7 @@ impl GeminiParser {
         // Reset streaming state on new session
         self.state.with_session_mut(|session| {
             session.on_message_start();
-            session.set_current_message_id(Some(sid.clone()));
+            session.set_current_message_id(session_id.clone());
         });
         self.state.with_last_rendered_content_mut(|v| v.clear());
         let model_str = model.unwrap_or_else(|| "unknown".to_string());
@@ -71,7 +71,7 @@ impl GeminiParser {
             c.cyan(),
             c.reset(),
             c.dim(),
-            sid,
+            session_id.unwrap_or_else(|| "unknown".to_string()),
             model_str,
             c.reset()
         )
@@ -105,12 +105,12 @@ impl GeminiParser {
 
                         let sanitized_text = delta_display::sanitize_for_display(&accumulated_text);
                         if sanitized_text.is_empty() {
-                            return (String::new(), String::new(), false);
+                            return (false, String::new(), false);
                         }
 
                         if session.is_content_hash_rendered(ContentType::Text, "0", &sanitized_text)
                         {
-                            return (String::new(), String::new(), false);
+                            return (false, String::new(), false);
                         }
 
                         let has_prefix = session.has_rendered_prefix(ContentType::Text, "0");
@@ -205,9 +205,10 @@ impl GeminiParser {
                         let session = self.state.streaming_session.borrow();
                         let out = session
                             .accumulated_keys(ContentType::Text)
+                            .iter()
                             .filter_map(|key| {
                                 let accumulated = session
-                                    .get_accumulated(ContentType::Text, &key)
+                                    .get_accumulated(ContentType::Text, key.as_str())
                                     .unwrap_or("");
                                 let sanitized = delta_display::sanitize_for_display(accumulated);
                                 if sanitized.is_empty() {
@@ -221,7 +222,8 @@ impl GeminiParser {
                                         prefix,
                                         c.reset(),
                                         c.white(),
-                                        sanitized
+                                        sanitized,
+                                        c.reset()
                                     ),
                                     TerminalMode::None => format!("[{prefix}] {sanitized}"),
                                     TerminalMode::Full => unreachable!(),

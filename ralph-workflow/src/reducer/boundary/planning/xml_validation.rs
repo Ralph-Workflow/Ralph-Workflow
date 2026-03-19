@@ -15,7 +15,7 @@ use anyhow::Result;
 use std::path::Path;
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn extract_planning_xml(
+    pub(in crate::reducer::boundary) fn extract_planning_xml(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,
@@ -32,7 +32,7 @@ impl MainEffectHandler {
         }
     }
 
-    pub(in crate::reducer::handler) fn validate_planning_xml(
+    pub(in crate::reducer::boundary) fn validate_planning_xml(
         &self,
         ctx: &PhaseContext<'_>,
         iteration: u32,

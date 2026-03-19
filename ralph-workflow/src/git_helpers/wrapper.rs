@@ -46,12 +46,12 @@ use super::phase::{
     HEAD_OID_FILENAME,
 };
 use super::script::{escape_shell_single_quoted, make_wrapper_content};
+use crate::git_helpers::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
 use crate::git_helpers::repo::{
     get_hooks_dir_from, get_repo_root, ralph_git_dir, resolve_protection_scope,
     resolve_protection_scope_from,
 };
-use crate::git_helpers::runtime::install::{HOOK_MARKER, RALPH_HOOK_NAMES};
-use crate::git_helpers::runtime::verify::{enforce_hook_permissions, reinstall_hooks_if_tampered};
+use crate::git_helpers::verify::{enforce_hook_permissions, reinstall_hooks_if_tampered};
 use crate::logger::Logger;
 use crate::workspace::Workspace;
 use std::env;
@@ -156,7 +156,7 @@ pub fn start_agent_phase_in_repo(repo_root: &Path, helpers: &mut GitHelpers) -> 
     repair_marker_if_tampered(repo_root)?;
     #[cfg(unix)]
     set_readonly_mode_if_not_symlink(&marker_path_from_ralph_dir(&ralph_dir), 0o444);
-    crate::git_helpers::runtime::install::install_hooks_in_repo(repo_root)?;
+    crate::git_helpers::install::install_hooks_in_repo(repo_root)?;
     enable_git_wrapper_at(repo_root, helpers)?;
 
     phase::capture_head_oid(repo_root);
@@ -391,8 +391,6 @@ pub fn get_agent_phase_paths_for_test() -> (Option<PathBuf>, Option<PathBuf>, Op
         .and_then(|guard| guard.clone());
     (repo_root, ralph_dir, hooks_dir)
 }
-
-use super::runtime::agent_phase_test_lock;
 
 pub fn capture_head_oid(repo_root: &Path) {
     phase::capture_head_oid(repo_root)

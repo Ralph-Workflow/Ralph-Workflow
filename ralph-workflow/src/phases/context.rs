@@ -216,7 +216,7 @@ mod tests {
             .apply_unified_config(&unified)
             .unwrap();
 
-        let fixture = TestFixture::new();
+        let mut fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
@@ -262,7 +262,7 @@ mod tests {
             .apply_unified_config(&unified)
             .unwrap();
 
-        let fixture = TestFixture::new();
+        let mut fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,
@@ -300,7 +300,7 @@ mod tests {
         let registry = AgentRegistry::new().unwrap();
         // Default registry with no custom chains configured
 
-        let fixture = TestFixture::new();
+        let mut fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
         let ctx = PhaseContext {
             config: &fixture.config,

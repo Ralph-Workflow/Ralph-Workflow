@@ -63,5 +63,5 @@ pub fn run_with_prompt(
         runtime.workspace,
     )?;
 
-    super::agent_spawn::run_with_agent_spawn(cmd, runtime, ANTHROPIC_ENV_VARS_TO_SANITIZE)
+    super::io_agent_spawn::run_with_agent_spawn(cmd, runtime, ANTHROPIC_ENV_VARS_TO_SANITIZE)
 }

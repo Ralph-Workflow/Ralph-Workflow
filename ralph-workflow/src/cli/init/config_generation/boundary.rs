@@ -102,7 +102,7 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
         crate::cli::diagnostics_domain::determine_init_action(has_config, has_prompt, template_arg);
 
     match action {
-        crate::cli::diagnostics_domain::InitFileState::BothExists => {
+        crate::cli::diagnostics_domain::InitFileState::BothExist => {
             handle_both_exists(prompt_path, colors, env)
         }
         crate::cli::diagnostics_domain::InitFileState::ConfigOnly => {

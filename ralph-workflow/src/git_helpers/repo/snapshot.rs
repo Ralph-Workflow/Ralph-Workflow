@@ -190,7 +190,7 @@ fn git_snapshot_impl(repo: &git2::Repository) -> io::Result<String> {
 fn collect_status_lines(statuses: git2::Statuses) -> io::Result<Vec<String>> {
     statuses
         .iter()
-        .map(|entry| status_entry_to_porcelain(entry))
+        .map(|entry| status_entry_to_porcelain(&entry))
         .collect::<io::Result<Vec<_>>>()
 }
 

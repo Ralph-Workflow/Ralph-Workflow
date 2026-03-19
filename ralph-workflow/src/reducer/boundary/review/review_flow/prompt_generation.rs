@@ -28,7 +28,7 @@
 // - `validation.rs` - XML validation that triggers XSD retry
 
 impl MainEffectHandler {
-    pub(in crate::reducer::handler) fn prepare_review_prompt(
+    pub(in crate::reducer::boundary) fn prepare_review_prompt(
         &self,
         ctx: &PhaseContext<'_>,
         pass: u32,
@@ -258,7 +258,7 @@ impl MainEffectHandler {
                 // Same-agent retry: prepend retry guidance to the last prepared prompt for this
                 // phase (preserves XSD retry / normal context if present).
                 let retry_preamble =
-                    crate::reducer::handler::retry_guidance::same_agent_retry_preamble(
+                    crate::reducer::boundary::retry_guidance::same_agent_retry_preamble(
                         continuation_state,
                     );
                 let Some(inputs) = materialized_inputs else {
@@ -344,7 +344,7 @@ impl MainEffectHandler {
                                     )
                                 },
                                 |previous_prompt| {
-                                    let previous_base = crate::reducer::handler::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
+                                    let previous_base = crate::reducer::boundary::retry_guidance::strip_existing_same_agent_retry_preamble(&previous_prompt)
                                         .to_string();
                                     let freshly_rendered_base = prompt_review_xml_with_references(
                                         ctx.template_context,

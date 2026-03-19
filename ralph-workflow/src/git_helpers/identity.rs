@@ -19,7 +19,7 @@
 #![deny(unsafe_code)]
 
 use crate::executor::ProcessExecutor;
-use crate::git_helpers::runtime::{get_system_hostname, get_system_username};
+use crate::git_helpers::runtime_identity::{get_system_hostname, get_system_username};
 
 #[cfg(test)]
 use crate::executor::RealProcessExecutor;
@@ -96,43 +96,6 @@ pub fn choose_hostname(
         .or_else(|| hostname_output.map(|h| h.trim().to_string()))
         .filter(|h| !h.is_empty())
 }
-    if email.trim().is_empty() {
-        return Err("Git user email cannot be empty".to_string());
-    }
-    let email = email.trim();
-    if !email.contains('@') {
-        return Err(format!("Invalid email format: '{email}'"));
-    }
-    let parts: Vec<&str> = email.split('@').collect();
-    if parts.len() != 2 {
-        return Err(format!("Invalid email format: '{email}'"));
-    }
-    if parts[0].trim().is_empty() {
-        return Err(format!(
-            "Invalid email format: '{email}' (missing local part)"
-        ));
-    }
-    if parts[1].trim().is_empty() || !parts[1].contains('.') {
-        return Err(format!("Invalid email format: '{email}' (invalid domain)"));
-    }
-    Ok(())
-}
-
-/// Pure policy: choose username from available sources.
-fn choose_username(env_username: Option<String>, whoami_output: Option<String>) -> String {
-    if let Some(user) = env_username {
-        if !user.is_empty() {
-            return user;
-        }
-    }
-    if let Some(output) = whoami_output {
-        let username = output.trim().to_string();
-        if !username.is_empty() {
-            return username;
-        }
-    }
-    "Unknown User".to_string()
-}
 
 /// Get the system username as a fallback.
 ///
@@ -152,19 +115,6 @@ pub fn fallback_username(executor: Option<&dyn ProcessExecutor>) -> String {
         None
     };
     choose_username(env_username, whoami_output)
-}
-
-/// Pure policy: choose hostname from available sources.
-fn choose_hostname(
-    env_hostname: Option<String>,
-    hostname_output: Option<String>,
-) -> Option<String> {
-    if let Some(host) = env_hostname {
-        if !host.is_empty() {
-            return Some(host);
-        }
-    }
-    hostname_output.filter(|h| !h.is_empty())
 }
 
 /// Get a fallback email based on the username.

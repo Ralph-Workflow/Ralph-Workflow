@@ -8,14 +8,14 @@ use crate::workspace::Workspace;
 
 /// XSD schemas for XML validation - included at compile time.
 /// These are written to `.agent/xsd/` at pipeline start for agent self-validation.
-const PLAN_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/plan.xsd");
+const PLAN_XSD_SCHEMA: &str = include_str!("llm_output_extraction/plan.xsd");
 const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
-    include_str!("../llm_output_extraction/development_result.xsd");
+    include_str!("llm_output_extraction/development_result.xsd");
 const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
-    include_str!("../llm_output_extraction/development_continuation_result.xsd");
-const ISSUES_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/issues.xsd");
-const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/fix_result.xsd");
-const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("../llm_output_extraction/commit_message.xsd");
+    include_str!("llm_output_extraction/development_continuation_result.xsd");
+const ISSUES_XSD_SCHEMA: &str = include_str!("llm_output_extraction/issues.xsd");
+const FIX_RESULT_XSD_SCHEMA: &str = include_str!("llm_output_extraction/fix_result.xsd");
+const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("llm_output_extraction/commit_message.xsd");
 
 /// Files that Ralph generates during a run and should clean up.
 pub const GENERATED_FILES: &[&str] = &[

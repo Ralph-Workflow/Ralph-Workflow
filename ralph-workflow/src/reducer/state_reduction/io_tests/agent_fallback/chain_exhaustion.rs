@@ -3,7 +3,11 @@
 //! Tests behavior when all agents in the chain are exhausted and the
 //! pipeline needs to cycle back to the first agent.
 
-use crate::reducer::state_reduction::tests::*;
+use crate::agents::AgentRole;
+use crate::reducer::create_test_state;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::state::{AgentChainState, PipelineState};
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_reduce_agent_chain_exhaustion() {

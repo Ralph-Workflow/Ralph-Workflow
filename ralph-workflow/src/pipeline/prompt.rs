@@ -5,30 +5,30 @@ mod io_agent_spawn;
 #[cfg(test)]
 mod io_agent_spawn_test;
 
-mod io_clipboard;
 mod environment;
+mod io_clipboard;
 mod io_process_wait;
+mod io_stderr_collector;
+mod io_streaming;
 mod run;
 mod runtime;
 mod save;
-mod io_stderr_collector;
-mod io_streaming;
 mod time;
 mod types;
 
+pub use io_streaming::extract_error_identifier_from_logfile;
+pub use io_streaming::extract_error_message_from_logfile;
 pub use run::run_with_prompt;
-pub use streaming::extract_error_identifier_from_logfile;
-pub use streaming::extract_error_message_from_logfile;
 pub use types::{PipelineRuntime, PromptCommand};
 
 /// Exit code returned when a process is killed due to SIGTERM.
 pub const SIGTERM_EXIT_CODE: i32 = 143;
 
 #[cfg(test)]
-pub use agent_spawn_test::run_with_agent_spawn_with_monitor_config;
+pub use io_agent_spawn_test::run_with_agent_spawn_with_monitor_config;
 
 #[cfg(test)]
-use agent_spawn::run_with_agent_spawn;
+use io_agent_spawn::run_with_agent_spawn;
 
 #[cfg(test)]
 use crate::agents::JsonParserType;

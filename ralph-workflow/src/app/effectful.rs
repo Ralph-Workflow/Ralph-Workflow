@@ -42,7 +42,7 @@ const COMMIT_MESSAGE_XSD_SCHEMA: &str =
     include_str!("../files/llm_output_extraction/commit_message.xsd");
 
 // Re-use the canonical vague line constants from context module
-use crate::files::io::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
+use crate::files::context::{VAGUE_ISSUES_LINE, VAGUE_NOTES_LINE, VAGUE_STATUS_LINE};
 
 /// Handle the `--reset-start-commit` command using effects.
 ///

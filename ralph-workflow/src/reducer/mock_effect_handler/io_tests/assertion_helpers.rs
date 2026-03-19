@@ -8,14 +8,11 @@ fn mock_effect_handler_clear_captured_works() {
     let handler = MockEffectHandler::new(state);
 
     // Manually push an effect for testing (simulating execute)
-    handler
-        .captured_effects
-        .borrow_mut()
-        .push(Effect::CreateCommit {
-            message: "test".to_string(),
-            files: vec![],
-            excluded_files: vec![],
-        });
+    handler.captured_state.push_effect(Effect::CreateCommit {
+        message: "test".to_string(),
+        files: vec![],
+        excluded_files: vec![],
+    });
 
     assert_eq!(handler.effect_count(), 1);
 
@@ -31,18 +28,14 @@ fn mock_effect_handler_was_effect_executed_works() {
     let handler = MockEffectHandler::new(state);
 
     // Manually push effects for testing
+    handler.captured_state.push_effect(Effect::CreateCommit {
+        message: "test commit".to_string(),
+        files: vec![],
+        excluded_files: vec![],
+    });
     handler
-        .captured_effects
-        .borrow_mut()
-        .push(Effect::CreateCommit {
-            message: "test commit".to_string(),
-            files: vec![],
-            excluded_files: vec![],
-        });
-    handler
-        .captured_effects
-        .borrow_mut()
-        .push(Effect::PreparePlanningPrompt {
+        .captured_state
+        .push_effect(Effect::PreparePlanningPrompt {
             iteration: 1,
             prompt_mode: crate::reducer::state::PromptMode::Normal,
         });

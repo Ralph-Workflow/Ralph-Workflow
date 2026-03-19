@@ -98,7 +98,7 @@ fn test_metrics_collector_respects_interval() {
         .fold(MemoryMetricsCollector::new(10), |c, i| {
             let s = PipelineState {
                 iteration: i,
-                ..state
+                ..state.clone()
             };
             c.maybe_record(&s)
         });
@@ -111,7 +111,7 @@ fn test_metrics_collector_retains_bounded_snapshots_by_default() {
     let collector = (1..=2000).fold(MemoryMetricsCollector::new(1), |c, i| {
         let s = PipelineState {
             iteration: i,
-            ..state
+            ..state.clone()
         };
         c.maybe_record(&s)
     });
@@ -173,7 +173,7 @@ fn test_record_and_emit_integrates_with_backend() {
         .fold(MemoryMetricsCollector::new(10), |c, i| {
             let s = PipelineState {
                 iteration: i,
-                ..state
+                ..state.clone()
             };
             c.record_and_emit(&s, &backend)
         });
@@ -187,7 +187,7 @@ fn test_logging_backend_emits_warnings_above_threshold() {
     let state = PipelineState::initial(100, 5);
     let iterations = 0..50;
     let _collector = iterations.fold(MemoryMetricsCollector::new(10), |c, i| {
-        let s = state.with_execution_step(
+        let s = state.clone().with_execution_step(
             ExecutionStep::new(
                 "Development",
                 i,

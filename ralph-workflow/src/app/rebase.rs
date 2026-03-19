@@ -4,7 +4,7 @@
 //! and conflict resolution during the pipeline.
 
 #[path = "rebase/types.rs"]
-mod types;
+pub mod types;
 
 pub mod orchestration;
 

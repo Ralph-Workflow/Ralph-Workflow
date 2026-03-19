@@ -1,5 +1,5 @@
 use super::common::TestFixture;
-use crate::reducer::handler::MainEffectHandler;
+use crate::reducer::boundary::MainEffectHandler;
 use crate::reducer::state::{
     ContinuationState, DevelopmentStatus, DevelopmentValidatedOutcome, PipelineState,
 };

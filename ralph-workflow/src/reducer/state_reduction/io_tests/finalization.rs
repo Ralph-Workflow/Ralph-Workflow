@@ -3,7 +3,12 @@
 // Tests for finalizing started, prompt permissions restored, and
 // the complete finalization orchestration integration.
 
-use super::*;
+use crate::reducer::event::CommitEvent;
+use crate::reducer::event::PipelineEvent;
+use crate::reducer::event::PipelinePhase;
+use crate::reducer::io_tests::create_test_state;
+use crate::reducer::state::PipelineState;
+use crate::reducer::state_reduction::reduce;
 
 #[test]
 fn test_reduce_finalizing_started() {
