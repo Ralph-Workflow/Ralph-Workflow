@@ -1,19 +1,5 @@
-//! I/O boundary module for filesystem, environment, and terminal operations.
-//!
-//! This module contains code that performs direct I/O operations including:
-//! - Filesystem operations via `std::fs`
-//! - Environment variable access via `std::env`
-//! - Terminal input/output via `std::io`
-//!
-//! As a boundary module, it is exempt from functional programming lints.
-
-pub mod conflict_resolution_boundary;
-pub mod effect_handler;
-pub mod pipeline_setup;
-pub mod plumbing_boundary;
 pub mod runtime_factory;
 pub mod terminal;
 
-// Re-export modules that were moved to app/ level for backward compatibility
-pub use crate::app::env_access;
-pub use crate::app::initialization;
+pub use runtime_factory::*;
+pub use terminal::*;

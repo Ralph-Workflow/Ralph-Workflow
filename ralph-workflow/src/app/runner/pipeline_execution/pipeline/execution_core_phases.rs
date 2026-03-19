@@ -50,15 +50,15 @@ fn compute_initial_state(
     should_run_rebase: bool,
 ) -> crate::reducer::PipelineState {
     let base_state = resume_checkpoint.map_or_else(
-        || crate::app::runtime::create_initial_state_with_config(phase_ctx),
+        || crate::app::config::create_initial_state_with_config(phase_ctx),
         |checkpoint| {
-            let base_state = crate::app::runtime::create_initial_state_with_config(phase_ctx);
+            let base_state = crate::app::config::create_initial_state_with_config(phase_ctx);
             let migrated =
                 crate::reducer::PipelineState::from_checkpoint_with_execution_history_limit(
                     checkpoint.clone(),
                     phase_ctx.config.execution_history_limit,
                 );
-            crate::app::runtime::overlay_checkpoint_progress_onto_base_state(
+            crate::app::config::overlay_checkpoint_progress_onto_base_state(
                 base_state,
                 migrated,
                 phase_ctx.config.execution_history_limit,
@@ -99,6 +99,6 @@ fn compute_initial_state(
 fn run_event_loop_with_default_handler(
     phase_ctx: &mut crate::phases::PhaseContext<'_>,
     initial_state: crate::reducer::PipelineState,
-) -> anyhow::Result<crate::app::runtime::EventLoopResult> {
-    crate::app::io::pipeline_setup::run_event_loop_with_handler_boundary(phase_ctx, initial_state)
+) -> anyhow::Result<crate::app::config::EventLoopResult> {
+    crate::app::pipeline_setup::run_event_loop_with_handler_boundary(phase_ctx, initial_state)
 }

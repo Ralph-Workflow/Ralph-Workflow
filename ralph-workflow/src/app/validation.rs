@@ -227,7 +227,7 @@ pub fn validate_agent_chains(
     if let Err(msg) = registry.validate_agent_chains(&sources.describe_searched_sources()) {
         logger.error(&msg);
         logger.warn("Hint: Run 'ralph --init-global' to create ~/.config/ralph-workflow.toml.");
-        crate::app::io::env_access::exit_with_code(1);
+        crate::app::env_access::exit_with_code(1);
     }
 }
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Issues XSD Schema
+  
+  Allows <code> elements within text content for escaping special characters
+  like <, >, and & (e.g., comparisons, generics, logical operators).
+  Also allows <skills-mcp> elements within each issue to carry skill and MCP
+  recommendations for the next agent fixing the issue.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  
+  <!-- Skills and MCP recommendations container -->
+  <xs:complexType name="SkillsMcpType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="skill">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="mcp">
+        <xs:complexType mixed="true">
+          <xs:attribute name="reason" type="xs:string"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- Issue type: mixed text with optional code and skills-mcp children -->
+  <xs:complexType name="IssueWithSkillsType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="code" type="xs:string"/>
+      <xs:element name="skills-mcp" type="SkillsMcpType"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- Text with optional inline code elements (for no-issues-found) -->
+  <xs:complexType name="TextWithCodeType" mixed="true">
+    <xs:choice minOccurs="0" maxOccurs="unbounded">
+      <xs:element name="code" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+  
+  <xs:element name="ralph-issues">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:choice>
+          <xs:sequence>
+            <xs:element name="ralph-issue" type="IssueWithSkillsType" maxOccurs="unbounded"/>
+          </xs:sequence>
+          <xs:element name="ralph-no-issues-found" type="TextWithCodeType"/>
+        </xs:choice>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

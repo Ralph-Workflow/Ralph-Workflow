@@ -41,8 +41,8 @@
 //! - Emit `commit_diff_prepared` with empty flag and content hash
 
 use super::super::MainEffectHandler;
-use crate::phases::commit::io::{effective_model_budget_bytes, truncate_diff_to_model_budget};
 use crate::phases::PhaseContext;
+use crate::phases::{effective_model_budget_bytes, truncate_diff_to_model_budget};
 use crate::prompts::content_reference::MAX_INLINE_CONTENT_SIZE;
 use crate::reducer::effect::EffectResult;
 use crate::reducer::event::ErrorEvent;

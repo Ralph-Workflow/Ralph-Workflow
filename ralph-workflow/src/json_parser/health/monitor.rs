@@ -30,37 +30,42 @@ impl HealthMonitor {
 
     /// Record that an event was parsed successfully
     pub fn record_parsed(&self) {
-        let mut h = self.health.get();
-        h.record_parsed();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_parsed();
+            h
+        });
     }
 
     /// Record that an event was ignored
     pub fn record_ignored(&self) {
-        let mut h = self.health.get();
-        h.record_ignored();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_ignored();
+            h
+        });
     }
 
     /// Record an unknown event type (valid JSON but unhandled)
     pub fn record_unknown_event(&self) {
-        let mut h = self.health.get();
-        h.record_unknown_event();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_unknown_event();
+            h
+        });
     }
 
     /// Record a parse error (malformed JSON)
     pub fn record_parse_error(&self) {
-        let mut h = self.health.get();
-        h.record_parse_error();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_parse_error();
+            h
+        });
     }
 
     /// Record a control event (state management with no user-facing output)
     pub fn record_control_event(&self) {
-        let mut h = self.health.get();
-        h.record_control_event();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_control_event();
+            h
+        });
     }
 
     /// Record a partial/delta event (streaming content displayed incrementally)
@@ -69,9 +74,10 @@ impl HealthMonitor {
     /// in real-time as deltas. These are NOT errors and should not trigger
     /// health warnings.
     pub fn record_partial_event(&self) {
-        let mut h = self.health.get();
-        h.record_partial_event();
-        self.health.set(h);
+        self.health.update(|mut h| {
+            h.record_partial_event();
+            h
+        });
     }
 
     /// Check if we should warn about parser health (only warn once)

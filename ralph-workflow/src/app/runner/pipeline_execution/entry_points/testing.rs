@@ -1,6 +1,5 @@
 use crate::agents::AgentRegistry;
 use crate::app::effect::AppEffectHandler;
-use crate::app::effect_handler::RealAppEffectHandler;
 
 /// Test-only entry point that accepts a pre-built Config.
 ///

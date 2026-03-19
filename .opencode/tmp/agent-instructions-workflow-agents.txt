@@ -1,0 +1,211 @@
+# Agent: workflow-agents
+
+⚠️ **RE-READ THIS FILE BEFORE EVERY ACTION. DO NOT WORK FROM MEMORY.**
+
+
+## ⚠️ PERMISSIONS — Read Before Using Any Tool
+
+This agent runs with a **deny-by-default** permission system. Every tool call is checked against
+an allowlist. Anything not listed below **will be blocked silently or raise an error.**
+
+---
+
+### ⛔ STRICTLY FORBIDDEN
+
+**Git — ALL git operations are forbidden without exception:**
+```
+git add, git commit, git push, git pull, git reset, git stash,
+git rebase, git merge, git cherry-pick, git checkout, git branch -D, git clean
+```
+**Ralph is the ONLY entity allowed to commit. Do not attempt any git operation.**
+The protection system reinstalls on every run. Bypass is futile and is a security violation.
+
+**Other forbidden commands:**
+- `cargo add` / `cargo install` / `cargo update` — do NOT modify Cargo.toml or install crates
+- `cargo run` — do NOT run the application
+- `webfetch` / `websearch` — no internet access (both tools are fully disabled)
+- `question` — you cannot ask the user questions (tool is disabled)
+- `task` — you cannot spawn sub-agents (tool is disabled)
+- `todoread` / `todowrite` — no task list management (tools are disabled)
+- Any bash command not explicitly listed in the allowlist below
+
+---
+
+### ✅ Allowed Bash Commands
+
+| Command | Purpose |
+|---------|---------|
+| `ls [path]` | Explore directory structure |
+| `cat <file>` | Read file contents |
+| `head <file>` | Read first N lines of a file |
+| `tail <file>` | Read last N lines of a file |
+| `grep <pattern> <files>` | Search within file contents |
+| `find <path>` | Locate files by name or pattern |
+| `wc <file>` | Count lines/words in a file |
+| `echo <text>` | Print output to stdout |
+| `pwd` | Show current working directory |
+| `mkdir -p <path>` | Create directories — **ONLY the paths listed below** |
+| `rmdir <path>` | Remove empty directories — **ONLY the paths listed below** |
+| `rm <path>` | Delete files — **ONLY within your modules** |
+
+### ✅ Cargo Commands (for compiling and testing your changes)
+
+| Command | Purpose |
+|---------|---------|
+| `cargo build <flags>` | Compile — verify your changes are syntactically correct |
+| `cargo check <flags>` | Fast type-check without linking — cheaper than build |
+| `cargo test <flags>` | Run tests — verify behaviour is correct |
+
+> **Note:** The orchestrator tells you whether you are running as `workflow-agents` (no compile access)
+> or `workflow-agents-cargo` (compile access). If you have compilation errors in your instruction file
+> you are a `-cargo` variant and these commands are available to you.
+
+**`mkdir -p` is allowed ONLY for these paths** (use this to create boundary submodules like `io/`, `runtime/`):
+    - `mkdir -p ralph-workflow/src/agents/<subdir>` — create a boundary submodule (e.g., io/, runtime/, ffi/)
+    - `mkdir -p tmp/<name>` — create scratch/temp directories
+
+**`rmdir` is allowed ONLY for these paths:**
+    - `rmdir ralph-workflow/src/agents/<subdir>` — remove empty subdirectory you created
+    - `rmdir tmp/<name>` — remove temp directory
+
+**`rm` is allowed ONLY for these paths:**
+    - `rm ralph-workflow/src/agents/**` — delete files within your module
+
+---
+
+### ✅ File Tool Access
+
+| Tool | Access |
+|------|--------|
+| **Read** | `ralph-workflow/src/agents/**, tmp/**, docs/**` |
+| **Write** (create new files) | `ralph-workflow/src/agents/**, tmp/**` |
+| **Edit** (modify existing files) | `ralph-workflow/src/agents/**` only |
+| **Glob / Grep / List** | Allowed everywhere EXCEPT `.opencode/**` |
+| **`.opencode/**`** | ⛔ DENIED — security boundary, never touch |
+
+---
+
+## Your Goal
+
+Fix ALL 0 dylint errors in your modules. Keep working until done.
+
+## Your Modules
+- ralph-workflow/src/agents/**
+
+## Your Errors
+
+### Dylint Issues: 0
+Files to read: tmp/dylint-agents.txt (0)
+
+### Compilation Errors: 0
+- No compilation errors (focus on dylint)
+
+
+### Clippy Warnings: 0
+- No clippy warnings
+
+### Test Failures
+✓ No test failures
+
+## Instructions (RE-READ THESE BEFORE EACH FIX)
+
+### STEP 1: Read Style Guide (if you haven't yet)
+```bash
+cat docs/code-style/functional-transformations.md
+cat docs/code-style/boundaries.md
+```
+
+The style guide is the source of truth. Dylint just enforces it.
+
+### STEP 2: Read Your Error Files (RE-READ to see what's left)
+
+Read each dylint file listed above. Read your compilation errors.
+
+### STEP 3: Fix ONE Issue (then loop back to Step 2)
+
+**Priority order:**
+1. **Hard stuff first**: Complex imperative loops/mutations → functional
+2. **Architectural**: Create boundary modules when truly needed
+3. **Easy stuff last**: Imports, simple mechanical fixes
+
+**Refactoring patterns:**
+```rust
+// BEFORE: let mut
+let mut results = Vec::new();
+for item in items {
+    results.push(transform(item));
+}
+
+// AFTER: functional
+let results: Vec<_> = items.into_iter()
+    .map(transform)
+    .collect();
+
+// BEFORE: for loop with side effects
+for item in items {
+    process(item);
+}
+
+// AFTER: iterator
+items.into_iter().for_each(process);
+
+// BEFORE: while loop
+while let Some(item) = queue.pop() {
+    process(item);
+}
+
+// AFTER: recursion OR boundary module
+fn process_queue(mut queue: Queue) {
+    match queue.pop() {
+        Some(item) => {
+            process(item);
+            process_queue(queue)
+        }
+        None => ()
+    }
+}
+```
+
+**When to create boundary modules:**
+- I/O operations (file, network, process)
+- Runtime state (event loops, thread pools)
+- FFI, executors
+- Truly imperative code that refactoring would break
+
+**How to create boundary:**
+```bash
+# Example: I/O boundary for json_parser
+mkdir -p ralph-workflow/src/json_parser/io
+echo "pub mod streaming;" > ralph-workflow/src/json_parser/io/mod.rs
+# Update json_parser/mod.rs to add: pub mod io;
+```
+
+Valid boundary names: `io/`, `runtime/`, `ffi/`, `boundary/`, `executor/`
+
+### STEP 4: Verify Your Work
+```bash
+.opencode/verify_agent_work.sh
+```
+
+This runs clippy to check style guide compliance.
+
+### STEP 5: Report
+
+```
+FILES CHANGED: [list]
+DYLINT FIXED: X/0
+CLIPPY: pass/fail
+```
+
+## Important Rules
+
+- **Style guide > compilation**: If your refactoring breaks compilation, that's OK. Report it.
+- **COMPLEXITY IS THE POINT, LARGE ARCHITECTURAL CHANGE IS THE POINT DO NOT SLACK OFF
+- **Don't re-run cargo build/test**: Results already provided above
+- **Only edit your modules**: ralph-workflow/src/agents/**
+- **Do hard work first**: Don't avoid complex refactors
+- **Boundary modules are real work**: Create them when legitimately needed, not as escape hatch
+- **COMPLEXITY IS THE POINT, LARGE ARCHITECTURAL CHANGE IS THE POINT DO NOT SLACK OFF
+- **TO EMPTHESIZE ONE MORE TIME COMPLEXITY AND LARGE CHANGE IS THE POINT!!! DO NOT SAY ITS TOO COMPLEX!!** 
+
+The orchestrator will handle compilation fixes separately if needed. Your job is style guide compliance.

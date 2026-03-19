@@ -7,12 +7,6 @@
 // - Boundary detection (is_safe_boundary)
 // - OverlapScore struct and scoring functions
 
-use std::sync::LazyLock;
-
-// ============================================================================
-// Environment Trait for Testability
-// ============================================================================
-
 /// Trait for accessing environment variables.
 ///
 /// This trait enables dependency injection for testing without global state pollution.
@@ -154,9 +148,7 @@ pub fn get_overlap_thresholds_with_env(env: &dyn ThresholdEnvironment) -> Overla
 }
 
 pub fn get_overlap_thresholds() -> OverlapThresholds {
-    static THRESHOLDS: LazyLock<OverlapThresholds> =
-        LazyLock::new(|| get_overlap_thresholds_with_env(&RealThresholdEnvironment));
-    *THRESHOLDS
+    get_overlap_thresholds_with_env(&RealThresholdEnvironment)
 }
 
 // ============================================================================

@@ -6,14 +6,12 @@
 
 use crate::pipeline::PipelineRuntime;
 
-/// Run the pipeline runtime for commit message generation.
-/// This boundary function creates the timer and runtime internally.
 pub fn run_pipeline_for_commit_message<'a>(
     config: &crate::app::plumbing::CommitGenerationConfig<'a>,
 ) -> anyhow::Result<PipelineRuntime<'a>> {
-    let mut timer = crate::app::io::runtime_factory::create_timer();
+    let mut timer = crate::app::runtime_factory::create_timer();
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*config.executor;
-    let runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
+    let runtime = crate::app::runtime_factory::create_pipeline_runtime(
         &mut timer,
         config.logger,
         &config.colors,

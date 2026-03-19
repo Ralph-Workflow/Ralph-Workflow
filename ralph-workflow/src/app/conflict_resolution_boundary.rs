@@ -11,8 +11,6 @@ use crate::workspace::Workspace;
 use std::path::Path;
 use std::sync::Arc;
 
-/// Run AI conflict resolution using a pipeline runtime.
-/// This boundary function creates the timer and runtime internally.
 pub fn run_ai_conflict_resolution_with_runtime(
     resolution_prompt: &str,
     config: &Config,
@@ -24,9 +22,9 @@ pub fn run_ai_conflict_resolution_with_runtime(
     reviewer_agent: &str,
     registry: &crate::agents::AgentRegistry,
 ) -> anyhow::Result<ConflictResolutionResult> {
-    let mut timer = crate::app::io::runtime_factory::create_timer();
+    let mut timer = crate::app::runtime_factory::create_timer();
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*executor_arc;
-    let mut runtime = crate::app::io::runtime_factory::create_pipeline_runtime(
+    let mut runtime = crate::app::runtime_factory::create_pipeline_runtime(
         &mut timer,
         logger,
         &colors,

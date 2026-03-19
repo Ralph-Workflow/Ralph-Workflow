@@ -1,11 +1,10 @@
 // XSD schema constants and file-writing helpers for review and fix prompts.
 
 /// The XSD schema for issues validation - included at compile time
-const ISSUES_XSD_SCHEMA: &str = include_str!("../../files/llm_output_extraction/issues.xsd");
+const ISSUES_XSD_SCHEMA: &str = include_str!("../xsd/issues.xsd");
 
 /// The XSD schema for fix result validation - included at compile time
-const FIX_RESULT_XSD_SCHEMA: &str =
-    include_str!("../../files/llm_output_extraction/fix_result.xsd");
+const FIX_RESULT_XSD_SCHEMA: &str = include_str!("../xsd/fix_result.xsd");
 
 /// Directory for XSD retry context files
 const XSD_RETRY_TMP_DIR: &str = ".agent/tmp";

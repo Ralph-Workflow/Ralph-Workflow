@@ -4,11 +4,11 @@
 // Each handler is responsible for formatting the output for its specific event type.
 
 use crate::common::truncate_text;
+use crate::logger::{CHECK, CROSS};
 
 use crate::json_parser::delta_display::{
     sanitize_for_display, DeltaRenderer, TextDeltaRenderer, ThinkingDeltaRenderer,
 };
-use crate::json_parser::streaming_state::StreamingSession;
 use crate::json_parser::terminal::TerminalMode;
 use crate::json_parser::types::{format_tool_input, CodexItem, CodexUsage, ContentType};
 

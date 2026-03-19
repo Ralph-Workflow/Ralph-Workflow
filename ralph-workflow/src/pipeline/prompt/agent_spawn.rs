@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::pipeline::prompt::types::{PipelineRuntime, PromptCommand};
+use crate::pipeline::prompt::SIGTERM_EXIT_CODE;
 
 const INTERRUPT_KILL_CONFIG: KillConfig = KillConfig::new(
     std::time::Duration::from_millis(500),

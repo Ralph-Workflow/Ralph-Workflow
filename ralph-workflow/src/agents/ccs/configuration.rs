@@ -481,11 +481,17 @@ fn resolve_ccs_command_impl(
                 command: original_cmd.to_string(),
                 diagnostics: std::iter::empty()
                     .chain(debug_mode.then_some(CcsDiagnostic::ClaudeBinaryNotFound))
-                    .chain(is_ccs.then_some(vec![
-                        CcsDiagnostic::UsingCcsWrapperWarning,
-                        CcsDiagnostic::StreamingFlagsWarning,
-                        CcsDiagnostic::InstallInstructionsWarning,
-                    ]))
+                    .chain(
+                        is_ccs
+                            .then_some(vec![
+                                CcsDiagnostic::UsingCcsWrapperWarning,
+                                CcsDiagnostic::StreamingFlagsWarning,
+                                CcsDiagnostic::InstallInstructionsWarning,
+                            ])
+                            .map(|v| v.into_iter())
+                            .into_iter()
+                            .flatten(),
+                    )
                     .collect(),
             }
         },

@@ -132,7 +132,7 @@ impl MainEffectHandler {
             &self.state.prompt_history,
             Some(&prompt_content_id),
             || {
-                let (base_prompt, local_should_validate) = ctx
+                let (base_prompt, ..) = ctx
                     .workspace
                     .read(Path::new(".agent/tmp/development_prompt.txt"))
                     .map_or_else(

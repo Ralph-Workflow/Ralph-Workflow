@@ -14,8 +14,8 @@
 // - handle_rebase_only: Handle --rebase-only flag
 
 use crate::app::context::PipelineContext;
-use crate::app::runner::run_rebase_to_default;
-use crate::app::runner::try_resolve_conflicts_without_phase_ctx;
+use crate::app::rebase::conflicts::try_resolve_conflicts_without_phase_ctx;
+use crate::app::rebase::orchestration::run_rebase_to_default;
 use crate::checkpoint::PipelineCheckpoint;
 use crate::files::protection::monitoring::PromptMonitor;
 use crate::files::{create_prompt_backup_with_workspace, validate_prompt_md_with_workspace};

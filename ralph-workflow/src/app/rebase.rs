@@ -6,11 +6,9 @@
 #[path = "rebase/types.rs"]
 mod types;
 
-#[path = "rebase/orchestration.rs"]
-mod orchestration;
+pub mod orchestration;
 
-#[path = "rebase/conflicts.rs"]
-mod conflicts;
+pub mod conflicts;
 
 pub use orchestration::run_initial_rebase;
 

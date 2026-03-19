@@ -6,6 +6,24 @@
 
 ⚠️ **ALL AGENTS RUN IN BACKGROUND: `run_in_background=true`. NO EXCEPTIONS.**
 
+---
+
+## 🚨 STYLE COMPLIANCE: SCAN EVERY AGENT RESULT IN STEP 4
+
+When you read an agent result, scan its text for these red-flag phrases. If found, the agent has gone off-track — mark it `partial` or `blocked`, rerun the script, and relaunch with an explicit correction naming the phrase you found.
+
+| Red-Flag Phrase | What It Signals |
+|---|---|
+| `#[allow(` | Forbidden lint suppression — must use `#[expect(..., reason = "...")]` only for proc-macro output |
+| `simplified` / `simplified for now` / `workaround` / `quick fix` | Complexity avoidance instead of correct fix |
+| `too complex` / `complexity avoided` / `removed for now` | Agent is avoiding the hard work |
+| `deferred` / `will handle later` / `out of scope` | Agent skipped assigned work |
+| `pre-existing` / `was already broken` | Using pre-existing as an excuse (forbidden per AGENTS.md) |
+| `can't fix` / `unable to fix` without a detailed blocker | Agent gave up without proper escalation |
+| `TODO` / `FIXME` left in changed files | Incomplete fix passed off as done |
+
+---
+
 ## How You Dispatch (Read This First)
 
 You have a `task(...)` plugin. That is how you launch agents. Here is what it gives you:
@@ -88,9 +106,9 @@ task(
   prompt="1. TASK: Read and execute tmp/agent-instructions-workflow-reducer.txt.
 2. EXPECTED OUTCOME: Fix every error assigned to workflow-reducer and report remaining blockers, if any.
 3. REQUIRED TOOLS: Read, Grep, Glob, Edit/apply_patch, Bash, diagnostics.
-4. MUST DO: Stay inside your module boundaries, run the verification command from the instruction file, report files changed and verification results.
-5. MUST NOT DO: Do not touch unrelated modules, do not commit, do not wait for further user input, do not stop after a partial fix if more assigned errors remain.
-6. CONTEXT: This is one worker in a parallel cleanup batch; other modules are being handled by other agents simultaneously."
+4. MUST DO: Stay inside your module boundaries, run the verification command from the instruction file, report files changed and verification results. If the correct fix is complex, implement it completely — do not simplify away complexity. Do not stop after a partial fix if more assigned errors remain.
+5. MUST NOT DO: Do not touch unrelated modules, do not commit, do not wait for further user input. Do not use #[allow(...)], do not leave TODOs or FIXMEs in changed files, do not use .unwrap()/.expect() outside boundary modules (io/, runtime/, ffi/, boundary/). Do not treat any error as pre-existing — every assigned error is your responsibility.
+6. CONTEXT: This is one worker in a parallel cleanup batch; other modules are being handled by other agents simultaneously. The project style rules are strict: no lint suppression, no complexity avoidance, no dead code. Fix root causes, not symptoms."
 )
 ```
 

@@ -195,34 +195,19 @@ impl AgentConfig {
     ///
     /// Returns error if CCS env var loading fails.
     pub fn try_from_ccs(toml: AgentConfigToml) -> (Self, Vec<CcsEnvWarning>) {
-        let ccs_env_vars: HashMap<String, String> = toml.ccs_profile.as_deref().map_or_else(
-            HashMap::new,
-            |profile| match load_ccs_env_vars(profile) {
-                Ok(vars) => vars,
-                Err(err) => {
-                    return (
-                        Self {
-                            cmd: toml.cmd,
-                            output_flag: toml.output_flag,
-                            yolo_flag: toml.yolo_flag,
-                            verbose_flag: toml.verbose_flag,
-                            can_commit: toml.can_commit,
-                            json_parser: JsonParserType::parse(&toml.json_parser),
-                            model_flag: toml.model_flag,
-                            print_flag: toml.print_flag,
-                            streaming_flag: toml.streaming_flag,
-                            session_flag: toml.session_flag,
-                            env_vars: toml.env_vars,
-                            display_name: toml.display_name,
-                        },
-                        vec![CcsEnvWarning::LoadFailed {
-                            profile: profile.to_string(),
-                            error: err.to_string(),
-                        }],
-                    );
-                }
+        let (ccs_env_vars, ccs_warnings) = match toml.ccs_profile.as_deref() {
+            Some(profile) => match load_ccs_env_vars(profile) {
+                Ok(vars) => (vars, Vec::new()),
+                Err(err) => (
+                    HashMap::new(),
+                    vec![CcsEnvWarning::LoadFailed {
+                        profile: profile.to_string(),
+                        error: err.to_string(),
+                    }],
+                ),
             },
-        );
+            None => (HashMap::new(), Vec::new()),
+        };
 
         let warnings = if ccs_env_vars.is_empty() && toml.ccs_profile.is_some() {
             vec![CcsEnvWarning::LoadFailed {
@@ -235,6 +220,11 @@ impl AgentConfig {
 
         let merged_env_vars: HashMap<_, _> =
             toml.env_vars.into_iter().chain(ccs_env_vars).collect();
+
+        let all_warnings: Vec<_> = ccs_warnings
+            .into_iter()
+            .chain(warnings.into_iter())
+            .collect();
 
         (
             Self {
@@ -251,7 +241,7 @@ impl AgentConfig {
                 env_vars: merged_env_vars,
                 display_name: toml.display_name,
             },
-            warnings,
+            all_warnings,
         )
     }
 }

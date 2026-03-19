@@ -15,7 +15,7 @@ use crate::executor::ProcessExecutor;
 use crate::logger::{Colors, Logger};
 use crate::prompts::TemplateContext;
 
-use crate::app::io::pipeline_setup::PipelineAndRepoRoot;
+use crate::app::pipeline_setup::PipelineAndRepoRoot;
 // run_pipeline is in scope via include!
 
 /// Main application entry point.
@@ -102,14 +102,14 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
 
     // Run the full pipeline with handler creation inside the boundary
     let PipelineAndRepoRoot { ctx, repo_root: _ } =
-        crate::app::io::pipeline_setup::run_pipeline_with_handler_boundary(
+        crate::app::pipeline_setup::run_pipeline_with_handler_boundary(
             args,
             config,
             registry,
             developer_agent,
             reviewer_agent,
-            validated.developer_display,
-            validated.reviewer_display,
+            registry.display_name(&developer_agent),
+            registry.display_name(&reviewer_agent),
             config_path,
             colors,
             logger,

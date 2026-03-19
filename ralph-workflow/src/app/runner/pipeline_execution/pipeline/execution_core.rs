@@ -40,7 +40,7 @@ use crate::app::detection::detect_project_stack;
 ///
 /// This is the production entry point - it creates a `MainEffectHandler` internally.
 pub(super) fn run_pipeline_with_default_handler(ctx: &PipelineContext) -> anyhow::Result<()> {
-    use crate::app::io::pipeline_setup::{
+    use crate::app::pipeline_setup::{
         setup_git_and_agent_phase, setup_phase_context_with_timer, GitHelpersAndGuard,
         PhaseContextWithTimer,
     };

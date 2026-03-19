@@ -178,7 +178,7 @@ impl OpenCodeParser {
     fn process_incremental_stream<R: BufRead>(
         &self,
         reader: &mut R,
-        parser: &mut crate::json_parser::io::incremental_parser::IncrementalNdjsonParser,
+        parser: &mut crate::json_parser::incremental_parser::IncrementalNdjsonParser,
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
@@ -327,7 +327,7 @@ impl OpenCodeParser {
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
-        use crate::json_parser::io::incremental_parser::IncrementalNdjsonParser;
+        use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 
         let monitor = HealthMonitor::new("OpenCode");
         let logging_enabled = self.log_path.is_some();

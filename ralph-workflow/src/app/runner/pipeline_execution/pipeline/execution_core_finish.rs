@@ -6,7 +6,7 @@
 
 fn log_event_loop_outcome(
     ctx: &crate::app::context::PipelineContext,
-    loop_result: &crate::app::runtime::EventLoopResult,
+    loop_result: &crate::app::config::EventLoopResult,
 ) {
     if loop_result.completed {
         match loop_result.final_phase {
@@ -62,7 +62,7 @@ fn log_event_loop_outcome(
     );
 }
 
-fn should_exit_due_to_sigint(loop_result: &crate::app::runtime::EventLoopResult) -> bool {
+fn should_exit_due_to_sigint(loop_result: &crate::app::config::EventLoopResult) -> bool {
     loop_result.final_state.interrupted_by_user || crate::interrupt::user_interrupted_occurred()
 }
 
@@ -71,7 +71,7 @@ fn save_complete_checkpoint_if_needed(
     config: &crate::config::Config,
     run_context: &crate::checkpoint::RunContext,
     phase_ctx: &crate::phases::PhaseContext<'_>,
-    loop_result: &crate::app::runtime::EventLoopResult,
+    loop_result: &crate::app::config::EventLoopResult,
 ) {
     if !config.features.checkpoint_enabled
         || !should_write_complete_checkpoint(loop_result.final_phase)
@@ -111,7 +111,7 @@ fn report_cloud_completion(
     ctx: &crate::app::context::PipelineContext,
     config: &crate::config::Config,
     cloud_reporter: &dyn crate::cloud::CloudReporter,
-    loop_result: &crate::app::runtime::EventLoopResult,
+    loop_result: &crate::app::config::EventLoopResult,
     timer: &crate::pipeline::Timer,
 ) -> anyhow::Result<()> {
     if !config.cloud.enabled {
@@ -137,7 +137,7 @@ fn finish_pipeline(
     timer: &crate::pipeline::Timer,
     agent_phase_guard: &mut crate::pipeline::AgentPhaseGuard<'_>,
     prompt_monitor: &mut Option<crate::files::protection::monitoring::PromptMonitor>,
-    loop_result: &crate::app::runtime::EventLoopResult,
+    loop_result: &crate::app::config::EventLoopResult,
     exit_after_cleanup_due_to_sigint: bool,
 ) -> anyhow::Result<()> {
     crate::app::runner::pipeline_execution::check_prompt_restoration(
@@ -255,7 +255,7 @@ fn finish_pipeline(
 }
 
 fn build_cloud_completion_payload(
-    loop_result: &crate::app::runtime::EventLoopResult,
+    loop_result: &crate::app::config::EventLoopResult,
     timer: &crate::pipeline::Timer,
 ) -> crate::cloud::types::PipelineResult {
     let success = loop_result.completed

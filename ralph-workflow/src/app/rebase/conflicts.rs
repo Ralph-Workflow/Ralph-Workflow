@@ -259,7 +259,7 @@ fn run_ai_conflict_resolution(
 ) -> anyhow::Result<ConflictResolutionResult> {
     let reviewer_agent = ctx.config.reviewer_agent.as_deref().unwrap_or("codex");
 
-    crate::app::io::conflict_resolution_boundary::run_ai_conflict_resolution_with_runtime(
+    crate::app::conflict_resolution_boundary::run_ai_conflict_resolution_with_runtime(
         resolution_prompt,
         ctx.config,
         ctx.logger,

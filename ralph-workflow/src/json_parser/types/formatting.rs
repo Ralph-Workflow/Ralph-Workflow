@@ -1,43 +1,20 @@
 use crate::common::truncate_text;
+use crate::common::utils::is_sensitive_key;
 use crate::json_parser::stream_classifier::{
     ClassificationResult, StreamEventClassifier, StreamEventType,
 };
-use regex::Regex;
-
-static SECRET_VALUE_RE: std::sync::LazyLock<Option<Regex>> = std::sync::LazyLock::new(|| {
-    // Keep this intentionally conservative to reduce false positives in normal text.
-    // Primary goal: avoid leaking common API key formats to stdout/logs.
-    Regex::new(
-        r"(?xi)
-        \bsk-[a-z0-9]{16,}\b          # OpenAI-style keys
-        | \bghp_[a-z0-9]{20,}\b       # GitHub PATs
-        | \bxox[baprs]-[a-z0-9-]{10,}\b # Slack tokens
-        ",
-    )
-    .ok()
-});
-
-fn is_sensitive_key(key: &str) -> bool {
-    let normalized = key
-        .to_lowercase()
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .collect::<String>();
-
-    // Common sensitive key patterns. We intentionally use `contains` to catch variants like:
-    // access_token, apiKey, openai_api_key, githubToken, bearerToken, etc.
-    normalized.contains("token")
-        || normalized.contains("apikey")
-        || normalized.contains("secret")
-        || normalized.contains("password")
-        || normalized == "authorization"
-        || normalized.contains("bearer")
-}
-
 fn looks_like_secret_value(value: &str) -> bool {
-    SECRET_VALUE_RE
-        .as_ref()
-        .is_some_and(|re| re.is_match(value))
+    value.len() >= 14 && value.starts_with("sk-") && {
+        let after_prefix = &value[3..];
+        after_prefix.chars().all(|c| c.is_ascii_alphanumeric())
+    } || value.len() >= 24 && value.starts_with("ghp_") && {
+        let after_prefix = &value[4..];
+        after_prefix.chars().all(|c| c.is_ascii_alphanumeric())
+    } || value.starts_with("xoxb")
+        || value.starts_with("xoxa")
+        || value.starts_with("xoxp")
+        || value.starts_with("xoxr")
+        || value.starts_with("xoxs")
 }
 
 fn format_tool_value(key: Option<&str>, value: &serde_json::Value) -> String {

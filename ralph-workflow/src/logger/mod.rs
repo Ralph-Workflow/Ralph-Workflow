@@ -20,6 +20,7 @@ mod ansi;
 mod ansi_stripper;
 mod environment;
 mod file_writer;
+pub mod io;
 mod logger_wrapper;
 mod stdout_writer;
 

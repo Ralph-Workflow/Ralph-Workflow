@@ -58,7 +58,7 @@ fn load_resume_and_config_state(
                     checkpoint.cli_args.reviewer_reviews
                 ));
             }
-            crate::app::io::initialization::restore_config_from_checkpoint(
+            crate::app::initialization::restore_config_from_checkpoint(
                 ctx.config.clone(),
                 checkpoint,
             )

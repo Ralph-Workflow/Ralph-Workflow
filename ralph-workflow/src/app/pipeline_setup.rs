@@ -4,9 +4,10 @@
 //! As a boundary module, it is exempt from functional programming lints.
 
 use crate::agents::AgentRegistry;
+use crate::app::config::{EventLoopConfig, MAX_EVENT_LOOP_ITERATIONS};
 use crate::app::context::PipelineContext;
+use crate::app::core::run_event_loop_with_handler;
 use crate::app::effect::AppEffectHandler;
-use crate::app::runtime::EventLoopResult;
 use crate::checkpoint::{PipelineCheckpoint, RunContext};
 use crate::cli::Args;
 use crate::config::Config;
@@ -31,8 +32,14 @@ pub struct PhaseContextWithTimer<'ctx> {
 }
 
 pub fn setup_git_and_agent_phase<'a>(ctx: &'a PipelineContext) -> GitHelpersAndGuard<'a> {
-    let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
-    crate::app::runner::pipeline_execution::prepare_agent_phase(ctx, &mut git_helpers);
+    let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
+    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
+        &ctx.repo_root,
+        &*ctx.workspace,
+        &ctx.logger,
+        &mut git_helpers,
+        true,
+    );
     let agent_phase_guard =
         crate::pipeline::AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
     GitHelpersAndGuard {
@@ -49,7 +56,7 @@ pub fn setup_phase_context_with_timer<'ctx>(
     resume_checkpoint: Option<&'ctx PipelineCheckpoint>,
     cloud_reporter: &'ctx dyn crate::cloud::CloudReporter,
 ) -> PhaseContextWithTimer<'ctx> {
-    let mut timer = crate::app::io::runtime_factory::create_timer();
+    let mut timer = crate::app::runtime_factory::create_timer();
     let phase_ctx = crate::app::runner::pipeline_execution::create_phase_context_with_config(
         ctx,
         config,
@@ -63,19 +70,19 @@ pub fn setup_phase_context_with_timer<'ctx>(
 }
 
 pub fn create_main_effect_handler_boundary(initial_state: PipelineState) -> MainEffectHandler {
-    crate::app::io::runtime_factory::create_main_effect_handler(initial_state)
+    crate::app::runtime_factory::create_main_effect_handler(initial_state)
 }
 
 pub fn run_event_loop_with_handler_boundary<'ctx>(
     phase_ctx: &'ctx mut PhaseContext<'ctx>,
     initial_state: PipelineState,
-) -> anyhow::Result<EventLoopResult> {
+) -> anyhow::Result<crate::app::EventLoopResult> {
     let mut handler =
-        crate::app::io::runtime_factory::create_main_effect_handler(initial_state.clone());
-    let event_loop_config = crate::app::runtime::EventLoopConfig {
-        max_iterations: crate::app::runtime::MAX_EVENT_LOOP_ITERATIONS,
+        crate::app::runtime_factory::create_main_effect_handler(initial_state.clone());
+    let event_loop_config = EventLoopConfig {
+        max_iterations: MAX_EVENT_LOOP_ITERATIONS,
     };
-    crate::app::runtime::run_event_loop_with_handler(
+    run_event_loop_with_handler(
         phase_ctx,
         Some(initial_state),
         event_loop_config,
@@ -88,15 +95,15 @@ pub fn create_cleanup_guard_boundary<'a>(
     workspace: &'a dyn crate::workspace::Workspace,
     owned: bool,
 ) -> crate::app::runner::CommandExitCleanupGuard<'a> {
-    crate::app::io::runtime_factory::create_cleanup_guard(logger, workspace, owned)
+    crate::app::runtime_factory::create_cleanup_guard(logger, workspace, owned)
 }
 
 pub fn create_git_helpers_boundary() -> GitHelpers {
-    crate::app::io::runtime_factory::create_git_helpers()
+    crate::app::runtime_factory::create_git_helpers()
 }
 
 pub fn create_effect_handler_boundary() -> crate::app::effect_handler::RealAppEffectHandler {
-    crate::app::io::runtime_factory::create_effect_handler()
+    crate::app::runtime_factory::create_effect_handler()
 }
 
 pub fn setup_agent_phase_for_workspace_boundary(
@@ -104,7 +111,7 @@ pub fn setup_agent_phase_for_workspace_boundary(
     workspace: &dyn crate::workspace::Workspace,
     logger: &crate::logger::Logger,
 ) -> GitHelpers {
-    let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
+    let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
     crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
         repo_root,
         workspace,
@@ -128,7 +135,7 @@ pub fn handle_repo_commands_boundary(
     workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
 ) -> anyhow::Result<bool> {
     let mut cleanup_guard =
-        crate::app::io::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
+        crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
     if args.recovery.dry_run {
         crate::app::runner::pipeline_execution::handle_dry_run(
@@ -144,7 +151,7 @@ pub fn handle_repo_commands_boundary(
     }
 
     if args.rebase_flags.rebase_only {
-        let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
+        let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
         crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),
@@ -169,7 +176,7 @@ pub fn handle_repo_commands_boundary(
     }
 
     if args.commit_plumbing.generate_commit_msg {
-        let mut git_helpers = crate::app::io::runtime_factory::create_git_helpers();
+        let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
         crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
             repo_root,
             workspace.as_ref(),
@@ -221,14 +228,15 @@ pub fn run_pipeline_with_handler_boundary(
     template_context: crate::prompts::TemplateContext,
 ) -> anyhow::Result<PipelineAndRepoRoot> {
     use crate::app::effect::{AppEffect, AppEffectResult};
+    use crate::app::runner::command_handlers::handle_plumbing_commands;
     use crate::app::runner::pipeline_execution::{
-        command_requires_prompt_setup, handle_plumbing_commands,
-        handle_repo_commands_without_prompt_setup, prepare_pipeline_or_exit,
+        command_requires_prompt_setup, handle_repo_commands_without_prompt_setup,
+        prepare_pipeline_or_exit,
     };
     use crate::app::runner::pipeline_execution::{PipelinePreparationParams, RepoCommandParams};
     use crate::app::runner::AgentSetupParams;
 
-    let mut handler = crate::app::io::runtime_factory::create_effect_handler();
+    let mut handler = crate::app::runtime_factory::create_effect_handler();
 
     let early_repo_root = {
         if let Some(dir) = args.working_dir_override.as_deref() {

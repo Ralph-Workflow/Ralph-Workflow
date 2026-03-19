@@ -24,6 +24,40 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
+
+def count_errors_in_dylint_file(filepath: str) -> int:
+    bare = re.sub(r'\s*\(\d+\)\s*$', '', filepath).strip()
+    try:
+        with open(bare) as f:
+            for line in f:
+                m = re.match(r'^Total:\s+(\d+)\s+errors', line)
+                if m:
+                    return int(m.group(1))
+        return 0
+    except FileNotFoundError:
+        return -1
+
+
+def get_actual_dylint_info(config: dict) -> tuple:
+    total = 0
+    display_strings = []
+    for entry in config['dylint_files']:
+        bare = re.sub(r'\s*\(\d+\)\s*$', '', entry).strip()
+        count = count_errors_in_dylint_file(bare)
+        if count < 0:
+            count = 0
+        total += count
+        display_strings.append(f"{bare} ({count})")
+    return total, display_strings
+
+
+def get_effective_dylint_info(config: dict, dylint_success: bool = True) -> tuple:
+    if not dylint_success:
+        return 0, ["Skipped: dylint data is stale; fix compilation errors first."], True
+
+    total, display_strings = get_actual_dylint_info(config)
+    return total, display_strings, False
+
 # Module to agent mapping - based on opencode.json write permissions
 # Each agent only has access to specific top-level modules
 MODULE_TO_AGENT = {
@@ -400,7 +434,120 @@ def extract_compilation_errors():
     return errors_by_agent
 
 
-def generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures):
+def _agent_permissions_block(agent_name: str, config: dict) -> str:
+    """
+    Generate an explicit PERMISSIONS section for an agent instruction file.
+    Derived from the opencode.json permission rules for the given agent.
+    """
+    modules = config['modules']
+
+    # mkdir is allowed one level deep within each module (for creating boundary submodules)
+    mkdir_lines = []
+    for m in modules:
+        base = m.replace('/**', '')
+        mkdir_lines.append(f"    - `mkdir -p {base}/<subdir>` — create a boundary submodule (e.g., io/, runtime/, ffi/)")
+    mkdir_lines.append("    - `mkdir -p tmp/<name>` — create scratch/temp directories")
+    mkdir_str = "\n".join(mkdir_lines)
+
+    # rmdir follows the same paths as mkdir
+    rmdir_lines = []
+    for m in modules:
+        base = m.replace('/**', '')
+        rmdir_lines.append(f"    - `rmdir {base}/<subdir>` — remove empty subdirectory you created")
+    rmdir_lines.append("    - `rmdir tmp/<name>` — remove temp directory")
+    rmdir_str = "\n".join(rmdir_lines)
+
+    # rm is allowed recursively within modules
+    rm_lines = [f"    - `rm {m}` — delete files within your module" for m in modules]
+    rm_str = "\n".join(rm_lines)
+
+    read_paths = ", ".join(modules) + ", tmp/**, docs/**"
+    write_paths = ", ".join(modules) + ", tmp/**"
+
+    cargo_note = f"""
+### ✅ Cargo Commands (for compiling and testing your changes)
+
+| Command | Purpose |
+|---------|---------|
+| `cargo build <flags>` | Compile — verify your changes are syntactically correct |
+| `cargo check <flags>` | Fast type-check without linking — cheaper than build |
+| `cargo test <flags>` | Run tests — verify behaviour is correct |
+
+> **Note:** The orchestrator tells you whether you are running as `{agent_name}` (no compile access)
+> or `{agent_name}-cargo` (compile access). If you have compilation errors in your instruction file
+> you are a `-cargo` variant and these commands are available to you."""
+
+    return f"""## ⚠️ PERMISSIONS — Read Before Using Any Tool
+
+This agent runs with a **deny-by-default** permission system. Every tool call is checked against
+an allowlist. Anything not listed below **will be blocked silently or raise an error.**
+
+---
+
+### ⛔ STRICTLY FORBIDDEN
+
+**Git — ALL git operations are forbidden without exception:**
+```
+git add, git commit, git push, git pull, git reset, git stash,
+git rebase, git merge, git cherry-pick, git checkout, git branch -D, git clean
+```
+**Ralph is the ONLY entity allowed to commit. Do not attempt any git operation.**
+The protection system reinstalls on every run. Bypass is futile and is a security violation.
+
+**Other forbidden commands:**
+- `cargo add` / `cargo install` / `cargo update` — do NOT modify Cargo.toml or install crates
+- `cargo run` — do NOT run the application
+- `webfetch` / `websearch` — no internet access (both tools are fully disabled)
+- `question` — you cannot ask the user questions (tool is disabled)
+- `task` — you cannot spawn sub-agents (tool is disabled)
+- `todoread` / `todowrite` — no task list management (tools are disabled)
+- Any bash command not explicitly listed in the allowlist below
+
+---
+
+### ✅ Allowed Bash Commands
+
+| Command | Purpose |
+|---------|---------|
+| `ls [path]` | Explore directory structure |
+| `cat <file>` | Read file contents |
+| `head <file>` | Read first N lines of a file |
+| `tail <file>` | Read last N lines of a file |
+| `grep <pattern> <files>` | Search within file contents |
+| `find <path>` | Locate files by name or pattern |
+| `wc <file>` | Count lines/words in a file |
+| `echo <text>` | Print output to stdout |
+| `pwd` | Show current working directory |
+| `mkdir -p <path>` | Create directories — **ONLY the paths listed below** |
+| `rmdir <path>` | Remove empty directories — **ONLY the paths listed below** |
+| `rm <path>` | Delete files — **ONLY within your modules** |
+{cargo_note}
+
+**`mkdir -p` is allowed ONLY for these paths** (use this to create boundary submodules like `io/`, `runtime/`):
+{mkdir_str}
+
+**`rmdir` is allowed ONLY for these paths:**
+{rmdir_str}
+
+**`rm` is allowed ONLY for these paths:**
+{rm_str}
+
+---
+
+### ✅ File Tool Access
+
+| Tool | Access |
+|------|--------|
+| **Read** | `{read_paths}` |
+| **Write** (create new files) | `{write_paths}` |
+| **Edit** (modify existing files) | `{", ".join(modules)}` only |
+| **Glob / Grep / List** | Allowed everywhere EXCEPT `.opencode/**` |
+| **`.opencode/**`** | ⛔ DENIED — security boundary, never touch |
+
+---"""
+
+
+def generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures, dylint_success=True, cargo_available=True):
     """Generate agent instruction files with compilation error context."""
     print("\nGenerating agent instruction files...")
     
@@ -408,9 +555,12 @@ def generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_fai
 
 ⚠️ **RE-READ THIS FILE BEFORE EVERY ACTION. DO NOT WORK FROM MEMORY.**
 
-## Your Goal
+{cargo_warning}
+{permissions_block}
 
-Fix ALL {dylint_total} dylint errors in your modules. Keep working until done.
+## Your Goal
+{stale_warning}
+{goal_text}
 
 ## Your Modules
 {modules}
@@ -442,7 +592,7 @@ The style guide is the source of truth. Dylint just enforces it.
 
 ### STEP 2: Read Your Error Files (RE-READ to see what's left)
 
-Read each dylint file listed above. Read your compilation errors.
+{step_2_text}
 
 ### STEP 3: Fix ONE Issue (then loop back to Step 2)
 
@@ -516,25 +666,32 @@ This runs clippy to check style guide compliance.
 
 ```
 FILES CHANGED: [list]
-DYLINT FIXED: X/{dylint_total}
+DYLINT FIXED: {report_dylint_fixed}
 CLIPPY: pass/fail
 ```
 
 ## Important Rules
 
 - **Style guide > compilation**: If your refactoring breaks compilation, that's OK. Report it.
+- **COMPLEXITY IS THE POINT, LARGE ARCHITECTURAL CHANGE IS THE POINT DO NOT SLACK OFF
 - **Don't re-run cargo build/test**: Results already provided above
 - **Only edit your modules**: {write}
 - **Do hard work first**: Don't avoid complex refactors
 - **Boundary modules are real work**: Create them when legitimately needed, not as escape hatch
+- **COMPLEXITY IS THE POINT, LARGE ARCHITECTURAL CHANGE IS THE POINT DO NOT SLACK OFF
+- **TO EMPTHESIZE ONE MORE TIME COMPLEXITY AND LARGE CHANGE IS THE POINT!!! DO NOT SAY ITS TOO COMPLEX!!** 
 
-The orchestrator will handle compilation fixes separately if needed. Your job is style guide compliance."""
+{final_note}"""
 
     for agent_name, config in AGENTS.items():
         modules_str = '\n'.join(f"- {m}" for m in config['modules'])
-        dylint_files_str = ', '.join(config['dylint_files'])
+        actual_total, actual_file_strings, dylint_is_stale = get_effective_dylint_info(
+            config,
+            dylint_success,
+        )
+        dylint_files_str = ', '.join(actual_file_strings)
+        permissions_block = _agent_permissions_block(agent_name, config)
         
-        # Get compilation error info for this agent
         if agent_name in errors_by_agent:
             error_count = len(errors_by_agent[agent_name])
             compilation_list = f"See detailed errors in: `tmp/compilation-errors/{agent_name}.txt`"
@@ -544,7 +701,6 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
             compilation_list = "- No compilation errors (focus on dylint)"
             compilation_file_ref = ""
         
-        # Get clippy warning info for this agent
         if agent_name in warnings_by_agent:
             clippy_count = len(warnings_by_agent[agent_name])
             clippy_list = f"Read: `tmp/clippy-warnings/{agent_name}.txt`"
@@ -552,7 +708,6 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
             clippy_count = 0
             clippy_list = "- No clippy warnings"
         
-        # Test failures section
         if has_test_failures:
             test_failures_section = """⚠️ **Read `tmp/test-failures.txt` and check if any failures are in YOUR modules.**
 
@@ -560,12 +715,43 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
         else:
             test_failures_section = "✓ No test failures"
         
+        stale_warning = ""
+        if dylint_is_stale:
+            stale_warning = "\n⚠️  **DYLINT SKIPPED**: dylint-report did not produce trustworthy current data. " \
+                            "Fix compilation errors first, then re-run prepare_agent_dispatch.py.\n"
+
+        if dylint_is_stale:
+            goal_text = "Fix compilation errors in your modules first. Do not work on dylint until compilation succeeds."
+            step_2_text = "Read your compilation errors. Ignore dylint until prepare_agent_dispatch.py is re-run successfully."
+            report_dylint_fixed = "skipped until compilation succeeds"
+            final_note = "The orchestrator will rerun dylint after compilation is fixed. Your job right now is compilation recovery."
+        else:
+            goal_text = f"Fix ALL {actual_total} dylint errors in your modules. Keep working until done."
+            step_2_text = "Read each dylint file listed above. Read your compilation errors."
+            report_dylint_fixed = f"X/{actual_total}"
+            final_note = "The orchestrator will handle compilation fixes separately if needed. Your job is style guide compliance."
+
+        if not cargo_available:
+            cargo_warning = """
+🚨 **CARGO IS DELIBERATELY TURNED OFF**
+
+Cargo is OFF to allow complex refactors without verification distraction.
+- DO NOT run `.opencode/verify_agent_work.sh` — it will not work
+- DO NOT use `cargo build`, `cargo test`, `cargo clippy` — they are not available
+- Focus on **IMPLEMENTING** the correct behavior, not verifying it
+- Verification will happen when cargo is re-enabled
+
+"""
+        else:
+            cargo_warning = ""
+
         content = template.format(
             agent_name=agent_name,
             write=config['write'],
             search=config['search'],
             bash=config['bash'],
             modules=modules_str,
+            permissions_block=permissions_block,
             compilation_count=error_count,
             compilation_list=compilation_list,
             compilation_file_ref=compilation_file_ref,
@@ -573,7 +759,13 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
             clippy_list=clippy_list,
             test_failures_section=test_failures_section,
             dylint_files=dylint_files_str,
-            dylint_total=config['total_dylint']
+            dylint_total=actual_total,
+            stale_warning=stale_warning,
+            goal_text=goal_text,
+            step_2_text=step_2_text,
+            report_dylint_fixed=report_dylint_fixed,
+            final_note=final_note,
+            cargo_warning=cargo_warning,
         )
         
         filename = f"tmp/agent-instructions-{agent_name}.txt"
@@ -585,14 +777,52 @@ The orchestrator will handle compilation fixes separately if needed. Your job is
     print(f"\nGenerated {len(AGENTS)} agent instruction files!")
 
 
+def check_cargo_available():
+    """Check if cargo is available on the system."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["cargo", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode != 0:
+            return False
+        if "command not found" in result.stderr.lower() or "not found" in result.stderr.lower():
+            return False
+        return True
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return False
+
+
 def run_compilation_and_tests():
     """
     Run cargo build, and conditionally run tests and clippy.
     This runs BEFORE parsing so we have fresh output to parse.
     
-    Returns: (build_success, test_success) tuple of booleans
+    Returns: (dylint_success, build_success, test_success, cargo_available) tuple of booleans
     """
     import subprocess
+    
+    cargo_available = check_cargo_available()
+    
+    if not cargo_available:
+        print("\n" + "=" * 60)
+        print("⚠️  CARGO IS DELIBERATELY TURN OFF")
+        print("=" * 60)
+        print("Cargo is deliberately turned OFF to allow complex refactors without")
+        print("verification distraction. Focus on IMPLEMENTING, not verifying.")
+        print("The verification script (.opencode/verify_agent_work.sh) will NOT work")
+        print("until cargo is re-enabled.")
+        print("=" * 60)
+        Path("tmp").mkdir(exist_ok=True)
+        Path("tmp/build-current.txt").write_text("CARGO NOT AVAILABLE\n")
+        Path("tmp/test-output.txt").write_text("CARGO NOT AVAILABLE\n")
+        Path("tmp/clippy-output.txt").write_text("CARGO NOT AVAILABLE\n")
+        return (False, False, False, False)
     
     print("\n" + "=" * 60)
     print("STEP 1: Running dylint report...")
@@ -602,8 +832,10 @@ def run_compilation_and_tests():
         capture_output=False,
         text=True
     )
-    if result.returncode != 0:
-        print("⚠️  Warning: dylint-report failed, but continuing...")
+    dylint_success = result.returncode == 0
+    if not dylint_success:
+        print("✗ dylint-report failed — tmp/dylint-*.txt files are STALE from a previous run")
+        print("  Agents will be warned. Fix compilation errors first to get fresh dylint data.")
     
     print("\n" + "=" * 60)
     print("STEP 2: Compiling app code (cargo build)...")
@@ -626,7 +858,7 @@ def run_compilation_and_tests():
         print("✓ App compilation successful")
     else:
         print(f"✗ App compilation failed - skipping tests and clippy")
-        return (False, False)
+        return (dylint_success, False, False, cargo_available)
     
     # Only run tests if build succeeded
     print("\n" + "=" * 60)
@@ -674,17 +906,22 @@ def run_compilation_and_tests():
     print("STEP 5: Parsing errors and generating instructions...")
     print("=" * 60)
     
-    return (build_success, test_success)
+    return (dylint_success, build_success, test_success, cargo_available)
 
 
-def print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures):
+def print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures, dylint_success=True, cargo_available=True):
     """Print summary of which agents need to be dispatched."""
     print("\n" + "=" * 60)
     print("DISPATCH THESE AGENTS:")
     print("=" * 60)
     
+    if not dylint_success:
+        print("⚠️  WARNING: dylint is skipped because dylint-report failed.")
+        print("   Fix compilation errors first, then re-run prepare_agent_dispatch.py.")
+        print()
+
     for agent_name, config in AGENTS.items():
-        dylint_total = config['total_dylint']
+        dylint_total, _, _ = get_effective_dylint_info(config, dylint_success)
         compilation_errors = len(errors_by_agent.get(agent_name, []))
         clippy_warnings = len(warnings_by_agent.get(agent_name, []))
         
@@ -711,9 +948,15 @@ def print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures
     print("\n" + "=" * 60)
     print("NOTES:")
     print("=" * 60)
-    print("- Use '{agent}-cargo' variant for agents with compilation errors")
-    print("- Use '{agent}' (regular) variant for agents with only dylint errors")
-    print("- Instruction file is always: tmp/agent-instructions-{agent}.txt (without -cargo)")
+    
+    if not cargo_available:
+        print("🚨 CARGO IS DELIBERATELY TURNED OFF")
+        print("- DO NOT use -cargo variants — cargo is not available for verification")
+        print("- Focus on IMPLEMENTING, not verifying")
+        print("- Verification will work when cargo is re-enabled")
+    else:
+        print("- Use '{agent}-cargo' variant for agents with compilation errors")
+        print("- Use '{agent}' (regular) variant for agents with only dylint errors")
 
 
 def main():
@@ -723,7 +966,7 @@ def main():
     print("=" * 60)
     
     # Step 1: Run compilation, tests (if build succeeds), and clippy (if build succeeds)
-    build_success, test_success = run_compilation_and_tests()
+    dylint_success, build_success, test_success, cargo_available = run_compilation_and_tests()
     
     # Step 2: Extract compilation errors from the generated files
     errors_by_agent = extract_compilation_errors()
@@ -739,10 +982,10 @@ def main():
         has_test_failures = extract_test_failures()
     
     # Step 5: Generate agent instructions with all error context
-    generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures)
+    generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_failures, dylint_success, cargo_available)
     
     # Step 6: Print dispatch summary
-    print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures)
+    print_dispatch_summary(errors_by_agent, warnings_by_agent, has_test_failures, dylint_success, cargo_available)
     
     print("\n" + "=" * 60)
     print("READY!")

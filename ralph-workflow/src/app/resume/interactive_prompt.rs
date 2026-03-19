@@ -42,7 +42,7 @@ pub fn offer_resume_if_checkpoint_exists(
     }
 
     // Skip if RALPH_NO_RESUME_PROMPT env var is set (for CI/automation)
-    if crate::app::io::env_access::check_no_resume_prompt() {
+    if crate::app::env_access::check_no_resume_prompt() {
         return None;
     }
 
@@ -132,15 +132,12 @@ pub fn offer_resume_if_checkpoint_exists(
 
 /// Check if we can prompt the user (stdin/stdout is a TTY).
 fn can_prompt_user() -> bool {
-    crate::app::io::env_access::is_terminal_io()
+    crate::app::env_access::is_terminal_io()
 }
 
 /// Prompt user to decide whether to resume or start fresh.
 ///
 /// Returns `true` if user wants to resume, `false` if they want to start fresh.
 fn prompt_user_to_resume(logger: &Logger) -> bool {
-    crate::app::io::terminal::prompt_yes_no(
-        logger,
-        "Would you like to resume from where you left off?",
-    )
+    crate::app::terminal::prompt_yes_no(logger, "Would you like to resume from where you left off?")
 }

@@ -22,7 +22,7 @@ pub use streaming::extract_error_message_from_logfile;
 pub use types::{PipelineRuntime, PromptCommand};
 
 /// Exit code returned when a process is killed due to SIGTERM.
-const SIGTERM_EXIT_CODE: i32 = 143;
+pub const SIGTERM_EXIT_CODE: i32 = 143;
 
 #[cfg(test)]
 pub use agent_spawn_test::run_with_agent_spawn_with_monitor_config;

@@ -4,13 +4,12 @@
 // including XSD schema files and retry context files.
 
 /// The XSD schema for development result validation - included at compile time
-const DEVELOPMENT_RESULT_XSD_SCHEMA: &str =
-    include_str!("../../files/llm_output_extraction/development_result.xsd");
+const DEVELOPMENT_RESULT_XSD_SCHEMA: &str = include_str!("../xsd/development_result.xsd");
 const DEVELOPMENT_CONTINUATION_RESULT_XSD_SCHEMA: &str =
-    include_str!("../../files/llm_output_extraction/development_continuation_result.xsd");
+    include_str!("../xsd/development_continuation_result.xsd");
 
 /// The XSD schema for plan validation - included at compile time
-const PLAN_XSD_SCHEMA: &str = include_str!("../../files/llm_output_extraction/plan.xsd");
+const PLAN_XSD_SCHEMA: &str = include_str!("../xsd/plan.xsd");
 
 /// Directory for XSD retry context files
 const XSD_RETRY_TMP_DIR: &str = ".agent/tmp";

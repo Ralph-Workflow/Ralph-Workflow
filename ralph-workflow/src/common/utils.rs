@@ -70,7 +70,7 @@ fn secret_like_regex() -> Option<Regex> {
     .ok()
 }
 
-fn is_sensitive_key(key: &str) -> bool {
+pub(crate) fn is_sensitive_key(key: &str) -> bool {
     let key = key.trim().trim_start_matches('-').trim_start_matches('-');
     let key = key
         .split_once('=')

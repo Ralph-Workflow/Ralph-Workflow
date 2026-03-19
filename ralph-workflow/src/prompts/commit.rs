@@ -9,8 +9,7 @@ use crate::prompts::{RenderedTemplate, SubstitutionEntry, SubstitutionLog, Subst
 use crate::workspace::Workspace;
 use std::collections::HashMap;
 
-const COMMIT_MESSAGE_XSD_SCHEMA: &str =
-    include_str!("../files/llm_output_extraction/commit_message.xsd");
+const COMMIT_MESSAGE_XSD_SCHEMA: &str = include_str!("xsd/commit_message.xsd");
 
 use crate::files::result_extraction::extract_file_paths_from_issues;
 

@@ -262,9 +262,10 @@ pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     } else {
         let last_idx = adjusted.len() - 1;
         let (init, last) = adjusted.split_at(last_idx);
+        let last_formatted = format!("{last}{suffix}");
         init.iter()
-            .chain(std::iter::once(format!("{last}{suffix}")))
-            .cloned()
+            .map(String::clone)
+            .chain(std::iter::once(last_formatted))
             .collect()
     }
 }
