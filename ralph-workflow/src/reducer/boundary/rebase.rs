@@ -29,6 +29,8 @@ impl MainEffectHandler {
             let (run_result, local_prompt_history) = {
                 let mut local_prompt_history = self.state.prompt_history.clone();
                 let run_result = crate::app::rebase::run_initial_rebase(
+                    ctx.logger,
+                    *ctx.colors,
                     ctx,
                     &run_context,
                     ctx.executor,

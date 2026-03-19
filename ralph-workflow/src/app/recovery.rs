@@ -90,7 +90,7 @@ where
         });
     let completion_event_str = format!("{completion_event:?}");
     let new_state = reduce(state, completion_event);
-    trace.push(build_trace_entry(
+    *trace = std::mem::replace(trace, EventTraceBuffer::new(1)).append(build_trace_entry(
         events_processed,
         &new_state,
         "ForcedCompletionMarker",
@@ -114,7 +114,7 @@ where
 {
     let event_str = format!("{:?}", result.event);
     let state = reduce(state, result.event.clone());
-    trace.push(build_trace_entry(
+    *trace = std::mem::replace(trace, EventTraceBuffer::new(1)).append(build_trace_entry(
         events_processed,
         &state,
         save_effect_str,
@@ -123,21 +123,19 @@ where
     handler.update_state(state.clone());
     let events_processed = events_processed.saturating_add(1);
 
-    let (state, events_processed, _) = result.additional_events.into_iter().fold(
-        (state, events_processed, ()),
-        |(state, events_processed, _), event| {
-            let event_str = format!("{event:?}");
-            let state = reduce(state, event);
-            trace.push(build_trace_entry(
-                events_processed,
-                &state,
-                save_effect_str,
-                &event_str,
-            ));
-            handler.update_state(state.clone());
-            (state, events_processed.saturating_add(1), ())
-        },
-    );
+    let (state, events_processed, _) =
+        result.additional_events.into_iter().fold(
+            (state, events_processed, ()),
+            |(state, events_processed, _), event| {
+                let event_str = format!("{event:?}");
+                let state = reduce(state, event);
+                *trace = std::mem::replace(trace, EventTraceBuffer::new(1)).append(
+                    build_trace_entry(events_processed, &state, save_effect_str, &event_str),
+                );
+                handler.update_state(state.clone());
+                (state, events_processed.saturating_add(1), ())
+            },
+        );
 
     (state, events_processed)
 }
@@ -274,7 +272,7 @@ where
             let result = *result;
             let event_str = format!("{:?}", result.event);
             let new_state = reduce(state, result.event.clone());
-            trace.push(build_trace_entry(
+            *trace = std::mem::replace(trace, EventTraceBuffer::new(1)).append(build_trace_entry(
                 events_processed,
                 &new_state,
                 &save_effect_str,
@@ -288,12 +286,9 @@ where
                 |(state, events_processed, _), event| {
                     let event_str = format!("{event:?}");
                     let state = reduce(state, event);
-                    trace.push(build_trace_entry(
-                        events_processed,
-                        &state,
-                        &save_effect_str,
-                        &event_str,
-                    ));
+                    *trace = std::mem::replace(trace, EventTraceBuffer::new(1)).append(
+                        build_trace_entry(events_processed, &state, &save_effect_str, &event_str),
+                    );
                     handler.update_state(state.clone());
                     (state, events_processed.saturating_add(1), ())
                 },

@@ -97,5 +97,6 @@ pub fn write_stdout(content: &str) -> std::io::Result<()> {
 }
 
 pub fn flush_stdout() -> std::io::Result<()> {
+    use std::io::Write;
     std::io::stdout().flush()
 }

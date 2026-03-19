@@ -2,192 +2,257 @@
 
 ## Overview
 
-This plan systematically brings `ralph-workflow` into genuine compliance with the project's code
-style guide and its functional programming principles. The goal is **real architectural quality**:
-pure domain code, thin boundaries, explicit effects, typed failures, testable design. That goal
-is the target. Dylint is not.
+This plan brings `ralph-workflow` into genuine compliance with the code style guide and its
+functional programming principles. The goal is **real architectural quality** — pure domain code,
+thin flat boundaries, explicit effects, typed failures, testable design. Dylint is a diagnostic
+tool, not the definition of success.
 
-**On the role of dylint:** The lints are a diagnostic tool — a signal that a particular pattern
-is likely violating a principle. They are not a compliance checklist. A codebase that silences
-every lint by superficially shuffling code into boundary modules, or by writing technically
-FP-shaped code that misses the point, has made Goodhart's mistake: when the measure becomes the
-target, it ceases to be a good measure. Run dylint to *find* things to investigate. Fix the
-underlying architectural problem. Do not chase a zero-error count.
+**Critical constraints:**
+- Do NOT modify `lints/ralph_lints/`. Dylint lints are being developed in parallel.
+- Do NOT move pure-but-imperative code into `boundary/` to silence lints. That is explicitly
+  called out as an anti-pattern in `docs/code-style/boundaries.md`.
+- After any task, re-run `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet`
+  and use its output as a compass: investigate every remaining signal.
 
-Every task in this plan describes the architectural transformation that needs to happen. If dylint
-fires on the result of a correct architectural decision, that is a lint false-positive — document
-it and move on. If dylint is silent on code that is still architecturally wrong, that is worse —
-fix the code anyway.
+**Required reading before ANY task:**
+- `docs/code-style/boundaries.md` — normative boundary guide
+- `docs/code-style/functional-transformations.md` — FP cookbook
+- `docs/code-style/module-organization.md` — module layout rules
+- `docs/code-style/architecture.md` — State→Orchestrator→Effect→Handler→Event→Reducer→State
+- `docs/code-style/errors-and-diagnostics.md` — errors and diagnostics as values
+- `docs/tooling/dylint.md` — what each lint checks and its known heuristic limitations
 
-**Critical constraint:** Do NOT modify `lints/ralph_lints/`. Dylint lints are being developed in
-parallel by other contributors. New lints may surface new problem areas to investigate — treat
-those as additional diagnostic signals, not new tasks to mechanically clear.
+---
 
-**Companion reading (required before any task):**
-- `docs/code-style/boundaries.md` — the normative boundary guide
-- `docs/code-style/functional-transformations.md` — practical FP cookbook
-- `docs/code-style/architecture.md` — reducer-driven architecture
-- `docs/code-style/errors-and-diagnostics.md` — errors as values
-- `docs/tooling/dylint.md` — lint policy and FP principles behind each lint
-- `docs/agents/testing-guide.md` — test pyramid and TDD discipline
+## How To Use Dylint As A Compass (Not A Ruler)
+
+The lints have two severity levels. Understand the difference before touching any code.
+
+### DENY lints — hard architectural rules, always block the build
+
+| Lint | What it enforces |
+|------|-----------------|
+| `forbid_nested_boundary_modules` | Boundary directories must be flat — no subdirectory trees inside `io/`, `runtime/`, `ffi/`, `boundary/`, `executor/`, and recognised adapter dirs |
+| `forbid_domain_boundary_dependencies` | Non-boundary code must never `use`-import from boundary modules |
+| `forbid_boundary_policy_calls` | Boundary code must never call reducer/orchestrator policy helpers directly |
+| `forbid_boundary_retry_loops` | Boundary code must not own retry policy in a loop |
+| `forbid_result_swallowing` | `let _ = result`, `.ok()` on Result, silent `if let Err` are forbidden |
+| `file_too_long` | Source files must stay under 1000 lines |
+
+If a DENY lint fires, the code has a genuine architectural violation. Find and fix the root cause.
+Do not suppress. Do not rename a module to avoid path matching.
+
+### WARN lints — style heuristics, need judgment
+
+| Lint | What it approximates | Known limitation |
+|------|---------------------|-----------------|
+| `forbid_mut_binding` | Detects `let mut` bindings | Pattern-based; cannot prove the binding escapes or mutates shared state |
+| `forbid_imperative_loops` | Detects `for`/`while`/`loop` | Pattern-based; cannot prove the loop has side effects |
+| `forbid_interior_mutability` | Detects interior-mutability types | Type-based; cannot prove mutation actually occurs |
+| `forbid_mutating_receiver_methods` | Detects `&mut self` calls | Type-based; cannot prove the method mutates semantically important state |
+| `forbid_terminal_output` | Detects `println!`/`eprintln!` | Pattern-based; cannot prove output reaches the user |
+| `forbid_io_effects` | Detects `std::fs`, `std::env`, etc. | Path-based; cannot trace re-exports |
+| `forbid_raw_effect_types_in_public_apis` | Detects raw capability types in pub APIs | v1 heuristic |
+| `boundary_function_too_complex` | Detects complex boundary functions | Threshold-based; complexity is a proxy for mixing concerns |
+
+When a WARN lint fires, investigate: is this a genuine style violation or a false positive?
+- Genuine violation → apply the style principle, fix the code
+- False positive on correct code → add a code comment explaining why the code is correct;
+  do NOT suppress with `#[expect(...)]` without a clear justification
+
+Currently, `#![deny(warnings)]` in `ralph-workflow` promotes all warnings to build errors.
+This does NOT change what the lint is measuring — it only changes when you find out about it.
+
+### The one rule that overrides everything
+
+> Never move code into `boundary/` or any boundary-named module to silence a lint.
+> 
+> Boundary modules are for **real effect seams**: functions that perform actual I/O, spawn
+> real processes, read environment variables, write to files, make network calls. Moving
+> pure-but-imperative code there to avoid `forbid_mut_binding` or `forbid_imperative_loops`
+> is explicitly forbidden by `docs/code-style/boundaries.md`.
 
 ---
 
 ## Current Compliance Gaps — Where The Project Falls Short
 
-Dylint is used here as a diagnostic lens to locate architectural problems — the violation
-counts below describe *where things are wrong*, not a score to optimise. The actual problem
-in each case is described in plain language. Fix the architectural problem; the lint output
-will naturally improve as a consequence.
+These are architectural problems. The lint counts are an approximate location guide.
 
-### Gap 1 — Boundary Architecture Has Collapsed (the Major Problem)
+### Gap 1 — Boundary architecture has collapsed into a workflow engine
 
-The `boundary/` module has grown into a deep workflow engine. Boundary modules are supposed
-to be thin, flat wiring layers (gather input → call pure helper → perform effect). Instead,
-`boundary/` now owns entire workflow sub-systems:
+`boundary/` contains nested workflow sub-trees. Handlers must be **flat** per
+`docs/code-style/module-organization.md` — one file per effect, not a nested tree.
 
 ```
-boundary/                          ← should be thin leaf adapters
-  commit/          (7 nested files) ← contains commit workflow logic
-  development/     (6 nested files) ← contains development workflow logic
-  planning/        (6 nested files) ← contains planning workflow logic
-  review/          (9 nested files) ← contains review/fix workflow logic
-  io/              (2 nested files)
+boundary/commit/          (7 files) — commit workflow logic inside effect seam
+boundary/development/     (6 files) — dev workflow logic inside effect seam
+boundary/planning/        (6 files) — planning workflow logic inside effect seam
+boundary/review/          (9 files) — review/fix logic inside effect seam
+
+claude/delta_handling/    (5 files) — pure parsing logic inside agent adapter boundary
+streaming_state/session/  (11 files) — session state inside streaming boundary
+codex/event_handlers/     (6 files) — event dispatch inside agent adapter boundary
+opencode/formatting/      (3 files) — formatting logic inside agent adapter boundary
+printer/virtual_terminal/ (1 file)
+runtime/streaming/        (1 file)
 ```
 
-Agent-adapter boundaries also grew deep structure where they should stay flat:
-```
-claude/delta_handling/             (5 files) — pure delta parsing logic inside effect seam
-streaming_state/session/           (11 files) — session state management inside boundary
-codex/event_handlers/              (6 files) — event dispatch logic inside boundary
-opencode/formatting/               (3 files) — formatting logic inside boundary
-printer/virtual_terminal/          (1 file)
-runtime/streaming/                 (1 file)
-```
+**55 nested boundary module violations (DENY).** These are hard architectural failures.
 
-The root cause: workflow orchestration logic (prompt preparation, output parsing, validation,
-XML handling, retry materialisation) was placed inside boundary modules instead of domain
-modules. Boundaries became a second policy engine — exactly what `docs/code-style/boundaries.md`
-forbids. This is not a "lint violation" — it is an architectural collapse that makes
-everything harder to test, reason about, and change.
+### Gap 2 — Domain code reaches into effect seams instead of receiving capabilities
 
-### Gap 2 — Domain Code Reaches Into Effect Seams Instead of Receiving Capabilities
+Non-boundary modules directly import from `io/` (90), `runtime/` (24), `executor/` (17),
+`boundary/` itself (12), and agent adapters (6). This means those domain functions cannot
+be tested without real I/O. The Reader pattern is not applied.
 
-Domain (non-boundary) modules directly `use` boundary implementations instead of accepting
-capability traits as parameters. This is the opposite of the Reader pattern: the function
-grabs its dependencies from the ambient module tree instead of having them injected by the
-caller. The consequence: domain functions become untestable without setting up real I/O,
-environment variables, or process spawners.
+### Gap 3 — Style violations throughout domain code
 
-The most common offenders by boundary imported:
-`io/` (most prevalent), `runtime/`, `executor/`, `boundary/` itself, `claude/codex/gemini`.
+`let mut` bindings, imperative loops, interior mutability throughout domain modules. These
+are WARN-level heuristics — investigate each one to determine whether the code is genuinely
+imperative in a problematic way, or whether the lint is firing on legitimate code.
 
-### Gap 3 — Mutable Bindings Pervasive in Domain Code
+### Gap 4 — Compiler errors block everything
 
-`let mut` appears throughout domain code where iterator pipelines, struct-update syntax,
-shadowing, or `with_*` builder chains should be used. The symptom is code that reads as
-a sequence of state mutations rather than a sequence of value transformations. The problem
-is not the keyword — it is that the code is harder to reason about, harder to test, and
-signals that the function may be doing too much at once.
+E0255, E0599, E0282, E0658, E0308, E0061 in the library. These must be resolved first.
 
-### Gap 4 — Imperative Loops in Domain Code
+### Gap 5 — Errors, diagnostics, and panic patterns in domain code
 
-`for`, `loop`, and `while` appear in domain code where they should not. The deeper issue
-is not the syntax: it is what these loops are doing. Retry loops belong in the state
-machine. Accumulation loops belong as `fold`/`collect` pipelines. Polling loops belong in
-`runtime/` boundaries. When a loop appears in domain code, it is a signal to ask: what is
-this loop actually FOR, and does this code belong here at all?
+`git_helpers/config_state.rs` alone has ~85 `.unwrap()` calls. Domain functions print
+diagnostics directly instead of returning them as data.
 
-### Gap 5 — Interior Mutability in Domain Code
+### Gap 6 — Test infrastructure gaps
 
-`Mutex`, `LazyLock`, and `Cell` appear in domain modules. The deeper issue: shared mutable
-state in domain code means multiple call sites can see different values of the "same" thing,
-which destroys referential transparency and makes behaviour hard to reason about or test.
-In Haskell terms, `IORef`/`MVar` exist only in `IO` — in pure code, every value is immutable.
-Here, that means: if domain code needs shared mutable state, it is almost certainly modelling
-state that belongs in the reducer/orchestrator cycle instead.
-
-### Gap 6 — No Writer Monad: Diagnostics Leaked as Side Effects
-
-Domain functions call `println!`/`eprintln!` or rely on logging side effects instead of
-returning diagnostics as data (`WithDiagnostics<T>` / `Logged<T>`). The boundary should be
-the only place that emits user-facing output.
-
-### Gap 7 — Except Monad Incomplete: Unwrap/Panic in Domain Code
-
-`git_helpers/config_state.rs` alone has ~85 `.unwrap()` calls. Domain code uses
-`.unwrap()`, `.expect()`, and `panic!` where `Result<T, E>` with typed error enums should
-propagate failures explicitly.
-
-### Gap 8 — No Property-Based Testing
-
-The test suite uses unit and integration tests only. Pure parsers, reducers, and state
-machines would benefit from property-based tests (`proptest`) to verify invariants over
-arbitrary inputs.
-
-### Gap 9 — No Code Coverage Instrumentation
-
-No `tarpaulin`, `llvm-cov`, or `codecov` configuration exists. Coverage gaps are invisible.
+No property-based testing. No coverage instrumentation. Some modules have no tests.
 
 ---
 
 ## Architectural Principles Being Applied
 
-These are the principles the code should embody. The lints are imperfect proxies for
-violations of these principles — use them as hints, not as definitions of success.
-A codebase that violates every principle but passes every lint has done something worse
-than starting from scratch.
+### Reader monad → capability injection
 
-The three core patterns map to Haskell monad analogs:
+**Principle:** A pure function receives all its dependencies as parameters. It never reaches
+into the module tree to find them.
 
-### Reader Monad → Capability Injection
+**How it looks when correct:**
+```rust
+// Domain function — only plain values, returns plain values
+pub fn parse_agent_config(raw: &str) -> Result<AgentConfig, ConfigParseError> {
+    // no imports from io/, runtime/, std::fs, std::env
+    // pure: same input always produces same output
+}
 
-Dependencies must be passed IN, not looked up. Domain functions never call `std::env::var`,
-`std::fs::*`, or agent boundary modules directly. Instead they accept trait objects:
-
-```
-WRONG:  fn load_config() -> Config { std::fs::read_to_string("file").unwrap() }
-RIGHT:  fn load_config(ws: &dyn Workspace) -> Result<Config, LoadConfigError>
-```
-
-Existing traits: `Workspace`, `ProcessExecutor`, `AppEffectHandler`. Where domain code
-imports from `io/`, `runtime/`, `executor/`, `boundary/` — it needs the Reader pattern.
-
-### Writer Monad → Diagnostics as Data
-
-Pure functions return diagnostics as values. Boundaries emit them.
-
-```
-WRONG:  fn normalize(x: Raw) -> Out { println!("warn"); Out::default() }
-RIGHT:  fn normalize(x: Raw) -> WithDiagnostics<Out>
-        // boundary calls normalize(), iterates .diagnostics, emits each
+// Boundary function — gathers input, calls pure helper, performs effect
+pub fn load_agent_config(
+    workspace: &dyn Workspace,
+    path: &str,
+) -> Result<AgentConfig, LoadConfigError> {
+    let raw = workspace.read(path).map_err(LoadConfigError::Io)?;
+    parse_agent_config(&raw).map_err(LoadConfigError::Parse)
+}
 ```
 
-### Except Monad → Typed Result Propagation
+**How to test that Reader is correctly applied:** Can you call the domain function in a
+unit test with `assert_eq!(f(input), expected)` and zero setup (no MemoryWorkspace, no
+MockProcessExecutor, no environment variables)? If yes, Reader is applied. If no, it is not.
 
-Failures are values, not panics. Every recoverable failure travels through `Result<T, E>`
-with a domain-specific error enum. `.unwrap()` / `.expect()` / `panic!` are forbidden in
-domain code.
+### Writer monad → diagnostics as data
 
-### The Standard Boundary Shape (IMPURE → PURE → IMPURE)
+**Principle:** Pure functions return diagnostics as values. Only the boundary emits them.
 
-Every boundary function must follow:
-1. **IMPURE** — gather inputs from capabilities (read file, run process, read env)
-2. **PURE** — call domain parsers, validators, planners, or reducers on plain values
-3. **IMPURE** — perform the requested edge interaction, emit diagnostics, return typed result
+**How it looks when correct:**
+```rust
+// Domain function — returns diagnostics as data, never prints
+pub fn normalise_config(raw: RawConfig) -> WithDiagnostics<Config> {
+    let timeout = raw.timeout.unwrap_or(30);
+    let diagnostics = [
+        raw.timeout.is_none().then_some(ConfigDiag::UsedDefaultTimeout),
+    ].into_iter().flatten().collect();
+    WithDiagnostics { value: Config { timeout }, diagnostics }
+}
 
-Boundary code must NOT contain: retry policy, workflow decisions, business branching,
-invariant enforcement, state-machine logic, hidden dependency lookups, or capability-native
-types flowing inward.
-
-### Reducer-Driven Architecture
-
-The retry problem (many `loop` violations): retry policy belongs in the reducer/orchestrator
-state machine, not in inline loops inside boundary or domain functions.
-
+// Boundary — emits the diagnostics
+pub fn load_and_report_config(ws: &dyn Workspace, logger: &dyn Logger, path: &str)
+    -> Result<Config, LoadError>
+{
+    let raw = ws.read(path).map_err(LoadError::Io)?;
+    let result = parse_raw_config(&raw).map_err(LoadError::Parse)?;
+    let normalised = normalise_config(result);
+    normalised.diagnostics.iter().for_each(|d| logger.emit(d));
+    Ok(normalised.value)
+}
 ```
-State → Orchestrator (decides next effect) → Handler (executes ONE attempt)
-→ Event (reports what happened) → Reducer (updates state, decides if retry needed) → State
+
+### Except monad → typed Result propagation
+
+**Principle:** Recoverable failures are values in `Result<T, E>` with typed error enums.
+`.unwrap()`, `.expect()`, `panic!` never appear in domain code for recoverable failures.
+
+**How it looks when correct:**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigParseError { MissingField(&'static str), InvalidTimeout(u32) }
+
+pub fn parse_config(raw: &str) -> Result<Config, ConfigParseError> {
+    let timeout = raw.parse::<u32>()
+        .map_err(|_| ConfigParseError::InvalidTimeout(0))?;
+    Ok(Config { timeout })
+}
+```
+
+### Standard boundary shape (IMPURE → PURE → IMPURE)
+
+Every boundary function follows exactly this rhythm:
+1. **IMPURE** — call capability to gather raw input (read file, run process, read env)
+2. **PURE** — call domain parsers/validators/planners on plain values
+3. **IMPURE** — perform the requested edge interaction; return typed result or event
+
+**How to test a boundary follows this shape:** Describe the function aloud as one sentence:
+"Read X from capability, call pure helper with X, write/return the result."
+If you cannot describe it in one sentence, the function is doing too much.
+
+### Retry belongs in the state machine, not boundary loops
+
+**Wrong (retry in boundary):**
+```rust
+// boundary/run_agent.rs — WRONG
+pub fn run_with_retries(executor: &dyn Executor, req: &Request, max: u32)
+    -> Result<Response, Error>
+{
+    let mut attempts = 0;
+    loop {
+        match executor.run(req) {
+            Ok(r) => return Ok(r),
+            Err(e) if attempts < max => attempts += 1,
+            Err(e) => return Err(e),
+        }
+    }
+}
+```
+
+**Correct (retry in state machine):**
+```rust
+// domain/reducer.rs — CORRECT: reducer decides if retry is needed
+fn reduce(state: State, event: AgentEvent) -> State {
+    match event {
+        AgentEvent::Failed { .. } if state.retries_remaining > 0 =>
+            State { retries_remaining: state.retries_remaining - 1,
+                    next_effect: Some(Effect::RunAgent { .. }),
+                    ..state },
+        AgentEvent::Failed { error } =>
+            State { phase: Phase::Failed(error), ..state },
+        AgentEvent::Succeeded(output) =>
+            State { phase: Phase::Done(output), ..state },
+    }
+}
+// boundary/run_agent.rs — CORRECT: executes exactly one attempt
+pub fn run_agent_once(executor: &dyn Executor, req: &Request)
+    -> Result<AgentEvent, ExecutionError>
+{
+    executor.run(req)
+        .map(AgentEvent::Succeeded)
+        .map_err(|e| Ok(AgentEvent::Failed { error: e.to_string() }))
+        .unwrap_or_else(|e| e)
+}
 ```
 
 ---
@@ -196,560 +261,1081 @@ State → Orchestrator (decides next effect) → Handler (executes ONE attempt)
 
 ### Phase 1 — Fix Compiler Errors (Immediate Blockers)
 
-These prevent `cargo check` and `dylint` from running cleanly and block all downstream work.
+These prevent `cargo check` from passing and block all other work.
 
-- [ ] Fix E0255 (×2): `llm_output_extraction` and `result_extraction` defined twice in
-  `ralph-workflow/src/files/mod.rs` — both have a `pub mod X;` declaration AND a
-  `pub use self::X;` re-export creating a name collision. Remove the redundant `pub use`
-  lines (keep `pub mod` declarations only). Verify: `cargo check -p ralph-workflow` passes.
-
-- [ ] Fix E0599 (×5): `no method named push found for &mut EventTraceBuffer` in
-  `ralph-workflow/src/app/trace/` — `EventTraceBuffer` must be refactored to an immutable
-  type. Add a `fn with_event(self, event: TraceEvent) -> Self` consuming builder, then
-  replace all call sites that do `buf.push(event)` with `let buf = buf.with_event(event)`.
-  Alternatively provide a `fn append(self, events: impl IntoIterator<Item=TraceEvent>) -> Self`.
-
-- [ ] Fix E0599 (×2): `no method named filter_map found for Vec<DirEntry>` — change
-  `vec.filter_map(...)` to `vec.into_iter().filter_map(...).collect()` at the 2 call sites.
-
-- [ ] Fix E0282 (×3): type annotations needed — add explicit type annotations (`::<Type>` or
-  `let x: Type`) at each of the 3 inferred sites. Find with: `cargo check -p ralph-workflow
-  2>&1 | grep E0282`.
-
----
-
-### Phase 2 — Flatten Nested Boundary Modules (Architecture)
-
-**This is the most structurally impactful phase.** The rule: boundary module names mark effect
-seams — they are leaf categories, not containers for deeper structure. Code inside `boundary/`,
-`claude/`, `streaming_state/`, `codex/`, `opencode/` must be flat files, not subdirectory trees.
-
-The fix pattern for every nested structure below:
-1. Identify what is **pure logic** (parsing, validation, prompt preparation, XML handling,
-   state interpretation) → move to a non-boundary domain module
-2. Keep only **thin wiring** (gather capability input → call pure helper → perform effect) in
-   the boundary flat file
-3. Delete or flatten the nested sub-directory
-
-#### 2A — Flatten `boundary/` workflow sub-trees (23 nested files)
-
-The `boundary/` module contains complete workflow sub-trees for planning, development, review,
-and commit. These are NOT boundary concerns — they are orchestration and domain logic that was
-incorrectly placed inside an effect seam.
-
-- [ ] **boundary/commit/ (7 files)** — Audit `commit/agent.rs`, `commit/execution.rs`,
-  `commit/inputs.rs`, `commit/mod.rs`, `commit/prompts.rs`, `commit/validation.rs`,
-  `commit/xml.rs`. Extract pure logic (prompt construction, XML parsing, input validation,
-  commit message formatting) into `ralph-workflow/src/phases/commit/` (domain). Keep a
-  single flat `boundary/commit.rs` that calls pure helpers and performs the agent invocation
-  effect. Verify the boundary file follows IMPURE→PURE→IMPURE shape.
-
-- [ ] **boundary/development/ (6 files)** — Audit `development/core.rs`,
-  `development/materialization.rs`, `development/mod.rs`, `development/preparation.rs`,
-  `development/preparation/modes.rs`, `development/validation.rs`. Extract domain logic
-  into `ralph-workflow/src/phases/development/` (domain). Flatten to a single
-  `boundary/development.rs` that wires pure logic to capabilities.
-
-- [ ] **boundary/planning/ (6 files)** — Audit `planning/agent_execution.rs`,
-  `planning/input_materialization.rs`, `planning/mod.rs`, `planning/output_processing.rs`,
-  `planning/prompt_preparation.rs`, `planning/xml_validation.rs`. Extract pure XML
-  validation, prompt preparation, and output parsing to `ralph-workflow/src/phases/planning/`
-  (domain). Flatten to a single `boundary/planning.rs` thin adapter.
-
-- [ ] **boundary/review/ (9 files)** — Audit `review/fix_flow.rs`,
-  `review/review_flow/agent_invocation.rs`, `review/review_flow/input_materialization.rs`,
-  `review/review_flow/io/mod.rs`, `review/review_flow/mod.rs`,
-  `review/review_flow/output_rendering.rs`, `review/review_flow/prompt_generation.rs`,
-  `review/review_flow/regex_cache.rs`, `review/review_flow/validation.rs`,
-  `review/review_flow/xsd_retry_materialization.rs`. Extract prompt generation, regex
-  caching, output rendering, validation, and XSD retry logic to
-  `ralph-workflow/src/phases/review/` (domain). Flatten boundary to a single
-  `boundary/review.rs` and `boundary/fix.rs`.
-
-- [ ] **boundary/io/ (2 files)** — Audit `io/mod.rs`, `io/cloud.rs`. Move any domain
-  logic to `ralph-workflow/src/io/` proper or to domain modules. If the files contain
-  only effect wiring, rename them to flat files alongside the boundary root.
-
-#### 2B — Flatten `claude/delta_handling/` (5 files)
-
-The delta-handling logic (content block parsing, message finalization, error classification)
-is pure parsing that was placed inside the `claude/` effect boundary.
-
-- [ ] Extract pure delta-handling types and parsers into
-  `ralph-workflow/src/json_parser/delta_parsing/` (domain module). This includes
-  `delta_handling/content_blocks.rs`, `delta_handling/errors.rs`,
-  `delta_handling/finalization.rs`, `delta_handling/messages.rs`. Keep a thin flat
-  `claude/delta_handling.rs` (single file, not directory) that calls pure parsers and
-  performs the streaming I/O interaction. Alternatively, move pure parsing to the existing
-  `json_parser/` domain module and delete the boundary sub-directory entirely.
-
-#### 2C — Flatten `streaming_state/session/` (11 files)
-
-The session state management under `streaming_state/` contains delta-handling, state
-management, and session lifecycle logic — all of which mix pure and effectful concerns.
-
-- [ ] Audit `session/delta_handling/` (7 files: hashing, render, snapshot, text, thinking,
-  tool, plus delta_handling.rs) and `session/session_struct.rs`, `session/state_management.rs`.
-  Extract pure session state types, delta-parsing logic, and state transitions to a
-  `ralph-workflow/src/streaming/` domain module. Keep only I/O-facing session management
-  in a flat `streaming_state/session.rs` adapter file.
-
-#### 2D — Flatten `codex/event_handlers/` (6 files)
-
-- [ ] Audit `event_handlers/context.rs`, `event_handlers/error.rs`,
-  `event_handlers/item_dispatch.rs`, `event_handlers/items_completed.rs`,
-  `event_handlers/items_started.rs`, `event_handlers/turn.rs`. Extract pure event
-  interpretation/dispatch logic to `ralph-workflow/src/agents/codex/` domain module.
-  Keep flat `codex/event_handling.rs` boundary adapter.
-
-#### 2E — Flatten `opencode/formatting/` (3 files)
-
-- [ ] Audit `formatting/step.rs`, `formatting/text_and_error.rs`, `formatting/tool.rs`.
-  Move pure formatting logic to a `ralph-workflow/src/agents/opencode/formatting.rs`
-  domain module. Keep `opencode/` boundary flat.
-
-#### 2F — Flatten `printer/virtual_terminal/` and `runtime/streaming/`
-
-- [ ] Move `printer/virtual_terminal/mod.rs` logic: pure terminal rendering belongs in
-  a domain module; only actual terminal I/O belongs in `printer/`.
-- [ ] Move `runtime/streaming/streaming_line_reader.rs` logic: pure line-parsing belongs
-  in a domain module; only the streaming I/O belongs in `runtime/`.
-
----
-
-### Phase 3 — Apply Reader Pattern: Capability Injection into Domain Code
-
-Domain modules currently import from effect seams (`io/`, `runtime/`, `executor/`,
-`boundary/`, and agent adapters) instead of accepting capabilities as parameters. The goal
-of this phase is not "fix N lint errors" — it is to make every domain function independently
-testable with plain value inputs and no I/O setup. If you can call a function in a test with
-`f(input)` and get a deterministic `output` with no fakes or mocks, the Reader pattern is
-applied correctly. If you need to set up a filesystem, spawn a process, or set an environment
-variable to test a domain function, the phase is not done.
-
-**The transformation pattern:**
-```rust
-// BEFORE: domain code reaching into an effect seam
-use crate::io::workspace::WorkspaceImpl;
-fn process(path: &str) -> Data { WorkspaceImpl::new().read(path).unwrap() }
-
-// AFTER: plain-value input, capability injected by the caller
-use crate::workspace::Workspace;
-fn process(ws: &dyn Workspace, path: &str) -> Result<Data, ProcessError> {
-    ws.read(path).map(parse_data).map_err(ProcessError::Read)
-}
-// test: f(&MemoryWorkspace::new().with_file("path", "content"), "path")
+**How to find all instances:**
+```bash
+cargo check -p ralph-workflow --lib 2>&1 | grep "^error\[E"
 ```
 
-- [ ] **T3-io**: For every non-boundary module that imports from `io/`, replace the import
-  with `&dyn Workspace` or a more specific capability trait. The `Workspace` trait already
-  exists — prefer it. When the import is for transport/HTTP, create or use an abstract
-  transport trait. The success condition: `cargo test` on the module passes using only
-  `MemoryWorkspace` — no real filesystem access required.
-
-- [ ] **T3-runtime**: For every non-boundary module importing from `runtime/`, inject the
-  capability: clock reads → injectable clock trait; env access → `impl Fn(&str) -> Option<String>`
-  (env-injection pattern from the testing guide); process spawning → `&dyn ProcessExecutor`.
-  The success condition: env-dependent tests pass without `#[serial]` or `std::env::set_var`.
-
-- [ ] **T3-executor**: For every non-boundary module importing from `executor/`, inject
-  `&dyn ProcessExecutor`. Domain code receives typed `CommandOutput` — it does not spawn.
-  Success condition: all tests use `MockProcessExecutor`.
-
-- [ ] **T3-boundary-module**: Domain code importing from `boundary/` itself. After Phase 2
-  flattening many of these disappear. Any remaining case means logic was split incorrectly —
-  the decision belongs in the domain caller, not the boundary.
-
-- [ ] **T3-agent-adapters**: For `claude`, `codex`, `gemini` imports from domain code,
-  define an agent-agnostic domain trait (e.g., `AgentInvoker`) and inject it. The boundary
-  adapters implement the trait. Domain code never sees the concrete agent type.
-
----
-
-### Phase 4 — Remove Policy Leakage from Boundary Functions
-
-Even after Phase 2 flattening, each flat boundary file must be audited for policy leakage.
-The lints (`boundary_function_too_complex`, `forbid_boundary_policy_calls`,
-`forbid_boundary_retry_loops`) will flag likely offenders, but they are starting points for
-investigation, not a definition of the problem. The test is architectural: can you describe
-the function as "gather X, call pure_helper(X), perform_effect(result)"? If not — regardless
-of whether a lint fires — the function contains policy that belongs elsewhere.
-
-**The test for each boundary function:** Can you describe the function purely as
-"gather X, call pure_helper(X), perform_effect(result)"? If not, extract the policy.
-
-- [ ] **Retry/loop in boundary**: Audit every boundary function with a `loop` or `while`.
-  Retry loops belong in the orchestrator/reducer state machine (see architecture doc).
-  For each: replace the inline loop with a single-attempt handler that returns a typed
-  event. The reducer then decides if a retry effect should be scheduled.
-
-  ```
-  WRONG (in boundary): loop { match exec_attempt() { Ok(r) => return r, Err(_) => attempts+=1 } }
-  RIGHT: fn execute_once(...) -> Result<SuccessEvent, AttemptFailedEvent>
-         // Reducer: if AttemptFailedEvent && retries_remaining > 0 → schedule retry Effect
-  ```
-
-- [ ] **Workflow decisions in boundary**: Audit every boundary function that contains
-  `if condition { do_phase_A() } else { do_phase_B() }` style branching based on business
-  state. This belongs in the orchestrator. Extract as: boundary returns a fact-shaped event,
-  orchestrator decides the next effect.
-
-- [ ] **Invariant enforcement in boundary**: Audit every boundary function that validates
-  domain invariants (e.g., "check if path is non-empty before proceeding"). This should be
-  done by parsing raw input into a stronger type at the boundary edge, then passing the
-  proven type to pure domain code. Apply "parse, don't validate" pattern.
-
-- [ ] **Hidden dependency lookups**: Audit every boundary function for calls to
-  `std::env::var`, `std::env::current_dir`, or similar ambient lookups. These make the
-  function appear pure when it is not. Extract to an injectable capability.
-
----
-
-### Phase 5 — Apply Immutability in Domain Code
-
-`let mut` in domain code is a symptom, not the disease. The disease is: the function is
-written as a sequence of state mutations rather than a sequence of value transformations.
-The goal of this phase is code that reads as a pipeline of transformations — not code that
-happens to not use `let mut`. Use the lints as a finder (they point to files worth auditing)
-but judge each case on whether the resulting code is genuinely clearer and more correct, not
-on whether the lint is silenced.
-
-Reference: `docs/code-style/functional-transformations.md` — especially the quick-reference
-table and the "fold-with-mut-accumulator trap" section.
-
-**Priority order for investigation:**
-
-- [ ] **T5-parse-state (~50 vars: `buf`, `reader`, `text`, `content`, `current_text`,
-  `inner_buf`, `inner_reader`, `bare_content_xml`, `raw_text_parts`)** — These are
-  character-by-character or line-by-line parsing patterns. Two options:
-  (a) Move to boundary module if the parsing is fundamentally I/O-driven (streaming reads)
-  (b) Replace with pure parser: accept `&str` / `String` input, use iterator pipelines
-  (`lines()`, `chars()`, `split()`, `scan()`, `fold()`) to produce the result without mutation
-
-- [ ] **T5-accumulators (~30 vars: `result`, `output`, `summary`, `elements`, `collected`,
-  `accumulated`, `parts`, `body`, `cells`, `entries`, `file_list`, `entry_list`,
-  `content_fragments`)** — Replace with `map`/`filter`/`flat_map`/`collect` pipelines.
-  Use `[a, b, c].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")`
-  for multi-section assembly. Use `fold` for state-accumulating reductions.
-
-- [ ] **T5-flags (~25 vars: `has_entries`, `has_git_config`, `found_root`, `no_issues_found`,
-  `next_steps_present`, `files_changed_present`, `excluded_files_seen`, `previous_exists`,
-  `in_tag`, `in_content`)** — Replace boolean accumulator flags with `any()`, `all()`,
-  `find()`, `find_map()`, or `position()`. Scanning flags from iteration should use
-  structured state returned from a pure helper, not a `let mut bool` side effect.
-
-- [ ] **T5-config-builders (~20 vars: `config`, `handler`, `phase_ctx`, `prompt_monitor`,
-  `skills_mcp`, `mcps`, `opts`, `diff_opts`, `filter_cb`, `agent_phase_guard`,
-  `cleanup_guard`)** — Use consuming builder pattern (`with_*` methods) or struct-update
-  syntax. Each `let mut x = X::default(); x.field = y; x.other = z` becomes
-  `X::default().with_field(y).with_other(z)` or `X { field: y, other: z, ..X::default() }`.
-
-- [ ] **T5-git (~8 vars: `git_helpers`, `diff_opts`, `index`, `perms`, `files`,
-  `files_changed`, `excluded_files`, `reference_files`, `primary_files`)** — Git-specific
-  `let mut` patterns in domain code. Many of these indicate git operations in domain modules
-  (violation of boundary separation — coordinate with Phase 3/4 refactoring). For pure
-  aspects (path manipulation, diff interpretation), use iterator pipelines. For effectful
-  aspects, move to `git_helpers/` boundary or `io/` module.
-
-- [ ] **T5-misc (~remaining vars: `depth`, `indent`, `i`, `name`, `kind`, `method`, `email`,
-  `caption`, `next_steps`, `next_auto`, `issues`, `items`, `matches`, `columns`, `child`,
-  `steps`, `status`, `timer`, `tf`, `nested`, `location`, `mitigation`, `rationale`,
-  `expected_outcome`, `out`)** — Fix remaining `let mut` patterns using shadowing,
-  `scan()`, `enumerate()`, or value-returning transforms.
-
----
-
-### Phase 6 — Replace Imperative Loops with Intent-Revealing Combinators
-
-The goal is not "no `for` loops." The goal is code where the intent is immediately legible.
-`items.iter().filter(|x| x.is_ready()).map(|x| x.summarise()).collect()` communicates
-what happens. `for item in items { if item.is_ready() { result.push(item.summarise()); } }`
-requires the reader to reconstruct the intent from the mechanics. The lints surface loops
-worth investigating; for each one, ask whether a combinator pipeline makes the intent clearer
-— if yes, apply it; if the loop is genuinely clearer (rare but possible), leave it.
-
-Reference: `docs/code-style/functional-transformations.md` — "Replacing common imperative loops".
-
-- [ ] **T6-for**: For each `for` loop in domain code — ask what this loop IS:
-  - Collection building → `map(...).collect()`
-  - Filtering → `filter(...).collect()`
-  - Transform + filter → `filter_map(...).collect()`
-  - Side effects on each element → `for_each(...)` (only acceptable for diagnostic emission)
-  - Early return on first match → `find(...)` or `find_map(...)`
-  - Short-circuit validation → `try_for_each(...)` with `?`
-  - Accumulation → `fold(init, f)` (without `mut acc` in the closure)
-  - Counting → `count()` or `filter(...).count()`
-
-- [ ] **T6-loop**: Each `loop` in domain code is one of — and each requires a different architectural fix:
-  - **Retry loop** → belongs in reducer/orchestrator state machine (see Phase 4)
-  - **Read-until-done loop** → belongs in boundary (streaming/I/O)
-  - **State machine step** → replace with recursive pure function returning `Option<NextState>`
-    or refactor as a `fold` over a sequence of state-transforming events
-  - **Spin/poll loop** → belongs in `runtime/` boundary; domain code never polls
-
-- [ ] **T6-while**: Similar audit as `loop` — classify each before touching it:
-  - `while condition { mutate_state }` → convert the condition + mutation to a pure step
-    function and use `std::iter::successors(init, step).take_while(predicate).last()`
-  - `while let Some(x) = iter.next()` → replace with `for x in iter` or combinator pipeline
-  - `while bytes_read > 0` → streaming I/O, belongs in boundary
-
----
-
-### Phase 7 — Fix Interior Mutability in Domain Code (Pure Shared References)
-
-`&T` must be truly immutable in domain code. Interior mutability is permitted only in
-boundary modules where the underlying capability demands it.
-
-- [ ] **T7-mutex (6 violations — `std::sync::Mutex`)**: For each:
-  - If guarding shared state across threads in domain code → re-model as explicit state
-    flowing through the reducer/orchestrator cycle. Domain code is single-threaded
-    and pure; concurrency is a boundary/runtime concern.
-  - If guarding I/O resources → move the Mutex-wrapped resource to a boundary module.
-  - If in a `LazyLock<Mutex<T>>` pattern → see LazyLock fix below.
-
-- [ ] **T7-lazylock (4 violations — `std::sync::LazyLock`)**: For each:
-  - Static compile-time data → replace with `const` or `static` without LazyLock
-  - Compiled regex statics → move to the boundary module that uses them, or use
-    `once_cell::sync::Lazy` in a `runtime/` boundary module with documented justification
-  - Configuration-derived statics → replace with injected parameters (Reader pattern)
-
-- [ ] **T7-cell (2 violations — `std::cell::Cell`)**: Replace `Cell<T>` usage with
-  value-returning transformations. If `Cell` is used for a counter or flag, thread the
-  value through the function signature explicitly instead.
-
----
-
-### Phase 8 — Fix git_helpers Architecture (Major Module Refactor)
-
-`git_helpers/config_state.rs` has ~85 `.unwrap()` calls — a symptom of deep architectural
-issues: mixing pure git state interpretation with effectful git operations, using panic-driven
-control flow throughout.
-
-- [ ] **T8-audit**: Map the full `git_helpers/` module: for each function, classify as
-  (a) pure — interpreting git output, building command specs, parsing diff format, or
-  (b) effectful — executing git commands, reading `.git/` directory, writing refs.
-  Record findings in notepad.
-
-- [ ] **T8-split**: Reorganize `git_helpers/` into:
-  - `git_helpers/` (domain) — pure functions: parse git status output, build `git` command
-    specs, interpret diff hunks, classify commit messages. No `std::process`, no `git2`.
-  - `git_helpers/boundary.rs` or `io/git.rs` (boundary) — thin adapter that runs git
-    commands via `ProcessExecutor` trait or `git2` (in `ffi/`), returns typed events.
+- [x] **P1-E0255-files-mod**: `ralph-workflow/src/files/mod.rs` — both `llm_output_extraction`
+  and `result_extraction` have `pub mod X;` AND `pub use self::X;` in the same file, creating
+  a duplicate definition. Remove the `pub use self::llm_output_extraction;` and
+  `pub use self::result_extraction;` lines. Keep only the `pub mod` declarations.
   
-- [ ] **T8-errors**: Replace all ~85 `.unwrap()` in `git_helpers/` with proper `Result<T, E>`
-  propagation. Create a `GitError` enum covering: `NotARepository`, `NoCommits`,
-  `ParseFailed(String)`, `ExecutionFailed(ProcessError)`, etc.
+  **Acceptance criteria:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0255` returns
+  nothing.
 
-- [ ] **T8-tests**: Write unit tests for every pure `git_helpers/` domain function before
-  refactoring (red-first TDD). Pure parsers accept `&str` input — no git subprocess needed.
+- [x] **P1-E0599-EventTraceBuffer**: `EventTraceBuffer` in `ralph-workflow/src/app/trace/`
+  does not have a `.push()` method (5 call sites) or `.flush()` method (1 call site). This
+  means `EventTraceBuffer` was recently changed to an immutable type but call sites were not
+  updated.
+  
+  **Find all call sites:**
+  ```bash
+  cargo check -p ralph-workflow --lib 2>&1 | grep "no method named" | grep -E "push|flush"
+  ```
+  
+  **What to do:** For each `buf.push(event)` call site, replace with whatever the new
+  `EventTraceBuffer` API provides — check `ralph-workflow/src/app/trace/` for the current
+  type definition. If `EventTraceBuffer` has a `with_event(self, e) -> Self` builder, use:
+  `let buf = buf.with_event(event)`. If it accepts events in a different way, match the
+  actual API. Do not add a `.push()` method back — the change away from mutation was
+  intentional.
+  
+  **Acceptance criteria:** `cargo check -p ralph-workflow --lib 2>&1 | grep EventTraceBuffer`
+  returns nothing.
+
+- [x] **P1-E0599-filter_map**: Two call sites call `.filter_map(...)` directly on a `Vec`
+  value (which is not an iterator). Fix: change `vec.filter_map(f)` to
+  `vec.into_iter().filter_map(f).collect::<Vec<_>>()` or
+  `vec.iter().filter_map(f).collect::<Vec<_>>()` depending on whether ownership is needed.
+  
+  **Find call sites:**
+  ```bash
+  cargo check -p ralph-workflow --lib 2>&1 | grep "no method named.*filter_map"
+  ```
+  
+  **Acceptance criteria:** `cargo check -p ralph-workflow --lib 2>&1 | grep filter_map`
+  returns nothing.
+
+- [x] **P1-E0658-str_as_str**: Use of unstable `str_as_str` feature. Find the call site and
+  replace `s.as_str()` on a `str` with `s` directly (a `&str` is already a `&str`).
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0658`
+
+- [x] **P1-E0308-mismatched-types**: One type mismatch error. Read the error output, find
+  the call site, and fix the type to match what the function actually returns.
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0308`
+
+- [x] **P1-E0061-argument-count**: One call site passes 4 arguments to a function that now
+  takes 6. Read the function signature, add the missing arguments.
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0061`
+
+- [x] **P1-E0282-type-annotations**: Three sites where type inference fails. Add explicit
+  type annotations: `let x: ConcreteType = ...` or use the turbofish `::<Type>` syntax.
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0282`
+
+- [x] **P1-E0596-opencode-parser**: `ralph-workflow/src/json_parser/opencode/parser_core.rs`
+  has `&self` receivers on `parse_stream` and a related method that actually need `&mut self`
+  (or the internal state needs to be restructured to not require mutation). This likely surfaced
+  because the `opencode/formatting/` boundary flattening (Phase 2I) is partially complete and
+  broke the call site.
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep E0596`
+  
+  Read `parser_core.rs` fully before deciding: if `parse_stream` takes a `&mut self` because
+  it genuinely maintains streaming state, it belongs in a boundary module where `&mut self`
+  is acceptable. If it can be made into a pure function that returns a new parser state, do
+  that. Do NOT blindly add `&mut self` without understanding why mutation is needed.
+
+- [x] **P1-unused-imports**: Three `error: unused import` diagnostics:
+  - `self::llm_output_extraction` — in `files/mod.rs` (will be fixed by P1-E0255)
+  - `self::result_extraction` — in `files/mod.rs` (will be fixed by P1-E0255)
+  - `std::fmt::Write` — find and remove the unused import
+  
+  **Find:** `cargo check -p ralph-workflow --lib 2>&1 | grep "unused import"`
+
+**Phase 1 done when:**
+```bash
+cargo check -p ralph-workflow --lib 2>&1 | grep "^error" | grep -v "^error: could not compile"
+```
+Returns nothing. The library compiles cleanly. Integration tests can now run.
 
 ---
 
-### Phase 9 — Fix Error and Diagnostics Architecture (Except + Writer Monads)
+### Phase 2 — Flatten Nested Boundary Modules (DENY: forbid_nested_boundary_modules)
 
-- [ ] **T9-unwrap-domain**: Audit all `.unwrap()` in non-test, non-boundary domain code.
-  For each: replace with `?` propagation, or `ok_or_else(|| ErrorVariant::Specific)`.
-  Never `.unwrap()` in domain code except where truly unreachable (then use
-  `expect("invariant: <explanation>")` sparingly and document why in a code comment).
+This is the largest architectural repair in the plan. Boundary module directories are effect
+seam markers — they must be flat. A boundary directory may contain `.rs` files but must not
+contain subdirectories with further `.rs` files.
 
-- [ ] **T9-expect-domain**: Audit `.expect()` in domain code. Each `expect("message")` is
-  either a hidden `.unwrap()` (fix it) or a documented compile-time invariant (add a code
-  comment explaining why the Option/Result can never be None/Err at this point).
+**How to find all current violations:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "nested module"
+```
 
-- [ ] **T9-panic-domain**: Audit `panic!` in non-boundary, non-test domain code. Replace
-  with `Result` typed failures. `panic!` belongs only in: test assertions, documented
-  build-time invariants in `xtask/`, boundary crash-on-invariant helpers at app entry points.
+**The rule from `docs/code-style/module-organization.md`:**
+Handlers are thin effect-execution shims. One file per effect seam. No nested trees inside
+boundary directories. Where you have `boundary/review/mod.rs + inputs.rs + execution.rs`,
+it becomes `boundary/run_review.rs`.
 
-- [ ] **T9-string-errors**: Audit domain functions that return `String`-typed errors or use
-  `Box<dyn Error>` as the error type. Replace with small typed enums:
+**The transformation pattern for every nested boundary sub-tree:**
+1. Read every file in the sub-directory.
+2. For each function: ask "can this run on plain values with no capability access?" 
+   - YES → it is pure domain logic; move it to an appropriate non-boundary module
+   - NO (it touches real I/O, processes, env, network) → it is boundary wiring; keep it
+3. Collapse the boundary directory into a single flat `.rs` file that contains only the
+   wiring. The wiring calls the extracted domain functions.
+4. Delete the subdirectory.
+
+**NOT ACCEPTABLE:**
+- Moving pure-domain logic into the flat boundary file (mixing concerns)
+- Renaming a directory from `boundary/review/` to `phases/review/boundary/` to avoid the
+  lint path-matching (the lint checks for boundary directory names, but more importantly
+  this is still architecturally wrong)
+- Leaving policy/retry/validation logic inside the boundary file
+
+**Acceptance criteria for EVERY restructured boundary module:**
+1. The flat boundary `.rs` file describes itself in one sentence per function: "Read X,
+   call pure_helper(X), write/return Y."
+2. Every extracted domain function has a unit test that uses only plain value inputs
+   (no `MemoryWorkspace`, no `MockProcessExecutor`, no environment setup).
+3. `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 | grep "nested module.*<module_name>"` returns nothing for that module.
+
+#### 2A — Flatten `boundary/commit/` (7 nested files)
+
+**Files to process:**
+- `ralph-workflow/src/reducer/boundary/commit/agent.rs`
+- `ralph-workflow/src/reducer/boundary/commit/execution.rs`
+- `ralph-workflow/src/reducer/boundary/commit/inputs.rs`
+- `ralph-workflow/src/reducer/boundary/commit/mod.rs`
+- `ralph-workflow/src/reducer/boundary/commit/prompts.rs`
+- `ralph-workflow/src/reducer/boundary/commit/validation.rs`
+- `ralph-workflow/src/reducer/boundary/commit/xml.rs`
+
+*(Verify exact paths with: `find ralph-workflow/src -path "*/boundary/commit*" -name "*.rs"`)*
+
+- [ ] Audit each file: separate pure (prompt construction, XML parsing, commit message
+  formatting, validation of already-parsed values) from effectful (agent invocation,
+  file writes, process spawning).
+
+- [ ] Move pure logic into `ralph-workflow/src/phases/commit/` or an appropriate existing
+  domain module. Each moved function must have a unit test using plain values.
+
+- [ ] Collapse remaining wiring into `ralph-workflow/src/reducer/boundary/commit.rs`
+  (single flat file). The file should contain one to three functions that each follow the
+  IMPURE→PURE→IMPURE shape. If it grows beyond ~80 lines of real logic, revisit whether
+  more logic should be extracted to domain.
+
+- [ ] Delete the `commit/` subdirectory.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*commit"` → empty.
+
+#### 2B — Flatten `boundary/development/` (6 nested files)
+
+**Files:**
+- `ralph-workflow/src/reducer/boundary/development/core.rs`
+- `ralph-workflow/src/reducer/boundary/development/materialization.rs`
+- `ralph-workflow/src/reducer/boundary/development/mod.rs`
+- `ralph-workflow/src/reducer/boundary/development/preparation.rs`
+- `ralph-workflow/src/reducer/boundary/development/preparation/modes.rs`
+- `ralph-workflow/src/reducer/boundary/development/validation.rs`
+
+*(Verify: `find ralph-workflow/src -path "*/boundary/development*" -name "*.rs"`)*
+
+- [ ] Same audit pattern as 2A. Materialization, prompt preparation, mode selection,
+  input validation on already-parsed values are domain concerns. Move them out.
+
+- [ ] Collapse to `ralph-workflow/src/reducer/boundary/development.rs` (flat file).
+
+- [ ] Delete the `development/` subdirectory.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*development"` → empty.
+
+#### 2C — Flatten `boundary/planning/` (6 nested files)
+
+**Files:**
+- `ralph-workflow/src/reducer/boundary/planning/agent_execution.rs`
+- `ralph-workflow/src/reducer/boundary/planning/input_materialization.rs`
+- `ralph-workflow/src/reducer/boundary/planning/mod.rs`
+- `ralph-workflow/src/reducer/boundary/planning/output_processing.rs`
+- `ralph-workflow/src/reducer/boundary/planning/prompt_preparation.rs`
+- `ralph-workflow/src/reducer/boundary/planning/xml_validation.rs`
+
+*(Verify: `find ralph-workflow/src -path "*/boundary/planning*" -name "*.rs"`)*
+
+- [ ] XML validation on already-read strings is pure. Prompt preparation that builds a
+  string from domain types is pure. Output processing that parses an agent response string
+  is pure. Move all of these to `ralph-workflow/src/phases/planning/` domain module.
+
+- [ ] Collapse to `ralph-workflow/src/reducer/boundary/planning.rs` (flat file).
+
+- [ ] Delete the `planning/` subdirectory.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*planning"` → empty.
+
+#### 2D — Flatten `boundary/review/` (9 nested files)
+
+**Files:**
+- `ralph-workflow/src/reducer/boundary/review/fix_flow.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/agent_invocation.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/input_materialization.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/io/mod.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/mod.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/output_rendering.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/prompt_generation.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/regex_cache.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/validation.rs`
+- `ralph-workflow/src/reducer/boundary/review/review_flow/xsd_retry_materialization.rs`
+
+*(Verify: `find ralph-workflow/src -path "*/boundary/review*" -name "*.rs"`)*
+
+- [ ] Move pure logic (prompt generation, output rendering/parsing, regex compilation and
+  matching, validation of parsed data, XSD retry decision logic) to
+  `ralph-workflow/src/phases/review/` domain module.
+
+- [ ] Note: "regex_cache" is a WARN for interior mutability (`LazyLock`). If the regex is
+  a compile-time constant, use a `const` or `OnceLock` — but this goes in domain code if
+  the regex is domain knowledge, or in the boundary if it's an I/O adapter concern.
+
+- [ ] Collapse to `ralph-workflow/src/reducer/boundary/run_review.rs` and
+  `ralph-workflow/src/reducer/boundary/run_fix.rs` (flat files, one per effect).
+
+- [ ] Delete the `review/` subdirectory.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*review"` → empty.
+
+#### 2E — Flatten `boundary/io/` (2 nested files)
+
+- [ ] Read `ralph-workflow/src/reducer/boundary/io/mod.rs` and `io/cloud.rs`.
+  If the files contain only re-exports or thin wiring, inline them into the parent
+  boundary module or rename to flat files (`boundary/io_cloud.rs`).
+  If they contain domain logic, extract it first.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*io"` for boundary context → empty.
+
+#### 2F — Flatten `claude/delta_handling/` (5 nested files)
+
+**Files:**
+- `ralph-workflow/src/json_parser/claude/delta_handling/mod.rs`
+- `ralph-workflow/src/json_parser/claude/delta_handling/content_blocks.rs`
+- `ralph-workflow/src/json_parser/claude/delta_handling/errors.rs`
+- `ralph-workflow/src/json_parser/claude/delta_handling/finalization.rs`
+- `ralph-workflow/src/json_parser/claude/delta_handling/messages.rs`
+
+*(Verify: `find ralph-workflow/src -path "*/claude/delta_handling*" -name "*.rs"`)*
+
+- [ ] Delta parsing (content block interpretation, message finalisation, error classification)
+  is pure parsing logic. Move it to `ralph-workflow/src/json_parser/delta_parsing/` domain
+  module. These functions accept structured data (e.g., `DeltaEvent`) and return typed
+  domain values — no streaming I/O involved.
+
+- [ ] Keep only the streaming glue code (reading bytes/events from the Claude SSE stream
+  and dispatching to the pure delta parsers) in a flat `claude/delta_handling.rs` single file.
+
+- [ ] Delete the `delta_handling/` subdirectory inside `claude/`.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*claude"` → empty.
+
+#### 2G — Flatten `streaming_state/session/` (11 nested files)
+
+*(Find all files: `find ralph-workflow/src -path "*/streaming_state/session*" -name "*.rs"`)*
+
+- [ ] Read each file. Session state struct definitions and state transitions are pure domain
+  types. Delta-handling logic (text, thinking, tool deltas) is pure parsing once the raw
+  bytes are already decoded. Move pure types and logic to `ralph-workflow/src/streaming/`
+  domain module.
+
+- [ ] Keep only the stateful streaming session management (maintaining a live connection,
+  receiving bytes, dispatching to pure handlers) in a flat `streaming_state/session.rs` file.
+
+- [ ] Delete the `session/` subdirectory inside `streaming_state/`.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*streaming_state"` → empty.
+
+#### 2H — Flatten `codex/event_handlers/` (6 nested files)
+
+*(Find: `find ralph-workflow/src -path "*/codex/event_handlers*" -name "*.rs"`)*
+
+- [ ] Event interpretation logic (what does a `turn_started` event mean in domain terms?)
+  is pure. Move to `ralph-workflow/src/agents/codex/event_interpretation.rs` domain module.
+
+- [ ] Keep only the HTTP/stream event dispatch (receiving raw Codex API events and calling
+  pure interpreters) in a flat `codex/event_handling.rs` file.
+
+- [ ] Delete the `event_handlers/` subdirectory inside `codex/`.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*codex"` → empty.
+
+#### 2I — Flatten `opencode/formatting/` (3 nested files)
+
+*(Find: `find ralph-workflow/src -path "*/opencode/formatting*" -name "*.rs"`)*
+
+- [ ] Formatting logic (converting domain types to strings for display) is pure domain
+  rendering. Move to `ralph-workflow/src/agents/opencode/formatting.rs` domain module.
+
+- [ ] Delete the `formatting/` subdirectory inside `opencode/`.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module.*opencode"` → empty.
+
+#### 2J — Flatten `printer/virtual_terminal/` and `runtime/streaming/`
+
+- [ ] `printer/virtual_terminal/mod.rs`: move pure terminal state/rendering logic to
+  domain; keep only actual terminal write calls in flat `printer/virtual_terminal.rs`.
+
+- [ ] `runtime/streaming/streaming_line_reader.rs`: move pure line-parsing logic to
+  domain; keep only the streaming I/O reads in flat `runtime/streaming.rs`.
+
+**Verify:** `cargo dylint ... 2>&1 | grep "nested module"` → empty for all.
+
+**Phase 2 done when:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "nested module" | wc -l
+```
+Returns `0`. Every nested boundary module violation is gone. AND every extracted domain
+function has at least one passing unit test using plain value inputs.
+
+---
+
+### Phase 3 — Apply Reader Pattern: Capability Injection (DENY: forbid_domain_boundary_dependencies)
+
+**What this fixes:** Domain modules that directly `use`-import from boundary modules. This
+makes domain functions untestable without real I/O.
+
+**How to find all instances:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "import from boundary module"
+```
+
+**The transformation every time:**
+
+```rust
+// BEFORE: domain function reaches for its own dependency
+use crate::io::workspace::WorkspaceImpl;  // WRONG: importing from boundary
+
+fn build_prompt(path: &str) -> String {
+    let content = WorkspaceImpl::new().read(path).unwrap();
+    format!("Context:\n{content}")
+}
+
+// AFTER: dependency injected as plain trait parameter
+// domain function:
+pub fn build_prompt(context: &str) -> String {
+    format!("Context:\n{context}")
+}
+
+// boundary function:
+pub fn build_prompt_for_path(
+    workspace: &dyn Workspace,
+    path: &str,
+) -> Result<String, BuildPromptError> {
+    let content = workspace.read(path).map_err(BuildPromptError::Read)?;
+    Ok(build_prompt(&content))
+}
+```
+
+**NOT ACCEPTABLE:**
+- Moving `build_prompt` into a boundary module to make the import "legal" — this mixes
+  prompt construction (pure domain) with file reading (boundary effect)
+- Adding a new parameter `workspace: Option<&dyn Workspace>` and doing the read inside the
+  domain function — still impure
+- Creating a new boundary-named module just to house the function and avoid the lint
+
+**Acceptance criteria for EVERY fixed function:**
+1. The domain function accepts only plain values (primitives, structs, `&str`, `&[T]`, etc.)
+   and the `Workspace`/`ProcessExecutor`/capability traits are on a DIFFERENT function (the
+   boundary caller).
+2. A unit test exists that calls the domain function with literal values and no fakes:
+   ```rust
+   #[test]
+   fn test_build_prompt() {
+       let result = build_prompt("some context");
+       assert!(result.contains("Context:"));
+   }
+   ```
+3. A boundary-level integration test exercises the wiring using `MemoryWorkspace`.
+
+- [ ] **P3-io**: For each of the ~90 `import from boundary module io` violations:
+  1. Read the offending file and identify which function imports from `io/`.
+  2. Find what it actually DOES with the `io` import — what data does it need?
+  3. Refactor: extract a pure function that takes that data as a parameter; put the
+     `workspace.read(...)` call in a boundary caller.
+  4. The `Workspace` trait already exists and has `MemoryWorkspace` for tests — use them.
+  5. After each file: `cargo dylint ... 2>&1 | grep "import from boundary module io"` should
+     have one fewer line.
+
+- [ ] **P3-runtime**: For each of the ~24 `import from boundary module runtime` violations:
+  1. Identify what runtime capability is being used:
+     - `std::env::var(...)` → refactor to accept `impl Fn(&str) -> Option<String>` (env-injection
+       pattern from `docs/agents/testing-guide.md`)
+     - `std::process::Command` → refactor to accept `&dyn ProcessExecutor`
+     - Clock/timestamp → inject a clock trait or accept a `u64` timestamp parameter
+  2. Refactor the function to accept the capability as a parameter.
+  3. Tests: env-dependent tests use `|_| None` or `|k| env_map.get(k).copied()` instead
+     of `std::env::var`. No `#[serial]` required.
+
+- [ ] **P3-executor**: For each of the ~17 `import from boundary module executor` violations:
+  1. Domain code should receive `CommandOutput` (exit code, stdout, stderr) — typed values.
+     It should not import `ExecutorImpl` or call `Command::new`.
+  2. Refactor to accept `&dyn ProcessExecutor` or accept a pre-computed `CommandOutput` struct.
+  3. Tests: use `MockProcessExecutor::new().with_result(...)`.
+
+- [ ] **P3-boundary**: For each of the ~12 `import from boundary module boundary` violations:
+  1. After Phase 2 flattening, many disappear. For any that remain: the importing file is
+     using boundary logic directly (e.g., calling a handler from domain code). Move the
+     policy decision to the domain caller and have it emit an `Effect` enum variant instead
+     of calling the boundary directly.
+
+- [ ] **P3-agents**: For `claude`, `codex`, `gemini` boundary imports from domain code (~6):
+  1. Define or use an existing abstract agent trait (e.g., `AgentInvoker` or `ModelExecutor`).
+  2. Boundary adapters implement the trait. Domain code depends on the trait only.
+  3. The concrete adapter type never appears in domain module imports.
+
+**Phase 3 done when:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "import from boundary module" | wc -l
+```
+Returns `0`. AND every refactored domain function has a unit test with plain value inputs.
+
+---
+
+### Phase 4 — Remove Policy from Boundary Functions (DENY: forbid_boundary_policy_calls, forbid_boundary_retry_loops)
+
+**What this fixes:** Boundary functions that make policy decisions (retry, fallback, workflow
+progression, business branching) instead of delegating to domain code or the state machine.
+
+**How to find violations:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep -E "forbid_boundary_policy|forbid_boundary_retry|retry.*boundary|policy.*boundary"
+```
+
+**Retry loop transformation (from `docs/code-style/functional-transformations.md`):**
+
+The boundary executes ONE attempt and returns a typed event. The reducer decides if another
+attempt is needed and emits an `Effect` to schedule it. This is not a debate — see
+`docs/code-style/boundaries.md` Example 5.
+
+**For every boundary function containing a `loop`, `while`, or conditional retry:**
+
+1. Extract ONE attempt into a pure handler function: `fn execute_once(...) -> Result<SuccessEvent, FailureEvent>`
+2. Remove the retry counting from the boundary.
+3. In the reducer, add a retry counter to the relevant state struct.
+4. In the `reduce()` function, match on `FailureEvent` and if retries remain, return the
+   state with a new `Effect::RetryAttempt` scheduled.
+
+**For every boundary function containing business branching (`if domain_condition { do_this } else { do_that }`):**
+
+The condition belongs in the orchestrator or reducer. The boundary should receive a typed
+effect that already encodes the decision:
+```rust
+// WRONG: boundary decides which path
+pub fn handle_review(state: &State, workspace: &dyn Workspace) -> Result<Event, Error> {
+    if state.needs_xsd_retry { run_xsd_retry(workspace) }
+    else { run_standard_review(workspace) }
+}
+
+// CORRECT: orchestrator decides, boundary just executes
+pub enum Effect { RunXsdRetry { .. }, RunStandardReview { .. } }
+pub fn handle_effect(effect: Effect, workspace: &dyn Workspace) -> Result<Event, Error> {
+    match effect {
+        Effect::RunXsdRetry { .. } => run_xsd_retry(workspace),
+        Effect::RunStandardReview { .. } => run_standard_review(workspace),
+    }
+}
+```
+
+**Phase 4 done when:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep -E "policy_call|retry_loop" | wc -l
+```
+Returns `0`. AND: describe aloud every boundary function in one sentence. If you cannot, it still contains policy.
+
+---
+
+### Phase 5 — Immutability in Domain Code (WARN: forbid_mut_binding)
+
+**Important:** This is a WARN-level heuristic. The lint fires on `let mut` bindings but
+cannot prove that any problematic mutation actually happens. For every firing, investigate:
+is this genuine domain-layer mutation that would be cleaner as a value transformation?
+
+**How to find all current instances (use as investigation starting points only):**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "let mut.*is forbidden"
+```
+
+**The judgment call for each `let mut`:**
+
+Ask: Does removing `let mut` and using a value-returning transformation make the code
+GENUINELY CLEARER? If yes, apply it. If the `let mut` version is actually clearer
+(rare), document why and do not change it.
+
+**Common patterns and their FP replacements** (all from `docs/code-style/functional-transformations.md`):
+
+| Imperative pattern | Preferred replacement |
+|---|---|
+| `let mut v = Vec::new(); for x in xs { v.push(f(x)); }` | `xs.into_iter().map(f).collect()` |
+| `let mut v = Vec::new(); for x in xs { if p(&x) { v.push(x); } }` | `xs.into_iter().filter(p).collect()` |
+| `let mut acc = String::new(); for s in parts { acc.push_str(s); }` | `parts.join("")` or `parts.into_iter().collect()` |
+| `let mut result = None; for x in xs { if cond(x) { result = Some(x); break; } }` | `xs.into_iter().find(cond)` |
+| `let mut n = 0; for x in xs { if p(&x) { n += 1; } }` | `xs.iter().filter(p).count()` |
+| `let mut config = Config::default(); config.field = x; config.other = y;` | `Config { field: x, other: y, ..Config::default() }` or `Config::default().with_field(x).with_other(y)` |
+| `let mut s = base; if cond { s = transform(s); }` | `let s = if cond { transform(base) } else { base }` (shadowing) |
+
+**NOT ACCEPTABLE:**
+- Moving a function with `let mut` into a boundary module to silence the lint
+- Renaming the binding from `let mut result` to `let mut r` 
+- Wrapping `let mut` in a closure that gets immediately called
+
+**Acceptance criteria for each refactored function:**
+- The function body reads as a sequence of value transformations, not state mutations
+- A reader can understand what the function produces without tracking variable state
+- All existing tests still pass; add a new test if the function previously had none
+
+**Investigation groups** (check each group, fix genuine violations, document false positives):
+
+- [ ] **P5-parse-state** — vars like `buf`, `reader`, `text`, `content`, `inner_buf`,
+  `bare_content_xml`, `raw_text_parts`: If reading bytes from a `Read` trait — that is
+  boundary code and `let mut buf` is legitimate there. If operating on an already-read
+  `String`/`&str` — replace with `.lines()`, `.chars()`, `.split()`, `scan()`, `fold()`.
+
+- [ ] **P5-accumulators** — vars like `result`, `output`, `summary`, `elements`, `parts`,
+  `body`, `cells`, `collected`, `accumulated`, `content_fragments`: Almost always replaceable
+  with `map`/`filter_map`/`flat_map`/`fold`/`collect` pipelines or `[a, b, c].into_iter()
+  .filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n")` for multi-section assembly.
+
+- [ ] **P5-flags** — vars like `has_entries`, `found_root`, `in_tag`, `in_content`,
+  `no_issues_found`, `files_changed_present`: Replace scanning flags with `any()`, `all()`,
+  `find()`, `find_map()`, or `position()`. A flag that records "did we see X in the loop"
+  is always replaceable with `items.iter().any(|x| is_X(x))`.
+
+- [ ] **P5-builders** — vars like `config`, `handler`, `phase_ctx`, `opts`, `diff_opts`:
+  Use `with_*` consuming builder pattern or struct-update syntax. Check if the type already
+  has `with_*` methods; if not, add them per the pattern in
+  `docs/code-style/functional-transformations.md` ("The with_* method pattern").
+
+- [ ] **P5-git** — vars like `git_helpers`, `index`, `perms`, `files`, `diff_opts`:
+  Many of these are in `git_helpers/` which is being comprehensively refactored in Phase 8.
+  Coordinate with that phase — fix the architecture first, then the style follows.
+
+- [ ] **P5-misc** — remaining `let mut` vars: investigate each individually. Document any
+  that are false positives with a comment explaining why.
+
+---
+
+### Phase 6 — Imperative Loops in Domain Code (WARN: forbid_imperative_loops)
+
+**Important:** WARN-level heuristic. The lint fires on `for`/`while`/`loop` syntax but
+cannot prove the loop has side effects. Investigate each one.
+
+**How to find all current instances:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "loop is forbidden"
+```
+
+**The judgment question for each loop:**
+
+Ask: "What is this loop DOING?" Then match to one of these categories:
+
+| Loop purpose | Correct fix |
+|---|---|
+| Building a collection | `map`/`filter`/`filter_map`/`flat_map` + `collect()` |
+| Accumulating a value | `fold(init, f)` — with a PURE `f` that does NOT use `mut acc` |
+| Finding first match | `find()` or `find_map()` |
+| Checking a predicate over all elements | `any()` or `all()` |
+| Counting | `count()` or `filter(...).count()` |
+| Validating all elements (fail fast) | `try_for_each(validate)?` |
+| Retry policy | Move to reducer state machine — see Phase 4 |
+| Streaming I/O read loop | This belongs in a boundary module — move there if not already |
+| State machine step (advance until done) | `std::iter::successors(init, step)` or recursive pure helper |
+
+**NOT ACCEPTABLE:**
+- Moving a function with a `for` loop into a boundary module to silence the lint when the
+  function does no actual I/O (e.g., transforming an in-memory collection)
+- Converting `for item in items { result.push(f(item)) }` to `for item in items { result = result.with_f(item) }` (same loop, different mutation)
+
+**Acceptance criteria:**
+- The replacement is genuinely more readable (not just lint-satisfying)
+- The function's intent is immediately visible from the combinator name (`filter_map` says
+  "keep only the successful transformations"; `fold` says "combine all elements into one")
+
+- [ ] **P6-for**: For each `for` loop in domain code — identify its purpose, apply the
+  correct replacement from the table above.
+
+- [ ] **P6-loop**: Each bare `loop` in domain code is almost certainly retry policy (→ Phase 4
+  state machine) or a streaming I/O loop (→ boundary module). Classify each and fix correctly.
+
+- [ ] **P6-while**: Each `while` is either:
+  - `while condition { mutate }` → recursive step or `successors()`
+  - `while let Some(x) = iter.next()` → `for x in iter` or combinator
+  - `while bytes_read > 0` → streaming I/O (boundary)
+
+---
+
+### Phase 7 — Interior Mutability in Domain Code (WARN: forbid_interior_mutability)
+
+**Important:** WARN-level heuristic. Investigate before changing.
+
+**How to find:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "interior-mutability"
+```
+
+**For each instance, ask:** Why is shared mutable state needed here?
+
+- [ ] **P7-mutex** (~6 `Mutex` instances): If protecting shared data across threads in domain
+  code — the real question is why domain code involves threading. Threading is a runtime/
+  boundary concern. Re-model as explicit state flowing through the reducer cycle.
+  If `Mutex` wraps a resource needed for I/O (e.g., a connection pool), move it to the
+  boundary module that owns that resource.
+
+- [ ] **P7-lazylock** (~4 `LazyLock` instances): 
+  - Static data that is truly constant → `const` or `static` (no `LazyLock` needed)
+  - Compiled regex that is domain knowledge → `OnceLock<Regex>` in the domain module is
+    acceptable IF the regex is actually domain knowledge; WARN lint may fire but document it
+  - Runtime-derived singleton → inject as a parameter (Reader pattern)
+
+- [ ] **P7-cell** (~2 `Cell` instances): `Cell<T>` in domain code usually means a counter
+  or flag that is being threaded through callbacks. Replace by threading the value explicitly
+  through function return values.
+
+**Acceptance criteria:** For each fixed instance, the data that was behind interior mutability
+is now either (a) a parameter passed explicitly, (b) a `const`/`static` compile-time value,
+or (c) legitimately in a boundary module because it IS an I/O resource.
+
+---
+
+### Phase 8 — Fix Result Swallowing (DENY: forbid_result_swallowing)
+
+**This is DENY-level.** Silent result discarding is forbidden regardless of context.
+
+**How to find:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "result_swallowing\|let _\|\.ok()"
+```
+
+**Patterns and their fixes:**
+
+```rust
+// FORBIDDEN: let _ = fallible_operation();
+// FIX: propagate with ? or handle explicitly
+fallible_operation()?;
+// or:
+if let Err(e) = fallible_operation() {
+    // explicitly handle or log the error
+}
+
+// FORBIDDEN: fallible_operation().ok();
+// FIX: use the value or propagate
+let _result = fallible_operation()?;  // if result unneeded, still propagate failure
+
+// FORBIDDEN: if let Err(_) = result { }  (unit body, swallows error)
+// FIX: at minimum log the error as a diagnostic
+if let Err(e) = result {
+    return Err(MyError::from(e));  // or return it, or add to diagnostics
+}
+```
+
+- [ ] **P8-swallow**: For every silent result discard — decide: should this failure propagate
+  to the caller? Almost always yes. Add `?` propagation and a typed error variant.
+
+**Phase 8 done when:**
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | grep "swallow" | wc -l
+```
+Returns `0`.
+
+---
+
+### Phase 9 — git_helpers Architecture Refactor (Major Module)
+
+`git_helpers/config_state.rs` has ~85 `.unwrap()` calls. This module mixes pure git state
+interpretation with effectful git operations, using panic-driven control flow throughout.
+
+- [ ] **P9-audit**: Map every function in `ralph-workflow/src/git_helpers/` as either:
+  - Pure: parsing git status strings, building `CommandSpec` structs, interpreting diff
+    output, classifying commit messages — these accept `&str` or structured data
+  - Effectful: running `git` processes, reading `.git/` directory, writing refs
+
+  Record findings in `.sisyphus/notepads/fp-style-compliance/learnings.md`.
+
+- [ ] **P9-split**: Reorganise the module:
+  - `ralph-workflow/src/git_helpers/` — pure domain functions only (parsers, interpreters,
+    command spec builders). Zero `std::process`, zero `git2` imports.
+  - `ralph-workflow/src/git_helpers/boundary.rs` OR move to `ralph-workflow/src/io/git.rs`
+    — thin boundary adapter that runs commands via `&dyn ProcessExecutor` and `git2` (in
+    `ffi/` if using git2 directly).
+
+- [ ] **P9-errors**: Create a `GitError` enum:
   ```rust
   #[derive(Debug, Clone, PartialEq, Eq)]
-  pub enum ConfigParseError { MissingField(&'static str), InvalidValue(String) }
+  pub enum GitError {
+      NotARepository,
+      NoCommits,
+      ParseFailed { context: String },
+      ExecutionFailed(String),
+  }
   ```
+  Replace every `.unwrap()` in the pure domain functions with `?` returning `GitError`.
+  Replace every `.unwrap()` in boundary functions with `map_err(GitError::from)` or
+  explicit match arms.
 
-- [ ] **T9-diagnostics-as-data**: Identify domain functions that currently call `println!`,
-  `eprintln!`, `log::warn!`, or similar side effects. Refactor to return
-  `WithDiagnostics<T>` or `Logged<T>` (see `errors-and-diagnostics.md`). The BOUNDARY
-  emits diagnostics; domain code returns them as values. This enables pure testing without
-  output capture.
-
+- [ ] **P9-tests**: Write unit tests for EVERY pure git_helpers function BEFORE refactoring
+  (red-first TDD). Pure git parsers accept `&str` input — no subprocess, no git repository
+  needed:
   ```rust
-  // WRONG: domain printing side effects
-  fn normalize_config(raw: RawConfig) -> Config {
-      if raw.timeout.is_none() { eprintln!("warn: using default"); }
-      Config { timeout: raw.timeout.unwrap_or(30) }
-  }
-  // RIGHT: diagnostics as data
-  fn normalize_config(raw: RawConfig) -> WithDiagnostics<Config> {
-      let diags = [raw.timeout.is_none().then_some(ConfigDiag::UsedDefaultTimeout)]
-          .into_iter().flatten().collect();
-      WithDiagnostics { value: Config { timeout: raw.timeout.unwrap_or(30) }, diagnostics: diags }
+  #[test]
+  fn test_parse_git_status_modified() {
+      let output = " M ralph-workflow/src/main.rs\n";
+      let entries = parse_status_output(output).unwrap();
+      assert_eq!(entries.len(), 1);
+      assert_eq!(entries[0].state, FileState::Modified);
   }
   ```
 
----
-
-### Phase 10 — Type-Driven Design at Edges (Parse, Don't Validate)
-
-Apply "parse, don't validate" at every boundary intake. Once raw input is parsed to a
-stronger type, downstream domain code never re-checks the same invariant.
-
-- [ ] **T10-newtypes**: Audit boundary intake functions for raw `String`, `u32`, `Vec<T>`
-  parameters where the type carries implicit invariants. Introduce newtypes:
-  - `NonEmptyString(String)` — strings that must be non-empty
-  - `BoundedRetryCount(u32)` — retry counts within a valid range
-  - `NonEmptyTargets { first: String, rest: Vec<String> }` — collections needing ≥1 element
-  Use smart constructors with `TryFrom` or a named parse function that returns `Result`.
-
-- [ ] **T10-parse-at-edge**: For every boundary function that performs field-presence checks
-  or domain invariant enforcement inline, extract a `parse_*` function that produces a
-  stronger domain type. The boundary calls `parse_*` once; downstream code receives the
-  proven type.
-
-- [ ] **T10-raw-types-inward**: Identify boundary functions that return or pass inward
-  capability-native types: `std::process::Output`, `git2::Oid`, `reqwest::Response`, raw
-  byte buffers. Translate these to domain types at the boundary edge before they cross
-  inward. (This is also enforced by `forbid_raw_effect_types_in_public_apis` lint.)
+**Phase 9 done when:** Every function in `ralph-workflow/src/git_helpers/` that was
+previously pure-but-panicky now returns `Result<T, GitError>` and has a passing unit test.
 
 ---
 
-### Phase 11 — Test Coverage for All Refactored Code (TDD)
+### Phase 10 — Error and Diagnostics Architecture (Except + Writer Monads)
 
-Per the testing guide, every refactored module must have test coverage. Write red-first.
-
-- [ ] **T11-tdd-rule**: For every function touched in Phases 2–10: write a failing test
-  FIRST, then make it pass. No exception. If a function is pure after refactoring, the
-  test uses plain value inputs — no mocks, no fakes, no I/O.
-
-- [ ] **T11-git-helpers**: Write unit tests for the pure `git_helpers/` domain functions
-  after the Phase 8 split. Each pure parser (status output, diff format, commit message
-  classification) tests on string inputs — no subprocess required.
-
-- [ ] **T11-boundary-seams**: For each boundary seam created or restructured in Phase 2–3,
-  write an integration test verifying: the right capability method is called; capability
-  errors map to the right typed boundary error; the typed result or event is correct.
-  Use `MemoryWorkspace` + `MockProcessExecutor`.
-
-- [ ] **T11-error-types**: For each new typed error enum from Phase 9, write a test for
-  every variant: the correct variant is produced from the corresponding invalid input.
-
-- [ ] **T11-diagnostics**: For each `WithDiagnostics<T>` function from Phase 9, write:
-  (a) test that correct value is produced, (b) test that diagnostics list is correct when
-  defaults/clamping occur, (c) test that diagnostics list is empty when input is nominal.
-
-- [ ] **T11-with-star-builders**: For each `with_*` consuming builder pattern introduced
-  in Phase 5, write tests verifying: correct default state, each field set independently,
-  chained builds produce correct composite state.
-
-- [ ] **T11-no-serial**: Verify that all new tests pass in parallel mode (no `#[serial]`
-  in unit or integration tests). Use env-injection pattern for any environment access.
-
----
-
-### Phase 12 — Add Property-Based Testing Infrastructure
-
-- [ ] **T12-proptest-dep**: Add `proptest = "1"` to `[dev-dependencies]` in
-  `ralph-workflow/Cargo.toml`. Add a `[profile.test]` entry in workspace `Cargo.toml` to
-  cap proptest case count for CI: `proptest.cases = 256`.
-
-- [ ] **T12-parser-props**: Add property tests for the core XML parsing pipeline in
-  `ralph-workflow/src/files/llm_output_extraction/`. Verify: (a) parsing any valid XML
-  snippet never panics; (b) a round-trip `serialize → parse` produces the original structure;
-  (c) the parser rejects known-invalid inputs with the correct error variant.
-
-- [ ] **T12-reducer-props**: Add property tests for key reducers. Verify:
-  (a) `reduce(state, event)` always returns a valid state (no panic);
-  (b) applying the same event twice on idempotent variants produces the same state;
-  (c) arbitrary event sequences from the initial state produce states satisfying
-  all documented state invariants (e.g., counters never go negative).
-
-- [ ] **T12-builder-props**: Add property tests for `with_*` builder chains:
-  applying an arbitrary sequence of valid `with_*` calls always produces a consistent
-  struct (no panic, all fields coherent).
-
----
-
-### Phase 13 — Add Code Coverage Instrumentation
-
-- [ ] **T13-llvm-cov**: Add `cargo-llvm-cov` to the project's dev tooling. Document the
-  installation step (`cargo install cargo-llvm-cov`) in `docs/agents/verification.md`.
-  Add a `[workspace.metadata.coverage]` section to `Cargo.toml` specifying excluded paths
-  (target/, lints/, test-helpers/).
-
-- [ ] **T13-xtask-coverage**: Add a `cargo xtask coverage` subcommand that runs:
+- [ ] **P10-unwrap-domain**: Audit all `.unwrap()` in non-test, non-boundary domain code.
+  
+  **Find:** 
   ```bash
-  cargo llvm-cov --all-features --lib -p ralph-workflow --html --output-dir target/coverage/html
-  cargo llvm-cov report --lib -p ralph-workflow  # line coverage summary to stdout
+  rg '\.unwrap\(\)' ralph-workflow/src/ --glob '*.rs' \
+    --glob '!*test*' --glob '!*/io/*' --glob '!*/runtime/*' \
+    --glob '!*/boundary/*' --glob '!*/executor/*'
   ```
-  Coverage output is a diagnostic signal — use it to find untested paths and ask whether
-  the untested code matters. Do not set a hard-fail threshold; a hard threshold incentivises
-  writing tests that exist solely to bump a number rather than to verify behaviour.
+  
+  For each: replace with `?`, `ok_or_else(|| MyError::Specific)`, or `unwrap_or_else`.
+  
+  **Acceptance criteria:** Every `.unwrap()` in domain code either:
+  - Is replaced by `?` with a typed error type, OR
+  - Has a code comment explaining the invariant that guarantees it cannot fail, e.g.:
+    `// SAFETY: split_once is called only when line.contains(':'), so this always succeeds`
 
-- [ ] **T13-docs**: Document the coverage workflow in `docs/agents/verification.md`:
-  add the `cargo xtask coverage` command reference and a note that coverage is an
-  investigative tool — low coverage on a module is a prompt to ask "do we understand
-  the failure modes here?", not a build gate.
+- [ ] **P10-panic-domain**: Audit `panic!` in non-boundary, non-test, non-xtask domain code.
+  ```bash
+  rg 'panic!' ralph-workflow/src/ --glob '*.rs' \
+    --glob '!*test*' --glob '!*/io/*' --glob '!*/runtime/*' --glob '!*/boundary/*'
+  ```
+  Replace with `Result` propagation. `panic!` belongs only in test assertions, documented
+  compile-time invariants, and entry-point crash-on-unrecoverable-error.
+
+- [ ] **P10-string-errors**: Audit domain functions returning `String` or `Box<dyn Error>` as
+  the error type. Replace with named error enums:
+  ```rust
+  // WRONG: fn parse(s: &str) -> Result<Config, String>
+  // RIGHT:
+  #[derive(Debug, Clone, PartialEq, Eq)]
+  pub enum ConfigParseError { MissingField(&'static str), InvalidValue { field: &'static str, got: String } }
+  pub fn parse(s: &str) -> Result<Config, ConfigParseError>
+  ```
+
+- [ ] **P10-diagnostics-as-data**: Identify domain functions that call `println!`, `eprintln!`,
+  `log::warn!`, `tracing::warn!`, or similar with domain-meaningful content (normalisation
+  decisions, defaults applied, values clamped). Refactor to return `WithDiagnostics<T>`:
+  ```rust
+  #[derive(Debug, Clone, PartialEq, Eq)]
+  pub enum ConfigDiagnostic { UsedDefaultTimeout, ClampedRetries(u32) }
+  
+  pub struct WithDiagnostics<T> { pub value: T, pub diagnostics: Vec<ConfigDiagnostic> }
+  
+  // domain function — returns diagnostics as data
+  pub fn normalise_config(raw: RawConfig) -> WithDiagnostics<Config> { ... }
+  
+  // boundary — emits them
+  pub fn load_config(ws: &dyn Workspace, logger: &dyn Logger) -> Result<Config, LoadError> {
+      let raw = ws.read("config").map_err(LoadError::Io)?;
+      let result = normalise_config(parse(&raw).map_err(LoadError::Parse)?);
+      result.diagnostics.iter().for_each(|d| logger.emit(d));
+      Ok(result.value)
+  }
+  ```
+  
+  **Acceptance criteria:** The `normalise_config` function has a unit test that checks both
+  the `.value` and the `.diagnostics` list — no output capture, no logger mock needed.
+
+---
+
+### Phase 11 — Type-Driven Design at Edges (Parse, Don't Validate)
+
+- [ ] **P11-newtypes**: Audit boundary intake functions for raw types that carry implicit
+  invariants (non-empty string, bounded integer, non-empty collection). Create newtypes:
+  ```rust
+  #[derive(Debug, Clone, PartialEq, Eq)]
+  pub struct NonEmptyString(String);
+  impl NonEmptyString {
+      pub fn new(s: impl Into<String>) -> Result<Self, ParseError> {
+          let s = s.into();
+          (!s.trim().is_empty()).then_some(Self(s)).ok_or(ParseError::Empty)
+      }
+      pub fn as_str(&self) -> &str { &self.0 }
+  }
+  ```
+  Once `NonEmptyString` is constructed, downstream code never re-checks emptiness.
+
+- [ ] **P11-parse-at-edge**: For every boundary function with inline presence checks or
+  validation of individual fields, extract a `parse_*` domain function:
+  ```rust
+  // WRONG (validation scattered in boundary):
+  pub fn load(ws: &dyn Workspace) -> Result<Config, Error> {
+      let raw = ws.read("cfg")?;
+      if raw.is_empty() { return Err(Error::Empty); }  // ← validation in boundary
+      let cfg = Config { content: raw };
+      if cfg.content.len() > 1000 { return Err(Error::TooLong); }  // ← more validation
+      Ok(cfg)
+  }
+  
+  // CORRECT (parsing at the edge, boundary just wires):
+  pub fn parse_config(raw: &str) -> Result<Config, ConfigParseError> {
+      // all validation here, with typed error variants
+  }
+  pub fn load(ws: &dyn Workspace) -> Result<Config, LoadError> {
+      let raw = ws.read("cfg").map_err(LoadError::Io)?;
+      parse_config(&raw).map_err(LoadError::Parse)
+  }
+  ```
+
+- [ ] **P11-raw-types**: For boundary functions that return or pass inward raw capability
+  types (`std::process::Output`, `git2::Oid`, raw byte buffers, `http::Response`), translate
+  to domain types at the boundary before they cross inward. The WARN lint
+  `forbid_raw_effect_types_in_public_apis` flags these — investigate each.
+
+---
+
+### Phase 12 — Test Coverage for All Refactored Code
+
+**Rule:** For every function touched in Phases 2–11, at least one test must exist that was
+written BEFORE the refactor (red-first). No exceptions.
+
+- [ ] **P12-tdd-pure**: For every new or extracted pure domain function — write a red test
+  first (calling the function with plain values and asserting on the result), then implement.
+  Pure function tests need no setup:
+  ```rust
+  #[test]
+  fn test_parse_config_rejects_empty_field() {
+      let result = parse_config("timeout=\n");
+      assert_eq!(result, Err(ConfigParseError::MissingField("timeout")));
+  }
+  ```
+
+- [ ] **P12-boundary-seams**: For every new or restructured boundary function — write an
+  integration test using `MemoryWorkspace` + `MockProcessExecutor` that verifies:
+  1. The right capability method is called
+  2. Capability errors produce the correct typed boundary error
+  3. The correct typed result/event is returned on success
+
+- [ ] **P12-error-variants**: For every new error enum variant — write a test that asserts
+  the correct variant is produced from the corresponding invalid input.
+
+- [ ] **P12-diagnostics**: For every `WithDiagnostics<T>` function — write:
+  - Test that correct `.value` is produced from nominal input
+  - Test that correct `.diagnostics` list is produced when defaults/clamping occur
+  - Test that `.diagnostics` is empty for fully-valid input
+
+- [ ] **P12-no-serial**: All tests in `ralph-workflow/src/` and `tests/integration_tests/`
+  must pass with no `#[serial]`. Use env-injection and `MemoryWorkspace`. If you find
+  yourself wanting `#[serial]`, that is a signal to refactor the production code.
+
+---
+
+### Phase 13 — Add Property-Based Testing
+
+- [ ] **P13-proptest-dep**: Add `proptest = "1"` to `[dev-dependencies]` in
+  `ralph-workflow/Cargo.toml`. Verify `cargo test -p ralph-workflow --lib` still passes.
+
+- [ ] **P13-parsers**: Add property tests for parser functions — the ones extracted in
+  Phases 2–9. A parser should never panic on arbitrary input:
+  ```rust
+  use proptest::prelude::*;
+  proptest! {
+      #[test]
+      fn parse_git_status_never_panics(s in ".*") {
+          // Must not panic on any string input
+          let _ = parse_git_status_output(&s);
+      }
+      #[test]
+      fn parse_config_rejects_empty(s in "\\s*") {
+          assert!(parse_config(s.trim()).is_err());
+      }
+  }
+  ```
+
+- [ ] **P13-reducers**: Add property tests for key reducers — verify state invariants hold
+  after any event:
+  ```rust
+  proptest! {
+      #[test]
+      fn reducer_retries_never_go_negative(
+          initial_retries in 0u32..=10u32,
+          event_sequence in prop::collection::vec(arb_event(), 0..20),
+      ) {
+          let state = PipelineState { retries_remaining: initial_retries, ..Default::default() };
+          let final_state = event_sequence.into_iter().fold(state, reduce);
+          assert!(final_state.retries_remaining <= initial_retries);
+      }
+  }
+  ```
+
+---
+
+### Phase 14 — Add Code Coverage Instrumentation
+
+- [ ] **P14-llvm-cov**: Document `cargo install cargo-llvm-cov --locked` in
+  `docs/agents/verification.md` as a dev-tool setup step. Do not add it as a required
+  CI dependency — it is an investigation tool.
+
+- [ ] **P14-xtask-coverage**: Add `cargo xtask coverage` subcommand:
+  ```bash
+  cargo llvm-cov --all-features --lib -p ralph-workflow \
+    --html --output-dir target/coverage/html
+  cargo llvm-cov report --lib -p ralph-workflow
+  ```
+  Coverage is a diagnostic signal — not a build gate. The command exits 0 always.
+
+- [ ] **P14-docs**: Add to `docs/agents/verification.md`: "Run `cargo xtask coverage` after
+  touching any module refactored in the fp-style-compliance plan. Low coverage on a module
+  is a signal to ask 'do we understand the failure modes here?' — not a gate to block PR."
 
 ---
 
 ## Final Verification Wave
 
-These are APPROVAL GATES — each must pass before the plan is considered complete.
-The gates are questions about real quality, not metrics to hit.
+These are APPROVAL GATES. Each is answered by investigation and judgment, not by a metric.
 
-- [ ] **F1 — Architecture is genuinely correct (primary gate)**
+### F1 — Architecture is Genuinely Correct (Primary Gate, oracle agent)
 
-  An oracle agent reads the boundary modules restructured in Phase 2 and answers
-  these questions from first principles — NOT by checking lint output:
+The oracle reads the restructured boundary modules and every extracted domain module.
+For EACH boundary module in `boundary/`, `claude/`, `streaming_state/`, `codex/`,
+`opencode/`, `printer/`, `runtime/`:
 
-  - Does each boundary function follow the IMPURE→PURE→IMPURE shape? Can you describe
-    every boundary function as "gather X from capability, call pure_helper(X), perform effect"?
-    If a boundary function needs more than a sentence to describe, it is doing too much.
-  - Is domain code genuinely pure? Do domain functions accept only plain values, return only
-    plain values, and contain zero capability imports? Could you unit-test every domain
-    function with a single `assert_eq!(f(input), expected_output)` and no setup?
-  - Are errors modelled as values? Are all recoverable failures `Result<T, E>` with typed
-    error enums? Is `unwrap()`/`panic!` absent from domain code for any reason other than
-    a documented, unreachable compile-time invariant?
-  - Are diagnostics returned as data? Do pure functions that normalise or default inputs
-    return `WithDiagnostics<T>` instead of printing? Does only the boundary emit?
-  - Is retry policy in the state machine, not in boundary loops? Is there any retry logic
-    that lives inside a handler/boundary rather than being driven by reducer + orchestrator?
+**Questions the oracle must answer YES to:**
+- [ ] Is this boundary file flat? (No subdirectories, one to a few thin functions)
+- [ ] Can every boundary function be described in one sentence as "gather X, call pure(X), do effect"?
+- [ ] Does no boundary function contain a retry loop? (retry → reducer)
+- [ ] Does no boundary function make domain-policy decisions inline? (policy → orchestrator)
 
-  VERDICT: APPROVE if the architectural principles are genuinely present.
-  REJECT with specific file:line citations if any principle is violated — regardless of
-  whether a lint fires on it.
+For EACH domain module extracted in Phases 2–9:
+- [ ] Does the module contain zero imports from `io/`, `runtime/`, `executor/`, `boundary/`,
+  or any agent adapter directory?
+- [ ] Can every public function in the module be unit-tested with `f(plain_value)` and no setup?
+- [ ] Are all recoverable failures `Result<T, E>` with a typed error enum?
+- [ ] Are diagnostics returned as `WithDiagnostics<T>` (not printed directly)?
 
-- [ ] **F2 — Build and tests are clean**
+**VERDICT:** APPROVE if all questions answered YES.
+REJECT with specific file:function citations if any answer is NO.
 
-  `cargo xtask verify` passes all 7 lanes with no ERROR/WARNING diagnostics.
-  `cargo test -p ralph-workflow --lib --all-features` and
-  `cargo test -p ralph-workflow-tests --test integration_tests` both pass.
-  No `#[serial]` in unit or integration tests. All tests are deterministic.
+### F2 — Build and tests pass
 
-- [ ] **F3 — Tests verify behaviour, not structure**
+```bash
+cargo xtask verify  # must pass all 7 lanes, no ERROR/WARNING
+cargo test -p ralph-workflow --lib --all-features
+cargo test -p ralph-workflow-tests --test integration_tests
+```
 
-  An oracle agent reads a sample of 10 newly written tests and answers:
-  - Does each test assert on an observable outcome (return value, event emitted, state
-    transition) rather than on internal implementation details?
-  - Are the test names descriptions of behaviour ("rejects_empty_agent_chain") not
-    implementation ("calls_push_on_buffer")?
-  - Do pure-function tests require zero mocking, zero I/O setup, zero fakes?
-  - Do boundary tests verify the wiring contract (right capability called, errors mapped
-    correctly, typed result returned) without asserting on internal call counts?
+No `#[serial]` in unit or integration tests. All tests deterministic.
 
-  VERDICT: APPROVE if tests are genuinely behaviour-oriented.
-  REJECT with specific test names that violate this if found.
+### F3 — Tests verify behaviour (oracle agent, sample of 10 new tests)
 
-- [ ] **F4 — Dylint as a final diagnostic scan (informational, not a gate)**
+- [ ] Each test asserts on an observable outcome (return value, event emitted, typed error variant),
+  NOT on internal implementation details (call counts, internal variable values)
+- [ ] Pure-function tests use zero mocking, zero I/O setup, zero fakes
+- [ ] Boundary tests verify the contract (capability called correctly, errors mapped, typed result
+  returned) — not internal structure
+- [ ] Test names are `test_<behaviour_under_test>` not `test_<implementation_detail>`
 
-  Run `cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet` and review
-  the output. For each remaining error:
-  - If it points to a genuine architectural problem missed by the plan → create a follow-up
-    task, fix it, and re-run F1.
-  - If it is a lint false-positive on genuinely correct code → document it with a code
-    comment explaining why the code is correct, and note it as a known lint limitation.
+**VERDICT:** APPROVE if all 10 sampled tests meet these criteria.
+REJECT with specific test names and explanations if not.
 
-  This gate has no "must be zero" requirement. Its purpose is to catch things the
-  architecture review may have missed — using the lints as a second pair of eyes, not
-  as a judge.
+### F4 — Dylint as diagnostic scan (informational, not a gate)
+
+```bash
+cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet 2>&1 \
+  | tee /tmp/dylint-final.txt
+wc -l /tmp/dylint-final.txt
+```
+
+For every remaining line:
+- Investigate: is this a genuine architectural problem or a lint false-positive?
+- Genuine problem → create a follow-up task, fix it, come back here
+- Confirmed false-positive → add a code comment at the offending site explaining
+  why the code is correct (do NOT use `#[expect(...)]` without explanation)
+
+This gate has no required error count. Its purpose is to prevent missing genuine
+violations that the architecture review did not catch.
+
+### F5 — Integration Test Behavioral Equivalence Against Baseline `ceb66980`
+
+**Done only once, at the very end, after all other gates pass.**
+
+The commit `ceb66980` is the last commit before this refactoring project began. The
+integration tests are the behavioral specification. Every scenario that passed on the
+baseline must still pass — unless we discovered it was testing a bug rather than correct
+behavior.
+
+**Step 1 — Run integration tests on HEAD and capture results:**
+```bash
+cargo test -p ralph-workflow-tests --test integration_tests 2>&1 \
+  | tee /tmp/integration-head.txt
+```
+
+**Step 2 — Check out baseline in a separate worktree and run the same suite:**
+```bash
+git worktree add /tmp/baseline-check ceb66980
+cd /tmp/baseline-check
+cargo test -p ralph-workflow-tests --test integration_tests 2>&1 \
+  | tee /tmp/integration-baseline.txt
+cd -
+git worktree remove /tmp/baseline-check
+```
+
+**Step 3 — Compare which tests passed on baseline but fail on HEAD:**
+```bash
+# Extract passing test names from each run
+grep "^test .* ok$" /tmp/integration-baseline.txt | sort > /tmp/pass-baseline.txt
+grep "^test .* ok$" /tmp/integration-head.txt    | sort > /tmp/pass-head.txt
+
+# Tests that passed on baseline but are missing or failing on HEAD
+comm -23 /tmp/pass-baseline.txt /tmp/pass-head.txt
+```
+
+**Step 4 — Triage every discrepancy:**
+
+For each test that passed on `ceb66980` but does not pass on HEAD:
+
+- **Is this a behavioral regression introduced by the refactor?**
+  The refactored code produces a different result from the old code on the same input.
+  → Fix the regression. The test should pass on HEAD.
+
+- **Was the baseline test itself testing a bug in the old imperative code?**
+  The old code produced an incorrect result (wrong output, swallowed error, wrong state
+  transition) and the test asserted on that incorrect result. The refactored code now
+  produces the correct result, which breaks the old assertion.
+  → Update the test to assert on the correct behavior. Document the bug that was fixed
+  with a comment in the test: `// Previously the imperative version incorrectly <did X>.
+  // Refactored version correctly <does Y> — see ceb66980 for the old behavior.`
+
+- **Is the test now redundant because it was testing an implementation detail that no
+  longer exists after restructuring?**
+  → Replace it with a test against the new observable seam. The behavior being tested
+  must still be covered — just through the new public API.
+
+**NOT ACCEPTABLE:**
+- Deleting tests from the baseline that fail on HEAD without replacing them with
+  equivalent coverage
+- Marking tests as `#[ignore]` to make the comparison pass
+- Changing tests to assert on the refactored code's actual (wrong) output instead of
+  investigating the discrepancy
+
+**VERDICT:** APPROVE when every test that passed on `ceb66980` either:
+(a) passes on HEAD with the same behavior, OR
+(b) is replaced by a test that asserts the correct behavior (with the baseline bug documented)
+
+REJECT if any baseline-passing test is simply gone or silently broken on HEAD.

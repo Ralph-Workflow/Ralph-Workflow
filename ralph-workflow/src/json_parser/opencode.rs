@@ -7,7 +7,6 @@ pub mod io;
 use crate::common::truncate_text;
 use crate::config::Verbosity;
 use crate::logger::{Colors, CHECK, CROSS};
-use std::fmt::Write as _;
 use std::io::{BufRead, Write};
 use std::path::Path;
 

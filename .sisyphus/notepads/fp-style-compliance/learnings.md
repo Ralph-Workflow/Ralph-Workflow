@@ -38,3 +38,24 @@ quality; lints are a compass for finding violations worth investigating.
 ### Retry belongs in the state machine, not boundary loops
 State→Orchestrator decides retry → Effect schedules → Handler executes ONE attempt →
 Event reports outcome → Reducer updates retry count in state → Orchestrator decides again
+
+## 2026-03-19 — Baseline and behavioral equivalence
+
+### Baseline commit: ceb66980
+Last commit before the FP refactoring project began. Used ONLY in F5 (Final Verification Wave)
+for integration test behavioral equivalence — not during individual phases.
+
+The baseline check compares which integration tests passed on ceb66980 vs HEAD. For every
+discrepancy, triage as: regression (fix it), baseline-was-testing-a-bug (update test + document),
+or implementation-detail-test (replace with equivalent coverage through new seam).
+
+### Commits since baseline (context for what has already been done)
+Many refactors have already happened since ceb66980 — see `git log ceb66980..HEAD --oneline`.
+Some modules may already be partially refactored. Always read the current state of a file
+before making changes.
+
+### Integration tests are the behavioral specification
+The integration test suite (`cargo test -p ralph-workflow-tests --test integration_tests`)
+is the authoritative source of truth for what the system is supposed to DO. If a refactor
+breaks an integration test, it is either a regression or evidence that the old test was
+wrong. Both require investigation — neither justifies deleting the test.

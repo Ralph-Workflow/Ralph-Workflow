@@ -223,16 +223,17 @@ pub fn count_extensions_with_workspace(
         };
 
         let entry_data: Vec<_> = entries
+            .into_iter()
             .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let name = entry.file_name().to_string_lossy().to_lowercase();
+                let name_os = entry.file_name()?;
+                let name = name_os.to_string_lossy().to_lowercase();
                 if !should_process_entry(&name) {
                     return None;
                 }
                 let path = entry.path();
                 let is_dir = path.is_dir();
                 let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase());
-                Some((path, is_dir, ext))
+                Some((path.to_path_buf(), is_dir, ext))
             })
             .collect();
 
@@ -274,9 +275,10 @@ pub fn detect_tests_with_workspace(
         };
 
         let file_names: Vec<_> = entries
+            .into_iter()
             .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let name = entry.file_name().to_string_lossy().to_lowercase();
+                let name_os = entry.file_name()?;
+                let name = name_os.to_string_lossy().to_lowercase();
                 Some((entry.path().to_path_buf(), name))
             })
             .collect();

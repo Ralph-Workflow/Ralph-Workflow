@@ -13,7 +13,7 @@ fn write_prompt(logger: &Logger, prompt_text: &str) {
     let colors = crate::logger::Colors::new();
     let _ = write_stdout(&format!("{}{}", colors.yellow(), prompt));
     let _ = flush_stdout();
-    let _ = write_stdout(colors.reset().as_str());
+    let _ = write_stdout(colors.reset());
 }
 
 pub fn prompt_yes_no(logger: &Logger, prompt_text: &str) -> bool {

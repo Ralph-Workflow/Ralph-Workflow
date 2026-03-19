@@ -120,12 +120,13 @@ where
         duration_ms,
     );
 
-    runtime.trace.push(build_trace_entry(
-        runtime.events_processed,
-        &new_state,
-        &effect_str,
-        &event_str,
-    ));
+    runtime.trace =
+        std::mem::replace(&mut runtime.trace, EventTraceBuffer::new(1)).append(build_trace_entry(
+            runtime.events_processed,
+            &new_state,
+            &effect_str,
+            &event_str,
+        ));
     handler.update_state(new_state.clone());
     runtime.state = new_state;
     runtime.events_processed = runtime.events_processed.saturating_add(1);
@@ -200,12 +201,9 @@ fn process_primary_event<'ctx, H>(
         duration_ms,
     );
 
-    runtime.trace.push(build_trace_entry(
-        runtime.events_processed,
-        &new_state,
-        effect_str,
-        &event_str,
-    ));
+    runtime.trace = std::mem::replace(&mut runtime.trace, EventTraceBuffer::new(1)).append(
+        build_trace_entry(runtime.events_processed, &new_state, effect_str, &event_str),
+    );
     handler.update_state(new_state.clone());
     runtime.state = new_state;
     runtime.events_processed = runtime.events_processed.saturating_add(1);
@@ -239,7 +237,8 @@ fn process_additional_events<'ctx, H>(
         .unwrap_or_else(|| runtime.state.clone());
 
     trace_data.into_iter().for_each(|(entry, state)| {
-        runtime.trace.push(entry);
+        runtime.trace =
+            std::mem::replace(&mut runtime.trace, EventTraceBuffer::new(1)).append(entry);
         handler.update_state(state);
     });
 
