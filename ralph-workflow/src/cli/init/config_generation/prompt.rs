@@ -3,10 +3,10 @@
 //! Handles creating PROMPT.md from Work Guide templates and smart `--init` logic
 //! that infers user intent based on existing files.
 
-use std::io::Write;
 use crate::config::ConfigEnvironment;
 use crate::logger::Colors;
 use crate::templates::{get_template, list_templates};
+use std::io::Write;
 use std::path::Path;
 
 use super::global::handle_init_global_with;
@@ -63,30 +63,43 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
         // Show similar templates
         let similar = find_similar_templates(template_name);
         if !similar.is_empty() {
-            let _ = writeln!(std::io::stdout(), "{}Did you mean:?{}", colors.yellow(), colors.reset());
-            for (name, score) in similar {
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Did you mean:?{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            similar.into_iter().for_each(|(name, score)| {
                 let _ = writeln!(std::io::stdout(), "  - {} ({}% match)", name, score);
-            }
+            });
         }
         return Ok(false);
     };
 
     // Check if file already exists
     if env.file_exists(prompt_path) && !force {
-        let response = prompt_overwrite_confirmation(prompt_path.to_string_lossy().as_ref(), colors)?;
+        let response =
+            prompt_overwrite_confirmation(prompt_path.to_string_lossy().as_ref(), colors)?;
         if !response {
-            let _ = writeln!(std::io::stdout(), "{}Aborted.{}",
-                colors.yellow(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Aborted.{}",
+                colors.yellow(),
+                colors.reset()
+            );
             return Ok(false);
         }
     }
 
     // Write the template content to the file
     env.write_file(prompt_path, template.content().as_bytes())?;
-    let _ = writeln!(std::io::stdout(), "{}Created PROMPT.md from '{}' work guide{}",
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Created PROMPT.md from '{}' work guide{}",
         colors.green(),
         template.name(),
-        colors.reset());
+        colors.reset()
+    );
 
     Ok(true)
 }
@@ -142,7 +155,12 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
 
         // Both exist - offer to reinitialize
         (InitInferredAction::BothExists, None) => {
-            let _ = writeln!(std::io::stdout(), "{}Found existing config and PROMPT.md{}", colors.yellow(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing config and PROMPT.md{}",
+                colors.yellow(),
+                colors.reset()
+            );
             let response = prompt_overwrite_confirmation("Reinitialize both?", colors)?;
             if response {
                 handle_init_global_with(config_path, true, colors, env)?;
@@ -154,23 +172,43 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
 
         // Only config exists - offer to create PROMPT.md
         (InitInferredAction::ConfigOnly, None) => {
-            let _ = writeln!(std::io::stdout(), "{}Found existing config but no PROMPT.md{}", colors.yellow(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing config but no PROMPT.md{}",
+                colors.yellow(),
+                colors.reset()
+            );
             let response = prompt_overwrite_confirmation("Create PROMPT.md?", colors)?;
             if response {
                 // Show available templates
-                let _ = writeln!(std::io::stdout(), "\n{}Available Work Guides:{}", colors.blue(), colors.reset());
+                let _ = writeln!(
+                    std::io::stdout(),
+                    "\n{}Available Work Guides:{}",
+                    colors.blue(),
+                    colors.reset()
+                );
                 list_templates(colors);
 
                 if can_prompt_user() {
                     if let Some(template_name) = prompt_for_template(colors) {
-                        return create_prompt_from_template(&template_name, prompt_path, false, colors, env);
+                        return create_prompt_from_template(
+                            &template_name,
+                            prompt_path,
+                            false,
+                            colors,
+                            env,
+                        );
                     }
                 } else {
                     // Non-interactive: create minimal PROMPT.md
                     let content = create_minimal_prompt_md();
                     env.write_file(prompt_path, content.as_bytes())?;
-                    let _ = writeln!(std::io::stdout(), "{}Created minimal PROMPT.md (non-interactive mode){}",
-                        colors.green(), colors.reset());
+                    let _ = writeln!(
+                        std::io::stdout(),
+                        "{}Created minimal PROMPT.md (non-interactive mode){}",
+                        colors.green(),
+                        colors.reset()
+                    );
                 }
             }
             Ok(false)
@@ -178,7 +216,12 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
 
         // Only PROMPT.md exists - offer to create config
         (InitInferredAction::PromptOnly, None) => {
-            let _ = writeln!(std::io::stdout(), "{}Found existing PROMPT.md but no config{}", colors.yellow(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Found existing PROMPT.md but no config{}",
+                colors.yellow(),
+                colors.reset()
+            );
             let response = prompt_overwrite_confirmation("Create config?", colors)?;
             if response {
                 handle_init_global_with(config_path, false, colors, env)?;
@@ -190,7 +233,12 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
         // Neither exists - full init
         (InitInferredAction::NeitherExists, None) => {
             // Show available templates
-            let _ = writeln!(std::io::stdout(), "\n{}Available Work Guides:{}", colors.blue(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "\n{}Available Work Guides:{}",
+                colors.blue(),
+                colors.reset()
+            );
             list_templates(colors);
             let _ = writeln!(std::io::stdout());
 
@@ -201,7 +249,13 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
             if can_prompt_user() {
                 // Interactive mode: prompt for template selection
                 if let Some(template_name) = prompt_for_template(colors) {
-                    match create_prompt_from_template(&template_name, prompt_path, false, colors, env) {
+                    match create_prompt_from_template(
+                        &template_name,
+                        prompt_path,
+                        false,
+                        colors,
+                        env,
+                    ) {
                         Ok(true) => return Ok(true),
                         Ok(false) => {
                             // User declined or invalid template, fall through to show usage
@@ -223,8 +277,12 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
             // Non-interactive or user declined: create minimal PROMPT.md and show help
             let content = create_minimal_prompt_md();
             env.write_file(prompt_path, content.as_bytes())?;
-            let _ = writeln!(std::io::stdout(), "{}Created minimal PROMPT.md (non-interactive mode){}",
-                colors.green(), colors.reset());
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Created minimal PROMPT.md (non-interactive mode){}",
+                colors.green(),
+                colors.reset()
+            );
 
             // Show extended help for first-time users
             super::super::handle_extended_help();

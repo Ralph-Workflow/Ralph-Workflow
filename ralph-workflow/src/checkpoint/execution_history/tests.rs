@@ -76,9 +76,9 @@ fn test_decompress_data_rejects_oversized_payload() {
     // We enforce an upper bound on decompressed payload size.
     let max_bytes = 1024 * 1024;
     let data = "a".repeat(max_bytes + 1);
-    let encoded = compress_data(data.as_bytes()).unwrap();
+    let encoded = compression::compress(data.as_bytes()).unwrap();
 
-    let err = decompress_data(&encoded).expect_err("oversized payload should be rejected");
+    let err = compression::decompress(&encoded).expect_err("oversized payload should be rejected");
     assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 }
 
@@ -136,24 +136,21 @@ fn test_execution_step_serialization_with_new_fields() {
 fn test_execution_step_with_string_pool() {
     use crate::checkpoint::StringPool;
 
-    let mut pool = StringPool::new();
+    let pool = StringPool::new();
     let outcome = StepOutcome::success(None, vec![]);
 
-    // Create multiple steps with the same phase and agent
-    let step1 =
-        ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome.clone(), &mut pool)
-            .with_agent_pooled("claude", &mut pool);
-    let step2 = ExecutionStep::new_with_pool("Development", 2, "dev_run", outcome, &mut pool)
-        .with_agent_pooled("claude", &mut pool);
+    let (step1, pool) =
+        ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome.clone(), pool);
+    let (step1, pool) = step1.with_agent_pooled("claude", pool);
+    let (step2, pool) = ExecutionStep::new_with_pool("Development", 2, "dev_run", outcome, pool);
+    let (_step2, _pool) = step2.with_agent_pooled("claude", pool);
 
-    // Verify string pool deduplication works
     assert!(Arc::ptr_eq(&step1.phase, &step2.phase));
     assert!(Arc::ptr_eq(
         step1.agent.as_ref().unwrap(),
         step2.agent.as_ref().unwrap()
     ));
 
-    // Verify content is correct
     assert_eq!(&*step1.phase, "Development");
     assert_eq!(&*step2.phase, "Development");
     assert_eq!(step1.agent.as_deref(), Some("claude"));
@@ -164,37 +161,33 @@ fn test_execution_step_with_string_pool() {
 fn test_execution_step_memory_optimization() {
     use crate::checkpoint::StringPool;
 
-    let mut pool = StringPool::new();
+    let pool = StringPool::new();
     let outcome = StepOutcome::success(None, vec![]);
 
-    // Create step with string pool
-    let step = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, &mut pool)
-        .with_agent_pooled("claude", &mut pool);
+    let (step, _pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool)
+        .with_agent_pooled("claude", pool);
 
-    // Arc<str> and Box<str> should use len() not capacity()
     let phase_size = step.phase.len();
     let step_type_size = step.step_type.len();
     let agent_size = step.agent.as_ref().map_or(0, |s| s.len());
 
-    // Verify sizes are reasonable
     assert_eq!(phase_size, "Development".len());
     assert_eq!(step_type_size, "dev_run".len());
     assert_eq!(agent_size, "claude".len());
 
-    // Total size should be less than String capacity-based approach
     let optimized_size = phase_size + step_type_size + agent_size;
-    assert!(optimized_size < 100); // Reasonable upper bound
+    assert!(optimized_size < 100);
 }
 
 #[test]
 fn test_execution_step_serialization_roundtrip() {
     use crate::checkpoint::StringPool;
 
-    let mut pool = StringPool::new();
+    let pool = StringPool::new();
     let outcome = StepOutcome::success(Some("output".to_string()), vec!["file.txt".to_string()]);
 
-    let step = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, &mut pool)
-        .with_agent_pooled("claude", &mut pool)
+    let (step, _pool) = ExecutionStep::new_with_pool("Development", 1, "dev_run", outcome, pool)
+        .with_agent_pooled("claude", pool)
         .with_duration(120);
 
     // Serialize to JSON

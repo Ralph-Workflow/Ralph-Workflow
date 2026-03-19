@@ -86,8 +86,7 @@ pub(crate) fn write_defensive_completion_marker(
 #[cfg(test)]
 mod completion_tests {
     use super::*;
-    use crate::logger::Colors;
-    use crate::workspace::{DirEntry, MemoryWorkspace};
+    use crate::workspace::{DirEntry, MemoryWorkspace, Workspace};
     use std::io;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;

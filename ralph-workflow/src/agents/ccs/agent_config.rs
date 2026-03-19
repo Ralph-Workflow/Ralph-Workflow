@@ -144,15 +144,6 @@ fn build_ccs_agent_config_impl(
         ((HashMap::new(), false), None)
     };
 
-    // Debug logging: Show env vars loaded
-    log_ccs_env_vars_loaded(
-        debug_mode,
-        alias_name,
-        profile_used_for_env.as_ref(),
-        env_vars_loaded,
-        &env_vars,
-    );
-
     // Determine the command to use
     let cmd = resolve_ccs_command(
         alias_config,

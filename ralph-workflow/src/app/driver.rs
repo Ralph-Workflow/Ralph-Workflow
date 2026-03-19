@@ -331,22 +331,20 @@ where
 fn apply_recovery_result(
     recovery: RecoveryResult,
     runtime: &mut LoopRuntime,
-    trace_already_dumped: &mut bool,
-) -> bool {
+    trace_already_dumped: bool,
+) -> (bool, bool) {
     match recovery {
         RecoveryResult::Success(new_state, new_events_processed, dumped) => {
             runtime.state = new_state;
             runtime.events_processed = new_events_processed;
-            *trace_already_dumped = *trace_already_dumped || dumped;
-            false
+            (trace_already_dumped || dumped, false)
         }
         RecoveryResult::FailedUnrecoverable(new_state, new_events_processed, dumped) => {
             runtime.state = new_state;
             runtime.events_processed = new_events_processed;
-            *trace_already_dumped = *trace_already_dumped || dumped;
-            true
+            (trace_already_dumped || dumped, true)
         }
-        RecoveryResult::NotNeeded => false,
+        RecoveryResult::NotNeeded => (trace_already_dumped, false),
     }
 }
 
@@ -359,12 +357,10 @@ fn handle_max_iteration_recovery<'ctx, H>(
 where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
-    let mut forced_completion = false;
-    let mut recovery_failed = false;
-    let mut trace_already_dumped = false;
-
     if runtime.events_processed < config.max_iterations {
-        return MaxIterationRecovery { recovery_failed };
+        return MaxIterationRecovery {
+            recovery_failed: false,
+        };
     }
 
     let checkpoint_result = handle_forced_checkpoint_after_completion(
@@ -374,9 +370,10 @@ where
         runtime.events_processed,
         &mut runtime.trace,
     );
-    recovery_failed = apply_recovery_result(checkpoint_result, runtime, &mut trace_already_dumped);
+    let (trace_already_dumped, recovery_failed) =
+        apply_recovery_result(checkpoint_result, runtime, false);
 
-    if !runtime.state.is_complete() && !recovery_failed {
+    let forced_completion = if !runtime.state.is_complete() && !recovery_failed {
         let dev_fix_result = handle_max_iterations_in_awaiting_dev_fix(
             ctx,
             handler,
@@ -384,11 +381,16 @@ where
             runtime.events_processed,
             &mut runtime.trace,
         );
-        recovery_failed = apply_recovery_result(dev_fix_result, runtime, &mut trace_already_dumped);
-        forced_completion = !recovery_failed;
-    }
+        let (trace_already_dumped, recovery_failed) =
+            apply_recovery_result(dev_fix_result, runtime, trace_already_dumped);
+        !recovery_failed
+    } else {
+        false
+    };
 
-    if !trace_already_dumped {
+    let trace_already_dumped = if trace_already_dumped {
+        true
+    } else {
         let dumped = dump_event_loop_trace(ctx, &runtime.trace, &runtime.state, "max_iterations");
         if dumped {
             let trace_path = ctx.run_log_context.event_loop_trace();
@@ -403,7 +405,8 @@ where
                 config.max_iterations
             ));
         }
-    }
+        dumped
+    };
 
     if !forced_completion && !runtime.state.is_complete() {
         ctx.logger.error(&format!(

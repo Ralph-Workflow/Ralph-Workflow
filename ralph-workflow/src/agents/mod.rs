@@ -81,14 +81,13 @@
 //! json_parser = "claude"  # Use Claude's JSON parser
 //! ```
 
+mod boundary;
 pub mod cache_environment;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod ccs;
 #[cfg(not(any(test, feature = "test-utils")))]
 mod ccs;
 mod ccs_env;
-pub mod ccs_environment;
-pub mod ccs_filesystem;
 mod config;
 mod error;
 pub mod fallback;
@@ -103,12 +102,12 @@ pub mod runtime;
 pub mod validation;
 
 // Re-export I/O implementations for backwards compatibility
+pub use boundary::cache::RealCacheEnvironment;
+pub use boundary::runtime::RealCcsEnvironment;
+pub use boundary::runtime::RealCcsFilesystem;
+pub use boundary::runtime::{fetch_api_catalog_json, get_env_var};
 pub use cache_environment::CacheEnvironment;
-pub use cache_environment::RealCacheEnvironment;
 pub use ccs_env::{CcsEnvironment, CcsFilesystem};
-pub use ccs_environment::RealCcsEnvironment;
-pub use ccs_filesystem::RealCcsFilesystem;
-pub use network::{fetch_api_catalog_json, get_env_var};
 pub use runtime::{production_timer, ProductionRetryTimer, RetryTimerProvider};
 
 // Re-export public types for crate-level access

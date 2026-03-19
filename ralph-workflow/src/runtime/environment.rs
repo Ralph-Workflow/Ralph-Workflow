@@ -101,34 +101,44 @@ fn shell_escape_posix(s: &str) -> String {
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock {
     use super::GitEnvError;
-    use std::cell::RefCell;
-    use std::collections::HashMap;
+    use std::sync::Mutex;
 
-    #[derive(Debug, Clone)]
     pub struct MockGitEnvironment {
-        pub ssh_commands: RefCell<Vec<String>>,
-        pub terminal_prompts_disabled: RefCell<bool>,
-        pub errors: RefCell<Vec<GitEnvError>>,
+        pub ssh_commands: Mutex<Vec<String>>,
+        pub terminal_prompts_disabled: Mutex<bool>,
+        pub errors: Mutex<Vec<GitEnvError>>,
+    }
+
+    impl Clone for MockGitEnvironment {
+        fn clone(&self) -> Self {
+            Self {
+                ssh_commands: Mutex::new(self.ssh_commands.lock().unwrap().clone()),
+                terminal_prompts_disabled: Mutex::new(
+                    *self.terminal_prompts_disabled.lock().unwrap(),
+                ),
+                errors: Mutex::new(self.errors.lock().unwrap().clone()),
+            }
+        }
     }
 
     impl MockGitEnvironment {
         #[must_use]
         pub fn new() -> Self {
             Self {
-                ssh_commands: RefCell::new(Vec::new()),
-                terminal_prompts_disabled: RefCell::new(false),
-                errors: RefCell::new(Vec::new()),
+                ssh_commands: Mutex::new(Vec::new()),
+                terminal_prompts_disabled: Mutex::new(false),
+                errors: Mutex::new(Vec::new()),
             }
         }
 
         #[must_use]
         pub fn configured_ssh_keys(&self) -> Vec<String> {
-            self.ssh_commands.borrow().clone()
+            self.ssh_commands.lock().unwrap().clone()
         }
 
         #[must_use]
         pub fn terminal_prompt_disabled(&self) -> bool {
-            *self.terminal_prompts_disabled.borrow()
+            *self.terminal_prompts_disabled.lock().unwrap()
         }
     }
 
@@ -148,12 +158,12 @@ pub mod mock {
             }
             let escaped = super::shell_escape_posix(key_path);
             let cmd = format!("ssh -o 'IdentitiesOnly=yes' -i {escaped}");
-            self.ssh_commands.borrow_mut().push(cmd);
+            self.ssh_commands.lock().unwrap().push(cmd);
             Ok(())
         }
 
         fn disable_git_terminal_prompt(&self) -> Result<(), GitEnvError> {
-            *self.terminal_prompts_disabled.borrow_mut() = true;
+            *self.terminal_prompts_disabled.lock().unwrap() = true;
             Ok(())
         }
     }

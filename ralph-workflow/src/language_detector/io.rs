@@ -98,82 +98,53 @@ pub fn count_extensions_with_workspace(
         !should_skip_dir_name(name_lower)
     }
 
-    fn merge_counts(
-        counts: HashMap<String, usize>,
-        inner: HashMap<String, usize>,
-    ) -> HashMap<String, usize> {
-        inner.into_iter().fold(counts, |acc, (k, v)| {
-            let existing = acc.get(&k).copied().unwrap_or(0);
-            acc.into_iter()
-                .chain(std::iter::once((k, existing + v)))
-                .collect()
-        })
-    }
-
-    fn increment_extension(
-        counts: HashMap<String, usize>,
-        ext_str: String,
-    ) -> HashMap<String, usize> {
-        let existing = counts.get(&ext_str).copied().unwrap_or(0);
-        counts
-            .into_iter()
-            .chain(std::iter::once((ext_str, existing + 1)))
-            .collect()
-    }
-
-    fn scan_dir_recursive(
+    fn scan_dirs_loop(
         workspace: &dyn Workspace,
-        dir: &Path,
+        queue: Vec<PathBuf>,
+        counts: HashMap<String, usize>,
         files_scanned: usize,
     ) -> std::io::Result<HashMap<String, usize>> {
         if files_scanned >= MAX_FILES_TO_SCAN {
-            return Ok(HashMap::new());
+            return Ok(counts);
         }
+
+        let Some((dir, rest)) = queue.split_first() else {
+            return Ok(counts);
+        };
 
         let entries = match workspace.read_dir(dir) {
             Ok(e) => e,
-            Err(_) => return Ok(HashMap::new()),
+            Err(_) => return scan_dirs_loop(workspace, rest.to_vec(), counts, files_scanned),
         };
 
-        let entries_vec: Vec<_> = entries
-            .into_iter()
-            .take(MAX_FILES_TO_SCAN.saturating_sub(files_scanned))
-            .collect();
-
-        entries_vec
-            .into_iter()
-            .filter_map(|entry| {
-                let file_name = entry.file_name()?;
-                let name_str = file_name.to_string_lossy().to_string();
-                let name_lower = name_str.to_ascii_lowercase();
-                if !should_process_entry(&name_lower) {
-                    return None;
-                }
-                Some((entry, name_str, name_lower))
-            })
-            .try_fold(
-                HashMap::new(),
-                |counts, entry_tuple| -> std::io::Result<HashMap<String, usize>> {
-                    let (entry, _file_name, _name_lower) = entry_tuple;
-                    let path = entry.path();
-                    if entry.is_dir() {
-                        let inner = scan_dir_recursive(workspace, path, files_scanned)?;
-                        Ok(merge_counts(counts, inner))
-                    } else if entry.is_file() {
-                        if let Some(ext) = path.extension() {
-                            let ext_str = ext.to_string_lossy().to_lowercase();
-                            Ok(increment_extension(counts, ext_str))
-                        } else {
-                            Ok(counts)
-                        }
-                    } else {
-                        Ok(counts)
+        let (new_counts, subdirs): (_, Vec<PathBuf>) =
+            entries
+                .into_iter()
+                .fold((counts, Vec::new()), |(mut c, mut dirs), entry| {
+                    let Some(file_name) = entry.file_name() else {
+                        return (c, dirs);
+                    };
+                    let name_lower = file_name.to_string_lossy().to_lowercase();
+                    if !should_process_entry(&name_lower) {
+                        return (c, dirs);
                     }
-                },
-            )
+                    let path = entry.path();
+                    if path.is_dir() {
+                        dirs.push(path);
+                    } else if let Some(ext) = path.extension() {
+                        let ext_str = ext.to_string_lossy().to_lowercase();
+                        *c.entry(ext_str).or_insert(0) += 1;
+                    }
+                    (c, dirs)
+                });
+
+        let scanned = files_scanned + new_counts.values().sum::<usize>();
+        let next_queue: Vec<_> = rest.iter().chain(subdirs.iter()).cloned().collect();
+        scan_dirs_loop(workspace, next_queue, new_counts, scanned)
     }
 
-    scan_dir_recursive(workspace, relative_root, 0)
+    let initial_queue = vec![relative_root.to_path_buf()];
+    scan_dirs_loop(workspace, initial_queue, HashMap::new(), 0)
 }
 
 pub fn detect_tests_with_workspace(
@@ -185,18 +156,7 @@ pub fn detect_tests_with_workspace(
 
     const MAX_FILES_TO_SCAN: usize = 2000;
 
-    fn combine_queues(
-        rest: &[(PathBuf, usize)],
-        new_queue: Vec<(PathBuf, usize)>,
-    ) -> Vec<(PathBuf, usize)> {
-        if new_queue.is_empty() {
-            rest.to_vec()
-        } else {
-            rest.iter().cloned().chain(new_queue).collect()
-        }
-    }
-
-    fn search_recursive(
+    fn search_dirs_loop(
         workspace: &dyn Workspace,
         queue: Vec<(PathBuf, usize)>,
         scanned_files: usize,
@@ -209,12 +169,13 @@ pub fn detect_tests_with_workspace(
         let Some((item, rest)) = queue.split_first() else {
             return false;
         };
+
         let (dir, _depth) = item;
 
         let entries = match workspace.read_dir(dir) {
             Ok(e) => e,
             Err(_) => {
-                return search_recursive(workspace, rest.to_vec(), scanned_files, primary_lang)
+                return search_dirs_loop(workspace, rest.to_vec(), scanned_files, primary_lang)
             }
         };
 
@@ -240,16 +201,20 @@ pub fn detect_tests_with_workspace(
                 if rest.is_empty() {
                     false
                 } else {
-                    search_recursive(workspace, rest.to_vec(), scanned_files, primary_lang)
+                    search_dirs_loop(workspace, rest.to_vec(), scanned_files, primary_lang)
                 }
             }
             SearchResult::Continue { new_queue } => {
-                let combined = combine_queues(rest, new_queue);
-                search_recursive(workspace, combined, scanned_files, primary_lang)
+                let combined: Vec<_> = if new_queue.is_empty() {
+                    rest.to_vec()
+                } else {
+                    rest.iter().cloned().chain(new_queue).collect()
+                };
+                search_dirs_loop(workspace, combined, scanned_files, primary_lang)
             }
         }
     }
 
     let initial_queue = vec![(relative_root.to_path_buf(), 0)];
-    search_recursive(workspace, initial_queue, 0, primary_lang)
+    search_dirs_loop(workspace, initial_queue, 0, primary_lang)
 }

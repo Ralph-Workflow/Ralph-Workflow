@@ -2,7 +2,7 @@ use crate::json_parser::printer::Printable;
 use crate::logger::Logger;
 use std::io::Write;
 
-use crate::logger::stdout_writer::{stdout_flush, stdout_is_terminal, stdout_write};
+use crate::logger::runtime::{stdout_flush, stdout_is_terminal, stdout_write};
 
 pub struct LoggerIoWrapper {
     logger: Logger,

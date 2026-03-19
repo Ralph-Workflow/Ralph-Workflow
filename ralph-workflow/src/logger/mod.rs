@@ -14,27 +14,25 @@ pub mod output;
 #[cfg(not(any(test, feature = "test-utils")))]
 mod output;
 
-mod progress;
-
 mod ansi;
 mod ansi_stripper;
-mod environment;
 mod file_writer;
-pub mod io;
+mod io;
 mod logger_wrapper;
+mod progress;
+mod runtime;
 mod stdout_writer;
 
+pub use ansi::strip_ansi_codes;
 pub use output::{argv_requests_json, format_generic_json_for_display, Loggable, Logger};
 pub use progress::print_progress;
 
-pub use crate::logger::ansi::ANSI_RE;
-pub use crate::logger::ansi_stripper::strip_ansi_codes;
-pub use crate::logger::environment::{ColorEnvironment, RealColorEnvironment};
 pub use crate::logger::file_writer::append_to_file;
 pub use crate::logger::logger_wrapper::LoggerIoWrapper;
-pub use crate::logger::stdout_writer::{
+pub use crate::logger::runtime::{
     stderr_write_line, stdout_flush, stdout_is_terminal, stdout_write, stdout_write_line,
 };
+pub use crate::logger::runtime::{ColorEnvironment, RealColorEnvironment};
 
 /// Check if colors should be enabled using the provided environment.
 ///

@@ -21,60 +21,51 @@ use crate::workspace::Workspace;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub struct GitHelpersAndGuard<'a> {
-    pub git_helpers: GitHelpers,
-    pub agent_phase_guard: crate::pipeline::AgentPhaseGuard<'a>,
-}
-
 pub struct PhaseContextWithTimer<'ctx> {
     pub phase_ctx: PhaseContext<'ctx>,
     pub timer: Timer,
 }
 
-pub fn setup_git_and_agent_phase<'a>(ctx: &'a PipelineContext) -> GitHelpersAndGuard<'a> {
-    let mut git_helpers = crate::app::runtime_factory::create_git_helpers();
+pub fn setup_git_and_agent_phase<'a>(
+    git_helpers: &'a mut GitHelpers,
+    ctx: &'a PipelineContext,
+) -> crate::pipeline::AgentPhaseGuard<'a> {
     crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
         &ctx.repo_root,
         &*ctx.workspace,
         &ctx.logger,
-        &mut git_helpers,
+        git_helpers,
         true,
     );
-    let agent_phase_guard =
-        crate::pipeline::AgentPhaseGuard::new(&mut git_helpers, &ctx.logger, &*ctx.workspace);
-    GitHelpersAndGuard {
-        git_helpers,
-        agent_phase_guard,
-    }
+    crate::pipeline::AgentPhaseGuard::new(git_helpers, &ctx.logger, &*ctx.workspace)
 }
 
 pub fn setup_phase_context_with_timer<'ctx>(
+    timer: &'ctx mut crate::pipeline::Timer,
     ctx: &'ctx PipelineContext,
     config: &'ctx Config,
     review_guidelines: Option<&'ctx ReviewGuidelines>,
     run_context: &'ctx RunContext,
     resume_checkpoint: Option<&'ctx PipelineCheckpoint>,
     cloud_reporter: &'ctx dyn crate::cloud::CloudReporter,
-) -> PhaseContextWithTimer<'ctx> {
-    let mut timer = crate::app::runtime_factory::create_timer();
-    let phase_ctx = crate::app::runner::pipeline_execution::create_phase_context_with_config(
+) -> crate::phases::PhaseContext<'ctx> {
+    crate::app::runner::pipeline_execution::create_phase_context_with_config(
         ctx,
         config,
-        &mut timer,
+        timer,
         review_guidelines,
         run_context,
         resume_checkpoint,
         cloud_reporter,
-    );
-    PhaseContextWithTimer { phase_ctx, timer }
+    )
 }
 
 pub fn create_main_effect_handler_boundary(initial_state: PipelineState) -> MainEffectHandler {
     crate::app::runtime_factory::create_main_effect_handler(initial_state)
 }
 
-pub fn run_event_loop_with_handler_boundary<'ctx>(
-    phase_ctx: &'ctx mut PhaseContext<'ctx>,
+pub fn run_event_loop_with_handler_boundary<'r, 'ctx>(
+    phase_ctx: &'r mut PhaseContext<'ctx>,
     initial_state: PipelineState,
 ) -> anyhow::Result<crate::app::EventLoopResult> {
     let mut handler =
@@ -138,12 +129,12 @@ pub fn handle_repo_commands_boundary(
         crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
     if args.recovery.dry_run {
-        crate::app::runner::pipeline_execution::handle_dry_run(
+        crate::cli::handle_dry_run(
             logger,
             colors,
             config,
-            &registry.display_name(developer_agent),
-            &registry.display_name(reviewer_agent),
+            developer_agent,
+            reviewer_agent,
             repo_root,
             workspace.as_ref(),
         )?;
@@ -219,13 +210,13 @@ pub fn run_pipeline_with_handler_boundary(
     registry: AgentRegistry,
     developer_agent: String,
     reviewer_agent: String,
-    developer_display: String,
-    reviewer_display: String,
+    _developer_display: String,
+    _reviewer_display: String,
     config_path: std::path::PathBuf,
     colors: crate::logger::Colors,
     logger: crate::logger::Logger,
     executor: Arc<dyn crate::executor::ProcessExecutor>,
-    template_context: crate::prompts::TemplateContext,
+    _template_context: crate::prompts::TemplateContext,
 ) -> anyhow::Result<PipelineAndRepoRoot> {
     use crate::app::effect::{AppEffect, AppEffectResult};
     use crate::app::runner::command_handlers::handle_plumbing_commands;
@@ -315,9 +306,6 @@ pub fn run_pipeline_with_handler_boundary(
         registry,
         developer_agent,
         reviewer_agent,
-        developer_display,
-        reviewer_display,
-        config_path,
         colors,
         logger,
         executor,
@@ -326,7 +314,7 @@ pub fn run_pipeline_with_handler_boundary(
         handler: &mut handler,
     };
 
-    let ctx = prepare_pipeline_or_exit(params)
+    let ctx = prepare_pipeline_or_exit(params)?
         .ok_or_else(|| anyhow::anyhow!("pipeline preparation returned None"))?;
 
     Ok(PipelineAndRepoRoot {

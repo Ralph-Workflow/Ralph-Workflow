@@ -100,6 +100,9 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
         config.user_templates_dir().cloned(),
     );
 
+    let developer_display = registry.display_name(&developer_agent);
+    let reviewer_display = registry.display_name(&reviewer_agent);
+
     // Run the full pipeline with handler creation inside the boundary
     let PipelineAndRepoRoot { ctx, repo_root: _ } =
         crate::app::pipeline_setup::run_pipeline_with_handler_boundary(
@@ -108,8 +111,8 @@ pub fn run(args: Args, executor: std::sync::Arc<dyn ProcessExecutor>) -> anyhow:
             registry,
             developer_agent,
             reviewer_agent,
-            registry.display_name(&developer_agent),
-            registry.display_name(&reviewer_agent),
+            developer_display,
+            reviewer_display,
             config_path,
             colors,
             logger,

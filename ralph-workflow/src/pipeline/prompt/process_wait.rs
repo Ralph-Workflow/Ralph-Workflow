@@ -98,7 +98,7 @@ pub fn wait_for_completion_and_collect_stderr(
             break WaitOutcome::UserInterrupted;
         }
 
-        let child = child_arc
+        let mut child = child_arc
             .lock()
             .expect("child process mutex poisoned - indicates panic in another thread");
         if let Some(status) = child.try_wait()? {

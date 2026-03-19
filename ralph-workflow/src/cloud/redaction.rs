@@ -7,9 +7,9 @@
 
 use itertools::Itertools;
 
-use crate::cloud::io::redact_bearer_tokens;
-use crate::cloud::io::redact_common_query_params;
-use crate::cloud::io::redact_token_like_substrings;
+use crate::cloud::io_redaction::redact_bearer_tokens;
+use crate::cloud::io_redaction::redact_common_query_params;
+use crate::cloud::io_redaction::redact_token_like_substrings;
 
 /// Redact likely secrets from an untrusted, user-controlled string.
 ///

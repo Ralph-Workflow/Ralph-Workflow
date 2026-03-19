@@ -18,7 +18,7 @@ mod tests {
         let mut log = CommitAttemptLog::new(1, "claude", "initial");
         log.set_prompt_size(5000);
         log.set_diff_info(10000, false);
-        log.set_raw_output("raw agent output here");
+        log = log.with_raw_output("raw agent output here");
         log.add_extraction_attempt(ExtractionAttempt::failure(
             "XML",
             "No <ralph-commit> tag found".to_string(),
@@ -42,7 +42,7 @@ mod tests {
         let mut log = CommitAttemptLog::new(1, "claude", "initial");
         log.set_prompt_size(5000);
         log.set_diff_info(10000, false);
-        log.set_raw_output("raw agent output here");
+        log = log.with_raw_output("raw agent output here");
         log.add_extraction_attempt(ExtractionAttempt::failure(
             "XML",
             "No <ralph-commit> tag found".to_string(),
@@ -220,7 +220,7 @@ mod tests {
     fn test_large_output_truncation() {
         let mut log = CommitAttemptLog::new(1, "test", "test");
         let large_output = "x".repeat(100_000);
-        log.set_raw_output(&large_output);
+        log = log.with_raw_output(&large_output);
 
         let output = log.raw_output.unwrap();
         assert!(output.len() < large_output.len());
@@ -328,7 +328,7 @@ mod tests {
 
         log.set_prompt_size(10_000);
         log.set_diff_info(50_000, true);
-        log.set_raw_output("test output");
+        log = log.with_raw_output("test output");
 
         assert_eq!(log.prompt_size_bytes, 10_000);
         assert_eq!(log.diff_size_bytes, 50_000);

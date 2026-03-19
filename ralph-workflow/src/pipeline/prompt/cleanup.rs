@@ -27,7 +27,7 @@ pub fn terminate_child_best_effort(
             let mut last_kill_sent_at: Option<Instant> = None;
             while Instant::now() < hard_deadline {
                 let status = {
-                    let locked_child = child_arc
+                    let mut locked_child = child_arc
                         .lock()
                         .expect("child process mutex poisoned - indicates panic in another thread");
                     locked_child.try_wait()
@@ -51,7 +51,7 @@ pub fn terminate_child_best_effort(
         }
         KillResult::Failed => {
             let status = {
-                let locked_child = child_arc
+                let mut locked_child = child_arc
                     .lock()
                     .expect("child process mutex poisoned - indicates panic in another thread");
                 locked_child.try_wait()

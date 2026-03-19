@@ -3,19 +3,6 @@
 // This module handles agent phase preparation, cloud runtime creation,
 // initial state computation, and event loop invocation.
 
-fn prepare_agent_phase(
-    ctx: &crate::app::context::PipelineContext,
-    git_helpers: &mut crate::git_helpers::GitHelpers,
-) {
-    crate::app::runner::pipeline_execution::prepare_agent_phase_for_workspace(
-        &ctx.repo_root,
-        &*ctx.workspace,
-        &ctx.logger,
-        git_helpers,
-        true,
-    );
-}
-
 fn create_cloud_runtime(
     config: &crate::config::Config,
 ) -> (
@@ -96,8 +83,8 @@ fn compute_initial_state(
     }
 }
 
-fn run_event_loop_with_default_handler(
-    phase_ctx: &mut crate::phases::PhaseContext<'_>,
+fn run_event_loop_with_default_handler<'r, 'ctx>(
+    phase_ctx: &'r mut crate::phases::PhaseContext<'ctx>,
     initial_state: crate::reducer::PipelineState,
 ) -> anyhow::Result<crate::app::config::EventLoopResult> {
     crate::app::pipeline_setup::run_event_loop_with_handler_boundary(phase_ctx, initial_state)

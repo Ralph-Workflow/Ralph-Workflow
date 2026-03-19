@@ -4,6 +4,7 @@ use crate::executor::{ProcessExecutor, RealProcessExecutor};
 use crate::platform::Platform;
 
 /// Platform-specific clipboard command configuration.
+#[derive(Clone)]
 pub struct ClipboardCommand {
     pub binary: &'static str,
     pub args: &'static [&'static str],

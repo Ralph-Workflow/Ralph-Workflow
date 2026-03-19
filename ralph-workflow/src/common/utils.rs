@@ -5,9 +5,7 @@
 //! - Text truncation for display
 //! - Secret redaction for logging
 
-use std::io;
-
-use regex::Regex;
+mod io;
 
 /// Split a shell-like command string into argv parts.
 ///
@@ -23,51 +21,18 @@ use regex::Regex;
 /// # Errors
 ///
 /// Returns an error if the command string has unmatched quotes.
-pub fn split_command(cmd: &str) -> io::Result<Vec<String>> {
+pub fn split_command(cmd: &str) -> std::io::Result<Vec<String>> {
     let cmd = cmd.trim();
     if cmd.is_empty() {
         return Ok(vec![]);
     }
 
     shell_words::split(cmd).map_err(|err| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
             format!("Failed to parse command string: {err}"),
         )
     })
-}
-
-fn secret_like_regex() -> Option<Regex> {
-    // Fixed ReDoS vulnerability by:
-    // 1. Using \b (word boundary) anchors to prevent overlapping matches
-    // 2. Making patterns more specific with exact length ranges
-    // 3. Limiting max character class repetition to 100
-    Regex::new(
-        r"(?ix)
-        \b(
-          # OpenAI API keys
-          sk-[a-z0-9]{20,100} |
-          # GitHub tokens
-          ghp_[a-z0-9]{20,100} |
-          github_pat_[a-z0-9_]{20,100} |
-          # Slack tokens
-          xox[baprs]-[a-z0-9-]{10,100} |
-          # AWS access keys
-          AKIA[0-9A-Z]{16} |
-          # AWS session tokens
-          (?:Aws)?[A-Z0-9]{40,100} |
-          # Stripe keys
-          sk_live_[a-zA-Z0-9]{24,100} |
-          sk_test_[a-zA-Z0-9]{24,100} |
-          # Firebase tokens
-          [a-zA-Z0-9_/+-]{40,100}\.firebaseio\.com |
-          [a-z0-9:_-]{40,100}@apps\.googleusercontent\.com |
-          # Generic JWT patterns
-          ey[a-zA-Z0-9_-]{1,100}\.[a-zA-Z0-9_-]{1,100}\.[a-zA-Z0-9_-]{1,100}
-        )\b
-        ",
-    )
-    .ok()
 }
 
 pub(crate) fn is_sensitive_key(key: &str) -> bool {
@@ -102,7 +67,7 @@ fn redact_arg_value(key: &str, value: &str) -> String {
     if is_sensitive_key(key) {
         return "<redacted>".to_string();
     }
-    secret_like_regex().map_or_else(
+    io::secret_like_regex().map_or_else(
         || value.to_string(),
         |re| re.replace_all(value, "<redacted>").to_string(),
     )
@@ -156,7 +121,7 @@ pub fn format_argv_for_log(argv: &[String]) -> String {
                 return arg.to_string();
             }
 
-            let redacted = secret_like_regex().map_or_else(
+            let redacted = io::secret_like_regex().map_or_else(
                 || arg.clone(),
                 |re| re.replace_all(arg, "<redacted>").to_string(),
             );

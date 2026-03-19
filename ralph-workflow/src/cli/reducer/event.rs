@@ -151,12 +151,9 @@ mod tests {
         ];
 
         // Ensure all presets are distinct
-        for (i, p1) in presets.iter().enumerate() {
-            for (j, p2) in presets.iter().enumerate() {
-                if i != j {
-                    assert_ne!(p1, p2);
-                }
-            }
-        }
+        assert!(presets
+            .iter()
+            .enumerate()
+            .all(|(i, p1)| { presets.iter().position(|p| p == p1) == Some(i) }));
     }
 }

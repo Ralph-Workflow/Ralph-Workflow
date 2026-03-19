@@ -46,8 +46,10 @@
 //!
 //! - [`crate::workspace::Workspace`] - Similar abstraction for filesystem operations
 
-pub mod boundary;
-pub mod child_proc;
+pub mod bfs;
+pub mod command;
+pub mod macos;
+pub mod ps;
 mod executor_trait;
 #[cfg(any(test, feature = "test-utils"))]
 mod mock;

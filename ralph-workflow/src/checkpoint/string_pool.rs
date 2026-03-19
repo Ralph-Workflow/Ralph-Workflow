@@ -64,15 +64,45 @@ impl StringPool {
     /// ```
     /// use ralph_workflow::checkpoint::string_pool::StringPool;
     ///
-    /// let mut pool = StringPool::new();
-    /// let s1 = pool.intern("test");
-    /// let s2 = pool.intern("test");
+    /// let (pool, s1) = StringPool::new().intern_str("test");
+    /// let (pool, s2) = pool.intern_str("test");
     /// assert!(std::sync::Arc::ptr_eq(&s1, &s2));
     /// ```
-    pub fn intern_str(&mut self, s: &str) -> Arc<str> {
+    #[must_use]
+    pub fn intern_str(self, s: &str) -> (Self, Arc<str>) {
         if let Some(existing) = self.pool.get(s) {
-            return Arc::clone(existing);
+            return (self, Arc::clone(existing));
         }
+
+        let interned: Arc<str> = Arc::from(s);
+        let mut new_pool = self;
+        new_pool.pool.insert(Arc::clone(&interned));
+        (new_pool, interned)
+    }
+
+    /// Get or insert an owned string into the pool, returning an Arc<str>.
+    ///
+    /// This path can reuse the allocation of the provided `String` when inserting.
+    #[must_use]
+    pub fn intern_string(self, s: String) -> (Self, Arc<str>) {
+        if let Some(existing) = self.pool.get(s.as_str()) {
+            return (self, Arc::clone(existing));
+        }
+
+        let interned: Arc<str> = Arc::from(s);
+        let mut new_pool = self;
+        new_pool.pool.insert(Arc::clone(&interned));
+        (new_pool, interned)
+    }
+
+    /// Backward-compatible convenience: accepts any `Into<String>`.
+    ///
+    /// Note: callers passing `&str` should prefer `intern_str()` to avoid
+    /// allocating a temporary `String` on repeated lookups.
+    #[must_use]
+    pub fn intern(self, s: impl Into<String>) -> (Self, Arc<str>) {
+        self.intern_string(s.into())
+    }
 
         let interned: Arc<str> = Arc::from(s);
         self.pool.insert(Arc::clone(&interned));
@@ -113,8 +143,9 @@ impl StringPool {
     }
 
     /// Clear all entries from the pool.
-    pub fn clear(&mut self) {
-        self.pool.clear();
+    #[must_use]
+    pub fn clear(self) -> Self {
+        Self::with_capacity(16)
     }
 }
 

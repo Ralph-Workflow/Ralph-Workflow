@@ -137,10 +137,10 @@
 //! cargo test -p ralph-workflow --lib --all-features -- --nocapture
 //! ```
 
+pub mod boundary;
 pub mod effect;
 pub mod event;
 pub mod fault_tolerant_executor;
-pub mod handler;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mock_effect_handler;
 pub mod orchestration;
@@ -154,9 +154,9 @@ pub mod ui_event;
 #[cfg(test)]
 mod tests;
 
+pub use boundary::MainEffectHandler;
 pub use effect::{EffectHandler, EffectResult};
 pub use event::PipelineEvent;
-pub use handler::MainEffectHandler;
 pub use orchestration::{compute_effect_fingerprint, determine_next_effect};
 pub use state::PipelineState;
 pub use state_reduction::reduce;

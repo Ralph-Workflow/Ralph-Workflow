@@ -4,7 +4,7 @@
 //! imperative setup and configuration restoration. As a boundary module, it is
 //! exempt from functional programming lints.
 
-use crate::agents::{AgentRegistry, ConfigSource};
+use crate::agents::AgentRegistry;
 use crate::config::UnifiedConfig;
 use std::path::Path;
 
@@ -27,9 +27,18 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
     unified: Option<&UnifiedConfig>,
     config_path: &Path,
     catalog_loader: &L,
-) -> anyhow::Result<(AgentRegistry, Vec<ConfigSource>)> {
-    let mut registry = AgentRegistry::new()?;
-    let sources = registry.apply_unified_config(unified, config_path)?;
+) -> anyhow::Result<(AgentRegistry, Vec<crate::agents::ConfigSource>)> {
+    let registry = AgentRegistry::new()?;
+
+    let config_sources: Vec<_> = if let Some(unified_config) = unified {
+        let agents_loaded = registry.apply_unified_config(unified_config)?;
+        vec![crate::agents::ConfigSource {
+            path: config_path.to_path_buf(),
+            agents_loaded,
+        }]
+    } else {
+        vec![]
+    };
 
     let opencode_refs =
         crate::agents::validation::get_opencode_refs_in_resolved_drains(registry.resolved_drains());
@@ -50,5 +59,5 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
 
-    Ok((registry, sources))
+    Ok((registry, config_sources))
 }

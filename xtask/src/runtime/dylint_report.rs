@@ -6,31 +6,22 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
-pub fn output_contains_lint_violations(output: &str) -> bool {
-    !output_contains_compilation_failure(output)
-        && (output.contains("file_too_long")
-            || output.contains("mutable_state_machine")
-            || output.contains("imperative_loop"))
-}
-
-fn output_contains_compilation_failure(output: &str) -> bool {
-    output.contains("error[E")
-        || output.contains("error: could not compile")
-        || output.contains("error: aborting due to")
-}
-
 pub fn run_dylint_capture(repo_root: &Path) -> std::io::Result<String> {
+    let existing = std::env::var("RUSTFLAGS").unwrap_or_default();
+    let rustflags = format!("{} --cap-lints warn", existing).trim().to_string();
+
     let output = Command::new("make")
         .arg("dylint")
         .current_dir(repo_root)
         .env("CARGO_TERM_COLOR", "never")
+        .env("RUSTFLAGS", rustflags)
         .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{}{}", stdout, stderr);
 
-    if !output.status.success() && !output_contains_lint_violations(&combined) {
+    if !output.status.success() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             "dylint failed to compile - compilation errors must be fixed first",
@@ -134,54 +125,6 @@ fn extract_module(error: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn generic_error_colon_alone_is_not_a_lint_violation() {
-        let output = "error: could not compile `ralph-workflow` due to previous errors";
-        assert!(!output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn aborting_error_is_not_a_lint_violation() {
-        let output = "error: aborting due to 3 previous errors\n\nFor more information about this error, try `rustc --explain E0308`.";
-        assert!(!output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn generic_warning_alone_is_not_a_lint_violation() {
-        let output = "warning: unused import: `std::fmt`\n  --> ralph-workflow/src/foo.rs:3:5";
-        assert!(!output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn empty_output_is_not_a_lint_violation() {
-        assert!(!output_contains_lint_violations(""));
-    }
-
-    #[test]
-    fn file_too_long_is_a_lint_violation() {
-        let output =
-            "error: file_too_long: file exceeds 500 lines\n  --> ralph-workflow/src/app/mod.rs:1:1";
-        assert!(output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn mutable_state_machine_is_a_lint_violation() {
-        let output = "error: mutable_state_machine: `let mut` bindings are forbidden\n  --> ralph-workflow/src/reducer/mod.rs:42:5";
-        assert!(output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn imperative_loop_is_a_lint_violation() {
-        let output = "error: imperative_loop: for-loops are forbidden in pure modules\n  --> ralph-workflow/src/pipeline/stage.rs:99:9";
-        assert!(output_contains_lint_violations(output));
-    }
-
-    #[test]
-    fn lint_violation_alongside_compiler_errors_is_not_a_valid_lint_only_result() {
-        let output = "error[E0432]: unresolved import `crate::runtime::event_loop`\n  --> ralph-workflow/src/app/event_loop/mod.rs:7:25\n\nerror: file_too_long: file exceeds 500 lines\n  --> ralph-workflow/src/app/mod.rs:1:1\n\nerror: could not compile `ralph-workflow` (lib) due to 352 previous errors";
-        assert!(!output_contains_lint_violations(output));
-    }
 
     #[test]
     fn test_extract_module_from_path() {

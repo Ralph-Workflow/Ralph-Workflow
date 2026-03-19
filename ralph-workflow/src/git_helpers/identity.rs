@@ -50,11 +50,52 @@ impl GitIdentity {
     }
 }
 
-/// Pure validation of git identity name and email fields.
-fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), String> {
+/// Pure policy: validate git identity name and email fields.
+pub fn validate_git_identity_fields(name: &str, email: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Git user name cannot be empty".to_string());
     }
+    if email.trim().is_empty() {
+        return Err("Git user email cannot be empty".to_string());
+    }
+    let email = email.trim();
+    if !email.contains('@') {
+        return Err(format!("Invalid email format: '{email}'"));
+    }
+    let parts: Vec<&str> = email.split('@').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid email format: '{email}'"));
+    }
+    if parts[0].trim().is_empty() {
+        return Err(format!(
+            "Invalid email format: '{email}' (missing local part)"
+        ));
+    }
+    if parts[1].trim().is_empty() || !parts[1].contains('.') {
+        return Err(format!("Invalid email format: '{email}' (invalid domain)"));
+    }
+    Ok(())
+}
+
+/// Pure policy: choose username from available sources.
+pub fn choose_username(env_username: Option<String>, whoami_output: Option<String>) -> String {
+    env_username
+        .filter(|u| !u.is_empty())
+        .or_else(|| whoami_output.map(|o| o.trim().to_string()))
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| "Unknown User".to_string())
+}
+
+/// Pure policy: choose hostname from available sources.
+pub fn choose_hostname(
+    env_hostname: Option<String>,
+    hostname_output: Option<String>,
+) -> Option<String> {
+    env_hostname
+        .filter(|h| !h.is_empty())
+        .or_else(|| hostname_output.map(|h| h.trim().to_string()))
+        .filter(|h| !h.is_empty())
+}
     if email.trim().is_empty() {
         return Err("Git user email cannot be empty".to_string());
     }
@@ -143,12 +184,6 @@ fn resolve_hostname_impl(executor: Option<&dyn ProcessExecutor>) -> Option<Strin
             .map(|o| o.stdout.trim().to_string())
     });
     choose_hostname(env_hostname, hostname_output)
-}
-
-/// Get the system hostname.
-#[cfg(test)]
-fn get_hostname(executor: Option<&dyn ProcessExecutor>) -> Option<String> {
-    resolve_hostname_impl(executor)
 }
 
 /// Get the default git identity (last resort).

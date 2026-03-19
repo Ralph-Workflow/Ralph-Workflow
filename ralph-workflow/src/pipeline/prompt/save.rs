@@ -50,7 +50,7 @@ pub(super) fn save_prompt_to_file_and_clipboard(
     // Copy to clipboard if interactive
     if options.interactive {
         if let Some(clipboard_cmd) = super::super::clipboard::get_platform_clipboard_command() {
-            match super::clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd) {
+            match super::clipboard::copy_to_clipboard(executor, prompt, clipboard_cmd.clone()) {
                 Ok(()) => {
                     logger.info(&format!(
                         "Prompt copied to clipboard {}({}){}",

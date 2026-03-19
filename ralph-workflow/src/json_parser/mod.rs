@@ -69,7 +69,6 @@ pub mod gemini;
 mod gemini_tests;
 pub mod health;
 pub mod incremental_parser;
-pub mod io;
 pub mod opencode;
 #[cfg(test)]
 mod opencode_tests;

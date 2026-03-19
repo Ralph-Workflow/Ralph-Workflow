@@ -5,6 +5,7 @@
 //! by delegating to the appropriate system calls or internal modules.
 
 use crate::app::effect::{AppEffect, AppEffectHandler, AppEffectResult, CommitResult};
+use crate::app::io::effect_io as io;
 use std::path::{Path, PathBuf};
 
 pub struct RealAppEffectHandler {
@@ -27,18 +28,12 @@ impl RealAppEffectHandler {
     }
 
     fn resolve_path(&self, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else if let Some(ref root) = self.workspace_root {
-            root.join(path)
-        } else {
-            path.to_path_buf()
-        }
+        io::resolve_path(&self.workspace_root, path)
     }
 
     fn execute_set_current_dir(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::env::set_current_dir(&resolved) {
+        match io::set_current_dir(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to set current directory to '{}': {}",
@@ -50,17 +45,7 @@ impl RealAppEffectHandler {
 
     fn execute_write_file(&self, path: &Path, content: String) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        if let Some(parent) = resolved.parent() {
-            if let Err(error) = std::fs::create_dir_all(parent) {
-                return AppEffectResult::Error(format!(
-                    "Failed to create parent directories for '{}': {}",
-                    resolved.display(),
-                    error
-                ));
-            }
-        }
-
-        match std::fs::write(&resolved, content) {
+        match io::write_file(&resolved, content) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to write file '{}': {}",
@@ -72,7 +57,7 @@ impl RealAppEffectHandler {
 
     fn execute_read_file(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::read_to_string(&resolved) {
+        match io::read_file(&resolved) {
             Ok(content) => AppEffectResult::String(content),
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to read file '{}': {}",
@@ -84,7 +69,7 @@ impl RealAppEffectHandler {
 
     fn execute_delete_file(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::remove_file(&resolved) {
+        match io::delete_file(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to delete file '{}': {}",
@@ -96,7 +81,7 @@ impl RealAppEffectHandler {
 
     fn execute_create_dir(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::create_dir_all(&resolved) {
+        match io::create_dir(&resolved) {
             Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
                 "Failed to create directory '{}': {}",
@@ -108,26 +93,15 @@ impl RealAppEffectHandler {
 
     fn execute_path_exists(&self, path: &Path) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        AppEffectResult::Bool(resolved.exists())
+        AppEffectResult::Bool(io::path_exists(&resolved))
     }
 
     fn execute_set_read_only(&self, path: &Path, readonly: bool) -> AppEffectResult {
         let resolved = self.resolve_path(path);
-        match std::fs::metadata(&resolved) {
-            Ok(metadata) => {
-                let mut permissions = metadata.permissions();
-                permissions.set_readonly(readonly);
-                match std::fs::set_permissions(&resolved, permissions) {
-                    Ok(()) => AppEffectResult::Ok,
-                    Err(error) => AppEffectResult::Error(format!(
-                        "Failed to set permissions on '{}': {}",
-                        resolved.display(),
-                        error
-                    )),
-                }
-            }
+        match io::set_read_only(&resolved, readonly) {
+            Ok(()) => AppEffectResult::Ok,
             Err(error) => AppEffectResult::Error(format!(
-                "Failed to get metadata for '{}': {}",
+                "Failed to set permissions on '{}': {}",
                 resolved.display(),
                 error
             )),
@@ -262,7 +236,7 @@ impl RealAppEffectHandler {
     }
 
     fn execute_get_env_var(name: &str) -> AppEffectResult {
-        match std::env::var(name) {
+        match io::get_env_var(name) {
             Ok(value) => AppEffectResult::String(value),
             Err(std::env::VarError::NotPresent) => {
                 AppEffectResult::Error(format!("Environment variable '{name}' not set"))
@@ -274,7 +248,7 @@ impl RealAppEffectHandler {
     }
 
     fn execute_set_env_var(name: &str, value: &str) -> AppEffectResult {
-        std::env::set_var(name, value);
+        io::set_env_var(name, value);
         AppEffectResult::Ok
     }
 }

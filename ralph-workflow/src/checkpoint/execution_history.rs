@@ -271,22 +271,26 @@ impl ExecutionStep {
         iteration: u32,
         step_type: &str,
         outcome: StepOutcome,
-        pool: &mut crate::checkpoint::StringPool,
-    ) -> Self {
-        Self {
-            phase: pool.intern_str(phase),
-            iteration,
-            step_type: Box::from(step_type),
-            timestamp: timestamp(),
-            outcome,
-            agent: None,
-            duration_secs: None,
-            checkpoint_saved_at: None,
-            git_commit_oid: None,
-            modified_files_detail: None,
-            prompt_used: None,
-            issues_summary: None,
-        }
+        pool: crate::checkpoint::StringPool,
+    ) -> (Self, crate::checkpoint::StringPool) {
+        let (pool, phase_arc) = pool.intern_str(phase);
+        (
+            Self {
+                phase: phase_arc,
+                iteration,
+                step_type: Box::from(step_type),
+                timestamp: timestamp(),
+                outcome,
+                agent: None,
+                duration_secs: None,
+                checkpoint_saved_at: None,
+                git_commit_oid: None,
+                modified_files_detail: None,
+                prompt_used: None,
+                issues_summary: None,
+            },
+            pool,
+        )
     }
 
     /// Set the agent that executed this step.
@@ -301,10 +305,11 @@ impl ExecutionStep {
     pub fn with_agent_pooled(
         mut self,
         agent: &str,
-        pool: &mut crate::checkpoint::StringPool,
-    ) -> Self {
-        self.agent = Some(pool.intern_str(agent));
-        self
+        pool: crate::checkpoint::StringPool,
+    ) -> (Self, crate::checkpoint::StringPool) {
+        let (pool, agent_arc) = pool.intern_str(agent);
+        self.agent = Some(agent_arc);
+        (self, pool)
     }
 
     /// Set the duration of this step.

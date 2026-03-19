@@ -18,16 +18,16 @@ use super::super::validation::{validate_agent_commands, validate_can_commit};
 
 /// Parameters for agent validation and setup.
 pub struct AgentSetupParams<'a> {
-    config: &'a crate::config::Config,
-    registry: &'a AgentRegistry,
-    developer_agent: &'a str,
-    reviewer_agent: &'a str,
-    config_path: &'a std::path::Path,
-    colors: Colors,
-    logger: &'a Logger,
+    pub(crate) config: &'a crate::config::Config,
+    pub(crate) registry: &'a AgentRegistry,
+    pub(crate) developer_agent: &'a str,
+    pub(crate) reviewer_agent: &'a str,
+    pub(crate) config_path: &'a std::path::Path,
+    pub(crate) colors: Colors,
+    pub(crate) logger: &'a Logger,
     /// If Some, use this path as the working directory without discovering the repo root
     /// or changing the global CWD. This enables test parallelism.
-    working_dir_override: Option<&'a std::path::Path>,
+    pub(crate) working_dir_override: Option<&'a std::path::Path>,
 }
 
 /// Validates agent commands and workflow capability, then sets up git repo and PROMPT.md.
@@ -167,7 +167,7 @@ fn setup_git_and_prompt_file<H: AppEffectHandler>(
 ///
 /// This function initializes the global interrupt context so that if
 /// the user presses Ctrl+C, the interrupt handler can save a checkpoint.
-fn setup_interrupt_context_for_pipeline(
+pub(crate) fn setup_interrupt_context_for_pipeline(
     phase: PipelinePhase,
     total_iterations: u32,
     total_reviewer_passes: u32,
@@ -214,7 +214,7 @@ fn setup_interrupt_context_for_pipeline(
 /// checkpoint write from live `PipelineState` (including up-to-date
 /// `prompt_history`). This interrupt context is used only for early interrupts
 /// before the event loop starts.
-fn update_interrupt_context_from_phase(
+pub(crate) fn update_interrupt_context_from_phase(
     execution_history: &crate::checkpoint::ExecutionHistory,
     prompt_history: std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
     phase: PipelinePhase,
@@ -259,7 +259,7 @@ fn update_interrupt_context_from_phase(
 /// Uses a scope guard pattern to ensure the interrupt context is cleared
 /// when the pipeline completes successfully, preventing an "interrupted"
 /// checkpoint from being saved after normal completion.
-const fn defer_clear_interrupt_context() -> InterruptContextGuard {
+pub(crate) const fn defer_clear_interrupt_context() -> InterruptContextGuard {
     InterruptContextGuard
 }
 
@@ -268,7 +268,7 @@ const fn defer_clear_interrupt_context() -> InterruptContextGuard {
 /// Ensures the interrupt context is cleared when the guard is dropped,
 /// preventing an "interrupted" checkpoint from being saved after normal
 /// pipeline completion.
-struct InterruptContextGuard;
+pub(crate) struct InterruptContextGuard;
 
 impl Drop for InterruptContextGuard {
     fn drop(&mut self) {

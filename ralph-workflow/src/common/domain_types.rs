@@ -279,8 +279,6 @@ impl From<&str> for ProviderName {
 pub struct Sha256Checksum(String);
 
 impl Sha256Checksum {
-    const LENGTH: usize = 64;
-
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -419,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_git_oid_valid_hex_characters() {
-        let hex_oid = "0123456789abcdef".repeat(2) + "0123456789abcdef".repeat(1);
+        let hex_oid = "0123456789abcdef".repeat(2) + &"0123456789abcdef".repeat(1);
         let oid = GitOid::try_from_str(&hex_oid).unwrap();
         assert_eq!(oid.as_str().len(), 40);
     }

@@ -263,21 +263,22 @@ mod tests {
 
     #[test]
     fn test_no_empty_categories() {
-        for category in PROVIDER_CATEGORIES {
+        PROVIDER_CATEGORIES.iter().for_each(|category| {
             assert!(
                 !category.providers.is_empty(),
                 "Category '{}' is empty",
                 category.name
             );
-        }
+        });
     }
 
     #[test]
     fn test_all_providers_have_aliases() {
-        for category in PROVIDER_CATEGORIES {
-            for (provider, alias) in category.providers {
+        PROVIDER_CATEGORIES
+            .iter()
+            .flat_map(|category| category.providers.iter())
+            .for_each(|(provider, alias)| {
                 assert!(!alias.is_empty(), "Provider {provider:?} has empty alias");
-            }
-        }
+            });
     }
 }

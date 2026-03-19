@@ -1,4 +1,4 @@
-use super::super::runtime::kill::kill_process;
+use super::super::kill::kill_process;
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex};

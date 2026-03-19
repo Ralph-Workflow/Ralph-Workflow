@@ -41,21 +41,21 @@ pub fn argv_requests_json(argv: &[String]) -> bool {
                 || (arg == "--format"
                     && args
                         .iter()
-                        .skip_while(|&&a| a != arg)
-                        .nth(1)
-                        .map_or(false, |next| *next == "json"))
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| *next == "json"))
                 || (arg == "-F"
                     && args
                         .iter()
-                        .skip_while(|&&a| a != arg)
-                        .nth(1)
-                        .map_or(false, |next| *next == "json"))
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| *next == "json"))
                 || (arg == "-o"
                     && args
                         .iter()
-                        .skip_while(|&&a| a != arg)
-                        .nth(1)
-                        .map_or(false, |next| next.contains("json")))
+                        .position(|&a| a == arg)
+                        .and_then(|i| args.get(i + 1))
+                        .is_some_and(|next| next.contains("json")))
         })
 }
 

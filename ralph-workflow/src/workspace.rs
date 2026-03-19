@@ -375,13 +375,14 @@ pub trait Workspace: Send + Sync {
 }
 
 // ============================================================================
-// Production Implementation: WorkspaceFs (in io/ boundary module)
+// Production Implementation: WorkspaceFs
 // ============================================================================
 
-pub mod io;
+pub mod sync_policy;
+pub mod workspace_fs;
 
 // Re-export WorkspaceFs for backward compatibility
-pub use io::WorkspaceFs;
+pub use workspace_fs::WorkspaceFs;
 
 // ============================================================================
 // Test Implementation: MemoryWorkspace

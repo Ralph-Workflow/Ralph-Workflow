@@ -150,9 +150,9 @@ pub use runtime::wrapper::{
 };
 
 #[cfg(any(test, feature = "test-utils"))]
-pub use runtime::wrapper::{
-    agent_phase_test_lock, get_agent_phase_paths_for_test, set_agent_phase_paths_for_test,
-};
+pub use runtime::agent_phase_test_lock;
+#[cfg(any(test, feature = "test-utils"))]
+pub use wrapper::{get_agent_phase_paths_for_test, set_agent_phase_paths_for_test};
 
 // Re-export checkpoint and recovery action for tests only
 #[cfg(any(test, feature = "test-utils"))]

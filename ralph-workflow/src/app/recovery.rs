@@ -113,7 +113,7 @@ where
     H: EffectHandler<'ctx> + StatefulHandler,
 {
     let event_str = format!("{:?}", result.event);
-    state = reduce(state, result.event.clone());
+    let state = reduce(state, result.event.clone());
     trace.push(build_trace_entry(
         events_processed,
         &state,
@@ -121,20 +121,23 @@ where
         &event_str,
     ));
     handler.update_state(state.clone());
-    events_processed = events_processed.saturating_add(1);
+    let events_processed = events_processed.saturating_add(1);
 
-    for event in result.additional_events {
-        let event_str = format!("{event:?}");
-        state = reduce(state, event);
-        trace.push(build_trace_entry(
-            events_processed,
-            &state,
-            save_effect_str,
-            &event_str,
-        ));
-        handler.update_state(state.clone());
-        events_processed = events_processed.saturating_add(1);
-    }
+    let (state, events_processed, _) = result.additional_events.into_iter().fold(
+        (state, events_processed, ()),
+        |(state, events_processed, _), event| {
+            let event_str = format!("{event:?}");
+            let state = reduce(state, event);
+            trace.push(build_trace_entry(
+                events_processed,
+                &state,
+                save_effect_str,
+                &event_str,
+            ));
+            handler.update_state(state.clone());
+            (state, events_processed.saturating_add(1), ())
+        },
+    );
 
     (state, events_processed)
 }
@@ -270,7 +273,7 @@ where
         GuardedEffectResult::Ok(result) => {
             let result = *result;
             let event_str = format!("{:?}", result.event);
-            let mut new_state = reduce(state, result.event.clone());
+            let new_state = reduce(state, result.event.clone());
             trace.push(build_trace_entry(
                 events_processed,
                 &new_state,
@@ -278,20 +281,23 @@ where
                 &event_str,
             ));
             handler.update_state(new_state.clone());
-            events_processed = events_processed.saturating_add(1);
+            let events_processed = events_processed.saturating_add(1);
 
-            for event in result.additional_events {
-                let event_str = format!("{event:?}");
-                new_state = reduce(new_state, event);
-                trace.push(build_trace_entry(
-                    events_processed,
-                    &new_state,
-                    &save_effect_str,
-                    &event_str,
-                ));
-                handler.update_state(new_state.clone());
-                events_processed = events_processed.saturating_add(1);
-            }
+            let (new_state, events_processed, _) = result.additional_events.into_iter().fold(
+                (new_state, events_processed, ()),
+                |(state, events_processed, _), event| {
+                    let event_str = format!("{event:?}");
+                    let state = reduce(state, event);
+                    trace.push(build_trace_entry(
+                        events_processed,
+                        &state,
+                        &save_effect_str,
+                        &event_str,
+                    ));
+                    handler.update_state(state.clone());
+                    (state, events_processed.saturating_add(1), ())
+                },
+            );
 
             RecoveryResult::Success(new_state, events_processed, false)
         }

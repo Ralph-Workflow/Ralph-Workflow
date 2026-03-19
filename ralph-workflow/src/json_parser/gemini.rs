@@ -18,6 +18,8 @@ use super::streaming_state::StreamingSession;
 use super::terminal::TerminalMode;
 use super::types::{format_tool_input, format_unknown_json_event, ContentType, GeminiEvent};
 
+pub mod boundary;
+
 include!("gemini/parser.rs");
 include!("gemini/event_parsing.rs");
 include!("gemini/stream_parsing.rs");

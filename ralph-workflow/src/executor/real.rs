@@ -39,27 +39,38 @@ fn terminate_child_best_effort(child: &mut std::process::Child) {
 
 #[cfg(unix)]
 fn wait_for_termination_or_send_sigkill(child: &mut std::process::Child, pid: i32) {
+    let (term_deadline, kill_deadline) = compute_termination_deadlines();
+    wait_until_deadline(child, term_deadline, pid);
+    send_sigkill(pid);
+    wait_until_deadline(child, kill_deadline, pid);
+}
+
+#[cfg(unix)]
+fn compute_termination_deadlines() -> (std::time::Instant, std::time::Instant) {
     use std::time::{Duration, Instant};
 
     let term_deadline = Instant::now() + Duration::from_millis(250);
-    while Instant::now() < term_deadline {
+    let kill_deadline = term_deadline + Duration::from_millis(500);
+    (term_deadline, kill_deadline)
+}
+
+#[cfg(unix)]
+fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Instant) {
+    use std::time::{Duration, Instant};
+
+    while Instant::now() < deadline {
         match child.try_wait() {
             Ok(Some(_)) | Err(_) => return,
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
         }
     }
+}
 
+#[cfg(unix)]
+fn send_sigkill(pid: i32) {
     unsafe {
         let _ = libc::kill(-pid, libc::SIGKILL);
         let _ = libc::kill(pid, libc::SIGKILL);
-    }
-
-    let kill_deadline = Instant::now() + Duration::from_millis(500);
-    while Instant::now() < kill_deadline {
-        match child.try_wait() {
-            Ok(Some(_)) | Err(_) => return,
-            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
-        }
     }
 }
 
@@ -138,31 +149,8 @@ impl ProcessExecutor for RealProcessExecutor {
     }
 
     fn spawn_agent(&self, config: &AgentSpawnConfig) -> io::Result<AgentChildHandle> {
-        let mut cmd = std::process::Command::new(&config.command);
-        cmd.args(&config.args);
-        config.env.iter().for_each(|(k, v)| {
-            cmd.env(k, v);
-        });
-        cmd.arg(&config.prompt);
-        cmd.env("PYTHONUNBUFFERED", "1");
-        cmd.env("NODE_ENV", "production");
-
-        #[cfg(unix)]
-        unsafe {
-            use std::os::unix::process::CommandExt;
-            cmd.pre_exec(|| {
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-
-        let mut child = cmd
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()?;
+        let mut cmd = build_agent_command(config);
+        let mut child = spawn_agent_child(&mut cmd)?;
 
         let stdout = child
             .stdout
@@ -188,6 +176,36 @@ impl ProcessExecutor for RealProcessExecutor {
             inner: Box::new(RealAgentChild(child)),
         })
     }
+}
+
+fn build_agent_command(config: &AgentSpawnConfig) -> std::process::Command {
+    let mut cmd = std::process::Command::new(&config.command);
+    cmd.args(&config.args);
+    config.env.iter().for_each(|(k, v)| {
+        cmd.env(k, v);
+    });
+    cmd.arg(&config.prompt);
+    cmd.env("PYTHONUNBUFFERED", "1");
+    cmd.env("NODE_ENV", "production");
+
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+}
+
+fn spawn_agent_child(cmd: &mut std::process::Command) -> io::Result<std::process::Child> {
+    cmd.spawn()
 }
 
 fn build_and_run_command(

@@ -400,22 +400,27 @@ impl AgentChainState {
             .sorted_by_key(|(agent, models)| (agent.clone(), models.clone()))
             .collect();
 
-        let update_chain: Vec<&[u8]> = sorted_pairs
+        let update_chain: Vec<Vec<u8>> = sorted_pairs
             .iter()
-            .flat_map(|(agent, models)| {
-                let models_bytes: std::borrow::Cow<[u8]> = models
+            .map(|(agent, models)| {
+                let models_bytes: Vec<u8> = models
                     .iter()
                     .map(|m| m.as_bytes())
                     .collect::<Vec<_>>()
-                    .join(&b',')
-                    .into();
-                [agent.as_bytes(), b"|", &models_bytes, b"\n"]
+                    .join(&b',');
+                let line: Vec<u8> = std::iter::empty()
+                    .chain(agent.as_bytes())
+                    .chain([b'|'])
+                    .chain(&models_bytes)
+                    .chain([b'\n'])
+                    .collect();
+                line
             })
             .collect();
 
         let hasher = update_chain.iter().fold(
             Digest::chain_update(Sha256::new(), agent_drain_signature_tag(self.current_drain)),
-            |h, chunk| Digest::chain_update(h, *chunk),
+            |h, chunk| Digest::chain_update(h, chunk.as_slice()),
         );
         let digest = hasher.finalize();
         digest

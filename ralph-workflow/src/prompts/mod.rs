@@ -45,6 +45,7 @@ pub mod template_catalog;
 pub mod template_context;
 pub(crate) mod template_engine;
 mod template_macros;
+pub mod template_parsing;
 pub mod template_registry;
 mod template_validator;
 mod types;

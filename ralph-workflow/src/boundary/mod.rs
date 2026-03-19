@@ -18,5 +18,3 @@
 //! - Keep business logic in domain modules
 //! - Use this module for wiring, not computing
 //! - Pass resolved dependencies explicitly (no ambient reads)
-
-pub mod config_loading;

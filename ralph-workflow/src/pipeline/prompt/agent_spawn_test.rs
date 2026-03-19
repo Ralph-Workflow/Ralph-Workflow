@@ -3,14 +3,12 @@ use crate::pipeline::idle_timeout::{
     monitor_idle_timeout_with_interval_and_kill_config_and_observer, new_activity_timestamp,
     time_since_activity, MonitorResult, StderrActivityTracker,
 };
-use crate::pipeline::prompt::runtime::cleanup::{
-    cleanup_after_agent_failure, terminate_child_best_effort,
-};
-use crate::pipeline::prompt::runtime::process_wait::wait_for_completion_and_collect_stderr;
-use crate::pipeline::prompt::runtime::stderr_collector::{
+use crate::pipeline::prompt::cleanup::{cleanup_after_agent_failure, terminate_child_best_effort};
+use crate::pipeline::prompt::process_wait::wait_for_completion_and_collect_stderr;
+use crate::pipeline::prompt::stderr_collector::{
     cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
 };
-use crate::pipeline::prompt::runtime::streaming::stream_agent_output_from_handle;
+use crate::pipeline::prompt::streaming::stream_agent_output_from_handle;
 use crate::pipeline::types::{CommandResult, IdleTimeoutCause};
 use std::io::{self, BufReader};
 use std::path::Path;

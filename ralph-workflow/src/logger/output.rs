@@ -96,7 +96,7 @@ pub use test_logger::TestLogger;
 
 #[cfg(test)]
 mod tests {
-    use crate::logger::io::strip_ansi_codes;
+    use crate::logger::runtime::strip_ansi_codes;
 
     #[test]
     fn test_strip_ansi_codes() {

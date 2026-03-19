@@ -46,33 +46,41 @@ pub fn truncate_diff_if_large(diff: &str, max_size: usize) -> String {
         return diff.to_string();
     }
 
-    let lines: Vec<_> = diff.lines().collect();
-    let mut files: Vec<DiffFile> = Vec::new();
-    let mut current_file = DiffFile::default();
-    let mut in_file = false;
+    let lines: Vec<&str> = diff.lines().collect();
 
-    for line in &lines {
+    #[derive(Default)]
+    struct Accumulator {
+        files: Vec<DiffFile>,
+        current_file: DiffFile,
+        in_file: bool,
+    }
+
+    let final_acc = lines.iter().fold(Accumulator::default(), |mut acc, line| {
         if line.starts_with("diff --git ") {
-            if in_file && !current_file.lines.is_empty() {
-                files.push(std::mem::take(&mut current_file));
+            if acc.in_file && !acc.current_file.lines.is_empty() {
+                acc.files.push(std::mem::take(&mut acc.current_file));
             }
-            in_file = true;
-            current_file.lines.push(line.to_string());
+            acc.in_file = true;
+            acc.current_file.lines.push(line.to_string());
 
             if let Some(path) = line.split(" b/").nth(1) {
-                current_file.path = path.to_string();
-                current_file.priority = prioritize_file_path(path);
+                acc.current_file.path = path.to_string();
+                acc.current_file.priority = prioritize_file_path(path);
             }
-        } else if in_file {
-            current_file.lines.push(line.to_string());
+        } else if acc.in_file {
+            acc.current_file.lines.push(line.to_string());
         }
+        acc
+    });
+
+    let mut files = final_acc.files;
+    if final_acc.in_file && !final_acc.current_file.lines.is_empty() {
+        files.push(final_acc.current_file);
     }
 
-    if in_file && !current_file.lines.is_empty() {
-        files.push(current_file);
-    }
+    let mut sorted_files: Vec<_> = if files.is_empty() { vec![] } else { files };
 
-    let sorted_files: Vec<_> = files.into_iter().sorted_by_key(|f| -f.priority).collect();
+    sorted_files.sort_by_key(|f| -f.priority);
 
     let total_files = sorted_files.len();
 
@@ -262,7 +270,7 @@ pub fn truncate_lines_to_fit(lines: &[String], max_size: usize) -> Vec<String> {
     } else {
         let last_idx = adjusted.len() - 1;
         let (init, last) = adjusted.split_at(last_idx);
-        let last_formatted = format!("{last}{suffix}");
+        let last_formatted = format!("{}{}", last[0], suffix);
         init.iter()
             .map(String::clone)
             .chain(std::iter::once(last_formatted))

@@ -2,6 +2,15 @@
 //
 // Contains the ClaudeParser struct and its core methods.
 
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap};
+
+use super::streaming_state::StreamingSession;
+use super::terminal::TerminalMode;
+use super::types::ContentBlock;
+use super::{Colors, SharedPrinter};
+use std::rc::Rc;
+
 /// Claude event parser
 ///
 /// Note: This parser is designed for single-threaded use only.
@@ -9,67 +18,18 @@
 pub struct ClaudeParser {
     colors: Colors,
     pub(crate) verbosity: Verbosity,
-    /// Relative path to log file (if logging enabled)
     log_path: Option<std::path::PathBuf>,
     display_name: String,
-    /// Unified streaming session tracker
-    /// Provides single source of truth for streaming state across all content types
-    streaming_session: Rc<RefCell<StreamingSession>>,
-    /// Terminal mode for output formatting
-    /// Detected at parse time and cached for performance
     terminal_mode: RefCell<TerminalMode>,
-    /// Whether to show streaming quality metrics
-    show_streaming_metrics: bool,
-    /// Output printer for capturing or displaying output
-    printer: SharedPrinter,
-
-    /// Tracks whether a thinking delta line is currently being streamed.
-    ///
-    /// - In `TerminalMode::Full`, thinking deltas use the append-only streaming pattern (no cursor
-    ///   movement during deltas) and must be finalized (emit the completion newline) before emitting
-    ///   other newline-based output.
-    /// - In `TerminalMode::Basic|None`, we suppress per-delta thinking output and flush accumulated
-    ///   thinking content once at the next output boundary (or at `message_stop`).
+    streaming_session: Rc<RefCell<StreamingSession>>,
     thinking_active_index: RefCell<Option<u64>>,
-
-    /// Tracks which thinking content block indices have streamed thinking content that is eligible
-    /// for non-TTY flushing.
-    ///
-    /// Some providers can emit multiple thinking blocks (multiple indices) within a single message.
-    /// In non-TTY modes we suppress per-delta output, so we must remember all indices that
-    /// accumulated thinking to flush them at `message_stop`.
-    thinking_non_tty_indices: RefCell<std::collections::BTreeSet<u64>>,
-
-    /// Once non-thinking output has started for the current message, suppress any
-    /// subsequent thinking deltas to avoid corrupting visible output.
-    ///
-    /// Claude/CCS can occasionally emit thinking deltas after text deltas. Because
-    /// both streams append on the current line in Full mode, allowing late thinking can
-    /// glue onto or visually corrupt previously-rendered text.
+    thinking_non_tty_indices: RefCell<BTreeSet<u64>>,
     suppress_thinking_for_message: RefCell<bool>,
-
-    /// Tracks whether a text delta line is currently being streamed (Full mode).
-    ///
-    /// In the append-only streaming pattern, deltas do not move the cursor; they simply
-    /// append new suffixes on the current line. When true, any newline-based non-stream
-    /// output should ensure the streamed line is finalized (emit the completion newline)
-    /// before printing unrelated lines, to avoid "glued" output.
     text_line_active: RefCell<bool>,
-
-    /// Defensive cursor state for legacy/inconsistent streams.
-    ///
-    /// The append-only streaming implementation should not emit cursor-up sequences,
-    /// but real-world logs can include raw passthrough output with escape codes.
-    /// When this flag is true, newline-based output should first emit a completion newline
-    /// to avoid overwriting/gluing onto visible content.
     cursor_up_active: RefCell<bool>,
-
-    /// Tracks the last rendered content for append-only streaming in Full mode.
-    ///
-    /// In append-only mode, we emit the prefix once, then only emit new suffixes for subsequent deltas.
-    /// This map stores the last rendered content for each (`ContentType`, index) pair.
-    /// Key format: "{`content_type}:{index`}" (e.g., "text:0", "thinking:1")
-    last_rendered_content: RefCell<std::collections::HashMap<String, String>>,
+    last_rendered_content: RefCell<HashMap<String, String>>,
+    show_streaming_metrics: bool,
+    printer: SharedPrinter,
 }
 
 impl ClaudeParser {
@@ -111,27 +71,26 @@ impl ClaudeParser {
     /// A new `ClaudeParser` instance
     pub fn with_printer(colors: Colors, verbosity: Verbosity, printer: SharedPrinter) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
 
-        // Use the printer's is_terminal method to validate it's connected correctly
-        // This is a sanity check that also satisfies the compiler that the method is used
         let _printer_is_terminal = printer.borrow().is_terminal();
+
+        let streaming_session = StreamingSession::new().with_verbose_warnings(verbose_warnings);
 
         Self {
             colors,
             verbosity,
             log_path: None,
             display_name: "Claude".to_string(),
-            streaming_session: Rc::new(RefCell::new(streaming_session)),
             terminal_mode: RefCell::new(TerminalMode::detect()),
-            show_streaming_metrics: false,
-            printer,
+            streaming_session: Rc::new(RefCell::new(streaming_session)),
             thinking_active_index: RefCell::new(None),
-            thinking_non_tty_indices: RefCell::new(std::collections::BTreeSet::new()),
+            thinking_non_tty_indices: RefCell::new(BTreeSet::new()),
             suppress_thinking_for_message: RefCell::new(false),
             text_line_active: RefCell::new(false),
             cursor_up_active: RefCell::new(false),
-            last_rendered_content: RefCell::new(std::collections::HashMap::new()),
+            last_rendered_content: RefCell::new(HashMap::new()),
+            show_streaming_metrics: false,
+            printer,
         }
     }
 
@@ -172,8 +131,28 @@ impl ClaudeParser {
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_terminal_mode(self, mode: TerminalMode) -> Self {
-        *self.terminal_mode.borrow_mut() = mode;
+        self.terminal_mode.replace(mode);
         self
+    }
+
+    fn streaming_session(&self) -> Rc<RefCell<StreamingSession>> {
+        Rc::clone(&self.streaming_session)
+    }
+
+    fn thinking_non_tty_indices_mut(&mut self) -> RefMut<'_, BTreeSet<u64>> {
+        self.thinking_non_tty_indices.borrow_mut()
+    }
+
+    fn suppress_thinking_for_message_mut(&mut self) -> RefMut<'_, bool> {
+        self.suppress_thinking_for_message.borrow_mut()
+    }
+
+    fn last_rendered_content(&self) -> Ref<'_, HashMap<String, String>> {
+        self.last_rendered_content.borrow()
+    }
+
+    fn last_rendered_content_mut(&mut self) -> RefMut<'_, HashMap<String, String>> {
+        self.last_rendered_content.borrow_mut()
     }
 
     /// Get a shared reference to the printer.
@@ -260,19 +239,13 @@ impl ClaudeParser {
         let event: ClaudeEvent = if let Ok(e) = serde_json::from_str(line) {
             e
         } else {
-            // Non-JSON line - could be raw text output from agent
-            // Pass through as-is if it looks like real output (not empty)
             let trimmed = line.trim();
             if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                // In full TTY mode, thinking deltas keep the cursor on the thinking line for
-                // in-place updates. Any other output must first finalize that cursor state.
                 let mut session = self.streaming_session.borrow_mut();
                 let finalize = self.finalize_in_place_full_mode(&mut session);
+                drop(session);
                 let out = format!("{finalize}{trimmed}\n");
                 if *self.terminal_mode.borrow() == TerminalMode::Full {
-                    // Only mutate cursor state based on explicit cursor controls.
-                    // Normal output may include newlines, but does not reliably indicate whether
-                    // we are still in the in-place streaming cursor-up position.
                     let mut cursor_up_active = self.cursor_up_active.borrow_mut();
                     if out.contains("\x1b[1B\n") {
                         *cursor_up_active = false;
@@ -286,16 +259,12 @@ impl ClaudeParser {
             return None;
         };
 
-        // When a thinking/text line is being streamed in full TTY mode, the streaming
-        // implementation is append-only and keeps the cursor on the current line.
-        //
-        // Any non-stream event (system/user/assistant/result) must first finalize the
-        // active streaming line so the next output does not glue onto it.
         let finalize = if matches!(&event, ClaudeEvent::StreamEvent { .. }) {
             String::new()
         } else {
             let mut session = self.streaming_session.borrow_mut();
-            self.finalize_in_place_full_mode(&mut session)
+            let result = self.finalize_in_place_full_mode(&mut session);
+            result
         };
         let c = &self.colors;
         let prefix = &self.display_name;
@@ -323,25 +292,12 @@ impl ClaudeParser {
                 result,
                 error,
             ),
-            ClaudeEvent::StreamEvent { event } => {
-                // Handle streaming events for delta/partial updates
-                self.parse_stream_event(event)
-            }
+            ClaudeEvent::StreamEvent { event } => self.parse_stream_event(event),
             ClaudeEvent::Unknown => {
-                // Use the generic unknown event formatter for consistent handling
-                // In verbose mode, this will show the event type and key fields
-                // In normal mode, this returns empty string
                 format_unknown_json_event(line, prefix, *c, self.verbosity.is_verbose())
             }
         };
 
-        // IMPORTANT: We must preserve any completion output from `finalize_in_place_full_mode`
-        // even if the current event itself produces no visible output.
-        //
-        // Example: the final "assistant" event can be deduplicated (empty output) after
-        // streaming deltas have already been shown. If we drop `finalize` in that case,
-        // the streamed line never receives its completion newline and subsequent output
-        // (e.g., system `status`) can clear/overwrite it.
         let output = if output.is_empty() {
             finalize
         } else {
@@ -352,14 +308,6 @@ impl ClaudeParser {
             None
         } else {
             if *self.terminal_mode.borrow() == TerminalMode::Full {
-                // Keep a simple, output-driven model of cursor state.
-                //
-                // The streaming implementation is append-only and SHOULD NOT emit cursor-up
-                // sequences ("\x1b[1A") for deltas. We only treat explicit cursor completion
-                // sequences ("\x1b[1B\n") as authoritative for clearing the defensive flag.
-                //
-                // Note: raw passthrough output may include escape sequences; we avoid inferring
-                // "cursor is up" from output content to keep this logic robust.
                 let mut cursor_up_active = self.cursor_up_active.borrow_mut();
                 if output.contains("\x1b[1B\n") {
                     *cursor_up_active = false;
@@ -388,51 +336,41 @@ impl ClaudeParser {
                 message,
                 message_id,
             } => {
-                // Protocol violations happen in real streams: a new MessageStart can arrive
-                // while a previous streamed line is still "active" (we haven't yet emitted the
-                // completion newline). Finalize any active streaming line before resetting state
-                // so subsequent output doesn't glue onto the in-progress line.
                 let in_place_finalize = self.finalize_in_place_full_mode(&mut session);
 
-                // Reset any pending thinking line from a previous message.
-                *self.thinking_active_index.borrow_mut() = None;
-                self.thinking_non_tty_indices.borrow_mut().clear();
-                *self.suppress_thinking_for_message.borrow_mut() = false;
-                *self.text_line_active.borrow_mut() = false;
-                *self.cursor_up_active.borrow_mut() = false;
+                {
+                    *self.thinking_active_index.borrow_mut() = None;
+                    self.thinking_non_tty_indices.borrow_mut().clear();
+                    *self.suppress_thinking_for_message.borrow_mut() = false;
+                    *self.text_line_active.borrow_mut() = false;
+                    *self.cursor_up_active.borrow_mut() = false;
+                }
 
-                // Extract message_id from either the top-level field or nested message.id
-                // The Claude API typically puts the ID in message.id, not at the top level
                 let effective_message_id =
                     message_id.or_else(|| message.as_ref().and_then(|m| m.id.clone()));
-                // Set message ID for tracking and clear session state on new message
                 session.set_current_message_id(effective_message_id);
                 session.on_message_start();
-                // Clear last rendered content for append-only pattern on new message
-                self.last_rendered_content.borrow_mut().clear();
+
+                {
+                    self.last_rendered_content.borrow_mut().clear();
+                }
+
                 in_place_finalize
             }
             StreamInnerEvent::ContentBlockStart {
                 index: Some(index),
                 content_block: Some(block),
             } => {
-                // Initialize a new content block at this index
                 session.on_content_block_start(index);
                 match &block {
                     ContentBlock::Text { text: Some(t) } if !t.is_empty() => {
-                        // Initial text in ContentBlockStart - treat as first delta
                         session.on_text_delta(index, t);
                     }
                     ContentBlock::ToolUse { name, input } => {
-                        // Track tool name for GLM/CCS deduplication.
-                        // IMPORTANT: Track the tool name when provided, even when input is None.
-                        // GLM may send ContentBlockStart with name but no input, then send input via delta.
-                        // We only store when we have a name to avoid overwriting a previous tool name with None.
                         if let Some(n) = name {
                             session.set_tool_name(index, Some(n.clone()));
                         }
 
-                        // Initialize tool input accumulator only if input is present
                         if let Some(i) = input {
                             let input_str = if let serde_json::Value::String(s) = &i {
                                 s.clone()
@@ -450,42 +388,57 @@ impl ClaudeParser {
                 index: Some(index),
                 content_block: None,
             } => {
-                // Content block started but no initial content provided
                 session.on_content_block_start(index);
                 String::new()
             }
-            StreamInnerEvent::ContentBlockStart { .. } => {
-                // Content block without index - ignore
-                String::new()
-            }
+            StreamInnerEvent::ContentBlockStart { .. } => String::new(),
             StreamInnerEvent::ContentBlockDelta {
                 index: Some(index),
                 delta: Some(delta),
-            } => self.handle_content_block_delta(&mut session, index, delta),
+            } => {
+                let idx = *index;
+                let del = delta.clone();
+                drop(session);
+                self.handle_content_block_delta_inner(idx, del)
+            }
             StreamInnerEvent::TextDelta { text: Some(text) } => {
-                self.handle_text_delta(&mut session, &text)
+                let txt = text.clone();
+                drop(session);
+                self.handle_text_delta_inner(&txt)
             }
-            StreamInnerEvent::ContentBlockStop { .. } => {
-                // Content block completion event - no output needed
-                // This event marks the end of a content block but doesn't produce
-                // any displayable content. It's a control event for state management.
-                String::new()
-            }
-            StreamInnerEvent::MessageDelta { .. } => {
-                // Message delta event with usage/metadata - no output needed
-                // This event contains final message metadata (stop_reason, usage stats)
-                // but is used for tracking/monitoring purposes only, not display.
-                String::new()
-            }
+            StreamInnerEvent::ContentBlockStop { .. } => String::new(),
+            StreamInnerEvent::MessageDelta { .. } => String::new(),
             StreamInnerEvent::ContentBlockDelta { .. }
             | StreamInnerEvent::Ping
             | StreamInnerEvent::TextDelta { text: None }
             | StreamInnerEvent::Error { error: None } => String::new(),
-            StreamInnerEvent::MessageStop => self.handle_message_stop(&mut session),
+            StreamInnerEvent::MessageStop => {
+                let result = self.handle_message_stop_inner();
+                result
+            }
             StreamInnerEvent::Error {
                 error: Some(err), ..
             } => self.handle_error_event(err),
             StreamInnerEvent::Unknown => self.handle_unknown_event(),
         }
+    }
+
+    fn handle_content_block_delta_inner(
+        &self,
+        index: u64,
+        delta: crate::json_parser::types::Delta,
+    ) -> String {
+        let mut session = self.streaming_session.borrow_mut();
+        self.handle_content_block_delta(&mut session, index, delta)
+    }
+
+    fn handle_text_delta_inner(&self, text: &str) -> String {
+        let mut session = self.streaming_session.borrow_mut();
+        self.handle_text_delta(&mut session, text)
+    }
+
+    fn handle_message_stop_inner(&self) -> String {
+        let mut session = self.streaming_session.borrow_mut();
+        self.handle_message_stop(&mut session)
     }
 }

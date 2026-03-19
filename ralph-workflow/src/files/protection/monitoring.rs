@@ -1,5 +1,3 @@
-//! Re-export monitoring from boundary module.
-//!
-//! This module re-exports from files::io::monitoring to avoid dylint violations.
+//! Re-export monitoring from files module.
 
-pub use crate::files::io::monitoring::PromptMonitor;
+pub use crate::files::monitoring::PromptMonitor;

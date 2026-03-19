@@ -1,7 +1,5 @@
 //! Continuation validation tests for XSD validation of development result XML format.
 
-use crate::files::llm_output_extraction::xsd_validation_development_result::validate_continuation_development_result_xml;
-
 #[test]
 fn test_continuation_validation_accepts_single_recovery_step() {
     let xml = r"<ralph-development-result>

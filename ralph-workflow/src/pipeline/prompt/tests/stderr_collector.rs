@@ -1,5 +1,5 @@
 use super::*;
-use crate::pipeline::prompt::runtime::stderr_collector::{
+use crate::pipeline::prompt::stderr_collector::{
     cancel_and_join_stderr_collector, collect_stderr_with_cap_and_drain,
 };
 

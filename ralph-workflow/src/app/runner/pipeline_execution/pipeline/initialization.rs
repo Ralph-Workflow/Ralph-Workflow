@@ -193,7 +193,7 @@ pub(crate) fn prepare_pipeline_or_exit<H: AppEffectHandler>(
             .map_err(|e| anyhow::anyhow!("{e}"))?;
     }
 
-    let state = PipelinePreparationState {
+    let mut state = PipelinePreparationState {
         args,
         config,
         registry,

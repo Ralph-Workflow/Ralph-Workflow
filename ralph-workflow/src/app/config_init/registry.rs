@@ -4,7 +4,7 @@
 //! the agent registry during startup, including `OpenCode` API catalog setup.
 
 use crate::agents::opencode_api::CatalogLoader;
-use crate::agents::{validation as agent_validation, AgentDrain, AgentRegistry, ConfigSource};
+use crate::agents::{AgentDrain, AgentRegistry, ConfigSource};
 use crate::config::{Config, ConfigEnvironment, UnifiedConfig};
 use std::path::PathBuf;
 
@@ -32,50 +32,7 @@ pub(super) fn load_agent_registry<L: CatalogLoader>(
     config_path: &std::path::Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<ConfigSource>)> {
-    crate::app::io::initialization::load_agent_registry_boundary(
-        unified,
-        config_path,
-        catalog_loader,
-    )
-}
-
-/// Setup `OpenCode` API catalog for dynamic provider/model resolution.
-///
-/// This function:
-/// 1. Checks if there are any `opencode/*` references in the configured agent chains
-/// 2. If yes, fetches/loads the cached `OpenCode` API catalog
-/// 3. Sets the catalog on the registry for dynamic agent resolution
-/// 4. Validates all opencode/* references and reports errors with suggestions
-pub(super) fn setup_opencode_catalog<L: CatalogLoader>(
-    registry: &mut AgentRegistry,
-    catalog_loader: &L,
-) -> anyhow::Result<()> {
-    let resolved = registry.resolved_drains().clone();
-
-    // Check if there are any opencode/* references
-    let opencode_refs = agent_validation::get_opencode_refs_in_resolved_drains(&resolved);
-    if opencode_refs.is_empty() {
-        // No opencode references, skip catalog loading
-        return Ok(());
-    }
-
-    // Load the API catalog using the injected loader
-    let catalog = catalog_loader.load().map_err(|e| {
-        anyhow::anyhow!(
-            "Failed to load OpenCode API catalog. \
-            This is required for the following agent references: {opencode_refs:?}. \
-            Error: {e}"
-        )
-    })?;
-
-    // Set the catalog on the registry for dynamic resolution
-    registry.set_opencode_catalog(catalog.clone());
-
-    // Validate all opencode/* references
-    agent_validation::validate_opencode_agents_in_resolved_drains(&resolved, &catalog)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    Ok(())
+    crate::app::initialization::load_agent_registry_boundary(unified, config_path, catalog_loader)
 }
 
 /// Applies default agent selection from fallback chains.

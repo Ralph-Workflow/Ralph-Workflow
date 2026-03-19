@@ -57,23 +57,11 @@ struct LoopRenderLog {
 }
 
 fn parse_loop_header(full_match: &str) -> Option<(&str, &str)> {
-    let in_pos = full_match.find(" in ")?;
-    let header = &full_match[7..in_pos];
-    let body_start = full_match.find("%}").map_or(full_match.len(), |p| p + 2);
-    let body = &full_match[body_start..full_match.len() - 2];
-    Some((header, body))
+    crate::prompts::template_parsing::parse_loop_header_impl(full_match)
 }
 
 fn split_loop_items(values: &str) -> Vec<&str> {
-    if values.contains(',') {
-        values.split(',').map(str::trim).collect()
-    } else {
-        values
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
+    crate::prompts::template_parsing::split_loop_items_impl(values)
 }
 
 fn render_loop_item(
@@ -101,10 +89,7 @@ fn find_unsubstituted_vars(item_content: &str, variables: &HashMap<&str, String>
 }
 
 fn eval_conditional(condition: &str, variables: &HashMap<&str, String>) -> bool {
-    variables
-        .get(condition)
-        .map(|v| !v.is_empty())
-        .unwrap_or(false)
+    crate::prompts::template_parsing::eval_conditional_impl(condition, variables)
 }
 
 impl Template {
@@ -538,54 +523,17 @@ use crate::checkpoint::state::PipelinePhase;
 use std::fmt::Write as FmtWrite;
 
 fn format_resume_state(resume_count: u32, rebase_state: &str) -> String {
-    let mut s = String::new();
-    if resume_count > 0 {
-        s.push_str(&format!(
-            "This session has been resumed {resume_count} time(s)\n"
-        ));
-    }
-    if rebase_state != "NotStarted" {
-        s.push_str(&format!("Rebase state: {rebase_state}\n"));
-    }
-    s
+    crate::prompts::template_parsing::format_resume_state_impl(resume_count, rebase_state)
 }
 
 fn format_modified_files_summary(
     detail: &crate::checkpoint::execution_history::ModifiedFilesDetail,
 ) -> String {
-    let added_count = detail.added.as_ref().map_or(0, |v| v.len());
-    let modified_count = detail.modified.as_ref().map_or(0, |v| v.len());
-    let deleted_count = detail.deleted.as_ref().map_or(0, |v| v.len());
-    let total_files = added_count + modified_count + deleted_count;
-    if total_files == 0 {
-        return String::new();
-    }
-
-    let mut s = format!("  Files: {total_files} changed");
-    if added_count > 0 {
-        s.push_str(&format!(" ({added_count} added)"));
-    }
-    if modified_count > 0 {
-        s.push_str(&format!(" ({modified_count} modified)"));
-    }
-    if deleted_count > 0 {
-        s.push_str(&format!(" ({deleted_count} deleted)"));
-    }
-    s.push('\n');
-    s
+    crate::prompts::template_parsing::format_files_summary_impl(detail).unwrap_or_default()
 }
 
 fn format_issues_summary(issues: &crate::checkpoint::execution_history::IssuesSummary) -> String {
-    if issues.found == 0 && issues.fixed == 0 {
-        return String::new();
-    }
-
-    let mut s = format!("  Issues: {} found, {} fixed", issues.found, issues.fixed);
-    if let Some(ref desc) = issues.description {
-        s.push_str(&format!(" ({desc})"));
-    }
-    s.push('\n');
-    s
+    crate::prompts::template_parsing::format_issues_summary_impl(issues).unwrap_or_default()
 }
 
 fn format_recent_step(step: &crate::checkpoint::execution_history::ExecutionStep) -> String {
@@ -712,64 +660,75 @@ pub trait BriefDescription {
     fn brief_description(&self) -> String;
 }
 
-const PARTIAL_FIELD_MAX_CHARS: usize = 120;
-
-fn one_line_truncated(input: &str, max_chars: usize) -> String {
-    let first_line = input.lines().next().unwrap_or("").trim();
-    let mut out: String = first_line.chars().take(max_chars).collect();
-    if first_line.chars().count() > max_chars {
-        out.push_str("...(truncated)");
-    }
-    out
-}
-
 impl BriefDescription for StepOutcome {
     fn brief_description(&self) -> String {
+        use crate::prompts::template_parsing::OutcomeDescription;
         match self {
             Self::Success {
                 files_modified,
                 output,
                 ..
-            } => output
-                .as_ref()
-                .and_then(|out| {
-                    if out.is_empty() {
-                        None
-                    } else {
-                        Some(format!("Success - {}", out.lines().next().unwrap_or("")))
-                    }
-                })
-                .or_else(|| {
-                    files_modified.as_ref().and_then(|files| {
-                        if files.is_empty() {
-                            None
-                        } else {
-                            Some(format!("Success - {} files modified", files.len()))
-                        }
-                    })
-                })
-                .unwrap_or_else(|| "Success".to_string()),
+            } => OutcomeDescription::from_outcome(
+                files_modified,
+                output,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+            )
+            .as_string(),
             Self::Failure {
                 error, recoverable, ..
-            } => {
-                if *recoverable {
-                    format!("Recoverable error - {}", error.lines().next().unwrap_or(""))
-                } else {
-                    format!("Failed - {}", error.lines().next().unwrap_or(""))
-                }
-            }
+            } => OutcomeDescription::from_outcome(
+                &None,
+                &None,
+                Some(error),
+                Some(recoverable),
+                &None,
+                &None,
+                &None,
+            )
+            .failure_recoverable
+            .or_else(|| {
+                OutcomeDescription::from_outcome(
+                    &None,
+                    &None,
+                    Some(error),
+                    Some(recoverable),
+                    &None,
+                    &None,
+                    &None,
+                )
+                .failure_fatal
+            })
+            .unwrap_or_default(),
             Self::Partial {
                 completed,
                 remaining,
                 ..
-            } => {
-                let completed = one_line_truncated(completed, PARTIAL_FIELD_MAX_CHARS);
-                let remaining = one_line_truncated(remaining, PARTIAL_FIELD_MAX_CHARS);
-                format!("Partial - {completed} done, {remaining}")
-            }
-            Self::Skipped { reason } => {
-                format!("Skipped - {reason}")
-            }
+            } => OutcomeDescription::from_outcome(
+                &None,
+                &None,
+                &None,
+                &None,
+                Some(completed),
+                Some(remaining),
+                &None,
+            )
+            .partial
+            .unwrap_or_default(),
+            Self::Skipped { reason } => OutcomeDescription::from_outcome(
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                &None,
+                Some(reason),
+            )
+            .skipped
+            .unwrap_or_default(),
         }
     }
 }

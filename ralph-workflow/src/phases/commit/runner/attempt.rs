@@ -70,7 +70,7 @@ pub fn run_commit_attempt(
         ));
     }
 
-    let runtime = PipelineRuntime {
+    let mut runtime = PipelineRuntime {
         timer: ctx.timer,
         logger: ctx.logger,
         colors: ctx.colors,
@@ -86,7 +86,7 @@ pub fn run_commit_attempt(
         .run_dir()
         .join("debug")
         .join("commit_generation");
-    let session = CommitLogSession::new(
+    let mut session = CommitLogSession::new(
         log_dir
             .to_str()
             .expect("Path contains invalid UTF-8 - all paths in this codebase should be UTF-8"),

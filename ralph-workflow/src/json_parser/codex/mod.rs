@@ -18,6 +18,13 @@ use crate::json_parser::types::{format_unknown_json_event, CodexEvent};
 
 pub mod event_handlers;
 
+pub mod boundary;
+
+use event_handlers::{
+    handle_error, handle_item_completed, handle_item_started, handle_thread_started,
+    handle_turn_completed, handle_turn_failed, handle_turn_started, EventHandlerContext,
+};
+
 include!("parser.rs");
 include!("stream_parsing.rs");
 include!("event_parsing.rs");

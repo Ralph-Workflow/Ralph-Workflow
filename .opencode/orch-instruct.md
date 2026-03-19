@@ -9,6 +9,7 @@
 ---
 
 ## 🚨 STYLE COMPLIANCE: SCAN EVERY AGENT RESULT IN STEP 4
+* YOU MAY BE ASKED TO MONITOR ONCE A WHILE IF YOU DO, USE THESE AS CRITERIA TO ENSURE AGENT STAYS ON TRACK
 
 When you read an agent result, scan its text for these red-flag phrases. If found, the agent has gone off-track — mark it `partial` or `blocked`, rerun the script, and relaunch with an explicit correction naming the phrase you found.
 
@@ -21,6 +22,92 @@ When you read an agent result, scan its text for these red-flag phrases. If foun
 | `pre-existing` / `was already broken` | Using pre-existing as an excuse (forbidden per AGENTS.md) |
 | `can't fix` / `unable to fix` without a detailed blocker | Agent gave up without proper escalation |
 | `TODO` / `FIXME` left in changed files | Incomplete fix passed off as done |
+| `cargo check` / `cargo build` / `cargo test` / `cargo clippy` | Agent ran cargo mid-work — forbidden, see below |
+| only fixed compilation error and stopped | Agent treated compilation fix as complete work — must continue to dylint fixes |
+| reading 3+ files before any edit | Agent is in a reading loop — tell it to stop and start editing |
+
+If you are able to: Check if their current work is working against the style guide, you should nudge them with style guide links
+if they are working against functional programming practices.
+
+---
+
+## 🚫 CARGO IS INTENTIONALLY DISABLED FOR AGENTS
+
+**Cargo is turned OFF for agents during refactoring. This is by design.**
+
+Agents must NEVER run any cargo command during their work:
+- `cargo build`, `cargo check`, `cargo test`, `cargo clippy` — ALL FORBIDDEN
+- `.opencode/verify_agent_work.sh` — FORBIDDEN
+- Any shell command that invokes cargo — FORBIDDEN
+
+**Why:** Cargo is disabled so agents can perform LARGE architectural refactors without distraction. Compilation errors from refactoring are EXPECTED and OK. The orchestrator handles verification after all agents finish.
+
+**If you catch an agent running cargo:** Immediately tell it:
+> "Cargo has been intentionally disabled to allow for large refactors without distraction. Do not run cargo. Continue editing files."
+
+**Every agent dispatch prompt MUST include the cargo-disabled box** (the template already includes it, but verify).
+
+---
+
+## 📋 TWO-PHASE APPROACH: REFACTOR FIRST, THEN COMPILE
+
+### Phase 1: Refactoring (current phase)
+- Fix ALL dylint violations first across all modules
+- Compilation errors from refactoring are EXPECTED and OK
+- Do NOT run the dispatch script until ALL refactoring is done
+- Keep resending agents until every module's style violations are addressed
+
+### Phase 2: Compilation Fixes (only after Phase 1 is complete)
+- Fix all compilation errors introduced by the refactoring
+- **CRITICAL: Compilation fixes must ALSO follow the style guide**
+- When fixing a compilation error, agents must NOT introduce:
+  - `let mut` bindings in domain code
+  - `for`/`while` loops in domain code
+  - `.push()`, `.insert()` on mutable receivers in domain code
+  - Interior mutability (`Mutex`, `RefCell`, `LazyLock`) outside boundary modules
+- If fixing a compilation error would require violating the style guide → restructure the type/API instead
+- API changes from Phase 1 (e.g. `string_pool` now returns tuples) must be propagated with functional call-site patterns, not quick hacks
+
+**NEVER run the dispatch script until you are confident all dylint violations have been addressed.**
+
+---
+
+## 🔄 FRESH SESSIONS ONLY — NEVER REUSE session_id
+
+**Always start fresh. Never pass `session_id` to `task()`.**
+
+Reusing sessions causes context pollution — the agent inherits stale context and old mistakes. This leads to:
+- Agents re-doing work already done
+- Agents confused about what state the codebase is in
+- Compilation errors from stale module paths
+
+**Rule:** Every dispatch is a fresh `task(subagent_type=..., run_in_background=true, ...)` with NO `session_id`. If an agent's session expired or task_id is gone from the registry, launch a new agent with a prompt that explains what was done and what remains.
+
+---
+
+## ⚡ AGENT BEHAVIOR MONITORING
+
+### Signs an agent is doing real refactoring work (good):
+- Writing/editing multiple files per 5-minute window
+- Converting `let mut` + loops to iterator chains
+- Creating new boundary modules (`io.rs`, `runtime.rs`, `boundary.rs`)
+- Moving files to flatten nested boundary directories
+- Extracting pure domain functions from boundary functions
+
+### Signs an agent has gone off-track (requires immediate intervention):
+- **Only fixed one compilation error and stopped** → resend with "compilation fix done, now do the actual refactoring"
+- **Reading 3+ files before any edit** → tell it: "Stop reading. Start editing NOW."
+- **Running cargo mid-work** → tell it: "Cargo is intentionally disabled. Do not run cargo."
+- **Session timed out after 30+ minutes** → launch fresh agent explaining what was done
+- **Agent exceeded 400 tool calls** → fresh agent with tighter, more surgical prompt
+- **Analyzing architecture for 10+ messages without editing** → "Stop analyzing. Make the edit."
+
+### Resend policy:
+When an agent completes without finishing all its assigned work → **immediately resend as a fresh agent** with:
+1. What was already done (so it doesn't redo it)
+2. What specific work remains
+3. Exact file/line references if known
+4. Clear instruction to start editing immediately
 
 ---
 
@@ -337,6 +424,7 @@ Before EVERY action, ask yourself:
 - [ ] Did I re-read this file from the top?
 - [ ] Am I working from the current instructions or from memory?
 - [ ] Have the instructions been updated since I last read them?
+- [ ] Agent tool-call budget is **400 calls** — ensure dispatch prompts mention this.
 - [ ] Am I about to dispatch ALL agents in PARALLEL (not one at a time)?
 - [ ] Am I using the `task(...)` plugin to dispatch (not ad-hoc prose)?
 - [ ] Did I set `run_in_background=true` on EVERY dispatch?
@@ -348,6 +436,10 @@ Before EVERY action, ask yourself:
 - [ ] Did I rerun the script when an agent event changed the situation?
 - [ ] Am I avoiding duplicate dispatch for agents that are already running?
 - [ ] Did I count how many agents have errors and dispatch that exact number?
+- [ ] Am I in Phase 1 (refactoring) — is all dylint work truly done before running the script?
+- [ ] If in Phase 2 (compilation) — are agents fixing compilation errors WITHOUT introducing let mut/loops/interior mutability?
+- [ ] Did I catch any agent running cargo mid-work and correct it?
+- [ ] Am I dispatching fresh sessions (no session_id reuse)?
 
 **IF YOU ANSWERED "NO" OR "NOT SURE" TO ANY → STOP AND RE-READ THIS FILE NOW.**
 

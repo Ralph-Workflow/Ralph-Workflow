@@ -7,12 +7,12 @@
 use crate::pipeline::PipelineRuntime;
 
 pub fn run_pipeline_for_commit_message<'a>(
-    config: &crate::app::plumbing::CommitGenerationConfig<'a>,
+    timer: &'a mut crate::pipeline::Timer,
+    config: &'a crate::app::plumbing::CommitGenerationConfig<'a>,
 ) -> anyhow::Result<PipelineRuntime<'a>> {
-    let mut timer = crate::app::runtime_factory::create_timer();
     let executor_ref: &dyn crate::executor::ProcessExecutor = &*config.executor;
     let runtime = crate::app::runtime_factory::create_pipeline_runtime(
-        &mut timer,
+        timer,
         config.logger,
         &config.colors,
         config.config,

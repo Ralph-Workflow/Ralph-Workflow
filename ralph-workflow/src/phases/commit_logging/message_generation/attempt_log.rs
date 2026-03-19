@@ -107,21 +107,9 @@ impl CommitAttemptLog {
 
     /// Record an extraction attempt (consuming builder).
     #[must_use]
-    pub fn with_extraction_attempt(mut self, attempt: ExtractionAttempt) -> Self {
+    pub fn add_extraction_attempt(mut self, attempt: ExtractionAttempt) -> Self {
         self.extraction_attempts.push(attempt);
         self
-    }
-
-    /// Set the final outcome (consuming builder).
-    #[must_use]
-    pub fn with_outcome(mut self, outcome: AttemptOutcome) -> Self {
-        self.outcome = Some(outcome);
-        self
-    }
-
-    /// Record an extraction attempt.
-    pub fn add_extraction_attempt(&mut self, attempt: ExtractionAttempt) {
-        self.extraction_attempts.push(attempt);
     }
 
     /// Record validation check results.

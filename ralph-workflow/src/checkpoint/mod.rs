@@ -40,6 +40,7 @@ pub mod execution_history;
 pub mod file_capture;
 pub mod file_state;
 pub mod git_capture;
+pub mod io;
 pub mod recovery;
 pub mod restore;
 pub mod run_context;

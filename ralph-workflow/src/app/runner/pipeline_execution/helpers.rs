@@ -57,7 +57,7 @@ impl<'a> CommandExitCleanupGuard<'a> {
         }
     }
 
-    const fn mark_owned(&mut self) {
+    pub(crate) const fn mark_owned(&mut self) {
         self.owns_cleanup = true;
     }
 }
@@ -134,16 +134,16 @@ pub(crate) fn prepare_agent_phase_for_workspace(
 
 #[derive(Copy, Clone)]
 pub(crate) struct RepoCommandParams<'a> {
-    args: &'a Args,
-    config: &'a crate::config::Config,
-    registry: &'a AgentRegistry,
-    developer_agent: &'a str,
-    reviewer_agent: &'a str,
-    logger: &'a Logger,
-    colors: Colors,
-    executor: &'a std::sync::Arc<dyn ProcessExecutor>,
-    repo_root: &'a std::path::Path,
-    workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
+    pub(crate) args: &'a Args,
+    pub(crate) config: &'a crate::config::Config,
+    pub(crate) registry: &'a AgentRegistry,
+    pub(crate) developer_agent: &'a str,
+    pub(crate) reviewer_agent: &'a str,
+    pub(crate) logger: &'a Logger,
+    pub(crate) colors: Colors,
+    pub(crate) executor: &'a std::sync::Arc<dyn ProcessExecutor>,
+    pub(crate) repo_root: &'a std::path::Path,
+    pub(crate) workspace: &'a std::sync::Arc<dyn crate::workspace::Workspace>,
 }
 
 pub(crate) fn handle_repo_commands_without_prompt_setup(
@@ -162,7 +162,7 @@ pub(crate) fn handle_repo_commands_without_prompt_setup(
         workspace,
     } = params;
 
-    crate::app::io::pipeline_setup::handle_repo_commands_boundary(
+    crate::app::pipeline_setup::handle_repo_commands_boundary(
         args,
         config,
         registry,

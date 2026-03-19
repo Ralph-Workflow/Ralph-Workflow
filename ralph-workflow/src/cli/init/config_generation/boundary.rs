@@ -23,6 +23,28 @@ fn create_minimal_prompt_md() -> String {
     .to_string()
 }
 
+fn print_unknown_template_error(template_name: &str, colors: Colors) {
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}Unknown Work Guide: '{}'{}",
+        colors.red(),
+        template_name,
+        colors.reset()
+    );
+    let similar = find_similar_templates(template_name);
+    if !similar.is_empty() {
+        let _ = writeln!(
+            std::io::stdout(),
+            "{}Did you mean:?{}",
+            colors.yellow(),
+            colors.reset()
+        );
+        similar.into_iter().for_each(|(name, score)| {
+            let _ = writeln!(std::io::stdout(), "  - {} ({}% match)", name, score);
+        });
+    }
+}
+
 pub fn create_prompt_from_template<R: ConfigEnvironment>(
     template_name: &str,
     prompt_path: &Path,
@@ -30,26 +52,14 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
     colors: Colors,
     env: &R,
 ) -> anyhow::Result<bool> {
-    if get_template(template_name).is_none() {
-        let _ = writeln!(
-            std::io::stdout(),
-            "{}Unknown Work Guide: '{}'{}",
-            colors.red(),
-            template_name,
-            colors.reset()
-        );
-        let similar = find_similar_templates(template_name);
-        if !similar.is_empty() {
-            let _ = writeln!(
-                std::io::stdout(),
-                "{}Did you mean:?{}",
-                colors.yellow(),
-                colors.reset()
-            );
-            for (name, score) in similar {
-                let _ = writeln!(std::io::stdout(), "  - {} ({}% match)", name, score);
-            }
-        }
+    use crate::cli::diagnostics_domain::validate_template_name;
+
+    let validation = validate_template_name(template_name);
+    if matches!(
+        validation,
+        crate::cli::diagnostics_domain::TemplateValidation::Unknown { .. }
+    ) {
+        print_unknown_template_error(template_name, colors);
         return Ok(true);
     }
 
@@ -79,30 +89,6 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
     Ok(true)
 }
 
-pub fn infer_init_action<R: ConfigEnvironment>(
-    config_path: &Path,
-    prompt_path: &Path,
-    env: &R,
-) -> InitInferredAction {
-    let has_config = env.file_exists(config_path);
-    let has_prompt = env.file_exists(prompt_path);
-
-    match (has_config, has_prompt) {
-        (true, true) => InitInferredAction::BothExists,
-        (true, false) => InitInferredAction::ConfigOnly,
-        (false, true) => InitInferredAction::PromptOnly,
-        (false, false) => InitInferredAction::NeitherExists,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InitInferredAction {
-    BothExists,
-    ConfigOnly,
-    PromptOnly,
-    NeitherExists,
-}
-
 pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
     config_path: &Path,
     prompt_path: &Path,
@@ -110,18 +96,24 @@ pub fn handle_init_state_inference_with_env<R: ConfigEnvironment>(
     colors: Colors,
     env: &R,
 ) -> anyhow::Result<bool> {
-    let action = infer_init_action(config_path, prompt_path, env);
-    let has_template = template_arg.map(|s| !s.is_empty()).unwrap_or(false);
-
-    if has_template {
-        return create_prompt_from_template(template_arg.unwrap(), prompt_path, false, colors, env);
-    }
+    let has_config = env.file_exists(config_path);
+    let has_prompt = env.file_exists(prompt_path);
+    let action =
+        crate::cli::diagnostics_domain::determine_init_action(has_config, has_prompt, template_arg);
 
     match action {
-        InitInferredAction::BothExists => handle_both_exists(prompt_path, colors, env),
-        InitInferredAction::ConfigOnly => handle_config_only(prompt_path, colors, env),
-        InitInferredAction::PromptOnly => handle_prompt_only(colors, env),
-        InitInferredAction::NeitherExists => handle_neither_exists(prompt_path, colors, env),
+        crate::cli::diagnostics_domain::InitFileState::BothExists => {
+            handle_both_exists(prompt_path, colors, env)
+        }
+        crate::cli::diagnostics_domain::InitFileState::ConfigOnly => {
+            handle_config_only(prompt_path, colors, env)
+        }
+        crate::cli::diagnostics_domain::InitFileState::PromptOnly => {
+            handle_prompt_only(colors, env)
+        }
+        crate::cli::diagnostics_domain::InitFileState::NeitherExists => {
+            handle_neither_exists(prompt_path, colors, env)
+        }
     }
 }
 
@@ -160,29 +152,34 @@ fn handle_config_only<R: ConfigEnvironment>(
     if !response {
         return Ok(false);
     }
-    let _ = writeln!(
-        std::io::stdout(),
-        "\n{}Available Work Guides:{}",
-        colors.blue(),
-        colors.reset()
-    );
-    let _ = list_templates();
 
-    if can_prompt_user() {
-        if let Some(template_name) = prompt_for_template(colors) {
-            return create_prompt_from_template(&template_name, prompt_path, false, colors, env);
-        }
+    let can_prompt = can_prompt_user();
+    let template_name = if can_prompt {
+        prompt_for_template(colors)
     } else {
-        let content = create_minimal_prompt_md();
-        env.write_file(prompt_path, &content)?;
-        let _ = writeln!(
-            std::io::stdout(),
-            "{}Created minimal PROMPT.md (non-interactive mode){}",
-            colors.green(),
-            colors.reset()
-        );
+        None
+    };
+
+    match crate::cli::diagnostics_domain::determine_config_only_next_action(
+        can_prompt,
+        template_name,
+    ) {
+        crate::cli::diagnostics_domain::ConfigOnlyNextAction::CreateFromTemplate(name) => {
+            create_prompt_from_template(&name, prompt_path, false, colors, env)
+        }
+        crate::cli::diagnostics_domain::ConfigOnlyNextAction::CreateMinimal => {
+            let content = create_minimal_prompt_md();
+            env.write_file(prompt_path, &content)?;
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Created minimal PROMPT.md (non-interactive mode){}",
+                colors.green(),
+                colors.reset()
+            );
+            Ok(false)
+        }
+        crate::cli::diagnostics_domain::ConfigOnlyNextAction::Skip => Ok(false),
     }
-    Ok(false)
 }
 
 fn handle_prompt_only<R: ConfigEnvironment>(colors: Colors, env: &R) -> anyhow::Result<bool> {
@@ -217,37 +214,34 @@ fn handle_neither_exists<R: ConfigEnvironment>(
     let _ = writeln!(std::io::stdout());
     print_common_work_guides(colors);
 
-    if can_prompt_user() {
-        if let Some(template_name) = prompt_for_template(colors) {
-            match create_prompt_from_template(&template_name, prompt_path, false, colors, env) {
-                Ok(true) => return Ok(true),
-                Ok(false) => {}
-                Err(e) => {
-                    let _ = writeln!(
-                        std::io::stdout(),
-                        "{}Failed to create PROMPT.md: {}{}",
-                        colors.red(),
-                        e,
-                        colors.reset()
-                    );
-                    return Ok(false);
-                }
-            }
+    let can_prompt = can_prompt_user();
+    let template_name = if can_prompt {
+        prompt_for_template(colors)
+    } else {
+        None
+    };
+
+    match crate::cli::diagnostics_domain::determine_neither_exists_next_action(
+        can_prompt,
+        template_name,
+    ) {
+        crate::cli::diagnostics_domain::NeitherExistsNextAction::CreateFromTemplate(name) => {
+            create_prompt_from_template(&name, prompt_path, false, colors, env)
         }
+        crate::cli::diagnostics_domain::NeitherExistsNextAction::CreateMinimal => {
+            let content = create_minimal_prompt_md();
+            env.write_file(prompt_path, &content)?;
+            let _ = writeln!(
+                std::io::stdout(),
+                "{}Created minimal PROMPT.md (non-interactive mode){}",
+                colors.green(),
+                colors.reset()
+            );
+            crate::cli::handle_extended_help();
+            Ok(true)
+        }
+        crate::cli::diagnostics_domain::NeitherExistsNextAction::Skip => Ok(true),
     }
-
-    let content = create_minimal_prompt_md();
-    env.write_file(prompt_path, &content)?;
-    let _ = writeln!(
-        std::io::stdout(),
-        "{}Created minimal PROMPT.md (non-interactive mode){}",
-        colors.green(),
-        colors.reset()
-    );
-
-    crate::cli::handle_extended_help();
-
-    Ok(true)
 }
 
 pub fn handle_init_template_arg_at_path_with_env<R: ConfigEnvironment>(

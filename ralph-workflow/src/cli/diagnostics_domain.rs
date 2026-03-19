@@ -462,3 +462,352 @@ pub fn format_project_stack_section(workspace: &dyn Workspace) -> Vec<String> {
     .flatten()
     .collect()
 }
+
+/// Determine if template selection should use the default.
+pub fn should_use_default_template(input: &str) -> bool {
+    input.trim().is_empty()
+}
+
+/// Resolve the template name from user input.
+pub fn resolve_template_name(input: &str) -> &str {
+    if should_use_default_template(input) {
+        "feature-spec"
+    } else {
+        input.trim()
+    }
+}
+
+/// Result of template validation.
+#[derive(Debug, Clone)]
+pub enum TemplateValidation {
+    Valid,
+    Unknown { similar: Vec<(String, u8)> },
+}
+
+/// Validate a template name and get similar suggestions if unknown.
+pub fn validate_template_name(template_name: &str) -> TemplateValidation {
+    use crate::templates::get_template;
+
+    if get_template(template_name).is_some() {
+        TemplateValidation::Valid
+    } else {
+        let similar = crate::cli::init::find_similar_templates(template_name);
+        TemplateValidation::Unknown { similar }
+    }
+}
+
+/// Determine if user declined the template selection.
+pub fn did_user_decline_template(response: &str) -> bool {
+    let response = response.trim().to_lowercase();
+    response == "n" || response == "no" || response == "skip"
+}
+
+/// Init action based on file existence state.
+#[derive(Debug, Clone, Copy)]
+pub enum InitFileState {
+    BothExist,
+    ConfigOnly,
+    PromptOnly,
+    NeitherExists,
+}
+
+/// Determine the init action based on config and prompt file existence.
+pub fn determine_init_action(
+    config_exists: bool,
+    prompt_exists: bool,
+    _template_arg: Option<&str>,
+) -> InitFileState {
+    if config_exists && prompt_exists {
+        InitFileState::BothExist
+    } else if config_exists {
+        InitFileState::ConfigOnly
+    } else if prompt_exists {
+        InitFileState::PromptOnly
+    } else {
+        InitFileState::NeitherExists
+    }
+}
+
+/// Action to take for init when config exists but prompt doesn't.
+#[derive(Debug, Clone)]
+pub enum ConfigOnlyAction {
+    CreateFromTemplate(String),
+    CreateMinimal,
+    Skip,
+}
+
+/// Decide the action when config exists but prompt doesn't.
+pub fn decide_config_only_action(
+    can_prompt: bool,
+    template_name: Option<String>,
+) -> ConfigOnlyAction {
+    if can_prompt {
+        if let Some(name) = template_name {
+            return ConfigOnlyAction::CreateFromTemplate(name);
+        }
+        ConfigOnlyAction::Skip
+    } else {
+        ConfigOnlyAction::CreateMinimal
+    }
+}
+
+/// Action to take for init when neither config nor prompt exists.
+#[derive(Debug, Clone)]
+pub enum NeitherExistsAction {
+    CreateFromTemplate(String),
+    CreateMinimal,
+    Skip,
+}
+
+/// Decide the action when neither config nor prompt exists.
+pub fn decide_neither_exists_action(
+    can_prompt: bool,
+    template_name: Option<String>,
+) -> NeitherExistsAction {
+    if can_prompt {
+        if let Some(name) = template_name {
+            return NeitherExistsAction::CreateFromTemplate(name);
+        }
+        NeitherExistsAction::Skip
+    } else {
+        NeitherExistsAction::CreateMinimal
+    }
+}
+
+/// What to write for recent logs section.
+#[derive(Debug)]
+pub enum LogSection {
+    NotFound,
+    Empty,
+    Content(Vec<String>),
+}
+
+/// Determine what to write for the recent logs section.
+pub fn determine_log_section_content(workspace: &dyn Workspace) -> LogSection {
+    let log_path = match find_log_path(workspace) {
+        Some(p) => p,
+        None => return LogSection::NotFound,
+    };
+
+    if !workspace.exists(&log_path) {
+        return LogSection::NotFound;
+    }
+
+    let content = match workspace.read(&log_path) {
+        Ok(c) => c,
+        Err(_) => return LogSection::Empty,
+    };
+
+    let lines = format_recent_log_lines(&content);
+    if lines.is_empty() {
+        LogSection::Empty
+    } else {
+        LogSection::Content(lines)
+    }
+}
+
+/// Result of git version command execution.
+pub struct GitVersionResult {
+    pub version: Option<String>,
+    pub available: bool,
+}
+
+/// Execute git version command and extract version string.
+pub fn get_git_version_result(
+    executor_output: Option<crate::executor::ProcessOutput>,
+) -> GitVersionResult {
+    let version = executor_output.map(|o| o.stdout.trim().to_string());
+    GitVersionResult {
+        available: version.is_some(),
+        version,
+    }
+}
+
+/// Raw git execution results for domain processing.
+pub struct GitRawResults {
+    pub version_output: Option<crate::executor::ProcessOutput>,
+    pub rev_parse_output: Option<crate::executor::ProcessOutput>,
+    pub branch_output: Option<crate::executor::ProcessOutput>,
+    pub status_output: Option<crate::executor::ProcessOutput>,
+}
+
+/// Determine if template selection prompt should be offered.
+pub fn should_offer_template_prompt(is_terminal: bool) -> bool {
+    is_terminal
+}
+
+/// Evaluate the user's response to the template prompt.
+#[derive(Debug)]
+pub enum TemplatePromptResponseDecision {
+    Declined,
+    Selected(String),
+}
+
+/// Evaluate user's yes/no response to template creation prompt.
+pub fn evaluate_template_creation_response(response: &str) -> TemplatePromptResponseDecision {
+    if did_user_decline_template(response) {
+        TemplatePromptResponseDecision::Declined
+    } else {
+        TemplatePromptResponseDecision::Selected(response.to_string())
+    }
+}
+
+/// Resolve the selected template, returning the final template to use.
+#[derive(Debug)]
+pub enum TemplateSelectionOutcome {
+    Selected(String),
+    UseDefault {
+        default: String,
+        reason: &'static str,
+    },
+}
+
+/// Resolve selected template from user input, handling unknown templates.
+pub fn resolve_selected_template(
+    input: &str,
+    templates: &[(&str, &str)],
+) -> TemplateSelectionOutcome {
+    let resolved = resolve_template_name(input);
+    let template_exists = templates.iter().any(|(name, _)| *name == resolved);
+
+    if template_exists {
+        TemplateSelectionOutcome::Selected(resolved.to_string())
+    } else {
+        TemplateSelectionOutcome::UseDefault {
+            default: "feature-spec".to_string(),
+            reason: "unknown template",
+        }
+    }
+}
+
+/// Result of create prompt from template operation.
+#[derive(Debug)]
+pub enum CreatePromptResult {
+    SkippedBecauseExists,
+    Created,
+    UnknownTemplateError,
+}
+
+/// Determine result of trying to create prompt from template.
+pub fn determine_create_prompt_result(
+    validation: &TemplateValidation,
+    prompt_exists: bool,
+) -> CreatePromptResult {
+    if matches!(validation, TemplateValidation::Unknown { .. }) {
+        return CreatePromptResult::UnknownTemplateError;
+    }
+    if prompt_exists {
+        return CreatePromptResult::SkippedBecauseExists;
+    }
+    CreatePromptResult::Created
+}
+
+/// Compute log section content from workspace state.
+#[derive(Debug)]
+pub enum ComputeLogSection {
+    NotFound,
+    Empty,
+    Content(Vec<String>),
+}
+
+/// Compute what the log section should show.
+pub fn compute_log_section(workspace: &dyn Workspace) -> ComputeLogSection {
+    let log_path = match find_log_path(workspace) {
+        Some(p) => p,
+        None => return ComputeLogSection::NotFound,
+    };
+
+    if !workspace.exists(&log_path) {
+        return ComputeLogSection::NotFound;
+    }
+
+    let content = match workspace.read(&log_path) {
+        Ok(c) => c,
+        Err(_) => return ComputeLogSection::Empty,
+    };
+
+    let lines = format_recent_log_lines(&content);
+    if lines.is_empty() {
+        ComputeLogSection::Empty
+    } else {
+        ComputeLogSection::Content(lines)
+    }
+}
+
+/// Action for config_only init flow.
+#[derive(Debug)]
+pub enum ConfigOnlyNextAction {
+    CreateFromTemplate(String),
+    CreateMinimal,
+    Skip,
+}
+
+/// Determine next action for config-only flow.
+pub fn determine_config_only_next_action(
+    can_prompt: bool,
+    template_name: Option<String>,
+) -> ConfigOnlyNextAction {
+    match decide_config_only_action(can_prompt, template_name) {
+        ConfigOnlyAction::CreateFromTemplate(name) => {
+            ConfigOnlyNextAction::CreateFromTemplate(name)
+        }
+        ConfigOnlyAction::CreateMinimal => ConfigOnlyNextAction::CreateMinimal,
+        ConfigOnlyAction::Skip => ConfigOnlyNextAction::Skip,
+    }
+}
+
+/// Action for neither_exists init flow.
+#[derive(Debug)]
+pub enum NeitherExistsNextAction {
+    CreateFromTemplate(String),
+    CreateMinimal,
+    Skip,
+}
+
+/// Determine next action for neither-exists flow.
+pub fn determine_neither_exists_next_action(
+    can_prompt: bool,
+    template_name: Option<String>,
+) -> NeitherExistsNextAction {
+    match decide_neither_exists_action(can_prompt, template_name) {
+        NeitherExistsAction::CreateFromTemplate(name) => {
+            NeitherExistsNextAction::CreateFromTemplate(name)
+        }
+        NeitherExistsAction::CreateMinimal => NeitherExistsNextAction::CreateMinimal,
+        NeitherExistsAction::Skip => NeitherExistsNextAction::Skip,
+    }
+}
+
+/// Compute full git diagnostics from raw executor results.
+/// This is a pure function that makes all policy decisions.
+pub fn compute_git_diagnostics_from_raw_results(results: GitRawResults) -> GitDiagnostics {
+    let version_result = get_git_version_result(results.version_output);
+    let plan = plan_git_commands(version_result.available);
+
+    match plan {
+        GitCommandPlan::None => GitDiagnostics {
+            version: None,
+            is_repo: false,
+            branch: None,
+            uncommitted_changes: None,
+        },
+        GitCommandPlan::Full => {
+            let is_repo = results
+                .rev_parse_output
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            let branch = results
+                .branch_output
+                .filter(|_| should_check_branch(is_repo))
+                .map(|o| o.stdout.trim().to_string());
+
+            let uncommitted_changes = results
+                .status_output
+                .filter(|_| should_check_uncommitted(is_repo))
+                .map(|o| o.stdout.lines().count());
+
+            build_git_diagnostics(version_result.version, is_repo, branch, uncommitted_changes)
+        }
+    }
+}

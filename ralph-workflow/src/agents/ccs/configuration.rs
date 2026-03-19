@@ -16,194 +16,10 @@
 // - resolve_ccs_command
 // - build_ccs_agent_config
 
-/// Diagnostic messages produced during CCS configuration resolution.
-///
-/// These replace direct `eprintln!` calls in domain code, allowing
-/// the caller to decide where and how to emit diagnostics (I/O boundary).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CcsDiagnostic {
-    EnvVarsLoaded {
-        count: usize,
-        profile: String,
-    },
-    EnvVarsLoadFailed {
-        profile: String,
-    },
-    EnvVarsKeyListed {
-        key: String,
-    },
-    EnvVarsKeyRedacted {
-        count: usize,
-    },
-    EnvVarsKeysHidden {
-        count: usize,
-    },
-    ProfileNotFound {
-        profile: String,
-        guessed: Option<String>,
-    },
-    EnvLoadFailed {
-        profile: String,
-        error: String,
-    },
-    ProfileSuggestion {
-        suggestion: String,
-    },
-    ClaudeBinaryNotFound,
-    UsingCcsWrapperWarning,
-    StreamingFlagsWarning,
-    InstallInstructionsWarning,
-    BypassConditionsNotMet,
-    CommandParseFailed,
-    CommandNotProfileCcs,
-    BypassingWrapper {
-        command: String,
-    },
-    ClaudeBinaryPath {
-        path: String,
-    },
-    OriginalCommand {
-        command: String,
-    },
-    AliasName {
-        name: String,
-    },
-    EnvVarsLoadedFlag {
-        loaded: bool,
-    },
-    CanBypassFlag {
-        can_bypass: bool,
-    },
-    CommandParts {
-        parts: Vec<String>,
-    },
-    IsProfileCcs {
-        is_profile: bool,
-    },
-}
-
-use std::fmt;
-
-impl fmt::Display for CcsDiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CcsDiagnostic::EnvVarsLoaded { count, profile } => {
-                write!(
-                    f,
-                    "CCS DEBUG: Loaded {} environment variable(s) for profile '{}'",
-                    count, profile
-                )
-            }
-            CcsDiagnostic::EnvVarsLoadFailed { profile } => {
-                write!(
-                    f,
-                    "CCS DEBUG: Failed to load environment variables for profile '{}'",
-                    profile
-                )
-            }
-            CcsDiagnostic::EnvVarsKeyListed { key } => {
-                write!(f, "CCS DEBUG:   - {key}")
-            }
-            CcsDiagnostic::EnvVarsKeyRedacted { count } => {
-                write!(f, "CCS DEBUG:   - ({} sensitive key(s) redacted)", count)
-            }
-            CcsDiagnostic::EnvVarsKeysHidden { count } => {
-                write!(
-                    f,
-                    "CCS DEBUG:   - ({} non-whitelisted key(s) hidden)",
-                    count
-                )
-            }
-            CcsDiagnostic::ProfileNotFound { profile, guessed } => {
-                if let Some(ref g) = guessed {
-                    write!(f, "Info: CCS profile '{profile}' not found; using '{g}'")
-                } else {
-                    write!(f, "Info: CCS profile '{profile}' not found")
-                }
-            }
-            CcsDiagnostic::EnvLoadFailed { profile, error } => {
-                write!(
-                    f,
-                    "Warning: failed to load CCS env vars for profile '{profile}': {error}"
-                )
-            }
-            CcsDiagnostic::ProfileSuggestion { suggestion } => {
-                write!(f, "Tip: available/nearby CCS profiles:  - {suggestion}")
-            }
-            CcsDiagnostic::ClaudeBinaryNotFound => {
-                write!(f, "CCS DEBUG: Claude binary not found in PATH")
-            }
-            CcsDiagnostic::UsingCcsWrapperWarning => {
-                write!(
-                    f,
-                    "Warning: `claude` binary not found in PATH, using `ccs` wrapper"
-                )
-            }
-            CcsDiagnostic::StreamingFlagsWarning => {
-                write!(
-                    f,
-                    "  This may cause issues with streaming flags like --include-partial-messages"
-                )
-            }
-            CcsDiagnostic::InstallInstructionsWarning => {
-                write!(f, "  Consider installing the Claude CLI (see your internal install docs, or the upstream Claude CLI installer)")
-            }
-            CcsDiagnostic::BypassConditionsNotMet => {
-                write!(f, "CCS DEBUG: Not bypassing (conditions not met)")
-            }
-            CcsDiagnostic::CommandParseFailed => {
-                write!(f, "CCS DEBUG: Failed to parse command, using original")
-            }
-            CcsDiagnostic::CommandNotProfileCcs => {
-                write!(
-                    f,
-                    "CCS DEBUG: Not bypassing (command doesn't match pattern)"
-                )
-            }
-            CcsDiagnostic::BypassingWrapper { command } => {
-                write!(f, "CCS DEBUG: bypassing `ccs` wrapper for `ccs` to preserve Claude CLI flag passthrough. New command: {command}")
-            }
-            CcsDiagnostic::ClaudeBinaryPath { path } => {
-                write!(f, "CCS DEBUG: Claude binary found at: {}", path)
-            }
-            CcsDiagnostic::OriginalCommand { command } => {
-                write!(f, "CCS DEBUG: Original command: {command}")
-            }
-            CcsDiagnostic::AliasName { name } => {
-                write!(f, "CCS DEBUG: Alias name: '{name}'")
-            }
-            CcsDiagnostic::EnvVarsLoadedFlag { loaded } => {
-                write!(f, "CCS DEBUG: Env vars loaded: {loaded}")
-            }
-            CcsDiagnostic::CanBypassFlag { can_bypass } => {
-                write!(f, "CCS DEBUG: Can bypass wrapper: {can_bypass}")
-            }
-            CcsDiagnostic::CommandParts { parts } => {
-                write!(f, "CCS DEBUG: Command parts: {parts:?}")
-            }
-            CcsDiagnostic::IsProfileCcs { is_profile } => {
-                write!(f, "CCS DEBUG: Is profile CCS command: {is_profile}")
-            }
-        }
-    }
-}
-
 /// Result type for CCS command resolution with diagnostics.
 #[derive(Debug, Clone)]
 pub struct CcsCommandResult {
     pub command: String,
-    pub diagnostics: Vec<CcsDiagnostic>,
-}
-
-/// Emit CCS diagnostics to stderr.
-///
-/// This is the I/O boundary function that converts diagnostic data into
-/// console output. It should only be called once, at the outermost
-/// call site where CCS configuration is resolved.
-pub fn emit_ccs_diagnostics(debug_mode: bool, diagnostics: &[CcsDiagnostic]) {
-    if debug_mode {
-        diagnostics.iter().for_each(|d| eprintln!("{d}"));
-    }
 }
 
 /// Resolve a CCS alias to an `AgentConfig`.
@@ -282,138 +98,6 @@ pub fn resolve_ccs_agent<S: std::hash::BuildHasher>(
 /// leakage of sensitive credential values. Keys containing patterns like "token",
 /// "key", "secret", "password", "auth" are always filtered out regardless of
 /// their actual value, to protect against custom credential formats.
-///
-/// Debug summary of CCS environment variables loaded for a profile.
-/// Public in test mode for testing; crate-private in production.
-#[cfg(any(test, feature = "test-utils"))]
-pub struct CcsEnvVarDebugSummary {
-    pub whitelisted_keys_present: Vec<String>,
-    pub redacted_sensitive_keys: usize,
-    pub hidden_non_whitelisted_keys: usize,
-}
-
-#[cfg(not(any(test, feature = "test-utils")))]
-pub struct CcsEnvVarDebugSummary {
-    pub(crate) whitelisted_keys_present: Vec<String>,
-    pub(crate) redacted_sensitive_keys: usize,
-    pub(crate) hidden_non_whitelisted_keys: usize,
-}
-
-#[cfg(any(test, feature = "test-utils"))]
-#[must_use]
-pub fn ccs_env_var_debug_summary<S: std::hash::BuildHasher>(
-    env_vars: &HashMap<String, String, S>,
-) -> CcsEnvVarDebugSummary {
-    ccs_env_var_debug_summary_impl(env_vars)
-}
-
-#[cfg(not(any(test, feature = "test-utils")))]
-pub fn ccs_env_var_debug_summary(env_vars: &HashMap<String, String>) -> CcsEnvVarDebugSummary {
-    ccs_env_var_debug_summary_impl(env_vars)
-}
-
-fn ccs_env_var_debug_summary_impl<S: std::hash::BuildHasher>(
-    env_vars: &HashMap<String, String, S>,
-) -> CcsEnvVarDebugSummary {
-    // Whitelist of safe-to-log environment variable keys.
-    // These are configuration keys, not credentials, so it's safe to log them.
-    const SAFE_KEYS: &[&str] = &[
-        "ANTHROPIC_BASE_URL",
-        "ANTHROPIC_MODEL",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        "ANTHROPIC_DEFAULT_OPUS_MODEL",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-    ];
-
-    // Helper to check if a key looks sensitive
-    fn looks_sensitive(key: &str) -> bool {
-        let key_normalized: String = key.chars().filter(char::is_ascii_alphanumeric).collect();
-        key_normalized.contains("TOKEN")
-            || key_normalized.contains("SECRET")
-            || key_normalized.contains("PASSWORD")
-            || key_normalized.contains("AUTH")
-            || key_normalized.contains("KEY")
-            || key_normalized.contains("API")
-            || key_normalized == "AUTHORIZATION"
-    }
-
-    // Use partition to separate keys into whitelisted vs (sensitive or hidden)
-    let (whitelisted, others): (Vec<_>, Vec<_>) = env_vars
-        .keys()
-        .partition(|key| SAFE_KEYS.contains(&key.to_uppercase().as_str()));
-
-    let (redacted_sensitive_keys, hidden_non_whitelisted_keys): (usize, usize) = others
-        .iter()
-        .map(|k| {
-            let key_upper = k.to_uppercase();
-            looks_sensitive(&key_upper) as usize
-        })
-        .fold((0usize, 0usize), |(r, h), is_sensitive| {
-            if is_sensitive != 0 {
-                (r.saturating_add(1), h)
-            } else {
-                (r, h.saturating_add(1))
-            }
-        });
-
-    let whitelisted_keys_present: Vec<String> = {
-        use std::collections::BTreeSet;
-        whitelisted
-            .into_iter()
-            .map(|k| k.to_uppercase())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
-    };
-
-    CcsEnvVarDebugSummary {
-        whitelisted_keys_present,
-        redacted_sensitive_keys,
-        hidden_non_whitelisted_keys,
-    }
-}
-
-fn log_ccs_env_vars_loaded(
-    debug_mode: bool,
-    alias_name: &str,
-    profile_used_for_env: Option<&String>,
-    env_vars_loaded: bool,
-    env_vars: &HashMap<String, String>,
-) -> Vec<CcsDiagnostic> {
-    if !debug_mode || alias_name.is_empty() {
-        return Vec::new();
-    }
-    let profile = profile_used_for_env.map_or(alias_name, |s| s.as_str());
-    if env_vars_loaded {
-        let summary = ccs_env_var_debug_summary(env_vars);
-        vec![CcsDiagnostic::EnvVarsLoaded {
-            count: env_vars.len(),
-            profile: profile.to_string(),
-        }]
-        .into_iter()
-        .chain(
-            summary
-                .whitelisted_keys_present
-                .iter()
-                .map(|key| CcsDiagnostic::EnvVarsKeyListed { key: key.clone() }),
-        )
-        .chain(
-            (summary.redacted_sensitive_keys > 0).then(|| CcsDiagnostic::EnvVarsKeyRedacted {
-                count: summary.redacted_sensitive_keys,
-            }),
-        )
-        .chain((summary.hidden_non_whitelisted_keys > 0).then(|| {
-            CcsDiagnostic::EnvVarsKeysHidden {
-                count: summary.hidden_non_whitelisted_keys,
-            }
-        }))
-        .collect()
-    } else {
-        vec![CcsDiagnostic::EnvVarsLoadFailed {
-            profile: profile.to_string(),
-        }]
-    }
-}
 
 const fn is_glm_alias(alias_name: &str) -> bool {
     alias_name.eq_ignore_ascii_case("glm")
@@ -470,51 +154,26 @@ fn resolve_ccs_command_impl(
     alias_name: &str,
     env_vars_loaded: bool,
     profile_used_for_env: Option<&String>,
-    debug_mode: bool,
+    _debug_mode: bool,
 ) -> CcsCommandResult {
     let original_cmd = alias_config.cmd.as_str();
 
     find_claude_binary().map_or_else(
-        || {
-            let is_ccs = original_cmd.starts_with("ccs ") || original_cmd == "ccs";
-            CcsCommandResult {
-                command: original_cmd.to_string(),
-                diagnostics: std::iter::empty()
-                    .chain(debug_mode.then_some(CcsDiagnostic::ClaudeBinaryNotFound))
-                    .chain(
-                        is_ccs
-                            .then_some(vec![
-                                CcsDiagnostic::UsingCcsWrapperWarning,
-                                CcsDiagnostic::StreamingFlagsWarning,
-                                CcsDiagnostic::InstallInstructionsWarning,
-                            ])
-                            .map(|v| v.into_iter())
-                            .into_iter()
-                            .flatten(),
-                    )
-                    .collect(),
-            }
+        || CcsCommandResult {
+            command: original_cmd.to_string(),
         },
         |claude_path| {
             let can_bypass_wrapper = is_glm_alias(alias_name) && env_vars_loaded;
 
             if !can_bypass_wrapper {
-                let diagnostics: Vec<CcsDiagnostic> = debug_mode
-                    .then_some(vec![CcsDiagnostic::BypassConditionsNotMet])
-                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
-                    diagnostics,
                 };
             }
 
             let Ok(parts) = split_command(original_cmd) else {
-                let diagnostics: Vec<CcsDiagnostic> = debug_mode
-                    .then_some(vec![CcsDiagnostic::CommandParseFailed])
-                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
-                    diagnostics,
                 };
             };
 
@@ -534,12 +193,8 @@ fn resolve_ccs_command_impl(
             let is_profile_ccs_cmd = is_ccs_cmd && skip.is_some();
 
             if !is_profile_ccs_cmd {
-                let diagnostics: Vec<CcsDiagnostic> = debug_mode
-                    .then_some(vec![CcsDiagnostic::CommandNotProfileCcs])
-                    .unwrap_or_default();
                 return CcsCommandResult {
                     command: original_cmd.to_string(),
-                    diagnostics,
                 };
             }
 
@@ -549,23 +204,7 @@ fn resolve_ccs_command_impl(
                 .collect();
             let new_cmd = shell_words::join(&new_parts);
 
-            let diagnostics: Vec<CcsDiagnostic> = debug_mode
-                .then_some(vec![
-                    CcsDiagnostic::CommandParts {
-                        parts: new_parts.clone(),
-                    },
-                    CcsDiagnostic::OriginalCommand {
-                        command: new_cmd.clone(),
-                    },
-                    CcsDiagnostic::BypassingWrapper {
-                        command: new_cmd.clone(),
-                    },
-                ])
-                .unwrap_or_default();
-            CcsCommandResult {
-                command: new_cmd,
-                diagnostics,
-            }
+            CcsCommandResult { command: new_cmd }
         },
     )
 }

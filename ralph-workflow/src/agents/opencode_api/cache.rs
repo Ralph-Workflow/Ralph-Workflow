@@ -130,8 +130,8 @@ fn load_cached_catalog_with_env(
 
     if catalog.is_expired() {
         match fetch_api_catalog() {
-            Ok((fresh, mut fetch_warnings)) => {
-                if let Some(warning) = fetch_warnings.pop() {
+            Ok((fresh, fetch_warnings)) => {
+                if let Some(warning) = fetch_warnings.into_iter().last() {
                     return Ok(LoadCatalogResult {
                         catalog: fresh,
                         warnings: vec![warning],

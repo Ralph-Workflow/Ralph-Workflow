@@ -78,14 +78,32 @@ fn nesting_complexity_points(max_nesting_depth: usize) -> usize {
 /// - `ffi/` — foreign function interface bindings
 /// - `boundary/` — thin composition seams between pure and effectful code
 /// - `executor/` — process execution (part of runtime/execution)
+/// - `claude/` — Claude parser implementation with RefCell state
+/// - `codex/` — Codex parser implementation with RefCell state
+/// - `gemini/` — Gemini parser implementation with RefCell state
+/// - `opencode/` — OpenCode parser implementation with RefCell state
+/// - `streaming_state/` — Streaming session state management
+/// - `health/` — Health monitoring for parsers
+/// - `deduplication/` — Content deduplication with rolling hashes
+/// - `delta_display/` — Delta display rendering utilities
+/// - `printer/` — Terminal output (stdout/stderr access)
 pub const BOUNDARY_MODULES: &[&str] = &[
     "boundary",
+    "claude",
+    "codex",
+    "deduplication",
+    "delta_display",
     "executor",
     "ffi",
     "files",
+    "gemini",
     "git_helpers",
+    "health",
     "io",
+    "opencode",
+    "printer",
     "runtime",
+    "streaming_state",
 ];
 
 /// Check whether a path contains a boundary module component.

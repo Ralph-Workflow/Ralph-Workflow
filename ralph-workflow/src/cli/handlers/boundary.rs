@@ -12,7 +12,7 @@ use std::path::Path;
 
 use crate::agents::{AgentRegistry, ConfigSource};
 use crate::checkpoint::load_checkpoint_with_workspace;
-use crate::cli::diagnostics_domain::{self, GitCommandPlan, GitDiagnostics};
+use crate::cli::diagnostics_domain::{self, GitDiagnostics};
 use crate::config::Config;
 use crate::diagnostics::run_diagnostics;
 use crate::executor::ProcessExecutor;
@@ -78,9 +78,51 @@ pub fn exit_with_code(code: i32) -> ! {
 
 pub type TemplateSelectionResult = Option<String>;
 
+fn display_template_list(colors: Colors, templates: &[(&str, &str)]) {
+    let mut stdout = stdout();
+    templates.iter().for_each(|(name, description)| {
+        let _ = writeln!(
+            stdout,
+            "  {}{}{}  {}{}{}",
+            colors.cyan(),
+            name,
+            colors.reset(),
+            colors.dim(),
+            description,
+            colors.reset()
+        );
+    });
+}
+
+fn prompt_for_template_name(colors: Colors) -> Option<String> {
+    let mut stdout = stdout();
+    let _ = writeln!(stdout);
+    let _ = writeln!(stdout, "Available templates:");
+
+    let templates = list_templates();
+    display_template_list(colors, &templates);
+
+    let _ = writeln!(stdout);
+    let _ = write!(
+        stdout,
+        "Select template {}[default: feature-spec]{}: ",
+        colors.dim(),
+        colors.reset()
+    );
+    if flush_stdout().is_err() {
+        return None;
+    }
+
+    let template_input = read_line();
+    let binding = template_input.unwrap_or_default();
+    let template_name = binding.trim();
+
+    Some(template_name.to_string())
+}
+
 #[must_use]
 pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
-    if !is_terminal() {
+    if !diagnostics_domain::should_offer_template_prompt(is_terminal()) {
         return None;
     }
 
@@ -106,111 +148,92 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
     }
 
     let input = read_line();
-    let response = input.unwrap_or_default().trim().to_lowercase();
+    let response = input.unwrap_or_default();
 
-    if response == "n" || response == "no" || response == "skip" {
-        return None;
+    match diagnostics_domain::evaluate_template_creation_response(&response) {
+        diagnostics_domain::TemplatePromptResponseDecision::Declined => None,
+        diagnostics_domain::TemplatePromptResponseDecision::Selected(_) => {
+            let template_input = prompt_for_template_name(colors)?;
+            let templates = list_templates();
+            match diagnostics_domain::resolve_selected_template(&template_input, &templates) {
+                diagnostics_domain::TemplateSelectionOutcome::Selected(selected) => Some(selected),
+                diagnostics_domain::TemplateSelectionOutcome::UseDefault { default, .. } => {
+                    let _ = writeln!(
+                        stdout,
+                        "{}Unknown template. Using {} as default.{}",
+                        colors.yellow(),
+                        default,
+                        colors.reset()
+                    );
+                    Some(default)
+                }
+            }
+        }
     }
-
-    let _ = writeln!(stdout);
-    let _ = writeln!(stdout, "Available templates:");
-
-    let templates = list_templates();
-
-    templates.iter().for_each(|(name, description)| {
-        let _ = writeln!(
-            stdout,
-            "  {}{}{}  {}{}{}",
-            colors.cyan(),
-            name,
-            colors.reset(),
-            colors.dim(),
-            description,
-            colors.reset()
-        );
-    });
-    let _ = writeln!(stdout);
-
-    let _ = write!(
-        stdout,
-        "Select template {}[default: feature-spec]{}: ",
-        colors.dim(),
-        colors.reset()
-    );
-    if flush_stdout().is_err() {
-        return None;
-    }
-
-    let template_input = read_line();
-    let binding = template_input.unwrap_or_default();
-    let template_name = binding.trim();
-
-    let selected = if template_name.is_empty() {
-        "feature-spec"
-    } else {
-        template_name
-    };
-
-    if get_template(selected).is_none() {
-        let _ = writeln!(
-            stdout,
-            "{}Unknown template: '{}'. Using feature-spec as default.{}",
-            colors.yellow(),
-            selected,
-            colors.reset()
-        );
-        return Some("feature-spec".to_string());
-    }
-
-    Some(selected.to_string())
 }
 
 pub fn create_prompt_from_template(template_name: &str, colors: Colors) -> anyhow::Result<()> {
     let prompt_path = Path::new("PROMPT.md");
+    let validation = diagnostics_domain::validate_template_name(template_name);
+    let prompt_exists = exists(prompt_path);
 
-    if exists(prompt_path) {
-        let mut stdout = stdout();
-        let _ = writeln!(
-            stdout,
-            "{}PROMPT.md already exists. Skipping creation.{}",
-            colors.yellow(),
-            colors.reset()
-        );
-        return Ok(());
+    match diagnostics_domain::determine_create_prompt_result(&validation, prompt_exists) {
+        diagnostics_domain::CreatePromptResult::UnknownTemplateError => {
+            let mut stdout = stdout();
+            let _ = writeln!(
+                stdout,
+                "{}Unknown template: '{}'. Using feature-spec as default.{}",
+                colors.yellow(),
+                template_name,
+                colors.reset()
+            );
+            return create_prompt_from_template("feature-spec", colors);
+        }
+        diagnostics_domain::CreatePromptResult::SkippedBecauseExists => {
+            let mut stdout = stdout();
+            let _ = writeln!(
+                stdout,
+                "{}PROMPT.md already exists. Skipping creation.{}",
+                colors.yellow(),
+                colors.reset()
+            );
+            return Ok(());
+        }
+        diagnostics_domain::CreatePromptResult::Created => {
+            let Some(template) = get_template(template_name) else {
+                return Err(anyhow::anyhow!("Template '{template_name}' not found"));
+            };
+
+            let content = template.content();
+            write(prompt_path, content)?;
+
+            let mut stdout = stdout();
+            let _ = writeln!(stdout);
+            let _ = writeln!(
+                stdout,
+                "{}Created PROMPT.md from template: {}{}{}",
+                colors.green(),
+                colors.bold(),
+                template_name,
+                colors.reset()
+            );
+            let _ = writeln!(stdout);
+            let _ = writeln!(
+                stdout,
+                "Template: {}{}{}  {}",
+                colors.cyan(),
+                template.name(),
+                colors.reset(),
+                template.description()
+            );
+            let _ = writeln!(stdout);
+            let _ = writeln!(stdout, "Next steps:");
+            let _ = writeln!(stdout, " 1. Edit PROMPT.md with your task details");
+            let _ = writeln!(stdout, " 2. Run ralph again with your commit message");
+
+            Ok(())
+        }
     }
-
-    let Some(template) = get_template(template_name) else {
-        return Err(anyhow::anyhow!("Template '{template_name}' not found"));
-    };
-
-    let content = template.content();
-    write(prompt_path, content)?;
-
-    let mut stdout = stdout();
-    let _ = writeln!(stdout);
-    let _ = writeln!(
-        stdout,
-        "{}Created PROMPT.md from template: {}{}{}",
-        colors.green(),
-        colors.bold(),
-        template_name,
-        colors.reset()
-    );
-    let _ = writeln!(stdout);
-    let _ = writeln!(
-        stdout,
-        "Template: {}{}{}  {}",
-        colors.cyan(),
-        template.name(),
-        colors.reset(),
-        template.description()
-    );
-    let _ = writeln!(stdout);
-    let _ = writeln!(stdout, "Next steps:");
-    let _ = writeln!(stdout, " 1. Edit PROMPT.md with your task details");
-    let _ = writeln!(stdout, " 2. Run ralph again with your commit message");
-
-    Ok(())
 }
 
 // =============================================================================
@@ -262,7 +285,7 @@ pub fn handle_diagnose<W: Write>(
     let _ = report.agents.total_agents;
     let _ = report.agents.available_agents;
     let _ = report.agents.unavailable_agents;
-    for status in &report.agents.agent_status {
+    report.agents.agent_status.iter().for_each(|status| {
         let _ = (
             &status.name,
             &status.display_name,
@@ -270,7 +293,7 @@ pub fn handle_diagnose<W: Write>(
             &status.json_parser,
             &status.command,
         );
-    }
+    });
     let _ = (
         &report.system.os,
         &report.system.arch,
@@ -309,48 +332,20 @@ fn write_system_info<W: Write>(writer: &mut W, colors: Colors) {
 }
 
 fn collect_git_info(executor: &dyn ProcessExecutor) -> GitDiagnostics {
-    let version = executor
-        .execute("git", &["--version"], &[], None)
-        .ok()
-        .map(|o| o.stdout.trim().to_string());
+    let results = diagnostics_domain::GitRawResults {
+        version_output: executor.execute("git", &["--version"], &[], None).ok(),
+        rev_parse_output: executor
+            .execute("git", &["rev-parse", "--git-dir"], &[], None)
+            .ok(),
+        branch_output: executor
+            .execute("git", &["branch", "--show-current"], &[], None)
+            .ok(),
+        status_output: executor
+            .execute("git", &["status", "--porcelain"], &[], None)
+            .ok(),
+    };
 
-    let version_available = version.is_some();
-    let plan = diagnostics_domain::plan_git_commands(version_available);
-
-    match plan {
-        GitCommandPlan::None => GitDiagnostics {
-            version: None,
-            is_repo: false,
-            branch: None,
-            uncommitted_changes: None,
-        },
-        GitCommandPlan::Full => {
-            let is_repo = executor
-                .execute("git", &["rev-parse", "--git-dir"], &[], None)
-                .map(|o| o.status.success())
-                .unwrap_or(false);
-
-            let branch = if diagnostics_domain::should_check_branch(is_repo) {
-                executor
-                    .execute("git", &["branch", "--show-current"], &[], None)
-                    .ok()
-                    .map(|o| o.stdout.trim().to_string())
-            } else {
-                None
-            };
-
-            let uncommitted_changes = if diagnostics_domain::should_check_uncommitted(is_repo) {
-                executor
-                    .execute("git", &["status", "--porcelain"], &[], None)
-                    .ok()
-                    .map(|o| o.stdout.lines().count())
-            } else {
-                None
-            };
-
-            diagnostics_domain::build_git_diagnostics(version, is_repo, branch, uncommitted_changes)
-        }
-    }
+    diagnostics_domain::compute_git_diagnostics_from_raw_results(results)
 }
 
 fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
@@ -360,9 +355,9 @@ fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {
 fn write_git_info<W: Write>(writer: &mut W, colors: Colors, diagnostics: &GitDiagnostics) {
     let _ = writeln!(writer, "{}Git:{}", colors.bold(), colors.reset());
     let lines = format_git_info_lines(diagnostics);
-    for line in lines {
+    lines.into_iter().for_each(|line| {
         let _ = writeln!(writer, "{line}");
-    }
+    });
     let _ = writeln!(writer);
 }
 
@@ -393,7 +388,7 @@ fn write_agent_chain_info<W: Write>(writer: &mut W, colors: Colors, registry: &A
     let bindings = diagnostics_domain::get_drain_bindings(registry);
     let resolved = registry.resolved_drains();
 
-    for binding in bindings {
+    bindings.into_iter().for_each(|binding| {
         let _ = writeln!(
             writer,
             "  {} -> {} {:?}",
@@ -401,7 +396,7 @@ fn write_agent_chain_info<W: Write>(writer: &mut W, colors: Colors, registry: &A
             binding.chain_name,
             binding.agents
         );
-    }
+    });
     let _ = writeln!(writer, "  Max retries: {}", resolved.max_retries);
     let _ = writeln!(writer, "  Retry delay: {}ms", resolved.retry_delay_ms);
     let _ = writeln!(writer);
@@ -460,39 +455,34 @@ fn write_project_stack<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn
 }
 
 fn write_recent_logs<W: Write>(writer: &mut W, colors: Colors, workspace: &dyn Workspace) {
-    let log_path = match diagnostics_domain::find_log_path(workspace) {
-        Some(p) => p,
-        None => {
+    match diagnostics_domain::compute_log_section(workspace) {
+        diagnostics_domain::ComputeLogSection::NotFound => {
             let _ = writeln!(
                 writer,
                 "{}No log file found{}",
                 colors.yellow(),
                 colors.reset()
             );
-            return;
         }
-    };
-
-    if workspace.exists(&log_path) {
-        let _ = writeln!(
-            writer,
-            "{}Recent Log Entries (last 10):{}",
-            colors.bold(),
-            colors.reset()
-        );
-        if let Ok(content) = workspace.read(&log_path) {
-            let lines = diagnostics_domain::format_recent_log_lines(&content);
+        diagnostics_domain::ComputeLogSection::Empty => {
+            let _ = writeln!(
+                writer,
+                "{}No log file found{}",
+                colors.yellow(),
+                colors.reset()
+            );
+        }
+        diagnostics_domain::ComputeLogSection::Content(lines) => {
+            let _ = writeln!(
+                writer,
+                "{}Recent Log Entries (last 10):{}",
+                colors.bold(),
+                colors.reset()
+            );
             lines.into_iter().for_each(|line| {
                 let _ = writeln!(writer, "{line}");
             });
         }
-    } else {
-        let _ = writeln!(
-            writer,
-            "{}No log file found{}",
-            colors.yellow(),
-            colors.reset()
-        );
     }
 }
 
@@ -513,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_template_has_required_content() {
-        for (name, _) in list_templates() {
+        list_templates().into_iter().for_each(|(name, _)| {
             if let Some(template) = get_template(name) {
                 let content = template.content();
                 assert!(
@@ -525,6 +515,6 @@ mod tests {
                     "Template {name} missing Acceptance section"
                 );
             }
-        }
+        });
     }
 }

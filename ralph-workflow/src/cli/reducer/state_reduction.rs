@@ -284,10 +284,7 @@ mod tests {
             CliEvent::CliProcessingComplete,
         ];
 
-        let mut state = CliState::initial();
-        for event in events {
-            state = reduce(state, event);
-        }
+        let state = events.into_iter().fold(CliState::initial(), reduce);
 
         assert!(state.complete);
         assert!(state.debug_mode);

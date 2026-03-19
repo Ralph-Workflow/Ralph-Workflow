@@ -92,9 +92,9 @@ mod tests {
     use ralph_workflow::phases::PhaseContext;
     use ralph_workflow::pipeline::Timer;
     use ralph_workflow::prompts::template_context::TemplateContext;
+    use ralph_workflow::reducer::boundary::MainEffectHandler;
     use ralph_workflow::reducer::effect::{Effect, EffectHandler};
     use ralph_workflow::reducer::event::{AgentEvent, PipelineEvent};
-    use ralph_workflow::reducer::handler::MainEffectHandler;
     use ralph_workflow::workspace::{Workspace, WorkspaceFs};
     use ralph_workflow::RealProcessExecutor;
     use tempfile::TempDir;
@@ -145,6 +145,7 @@ mod tests {
             }
         }
 
+        #[cfg(any(test, feature = "test-utils"))]
         fn ctx(&mut self) -> PhaseContext<'_> {
             PhaseContext {
                 config: &self.config,

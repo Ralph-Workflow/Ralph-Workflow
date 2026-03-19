@@ -2,7 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::json_parser::health::{
+        HealthMonitor, ParserHealth, StreamingPattern, StreamingQualityMetrics,
+    };
     use crate::logger::Colors;
 
     include!("tests/parser_health.rs");

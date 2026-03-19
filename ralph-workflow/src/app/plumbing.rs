@@ -212,7 +212,9 @@ pub fn handle_generate_commit_msg(config: &CommitGenerationConfig<'_>) -> anyhow
         anyhow::bail!("No changes to commit");
     }
 
-    let runtime = crate::app::plumbing_boundary::run_pipeline_for_commit_message(config)?;
+    let mut timer = crate::app::runtime_factory::create_timer();
+    let mut runtime =
+        crate::app::plumbing_boundary::run_pipeline_for_commit_message(&mut timer, config)?;
 
     let agents = resolve_commit_message_agents(config.registry, config.reviewer_agent);
 

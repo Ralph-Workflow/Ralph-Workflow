@@ -127,6 +127,7 @@ pub mod app;
 pub mod banner;
 pub mod boundary;
 pub mod checkpoint;
+pub mod config_loading;
 pub mod cli;
 pub mod cloud;
 pub mod common;

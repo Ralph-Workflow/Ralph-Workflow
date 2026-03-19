@@ -3,15 +3,15 @@
 //! This module defines the trait abstraction for process execution,
 //! enabling dependency injection for testing.
 
-use super::boundary::{build_agent_command_internal, build_command, collect_descendants};
+use super::{build_agent_command_internal, build_command, collect_descendants};
+use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
 #[cfg(target_os = "macos")]
-use super::child_proc::child_info_from_libproc;
-use super::child_proc::parse_ps_output;
-use super::child_proc::{
+use crate::executor::macos::child_info_from_libproc;
+use crate::executor::ps::parse_ps_output;
+use crate::executor::{
     child_info_from_descendant_pids, warn_child_process_detection_conservative,
     warn_child_process_detection_degraded,
 };
-use super::{AgentChildHandle, AgentSpawnConfig, ChildProcessInfo, ProcessOutput, RealAgentChild};
 use std::io;
 use std::path::Path;
 
@@ -159,36 +159,8 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
     fn get_child_process_info(&self, parent_pid: u32) -> ChildProcessInfo {
         #[cfg(unix)]
         {
-            {
-                const PS_ATTEMPTS: [&[&str]; 6] = [
-                    &[
-                        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                        "cputime=", "-o", "comm=",
-                    ],
-                    &[
-                        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                        "cputime=", "-o", "comm=",
-                    ],
-                    &[
-                        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                        "cputime=",
-                    ],
-                    &[
-                        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o",
-                        "cputime=",
-                    ],
-                    &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-                    &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
-                ];
-                for args in PS_ATTEMPTS {
-                    if let Ok(out) = self.execute("ps", args, &[], None) {
-                        if out.status.success() {
-                            if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
-                                return info;
-                            }
-                        }
-                    }
-                }
+            if let Some(info) = try_ps_output_chain(self, parent_pid) {
+                return info;
             }
 
             #[cfg(target_os = "macos")]
@@ -196,12 +168,8 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
                 return info;
             }
 
-            {
-                let descendants = collect_descendants(self, parent_pid);
-                if !descendants.is_empty() {
-                    warn_child_process_detection_conservative();
-                    return child_info_from_descendant_pids(&descendants);
-                }
+            if let Some(info) = try_pgrep_fallback(self, parent_pid) {
+                return info;
             }
 
             warn_child_process_detection_degraded();
@@ -213,6 +181,53 @@ pub trait ProcessExecutor: Send + Sync + std::fmt::Debug {
             ChildProcessInfo::NONE
         }
     }
+}
+
+const PS_ATTEMPTS: [&[&str]; 6] = [
+    &[
+        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=", "-o",
+        "comm=",
+    ],
+    &[
+        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=", "-o",
+        "comm=",
+    ],
+    &[
+        "-ax", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=",
+    ],
+    &[
+        "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "cputime=",
+    ],
+    &["-ax", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+    &["-e", "-o", "pid=", "-o", "ppid=", "-o", "cputime="],
+];
+
+fn try_ps_output_chain<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    for args in PS_ATTEMPTS {
+        if let Ok(out) = executor.execute("ps", args, &[], None) {
+            if out.status.success() {
+                if let Some(info) = parse_ps_output(&out.stdout, parent_pid) {
+                    return Some(info);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn try_pgrep_fallback<E: ProcessExecutor + ?Sized>(
+    executor: &E,
+    parent_pid: u32,
+) -> Option<ChildProcessInfo> {
+    let descendants = collect_descendants(executor, parent_pid);
+    if !descendants.is_empty() {
+        warn_child_process_detection_conservative();
+        return Some(child_info_from_descendant_pids(&descendants));
+    }
+    None
 }
 
 fn wrap_agent_child(mut child: std::process::Child) -> io::Result<AgentChildHandle> {
@@ -712,7 +727,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn child_pid_entry_count_converts_libproc_bytes_to_pid_count() {
-        use super::super::child_proc::macos::child_pid_entry_count;
+        use super::super::macos::child_pid_entry_count;
 
         let pid_width = i32::try_from(std::mem::size_of::<libc::pid_t>())
             .expect("pid_t size should fit in i32");

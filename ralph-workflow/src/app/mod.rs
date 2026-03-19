@@ -38,6 +38,7 @@ pub mod plumbing;
 pub mod plumbing_boundary;
 pub(crate) mod rebase;
 pub mod resume;
+pub mod runtime;
 pub mod runtime_factory;
 pub mod terminal;
 pub mod validation;

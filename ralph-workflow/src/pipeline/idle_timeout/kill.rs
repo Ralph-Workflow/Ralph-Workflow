@@ -154,7 +154,7 @@ pub fn kill_process(
         let grace_deadline = std::time::Instant::now() + config.sigterm_grace;
         while std::time::Instant::now() < grace_deadline {
             let status = {
-                let locked_child = child_arc
+                let mut locked_child = child_arc
                     .lock()
                     .expect("child process mutex poisoned - indicates panic in another thread");
                 locked_child.try_wait()
@@ -181,7 +181,7 @@ pub fn kill_process(
         let confirm_deadline = std::time::Instant::now() + config.sigkill_confirm_timeout;
         while std::time::Instant::now() < confirm_deadline {
             let status = {
-                let locked_child = child_arc
+                let mut locked_child = child_arc
                     .lock()
                     .expect("child process mutex poisoned - indicates panic in another thread");
                 locked_child.try_wait()
