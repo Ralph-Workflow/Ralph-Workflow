@@ -35,7 +35,10 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
     boundary::forbid_io_effects::register_lints(sess, lint_store);
     boundary::forbid_nested_boundary_modules::register_lints(sess, lint_store);
     boundary::forbid_domain_boundary_dependencies::register_lints(sess, lint_store);
+    boundary::forbid_boundary_retry_loops::register_lints(sess, lint_store);
     boundary::forbid_boundary_policy_calls::register_lints(sess, lint_store);
+    boundary::forbid_raw_effect_types_in_public_apis::register_lints(sess, lint_store);
+    boundary::forbid_result_swallowing::register_lints(sess, lint_store);
     boundary::boundary_function_too_complex::register_lints(sess, lint_store);
 
     // Code quality lints (runtime - uses std::env)

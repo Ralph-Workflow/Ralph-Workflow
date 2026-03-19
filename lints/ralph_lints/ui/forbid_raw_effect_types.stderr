@@ -1,0 +1,13 @@
+warning[FORBID_RAW_EFFECT_TYPES_IN_PUBLIC_APIS]: public function returns `std::process::Output`, a raw effect-native type
+  --> $DIR/forbid_raw_effect_types.rs:1:1
+   |
+LL | pub fn run_external_command() -> std::process::Output {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: boundary functions should translate raw effect types into domain types. See `docs/code-style/boundaries.md`.
+
+warning[FORBID_RAW_EFFECT_TYPES_IN_PUBLIC_APIS]: public function returns `std::process::Output`, a raw effect-native type
+  --> $DIR/forbid_raw_effect_types.rs:8:1
+   |
+LL | pub fn get_command_output() -> std::process::Output {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: boundary functions should translate raw effect types into domain types. See `docs/code-style/boundaries.md`.
+
+warning: 2 warnings emitted

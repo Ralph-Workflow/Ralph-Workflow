@@ -3067,6 +3067,8 @@
           "pwd": "allow",
           "rm lints/**": "allow",
           "rm *lints/**": "allow",
+          "rustup show active-toolchain": "allow",
+          "export RUSTUP_TOOLCHAIN=*": "allow",
           "cargo build *": "allow",
           "cargo check *": "allow",
           "cargo test *": "allow"

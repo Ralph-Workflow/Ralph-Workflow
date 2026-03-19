@@ -51,24 +51,29 @@ For practical examples of how to rewrite imperative code to satisfy these lints,
 
 ## Available Lints
 
-| Lint | Description |
-|------|-------------|
-| `file_too_long` | Rejects source files at 1000+ lines; 500+ lines remain a style-review guideline rather than a build-stopping lint |
-| `forbid_mut_binding` | Rejects mutable bindings (`let mut`, mutable function parameters) outside boundary modules |
-| `forbid_imperative_loops` | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules |
-| `forbid_mutating_receiver_methods` | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module |
-| `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
-| `forbid_terminal_output` | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules |
-| `forbid_io_effects` | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules |
-| `forbid_nested_boundary_modules` | Rejects nested modules inside boundary directories so effect seams stay flat and wiring-focused |
-| `boundary_function_too_complex` | Flags boundary functions exceeding a complexity threshold |
+| Lint | Severity | Description |
+|------|----------|-------------|
+| `file_too_long` | Deny | Rejects source files at 1000+ lines; 500+ lines remain a style-review guideline rather than a build-stopping lint |
+| `forbid_mut_binding` | Deny | Rejects mutable bindings (`let mut`, mutable function parameters) outside boundary modules |
+| `forbid_imperative_loops` | Deny | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules |
+| `forbid_mutating_receiver_methods` | Deny | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module |
+| `forbid_interior_mutability` | Deny | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
+| `forbid_terminal_output` | Deny | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules |
+| `forbid_io_effects` | Deny | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules |
+| `forbid_nested_boundary_modules` | Deny | Rejects nested modules inside boundary directories so effect seams stay flat and wiring-focused |
+| `boundary_function_too_complex` | Deny | Flags boundary functions exceeding a complexity threshold |
+| `forbid_domain_boundary_dependencies` | Deny | Rejects `use` / `import` items that reference boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`, etc.) from non-boundary modules. Prevents domain code from directly depending on boundary implementations. **v1 scope:** path-based import matching only; does not trace re-exports. |
+| `forbid_boundary_policy_calls` | Deny | Rejects direct calls from boundary modules to reducer/orchestrator policy helpers. Policy decisions belong in domain code. **v1 scope:** matches `reducer::determine_*`, `reducer::reduce_*`, `orchestrator::determine_*`, `orchestrator::reduce_*` call paths only; does not track indirect calls. |
+| `forbid_result_swallowing` | Deny | Rejects silent Result discard patterns (`let _ = result`, `.ok()` on Result, single-arm `if let Err(_)` with unit body). Hidden failure handling undermines the explicit-effect model. **v1 scope:** does not detect match arms that explicitly handle both variants. |
+| `forbid_raw_effect_types_in_public_apis` | Warn | Rejects public functions that return raw effect-native types (`std::process::Output`, `std::process::Child`) without translation. Boundary adapters should translate before returning inward. **v1 scope:** string-based type matching on function signatures; does not follow type aliases or trait bounds. |
+| `forbid_boundary_retry_loops` | Deny | Rejects inline retry loops inside boundary modules that both perform I/O and track attempt counters (effect call + counter variable + increment + max check). Retry policy belongs in orchestration, not inline boundary code. **v1 scope:** pattern-based heuristic; does not prove termination or correctness. |
 
 ### Boundary modules
 
 The lints `forbid_mut_binding`, `forbid_imperative_loops`, `forbid_mutating_receiver_methods`,
-`forbid_interior_mutability`, `forbid_terminal_output`, and `forbid_io_effects` all share a
-**boundary module** concept. Code in a directory whose path contains one of these components is
-treated as an effect boundary.
+`forbid_interior_mutability`, `forbid_terminal_output`, `forbid_io_effects`, and all the
+**forbid_boundary_*** and **forbid_raw_*** lints share the **boundary module** concept. Code in a
+directory whose path contains one of these components is treated as an effect boundary.
 
 Canonical architectural boundary categories:
 
@@ -109,8 +114,8 @@ Boundary modules must not become a second policy engine. In particular they shou
 - reducer/orchestrator decisions hidden behind effectful helpers
 - business branching that should live in pure domain logic
 
-`boundary_function_too_complex` and `forbid_nested_boundary_modules` exist specifically to keep
-those seams thin and visible.
+`boundary_function_too_complex`, `forbid_nested_boundary_modules`, `forbid_boundary_policy_calls`,
+and `forbid_boundary_retry_loops` exist specifically to keep those seams thin and visible.
 
 When adding a new boundary marker to `BOUNDARY_MODULES`, the bar is high: the module's primary
 purpose must be executing real effects (filesystem, env, process, network, stdio, time, threads,
@@ -124,26 +129,6 @@ Current `boundary_function_too_complex` thresholds:
 
 The score also grows with statement count, boolean guard operators, match-arm count, and nesting.
 The intent is to catch boundary functions that are no longer just wiring.
-
-## Good Next Lints
-
-These fit the current architecture and are realistic to implement with the existing dylint helpers.
-
-| Candidate lint | Why it fits this repo | Likely implementation shape |
-|------|-------------|-----------------|
-| `forbid_domain_boundary_dependencies` | Core/domain code should not import boundary implementations directly | Path-based import/use-item lint using the existing boundary path helpers |
-| `forbid_boundary_policy_calls` | Boundaries should execute effects, not call reducer/orchestrator policy helpers | Def-path matching for calls into reducer/orchestrator decision modules from boundary code |
-| `forbid_raw_effect_types_in_public_apis` | Boundary adapters should translate `std::process::Output`, `reqwest::Response`, raw FFI handles, etc. before returning inward | Function-signature/type-path lint on public or cross-module boundary APIs |
-| `forbid_result_swallowing` | Hidden failure handling undermines the explicit-effect model | Detect `let _ = result`, `.ok()` drops, or silent `Err(_)` branches in production code |
-| `forbid_boundary_retry_loops` | Retry policy belongs in reducer/orchestrator state, not inline boundary loops | Boundary-only lint for loops around effect calls plus retry-counter patterns |
-
-Recommended order:
-
-1. `forbid_domain_boundary_dependencies`
-2. `forbid_boundary_policy_calls`
-3. `forbid_result_swallowing`
-4. `forbid_raw_effect_types_in_public_apis`
-5. `forbid_boundary_retry_loops`
 
 ### Autogenerated file exemption
 
@@ -164,6 +149,26 @@ make dylint
 # Run using cargo dylint directly with ralph_lints
 cargo dylint --lib ralph_lints -p ralph-workflow -- --lib --quiet
 ```
+
+## Local Crate Verification
+
+To verify the lint crate itself compiles and passes its own unit tests without invoking the full
+dylint driver UI test harness (which has a separate upstream toolchain issue), use these commands
+from the `lints/ralph_lints` directory:
+
+```bash
+# Check the lint crate compiles cleanly
+cd lints/ralph_lints && export RUSTUP_TOOLCHAIN="$(rustup show active-toolchain | cut -d' ' -f1)" && cargo check
+
+# Run crate-local unit tests only (no dylint driver UI test)
+cd lints/ralph_lints && export RUSTUP_TOOLCHAIN="$(rustup show active-toolchain | cut -d' ' -f1)" && cargo test --lib
+```
+
+**Note:** After the crate-local tests pass, the full `cargo test` run (which includes the
+`dylint_testing::ui_test` in `lib.rs`) will still encounter a known upstream `dylint_driver` /
+`dylint_testing` UI/toolchain issue. This failure is in the dylint harness itself, not in the
+crate-local lint logic. Distinguish between "crate-local unit test failures" (real bugs) and
+"dylint driver UI test failures" (known upstream issue).
 
 ## Rust LSP Integration
 

@@ -11,8 +11,9 @@ THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WIT
 THERE ARE OTHER DEVELOPERS WORKING ON THIS, DO NOT REVERT THEIR CHANGES WORK WITH THEM
 ---
 
-## 🚨 TOP PRIORITY: Fix ALL Pre-existing Issues Immediately It does not matter if something is Pre-existing
-**Every surfaced issue becomes your #1 priority immediately.** No exceptions, no "pre-existing" carve-outs.
+## 🚨 TOP PRIORITY: Fix ALL Pre-existing Issues Immediately UNLESS YOU WERE TOLD NOT TO 
+It does not matter if something is Pre-existing **Every surfaced issue becomes your #1 priority immediately.** 
+No exceptions, no "pre-existing" carve-outs UNLESS YOUR PROMPT HAS ONE THAT SPECIFICALLY SAYS IT, ASSUME NO CARVE-OUTS IF PROMPT DOES NOT SPECIFY
 
 1. Discover any issue → STOP → Fix it completely → Verify clean → Return to original task.
 

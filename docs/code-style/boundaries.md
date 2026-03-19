@@ -111,6 +111,24 @@ In practice, that means boundary functions must not contain:
 If the boundary needs comments to explain the business rule it is applying, the
 logic is probably in the wrong place.
 
+### Enforcement via lints
+
+Three lints enforce these boundaries:
+
+- **`forbid_boundary_policy_calls`** (Deny) catches direct calls from boundary modules to
+  reducer/orchestrator policy helpers. It matches `reducer::determine_*`, `reducer::reduce_*`,
+  `orchestrator::determine_*`, and `orchestrator::reduce_*` call paths. **v1 scope:** path-based
+  matching only; indirect calls through intermediate helpers are not tracked.
+
+- **`forbid_boundary_retry_loops`** (Deny) catches inline retry loops inside boundary modules that
+  combine an effect call with a counter variable, an increment, and a max check. **v1 scope:**
+  pattern-based heuristic; does not prove termination or policy correctness.
+
+- **`forbid_result_swallowing`** (Deny) catches `let _ = result`, `.ok()` on Result, and
+  single-arm `if let Err(_)` with unit body. These patterns hide failure and undermine the
+  explicit-effect model. **v1 scope:** match arms that explicitly handle both Result variants are
+  not flagged.
+
 ## Type-driven design at the edge
 
 Boundaries should convert raw input into domain-shaped types as early as
@@ -143,6 +161,11 @@ pub struct RawDeployConfig {
 
 The point is not academic purity. The point is removing repeated checks from the
 rest of the program.
+
+**`forbid_raw_effect_types_in_public_apis`** (Warn) reinforces this by flagging public
+functions that return raw effect-native types (`std::process::Output`, `std::process::Child`)
+without translation. Boundary adapters should parse and translate before returning inward.
+**v1 scope:** string-based type matching; does not follow type aliases or trait bounds.
 
 ### Parse, don't validate
 
@@ -309,6 +332,9 @@ Domain code must not:
 - spawn processes
 - print to stdout or stderr
 - read clocks or sleep
+- import from boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`, etc.).
+  **`forbid_domain_boundary_dependencies`** (Deny) enforces this isolation.
+  **v1 scope:** path-based import matching only; re-exports are not traced.
 
 ### `io/`
 
@@ -758,9 +784,13 @@ Ask these questions when placing or reviewing code:
 4. Is it mostly wiring pure logic to one or more capabilities? Put it in
    `boundary/`.
 5. Does the function decide what should happen next in the workflow? That is
-    orchestration, not boundary code.
+    orchestration, not boundary code. Does `forbid_boundary_policy_calls` or
+    `forbid_boundary_retry_loops` fire on it?
 6. Would removing I/O leave the interesting part intact? If yes, extract that
     part and keep it pure.
+7. Does the public API return a raw effect type? Does `forbid_raw_effect_types_in_public_apis`
+    fire on it?
+8. Is a Result being silently discarded? Does `forbid_result_swallowing` fire on it?
 
 ## Common mistakes
 

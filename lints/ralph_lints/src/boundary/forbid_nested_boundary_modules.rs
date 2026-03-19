@@ -91,16 +91,17 @@ fn path_has_nested_boundary(path: &std::path::Path) -> Option<(&'static str, Str
         let name = component.as_os_str().to_str()?;
         let stem = name.strip_suffix(".rs").unwrap_or(name);
 
-        // Is this a boundary component?
         if let Some(&boundary) = BOUNDARY_MODULES.iter().find(|&&b| b == stem) {
-            // Is there anything after it?
             if i + 1 < len {
                 let remainder: String = components[(i + 1)..]
                     .iter()
                     .filter_map(|c| c.as_os_str().to_str())
                     .collect::<Vec<_>>()
                     .join("/");
-                return Some((boundary, remainder));
+                let is_mod_entry = remainder == "mod.rs" || remainder == "lib.rs";
+                if !is_mod_entry && remainder.contains('/') {
+                    return Some((boundary, remainder));
+                }
             }
         }
         None

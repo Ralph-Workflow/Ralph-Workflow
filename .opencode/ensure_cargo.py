@@ -38,12 +38,20 @@ SUBAGENTS = [
 ]
 
 CARGO_PERMISSIONS = {
+    "rustup show active-toolchain": "allow",
+    "export RUSTUP_TOOLCHAIN=*": "allow",
     "cargo build *": "allow",
     "cargo check *": "allow",
     "cargo test *": "allow"
 }
 
-CARGO_PERMISSION_KEYS = {"cargo build *", "cargo check *", "cargo test *"}
+CARGO_PERMISSION_KEYS = {
+    "rustup show active-toolchain",
+    "export RUSTUP_TOOLCHAIN=*",
+    "cargo build *",
+    "cargo check *",
+    "cargo test *",
+}
 
 def get_config_path():
     script_dir = Path(__file__).parent

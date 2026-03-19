@@ -192,7 +192,7 @@ const ALLOWED_METHODS: &[&str] = &[
 ];
 
 fn mutating_receiver_note() -> &'static str {
-    "in-place `&mut self` updates hide state changes behind shared control flow; prefer value semantics so domain transformations return new values and remain easier to reason about, test, and keep referentially transparent. If mutation is genuinely required for I/O handles or process objects, keep it at the boundary. Style guides: `docs/code-style/functional-transformations.md` and `docs/code-style/boundaries.md`."
+    "in-place `&mut self` updates hide state changes behind shared control flow; prefer value semantics so domain transformations return new values and remain easier to reason about, test, and keep referential transparency. If mutation is genuinely required for I/O handles or process objects, keep it at the boundary. Style guides: `docs/code-style/functional-transformations.md` and `docs/code-style/boundaries.md`."
 }
 
 impl<'tcx> LateLintPass<'tcx> for ForbidMutatingReceiverMethods {

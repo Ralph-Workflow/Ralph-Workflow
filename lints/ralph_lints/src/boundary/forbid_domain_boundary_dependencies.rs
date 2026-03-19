@@ -25,21 +25,28 @@ impl EarlyLintPass for ForbidDomainBoundaryDependencies {
         }
 
         if let rustc_ast::ast::ItemKind::Use(use_tree) = &item.kind {
-            let segments = &use_tree.prefix.segments;
-            if let Some(first_segment) = segments.first() {
-                let name = first_segment.ident.name.as_str();
-                if BOUNDARY_MODULES.iter().any(|&b| b == name) {
-                    cx.span_lint(FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, item.span, |diag| {
-                        diag.primary_message(format!(
-                            "import from boundary module `{}` is forbidden in non-boundary modules",
-                            name
-                        ));
-                        diag.help(
-                            "move I/O to boundary layer: imports from boundary modules (io/, runtime/, ffi/, boundary/) should only exist in boundary modules themselves",
-                        );
-                    });
-                }
-            }
+            let Some(name) = boundary_segment_in_use_tree(use_tree) else {
+                return;
+            };
+
+            cx.span_lint(FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, item.span, |diag| {
+                diag.primary_message(format!(
+                    "import from boundary module `{}` is forbidden in non-boundary modules",
+                    name
+                ));
+                diag.help(
+                    "move I/O to boundary layer: imports from boundary modules (io/, runtime/, ffi/, boundary/, executor/, and other boundary markers) should only exist in boundary modules themselves",
+                );
+            });
         }
     }
+}
+
+fn boundary_segment_in_use_tree(use_tree: &rustc_ast::ast::UseTree) -> Option<String> {
+    use_tree
+        .prefix
+        .segments
+        .iter()
+        .map(|segment| segment.ident.name.as_str().to_string())
+        .find(|segment| BOUNDARY_MODULES.iter().any(|&boundary| boundary == segment))
 }
