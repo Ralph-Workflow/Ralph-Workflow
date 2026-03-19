@@ -15,13 +15,13 @@ The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative
 
 ## Lint Severity Levels
 
-The dylint lints are configured at **Deny** level in their definitions (e.g., `pub FORBID_MUT_BINDING, Deny, ...`). This means violations cause build failures by default. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
+The dylint lints are configured at varying severity levels in their definitions (e.g., `pub FORBID_MUT_BINDING, Warn, ...` or `pub FORBID_DOMAIN_BOUNDARY_DEPENDENCIES, Deny, ...`). Lint definitions use `Deny` for architectural rules that must never be bypassed, and `Warn` for rules where narrow heuristics approximate a property rather than fully proving it. The `--cap-lints=deny` flag in the build system ensures that all lints respect their configured severity:
 
 - **`--cap-lints=deny`**: Lints stay at their defined level (`Deny`, `Warn`, or `Allow`). If a lint is set to `Deny`, violations cause the build to fail.
 - **`--cap-lints=allow`**: Would cap ALL lints to `Allow`, effectively disabling them. This is never used in this repository.
 
 Using `--cap-lints=deny` is essential because:
-1. It preserves the intended severity of each lint (Deny for functional programming rules)
+1. It preserves the intended severity of each lint
 2. It ensures violations are caught at compile time rather than silently ignored
 3. It makes the lint system effective as a quality gate
 
@@ -54,14 +54,14 @@ For practical examples of how to rewrite imperative code to satisfy these lints,
 | Lint | Severity | Description |
 |------|----------|-------------|
 | `file_too_long` | Deny | Rejects source files at 1000+ lines; 500+ lines remain a style-review guideline rather than a build-stopping lint |
-| `forbid_mut_binding` | Deny | Rejects mutable bindings (`let mut`, mutable function parameters) outside boundary modules |
-| `forbid_imperative_loops` | Deny | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules |
-| `forbid_mutating_receiver_methods` | Deny | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module |
-| `forbid_interior_mutability` | Deny | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
-| `forbid_terminal_output` | Deny | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules |
-| `forbid_io_effects` | Deny | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules |
+| `forbid_mut_binding` | Warn | Rejects mutable bindings (`let mut`, mutable function parameters) outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove the binding never escapes. |
+| `forbid_imperative_loops` | Warn | Rejects `while`, `loop`, and `for` loop constructs outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove the loop never performs effects. |
+| `forbid_mutating_receiver_methods` | Warn | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module. **v1 scope:** type-based heuristic; does not prove the method has no side effects. |
+| `forbid_interior_mutability` | Warn | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules. **v1 scope:** type-based heuristic; does not prove interior mutation never occurs. |
+| `forbid_terminal_output` | Warn | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules. **v1 scope:** pattern-based heuristic; does not prove no output occurs. |
+| `forbid_io_effects` | Warn | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules. **v1 scope:** path-based heuristic; does not prove all effect paths are caught. |
 | `forbid_nested_boundary_modules` | Deny | Rejects nested modules inside boundary directories so effect seams stay flat and wiring-focused |
-| `boundary_function_too_complex` | Deny | Flags boundary functions exceeding a complexity threshold |
+| `boundary_function_too_complex` | Warn | Flags boundary functions exceeding a complexity threshold |
 | `forbid_domain_boundary_dependencies` | Deny | Rejects `use` / `import` items that reference boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`, etc.) from non-boundary modules. Prevents domain code from directly depending on boundary implementations. **v1 scope:** path-based import matching only; does not trace re-exports. |
 | `forbid_boundary_policy_calls` | Deny | Rejects direct calls from boundary modules to reducer/orchestrator policy helpers. Policy decisions belong in domain code. **v1 scope:** matches `reducer::determine_*`, `reducer::reduce_*`, `orchestrator::determine_*`, `orchestrator::reduce_*` call paths only; does not track indirect calls. |
 | `forbid_result_swallowing` | Deny | Rejects silent Result discard patterns (`let _ = result`, `.ok()` on Result, single-arm `if let Err(_)` with unit body). Hidden failure handling undermines the explicit-effect model. **v1 scope:** does not detect match arms that explicitly handle both variants. |

@@ -395,7 +395,7 @@ Typical non-responsibilities:
 - hiding workflow logic
 - accumulating many unrelated jobs in one module
 - reimplementing parsing and validation inline
-- becoming a dumping ground for all non-pure code
+- becoming a dumping ground for pure-but-imperative code moved there for convenience
 
 ### `ffi/`
 
@@ -814,8 +814,9 @@ the filesystem is not pure just because it has a short name.
 
 ### Treating `boundary/` as a dumping ground
 
-Boundary modules should stay small and workflow-focused. Do not move ordinary
-domain code there just to bypass functional constraints.
+Boundary markers exist for real effect seams and thin composition wiring — not as
+a place to park pure-but-imperative code that would be cleaner in domain modules.
+Boundary modules should stay small and workflow-focused.
 
 ### Confusing transport decoding with domain meaning
 

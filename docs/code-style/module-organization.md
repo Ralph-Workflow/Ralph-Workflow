@@ -81,16 +81,10 @@ Use this when one workflow owns:
 
 ### Handler package
 
-```text
-handler/review/
-  mod.rs
-  inputs.rs
-  execution.rs
-  output.rs
-  validation.rs
-```
-
-Use this when a single effect handler has several boundary-only phases that are still part of one cohesive effect.
+Handlers are thin effect-execution shims.  A handler file coordinates one specific
+external interaction by gathering inputs, delegating to pure logic, and performing
+the effect.  Avoid nesting handlers into subdirectory trees — keep handler modules
+flat, following the same flat-boundary rule as `boundary/`.
 
 ## End-state module examples
 
@@ -184,14 +178,10 @@ reducer/
     orchestrate.rs
 
 boundary/
-  review/
-    mod.rs
-    inputs.rs
-    execution.rs
-    output.rs
+  run_review.rs
 ```
 
-This split keeps policy code and execution code separate without fragmenting either one into random helpers.
+This split keeps policy code and execution code separate without fragmenting either one into random helpers.  Boundary files are flat — one file per effect seam, not a nested tree.
 
 ## `mod.rs` guidance
 

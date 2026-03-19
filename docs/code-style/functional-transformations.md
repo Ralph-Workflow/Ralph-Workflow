@@ -102,17 +102,11 @@ fn group_issues_by_file(issues: &[ParsedIssue]) -> BTreeMap<String, Vec<ParsedIs
 }
 ```
 
-When grouping is performance-sensitive or when this is boundary code, the mutable
-`BTreeMap::entry` API is appropriate — place it in a boundary module:
-
-```rust
-// boundary module — mutation is fine here
-let mut grouped: BTreeMap<String, Vec<ParsedIssue>> = BTreeMap::new();
-for issue in parsed {
-    let key = issue.file.clone().unwrap_or_else(|| "(no file)".to_string());
-    grouped.entry(key).or_default().push(issue);
-}
-```
+When grouping is performance-sensitive, the functional fold-over-BTreeMap
+approach is still preferred in domain code.  The mutable `.entry()` API belongs
+in a boundary module only when the operation is genuinely an effect seam (for
+example, when building a mutable index as a cache backed by an external
+resource), not merely for performance.
 
 ### HashSet from an iterator
 
@@ -931,15 +925,16 @@ let issues: IssueList = raw_issues
 
 ## When to use boundary modules instead
 
-Some patterns are inherently imperative and belong in boundary code:
+Some patterns are genuine effect seams where mutation is intrinsic to the operation.
+These belong in boundary modules because they are real side effects, not because
+they are "imperative escape hatches" for pure-but-imperative code:
 
-- I/O retry loops
-- Byte-by-byte parsing with `Read`
-- Process polling with `wait()`
-- Building output strings with `write!` and `writeln!` (rendering modules)
-- Grouping into `BTreeMap` via `.entry().or_default().push()` (when performance matters)
-- Writing to `BufWriter` or network sockets
-- Filling a buffer from `stdin`
+- Writing to `BufWriter` or network sockets — the write itself is the effect
+- Filling a buffer from `stdin` — reading from a stream is an effect
+- Byte-by-byte parsing with `Read` — the read operation is an effect seam
+- Process polling with `wait()` — process state observation is an effect
+- Building output strings with `write!` and `writeln!` in rendering modules — I/O output is the effect
 
-Place these in `io/`, `runtime/`, `ffi/`, or `boundary/` modules where the lints are
-exempt.  See `docs/code-style/boundaries.md` for guidance on module placement.
+I/O retry loops are retry policy, which belongs in orchestration, not the
+boundary itself — the boundary should perform one attempt and report the outcome.
+See `docs/code-style/boundaries.md` for the correct split.
