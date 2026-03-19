@@ -1,5 +1,5 @@
 use super::*;
-use crate::reducer::state::ContinuationState;
+use crate::reducer::state::{ContinuationState, PipelineState};
 
 #[test]
 fn test_reduce_continuation_not_supported_errors_route_to_awaiting_dev_fix() {
@@ -49,11 +49,10 @@ fn test_reduce_fix_prompt_missing_is_recoverable_by_clearing_prepared_flag() {
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(0, 1, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Review;
-        s.fix_prompt_prepared_pass = Some(0);
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        fix_prompt_prepared_pass: Some(0),
+        ..state
     };
 
     let new_state = reduce_error(&state, &ErrorEvent::FixPromptMissing);
@@ -69,15 +68,14 @@ fn test_reduce_agent_not_found_advances_agent_chain_instead_of_terminating() {
     use crate::reducer::state::AgentChainState;
 
     let state = PipelineState::initial_with_continuation(1, 0, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Development;
-        s.agent_chain = AgentChainState::initial().with_agents(
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        agent_chain: AgentChainState::initial().with_agents(
             vec!["missing".to_string(), "fallback".to_string()],
             vec![vec![], vec![]],
             AgentRole::Developer,
-        );
-        s
+        ),
+        ..state
     };
 
     let new_state = reduce_error(
@@ -121,10 +119,9 @@ fn test_reduce_workspace_failures_transition_to_awaiting_dev_fix_and_set_previou
     use crate::reducer::event::{PipelinePhase, WorkspaceIoErrorKind};
 
     let state = PipelineState::initial_with_continuation(1, 1, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Review;
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        ..state
     };
 
     let error = ErrorEvent::WorkspaceWriteFailed {
@@ -151,14 +148,13 @@ fn test_agent_chain_exhausted_preserves_recovery_state_when_already_in_recovery(
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(1, 1, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Development;
-        s.previous_phase = Some(PipelinePhase::AwaitingDevFix);
-        s.dev_fix_attempt_count = 2;
-        s.recovery_escalation_level = 1;
-        s.failed_phase_for_recovery = Some(PipelinePhase::Development);
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        previous_phase: Some(PipelinePhase::AwaitingDevFix),
+        dev_fix_attempt_count: 2,
+        recovery_escalation_level: 1,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
     };
 
     let error = ErrorEvent::AgentChainExhausted {
@@ -187,14 +183,13 @@ fn test_agent_chain_exhausted_resets_recovery_state_on_first_failure() {
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(1, 1, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Development;
-        s.previous_phase = Some(PipelinePhase::Planning);
-        s.dev_fix_attempt_count = 5;
-        s.recovery_escalation_level = 2;
-        s.failed_phase_for_recovery = Some(PipelinePhase::Planning);
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::Development,
+        previous_phase: Some(PipelinePhase::Planning),
+        dev_fix_attempt_count: 5,
+        recovery_escalation_level: 2,
+        failed_phase_for_recovery: Some(PipelinePhase::Planning),
+        ..state
     };
 
     let error = ErrorEvent::AgentChainExhausted {
@@ -222,14 +217,13 @@ fn test_workspace_and_git_failures_preserve_recovery_escalation_when_already_in_
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(1, 0, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::CommitMessage;
-        s.previous_phase = Some(PipelinePhase::AwaitingDevFix);
-        s.failed_phase_for_recovery = Some(PipelinePhase::CommitMessage);
-        s.dev_fix_attempt_count = 6;
-        s.recovery_escalation_level = 2;
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        previous_phase: Some(PipelinePhase::AwaitingDevFix),
+        failed_phase_for_recovery: Some(PipelinePhase::CommitMessage),
+        dev_fix_attempt_count: 6,
+        recovery_escalation_level: 2,
+        ..state
     };
 
     let new_state = reduce_error(
@@ -253,14 +247,13 @@ fn continuation_not_supported_sets_failed_phase_and_resets_recovery_counters_on_
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(1, 0, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::CommitMessage;
-        s.previous_phase = Some(PipelinePhase::Planning);
-        s.dev_fix_attempt_count = 5;
-        s.recovery_escalation_level = 2;
-        s.failed_phase_for_recovery = Some(PipelinePhase::Planning);
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::CommitMessage,
+        previous_phase: Some(PipelinePhase::Planning),
+        dev_fix_attempt_count: 5,
+        recovery_escalation_level: 2,
+        failed_phase_for_recovery: Some(PipelinePhase::Planning),
+        ..state
     };
 
     let new_state = reduce_error(&state, &ErrorEvent::CommitContinuationNotSupported);
@@ -279,14 +272,13 @@ fn missing_inputs_sets_failed_phase_and_preserves_recovery_counters_when_in_reco
     use crate::reducer::event::PipelinePhase;
 
     let state = PipelineState::initial_with_continuation(1, 0, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::Review;
-        s.previous_phase = Some(PipelinePhase::AwaitingDevFix);
-        s.dev_fix_attempt_count = 6;
-        s.recovery_escalation_level = 2;
-        s.failed_phase_for_recovery = Some(PipelinePhase::Development);
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::Review,
+        previous_phase: Some(PipelinePhase::AwaitingDevFix),
+        dev_fix_attempt_count: 6,
+        recovery_escalation_level: 2,
+        failed_phase_for_recovery: Some(PipelinePhase::Development),
+        ..state
     };
 
     let new_state = reduce_error(&state, &ErrorEvent::ReviewInputsNotMaterialized { pass: 1 });
@@ -305,14 +297,13 @@ fn workspace_failures_do_not_overwrite_failed_phase_when_already_in_awaiting_dev
     use crate::reducer::event::{PipelinePhase, WorkspaceIoErrorKind};
 
     let state = PipelineState::initial_with_continuation(1, 0, &ContinuationState::default());
-    let state = {
-        let mut s = state;
-        s.phase = PipelinePhase::AwaitingDevFix;
-        s.previous_phase = Some(PipelinePhase::Review);
-        s.failed_phase_for_recovery = Some(PipelinePhase::Review);
-        s.dev_fix_attempt_count = 3;
-        s.recovery_escalation_level = 1;
-        s
+    let state = PipelineState {
+        phase: PipelinePhase::AwaitingDevFix,
+        previous_phase: Some(PipelinePhase::Review),
+        failed_phase_for_recovery: Some(PipelinePhase::Review),
+        dev_fix_attempt_count: 3,
+        recovery_escalation_level: 1,
+        ..state
     };
 
     let new_state = reduce_error(

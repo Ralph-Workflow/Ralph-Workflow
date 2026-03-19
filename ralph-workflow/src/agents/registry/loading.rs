@@ -75,12 +75,12 @@ impl AgentRegistry {
         reason = "small counter that cannot realistically overflow"
     )]
     pub fn apply_unified_config(
-        &mut self,
+        mut self,
         unified: &crate::config::UnifiedConfig,
-    ) -> Result<usize, AgentConfigError> {
+    ) -> Result<Self, AgentConfigError> {
         let ccs_loaded = self.apply_ccs_aliases(unified);
         let agent_loaded = self.apply_agent_overrides(unified);
-        let loaded = ccs_loaded + agent_loaded;
+        let _loaded = ccs_loaded + agent_loaded;
 
         self.resolved_drains = unified
             .resolve_agent_drains_checked()
@@ -89,7 +89,7 @@ impl AgentRegistry {
                 Self::merge_general_runtime_settings(&self.resolved_drains, &unified.general)
             });
 
-        Ok(loaded)
+        Ok(self)
     }
 
     /// Apply CCS aliases from the unified config.

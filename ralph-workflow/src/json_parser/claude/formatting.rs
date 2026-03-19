@@ -4,10 +4,7 @@
 
 impl ClaudeParser {
     fn hash_string(text: &str) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        text.hash(&mut hasher);
-        hasher.finish()
+        crate::json_parser::boundary::compute_hash_str(text)
     }
 
     /// Format a system event
@@ -93,44 +90,47 @@ impl ClaudeParser {
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> Option<(String, std::collections::HashMap<usize, String>)> {
         message?.content.as_ref().map(|content| {
-            let mut normalized_parts = Vec::new();
-            let mut tool_names = std::collections::HashMap::new();
-
-            content
-                .iter()
-                .enumerate()
-                .for_each(|(index, block)| match block {
-                    ContentBlock::Text { text } => {
-                        if let Some(text) = text.as_deref() {
-                            normalized_parts.push(text.to_string());
+            let (normalized_parts, tool_names): (
+                Vec<String>,
+                std::collections::HashMap<usize, String>,
+            ) = content.iter().enumerate().fold(
+                (Vec::new(), std::collections::HashMap::new()),
+                |(mut parts, mut names), (index, block)| {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            if let Some(text) = text.as_deref() {
+                                parts.push(text.to_string());
+                            }
                         }
-                    }
-                    ContentBlock::ToolUse { name, input } => {
-                        if let Some(name_str) = name.as_deref() {
-                            tool_names.insert(index, name_str.to_string());
-                        }
+                        ContentBlock::ToolUse { name, input } => {
+                            if let Some(name_str) = name.as_deref() {
+                                names.insert(index, name_str.to_string());
+                            }
 
-                        let normalized = format!(
-                            "TOOL_USE:{}:{}",
-                            name.as_deref().unwrap_or(""),
-                            input
-                                .as_ref()
-                                .map(|v| {
-                                    if v.is_object() {
-                                        serde_json::to_string(v).ok()
-                                    } else if v.is_string() {
-                                        v.as_str().map(std::string::ToString::to_string)
-                                    } else {
-                                        serde_json::to_string(v).ok()
-                                    }
+                            let normalized = format!(
+                                "TOOL_USE:{}:{}",
+                                name.as_deref().unwrap_or(""),
+                                input
+                                    .as_ref()
+                                    .map(|v| {
+                                        if v.is_object() {
+                                            serde_json::to_string(v).ok()
+                                        } else if v.is_string() {
+                                            v.as_str().map(std::string::ToString::to_string)
+                                        } else {
+                                            serde_json::to_string(v).ok()
+                                        }
+                                        .unwrap_or_default()
+                                    })
                                     .unwrap_or_default()
-                                })
-                                .unwrap_or_default()
-                        );
-                        normalized_parts.push(normalized);
+                            );
+                            parts.push(normalized);
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                });
+                    (parts, names)
+                },
+            );
 
             (normalized_parts.join(""), tool_names)
         })
@@ -312,9 +312,6 @@ impl ClaudeParser {
         &self,
         message: Option<&crate::json_parser::types::AssistantMessage>,
     ) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
         // CRITICAL FIX: When ANY content has been streamed via deltas,
         // the Assistant event should NOT display it again.
         // The Assistant event represents the "complete" message, but if we've
@@ -344,9 +341,8 @@ impl ClaudeParser {
                             Self::extract_text_content_for_hash(message)
                         {
                             if !text_content.is_empty() {
-                                let mut hasher = DefaultHasher::new();
-                                text_content.hash(&mut hasher);
-                                let content_hash = hasher.finish();
+                                let content_hash =
+                                    crate::json_parser::boundary::compute_hash_str(&text_content);
                                 session.mark_assistant_content_rendered(content_hash);
                             }
                         }

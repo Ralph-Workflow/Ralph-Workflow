@@ -104,52 +104,36 @@ impl<T> BoundedEventQueue<T> {
     // ```ignore
     // queue.send(event)?;
     // ```
-    pub fn send(&mut self, event: T) -> Result<(), mpsc::SendError<T>> {
-        // Try to send without blocking first
-        match self.sender.try_send(event) {
+    pub fn send(self, event: T) -> Self {
+        match self.sender.send(event) {
             Ok(()) => {
-                // Update depth estimate
-                self.metrics.depth = self.metrics.depth.saturating_add(1);
-                self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+                let new_depth = self.metrics.depth.saturating_add(1);
+                Self {
+                    sender: self.sender,
+                    receiver: self.receiver,
+                    metrics: QueueMetrics {
+                        depth: new_depth,
+                        backpressure_count: self.metrics.backpressure_count,
+                        max_depth: self.metrics.max_depth.max(new_depth),
+                    },
+                }
             }
-            Err(mpsc::TrySendError::Full(event)) => {
-                // Queue is full - this is backpressure
-                self.metrics.backpressure_count = self.metrics.backpressure_count.saturating_add(1);
-
-                // Block until space is available
-                self.sender.send(event)?;
-                self.metrics.depth = self.metrics.depth.saturating_add(1);
-                self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+            Err(mpsc::SendError(event)) => {
+                panic!("Receiver dropped unexpectedly: {:?}", event);
             }
-            Err(mpsc::TrySendError::Disconnected(event)) => Err(mpsc::SendError(event)),
         }
     }
 
-    // Try to send an event to the queue without blocking.
-    //
-    // Returns:
-    // * `Ok(())` - Event was sent successfully
-    // * `Err(mpsc::TrySendError::Full(_))` - Queue is full
-    // * `Err(mpsc::TrySendError::Disconnected(_))` - Receiver was dropped
-    //
-    // Example:
-    // ```ignore
-    // match queue.try_send(event) {
-    //     Ok(_) => println!("Sent"),
-    //     Err(mpsc::TrySendError::Full(_)) => println!("Queue full"),
-    //     Err(_) => println!("Receiver disconnected"),
-    // }
-    // ```
-    pub fn try_send(&mut self, event: T) -> Result<(), mpsc::TrySendError<T>> {
+    pub fn try_send(mut self, event: T) -> Self {
         match self.sender.try_send(event) {
             Ok(()) => {
                 self.metrics.depth = self.metrics.depth.saturating_add(1);
                 self.metrics.max_depth = self.metrics.max_depth.max(self.metrics.depth);
-                Ok(())
+                self
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                panic!("Try send failed: {:?}", e);
+            }
         }
     }
 

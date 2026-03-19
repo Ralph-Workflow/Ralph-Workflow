@@ -2,15 +2,13 @@
 //
 // Contains the ClaudeParser struct and its core methods.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use super::io::ParserState;
+use super::printer::{Printable, StdoutPrinter};
 use super::streaming_state::StreamingSession;
 use super::terminal::TerminalMode;
 use super::types::ContentBlock;
-use super::{Colors, SharedPrinter};
 
 /// Claude event parser
 ///
@@ -23,50 +21,17 @@ pub struct ClaudeParser {
     display_name: String,
     state: ParserState,
     show_streaming_metrics: bool,
-    printer: SharedPrinter,
+    printer: StdoutPrinter,
 }
 
 impl ClaudeParser {
-    /// Create a new `ClaudeParser` with the given colors and verbosity.
-    ///
-    /// # Arguments
-    ///
-    /// * `colors` - Colors for terminal output
-    /// * `verbosity` - Verbosity level for output
-    ///
-    /// # Returns
-    ///
-    /// A new `ClaudeParser` instance
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use ralph_workflow::json_parser::ClaudeParser;
-    /// use ralph_workflow::logger::Colors;
-    /// use ralph_workflow::config::Verbosity;
-    ///
-    /// let parser = ClaudeParser::new(Colors::new(), Verbosity::Normal);
-    /// ```
     #[must_use]
     pub fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, super::printer::shared_stdout())
+        Self::with_printer(colors, verbosity, StdoutPrinter::new())
     }
 
-    /// Create a new `ClaudeParser` with a custom printer.
-    ///
-    /// # Arguments
-    ///
-    /// * `colors` - Colors for terminal output
-    /// * `verbosity` - Verbosity level for output
-    /// * `printer` - Shared printer for output
-    ///
-    /// # Returns
-    ///
-    /// A new `ClaudeParser` instance
-    pub fn with_printer(colors: Colors, verbosity: Verbosity, printer: SharedPrinter) -> Self {
+    pub fn with_printer(colors: Colors, verbosity: Verbosity, printer: StdoutPrinter) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-
-        let _printer_is_terminal = printer.borrow().is_terminal();
 
         Self {
             colors,
@@ -84,15 +49,6 @@ impl ClaudeParser {
         self
     }
 
-    /// Set the display name for this parser.
-    ///
-    /// # Arguments
-    ///
-    /// * `display_name` - The name to display in output
-    ///
-    /// # Returns
-    ///
-    /// Self for builder pattern chaining
     #[must_use]
     pub fn with_display_name(mut self, display_name: &str) -> Self {
         self.display_name = display_name.to_string();
@@ -172,8 +128,12 @@ impl ClaudeParser {
     ///
     /// Note: downstream crates should avoid relying on this API in production builds.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn printer(&self) -> SharedPrinter {
-        Rc::clone(&self.printer)
+    pub fn printer(&self) -> StdoutPrinter {
+        self.printer.clone()
+    }
+
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
+        f(&mut self.printer)
     }
 
     /// Get streaming quality metrics from the current session.
@@ -249,9 +209,8 @@ impl ClaudeParser {
         let finalize = if matches!(&event, ClaudeEvent::StreamEvent { .. }) {
             String::new()
         } else {
-            let mut session = self.state.streaming_session.borrow_mut();
-            let result = self.finalize_in_place_full_mode(&mut session);
-            result
+            self.state
+                .with_session_mut(|session| self.finalize_in_place_full_mode(session))
         };
         let c = &self.colors;
         let prefix = &self.display_name;
@@ -317,30 +276,34 @@ impl ClaudeParser {
     ///
     /// Returns String for display content, empty String for control events.
     fn parse_stream_event(&self, event: StreamInnerEvent) -> String {
-        let mut session = self.state.streaming_session.borrow_mut();
-
         match event {
             StreamInnerEvent::MessageStart {
                 message,
                 message_id,
             } => {
-                let in_place_finalize = self.finalize_in_place_full_mode(&mut session);
+                let in_place_finalize = self
+                    .state
+                    .with_session_mut(|session| self.finalize_in_place_full_mode(session));
 
                 {
-                    *self.state.thinking_active_index.borrow_mut() = None;
-                    self.state.thinking_non_tty_indices.borrow_mut().clear();
-                    *self.state.suppress_thinking_for_message.borrow_mut() = false;
-                    *self.state.text_line_active.borrow_mut() = false;
-                    *self.state.cursor_up_active.borrow_mut() = false;
+                    self.state.with_thinking_active_index_mut(|idx| *idx = None);
+                    self.state
+                        .with_thinking_non_tty_indices_mut(|indices| indices.clear());
+                    self.state
+                        .with_suppress_thinking_for_message_mut(|v| *v = false);
+                    self.state.with_text_line_active_mut(|v| *v = false);
+                    self.state.with_cursor_up_active_mut(|v| *v = false);
                 }
 
                 let effective_message_id =
                     message_id.or_else(|| message.as_ref().and_then(|m| m.id.clone()));
-                session.set_current_message_id(effective_message_id);
-                session.on_message_start();
+                self.state.with_session_mut(|session| {
+                    session.set_current_message_id(effective_message_id);
+                    session.on_message_start();
+                });
 
                 {
-                    self.state.last_rendered_content.borrow_mut().clear();
+                    self.state.with_last_rendered_content_mut(|v| v.clear());
                 }
 
                 in_place_finalize
@@ -416,17 +379,17 @@ impl ClaudeParser {
         index: u64,
         delta: crate::json_parser::types::Delta,
     ) -> String {
-        let mut session = self.state.streaming_session.borrow_mut();
-        self.handle_content_block_delta(&mut session, index, delta)
+        self.state
+            .with_session_mut(|session| self.handle_content_block_delta(session, index, delta))
     }
 
     fn handle_text_delta_inner(&self, text: &str) -> String {
-        let mut session = self.state.streaming_session.borrow_mut();
-        self.handle_text_delta(&mut session, text)
+        self.state
+            .with_session_mut(|session| self.handle_text_delta(session, text))
     }
 
     fn handle_message_stop_inner(&self) -> String {
-        let mut session = self.state.streaming_session.borrow_mut();
-        self.handle_message_stop(&mut session)
+        self.state
+            .with_session_mut(|session| self.handle_message_stop(session))
     }
 }

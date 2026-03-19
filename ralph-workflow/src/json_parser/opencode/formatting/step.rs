@@ -41,10 +41,9 @@ impl OpenCodeParser {
 
         let session = event.session_id.as_deref().unwrap_or("unknown");
         let step_id = self.derive_step_id(event, session);
-        self.state
-            .streaming_session
-            .borrow_mut()
-            .set_current_message_id(Some(step_id));
+        self.state.with_session_mut(|session| {
+            session.set_current_message_id(Some(step_id));
+        });
     }
 
     fn flush_non_tty_accumulated_text(
@@ -187,12 +186,11 @@ impl OpenCodeParser {
             return String::new();
         }
 
-        self.state.streaming_session.borrow_mut().on_message_start();
-        self.state.last_rendered_content.borrow_mut().clear();
-        self.state
-            .streaming_session
-            .borrow_mut()
-            .set_current_message_id(Some(step_id));
+        self.state.with_session_mut(|session| {
+            session.on_message_start();
+            session.set_current_message_id(Some(step_id));
+        });
+        self.state.with_last_rendered_content_mut(|v| v.clear());
 
         let snapshot = event
             .part
@@ -231,7 +229,9 @@ impl OpenCodeParser {
             (is_duplicate, was_streaming, metrics)
         };
 
-        let _was_in_block = self.state.streaming_session.borrow_mut().on_message_stop();
+        let _was_in_block = self
+            .state
+            .with_session_mut(|session| session.on_message_stop());
 
         let terminal_mode = *self.state.terminal_mode.borrow();
         let text_flush_non_tty = self.flush_non_tty_accumulated_text(terminal_mode, prefix, colors);

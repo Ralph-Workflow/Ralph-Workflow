@@ -13,31 +13,36 @@ use super::state_reduction::reduce;
 use crate::agents::AgentRole;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::{DevelopmentEvent, PipelineEvent, PipelinePhase};
-use crate::reducer::state::{PipelineState, PromptMode};
+use crate::reducer::state::{AgentChainState, PipelineState, PromptMode, PromptPermissionsState};
 
 #[must_use]
 fn create_test_state() -> PipelineState {
-    let state = PipelineState::initial(5, 2);
-    let state = {
-        let mut s = state;
-        s.prompt_permissions.locked = true;
-        s.prompt_permissions.restore_needed = true;
-        s
-    };
-    state
+    PipelineState {
+        agent_chain: AgentChainState::initial().with_agents(
+            vec!["agent1".to_string(), "agent2".to_string()],
+            vec![vec!["model1".to_string(), "model2".to_string()]],
+            AgentRole::Developer,
+        ),
+        prompt_permissions: PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(5, 2)
+    }
 }
 
 /// Helper to create initial state with locked permissions (for mid-pipeline test scenarios)
 #[must_use]
 fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
-    let state = PipelineState::initial(dev_iters, review_passes);
-    let state = {
-        let mut s = state;
-        s.prompt_permissions.locked = true;
-        s.prompt_permissions.restore_needed = true;
-        s
-    };
-    state
+    PipelineState {
+        prompt_permissions: PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(dev_iters, review_passes)
+    }
 }
 
 // Review phase single-task effect chain tests

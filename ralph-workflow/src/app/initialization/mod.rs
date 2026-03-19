@@ -28,10 +28,14 @@ pub fn load_agent_registry_boundary<L: crate::agents::opencode_api::CatalogLoade
     config_path: &Path,
     catalog_loader: &L,
 ) -> anyhow::Result<(AgentRegistry, Vec<crate::agents::ConfigSource>)> {
-    let registry = AgentRegistry::new()?;
+    let registry = if let Some(unified_config) = unified {
+        AgentRegistry::new()?.apply_unified_config(unified_config)?
+    } else {
+        AgentRegistry::new()?
+    };
 
     let config_sources: Vec<_> = if let Some(unified_config) = unified {
-        let agents_loaded = registry.apply_unified_config(unified_config)?;
+        let agents_loaded = unified_config.ccs_aliases.len() + unified_config.agents.len();
         vec![crate::agents::ConfigSource {
             path: config_path.to_path_buf(),
             agents_loaded,

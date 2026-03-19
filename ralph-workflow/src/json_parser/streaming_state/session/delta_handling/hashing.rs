@@ -5,8 +5,6 @@ impl StreamingSession {
         }
 
         use itertools::Itertools;
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
 
         let hash = self
             .accumulated
@@ -25,10 +23,9 @@ impl StreamingSession {
                 let key_hash = format!("{:?}-{}", key.0, key.1);
                 let key_hash_bytes = key_hash.as_bytes();
                 let content_bytes = content.map(|s| s.as_bytes()).unwrap_or(b"");
-                let mut h = DefaultHasher::default();
-                key_hash_bytes.hash(&mut h);
-                content_bytes.hash(&mut h);
-                acc.wrapping_add(h.finish())
+                acc.wrapping_add(
+                    crate::json_parser::boundary::compute_hash(&[key_hash_bytes, content_bytes])
+                )
             });
 
         Some(hash)

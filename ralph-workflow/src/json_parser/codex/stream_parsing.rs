@@ -68,7 +68,7 @@ impl CodexParser {
 
     /// Process a single JSON event line during parsing.
     fn process_event_line_with_buffer(
-        &self,
+        &mut self,
         line: &str,
         monitor: &HealthMonitor,
         logging_enabled: bool,
@@ -80,17 +80,18 @@ impl CodexParser {
         }
 
         if self.verbosity.is_debug() {
-            let mut printer = self.printer.borrow_mut();
-            writeln!(
-                printer,
-                "{}[DEBUG]{} {}{}{}",
-                self.colors.dim(),
-                self.colors.reset(),
-                self.colors.dim(),
-                line,
-                self.colors.reset()
-            )?;
-            printer.flush()?;
+            self.with_printer_mut(|printer| {
+                writeln!(
+                    printer,
+                    "{}[DEBUG]{} {}{}{}",
+                    self.colors.dim(),
+                    self.colors.reset(),
+                    self.colors.dim(),
+                    line,
+                    self.colors.reset()
+                )?;
+                printer.flush()
+            })?;
         }
 
         // Parse the event once for both display/logic and synthetic result writing
@@ -116,9 +117,10 @@ impl CodexParser {
                 } else {
                     monitor.record_parsed();
                 }
-                let mut printer = self.printer.borrow_mut();
-                write!(printer, "{output}")?;
-                printer.flush()?;
+                self.with_printer_mut(|printer| {
+                    write!(printer, "{output}")?;
+                    printer.flush()
+                })?;
             }
             None => {
                 if let Some(event) = &parsed_event {
@@ -154,7 +156,7 @@ impl CodexParser {
 
     /// Parse a stream of Codex NDJSON events
     pub(crate) fn parse_stream<R: BufRead>(
-        &self,
+        &mut self,
         mut reader: R,
         workspace: &dyn Workspace,
     ) -> io::Result<()> {
@@ -165,46 +167,50 @@ impl CodexParser {
         let logging_enabled = self.log_path.is_some();
         let log_buffer: Vec<u8> = Vec::new();
 
-        let mut incremental_parser = IncrementalNdjsonParser::new();
-        let byte_buffer = Vec::new();
+        let incremental_parser = IncrementalNdjsonParser::new();
         // Track whether we've written a synthetic result event for the current turn
-        let mut result_written_for_current_turn = false;
+        let result_written_for_current_turn = std::cell::Cell::new(false);
 
         loop {
-            byte_buffer.clear();
             let chunk = reader.fill_buf()?;
             if chunk.is_empty() {
                 break;
             }
             let consumed = chunk.len();
-            byte_buffer.extend_from_slice(chunk);
             reader.consume(consumed);
 
-            incremental_parser.feed(&byte_buffer).into_iter().try_for_each(|line| {
-                // Check if this is a turn.completed or turn.started event before processing
-                let is_turn_completed = line.trim().starts_with('{')
-                    && serde_json::from_str::<CodexEvent>(line.trim())
-                        .ok()
-                        .is_some_and(|e| matches!(e, CodexEvent::TurnCompleted { .. }));
-                let is_turn_started = line.trim().starts_with('{')
-                    && serde_json::from_str::<CodexEvent>(line.trim())
-                        .ok()
-                        .is_some_and(|e| matches!(e, CodexEvent::TurnStarted { .. }));
+            incremental_parser = incremental_parser.feed(chunk);
 
-                self.process_event_line_with_buffer(
-                    &line,
-                    &monitor,
-                    logging_enabled,
-                    &mut log_buffer,
-                )?;
+            incremental_parser
+                .get_results()
+                .into_iter()
+                .try_for_each(|line| {
+                    // Check if this is a turn.completed or turn.started event before processing
+                    let is_turn_completed = line.trim().starts_with('{')
+                        && serde_json::from_str::<CodexEvent>(line.trim())
+                            .ok()
+                            .is_some_and(|e| matches!(e, CodexEvent::TurnCompleted { .. }));
+                    let is_turn_started = line.trim().starts_with('{')
+                        && serde_json::from_str::<CodexEvent>(line.trim())
+                            .ok()
+                            .is_some_and(|e| matches!(e, CodexEvent::TurnStarted { .. }));
 
-                // Track result event writes - reset flag when new turn starts
-                if is_turn_started {
-                    result_written_for_current_turn = false;
-                } else if is_turn_completed {
-                    result_written_for_current_turn = true;
-                }
-            }
+                    self.process_event_line_with_buffer(
+                        &line,
+                        &monitor,
+                        logging_enabled,
+                        &mut log_buffer,
+                    )?;
+
+                    // Track result event writes - reset flag when new turn starts
+                    if is_turn_started {
+                        result_written_for_current_turn.set(false);
+                    } else if is_turn_completed {
+                        result_written_for_current_turn.set(true);
+                    }
+
+                    Ok::<(), io::Error>(())
+                })?;
         }
 
         // Handle any remaining buffered data when the stream ends.
@@ -224,7 +230,7 @@ impl CodexParser {
 
         // Ensure accumulated content is written even if turn.completed was not received
         // This handles the case where the stream ends unexpectedly
-        if logging_enabled && !result_written_for_current_turn {
+        if logging_enabled && !result_written_for_current_turn.get() {
             if let Some(accumulated) = self
                 .state
                 .streaming_session
@@ -242,8 +248,9 @@ impl CodexParser {
         }
 
         if let Some(warning) = monitor.check_and_warn(self.colors) {
-            let mut printer = self.printer.borrow_mut();
-            writeln!(printer, "{warning}")?;
+            self.with_printer_mut(|printer| {
+                writeln!(printer, "{warning}").ok();
+            });
         }
         Ok(())
     }

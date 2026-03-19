@@ -123,10 +123,12 @@ mod tests {
             let colors = Colors::new();
             let logger = Logger::new(colors);
             let run_log_context = RunLogContext::new(&workspace).unwrap();
-            let mut registry = AgentRegistry::new().unwrap();
             let unified: ralph_workflow::config::UnifiedConfig =
                 toml::from_str(config_toml).unwrap();
-            registry.apply_unified_config(&unified).unwrap();
+            let registry = AgentRegistry::new()
+                .unwrap()
+                .apply_unified_config(&unified)
+                .unwrap();
 
             Self {
                 config: Config::default(),

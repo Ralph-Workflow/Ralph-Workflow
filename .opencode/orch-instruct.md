@@ -512,3 +512,64 @@ Just loop:
 - ✅ NEVER DO THE AGENTS' WORK YOURSELF WHILE THEY ARE RUNNING
 - ✅ NEVER TRUST AGENT SELF-REPORTS — RERUN THE SCRIPT TO VERIFY
 - ✅ INSTRUCTIONS MAY UPDATE — NEVER WORK FROM MEMORY
+
+---
+
+## 🔮 POST-REFACTOR PHASE 2: State Monad Architecture
+
+After dylint violations reach zero and all compilation passes, the following architectural improvements must be done as a second pass. These are NOT optional style preferences — they are the correct functional architecture.
+
+### The Problem
+
+Many `io.rs` and `runtime.rs` boundary files were created to exempt RefCell/mutable state from dylint lints. But most of this state is NOT actually I/O — it's computation state that should be threaded functionally. True boundaries should only wrap real I/O: syscalls, file handles, sockets, process spawning, stdin/stdout.
+
+### The Pattern (State Monad in Rust)
+
+```rust
+// WRONG — mutable state hidden behind RefCell in "boundary":
+struct ParserState {
+    session: RefCell<StreamingSession>,  // not I/O!
+    printer: RefCell<Printer>,           // not I/O!
+}
+
+// CORRECT — pure state threaded through computation:
+struct ParserState {
+    session: StreamingSession,   // pure value
+    printer: Printer,            // pure value
+}
+
+impl Printer {
+    fn write_text(self, text: &str) -> Self { ... }  // monadic step
+    fn write_line(self, line: &str) -> Self { ... }
+    fn emit(self) -> (Self, String) { ... }          // extract output
+}
+```
+
+### Candidates for Monad Conversion (post-dylint-zero)
+
+| Type | Current (Wrong) | Should Be |
+|---|---|---|
+| `StreamingSession` | `RefCell<StreamingSession>` in io.rs | Pure value threaded through parse calls |
+| `Printer` / `VirtualTerminalState` | `RefCell<Printer>` in io.rs | `write_text(self) -> Self` pure value |
+| `IncrementalNdjsonParser` | `&mut self` feed method | `feed(self, byte) -> (Self, Vec<Event>)` |
+| `DeltaAccumulator` | mutable accumulation | Pure fold |
+| `BoundedEventQueue` | `&mut self push` | `push(self, event) -> Self` |
+| `CommitLogSession` | mutable log state | Pure log value threaded through phases |
+| `AgentRegistry` | `apply_unified_config(&mut self)` | `with_config(self, config) -> Self` |
+| `AnsiParser` | `while let Some(c) = chars.next()` | `parse(self, input: &str) -> (Self, AnsiOutput)` |
+
+### True Boundary (IO Monad Equivalent)
+
+Only these belong in `io.rs` / `runtime.rs`:
+- Reading bytes from process stdout/stderr
+- Writing rendered output to stdout
+- File system reads/writes
+- Process spawning and lifecycle
+- Thread creation and synchronization primitives
+
+### Audit Steps
+
+1. For each `io.rs` and `runtime.rs` file: verify every field/function is ACTUAL I/O, not just computation hidden there to avoid lints
+2. Move non-I/O state OUT of boundary files into domain types with monadic APIs
+3. Remove RefCell from domain state entirely — it should only exist where truly needed for shared mutable state across thread boundaries
+4. Verify: if a type could be Haskell's `State s a`, it should be a pure state-threading function in Rust

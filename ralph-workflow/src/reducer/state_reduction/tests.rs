@@ -7,8 +7,8 @@ use crate::reducer::event::{
     AgentErrorKind, CommitEvent, PipelineEvent, PipelinePhase, RebasePhase,
 };
 use crate::reducer::state::{
-    AgentChainState, CommitState, ContinuationState, PipelineState, RebaseState,
-    SameAgentRetryReason,
+    AgentChainState, CommitState, ContinuationState, PipelineState, PromptPermissionsState,
+    RebaseState, SameAgentRetryReason,
 };
 
 #[must_use]
@@ -18,19 +18,19 @@ fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
 
 #[must_use]
 fn create_test_state() -> PipelineState {
-    let state = PipelineState::initial(5, 2);
-    let state = {
-        let mut s = state;
-        s.agent_chain = AgentChainState::initial().with_agents(
+    PipelineState {
+        agent_chain: AgentChainState::initial().with_agents(
             vec!["agent1".to_string(), "agent2".to_string()],
             vec![vec!["model1".to_string(), "model2".to_string()]],
             AgentRole::Developer,
-        );
-        s.prompt_permissions.locked = true;
-        s.prompt_permissions.restore_needed = true;
-        s
-    };
-    state
+        ),
+        prompt_permissions: PromptPermissionsState {
+            locked: true,
+            restore_needed: true,
+            ..Default::default()
+        },
+        ..PipelineState::initial(5, 2)
+    }
 }
 
 // Review phase started tests

@@ -266,7 +266,7 @@ mod tests {
     #[test]
     fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
         let state = {
-            let mut s = crate::reducer::state::PipelineState::initial(1, 0);
+            let s = crate::reducer::state::PipelineState::initial(1, 0);
             s.continuation.xsd_retry_count = 3;
             s
         };

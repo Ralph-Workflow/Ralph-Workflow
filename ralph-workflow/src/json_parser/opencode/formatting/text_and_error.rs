@@ -8,8 +8,7 @@ impl OpenCodeParser {
         if let Some(ref part) = event.part {
             if let Some(ref text) = part.text {
                 // Accumulate streaming text using StreamingSession
-                let (show_prefix, accumulated_text) = {
-                    let session = self.state.streaming_session.borrow_mut();
+                let (show_prefix, accumulated_text) = self.state.with_session_mut(|session| {
                     let show_prefix = session.on_text_delta_key("main", text);
                     // Get accumulated text for streaming display
                     let accumulated_text = session
@@ -17,7 +16,7 @@ impl OpenCodeParser {
                         .unwrap_or("")
                         .to_string();
                     (show_prefix, accumulated_text)
-                };
+                });
 
                 // Do NOT truncate during streaming: truncation breaks the append-only suffix
                 // contract once the preview stops being a prefix of prior output.
@@ -42,7 +41,8 @@ impl OpenCodeParser {
                             crate::json_parser::delta_display::sanitize_for_display(&preview),
                         )])
                         .collect();
-                    *self.state.last_rendered_content.borrow_mut() = new_content;
+                    self.state
+                        .with_last_rendered_content_mut(|v| *v = new_content);
                     return rendered;
                 }
 
@@ -83,7 +83,8 @@ impl OpenCodeParser {
                     .into_iter()
                     .chain([(key.to_string(), sanitized.clone())])
                     .collect();
-                *self.state.last_rendered_content.borrow_mut() = new_content;
+                self.state
+                    .with_last_rendered_content_mut(|v| *v = new_content);
 
                 return match terminal_mode {
                     TerminalMode::Full => format!("{}{}{}", c.white(), suffix, c.reset()),

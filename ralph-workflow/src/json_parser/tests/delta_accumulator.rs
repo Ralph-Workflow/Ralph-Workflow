@@ -4,9 +4,9 @@
 
 #[test]
 fn test_delta_accumulator_text() {
-    let mut acc = super::types::DeltaAccumulator::new();
-    acc.add_delta(super::types::ContentType::Text, "0", "Hello, ");
-    acc.add_delta(super::types::ContentType::Text, "0", "World!");
+    let acc = super::types::DeltaAccumulator::new()
+        .add_delta(super::types::ContentType::Text, "0", "Hello, ")
+        .add_delta(super::types::ContentType::Text, "0", "World!");
 
     assert_eq!(
         acc.get(super::types::ContentType::Text, "0"),
@@ -17,9 +17,9 @@ fn test_delta_accumulator_text() {
 
 #[test]
 fn test_delta_accumulator_thinking() {
-    let mut acc = super::types::DeltaAccumulator::new();
-    acc.add_delta(super::types::ContentType::Thinking, "0", "Let me think...");
-    acc.add_delta(super::types::ContentType::Thinking, "0", " Done.");
+    let acc = super::types::DeltaAccumulator::new()
+        .add_delta(super::types::ContentType::Thinking, "0", "Let me think...")
+        .add_delta(super::types::ContentType::Thinking, "0", " Done.");
 
     assert_eq!(
         acc.get(super::types::ContentType::Thinking, "0"),
@@ -29,9 +29,9 @@ fn test_delta_accumulator_thinking() {
 
 #[test]
 fn test_delta_accumulator_generic() {
-    let mut acc = super::types::DeltaAccumulator::new();
-    acc.add_delta(super::types::ContentType::Text, "custom_key", "Alpha ");
-    acc.add_delta(super::types::ContentType::Text, "custom_key", "Beta");
+    let acc = super::types::DeltaAccumulator::new()
+        .add_delta(super::types::ContentType::Text, "custom_key", "Alpha ")
+        .add_delta(super::types::ContentType::Text, "custom_key", "Beta");
 
     assert_eq!(
         acc.get(super::types::ContentType::Text, "custom_key"),
@@ -41,22 +41,25 @@ fn test_delta_accumulator_generic() {
 
 #[test]
 fn test_delta_accumulator_clear() {
-    let mut acc = super::types::DeltaAccumulator::new();
-    acc.add_delta(super::types::ContentType::Text, "0", "Some text");
+    let acc = super::types::DeltaAccumulator::new().add_delta(
+        super::types::ContentType::Text,
+        "0",
+        "Some text",
+    );
     assert!(!acc.is_empty());
 
-    acc.clear();
+    let acc = acc.clear();
     assert!(acc.is_empty());
     assert_eq!(acc.get(super::types::ContentType::Text, "0"), None);
 }
 
 #[test]
 fn test_delta_accumulator_clear_key() {
-    let mut acc = super::types::DeltaAccumulator::new();
-    acc.add_delta(super::types::ContentType::Text, "0", "Text 0");
-    acc.add_delta(super::types::ContentType::Text, "1", "Text 1");
+    let acc = super::types::DeltaAccumulator::new()
+        .add_delta(super::types::ContentType::Text, "0", "Text 0")
+        .add_delta(super::types::ContentType::Text, "1", "Text 1");
 
-    acc.clear_key(super::types::ContentType::Text, "0");
+    let acc = acc.clear_key(super::types::ContentType::Text, "0");
     assert_eq!(acc.get(super::types::ContentType::Text, "0"), None);
     assert_eq!(
         acc.get(super::types::ContentType::Text, "1"),

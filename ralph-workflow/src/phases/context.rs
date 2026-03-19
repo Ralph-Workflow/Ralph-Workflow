@@ -204,9 +204,6 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_uses_commit_chain_first() {
-        let registry = AgentRegistry::new().unwrap();
-
-        // Configure a commit chain
         let toml_str = r#"
             [agent_chain]
             commit = ["commit-agent-1", "commit-agent-2"]
@@ -214,7 +211,10 @@ mod tests {
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified).unwrap();
+        let registry = AgentRegistry::new()
+            .unwrap()
+            .apply_unified_config(&unified)
+            .unwrap();
 
         let fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
@@ -251,16 +251,16 @@ mod tests {
 
     #[test]
     fn test_get_primary_commit_agent_falls_back_to_reviewer_chain() {
-        let registry = AgentRegistry::new().unwrap();
-
-        // Configure reviewer chain but NO commit chain
         let toml_str = r#"
             [agent_chain]
             reviewer = ["reviewer-agent-1", "reviewer-agent-2"]
             developer = ["developer-agent"]
         "#;
         let unified: crate::config::UnifiedConfig = toml::from_str(toml_str).unwrap();
-        registry.apply_unified_config(&unified).unwrap();
+        let registry = AgentRegistry::new()
+            .unwrap()
+            .apply_unified_config(&unified)
+            .unwrap();
 
         let fixture = TestFixture::new();
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();

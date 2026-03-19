@@ -94,31 +94,32 @@ impl GeminiParser {
 
         if let Some(text) = content {
             if is_delta && role_str == "assistant" {
-                let (show_prefix, accumulated_text, has_prefix) = {
-                    let mut session = self.state.streaming_session.borrow_mut();
-                    let show_prefix = session.on_text_delta(0, &text);
+                let (show_prefix, accumulated_text, has_prefix) =
+                    self.state.with_session_mut(|session| {
+                        let show_prefix = session.on_text_delta(0, &text);
 
-                    let accumulated_text = session
-                        .get_accumulated(ContentType::Text, "0")
-                        .unwrap_or("")
-                        .to_string();
+                        let accumulated_text = session
+                            .get_accumulated(ContentType::Text, "0")
+                            .unwrap_or("")
+                            .to_string();
 
-                    let sanitized_text = delta_display::sanitize_for_display(&accumulated_text);
-                    if sanitized_text.is_empty() {
-                        return String::new();
-                    }
+                        let sanitized_text = delta_display::sanitize_for_display(&accumulated_text);
+                        if sanitized_text.is_empty() {
+                            return (String::new(), String::new(), false);
+                        }
 
-                    if session.is_content_hash_rendered(ContentType::Text, "0", &sanitized_text) {
-                        return String::new();
-                    }
+                        if session.is_content_hash_rendered(ContentType::Text, "0", &sanitized_text)
+                        {
+                            return (String::new(), String::new(), false);
+                        }
 
-                    let has_prefix = session.has_rendered_prefix(ContentType::Text, "0");
+                        let has_prefix = session.has_rendered_prefix(ContentType::Text, "0");
 
-                    session.mark_rendered(ContentType::Text, "0");
-                    session.mark_content_hash_rendered(ContentType::Text, "0", &sanitized_text);
+                        session.mark_rendered(ContentType::Text, "0");
+                        session.mark_content_hash_rendered(ContentType::Text, "0", &sanitized_text);
 
-                    (show_prefix, accumulated_text, has_prefix)
-                };
+                        (show_prefix, accumulated_text, has_prefix)
+                    });
 
                 let terminal_mode = *self.state.terminal_mode.borrow();
                 let key = "text:0";

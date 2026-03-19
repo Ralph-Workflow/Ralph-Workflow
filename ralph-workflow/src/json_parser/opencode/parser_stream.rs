@@ -76,7 +76,7 @@ impl OpenCodeParser {
     }
 
     fn process_stream_json_line(
-        &self,
+        &mut self,
         line: &str,
         monitor: &HealthMonitor,
         logging_enabled: bool,
@@ -95,9 +95,10 @@ impl OpenCodeParser {
                     monitor,
                     Self::classify_successful_parse_for_monitor(line, trimmed),
                 );
-                let mut printer = self.printer.borrow_mut();
-                write!(printer, "{output}")?;
-                printer.flush()?;
+                self.with_printer_mut(|printer| {
+                    write!(printer, "{output}")?;
+                    printer.flush()
+                })?;
             }
             None => {
                 Self::record_monitor_event(
@@ -113,23 +114,24 @@ impl OpenCodeParser {
         Ok(())
     }
 
-    fn maybe_write_debug_event(&self, line: &str) -> io::Result<()> {
+    fn maybe_write_debug_event(&mut self, line: &str) -> io::Result<()> {
         if !self.verbosity.is_debug() {
             return Ok(());
         }
 
         let c = &self.colors;
-        let mut printer = self.printer.borrow_mut();
-        writeln!(
-            printer,
-            "{}[DEBUG]{} {}{}{}",
-            c.dim(),
-            c.reset(),
-            c.dim(),
-            line,
-            c.reset()
-        )?;
-        printer.flush()?;
+        self.with_printer_mut(|printer| {
+            writeln!(
+                printer,
+                "{}[DEBUG]{} {}{}{}",
+                c.dim(),
+                c.reset(),
+                c.dim(),
+                line,
+                c.reset()
+            )?;
+            printer.flush()
+        })?;
         Ok(())
     }
 
@@ -176,34 +178,33 @@ impl OpenCodeParser {
     }
 
     fn process_incremental_stream<R: BufRead>(
-        &self,
+        &mut self,
         reader: &mut R,
-        parser: &mut crate::json_parser::incremental_parser::IncrementalNdjsonParser,
+        mut parser: crate::json_parser::incremental_parser::IncrementalNdjsonParser,
         monitor: &HealthMonitor,
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
-    ) -> io::Result<()> {
-        let byte_buffer = Vec::new();
+    ) -> io::Result<crate::json_parser::incremental_parser::IncrementalNdjsonParser> {
         loop {
-            byte_buffer.clear();
             let chunk = reader.fill_buf()?;
             if chunk.is_empty() {
                 break;
             }
 
-            byte_buffer.extend_from_slice(chunk);
             let consumed = chunk.len();
             reader.consume(consumed);
 
-            parser.feed(&byte_buffer).try_for_each(|line| {
+            parser = parser.feed(chunk);
+
+            parser.get_results().into_iter().try_for_each(|line| {
                 self.process_stream_json_line(&line, monitor, logging_enabled, log_buffer)
             })?;
         }
-        Ok(())
+        Ok(parser)
     }
 
     fn process_remaining_buffered_event(
-        &self,
+        &mut self,
         remaining: &str,
         monitor: &HealthMonitor,
         logging_enabled: bool,
@@ -220,9 +221,10 @@ impl OpenCodeParser {
         match self.parse_event(remaining) {
             Some(output) => {
                 monitor.record_parsed();
-                let mut printer = self.printer.borrow_mut();
-                write!(printer, "{output}")?;
-                printer.flush()?;
+                self.with_printer_mut(|printer| {
+                    write!(printer, "{output}")?;
+                    printer.flush()
+                })?;
             }
             None => {
                 Self::record_monitor_event(
@@ -313,17 +315,18 @@ impl OpenCodeParser {
         Ok(())
     }
 
-    fn write_monitor_warning_if_needed(&self, monitor: &HealthMonitor) -> io::Result<()> {
+    fn write_monitor_warning_if_needed(&mut self, monitor: &HealthMonitor) -> io::Result<()> {
         if let Some(warning) = monitor.check_and_warn(self.colors) {
-            let mut printer = self.printer.borrow_mut();
-            writeln!(printer, "{warning}")?;
+            self.with_printer_mut(|printer| {
+                writeln!(printer, "{warning}").ok();
+            });
         }
         Ok(())
     }
 
     /// Parse a stream of `OpenCode` NDJSON events
     pub(crate) fn parse_stream<R: BufRead>(
-        &self,
+        &mut self,
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
@@ -332,11 +335,11 @@ impl OpenCodeParser {
         let monitor = HealthMonitor::new("OpenCode");
         let logging_enabled = self.log_path.is_some();
         let log_buffer: Vec<u8> = Vec::new();
-        let mut incremental_parser = IncrementalNdjsonParser::new();
+        let incremental_parser = IncrementalNdjsonParser::new();
 
-        self.process_incremental_stream(
+        let incremental_parser = self.process_incremental_stream(
             &mut reader,
-            &mut incremental_parser,
+            incremental_parser,
             &monitor,
             logging_enabled,
             &mut log_buffer,

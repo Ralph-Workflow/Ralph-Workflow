@@ -7,12 +7,10 @@
 /// This printer stores all output in memory for testing purposes.
 /// It provides methods to retrieve and inspect the captured output.
 #[cfg(any(test, feature = "test-utils"))]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TestPrinter {
-    /// Captured output lines.
-    output: RefCell<Vec<String>>,
-    /// Buffer for incomplete lines.
-    buffer: RefCell<String>,
+    output: Vec<String>,
+    buffer: String,
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -24,28 +22,32 @@ impl TestPrinter {
     }
 
     /// Get all captured output as a single string.
+    #[must_use]
     pub fn get_output(&self) -> String {
-        let mut result = self.buffer.borrow().clone();
-        for line in self.output.borrow().iter() {
+        let mut result = self.buffer.clone();
+        for line in self.output.iter() {
             result.push_str(line);
         }
         result
     }
 
     /// Get captured output lines.
+    #[must_use]
     pub fn get_lines(&self) -> Vec<String> {
-        let mut result: Vec<String> = self.output.borrow().clone();
-        let buffer = self.buffer.borrow();
-        if !buffer.is_empty() {
-            result.push(buffer.clone());
+        let mut result: Vec<String> = self.output.clone();
+        if !self.buffer.is_empty() {
+            result.push(self.buffer.clone());
         }
         result
     }
 
     /// Clear all captured output.
-    pub fn clear(&self) {
-        self.output.borrow_mut().clear();
-        self.buffer.borrow_mut().clear();
+    #[must_use]
+    pub fn clear(self) -> Self {
+        Self {
+            output: Vec::new(),
+            buffer: String::new(),
+        }
     }
 
     /// Check if a specific line exists in the output.
@@ -92,31 +94,63 @@ impl TestPrinter {
         let char_count: usize = lines.iter().map(String::len).sum();
         (lines.len(), char_count)
     }
+
+    /// Write text to the buffer (functional style).
+    #[must_use]
+    pub fn write_text(self, text: &str) -> Self {
+        let mut new_buffer = self.buffer.clone();
+        new_buffer.push_str(text);
+
+        let mut new_output = self.output.clone();
+        while let Some(newline_pos) = new_buffer.find('\n') {
+            let line = new_buffer.drain(..=newline_pos).collect::<String>();
+            new_output.push(line);
+        }
+
+        Self {
+            output: new_output,
+            buffer: new_buffer,
+        }
+    }
+
+    /// Write text with raw write (for std::io::Write compatibility).
+    fn write_raw(&mut self, buf: &[u8]) -> io::Result<()> {
+        let s =
+            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        self.buffer.push_str(s);
+
+        while let Some(newline_pos) = self.buffer.find('\n') {
+            let line = self.buffer.drain(..=newline_pos).collect::<String>();
+            self.output.push(line);
+        }
+        Ok(())
+    }
+
+    /// Flush the buffer (functional style).
+    #[must_use]
+    pub fn flush(self) -> Self {
+        let mut new_output = self.output;
+        if !self.buffer.is_empty() {
+            new_output.push(self.buffer.clone());
+        }
+        Self {
+            output: new_output,
+            buffer: String::new(),
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 impl std::io::Write for TestPrinter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let s =
-            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        let mut buffer = self.buffer.borrow_mut();
-        buffer.push_str(s);
-
-        // Process complete lines
-        while let Some(newline_pos) = buffer.find('\n') {
-            let line = buffer.drain(..=newline_pos).collect::<String>();
-            self.output.borrow_mut().push(line);
-        }
-
+        self.write_raw(buf)?;
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        // Flush any remaining buffer content
-        let mut buffer = self.buffer.borrow_mut();
-        if !buffer.is_empty() {
-            self.output.borrow_mut().push(buffer.clone());
-            buffer.clear();
+        if !self.buffer.is_empty() {
+            self.output.push(self.buffer.clone());
+            self.buffer.clear();
         }
         Ok(())
     }
@@ -125,7 +159,6 @@ impl std::io::Write for TestPrinter {
 #[cfg(any(test, feature = "test-utils"))]
 impl Printable for TestPrinter {
     fn is_terminal(&self) -> bool {
-        // Test printer is never a terminal
         false
     }
 }

@@ -155,29 +155,27 @@ fn test_resume_context_phase_name_review() {
 
 #[test]
 fn test_restore_environment_skips_sensitive_vars() {
-    let checkpoint = {
-        let mut c = make_test_checkpoint(PipelinePhase::Development, 1, 0);
-        let mut snapshot = EnvironmentSnapshot::default();
-        snapshot
-            .ralph_vars
-            .insert("RALPH_SAFE_SETTING".to_string(), "ok".to_string());
-        snapshot
-            .ralph_vars
-            .insert("RALPH_API_TOKEN".to_string(), "secret".to_string());
-        snapshot
-            .other_vars
-            .insert("EDITOR".to_string(), "vim".to_string());
-        snapshot
-            .other_vars
-            .insert("GIT_PASSWORD".to_string(), "nope".to_string());
-        c.env_snapshot = Some(snapshot);
-        c
+    let snapshot = EnvironmentSnapshot {
+        ralph_vars: [
+            ("RALPH_SAFE_SETTING".to_string(), "ok".to_string()),
+            ("RALPH_API_TOKEN".to_string(), "secret".to_string()),
+        ]
+        .into_iter()
+        .collect(),
+        other_vars: [
+            ("EDITOR".to_string(), "vim".to_string()),
+            ("GIT_PASSWORD".to_string(), "nope".to_string()),
+        ]
+        .into_iter()
+        .collect(),
     };
 
-    let mut set_calls: Vec<(String, String)> = Vec::new();
-    let restored = restore_environment_impl(&checkpoint, |k, v| {
-        set_calls.push((k.to_string(), v.to_string()));
-    });
+    let checkpoint = PipelineCheckpoint {
+        env_snapshot: Some(snapshot),
+        ..make_test_checkpoint(PipelinePhase::Development, 1, 0)
+    };
 
-    assert_eq!(restored, 1);
+    let set_calls = restore_environment_impl(&checkpoint);
+
+    assert_eq!(set_calls.len(), 1);
 }

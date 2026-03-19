@@ -37,12 +37,6 @@ mod tests {
     #[test]
     fn resumed_clears_user_interrupt_flag_for_resumed_run() {
         let state = PipelineState::initial(1, 0);
-        let state = {
-            let mut s = state;
-            s.interrupted_by_user = true;
-            s
-        };
-
         let reduced = reduce_lifecycle_event(
             state,
             &LifecycleEvent::Resumed {

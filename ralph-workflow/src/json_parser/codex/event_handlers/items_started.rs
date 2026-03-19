@@ -76,11 +76,13 @@ pub fn handle_agent_message_started(
     text: Option<&String>,
 ) -> String {
     if let Some(text) = text {
-        let mut session = ctx.streaming_session.borrow_mut();
-        session.on_text_delta_key("agent_msg", text);
-        let accumulated_text = session
-            .get_accumulated(ContentType::Text, "agent_msg")
-            .unwrap_or("");
+        let accumulated_text = ctx.with_session_mut(|session| {
+            session.on_text_delta_key("agent_msg", text);
+            session
+                .get_accumulated(ContentType::Text, "agent_msg")
+                .unwrap_or("")
+                .to_string()
+        });
 
         // Sanitize for display
         let sanitized = crate::json_parser::delta_display::sanitize_for_display(accumulated_text);
@@ -108,9 +110,9 @@ pub fn handle_agent_message_started(
                     *ctx.colors,
                     ctx.terminal_mode,
                 );
-                ctx.last_rendered_content
-                    .borrow_mut()
-                    .insert(key, sanitized);
+                ctx.with_last_rendered_content_mut(|v| {
+                    v.insert(key, sanitized);
+                });
                 rendered
             } else {
                 // Subsequent delta: emit ONLY new suffix
@@ -136,9 +138,9 @@ pub fn handle_agent_message_started(
                     }
                 }
 
-                ctx.last_rendered_content
-                    .borrow_mut()
-                    .insert(key, sanitized.clone());
+                ctx.with_last_rendered_content_mut(|v| {
+                    v.insert(key, sanitized.clone());
+                });
 
                 if new_suffix.is_empty() {
                     String::new()
@@ -212,8 +214,7 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
         |text| {
             // Codex sends FULL accumulated content in each item.started event (snapshot-style),
             // not incremental deltas like Claude. We need to compute the incremental delta here.
-            let (incremental_delta, accumulated) = {
-                let mut session = ctx.streaming_session.borrow_mut();
+            let (incremental_delta, accumulated) = ctx.with_session_mut(|session| {
                 let previous_content = session
                     .get_accumulated(ContentType::Thinking, "reasoning")
                     .unwrap_or("")
@@ -236,15 +237,13 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
                         .unwrap_or("")
                         .to_string(),
                 )
-            };
+            });
 
             // Accumulate for backward compatibility with reasoning_completed
             // For backward compat, use the full text not just delta
-            ctx.reasoning_accumulator.borrow_mut().add_delta(
-                ContentType::Thinking,
-                "reasoning",
-                &incremental_delta,
-            );
+            ctx.with_reasoning_accumulator_mut(|acc| {
+                acc.add_delta(ContentType::Thinking, "reasoning", &incremental_delta);
+            });
 
             // Sanitize for display
             let sanitized = crate::json_parser::delta_display::sanitize_for_display(&accumulated);
@@ -267,9 +266,9 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
                         *ctx.colors,
                         ctx.terminal_mode,
                     );
-                    ctx.last_rendered_content
-                        .borrow_mut()
-                        .insert(key, sanitized);
+                    ctx.with_last_rendered_content_mut(|v| {
+                        v.insert(key, sanitized);
+                    });
                     rendered
                 } else {
                     // Subsequent delta: emit ONLY new suffix
@@ -295,9 +294,9 @@ pub fn handle_reasoning_started(ctx: &EventHandlerContext<'_>, text: Option<&Str
                         }
                     }
 
-                    ctx.last_rendered_content
-                        .borrow_mut()
-                        .insert(key, sanitized.clone());
+                    ctx.with_last_rendered_content_mut(|v| {
+                        v.insert(key, sanitized.clone());
+                    });
 
                     if new_suffix.is_empty() {
                         String::new()

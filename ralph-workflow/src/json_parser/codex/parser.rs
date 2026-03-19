@@ -1,4 +1,5 @@
 use super::io::CodexParserState;
+use super::printer::StdoutPrinter;
 use super::streaming_state::StreamingSession;
 
 /// Codex event parser
@@ -9,22 +10,20 @@ pub struct CodexParser {
     display_name: String,
     state: CodexParserState,
     show_streaming_metrics: bool,
-    printer: SharedPrinter,
+    printer: StdoutPrinter,
 }
 
 impl CodexParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, super::printer::shared_stdout())
+        Self::with_printer(colors, verbosity, StdoutPrinter::new())
     }
 
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
-        printer: SharedPrinter,
+        printer: StdoutPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
-
-        let _printer_is_terminal = printer.borrow().is_terminal();
 
         Self {
             colors,
@@ -59,27 +58,15 @@ impl CodexParser {
         self
     }
 
-    // ===== Test utilities (available with test-utils feature) =====
-
-    /// Create a new parser with a custom printer (for testing).
-    ///
-    /// This method is public when the `test-utils` feature is enabled,
-    /// allowing integration tests (in this repository) to create parsers with custom printers.
-    ///
-    /// Note: downstream crates should avoid relying on this API in production builds.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn with_printer_for_test(
         colors: Colors,
         verbosity: Verbosity,
-        printer: SharedPrinter,
+        printer: StdoutPrinter,
     ) -> Self {
         Self::with_printer(colors, verbosity, printer)
     }
 
-    /// Set the log file path (for testing).
-    ///
-    /// This method is public when the `test-utils` feature is enabled,
-    /// allowing integration tests to configure log file path.
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_log_file_for_test(mut self, path: &str) -> Self {
@@ -87,10 +74,6 @@ impl CodexParser {
         self
     }
 
-    /// Set the display name (for testing).
-    ///
-    /// This method is public when the `test-utils` feature is enabled,
-    /// allowing integration tests to configure display name.
     #[cfg(any(test, feature = "test-utils"))]
     #[must_use]
     pub fn with_display_name_for_test(mut self, display_name: &str) -> Self {
@@ -98,14 +81,6 @@ impl CodexParser {
         self
     }
 
-    /// Parse a stream of JSON events (for testing).
-    ///
-    /// This method is public when the `test-utils` feature is enabled,
-    /// allowing integration tests to invoke parsing.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if stream parsing or file operations fail.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn parse_stream_for_test<R: std::io::BufRead>(
         &self,
@@ -115,20 +90,15 @@ impl CodexParser {
         self.parse_stream(reader, workspace)
     }
 
-    /// Get a shared reference to the printer.
-    ///
-    /// This allows tests, monitoring, and other code to access the printer after parsing
-    /// to verify output content, check for duplicates, or capture output for analysis.
-    /// Only available with the `test-utils` feature.
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn printer(&self) -> SharedPrinter {
-        Rc::clone(&self.printer)
+    pub fn printer(&self) -> StdoutPrinter {
+        self.printer.clone()
     }
 
-    /// Get streaming quality metrics from the current session.
-    ///
-    /// This provides insight into the deduplication and streaming quality of the
-    /// parsing session. Only available with the `test-utils` feature.
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
+        f(&mut self.printer)
+    }
+
     #[cfg(any(test, feature = "test-utils"))]
     pub fn streaming_metrics(&self) -> StreamingQualityMetrics {
         self.state
@@ -137,7 +107,6 @@ impl CodexParser {
             .get_streaming_quality_metrics()
     }
 
-    /// Convert output string to Option, returning None if empty.
     #[inline]
     fn optional_output(output: String) -> Option<String> {
         if output.is_empty() {

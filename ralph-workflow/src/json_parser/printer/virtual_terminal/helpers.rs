@@ -16,57 +16,46 @@
 ///
 /// The string with ANSI sequences removed
 pub fn strip_ansi_sequences(s: &str) -> String {
-    let mut result = String::new();
-    let chars: Vec<char> = s.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '\x1b' && i + 1 < chars.len() && chars[i + 1] == '[' {
-            i += 2;
-            while i < chars.len() && !chars[i].is_ascii_alphabetic() {
-                i += 1;
+    s.chars()
+        .fold((String::new(), false), |(mut result, in_esc), c| {
+            if c == '\x1b' {
+                (result, true)
+            } else if in_esc {
+                if !c.is_ascii_alphabetic() {
+                    (result, true)
+                } else {
+                    (result, false)
+                }
+            } else {
+                result.push(c);
+                (result, false)
             }
-            if i < chars.len() {
-                i += 1;
-            }
-        } else {
-            result.push(c);
-            i += 1;
-        }
-    }
-    result
+        })
+        .0
 }
 
 pub fn apply_cr_overwrite_semantics(s: &str) -> String {
-    // Simulate a log console that does NOT interpret ANSI escape codes, but DOES treat
-    // carriage return as "return to start of current line" (common for progress output).
-    //
-    // Approach: process character-by-character, maintaining a current line buffer and
-    // cursor position. `\n` commits the line, `\r` sets cursor to 0.
-    let mut out = String::new();
-    let mut line: Vec<char> = Vec::new();
-    let mut col: usize = 0;
-
-    s.chars().for_each(|ch| match ch {
-        '\n' => {
-            out.extend(line.iter());
-            out.push('\n');
-            line.clear();
-            col = 0;
-        }
-        '\r' => {
-            col = 0;
-        }
-        _ => {
-            if col >= line.len() {
-                line.resize(col + 1, ' ');
+    let (out, _): (String, _) = s.chars().fold(
+        (String::new(), Vec::new(), 0usize),
+        |(mut out, mut line, col), ch| match ch {
+            '\n' => {
+                out.extend(line.iter());
+                out.push('\n');
+                (out, Vec::new(), 0)
             }
-            line[col] = ch;
-            col = col.saturating_add(1);
-        }
-    });
-
-    out.extend(line.iter());
+            '\r' => (out, line, 0),
+            _ => {
+                let new_col = col.saturating_add(1);
+                let new_line: Vec<char> = line
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &c)| if i == col { ch } else { c })
+                    .chain(std::iter::repeat(' ').take((col + 1).saturating_sub(line.len())))
+                    .take(col + 1)
+                    .collect();
+                (out, new_line, new_col)
+            }
+        },
+    );
     out
 }

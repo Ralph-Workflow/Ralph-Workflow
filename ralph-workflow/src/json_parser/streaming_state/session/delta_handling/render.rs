@@ -18,26 +18,20 @@ impl StreamingSession {
     /// arbitrary index bounds.
     #[must_use]
     pub fn accumulated_keys(&self, content_type: ContentType) -> Vec<String> {
-        let mut keys: Vec<String> = self
-            .accumulated
+        self.accumulated
             .keys()
             .filter(|(ty, _key)| *ty == content_type)
             .map(|(_ty, key)| key.clone())
-            .collect();
-
-        // Prefer deterministic output. Many protocols use numeric indices; sort numerically
-        // when possible, otherwise fall back to lexicographic sorting.
-        keys.sort_by(|a, b| {
-            let a_num = a.parse::<u64>();
-            let b_num = b.parse::<u64>();
-            match (a_num, b_num) {
-                (Ok(a), Ok(b)) => a.cmp(&b),
-                _ => a.cmp(b),
-            }
-        });
-
-        keys.dedup();
-        keys
+            .sorted_by(|a, b| {
+                let a_num = a.parse::<u64>();
+                let b_num = b.parse::<u64>();
+                match (a_num, b_num) {
+                    (Ok(a), Ok(b)) => a.cmp(&b),
+                    _ => a.cmp(b),
+                }
+            })
+            .unique()
+            .collect()
     }
 
     /// Mark content as having been rendered (HashMap-based tracking).

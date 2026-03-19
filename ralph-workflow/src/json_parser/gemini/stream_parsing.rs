@@ -14,7 +14,7 @@ impl GeminiParser {
 
     /// Parse a stream of Gemini NDJSON events
     pub(crate) fn parse_stream<R: BufRead>(
-        &self,
+        &mut self,
         mut reader: R,
         workspace: &dyn crate::workspace::Workspace,
     ) -> io::Result<()> {
@@ -28,27 +28,24 @@ impl GeminiParser {
 
         // Use incremental parser for true real-time streaming
         // This processes JSON as soon as it's complete, not waiting for newlines
-        let mut incremental_parser = IncrementalNdjsonParser::new();
-        let byte_buffer = Vec::new();
+        let incremental_parser = IncrementalNdjsonParser::new();
 
         loop {
             // Read available bytes
-            byte_buffer.clear();
             let chunk = reader.fill_buf()?;
             if chunk.is_empty() {
                 break;
             }
 
             // Process all bytes immediately
-            byte_buffer.extend_from_slice(chunk);
             let consumed = chunk.len();
             reader.consume(consumed);
 
             // Feed bytes to incremental parser
-            let json_events = incremental_parser.feed(&byte_buffer);
+            incremental_parser = incremental_parser.feed(chunk);
 
             // Process each complete JSON event immediately
-            json_events.into_iter().for_each(|line| {
+            incremental_parser.get_results().into_iter().for_each(|line| {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     return;
@@ -56,18 +53,19 @@ impl GeminiParser {
 
                 // In debug mode, also show the raw JSON
                 if self.verbosity.is_debug() {
-                    let mut printer = self.printer.borrow_mut();
-                    if writeln!(
-                        printer,
-                        "{}[DEBUG]{} {}{}{}",
-                        c.dim(),
-                        c.reset(),
-                        c.dim(),
-                        &line,
-                        c.reset()
-                    ).is_ok() {
-                        printer.flush().ok();
-                    }
+                    self.with_printer_mut(|printer| {
+                        if writeln!(
+                            printer,
+                            "{}[DEBUG]{} {}{}{}",
+                            c.dim(),
+                            c.reset(),
+                            c.dim(),
+                            &line,
+                            c.reset()
+                        ).is_ok() {
+                            printer.flush().ok();
+                        }
+                    });
                 }
 
                 // Parse the event once - parse_event handles malformed JSON by returning None
@@ -75,10 +73,11 @@ impl GeminiParser {
                     Some(output) => {
                         monitor.record_parsed();
                         // Write output to printer
-                        let mut printer = self.printer.borrow_mut();
-                        if write!(printer, "{output}").is_ok() {
-                            printer.flush().ok();
-                        }
+                        self.with_printer_mut(|printer| {
+                            if write!(printer, "{output}").is_ok() {
+                                printer.flush().ok();
+                            }
+                        });
                     }
                     None => {
                         // Check if this was a control event (state management with no user output)
@@ -111,8 +110,9 @@ impl GeminiParser {
             workspace.append_bytes(log_path, &log_buffer)?;
         }
         if let Some(warning) = monitor.check_and_warn(*c) {
-            let mut printer = self.printer.borrow_mut();
-            writeln!(printer, "{warning}\n")?;
+            self.with_printer_mut(|printer| {
+                writeln!(printer, "{warning}\n").ok();
+            });
         }
         Ok(())
     }

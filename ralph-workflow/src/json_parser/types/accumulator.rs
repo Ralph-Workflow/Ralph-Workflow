@@ -55,28 +55,54 @@ impl DeltaAccumulator {
     /// This is the generic method that supports both index-based and
     /// string-based key tracking. Enforces `MAX_BUFFER_SIZE` to prevent
     /// unbounded memory growth.
-    pub(crate) fn add_delta(&mut self, content_type: ContentType, key: &str, delta: &str) {
+    pub(crate) fn add_delta(self, content_type: ContentType, key: &str, delta: &str) -> Self {
         let composite_key = (content_type, key.to_string());
 
-        if let Some(buf) = self.buffers.get_mut(&composite_key) {
+        if let Some(buf) = self.buffers.get(&composite_key) {
             if buf.len() < MAX_BUFFER_SIZE {
                 let remaining = MAX_BUFFER_SIZE.saturating_sub(buf.len());
-                if delta.len() <= remaining {
-                    buf.push_str(delta);
+                let new_buf = if delta.len() <= remaining {
+                    format!("{}{}", buf, delta)
                 } else if remaining > 0 {
-                    buf.push_str(&delta[..remaining]);
-                }
+                    format!("{}{}", buf, &delta[..remaining])
+                } else {
+                    buf.clone()
+                };
+                let new_buffers: HashMap<_, _> = self
+                    .buffers
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .chain(std::iter::once((composite_key.clone(), new_buf)))
+                    .collect();
+                return Self {
+                    buffers: new_buffers,
+                    key_order: self.key_order,
+                };
             }
+        }
+
+        let new_value = if delta.len() <= MAX_BUFFER_SIZE {
+            delta.to_string()
         } else {
-            let new_value = if delta.len() <= MAX_BUFFER_SIZE {
-                delta.to_string()
-            } else {
-                delta[..MAX_BUFFER_SIZE].to_string()
-            };
-            self.buffers.insert(composite_key.clone(), new_value);
-            if !self.key_order.contains(&composite_key) {
-                self.key_order.push(composite_key);
-            }
+            delta[..MAX_BUFFER_SIZE].to_string()
+        };
+        let new_key_order = if self.key_order.contains(&composite_key) {
+            self.key_order.clone()
+        } else {
+            self.key_order
+                .iter()
+                .cloned()
+                .chain(std::iter::once(composite_key))
+                .collect()
+        };
+        Self {
+            buffers: self
+                .buffers
+                .iter()
+                .chain([(composite_key.clone(), new_value)])
+                .map(|((ct, s), v)| ((*ct, s.clone()), v.clone()))
+                .collect(),
+            key_order: new_key_order,
         }
     }
 
@@ -88,16 +114,27 @@ impl DeltaAccumulator {
     }
 
     /// Clear all accumulated content.
-    pub(crate) fn clear(&mut self) {
-        self.buffers.clear();
-        self.key_order.clear();
+    pub(crate) fn clear(self) -> Self {
+        Self {
+            buffers: std::collections::HashMap::new(),
+            key_order: Vec::new(),
+        }
     }
 
-    /// Clear content for a specific content type and key.
-    pub(crate) fn clear_key(&mut self, content_type: ContentType, key: &str) {
+    pub(crate) fn clear_key(self, content_type: ContentType, key: &str) -> Self {
         let composite_key = (content_type, key.to_string());
-        self.buffers.remove(&composite_key);
-        self.key_order.retain(|k| *k != composite_key);
+        Self {
+            buffers: self
+                .buffers
+                .into_iter()
+                .filter(|(k, _)| *k != composite_key)
+                .collect(),
+            key_order: self
+                .key_order
+                .into_iter()
+                .filter(|k| *k != composite_key)
+                .collect(),
+        }
     }
 
     /// Check if there is any accumulated content (used in tests).

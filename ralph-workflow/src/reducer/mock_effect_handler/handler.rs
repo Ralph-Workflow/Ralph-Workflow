@@ -228,7 +228,8 @@ If you determine there are NO actual changes to commit, respond with:
             Effect::SaveCheckpoint { trigger } => {
                 // Actually save checkpoint to workspace for resume tests
                 use crate::checkpoint::{
-                    save_checkpoint_with_workspace, CheckpointBuilder, PipelinePhase,
+                    save_checkpoint_with_workspace, CheckpointBuilder, PipelineCheckpoint,
+                    PipelinePhase,
                 };
 
                 // Map reducer phase to checkpoint phase
@@ -273,13 +274,15 @@ If you determine there are NO actual changes to commit, respond with:
                     .with_prompt_permissions(self.state.prompt_permissions.clone())
                     .with_log_run_id(ctx.run_log_context.run_id().to_string());
 
-                if let Some(checkpoint) = builder.build_with_workspace(ctx.workspace) {
-                    let mut checkpoint = checkpoint;
-                    checkpoint.dev_fix_attempt_count = self.state.dev_fix_attempt_count;
-                    checkpoint.recovery_escalation_level = self.state.recovery_escalation_level;
-                    checkpoint.failed_phase_for_recovery = self.state.failed_phase_for_recovery;
-                    checkpoint.recovery_epoch = self.state.recovery_epoch;
-                    checkpoint.interrupted_by_user = self.state.interrupted_by_user;
+                if let Some(base_checkpoint) = builder.build_with_workspace(ctx.workspace) {
+                    let checkpoint = PipelineCheckpoint {
+                        dev_fix_attempt_count: self.state.dev_fix_attempt_count,
+                        recovery_escalation_level: self.state.recovery_escalation_level,
+                        failed_phase_for_recovery: self.state.failed_phase_for_recovery,
+                        recovery_epoch: self.state.recovery_epoch,
+                        interrupted_by_user: self.state.interrupted_by_user,
+                        ..base_checkpoint
+                    };
 
                     if let Err(err) = save_checkpoint_with_workspace(ctx.workspace, &checkpoint) {
                         ctx.logger
@@ -536,7 +539,7 @@ mod tests {
             env: &git_env,
         };
 
-        let mut handler = MockEffectHandler::new(PipelineState::initial(1, 0));
+        let handler = MockEffectHandler::new(PipelineState::initial(1, 0));
         let result = handler.execute(Effect::MaterializeCommitInputs { attempt: 1 }, &mut ctx);
         assert!(
             result.is_err(),
