@@ -115,7 +115,7 @@ Follow these rules so changes stay safe, consistent, and easy to review.
 
 **YOU ARE STRICTLY PROHIBITED from running ANY git command that writes, modifies history, or changes repository state.**
 
-Ralph is the ONLY entity allowed to commit. Accidental commits break the deterministic pipeline and cannot be automatically undone.
+Ralph Workflow is the ONLY entity allowed to commit. Accidental commits break the deterministic pipeline and cannot be automatically undone.
 
 ### NEVER run these commands (not exhaustive — when in doubt, do NOT run it):
 
