@@ -1,4 +1,4 @@
-use super::super::kill::{force_kill_best_effort, kill_process, KillResult};
+use super::super::io::{force_kill_best_effort, kill_process, KillResult};
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

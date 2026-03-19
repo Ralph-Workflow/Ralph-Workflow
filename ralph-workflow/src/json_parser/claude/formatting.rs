@@ -96,8 +96,10 @@ impl ClaudeParser {
             let mut normalized_parts = Vec::new();
             let mut tool_names = std::collections::HashMap::new();
 
-            for (index, block) in content.iter().enumerate() {
-                match block {
+            content
+                .iter()
+                .enumerate()
+                .for_each(|(index, block)| match block {
                     ContentBlock::Text { text } => {
                         if let Some(text) = text.as_deref() {
                             normalized_parts.push(text.to_string());
@@ -128,8 +130,7 @@ impl ClaudeParser {
                         normalized_parts.push(normalized);
                     }
                     _ => {}
-                }
-            }
+                });
 
             (normalized_parts.join(""), tool_names)
         })
@@ -322,32 +323,34 @@ impl ClaudeParser {
             return String::new();
         }
 
-        let mut out = String::new();
+        let out = String::new();
         if let Some(msg) = message {
             if let Some(content) = msg.content.as_ref() {
                 self.format_content_blocks(&mut out, content, &self.display_name, self.colors);
 
                 // If we successfully rendered content, mark it as rendered
                 if !out.is_empty() {
-                    let mut session = self.state.streaming_session.borrow_mut();
-
-                    // Mark the message as pre-rendered so that ALL subsequent streaming
-                    // deltas for this message are suppressed.
-                    // This handles the case where assistant event arrives BEFORE streaming starts.
-                    if let Some(ref message_id) = msg.id {
-                        session.mark_message_pre_rendered(message_id);
-                    }
-
-                    // Mark the assistant content as rendered by hash to prevent duplicate
-                    // assistant events with the same content but different message_ids
-                    if let Some((text_content, _)) = Self::extract_text_content_for_hash(message) {
-                        if !text_content.is_empty() {
-                            let mut hasher = DefaultHasher::new();
-                            text_content.hash(&mut hasher);
-                            let content_hash = hasher.finish();
-                            session.mark_assistant_content_rendered(content_hash);
+                    self.state.with_session_mut(|session| {
+                        // Mark the message as pre-rendered so that ALL subsequent streaming
+                        // deltas for this message are suppressed.
+                        // This handles the case where assistant event arrives BEFORE streaming starts.
+                        if let Some(ref message_id) = msg.id {
+                            session.mark_message_pre_rendered(message_id);
                         }
-                    }
+
+                        // Mark the assistant content as rendered by hash to prevent duplicate
+                        // assistant events with the same content but different message_ids
+                        if let Some((text_content, _)) =
+                            Self::extract_text_content_for_hash(message)
+                        {
+                            if !text_content.is_empty() {
+                                let mut hasher = DefaultHasher::new();
+                                text_content.hash(&mut hasher);
+                                let content_hash = hasher.finish();
+                                session.mark_assistant_content_rendered(content_hash);
+                            }
+                        }
+                    });
                 }
             }
         }

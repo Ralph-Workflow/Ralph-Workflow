@@ -82,6 +82,6 @@ include!("ccs/parsing.rs");
 include!("ccs/configuration.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("ccs/tests.rs");
+mod io_tests {
+    include!("ccs/io_tests.rs");
 }

@@ -16,22 +16,23 @@
 ///
 /// The string with ANSI sequences removed
 pub fn strip_ansi_sequences(s: &str) -> String {
-    // Simple regex-free implementation: skip \x1b[...m and \x1b[...A/B/K sequences
     let mut result = String::new();
-    let mut chars = s.chars().peekable();
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
 
-    while let Some(c) = chars.next() {
-        if c == '\x1b' && chars.peek() == Some(&'[') {
-            chars.next(); // consume '['
-                          // Skip until we find a letter (command char)
-            while let Some(&next_char) = chars.peek() {
-                chars.next();
-                if next_char.is_ascii_alphabetic() {
-                    break;
-                }
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '\x1b' && i + 1 < chars.len() && chars[i + 1] == '[' {
+            i += 2;
+            while i < chars.len() && !chars[i].is_ascii_alphabetic() {
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
             }
         } else {
             result.push(c);
+            i += 1;
         }
     }
     result
@@ -47,26 +48,24 @@ pub fn apply_cr_overwrite_semantics(s: &str) -> String {
     let mut line: Vec<char> = Vec::new();
     let mut col: usize = 0;
 
-    for ch in s.chars() {
-        match ch {
-            '\n' => {
-                out.extend(line.iter());
-                out.push('\n');
-                line.clear();
-                col = 0;
-            }
-            '\r' => {
-                col = 0;
-            }
-            _ => {
-                if col >= line.len() {
-                    line.resize(col + 1, ' ');
-                }
-                line[col] = ch;
-                col = col.saturating_add(1);
-            }
+    s.chars().for_each(|ch| match ch {
+        '\n' => {
+            out.extend(line.iter());
+            out.push('\n');
+            line.clear();
+            col = 0;
         }
-    }
+        '\r' => {
+            col = 0;
+        }
+        _ => {
+            if col >= line.len() {
+                line.resize(col + 1, ' ');
+            }
+            line[col] = ch;
+            col = col.saturating_add(1);
+        }
+    });
 
     out.extend(line.iter());
     out

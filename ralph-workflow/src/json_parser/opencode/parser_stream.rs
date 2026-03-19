@@ -183,7 +183,7 @@ impl OpenCodeParser {
         logging_enabled: bool,
         log_buffer: &mut Vec<u8>,
     ) -> io::Result<()> {
-        let mut byte_buffer = Vec::new();
+        let byte_buffer = Vec::new();
         loop {
             byte_buffer.clear();
             let chunk = reader.fill_buf()?;
@@ -331,7 +331,7 @@ impl OpenCodeParser {
 
         let monitor = HealthMonitor::new("OpenCode");
         let logging_enabled = self.log_path.is_some();
-        let mut log_buffer: Vec<u8> = Vec::new();
+        let log_buffer: Vec<u8> = Vec::new();
         let mut incremental_parser = IncrementalNdjsonParser::new();
 
         self.process_incremental_stream(

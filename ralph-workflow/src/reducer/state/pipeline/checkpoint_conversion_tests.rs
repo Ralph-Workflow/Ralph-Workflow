@@ -6,15 +6,19 @@ mod tests {
 
     #[test]
     fn test_clear_planning_flags() {
-        let mut state = PipelineState::initial(1, 0);
-        state.planning_prompt_prepared_iteration = Some(1);
-        state.planning_agent_invoked_iteration = Some(1);
-        state.planning_xml_extracted_iteration = Some(1);
-        state.planning_validated_outcome = Some(crate::reducer::state::PlanningValidatedOutcome {
-            iteration: 1,
-            valid: true,
-            markdown: None,
-        });
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.planning_prompt_prepared_iteration = Some(1);
+            s.planning_agent_invoked_iteration = Some(1);
+            s.planning_xml_extracted_iteration = Some(1);
+            s.planning_validated_outcome = Some(crate::reducer::state::PlanningValidatedOutcome {
+                iteration: 1,
+                valid: true,
+                markdown: None,
+            });
+            s
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
 
@@ -26,18 +30,22 @@ mod tests {
 
     #[test]
     fn test_clear_development_flags() {
-        let mut state = PipelineState::initial(1, 0);
-        state.development_context_prepared_iteration = Some(2);
-        state.development_agent_invoked_iteration = Some(2);
-        state.analysis_agent_invoked_iteration = Some(2);
-        state.development_validated_outcome =
-            Some(crate::reducer::state::DevelopmentValidatedOutcome {
-                iteration: 2,
-                status: crate::reducer::state::DevelopmentStatus::Completed,
-                summary: "test".to_string(),
-                files_changed: None,
-                next_steps: None,
-            });
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.development_context_prepared_iteration = Some(2);
+            s.development_agent_invoked_iteration = Some(2);
+            s.analysis_agent_invoked_iteration = Some(2);
+            s.development_validated_outcome =
+                Some(crate::reducer::state::DevelopmentValidatedOutcome {
+                    iteration: 2,
+                    status: crate::reducer::state::DevelopmentStatus::Completed,
+                    summary: "test".to_string(),
+                    files_changed: None,
+                    next_steps: None,
+                });
+            s
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Development);
 
@@ -49,16 +57,18 @@ mod tests {
 
     #[test]
     fn test_clear_phase_flags_routes_to_correct_helper() {
-        let mut state = PipelineState::initial(1, 0);
-        state.planning_agent_invoked_iteration = Some(1);
-        state.development_agent_invoked_iteration = Some(1);
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.planning_agent_invoked_iteration = Some(1);
+            s.development_agent_invoked_iteration = Some(1);
+            s
+        };
 
-        // Clear Planning should only affect Planning flags
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
         assert_eq!(cleared.planning_agent_invoked_iteration, None);
         assert_eq!(cleared.development_agent_invoked_iteration, Some(1));
 
-        // Clear Development should only affect Development flags
         let cleared = state.clear_phase_flags(PipelinePhase::Development);
         assert_eq!(cleared.planning_agent_invoked_iteration, Some(1));
         assert_eq!(cleared.development_agent_invoked_iteration, None);
@@ -66,10 +76,14 @@ mod tests {
 
     #[test]
     fn test_reset_iteration_decrements_counter() {
-        let mut state = PipelineState::initial(5, 0);
-        state.iteration = 3;
-        state.planning_agent_invoked_iteration = Some(3);
-        state.development_agent_invoked_iteration = Some(3);
+        let state = PipelineState::initial(5, 0);
+        let state = {
+            let mut s = state;
+            s.iteration = 3;
+            s.planning_agent_invoked_iteration = Some(3);
+            s.development_agent_invoked_iteration = Some(3);
+            s
+        };
 
         let reset = state.reset_iteration();
 
@@ -81,8 +95,12 @@ mod tests {
 
     #[test]
     fn test_reset_iteration_floor_at_zero() {
-        let mut state = PipelineState::initial(1, 0);
-        state.iteration = 0;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.iteration = 0;
+            s
+        };
 
         let reset = state.reset_iteration();
 
@@ -91,10 +109,14 @@ mod tests {
 
     #[test]
     fn test_reset_to_iteration_zero() {
-        let mut state = PipelineState::initial(10, 0);
-        state.iteration = 5;
-        state.planning_agent_invoked_iteration = Some(5);
-        state.development_agent_invoked_iteration = Some(5);
+        let state = PipelineState::initial(10, 0);
+        let state = {
+            let mut s = state;
+            s.iteration = 5;
+            s.planning_agent_invoked_iteration = Some(5);
+            s.development_agent_invoked_iteration = Some(5);
+            s
+        };
 
         let reset = state.reset_to_iteration_zero();
 
@@ -106,18 +128,19 @@ mod tests {
 
     #[test]
     fn test_phase_reset_preserves_unrelated_state() {
-        let mut state = PipelineState::initial(10, 3);
-        state.iteration = 2;
-        state.reviewer_pass = 1;
-        state.total_iterations = 10;
-        state.planning_agent_invoked_iteration = Some(2);
+        let state = PipelineState::initial(10, 3);
+        let state = {
+            let mut s = state;
+            s.iteration = 2;
+            s.reviewer_pass = 1;
+            s.total_iterations = 10;
+            s.planning_agent_invoked_iteration = Some(2);
+            s
+        };
 
         let cleared = state.clear_phase_flags(PipelinePhase::Planning);
 
-        // Phase flags cleared
         assert_eq!(cleared.planning_agent_invoked_iteration, None);
-
-        // Global counters preserved
         assert_eq!(cleared.iteration, 2);
         assert_eq!(cleared.reviewer_pass, 1);
         assert_eq!(cleared.total_iterations, 10);

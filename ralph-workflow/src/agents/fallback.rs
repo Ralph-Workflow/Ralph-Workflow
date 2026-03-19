@@ -711,14 +711,13 @@ mod tests {
 
     #[test]
     fn test_provider_fallback_config() {
-        let mut provider_fallback = HashMap::new();
-        provider_fallback.insert(
+        let provider_fallback = HashMap::from([(
             "opencode".to_string(),
             vec![
                 "-m opencode/glm-4.7-free".to_string(),
                 "-m opencode/claude-sonnet-4".to_string(),
             ],
-        );
+        )]);
 
         let config = FallbackConfig {
             provider_fallback,

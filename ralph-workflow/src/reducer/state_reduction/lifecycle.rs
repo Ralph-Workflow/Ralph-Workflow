@@ -36,11 +36,12 @@ mod tests {
 
     #[test]
     fn resumed_clears_user_interrupt_flag_for_resumed_run() {
-        // A checkpoint may record that the previous process ended via Ctrl+C.
-        // After we resume, the pipeline is running again and MUST NOT keep treating
-        // itself as a user-interrupted termination.
-        let mut state = PipelineState::initial(1, 0);
-        state.interrupted_by_user = true;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.interrupted_by_user = true;
+            s
+        };
 
         let reduced = reduce_lifecycle_event(
             state,

@@ -265,8 +265,11 @@ mod tests {
 
     #[test]
     fn test_prepare_commit_prompt_xsd_retry_uses_state_xsd_retry_count_in_prompt_key() {
-        let mut state = crate::reducer::state::PipelineState::initial(1, 0);
-        state.continuation.xsd_retry_count = 3;
+        let state = {
+            let mut s = crate::reducer::state::PipelineState::initial(1, 0);
+            s.continuation.xsd_retry_count = 3;
+            s
+        };
 
         let handler = MockEffectHandler::new(state);
         let (_event, ui) = handler

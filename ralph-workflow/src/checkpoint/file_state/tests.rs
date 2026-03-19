@@ -22,7 +22,7 @@ mod tests {
         fn test_capture_file_with_workspace() {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace, "test.txt");
 
             assert!(state.files.contains_key("test.txt"));
@@ -35,7 +35,7 @@ mod tests {
         fn test_capture_file_with_workspace_nonexistent() {
             let workspace = MemoryWorkspace::new_test();
 
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace, "nonexistent.txt");
 
             assert!(state.files.contains_key("nonexistent.txt"));
@@ -48,7 +48,7 @@ mod tests {
         fn test_validate_with_workspace_success() {
             let workspace = MemoryWorkspace::new_test().with_file("test.txt", "content");
 
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace, "test.txt");
 
             let errors = state.validate_with_workspace(&workspace, None);
@@ -59,7 +59,7 @@ mod tests {
         fn test_validate_with_workspace_file_missing() {
             // Create workspace with file, capture state
             let workspace_with_file = MemoryWorkspace::new_test().with_file("test.txt", "content");
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace_with_file, "test.txt");
 
             // Create new workspace without the file (simulating file deletion)
@@ -75,7 +75,7 @@ mod tests {
         fn test_validate_with_workspace_file_changed() {
             // Create workspace with original file
             let workspace_original = MemoryWorkspace::new_test().with_file("test.txt", "content");
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace_original, "test.txt");
 
             // Create new workspace with modified content
@@ -93,7 +93,7 @@ mod tests {
         fn test_validate_with_workspace_file_unexpectedly_exists() {
             // Create state with non-existent file
             let workspace_empty = MemoryWorkspace::new_test();
-            let mut state = FileSystemState::new();
+            let state = FileSystemState::new();
             state.capture_file_with_workspace(&workspace_empty, "test.txt");
 
             // Create new workspace with the file (simulating unexpected file creation)

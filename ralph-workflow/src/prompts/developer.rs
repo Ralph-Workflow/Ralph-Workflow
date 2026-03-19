@@ -16,6 +16,6 @@ include!("developer/system_prompt_iteration.rs");
 include!("developer/system_prompt_planning.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("developer/tests.rs");
+mod io_tests {
+    include!("developer/io_tests.rs");
 }

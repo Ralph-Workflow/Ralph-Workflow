@@ -6,8 +6,8 @@ impl StreamingSession {
     }
 
     fn compute_hash<T: std::hash::Hash>(value: &T) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        value.hash(&mut hasher);
+        let hasher = std::collections::hash_map::DefaultHasher::new();
+        value.hash(&hasher);
         hasher.finish()
     }
 

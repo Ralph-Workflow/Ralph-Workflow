@@ -48,68 +48,70 @@ mod tests {
 
     /// Create a mock API catalog for testing.
     pub fn mock_api_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
-            "opencode".to_string(),
-            Provider {
-                id: "opencode".to_string(),
-                name: "OpenCode".to_string(),
-                description: "Open source AI coding tool".to_string(),
-            },
-        );
-        providers.insert(
-            "anthropic".to_string(),
-            Provider {
-                id: "anthropic".to_string(),
-                name: "Anthropic".to_string(),
-                description: "Anthropic Claude models".to_string(),
-            },
-        );
-        providers.insert(
-            "openai".to_string(),
-            Provider {
-                id: "openai".to_string(),
-                name: "OpenAI".to_string(),
-                description: "OpenAI GPT models".to_string(),
-            },
-        );
+        let providers = HashMap::from([
+            (
+                "opencode".to_string(),
+                Provider {
+                    id: "opencode".to_string(),
+                    name: "OpenCode".to_string(),
+                    description: "Open source AI coding tool".to_string(),
+                },
+            ),
+            (
+                "anthropic".to_string(),
+                Provider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    description: "Anthropic Claude models".to_string(),
+                },
+            ),
+            (
+                "openai".to_string(),
+                Provider {
+                    id: "openai".to_string(),
+                    name: "OpenAI".to_string(),
+                    description: "OpenAI GPT models".to_string(),
+                },
+            ),
+        ]);
 
-        let mut models = HashMap::new();
-        models.insert(
-            "opencode".to_string(),
-            vec![Model {
-                id: "glm-4.7-free".to_string(),
-                name: "GLM-4.7 Free".to_string(),
-                description: "Open source GLM model".to_string(),
-                context_length: Some(128_000),
-            }],
-        );
-        models.insert(
-            "anthropic".to_string(),
-            vec![
-                Model {
-                    id: "claude-sonnet-4-5".to_string(),
-                    name: "Claude Sonnet 4.5".to_string(),
-                    description: "Latest Claude Sonnet".to_string(),
-                    context_length: Some(200_000),
-                },
-                Model {
-                    id: "claude-opus-4".to_string(),
-                    name: "Claude Opus 4".to_string(),
-                    description: "Most capable Claude".to_string(),
-                    context_length: Some(200_000),
-                },
-            ],
-        );
-        models.insert(
-            "openai".to_string(),
-            vec![Model {
-                id: "gpt-4".to_string(),
-                name: "GPT-4".to_string(),
-                description: "OpenAI's GPT-4".to_string(),
-                context_length: Some(8192),
-            }],
-        );
+        let models = HashMap::from([
+            (
+                "opencode".to_string(),
+                vec![Model {
+                    id: "glm-4.7-free".to_string(),
+                    name: "GLM-4.7 Free".to_string(),
+                    description: "Open source GLM model".to_string(),
+                    context_length: Some(128_000),
+                }],
+            ),
+            (
+                "anthropic".to_string(),
+                vec![
+                    Model {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        description: "Latest Claude Sonnet".to_string(),
+                        context_length: Some(200_000),
+                    },
+                    Model {
+                        id: "claude-opus-4".to_string(),
+                        name: "Claude Opus 4".to_string(),
+                        description: "Most capable Claude".to_string(),
+                        context_length: Some(200_000),
+                    },
+                ],
+            ),
+            (
+                "openai".to_string(),
+                vec![Model {
+                    id: "gpt-4".to_string(),
+                    name: "GPT-4".to_string(),
+                    description: "OpenAI's GPT-4".to_string(),
+                    context_length: Some(8192),
+                }],
+            ),
+        ]);
 
         ApiCatalog {
             providers,

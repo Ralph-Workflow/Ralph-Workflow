@@ -7,6 +7,6 @@ mod tests {
     };
     use crate::logger::Colors;
 
-    include!("tests/parser_health.rs");
-    include!("tests/streaming_quality_metrics.rs");
+    include!("io_tests/parser_health.rs");
+    include!("io_tests/streaming_quality_metrics.rs");
 }

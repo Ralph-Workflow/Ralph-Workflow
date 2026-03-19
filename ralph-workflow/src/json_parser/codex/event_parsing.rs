@@ -33,12 +33,11 @@ impl CodexParser {
                 Self::optional_output(handle_thread_started(&ctx, thread_id))
             }
             CodexEvent::TurnStarted {} => {
-                let turn_id = {
-                    let mut counter = self.state.turn_counter.borrow_mut();
+                let turn_id = self.state.with_turn_counter_mut(|counter| {
                     let id = format!("turn-{}", *counter);
                     *counter = counter.saturating_add(1);
                     id
-                };
+                });
                 Self::optional_output(handle_turn_started(&ctx, turn_id))
             }
             CodexEvent::TurnCompleted { usage } => {

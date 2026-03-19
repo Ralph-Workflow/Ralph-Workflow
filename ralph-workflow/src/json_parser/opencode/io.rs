@@ -22,4 +22,24 @@ impl OpenCodeParserState {
             fallback_step_counter: Cell::new(0),
         }
     }
+
+    pub fn with_session_mut<R>(&self, f: impl FnOnce(&mut StreamingSession) -> R) -> R {
+        f(&mut self.streaming_session.borrow_mut())
+    }
+
+    pub fn with_last_rendered_content_mut<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, String>) -> R,
+    ) -> R {
+        f(&mut self.last_rendered_content.borrow_mut())
+    }
+
+    pub fn next_fallback_step_id(&self, session: &str, timestamp: Option<u64>) -> String {
+        let counter = self.fallback_step_counter.get().saturating_add(1);
+        self.fallback_step_counter.set(counter);
+        timestamp.map_or_else(
+            || format!("{session}:fallback:{counter}"),
+            |ts| format!("{session}:{ts}:{counter}"),
+        )
+    }
 }

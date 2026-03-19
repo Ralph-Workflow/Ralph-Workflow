@@ -152,14 +152,14 @@ fn ignores_node_modules_and_target_like_directories() {
     // A real JS file.
     // Many files in node_modules should be ignored.
     // Many files in target should be ignored.
-    let mut workspace = MemoryWorkspace::new_test().with_file("src/index.js", "export default {}");
+    let workspace = MemoryWorkspace::new_test().with_file("src/index.js", "export default {}");
 
-    for i in 0..50 {
-        workspace = workspace.with_file(&format!("node_modules/pkg{i}/index.js"), "");
-    }
-    for i in 0..50 {
-        workspace = workspace.with_file(&format!("target/build{i}/main.rs"), "");
-    }
+    (0..50).for_each(|i| {
+        workspace.with_file(&format!("node_modules/pkg{i}/index.js"), "");
+    });
+    (0..50).for_each(|i| {
+        workspace.with_file(&format!("target/build{i}/main.rs"), "");
+    });
 
     let stack = detect_stack_with_workspace(&workspace, Path::new("")).unwrap();
     assert_eq!(stack.primary_language, "JavaScript");

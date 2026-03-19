@@ -3,7 +3,7 @@ use crate::app::mock_effect_handler::MockAppEffectHandler;
 
 #[test]
 fn test_reset_start_commit_emits_correct_effects() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = handle_reset_start_commit(&mut handler, None);
 
@@ -31,7 +31,7 @@ fn test_reset_start_commit_emits_correct_effects() {
 
 #[test]
 fn test_reset_start_commit_with_working_dir() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
     let dir = PathBuf::from("/test/dir");
 
     let result = handle_reset_start_commit(&mut handler, Some(&dir));
@@ -48,7 +48,7 @@ fn test_reset_start_commit_with_working_dir() {
 
 #[test]
 fn test_reset_start_commit_fails_without_repo() {
-    let mut handler = MockAppEffectHandler::new().without_repo();
+    let handler = MockAppEffectHandler::new().without_repo();
 
     let result = handle_reset_start_commit(&mut handler, None);
 
@@ -59,7 +59,7 @@ fn test_reset_start_commit_fails_without_repo() {
 #[test]
 fn test_save_start_commit_returns_oid() {
     let expected_oid = "abc123def456";
-    let mut handler = MockAppEffectHandler::new().with_head_oid(expected_oid);
+    let handler = MockAppEffectHandler::new().with_head_oid(expected_oid);
 
     let result = save_start_commit(&mut handler);
 
@@ -69,7 +69,7 @@ fn test_save_start_commit_returns_oid() {
 
 #[test]
 fn test_is_on_main_branch_true() {
-    let mut handler = MockAppEffectHandler::new().on_main_branch();
+    let handler = MockAppEffectHandler::new().on_main_branch();
 
     let result = is_on_main_branch(&mut handler);
 
@@ -79,7 +79,7 @@ fn test_is_on_main_branch_true() {
 
 #[test]
 fn test_is_on_main_branch_false() {
-    let mut handler = MockAppEffectHandler::new(); // default is not on main
+    let handler = MockAppEffectHandler::new(); // default is not on main
 
     let result = is_on_main_branch(&mut handler);
 
@@ -90,7 +90,7 @@ fn test_is_on_main_branch_false() {
 #[test]
 fn test_get_head_oid() {
     let expected = "1234567890abcdef1234567890abcdef12345678";
-    let mut handler = MockAppEffectHandler::new().with_head_oid(expected);
+    let handler = MockAppEffectHandler::new().with_head_oid(expected);
 
     let result = get_head_oid(&mut handler);
 
@@ -100,7 +100,7 @@ fn test_get_head_oid() {
 
 #[test]
 fn test_require_repo_success() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = require_repo(&mut handler);
 
@@ -109,7 +109,7 @@ fn test_require_repo_success() {
 
 #[test]
 fn test_require_repo_failure() {
-    let mut handler = MockAppEffectHandler::new().without_repo();
+    let handler = MockAppEffectHandler::new().without_repo();
 
     let result = require_repo(&mut handler);
 
@@ -118,7 +118,7 @@ fn test_require_repo_failure() {
 
 #[test]
 fn test_get_repo_root() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = get_repo_root(&mut handler);
 
@@ -129,7 +129,7 @@ fn test_get_repo_root() {
 
 #[test]
 fn test_ensure_files_creates_directories() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = ensure_files_effectful(&mut handler, true);
 
@@ -153,7 +153,7 @@ fn test_ensure_files_creates_directories() {
 
 #[test]
 fn test_ensure_files_writes_xsd_schemas() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = ensure_files_effectful(&mut handler, true);
 
@@ -177,7 +177,7 @@ fn test_ensure_files_writes_xsd_schemas() {
 
 #[test]
 fn test_ensure_files_non_isolation_creates_context_files() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     // isolation_mode = false should create STATUS.md, NOTES.md, ISSUES.md
     let result = ensure_files_effectful(&mut handler, false);
@@ -207,7 +207,7 @@ fn test_ensure_files_non_isolation_creates_context_files() {
 
 #[test]
 fn test_ensure_files_isolation_skips_context_files() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     // isolation_mode = true should NOT create STATUS.md, NOTES.md, ISSUES.md
     let result = ensure_files_effectful(&mut handler, true);
@@ -238,7 +238,7 @@ fn test_ensure_files_isolation_skips_context_files() {
 #[test]
 fn test_reset_context_for_isolation_deletes_existing_files() {
     // Files exist - should emit delete effects
-    let mut handler = MockAppEffectHandler::new()
+    let handler = MockAppEffectHandler::new()
         .with_file(".agent/STATUS.md", "old status")
         .with_file(".agent/NOTES.md", "old notes")
         .with_file(".agent/ISSUES.md", "old issues");
@@ -271,7 +271,7 @@ fn test_reset_context_for_isolation_deletes_existing_files() {
 #[test]
 fn test_reset_context_for_isolation_skips_nonexistent_files() {
     // No files exist - should check PathExists but not emit DeleteFile
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = reset_context_for_isolation_effectful(&mut handler);
 
@@ -296,7 +296,7 @@ fn test_reset_context_for_isolation_skips_nonexistent_files() {
 
 #[test]
 fn test_check_prompt_exists_returns_true_when_file_exists() {
-    let mut handler = MockAppEffectHandler::new().with_file("PROMPT.md", "# Goal\nTest");
+    let handler = MockAppEffectHandler::new().with_file("PROMPT.md", "# Goal\nTest");
 
     let result = check_prompt_exists_effectful(&mut handler);
 
@@ -306,7 +306,7 @@ fn test_check_prompt_exists_returns_true_when_file_exists() {
 
 #[test]
 fn test_check_prompt_exists_returns_false_when_file_missing() {
-    let mut handler = MockAppEffectHandler::new();
+    let handler = MockAppEffectHandler::new();
 
     let result = check_prompt_exists_effectful(&mut handler);
 

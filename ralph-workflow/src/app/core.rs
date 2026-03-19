@@ -68,7 +68,7 @@ pub fn run_event_loop(
     config: EventLoopConfig,
 ) -> Result<EventLoopResult> {
     let state = initial_state.unwrap_or_else(|| create_initial_state_with_config(ctx));
-    let mut handler = MainEffectHandler::new(state.clone());
+    let handler = MainEffectHandler::new(state.clone());
     run_event_loop_driver(ctx, Some(state), config, &mut handler)
 }
 

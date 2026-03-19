@@ -154,23 +154,22 @@ impl StreamingTestPrinter {
     #[must_use]
     pub fn strip_ansi(s: &str) -> String {
         let mut result = String::with_capacity(s.len());
-        let mut chars = s.chars().peekable();
+        let chars: Vec<char> = s.chars().collect();
+        let mut i = 0;
 
-        while let Some(c) = chars.next() {
-            if c == '\x1b' {
-                // Skip escape sequence: ESC [ ... letter
-                if chars.peek() == Some(&'[') {
-                    chars.next(); // consume '['
-                                  // Skip until we hit a letter (the terminator)
-                    while let Some(&next) = chars.peek() {
-                        chars.next();
-                        if next.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '\x1b' && i + 1 < chars.len() && chars[i + 1] == '[' {
+                i += 2;
+                while i < chars.len() && !chars[i].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                if i < chars.len() {
+                    i += 1;
                 }
             } else {
                 result.push(c);
+                i += 1;
             }
         }
         result
@@ -182,21 +181,20 @@ impl StreamingTestPrinter {
     /// useful for verifying that content grows incrementally.
     pub fn get_content_progression(&self) -> Vec<String> {
         let mut accumulated = String::new();
-        let mut progression = Vec::new();
 
-        for call in self.write_calls.borrow().iter() {
-            accumulated.push_str(&call.content);
-            // Strip ANSI and control characters for content comparison
-            let clean = Self::strip_ansi(&accumulated)
-                .replace('\r', "")
-                .replace('\n', " ")
-                .trim()
-                .to_string();
-            if !clean.is_empty() {
-                progression.push(clean);
-            }
-        }
-        progression
+        self.write_calls
+            .borrow()
+            .iter()
+            .map(|call| {
+                accumulated.push_str(&call.content);
+                Self::strip_ansi(&accumulated)
+                    .replace('\r', "")
+                    .replace('\n', " ")
+                    .trim()
+                    .to_string()
+            })
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 
     /// Clear all recorded write and flush calls.

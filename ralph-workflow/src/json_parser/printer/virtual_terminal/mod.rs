@@ -197,12 +197,7 @@ impl VirtualTerminal {
     /// Check for duplicate visible lines (useful for detecting rendering bugs).
     pub fn has_duplicate_lines(&self) -> bool {
         let lines = self.get_visible_lines();
-        for i in 1..lines.len() {
-            if !lines[i].is_empty() && lines[i] == lines[i - 1] {
-                return true;
-            }
-        }
-        false
+        lines.windows(2).any(|w| !w[1].is_empty() && w[1] == w[0])
     }
 
     /// Count occurrences of a pattern in the visible output.

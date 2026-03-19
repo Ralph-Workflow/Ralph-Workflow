@@ -4,7 +4,7 @@
 //! observations before killing a process, preventing false kills during
 //! transient quiet periods (LLM API waits, slow compilations, etc.).
 
-use super::super::kill::{KillConfig, DEFAULT_KILL_CONFIG};
+use super::super::io::{KillConfig, DEFAULT_KILL_CONFIG};
 use super::super::monitor::MonitorConfig;
 use super::super::*;
 use crate::executor::{AgentChild, MockAgentChild, MockProcessExecutor};
@@ -20,7 +20,6 @@ fn wait_until_idle_timeout_exceeded(timestamp: &SharedActivityTimestamp, timeout
     }
 }
 
-/// A fast kill config for unit tests so tests don't hang waiting for grace periods.
 fn fast_kill_config() -> KillConfig {
     KillConfig::new(
         Duration::from_millis(10),
@@ -120,17 +119,12 @@ fn monitor_single_idle_check_does_not_kill_when_two_confirmations_required() {
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    // Use new_running so that reaching the kill path sends a real kill command
-    // (observable via executor calls), making the test non-vacuous.
     let (mock_child, _controller) = MockAgentChild::new_running(0);
     let child = Arc::new(Mutex::new(Box::new(mock_child) as Box<dyn AgentChild>));
 
     let executor_impl = Arc::new(MockProcessExecutor::new());
     let executor: Arc<dyn crate::executor::ProcessExecutor> = executor_impl.clone();
 
-    // Use a non-zero check_interval so the monitor sleeps between confirmations,
-    // giving the test a window to signal stop after the first confirmation but
-    // before the second one triggers a kill.
     let config = MonitorConfig {
         timeout: Duration::ZERO,
         check_interval: Duration::from_millis(50),
@@ -150,11 +144,6 @@ fn monitor_single_idle_check_does_not_kill_when_two_confirmations_required() {
         )
     });
 
-    // The monitor sleeps check_interval (50ms) before each idle check.
-    // After ~50ms it performs the first confirmation (count → 1) and then
-    // begins sleeping for the second check_interval. We signal stop at ~60ms,
-    // which falls inside the second sleep window. The monitor detects should_stop
-    // before accumulating a second confirmation, returning ProcessCompleted.
     thread::sleep(Duration::from_millis(60));
     should_stop.store(true, Ordering::Release);
 
@@ -173,10 +162,8 @@ fn monitor_single_idle_check_does_not_kill_when_two_confirmations_required() {
 
 #[test]
 fn monitor_activity_between_checks_resets_idle_confirmation_count() {
-    // Use a non-zero timeout so we can reset the idle state by touching the timestamp.
     let timeout = Duration::from_millis(100);
     let timestamp = new_activity_timestamp();
-    // Make the monitor see idle immediately by clearing the timestamp.
     wait_until_idle_timeout_exceeded(&timestamp, timeout);
 
     let should_stop = Arc::new(AtomicBool::new(false));
@@ -208,15 +195,9 @@ fn monitor_activity_between_checks_resets_idle_confirmation_count() {
         )
     });
 
-    // After check_interval (20ms), the monitor performs its first idle check:
-    // count → 1. It then sleeps another check_interval. At 25ms we touch the
-    // activity timestamp. The next check sees NOT idle (elapsed < timeout),
-    // which resets count to 0. The process is never killed.
     thread::sleep(Duration::from_millis(25));
     touch_activity(&timestamp);
 
-    // Stop the monitor before elapsed time can exceed timeout again and
-    // accumulate two new idle confirmations.
     thread::sleep(Duration::from_millis(40));
     should_stop.store(true, Ordering::Release);
 
@@ -244,9 +225,6 @@ fn monitor_file_activity_resets_idle_confirmation_count() {
     let should_stop = Arc::new(AtomicBool::new(false));
     let should_stop_clone = Arc::clone(&should_stop);
 
-    // Fresh file (mtime ≈ now) within the timeout window. File activity resets
-    // the idle confirmation count each time it is detected, so the monitor
-    // never accumulates enough consecutive idle observations to kill.
     let workspace: Arc<dyn crate::workspace::Workspace> =
         Arc::new(MemoryWorkspace::new_test().with_file(".agent/PLAN.md", "# Progress"));
 
@@ -280,9 +258,6 @@ fn monitor_file_activity_resets_idle_confirmation_count() {
         )
     });
 
-    // Give the monitor time to perform several file-activity checks. File
-    // activity detection resets the idle confirmation count on each pass,
-    // so the monitor never accumulates enough confirmations to kill.
     thread::sleep(Duration::from_millis(20));
     should_stop.store(true, Ordering::Release);
 

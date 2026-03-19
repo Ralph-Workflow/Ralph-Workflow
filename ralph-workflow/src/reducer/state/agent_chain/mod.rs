@@ -521,9 +521,6 @@ mod consumer_signature_tests {
 
     #[test]
     fn test_consumer_signature_uses_stable_drain_encoding() {
-        // The consumer signature is persisted in reducer state and used for dedupe.
-        // It must not depend on Debug formatting (variant renames would change the hash).
-        // Instead, it should use a stable, explicit role tag.
         let state = AgentChainState::initial()
             .with_agents(
                 vec!["agent-a".to_string()],
@@ -532,19 +529,14 @@ mod consumer_signature_tests {
             )
             .with_drain(AgentDrain::Fix);
 
-        let mut hasher = Sha256::new();
-        hasher.update(b"fix\n");
-        hasher.update(b"agent-a");
-        hasher.update(b"|");
-        hasher.update(b"m1");
-        hasher.update(b",");
-        hasher.update(b"m2");
-        hasher.update(b"\n");
-        let expected = hasher.finalize().iter().fold(String::new(), |mut acc, b| {
-            use std::fmt::Write;
-            write!(acc, "{b:02x}").unwrap();
-            acc
-        });
+        let data = b"fix\nagent-a|m1,m2\n".to_vec();
+        let expected = Sha256::digest(&data)
+            .iter()
+            .fold(String::new(), |mut acc, b| {
+                use std::fmt::Write;
+                write!(acc, "{b:02x}").unwrap();
+                acc
+            });
 
         assert_eq!(
             state.consumer_signature_sha256(),
@@ -569,7 +561,7 @@ mod legacy_rate_limit_prompt_tests {
             AgentRole::Reviewer,
         );
 
-        let mut v = serde_json::to_value(&state).expect("serialize AgentChainState");
+        let v = serde_json::to_value(&state).expect("serialize AgentChainState");
         v["rate_limit_continuation_prompt"] = serde_json::Value::String("legacy prompt".into());
 
         let json = serde_json::to_string(&v).expect("serialize JSON value");

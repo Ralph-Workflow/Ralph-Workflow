@@ -141,18 +141,16 @@ mod tests {
     use std::collections::HashMap;
 
     fn mock_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
+        let providers = HashMap::from([(
             "anthropic".to_string(),
             Provider {
                 id: "anthropic".to_string(),
                 name: "Anthropic".to_string(),
                 description: "Anthropic Claude models".to_string(),
             },
-        );
+        )]);
 
-        let mut models = HashMap::new();
-        models.insert(
+        let models = HashMap::from([(
             "anthropic".to_string(),
             vec![Model {
                 id: "claude-sonnet-4-5".to_string(),
@@ -160,7 +158,7 @@ mod tests {
                 description: "Latest Claude Sonnet".to_string(),
                 context_length: Some(200_000),
             }],
-        );
+        )]);
 
         ApiCatalog {
             providers,

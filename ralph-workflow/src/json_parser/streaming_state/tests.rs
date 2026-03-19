@@ -11,11 +11,11 @@ mod tests {
     };
 
     // Tests for StreamingSession lifecycle and content tracking
-    include!("tests/session_tests.rs");
+    include!("io_tests/session_tests.rs");
 
     // Tests for snapshot-as-delta detection methods
-    include!("tests/state_tests.rs");
+    include!("io_tests/state_tests.rs");
 
     // Tests for delta contract validation
-    include!("tests/contract_tests.rs");
+    include!("io_tests/contract_tests.rs");
 }

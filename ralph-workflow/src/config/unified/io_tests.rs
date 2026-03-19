@@ -201,9 +201,9 @@ fn test_unified_config_path() {
 }
 
 // Merge behavior tests
-#[path = "tests/merge.rs"]
+#[path = "io_tests/merge.rs"]
 mod merge;
 
 // Agent chain per-key merge tests
-#[path = "tests/agent_chain_merge.rs"]
+#[path = "io_tests/agent_chain_merge.rs"]
 mod agent_chain_merge;

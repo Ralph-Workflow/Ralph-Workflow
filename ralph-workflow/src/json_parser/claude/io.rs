@@ -29,4 +29,42 @@ impl ParserState {
             last_rendered_content: RefCell::new(HashMap::new()),
         }
     }
+
+    pub fn with_session_mut<R>(&self, f: impl FnOnce(&mut StreamingSession) -> R) -> R {
+        f(&mut self.streaming_session.borrow_mut())
+    }
+
+    pub fn with_cursor_up_active_mut<R>(&self, f: impl FnOnce(&mut bool) -> R) -> R {
+        f(&mut self.cursor_up_active.borrow_mut())
+    }
+
+    pub fn with_thinking_active_index_mut<R>(&self, f: impl FnOnce(&mut Option<u64>) -> R) -> R {
+        f(&mut self.thinking_active_index.borrow_mut())
+    }
+
+    pub fn with_thinking_non_tty_indices_mut<R>(
+        &self,
+        f: impl FnOnce(&mut BTreeSet<u64>) -> R,
+    ) -> R {
+        f(&mut self.thinking_non_tty_indices.borrow_mut())
+    }
+
+    pub fn with_suppress_thinking_for_message_mut<R>(&self, f: impl FnOnce(&mut bool) -> R) -> R {
+        f(&mut self.suppress_thinking_for_message.borrow_mut())
+    }
+
+    pub fn with_text_line_active_mut<R>(&self, f: impl FnOnce(&mut bool) -> R) -> R {
+        f(&mut self.text_line_active.borrow_mut())
+    }
+
+    pub fn with_last_rendered_content_mut<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, String>) -> R,
+    ) -> R {
+        f(&mut self.last_rendered_content.borrow_mut())
+    }
+
+    pub fn with_terminal_mode_mut<R>(&self, f: impl FnOnce(&mut TerminalMode) -> R) -> R {
+        f(&mut self.terminal_mode.borrow_mut())
+    }
 }

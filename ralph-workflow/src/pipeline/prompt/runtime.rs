@@ -9,7 +9,7 @@ pub fn terminate_child_best_effort(
     executor: &dyn crate::executor::ProcessExecutor,
     kill_config: KillConfig,
 ) -> bool {
-    use crate::pipeline::idle_timeout::kill::{force_kill_best_effort, kill_process, KillResult};
+    use crate::pipeline::idle_timeout::io::{force_kill_best_effort, kill_process, KillResult};
     use std::time::Instant;
 
     let pid = {

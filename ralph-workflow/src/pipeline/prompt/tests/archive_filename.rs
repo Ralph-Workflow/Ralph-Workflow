@@ -4,21 +4,26 @@ fn strip_prompt_archive_sequence(filename: &str) -> String {
     let without_ext = filename
         .strip_suffix(".txt")
         .expect("archive filename should end with .txt");
-    let mut parts: Vec<&str> = without_ext.split('_').collect();
-    assert!(
-        parts.len() >= 3,
-        "unexpected archive filename shape: {filename}"
-    );
+    let parts: Vec<&str> = without_ext.split('_').collect();
+    let n = parts.len();
+    assert!(n >= 3, "unexpected archive filename shape: {filename}");
 
-    let timestamp = parts.pop().expect("timestamp");
-    let seq = parts.pop().expect("sequence");
+    let timestamp = parts[n - 1];
+    let seq = parts[n - 2];
     assert!(
         seq.starts_with('s') && seq[1..].chars().all(|c| c.is_ascii_digit()),
         "expected sequence segment like s123, got '{seq}' in '{filename}'"
     );
 
-    parts.push(timestamp);
-    format!("{}.txt", parts.join("_"))
+    format!(
+        "{}.txt",
+        parts[..n - 2]
+            .iter()
+            .copied()
+            .chain(std::iter::once(timestamp))
+            .collect::<Vec<_>>()
+            .join("_")
+    )
 }
 
 #[test]

@@ -40,16 +40,23 @@ mod xsd_retry_fingerprint_tests {
 
     #[test]
     fn test_effect_fingerprint_ignores_xsd_retry_count() {
-        let mut state = PipelineState::initial(1, 1);
-        state.phase = PipelinePhase::Development;
-        state.agent_chain.current_role = AgentRole::Developer;
-        state.iteration = 1;
-        state.reviewer_pass = 0;
-        state.continuation.xsd_retry_pending = true;
-
-        state.continuation.xsd_retry_count = 1;
+        let state = PipelineState::initial(1, 1);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Development;
+            s.agent_chain.current_role = AgentRole::Developer;
+            s.iteration = 1;
+            s.reviewer_pass = 0;
+            s.continuation.xsd_retry_pending = true;
+            s.continuation.xsd_retry_count = 1;
+            s
+        };
         let fp1 = compute_effect_fingerprint(&state);
-        state.continuation.xsd_retry_count = 2;
+        let state = {
+            let mut s = state;
+            s.continuation.xsd_retry_count = 2;
+            s
+        };
         let fp2 = compute_effect_fingerprint(&state);
 
         assert_eq!(fp1, fp2);

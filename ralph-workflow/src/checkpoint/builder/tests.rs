@@ -63,11 +63,12 @@ fn test_builder_with_prompt_history() {
     let dev_config = AgentConfigSnapshot::new("dev".into(), "cmd".into(), "-o".into(), None, true);
     let rev_config = AgentConfigSnapshot::new("rev".into(), "cmd".into(), "-o".into(), None, true);
 
-    let mut prompts = std::collections::HashMap::new();
-    prompts.insert(
+    let prompts = [(
         "development_1".to_string(),
         PromptHistoryEntry::from_string("Implement feature X".to_string()),
-    );
+    )]
+    .into_iter()
+    .collect::<std::collections::HashMap<_, _>>();
 
     let checkpoint = CheckpointBuilder::new()
         .phase(PipelinePhase::Development, 2, 5)
@@ -98,15 +99,18 @@ fn test_builder_with_prompt_history_multiple() {
     let dev_config = AgentConfigSnapshot::new("dev".into(), "cmd".into(), "-o".into(), None, true);
     let rev_config = AgentConfigSnapshot::new("rev".into(), "cmd".into(), "-o".into(), None, true);
 
-    let mut prompts = std::collections::HashMap::new();
-    prompts.insert(
-        "development_1".to_string(),
-        PromptHistoryEntry::from_string("Implement feature X".to_string()),
-    );
-    prompts.insert(
-        "review_1".to_string(),
-        PromptHistoryEntry::from_string("Review the changes".to_string()),
-    );
+    let prompts = [
+        (
+            "development_1".to_string(),
+            PromptHistoryEntry::from_string("Implement feature X".to_string()),
+        ),
+        (
+            "review_1".to_string(),
+            PromptHistoryEntry::from_string("Review the changes".to_string()),
+        ),
+    ]
+    .into_iter()
+    .collect::<std::collections::HashMap<_, _>>();
 
     let checkpoint = CheckpointBuilder::new()
         .phase(PipelinePhase::Development, 2, 5)

@@ -56,6 +56,6 @@ include!("registry/management.rs");
 include!("registry/loading.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("registry/tests.rs");
+mod io_tests {
+    include!("registry/io_tests.rs");
 }

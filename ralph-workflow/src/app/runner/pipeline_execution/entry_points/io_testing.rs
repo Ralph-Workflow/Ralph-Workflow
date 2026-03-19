@@ -35,7 +35,7 @@ pub fn run_with_config(
     registry: AgentRegistry,
 ) -> anyhow::Result<()> {
     // Use real path resolver and effect handler by default
-    let mut handler = RealAppEffectHandler::new();
+    let handler = RealAppEffectHandler::new();
     run_with_config_and_resolver(
         args,
         executor,

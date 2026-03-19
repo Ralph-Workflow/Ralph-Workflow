@@ -18,86 +18,72 @@ fn reduce(state: PipelineState, event: PipelineEvent) -> PipelineState {
 
 #[must_use]
 fn create_test_state() -> PipelineState {
-    let mut state = PipelineState::initial(5, 2);
-    state.agent_chain = AgentChainState::initial().with_agents(
-        vec!["agent1".to_string(), "agent2".to_string()],
-        vec![vec!["model1".to_string(), "model2".to_string()]],
-        AgentRole::Developer,
-    );
-    // Tests typically simulate mid-pipeline scenarios
-    state.prompt_permissions.locked = true;
-    state.prompt_permissions.restore_needed = true;
+    let state = PipelineState::initial(5, 2);
+    let state = {
+        let mut s = state;
+        s.agent_chain = AgentChainState::initial().with_agents(
+            vec!["agent1".to_string(), "agent2".to_string()],
+            vec![vec!["model1".to_string(), "model2".to_string()]],
+            AgentRole::Developer,
+        );
+        s.prompt_permissions.locked = true;
+        s.prompt_permissions.restore_needed = true;
+        s
+    };
     state
 }
 
 // Review phase started tests
-#[path = "tests/review_phase.rs"]
+#[path = "io_tests/review_phase.rs"]
 mod review_phase;
 
-// Basic pipeline transition tests
-#[path = "tests/basic_transitions.rs"]
+#[path = "io_tests/basic_transitions.rs"]
 mod basic_transitions;
 
-// Agent fallback and rate limit tests
-#[path = "tests/agent_fallback.rs"]
+#[path = "io_tests/agent_fallback.rs"]
 mod agent_fallback;
 
-// Rebase and commit state machine tests
-#[path = "tests/rebase_commit.rs"]
+#[path = "io_tests/rebase_commit.rs"]
 mod rebase_commit;
 
-// Finalization flow tests
-#[path = "tests/finalization.rs"]
+#[path = "io_tests/finalization.rs"]
 mod finalization;
 
-// Continuation event handling tests
-#[path = "tests/continuation.rs"]
+#[path = "io_tests/continuation.rs"]
 mod continuation;
 
-// Output validation failed tests
-#[path = "tests/output_validation.rs"]
+#[path = "io_tests/output_validation.rs"]
 mod output_validation;
 
-// Event sequence determinism tests
-#[path = "tests/event_sequence.rs"]
+#[path = "io_tests/event_sequence.rs"]
 mod event_sequence;
 
-// Dev->Review transition agent chain tests
-#[path = "tests/dev_review_transition.rs"]
+#[path = "io_tests/dev_review_transition.rs"]
 mod dev_review_transition;
 
-// XSD retry state transition tests
-#[path = "tests/xsd_retry/mod.rs"]
+#[path = "io_tests/xsd_retry/mod.rs"]
 mod xsd_retry;
 
-// Fix continuation tests
-#[path = "tests/fix_continuation.rs"]
+#[path = "io_tests/fix_continuation.rs"]
 mod fix_continuation;
 
-// Metrics tracking tests
-#[path = "tests/metrics/mod.rs"]
+#[path = "io_tests/metrics/mod.rs"]
 mod metrics;
 
-// Gitignore entries ensured tests
-#[path = "tests/gitignore_entries.rs"]
+#[path = "io_tests/gitignore_entries.rs"]
 mod gitignore_entries;
 
-// Prompt permissions lifecycle tests
-#[path = "tests/prompt_permissions.rs"]
+#[path = "io_tests/prompt_permissions.rs"]
 mod prompt_permissions;
 
-// Template rendering substitution log validation tests
-#[path = "tests/template_validation.rs"]
+#[path = "io_tests/template_validation.rs"]
 mod template_validation;
 
-// AwaitingDevFix recovery escalation tests
-#[path = "tests/awaiting_dev_fix.rs"]
+#[path = "io_tests/awaiting_dev_fix.rs"]
 mod awaiting_dev_fix;
 
-// Commit phase reducer tests
-#[path = "tests/commit_phase.rs"]
+#[path = "io_tests/commit_phase.rs"]
 mod commit_phase;
 
-// Cloud push retry semantics tests
-#[path = "tests/cloud_push_retry.rs"]
+#[path = "io_tests/cloud_push_retry.rs"]
 mod cloud_push_retry;

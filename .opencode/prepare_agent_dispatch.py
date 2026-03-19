@@ -719,11 +719,74 @@ def generate_agent_instructions(errors_by_agent, warnings_by_agent, has_test_fai
     """Generate agent instruction files with compilation error context."""
     print("\nGenerating agent instruction files...")
 
+    COMPILATION_FIX_RULES = """
+---
+
+## 🚨 COMPILATION FIX RULES — AUTOMATIC REJECTION IF VIOLATED
+
+You are fixing compilation errors. The code was **already refactored to follow the style guide**.
+Your job is to fix compilation errors **without undoing that refactoring**.
+
+### ❌ INSTANT REJECTION — Any of these = your work is thrown out and redone:
+
+| Violation | Example | Why Rejected |
+|-----------|---------|-------------|
+| Adding `let mut` in domain code | `let mut vec = Vec::new()` | Reintroduces what was just removed |
+| Adding `for`/`while` loops in domain code | `for x in items {` | Reintroduces what was just removed |
+| Adding `.push()` / `.insert()` on mutable receiver in domain code | `vec.push(x)` | Reintroduces what was just removed |
+| Adding `RefCell`/`Mutex`/`LazyLock` outside a boundary path | anywhere not in io/, runtime/, boundary/, executor/, ffi/, files/, git_helpers/ | Interior mutability leaking out of boundary |
+| Using `#[allow(...)]` | `#[allow(unused)]` | Forbidden entirely — use `#[expect(..., reason = "")]` only for proc-macro output |
+| Using `.unwrap()` / `.expect()` outside boundary modules | in domain code | Panic in domain logic |
+| Adding `as any` / type-erasure casts | `x as any` | Type safety violation |
+| Ignoring the error and simplifying | removing the construct that caused the error rather than fixing the call site | Evading the problem |
+
+### ✅ CORRECT approach for each error type:
+
+**E0596 (not mutable — "cannot borrow as mutable"):**
+- DO NOT add `mut` to the binding
+- Instead: check WHY the function needs `&mut self` — can the method be changed to take `self -> Self` (builder)? If yes, change the API and update the call site to chain.
+- If the variable is in a boundary file: `mut` is allowed there.
+
+**E0308 (type mismatch — function signature changed):**
+- The refactoring changed a return type (e.g., added a field to a tuple, changed from `X` to `(X, Y)`)
+- Fix the call site to destructure or use the new type. Do NOT revert the function.
+
+**E0425 (not in scope — variable missing):**
+- A `let mut x = ...` was deleted during refactoring and callers still reference `x`
+- Fix: find where `x` should come from in the new functional design and pass it correctly
+
+**E0515 / E0505 (borrow-then-move):**
+- A local is borrowed to construct another object, then both are returned
+- Fix: move the owned value's creation to the CALL SITE so it outlives the borrow
+- See the TARGETED HINTS section below for concrete examples
+
+**E0382 (use-after-move):**
+- Clone before move, or reorder to use what you need before moving
+- Do NOT reintroduce `mut` to avoid the move
+
+**"cannot borrow X as mutable, as it is not declared as mutable":**
+- DO NOT add `mut`. This error means a boundary module needs the `mut` but the binding is in domain code.
+- Fix: extract the mutable operation into a boundary function and pass the result back immutably
+
+### 🔒 BOUNDARY MODULE RULE (reminder):
+
+Files exempt from ALL lints (path contains one of these words):
+`boundary`, `executor`, `ffi`, `files`, `git_helpers`, `io`, `runtime`
+
+If a compilation fix genuinely requires mutation or interior mutability:
+- Move the code to an existing boundary file, OR
+- Create a new boundary file (e.g., `my_module/io.rs` or `my_module/runtime.rs`)
+- The path must CONTAIN the boundary word — not just be named after it in a comment
+
+---
+"""
+
     template = """# Agent: {agent_name}
 
 ⚠️ **RE-READ THIS FILE BEFORE EVERY ACTION. DO NOT WORK FROM MEMORY.**
 
 {cargo_warning}
+{compilation_rules}
 {permissions_block}
 
 ## Tool-Call Budget
@@ -877,6 +940,8 @@ CLIPPY: pass/fail
         agent_errors = errors_by_agent.get(agent_name, [])
         error_count = len(agent_errors)
 
+        compilation_rules = COMPILATION_FIX_RULES if error_count > 0 else ""
+
         if agent_errors:
             error_text_blocks = "\n\n".join(agent_errors)
             embedded_errors = (
@@ -971,6 +1036,7 @@ CLIPPY: pass/fail
             cargo_warning=cargo_warning,
             step_4_verify=step_4_verify,
             targeted_hints=targeted_hints,
+            compilation_rules=compilation_rules,
         )
 
         filename = f"tmp/agent-instructions-{agent_name}.txt"

@@ -163,10 +163,10 @@ impl CodexParser {
         let monitor = HealthMonitor::new("Codex");
         // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();
-        let mut log_buffer: Vec<u8> = Vec::new();
+        let log_buffer: Vec<u8> = Vec::new();
 
         let mut incremental_parser = IncrementalNdjsonParser::new();
-        let mut byte_buffer = Vec::new();
+        let byte_buffer = Vec::new();
         // Track whether we've written a synthetic result event for the current turn
         let mut result_written_for_current_turn = false;
 
@@ -180,7 +180,7 @@ impl CodexParser {
             byte_buffer.extend_from_slice(chunk);
             reader.consume(consumed);
 
-            for line in incremental_parser.feed(&byte_buffer) {
+            incremental_parser.feed(&byte_buffer).into_iter().try_for_each(|line| {
                 // Check if this is a turn.completed or turn.started event before processing
                 let is_turn_completed = line.trim().starts_with('{')
                     && serde_json::from_str::<CodexEvent>(line.trim())

@@ -78,8 +78,8 @@
 
 mod clock;
 mod file_activity;
-pub(crate) mod kill;
-mod monitor;
+pub(crate) mod io;
+mod runtime;
 mod readers;
 
 pub use clock::{
@@ -89,7 +89,7 @@ pub use clock::{
     MonotonicClock, SharedActivityTimestamp, SharedFileActivityTracker, IDLE_TIMEOUT_SECS,
 };
 pub use file_activity::FileActivityTracker;
-pub use kill::{KillConfig, DEFAULT_KILL_CONFIG};
+pub use io::{KillConfig, DEFAULT_KILL_CONFIG};
 pub(crate) use monitor::monitor_idle_timeout_with_interval_and_kill_config_and_observer;
 pub use monitor::{
     monitor_idle_timeout, monitor_idle_timeout_with_interval,

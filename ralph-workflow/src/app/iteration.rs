@@ -74,26 +74,36 @@ mod tests {
 
     #[test]
     fn test_should_exit_before_effect_allows_restoration() {
-        // Given: Terminal state (Interrupted) but restoration pending
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Interrupted;
-        state.checkpoint_saved_count = 1; // Already saved
-        state.prompt_permissions.locked = true;
-        state.prompt_permissions.restore_needed = true;
-        state.prompt_permissions.restored = false; // Restoration pending
+        use crate::reducer::state::PromptPermissionsState;
+        let state_before = PipelineState {
+            phase: PipelinePhase::Interrupted,
+            checkpoint_saved_count: 1,
+            prompt_permissions: PromptPermissionsState {
+                locked: true,
+                restore_needed: true,
+                restored: false,
+                last_warning: None,
+            },
+            ..PipelineState::initial(1, 0)
+        };
 
-        // When: Check if should exit
-        let should_exit = should_exit_before_effect(&state);
+        let should_exit = should_exit_before_effect(&state_before);
 
-        // Then: Should NOT exit, must allow restoration to complete
         assert!(
             !should_exit,
             "should_exit_before_effect must return false when restoration pending"
         );
 
-        // After restoration completes, should allow exit
-        state.prompt_permissions.restored = true;
-        let should_exit_after = should_exit_before_effect(&state);
+        let state_after = PipelineState {
+            prompt_permissions: PromptPermissionsState {
+                locked: true,
+                restore_needed: true,
+                restored: true,
+                last_warning: None,
+            },
+            ..state_before
+        };
+        let should_exit_after = should_exit_before_effect(&state_after);
         assert!(
             should_exit_after,
             "should_exit_before_effect should return true after restoration"
@@ -102,17 +112,20 @@ mod tests {
 
     #[test]
     fn test_should_exit_before_effect_complete_phase_with_restoration_pending() {
-        // Given: Complete phase but restoration pending (edge case, shouldn't happen)
-        let mut state = PipelineState::initial(0, 0);
-        state.phase = PipelinePhase::Complete;
-        state.prompt_permissions.locked = true;
-        state.prompt_permissions.restore_needed = true;
-        state.prompt_permissions.restored = false;
+        use crate::reducer::state::PromptPermissionsState;
+        let state = PipelineState {
+            phase: PipelinePhase::Complete,
+            prompt_permissions: PromptPermissionsState {
+                locked: true,
+                restore_needed: true,
+                restored: false,
+                last_warning: None,
+            },
+            ..PipelineState::initial(0, 0)
+        };
 
-        // When: Check if should exit
         let should_exit = should_exit_before_effect(&state);
 
-        // Then: Should NOT exit until restoration completes
         assert!(
             !should_exit,
             "Even in Complete phase, must allow restoration if pending"

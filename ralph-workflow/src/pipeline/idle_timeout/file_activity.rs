@@ -127,31 +127,32 @@ pub(crate) fn scan_dir_recursive(
         }
     };
 
-    for entry in entries {
-        let path = entry.path();
-        if entry.is_file() {
-            if FileActivityTracker::is_excluded_workspace_file(path) {
-                continue;
-            }
-            if let Some(mtime) = entry.modified() {
-                let age = file_age(now, mtime);
-                if age <= timeout {
-                    return Ok(true);
+    entries
+        .into_iter()
+        .any(|entry| {
+            let path = entry.path();
+            if entry.is_file() {
+                if FileActivityTracker::is_excluded_workspace_file(path) {
+                    return false;
                 }
+                if let Some(mtime) = entry.modified() {
+                    return file_age(now, mtime) <= timeout;
+                }
+                false
+            } else if entry.is_dir() {
+                if FileActivityTracker::is_excluded_workspace_dir(path) {
+                    return false;
+                }
+                remaining_depth.checked_sub(1).is_some_and(|remaining| {
+                    scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
+                        .is_ok_and(|r| r)
+                })
+            } else {
+                false
             }
-        } else if entry.is_dir() {
-            if FileActivityTracker::is_excluded_workspace_dir(path) {
-                continue;
-            }
-            if remaining_depth.checked_sub(1).is_some_and(|remaining| {
-                scan_dir_recursive(workspace, entry.path(), now, timeout, remaining, false)
-                    .is_ok_and(|r| r)
-            }) {
-                return Ok(true);
-            }
-        }
-    }
-    Ok(false)
+        })
+        .then_some(Ok(true))
+        .unwrap_or(Ok(false))
 }
 
 pub(crate) const MAX_SCAN_DEPTH_CONST: usize = MAX_SCAN_DEPTH;

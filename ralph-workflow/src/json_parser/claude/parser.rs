@@ -227,18 +227,19 @@ impl ClaudeParser {
         } else {
             let trimmed = line.trim();
             if !trimmed.is_empty() && !trimmed.starts_with('{') {
-                let mut session = self.state.streaming_session.borrow_mut();
-                let finalize = self.finalize_in_place_full_mode(&mut session);
-                drop(session);
+                let finalize = self
+                    .state
+                    .with_session_mut(|session| self.finalize_in_place_full_mode(session));
                 let out = format!("{finalize}{trimmed}\n");
                 if *self.state.terminal_mode.borrow() == TerminalMode::Full {
-                    let mut cursor_up_active = self.state.cursor_up_active.borrow_mut();
-                    if out.contains("\x1b[1B\n") {
-                        *cursor_up_active = false;
-                    }
-                    if out.contains("\x1b[1A") {
-                        *cursor_up_active = true;
-                    }
+                    self.state.with_cursor_up_active_mut(|cursor_up_active| {
+                        if out.contains("\x1b[1B\n") {
+                            *cursor_up_active = false;
+                        }
+                        if out.contains("\x1b[1A") {
+                            *cursor_up_active = true;
+                        }
+                    });
                 }
                 return Some(out);
             }
@@ -294,10 +295,11 @@ impl ClaudeParser {
             None
         } else {
             if *self.state.terminal_mode.borrow() == TerminalMode::Full {
-                let mut cursor_up_active = self.state.cursor_up_active.borrow_mut();
-                if output.contains("\x1b[1B\n") {
-                    *cursor_up_active = false;
-                }
+                self.state.with_cursor_up_active_mut(|cursor_up_active| {
+                    if output.contains("\x1b[1B\n") {
+                        *cursor_up_active = false;
+                    }
+                });
             }
             Some(output)
         }

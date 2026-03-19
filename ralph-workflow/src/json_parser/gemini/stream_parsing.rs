@@ -24,12 +24,12 @@ impl GeminiParser {
         let monitor = HealthMonitor::new("Gemini");
         // Accumulate log content in memory, write to workspace at the end
         let logging_enabled = self.log_path.is_some();
-        let mut log_buffer: Vec<u8> = Vec::new();
+        let log_buffer: Vec<u8> = Vec::new();
 
         // Use incremental parser for true real-time streaming
         // This processes JSON as soon as it's complete, not waiting for newlines
         let mut incremental_parser = IncrementalNdjsonParser::new();
-        let mut byte_buffer = Vec::new();
+        let byte_buffer = Vec::new();
 
         loop {
             // Read available bytes
@@ -48,16 +48,16 @@ impl GeminiParser {
             let json_events = incremental_parser.feed(&byte_buffer);
 
             // Process each complete JSON event immediately
-            for line in json_events {
+            json_events.into_iter().for_each(|line| {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
-                    continue;
+                    return;
                 }
 
                 // In debug mode, also show the raw JSON
                 if self.verbosity.is_debug() {
                     let mut printer = self.printer.borrow_mut();
-                    writeln!(
+                    if writeln!(
                         printer,
                         "{}[DEBUG]{} {}{}{}",
                         c.dim(),
@@ -65,8 +65,9 @@ impl GeminiParser {
                         c.dim(),
                         &line,
                         c.reset()
-                    )?;
-                    printer.flush()?;
+                    ).is_ok() {
+                        printer.flush().ok();
+                    }
                 }
 
                 // Parse the event once - parse_event handles malformed JSON by returning None
@@ -75,8 +76,9 @@ impl GeminiParser {
                         monitor.record_parsed();
                         // Write output to printer
                         let mut printer = self.printer.borrow_mut();
-                        write!(printer, "{output}")?;
-                        printer.flush()?;
+                        if write!(printer, "{output}").is_ok() {
+                            printer.flush().ok();
+                        }
                     }
                     None => {
                         // Check if this was a control event (state management with no user output)
@@ -100,10 +102,9 @@ impl GeminiParser {
 
                 // Log raw JSON to buffer if configured
                 if logging_enabled {
-                    writeln!(log_buffer, "{line}")?;
+                    writeln!(log_buffer, "{line}").ok();
                 }
-            }
-        }
+            });
 
         // Write accumulated log content to workspace
         if let Some(log_path) = &self.log_path {

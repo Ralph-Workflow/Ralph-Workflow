@@ -126,12 +126,12 @@ fn test_sanitize_command_env_handles_all_anthropic_vars() {
 
     let sanitized = sanitize_command_env(env_vars, &agent_env_vars, ANTHROPIC_ENV_VARS_TO_SANITIZE);
 
-    for &var in ANTHROPIC_ENV_VARS_TO_SANITIZE {
+    ANTHROPIC_ENV_VARS_TO_SANITIZE.iter().for_each(|&var| {
         assert!(
             !sanitized.contains_key(var),
             "{var} should be removed when not explicitly set"
         );
-    }
+    });
     assert_eq!(
         sanitized.get("OTHER_VAR"),
         Some(&"other-value".to_string()),

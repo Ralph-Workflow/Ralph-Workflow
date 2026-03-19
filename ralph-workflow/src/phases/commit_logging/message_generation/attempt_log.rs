@@ -75,15 +75,19 @@ impl CommitAttemptLog {
         }
     }
 
-    /// Set the prompt size.
-    pub const fn set_prompt_size(&mut self, size: usize) {
+    /// Set the prompt size (consuming builder).
+    #[must_use]
+    pub fn with_prompt_size(mut self, size: usize) -> Self {
         self.prompt_size_bytes = size;
+        self
     }
 
-    /// Set the diff information.
-    pub const fn set_diff_info(&mut self, size: usize, was_truncated: bool) {
+    /// Set the diff information (consuming builder).
+    #[must_use]
+    pub fn with_diff_info(mut self, size: usize, was_truncated: bool) -> Self {
         self.diff_size_bytes = size;
         self.diff_was_truncated = was_truncated;
+        self
     }
 
     /// Set the raw output from the agent (consuming builder).
@@ -108,19 +112,27 @@ impl CommitAttemptLog {
     /// Record an extraction attempt (consuming builder).
     #[must_use]
     pub fn add_extraction_attempt(mut self, attempt: ExtractionAttempt) -> Self {
-        self.extraction_attempts = self.extraction_attempts.into_iter().chain([attempt]).collect();
+        self.extraction_attempts = self
+            .extraction_attempts
+            .into_iter()
+            .chain([attempt])
+            .collect();
         self
     }
 
-    /// Record validation check results.
+    /// Record validation check results (consuming builder).
     #[cfg(test)]
-    pub fn set_validation_checks(&mut self, checks: Vec<ValidationCheck>) {
+    #[must_use]
+    pub fn with_validation_checks(mut self, checks: Vec<ValidationCheck>) -> Self {
         self.validation_checks = checks;
+        self
     }
 
-    /// Set the final outcome.
-    pub fn set_outcome(&mut self, outcome: AttemptOutcome) {
+    /// Set the final outcome (consuming builder).
+    #[must_use]
+    pub fn with_outcome(mut self, outcome: AttemptOutcome) -> Self {
         self.outcome = Some(outcome);
+        self
     }
 
     /// Write this log to a file using workspace abstraction.

@@ -169,39 +169,43 @@ mod resume_overlay_tests {
 
     #[test]
     fn resume_overlay_restores_cloud_resume_fields_but_preserves_runtime_cloud() {
-        let mut base = PipelineState::initial(3, 2);
-        base.cloud = CloudStateConfig {
-            enabled: true,
-            api_url: None,
-            run_id: Some("run_from_env".to_string()),
-            heartbeat_interval_secs: 30,
-            graceful_degradation: true,
-            git_remote: GitRemoteStateConfig {
-                auth_method: GitAuthStateMethod::Token {
-                    username: "x-access-token".to_string(),
+        let base = PipelineState {
+            cloud: CloudStateConfig {
+                enabled: true,
+                api_url: None,
+                run_id: Some("run_from_env".to_string()),
+                heartbeat_interval_secs: 30,
+                graceful_degradation: true,
+                git_remote: GitRemoteStateConfig {
+                    auth_method: GitAuthStateMethod::Token {
+                        username: "x-access-token".to_string(),
+                    },
+                    push_branch: "env_branch".to_string(),
+                    create_pr: true,
+                    pr_title_template: None,
+                    pr_body_template: None,
+                    pr_base_branch: None,
+                    force_push: false,
+                    remote_name: "origin".to_string(),
                 },
-                push_branch: "env_branch".to_string(),
-                create_pr: true,
-                pr_title_template: None,
-                pr_body_template: None,
-                pr_base_branch: None,
-                force_push: false,
-                remote_name: "origin".to_string(),
             },
+            ..PipelineState::initial(3, 2)
         };
 
-        let mut migrated = PipelineState::initial(999, 999);
-        migrated.cloud = CloudStateConfig::disabled();
-        migrated.pending_push_commit = Some("abc123".to_string());
-        migrated.git_auth_configured = true;
-        migrated.pr_created = true;
-        migrated.pr_url = Some("https://example.com/pr/1".to_string());
-        migrated.pr_number = Some(1);
-        migrated.push_count = 7;
-        migrated.push_retry_count = 2;
-        migrated.last_push_error = Some("push failed".to_string());
-        migrated.unpushed_commits = vec!["deadbeef".to_string()];
-        migrated.last_pushed_commit = Some("beadfeed".to_string());
+        let migrated = PipelineState {
+            cloud: CloudStateConfig::disabled(),
+            pending_push_commit: Some("abc123".to_string()),
+            git_auth_configured: true,
+            pr_created: true,
+            pr_url: Some("https://example.com/pr/1".to_string()),
+            pr_number: Some(1),
+            push_count: 7,
+            push_retry_count: 2,
+            last_push_error: Some("push failed".to_string()),
+            unpushed_commits: vec!["deadbeef".to_string()],
+            last_pushed_commit: Some("beadfeed".to_string()),
+            ..PipelineState::initial(999, 999)
+        };
 
         let base = overlay_checkpoint_progress_onto_base_state(base, migrated, 1000);
 
@@ -227,12 +231,14 @@ mod resume_overlay_tests {
     fn resume_overlay_restores_recovery_and_interrupt_fields() {
         let base = PipelineState::initial(3, 2);
 
-        let mut migrated = PipelineState::initial(999, 999);
-        migrated.dev_fix_attempt_count = 42;
-        migrated.recovery_epoch = 7;
-        migrated.recovery_escalation_level = 3;
-        migrated.failed_phase_for_recovery = Some(PipelinePhase::Review);
-        migrated.interrupted_by_user = true;
+        let migrated = PipelineState {
+            dev_fix_attempt_count: 42,
+            recovery_epoch: 7,
+            recovery_escalation_level: 3,
+            failed_phase_for_recovery: Some(PipelinePhase::Review),
+            interrupted_by_user: true,
+            ..PipelineState::initial(999, 999)
+        };
 
         let base = overlay_checkpoint_progress_onto_base_state(base, migrated, 1000);
 

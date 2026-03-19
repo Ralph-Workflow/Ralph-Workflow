@@ -311,11 +311,13 @@ mod tests {
     #[test]
     fn test_all_templates_have_content() {
         let registry = TemplateRegistry::new(None);
-        for name in TemplateRegistry::all_template_names() {
-            let result = registry.get_template(&name);
-            assert!(result.is_ok(), "Template '{name}' should load successfully");
-            let content = result.unwrap();
-            assert!(!content.is_empty(), "Template '{name}' should not be empty");
-        }
+        TemplateRegistry::all_template_names()
+            .into_iter()
+            .for_each(|name| {
+                let result = registry.get_template(&name);
+                assert!(result.is_ok(), "Template '{name}' should load successfully");
+                let content = result.unwrap();
+                assert!(!content.is_empty(), "Template '{name}' should not be empty");
+            });
     }
 }

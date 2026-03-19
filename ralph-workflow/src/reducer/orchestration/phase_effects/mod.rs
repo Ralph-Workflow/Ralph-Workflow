@@ -200,15 +200,18 @@ mod tests {
 
     #[test]
     fn trigger_dev_fix_flow_prefers_failed_phase_for_recovery_over_previous_phase() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.previous_phase = Some(PipelinePhase::AwaitingDevFix);
-        state.failed_phase_for_recovery = Some(PipelinePhase::CommitMessage);
-        state.dev_fix_triggered = false;
-        state.recovery_escalation_level = 0;
-
-        state.agent_chain.current_role = AgentRole::Developer;
-        state.agent_chain.retry_cycle = 7;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::AwaitingDevFix;
+            s.previous_phase = Some(PipelinePhase::AwaitingDevFix);
+            s.failed_phase_for_recovery = Some(PipelinePhase::CommitMessage);
+            s.dev_fix_triggered = false;
+            s.recovery_escalation_level = 0;
+            s.agent_chain.current_role = AgentRole::Developer;
+            s.agent_chain.retry_cycle = 7;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -228,12 +231,16 @@ mod tests {
 
     #[test]
     fn trigger_dev_fix_flow_never_reports_awaiting_dev_fix_as_failed_phase() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.previous_phase = Some(PipelinePhase::AwaitingDevFix);
-        state.failed_phase_for_recovery = None;
-        state.dev_fix_triggered = false;
-        state.recovery_escalation_level = 0;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::AwaitingDevFix;
+            s.previous_phase = Some(PipelinePhase::AwaitingDevFix);
+            s.failed_phase_for_recovery = None;
+            s.dev_fix_triggered = false;
+            s.recovery_escalation_level = 0;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -247,16 +254,17 @@ mod tests {
 
     #[test]
     fn awaiting_dev_fix_completion_marker_pending_requires_safety_check_first() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.completion_marker_pending = true;
-        state.completion_marker_is_failure = true;
-        state.completion_marker_reason = Some("safety_valve".to_string());
-
-        // The completion marker emission is NOT an exception: programmatic termination
-        // must pass the same pre-termination commit safety check.
-        state.interrupted_by_user = false;
-        state.pre_termination_commit_checked = false;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::AwaitingDevFix;
+            s.completion_marker_pending = true;
+            s.completion_marker_is_failure = true;
+            s.completion_marker_reason = Some("safety_valve".to_string());
+            s.interrupted_by_user = false;
+            s.pre_termination_commit_checked = false;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -268,14 +276,17 @@ mod tests {
 
     #[test]
     fn awaiting_dev_fix_completion_marker_pending_emits_after_safety_check() {
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::AwaitingDevFix;
-        state.completion_marker_pending = true;
-        state.completion_marker_is_failure = true;
-        state.completion_marker_reason = Some("safety_valve".to_string());
-
-        state.interrupted_by_user = false;
-        state.pre_termination_commit_checked = true;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::AwaitingDevFix;
+            s.completion_marker_pending = true;
+            s.completion_marker_is_failure = true;
+            s.completion_marker_reason = Some("safety_valve".to_string());
+            s.interrupted_by_user = false;
+            s.pre_termination_commit_checked = true;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -296,13 +307,15 @@ mod tests {
 
     #[test]
     fn user_interrupt_skips_pre_termination_safety_check() {
-        // Test that when interrupted_by_user=true (Ctrl+C), the safety check is skipped
-        // Note: RestorePromptPermissions is always attempted first, then checkpoint
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Interrupted;
-        state.interrupted_by_user = true; // Key: user-initiated interrupt
-        state.pre_termination_commit_checked = false; // Safety check NOT done
-        state.prompt_permissions.restored = true; // Already restored
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Interrupted;
+            s.interrupted_by_user = true;
+            s.pre_termination_commit_checked = false;
+            s.prompt_permissions.restored = true;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -320,12 +333,14 @@ mod tests {
 
     #[test]
     fn programmatic_interrupt_requires_pre_termination_safety_check() {
-        // Test that when interrupted_by_user=false (programmatic interrupt),
-        // the safety check is REQUIRED before termination
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Interrupted;
-        state.interrupted_by_user = false; // Key: NOT user-initiated
-        state.pre_termination_commit_checked = false; // Safety check NOT done
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Interrupted;
+            s.interrupted_by_user = false;
+            s.pre_termination_commit_checked = false;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -343,11 +358,14 @@ mod tests {
 
     #[test]
     fn complete_phase_requires_pre_termination_safety_check() {
-        // Test that normal completion requires safety check
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Complete;
-        state.interrupted_by_user = false;
-        state.pre_termination_commit_checked = false;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Complete;
+            s.interrupted_by_user = false;
+            s.pre_termination_commit_checked = false;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -364,10 +382,13 @@ mod tests {
 
     #[test]
     fn final_validation_requires_pre_termination_safety_check() {
-        // Test that FinalValidation requires safety check before proceeding
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::FinalValidation;
-        state.pre_termination_commit_checked = false;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::FinalValidation;
+            s.pre_termination_commit_checked = false;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -384,13 +405,15 @@ mod tests {
 
     #[test]
     fn safety_check_allows_proceed_after_checked() {
-        // Test that after safety check completes, pipeline proceeds to restore or checkpoint
-        // Note: RestorePromptPermissions is always attempted first on Interrupted phase
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Interrupted;
-        state.interrupted_by_user = false;
-        state.pre_termination_commit_checked = true; // Safety check DONE
-        state.prompt_permissions.restored = true; // Already restored
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Interrupted;
+            s.interrupted_by_user = false;
+            s.pre_termination_commit_checked = true;
+            s.prompt_permissions.restored = true;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -409,10 +432,14 @@ mod tests {
     fn complete_saves_checkpoint_with_phase_transition_trigger_after_safety_check() {
         use crate::reducer::event::CheckpointTrigger;
 
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Complete;
-        state.pre_termination_commit_checked = true;
-        state.interrupted_by_user = false;
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Complete;
+            s.pre_termination_commit_checked = true;
+            s.interrupted_by_user = false;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 
@@ -428,11 +455,15 @@ mod tests {
     fn programmatic_interrupt_saves_checkpoint_with_phase_transition_trigger_after_safety_check() {
         use crate::reducer::event::CheckpointTrigger;
 
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Interrupted;
-        state.pre_termination_commit_checked = true;
-        state.interrupted_by_user = false;
-        state.prompt_permissions.restored = true; // Already restored
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.phase = PipelinePhase::Interrupted;
+            s.pre_termination_commit_checked = true;
+            s.interrupted_by_user = false;
+            s.prompt_permissions.restored = true;
+            s
+        };
 
         let effect = determine_next_effect_for_phase(&state);
 

@@ -59,7 +59,10 @@
 /// 3. **Layer 3 (Flush):** This handler emits accumulated content ONCE at completion
 ///
 /// See file-level documentation for details.
-pub fn handle_agent_message_completed(ctx: &EventHandlerContext<'_>, text: Option<&String>) -> String {
+pub fn handle_agent_message_completed(
+    ctx: &EventHandlerContext<'_>,
+    text: Option<&String>,
+) -> String {
     let (is_duplicate, was_streaming, metrics, streamed_agent_msg) = {
         let session = ctx.streaming_session.borrow();
         let is_duplicate = session
@@ -141,14 +144,12 @@ pub fn handle_agent_message_completed(ctx: &EventHandlerContext<'_>, text: Optio
             .borrow_mut()
             .clear_key(ContentType::Text, "agent_msg");
 
-        let mut out = String::new();
-        out.push_str(&flush);
-        out.push_str(&completion);
+        let out = format!("{flush}{completion}");
         if show_metrics {
-            out.push('\n');
-            out.push_str(&metrics.format(*ctx.colors));
+            format!("{}\n{}", out, metrics.format(*ctx.colors))
+        } else {
+            out
         }
-        return out;
     }
 
     if let Some(text) = text {
@@ -216,25 +217,22 @@ pub fn handle_reasoning_completed(ctx: &EventHandlerContext<'_>, text: Option<&S
 
             let result = streamed_thinking.map_or_else(
                 || {
-                    completion_text.map_or_else(
-                        String::new,
-                        |text| {
-                            let sanitized = sanitize_for_display(text);
-                            if sanitized.is_empty() {
-                                String::new()
-                            } else {
-                                let rendered = ThinkingDeltaRenderer::render_first_delta(
-                                    &sanitized,
-                                    ctx.display_name,
-                                    *ctx.colors,
-                                    ctx.terminal_mode,
-                                );
-                                let completion =
-                                    ThinkingDeltaRenderer::render_completion(ctx.terminal_mode);
-                                format!("{rendered}{completion}")
-                            }
-                        },
-                    )
+                    completion_text.map_or_else(String::new, |text| {
+                        let sanitized = sanitize_for_display(text);
+                        if sanitized.is_empty() {
+                            String::new()
+                        } else {
+                            let rendered = ThinkingDeltaRenderer::render_first_delta(
+                                &sanitized,
+                                ctx.display_name,
+                                *ctx.colors,
+                                ctx.terminal_mode,
+                            );
+                            let completion =
+                                ThinkingDeltaRenderer::render_completion(ctx.terminal_mode);
+                            format!("{rendered}{completion}")
+                        }
+                    })
                 },
                 |thinking| {
                     if thinking.is_empty() {
@@ -267,55 +265,52 @@ pub fn handle_reasoning_completed(ctx: &EventHandlerContext<'_>, text: Option<&S
             // output in non-TTY modes (to prevent per-delta spam).
             let rendered = streamed_thinking.map_or_else(
                 || {
-                    completion_text.map_or_else(
-                        String::new,
-                        |text| {
-                            if ctx.verbosity.is_verbose() {
-                                let limit = ctx.verbosity.truncate_limit("text");
-                                let preview = truncate_text(text, limit);
+                    completion_text.map_or_else(String::new, |text| {
+                        if ctx.verbosity.is_verbose() {
+                            let limit = ctx.verbosity.truncate_limit("text");
+                            let preview = truncate_text(text, limit);
+                            match ctx.terminal_mode {
+                                TerminalMode::Basic => format!(
+                                    "{}[{}]{} {}Thought:{} {}{}{}\n",
+                                    ctx.colors.dim(),
+                                    ctx.display_name,
+                                    ctx.colors.reset(),
+                                    ctx.colors.cyan(),
+                                    ctx.colors.reset(),
+                                    ctx.colors.dim(),
+                                    preview,
+                                    ctx.colors.reset()
+                                ),
+                                TerminalMode::None => {
+                                    format!("[{}] Thought: {}\n", ctx.display_name, preview)
+                                }
+                                TerminalMode::Full => unreachable!(),
+                            }
+                        } else {
+                            let sanitized = sanitize_for_display(text);
+                            if sanitized.is_empty() {
+                                String::new()
+                            } else {
+                                // TerminalMode::None must be plain text even when colors are enabled.
                                 match ctx.terminal_mode {
                                     TerminalMode::Basic => format!(
-                                        "{}[{}]{} {}Thought:{} {}{}{}\n",
+                                        "{}[{}]{} {}Thinking: {}{}{}\n",
                                         ctx.colors.dim(),
                                         ctx.display_name,
                                         ctx.colors.reset(),
-                                        ctx.colors.cyan(),
-                                        ctx.colors.reset(),
                                         ctx.colors.dim(),
-                                        preview,
+                                        ctx.colors.cyan(),
+                                        sanitized,
                                         ctx.colors.reset()
                                     ),
                                     TerminalMode::None => {
-                                        format!("[{}] Thought: {}\n", ctx.display_name, preview)
+                                        format!("[{}] Thinking: {}\n", ctx.display_name, sanitized)
                                     }
                                     TerminalMode::Full => unreachable!(),
                                 }
-                            } else {
-                                let sanitized = sanitize_for_display(text);
-                                if sanitized.is_empty() {
-                                    String::new()
-                                } else {
-                                    // TerminalMode::None must be plain text even when colors are enabled.
-                                    match ctx.terminal_mode {
-                                        TerminalMode::Basic => format!(
-                                            "{}[{}]{} {}Thinking: {}{}{}\n",
-                                            ctx.colors.dim(),
-                                            ctx.display_name,
-                                            ctx.colors.reset(),
-                                            ctx.colors.dim(),
-                                            ctx.colors.cyan(),
-                                            sanitized,
-                                            ctx.colors.reset()
-                                        ),
-                                        TerminalMode::None => {
-                                            format!("[{}] Thinking: {}\n", ctx.display_name, sanitized)
-                                        }
-                                        TerminalMode::Full => unreachable!(),
-                                    }
-                                }
                             }
-                        },
-                    )
+                        }
+                    })
                 },
                 |thinking| {
                     let sanitized = sanitize_for_display(&thinking);
@@ -406,7 +401,10 @@ pub fn handle_file_read_completed(ctx: &EventHandlerContext<'_>, path: Option<St
 }
 
 /// Handle `ItemCompleted` event for `mcp_tool_call`/`mcp` types.
-pub fn handle_mcp_tool_completed(ctx: &EventHandlerContext<'_>, tool_name: Option<String>) -> String {
+pub fn handle_mcp_tool_completed(
+    ctx: &EventHandlerContext<'_>,
+    tool_name: Option<String>,
+) -> String {
     let tool_name = tool_name.unwrap_or_else(|| "tool".to_string());
     match ctx.terminal_mode {
         TerminalMode::Full | TerminalMode::Basic => format!(
@@ -440,7 +438,10 @@ pub fn handle_web_search_completed(ctx: &EventHandlerContext<'_>) -> String {
 }
 
 /// Handle `ItemCompleted` event for `plan_update` type.
-pub fn handle_plan_update_completed(ctx: &EventHandlerContext<'_>, plan: Option<&String>) -> String {
+pub fn handle_plan_update_completed(
+    ctx: &EventHandlerContext<'_>,
+    plan: Option<&String>,
+) -> String {
     if ctx.verbosity.is_verbose() {
         let limit = ctx.verbosity.truncate_limit("text");
         plan.map_or_else(

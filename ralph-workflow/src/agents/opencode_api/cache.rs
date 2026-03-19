@@ -280,18 +280,16 @@ mod tests {
     }
 
     fn create_test_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
+        let providers = HashMap::from([(
             "test".to_string(),
             Provider {
                 id: "test".to_string(),
                 name: "Test Provider".to_string(),
                 description: "Test".to_string(),
             },
-        );
+        )]);
 
-        let mut models = HashMap::new();
-        models.insert(
+        let models = HashMap::from([(
             "test".to_string(),
             vec![Model {
                 id: "test-model".to_string(),
@@ -299,7 +297,7 @@ mod tests {
                 description: "Test".to_string(),
                 context_length: None,
             }],
-        );
+        )]);
 
         ApiCatalog {
             providers,
@@ -391,7 +389,7 @@ mod tests {
 
     #[test]
     fn test_expired_catalog_detection() {
-        let mut catalog = create_test_catalog();
+        let catalog = create_test_catalog();
 
         assert!(!catalog.is_expired());
 

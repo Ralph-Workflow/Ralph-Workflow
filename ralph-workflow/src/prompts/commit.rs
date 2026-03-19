@@ -18,4 +18,4 @@ include!("commit/commit_message_generate.rs");
 include!("commit/commit_xsd_retry.rs");
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

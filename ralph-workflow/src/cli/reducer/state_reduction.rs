@@ -259,8 +259,10 @@ mod tests {
 
     #[test]
     fn test_reduce_preserves_unrelated_fields() {
-        let mut state = CliState::initial();
-        state.developer_agent = Some("existing".to_string());
+        let state = CliState {
+            developer_agent: Some("existing".to_string()),
+            ..CliState::initial()
+        };
 
         // Applying unrelated event should preserve developer_agent
         let new_state = reduce(state, CliEvent::QuietModeEnabled);

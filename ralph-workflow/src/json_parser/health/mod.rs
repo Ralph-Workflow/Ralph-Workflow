@@ -49,4 +49,4 @@ pub use monitor::HealthMonitor;
 pub use parser_health::ParserHealth;
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

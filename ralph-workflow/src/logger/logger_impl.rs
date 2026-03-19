@@ -397,7 +397,7 @@ mod tests {
         #[test]
         fn test_logger_with_workspace_writes_to_file() {
             let workspace = Arc::new(MemoryWorkspace::new_test());
-            let mut logger = Logger::new(Colors::new())
+            let logger = Logger::new(Colors::new())
                 .with_workspace_log(workspace.clone(), ".agent/logs/test.log");
 
             // Use the Loggable trait to log a message

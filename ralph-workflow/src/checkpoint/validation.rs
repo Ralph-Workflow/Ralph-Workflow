@@ -354,8 +354,10 @@ mod tests {
 
     #[test]
     fn test_validate_working_directory_empty_rejects_legacy() {
-        let mut checkpoint = make_test_checkpoint();
-        checkpoint.working_dir = String::new();
+        let checkpoint = PipelineCheckpoint {
+            working_dir: String::new(),
+            ..make_test_checkpoint()
+        };
         let workspace = MemoryWorkspace::new_test();
 
         let result = validate_working_directory(&checkpoint, &workspace);
@@ -369,8 +371,10 @@ mod tests {
 
     #[test]
     fn test_validate_working_directory_mismatch() {
-        let mut checkpoint = make_test_checkpoint();
-        checkpoint.working_dir = "/some/other/directory".to_string();
+        let checkpoint = PipelineCheckpoint {
+            working_dir: "/some/other/directory".to_string(),
+            ..make_test_checkpoint()
+        };
         let workspace = MemoryWorkspace::new_test();
 
         let result = validate_working_directory(&checkpoint, &workspace);
@@ -384,8 +388,10 @@ mod tests {
 
     #[test]
     fn test_validate_prompt_md_no_checksum_rejects_legacy() {
-        let mut checkpoint = make_test_checkpoint();
-        checkpoint.prompt_md_checksum = None;
+        let checkpoint = PipelineCheckpoint {
+            prompt_md_checksum: None,
+            ..make_test_checkpoint()
+        };
         let workspace = MemoryWorkspace::new_test();
 
         let result = validate_prompt_md(&checkpoint, &workspace);

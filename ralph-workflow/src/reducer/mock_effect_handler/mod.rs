@@ -90,4 +90,4 @@ mod io;
 pub use core::MockEffectHandler;
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

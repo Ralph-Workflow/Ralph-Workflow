@@ -1,20 +1,23 @@
 use super::*;
 use crate::checkpoint::{
-    AgentConfigSnapshot, CheckpointParams, CliArgsSnapshot, PipelineCheckpoint, PipelinePhase,
-    RebaseState,
+    AgentConfigSnapshot, CliArgsSnapshot, PipelineCheckpointParams, PipelinePhase,
+    PipelinePipelineCheckpoint, RebaseState,
 };
 use crate::workspace::MemoryWorkspace;
 use std::path::Path;
 
 /// Helper function to create a checkpoint for workspace tests.
-fn make_test_checkpoint_for_workspace(phase: PipelinePhase, iteration: u32) -> PipelineCheckpoint {
+fn make_test_checkpoint_for_workspace(
+    phase: PipelinePhase,
+    iteration: u32,
+) -> PipelinePipelineCheckpoint {
     let cli_args = CliArgsSnapshot::new(5, 2, None, true, 2, false, None);
     let dev_config =
         AgentConfigSnapshot::new("claude".into(), "cmd".into(), "-o".into(), None, true);
     let rev_config =
         AgentConfigSnapshot::new("codex".into(), "cmd".into(), "-o".into(), None, true);
     let run_id = uuid::Uuid::new_v4().to_string();
-    PipelineCheckpoint::from_params(CheckpointParams {
+    PipelinePipelineCheckpoint::from_params(PipelineCheckpointParams {
         phase,
         iteration,
         total_iterations: 5,
@@ -391,7 +394,7 @@ fn test_load_checkpoint_rejects_legacy_phase_variants() {
         "git_user_email": null
     }"#;
 
-    for phase_label in ["Fix", "ReviewAgain"] {
+    ["Fix", "ReviewAgain"].iter().for_each(|phase_label| {
         let json = base_json.replace("%PHASE%", phase_label);
         let workspace = MemoryWorkspace::new_test().with_file(".agent/checkpoint.json", &json);
 
@@ -405,7 +408,7 @@ fn test_load_checkpoint_rejects_legacy_phase_variants() {
             err.to_string().contains("no longer supported"),
             "Error for '{phase_label}' should mention 'no longer supported': {err}"
         );
-    }
+    });
 }
 
 #[test]
@@ -439,14 +442,16 @@ fn test_optimized_serialization_produces_compact_json() {
     use crate::checkpoint::execution_history::{ExecutionHistory, ExecutionStep, StepOutcome};
 
     let workspace = MemoryWorkspace::new_test();
-    let mut checkpoint = make_test_checkpoint_for_workspace(PipelinePhase::Development, 2);
-
-    // Add execution history to test compact serialization
-    let mut history = ExecutionHistory::new();
     let outcome = StepOutcome::success(Some("test".to_string()), vec![]);
     let step = ExecutionStep::new("Planning", 1, "plan", outcome);
-    history.add_step_bounded(step, 1000);
-    checkpoint.execution_history = Some(history);
+    let history = ExecutionHistory {
+        steps: std::collections::VecDeque::from([step]),
+        file_snapshots: std::collections::HashMap::new(),
+    };
+    let checkpoint = PipelineCheckpoint {
+        execution_history: Some(history),
+        ..make_test_checkpoint_for_workspace(PipelinePhase::Development, 2)
+    };
 
     save_checkpoint_with_workspace(&workspace, &checkpoint).unwrap();
 
@@ -467,22 +472,27 @@ fn test_optimized_serialization_round_trip_preserves_data() {
     use crate::checkpoint::execution_history::{ExecutionHistory, ExecutionStep, StepOutcome};
 
     let workspace = MemoryWorkspace::new_test();
-    let mut checkpoint = make_test_checkpoint_for_workspace(PipelinePhase::Review, 3);
 
-    // Add execution history with various data
-    let mut history = ExecutionHistory::new();
-    for i in 0..10 {
-        let outcome = StepOutcome::Success {
-            output: Some(format!("output{i}").into()),
-            files_modified: Some(vec![format!("file{}.rs", i)].into_boxed_slice()),
-            exit_code: Some(0),
-        };
-        let step = ExecutionStep::new(&format!("Phase{i}"), i, &format!("step{i}"), outcome)
-            .with_agent(&format!("agent{i}"))
-            .with_duration(100 + u64::from(i));
-        history.add_step_bounded(step, 1000);
-    }
-    checkpoint.execution_history = Some(history);
+    let steps: std::collections::VecDeque<ExecutionStep> = (0..10)
+        .map(|i| {
+            let outcome = StepOutcome::Success {
+                output: Some(format!("output{i}").into()),
+                files_modified: Some(vec![format!("file{i}.rs", i)].into_boxed_slice()),
+                exit_code: Some(0),
+            };
+            ExecutionStep::new(&format!("Phase{i}"), i, &format!("step{i}"), outcome)
+                .with_agent(&format!("agent{i}"))
+                .with_duration(100 + u64::from(i))
+        })
+        .collect();
+    let history = ExecutionHistory {
+        steps,
+        file_snapshots: std::collections::HashMap::new(),
+    };
+    let checkpoint = PipelineCheckpoint {
+        execution_history: Some(history),
+        ..make_test_checkpoint_for_workspace(PipelinePhase::Review, 3)
+    };
 
     // Save with optimized serialization
     save_checkpoint_with_workspace(&workspace, &checkpoint).unwrap();
@@ -500,38 +510,42 @@ fn test_optimized_serialization_round_trip_preserves_data() {
     let loaded_history = loaded.execution_history.expect("history should exist");
     assert_eq!(loaded_history.steps.len(), 10);
 
-    for (i, step) in loaded_history.steps.iter().enumerate() {
-        assert_eq!(step.phase.as_ref(), format!("Phase{i}"));
-        assert_eq!(step.iteration, u32::try_from(i).expect("value fits in u32"));
-        assert_eq!(step.step_type.as_ref(), format!("step{i}"));
-        assert_eq!(
-            step.agent.as_ref().map(std::convert::AsRef::as_ref),
-            Some(format!("agent{i}").as_str())
-        );
-        assert_eq!(step.duration_secs, Some(100 + i as u64));
+    loaded_history
+        .steps
+        .iter()
+        .enumerate()
+        .for_each(|(i, step)| {
+            assert_eq!(step.phase.as_ref(), format!("Phase{i}"));
+            assert_eq!(step.iteration, u32::try_from(i).expect("value fits in u32"));
+            assert_eq!(step.step_type.as_ref(), format!("step{i}"));
+            assert_eq!(
+                step.agent.as_ref().map(std::convert::AsRef::as_ref),
+                Some(format!("agent{i}").as_str())
+            );
+            assert_eq!(step.duration_secs, Some(100 + i as u64));
 
-        if let StepOutcome::Success {
-            output,
-            files_modified,
-            exit_code,
-        } = &step.outcome
-        {
-            assert_eq!(
-                output.as_ref().map(std::convert::AsRef::as_ref),
-                Some(format!("output{i}").as_str())
-            );
-            assert_eq!(
-                files_modified.as_ref().map(|f| f
-                    .iter()
-                    .map(std::string::String::as_str)
-                    .collect::<Vec<_>>()),
-                Some(vec![format!("file{i}.rs").as_str()])
-            );
-            assert_eq!(*exit_code, Some(0));
-        } else {
-            panic!("Expected Success outcome");
-        }
-    }
+            if let StepOutcome::Success {
+                output,
+                files_modified,
+                exit_code,
+            } = &step.outcome
+            {
+                assert_eq!(
+                    output.as_ref().map(std::convert::AsRef::as_ref),
+                    Some(format!("output{i}").as_str())
+                );
+                assert_eq!(
+                    files_modified.as_ref().map(|f| f
+                        .iter()
+                        .map(std::string::String::as_str)
+                        .collect::<Vec<_>>()),
+                    Some(vec![format!("file{i}.rs").as_str()])
+                );
+                assert_eq!(*exit_code, Some(0));
+            } else {
+                panic!("Expected Success outcome");
+            }
+        });
 }
 
 #[test]
@@ -559,20 +573,26 @@ fn test_estimate_checkpoint_size_is_reasonable() {
     );
 
     // Test with 100 entries
-    let mut checkpoint_100 = make_test_checkpoint_for_workspace(PipelinePhase::Development, 5);
-    let mut history = ExecutionHistory::new();
-    for i in 0..100 {
-        let outcome = StepOutcome::Success {
-            output: Some("test output".to_string().into()),
-            files_modified: Some(vec!["file.rs".to_string()].into_boxed_slice()),
-            exit_code: Some(0),
-        };
-        let step = ExecutionStep::new("Development", i, "test", outcome)
-            .with_agent("agent")
-            .with_duration(100);
-        history.add_step_bounded(step, 1000);
-    }
-    checkpoint_100.execution_history = Some(history);
+    let steps: std::collections::VecDeque<ExecutionStep> = (0..100)
+        .map(|i| {
+            let outcome = StepOutcome::Success {
+                output: Some("test output".to_string().into()),
+                files_modified: Some(vec!["file.rs".to_string()].into_boxed_slice()),
+                exit_code: Some(0),
+            };
+            ExecutionStep::new("Development", i, "test", outcome)
+                .with_agent("agent")
+                .with_duration(100)
+        })
+        .collect();
+    let history = ExecutionHistory {
+        steps,
+        file_snapshots: std::collections::HashMap::new(),
+    };
+    let checkpoint_100 = PipelineCheckpoint {
+        execution_history: Some(history),
+        ..make_test_checkpoint_for_workspace(PipelinePhase::Development, 5)
+    };
 
     save_checkpoint_with_workspace(&workspace, &checkpoint_100).unwrap();
     let json_100 = workspace.read(Path::new(".agent/checkpoint.json")).unwrap();

@@ -43,7 +43,7 @@ use std::io::Write;
 
 // Include sub-modules
 include!("initialization.rs");
-include!("execution_core.rs");
+include!("runtime_execution_core.rs");
 include!("completion.rs");
 
 /// Runs the full development/review/commit pipeline using reducer-based event loop.

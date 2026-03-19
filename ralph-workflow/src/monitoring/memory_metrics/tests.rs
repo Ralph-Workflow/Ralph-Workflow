@@ -11,8 +11,6 @@ use super::io::SnapshotCounter;
 
 #[test]
 fn test_execution_history_heap_estimate_uses_len_not_capacity() {
-    let mut state = PipelineState::initial(100, 5);
-
     let timestamp = String::from("t");
     let file = String::from("f");
     let checkpoint_saved_at = String::from("c");
@@ -50,7 +48,7 @@ fn test_execution_history_heap_estimate_uses_len_not_capacity() {
         }),
     };
 
-    state.add_execution_step(step, 1000);
+    let state = PipelineState::initial(100, 5).with_execution_step(step, 1000);
 
     let bytes = super::snapshot::estimate_execution_history_heap_size(&state);
     let expected = "P".len()
@@ -74,8 +72,7 @@ fn test_execution_history_heap_estimate_uses_len_not_capacity() {
 
 #[test]
 fn test_memory_snapshot_captures_state() {
-    let mut state = PipelineState::initial(100, 5);
-    state.add_execution_step(
+    let state = PipelineState::initial(100, 5).with_execution_step(
         ExecutionStep::new(
             "Development",
             0,
@@ -96,11 +93,15 @@ fn test_memory_snapshot_captures_state() {
 fn test_metrics_collector_respects_interval() {
     let state = PipelineState::initial(100, 5);
     let iterations = [0, 1, 5, 10];
-    let collector = iterations.into_iter().fold(MemoryMetricsCollector::new(10), |c, i| {
-        let mut s = state;
-        s.iteration = i;
-        c.maybe_record(&s)
-    });
+    let collector = iterations
+        .into_iter()
+        .fold(MemoryMetricsCollector::new(10), |c, i| {
+            let s = PipelineState {
+                iteration: i,
+                ..state
+            };
+            c.maybe_record(&s)
+        });
     assert_eq!(collector.snapshots().len(), 2);
 }
 
@@ -108,8 +109,10 @@ fn test_metrics_collector_respects_interval() {
 fn test_metrics_collector_retains_bounded_snapshots_by_default() {
     let state = PipelineState::initial(100, 5);
     let collector = (1..=2000).fold(MemoryMetricsCollector::new(1), |c, i| {
-        let mut s = state;
-        s.iteration = i;
+        let s = PipelineState {
+            iteration: i,
+            ..state
+        };
         c.maybe_record(&s)
     });
 
@@ -165,11 +168,15 @@ fn test_record_and_emit_integrates_with_backend() {
     };
     let state = PipelineState::initial(100, 5);
     let iterations = [0, 1, 5, 10];
-    let collector = iterations.into_iter().fold(MemoryMetricsCollector::new(10), |c, i| {
-        let mut s = state;
-        s.iteration = i;
-        c.record_and_emit(&s, &backend)
-    });
+    let collector = iterations
+        .into_iter()
+        .fold(MemoryMetricsCollector::new(10), |c, i| {
+            let s = PipelineState {
+                iteration: i,
+                ..state
+            };
+            c.record_and_emit(&s, &backend)
+        });
     assert_eq!(collector.snapshots().len(), 2);
 }
 
@@ -180,8 +187,7 @@ fn test_logging_backend_emits_warnings_above_threshold() {
     let state = PipelineState::initial(100, 5);
     let iterations = 0..50;
     let _collector = iterations.fold(MemoryMetricsCollector::new(10), |c, i| {
-        let mut s = state;
-        s.add_execution_step(
+        let s = state.with_execution_step(
             ExecutionStep::new(
                 "Development",
                 i,

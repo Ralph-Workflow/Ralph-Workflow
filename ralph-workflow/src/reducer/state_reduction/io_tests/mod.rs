@@ -1,0 +1,16 @@
+mod agent_fallback;
+mod awaiting_dev_fix;
+mod basic_transitions;
+mod cloud_push_retry;
+mod commit_phase;
+mod continuation;
+mod dev_review_transition;
+mod event_sequence;
+mod finalization;
+mod fix_continuation;
+mod gitignore_entries;
+mod output_validation;
+mod prompt_permissions;
+mod rebase_commit;
+mod review_phase;
+mod template_validation;

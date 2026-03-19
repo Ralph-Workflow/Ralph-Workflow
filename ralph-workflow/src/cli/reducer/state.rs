@@ -183,10 +183,12 @@ mod tests {
 
     #[test]
     fn test_resolved_iters_explicit_override() {
-        let mut state = CliState::initial();
-        state.preset_applied = Some(PresetType::Quick); // Would give 1
-        state.developer_iters = Some(10); // Explicit override
-        state.reviewer_reviews = Some(5); // Explicit override
+        let state = CliState {
+            preset_applied: Some(PresetType::Quick),
+            developer_iters: Some(10),
+            reviewer_reviews: Some(5),
+            ..CliState::initial()
+        };
 
         // Explicit values take precedence over preset
         assert_eq!(state.resolved_developer_iters(99), 10);
@@ -195,8 +197,10 @@ mod tests {
 
     #[test]
     fn test_resolved_iters_preset_fallback() {
-        let mut state = CliState::initial();
-        state.preset_applied = Some(PresetType::Long);
+        let state = CliState {
+            preset_applied: Some(PresetType::Long),
+            ..CliState::initial()
+        };
 
         // Preset values used when no explicit override
         assert_eq!(state.resolved_developer_iters(99), 15);
@@ -214,9 +218,11 @@ mod tests {
 
     #[test]
     fn test_state_serialization() {
-        let mut state = CliState::initial();
-        state.preset_applied = Some(PresetType::Thorough);
-        state.developer_agent = Some("claude".to_string());
+        let state = CliState {
+            preset_applied: Some(PresetType::Thorough),
+            developer_agent: Some("claude".to_string()),
+            ..CliState::initial()
+        };
 
         let json = serde_json::to_string(&state).unwrap();
         let deserialized: CliState = serde_json::from_str(&json).unwrap();

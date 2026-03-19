@@ -145,14 +145,14 @@ pub mod fault_tolerant_executor;
 pub mod mock_effect_handler;
 pub mod orchestration;
 #[cfg(test)]
-mod orchestration_tests;
+mod orchestration_io_tests;
 pub mod prompt_inputs;
 pub mod state;
 pub mod state_reduction;
 pub mod ui_event;
 
 #[cfg(test)]
-mod tests;
+mod io_tests;
 
 pub use boundary::MainEffectHandler;
 pub use effect::{EffectHandler, EffectResult};

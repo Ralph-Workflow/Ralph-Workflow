@@ -341,9 +341,11 @@ mod progress_mapping_tests {
     #[test]
     fn iteration_progress_maps_to_iteration_progress_event_type() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(10, 0);
-        state.phase = PipelinePhase::Development;
-        state.iteration = 99;
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            iteration: 99,
+            ..PipelineState::initial(10, 0)
+        };
 
         let ui = UIEvent::IterationProgress {
             current: 2,
@@ -366,9 +368,11 @@ mod progress_mapping_tests {
     #[test]
     fn review_progress_maps_to_review_progress_event_type() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(10, 0);
-        state.phase = PipelinePhase::Review;
-        state.reviewer_pass = 99;
+        let state = PipelineState {
+            phase: PipelinePhase::Review,
+            reviewer_pass: 99,
+            ..PipelineState::initial(10, 0)
+        };
 
         let ui = UIEvent::ReviewProgress { pass: 1, total: 3 };
         let update = ui_event_to_progress_update(&ui, &state, &cloud).expect("update");
@@ -388,8 +392,10 @@ mod progress_mapping_tests {
     #[test]
     fn push_failed_maps_to_push_failed_event_type() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::CommitMessage;
+        let state = PipelineState {
+            phase: PipelinePhase::CommitMessage,
+            ..PipelineState::initial(1, 0)
+        };
 
         let ui = UIEvent::PushFailed {
             remote: "origin".to_string(),
@@ -415,12 +421,11 @@ mod progress_mapping_tests {
     #[test]
     fn phase_transition_uses_one_based_iteration_and_review_pass() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(5, 3);
-        state.phase = PipelinePhase::Planning;
-        state.iteration = 0;
-        state.total_iterations = 5;
-        state.reviewer_pass = 0;
-        state.total_reviewer_passes = 3;
+        let state = PipelineState {
+            phase: PipelinePhase::Planning,
+            iteration: 0,
+            ..PipelineState::initial(5, 3)
+        };
 
         let ui = UIEvent::PhaseTransition {
             from: None,
@@ -437,8 +442,10 @@ mod progress_mapping_tests {
     #[test]
     fn agent_activity_is_not_forwarded_verbatim_to_cloud_progress() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Development;
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            ..PipelineState::initial(1, 0)
+        };
 
         let ui = UIEvent::AgentActivity {
             agent: "dev-agent".to_string(),
@@ -462,11 +469,29 @@ mod progress_mapping_tests {
 
     #[test]
     fn mapping_returns_none_when_run_id_missing() {
-        let mut cloud = cloud_for_test();
-        cloud.run_id = None;
+        let cloud = CloudConfig {
+            enabled: true,
+            api_url: Some("https://api.example.com".to_string()),
+            api_token: Some("secret".to_string()),
+            run_id: None,
+            heartbeat_interval_secs: 30,
+            graceful_degradation: true,
+            git_remote: GitRemoteConfig {
+                auth_method: GitAuthMethod::SshKey { key_path: None },
+                push_branch: Some("main".to_string()),
+                create_pr: false,
+                pr_title_template: None,
+                pr_body_template: None,
+                pr_base_branch: None,
+                force_push: false,
+                remote_name: "origin".to_string(),
+            },
+        };
 
-        let mut state = PipelineState::initial(1, 0);
-        state.phase = PipelinePhase::Planning;
+        let state = PipelineState {
+            phase: PipelinePhase::Planning,
+            ..PipelineState::initial(1, 0)
+        };
 
         let ui = UIEvent::IterationProgress {
             current: 1,
@@ -480,9 +505,11 @@ mod progress_mapping_tests {
     #[test]
     fn phase_transition_uses_event_from_for_previous_phase() {
         let cloud = cloud_for_test();
-        let mut state = PipelineState::initial(2, 1);
-        state.phase = PipelinePhase::Development;
-        state.previous_phase = Some(PipelinePhase::Planning);
+        let state = PipelineState {
+            phase: PipelinePhase::Development,
+            previous_phase: Some(PipelinePhase::Planning),
+            ..PipelineState::initial(2, 1)
+        };
 
         let ui = UIEvent::PhaseTransition {
             from: Some(PipelinePhase::Review),

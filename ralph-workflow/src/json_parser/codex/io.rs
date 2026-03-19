@@ -24,4 +24,26 @@ impl CodexParserState {
             last_rendered_content: RefCell::new(HashMap::new()),
         }
     }
+
+    pub fn with_session_mut<R>(&self, f: impl FnOnce(&mut StreamingSession) -> R) -> R {
+        f(&mut self.streaming_session.borrow_mut())
+    }
+
+    pub fn with_reasoning_accumulator_mut<R>(
+        &self,
+        f: impl FnOnce(&mut DeltaAccumulator) -> R,
+    ) -> R {
+        f(&mut self.reasoning_accumulator.borrow_mut())
+    }
+
+    pub fn with_turn_counter_mut<R>(&self, f: impl FnOnce(&mut u64) -> R) -> R {
+        f(&mut self.turn_counter.borrow_mut())
+    }
+
+    pub fn with_last_rendered_content_mut<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, String>) -> R,
+    ) -> R {
+        f(&mut self.last_rendered_content.borrow_mut())
+    }
 }

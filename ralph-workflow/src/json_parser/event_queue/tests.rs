@@ -38,11 +38,11 @@ mod tests {
     fn test_queue_multiple_events() {
         let mut queue: BoundedEventQueue<i32> = BoundedEventQueue::new();
 
-        for i in 0..10 {
+        (0..10).for_each(|i| {
             queue.send(i).unwrap();
-        }
+        });
 
-        for i in 0..10 {
+        (0..10).for_each(|i| {
             let received = queue.try_recv().unwrap();
             assert_eq!(received, i);
         }
@@ -74,9 +74,9 @@ mod tests {
     fn test_queue_clear() {
         let mut queue: BoundedEventQueue<i32> = BoundedEventQueue::new();
 
-        for i in 0..5 {
+        (0..5).for_each(|i| {
             queue.send(i).unwrap();
-        }
+        });
 
         queue.clear();
         assert!(queue.is_empty());
@@ -169,17 +169,17 @@ mod tests {
         let config = QueueConfig { capacity: 10 };
         let mut queue: BoundedEventQueue<i32> = BoundedEventQueue::with_config(config);
 
-        for i in 0..5 {
+        (0..5).for_each(|i| {
             queue.send(i).unwrap();
-        }
+        });
 
         let metrics = queue.metrics();
         assert_eq!(metrics.max_depth, 5);
 
         // Add more events
-        for i in 5..8 {
+        (5..8).for_each(|i| {
             queue.send(i).unwrap();
-        }
+        });
 
         let metrics = queue.metrics();
         assert_eq!(metrics.max_depth, 8);

@@ -285,6 +285,6 @@ pub fn setup_interrupt_handler() {
 }
 
 #[cfg(test)]
-mod tests {
-    include!("tests.rs");
+mod io_tests {
+    include!("io_tests.rs");
 }

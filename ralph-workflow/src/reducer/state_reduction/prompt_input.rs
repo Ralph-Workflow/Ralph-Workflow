@@ -207,25 +207,157 @@ mod tests {
 
     #[test]
     fn test_prompt_captured_overwrites_existing_when_content_differs_even_if_content_id_same() {
-        // PromptCaptured is authoritative: if a handler emits a new captured prompt under the
-        // same key, the reducer must store the latest content actually used.
-        let mut state = PipelineState::initial(1, 0);
-        state.prompt_history.insert(
-            "planning_1".to_string(),
-            crate::prompts::PromptHistoryEntry {
-                content: "original prompt".to_string(),
-                content_id: Some("sha256-same".to_string()),
-            },
-        );
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.prompt_history.insert(
+                "planning_1".to_string(),
+                crate::prompts::PromptHistoryEntry {
+                    content: "original prompt".to_string(),
+                    content_id: Some("sha256-same".to_string()),
+                },
+            );
+            s
+        };
 
-        // Attempt to capture a different prompt with the same key and same content-id.
-        // Even if content-id matches, the capture event represents the prompt actually used.
         let new_state = reduce(
             state,
             PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
                 key: "planning_1".to_string(),
                 content: "replacement prompt".to_string(),
                 content_id: Some("sha256-same".to_string()),
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must still be present");
+
+        assert_eq!(entry.content, "replacement prompt");
+        assert_eq!(entry.content_id, Some("sha256-same".to_string()));
+    }
+
+    #[test]
+    fn test_prompt_captured_does_not_downgrade_existing_content_id_when_content_is_identical() {
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.prompt_history.insert(
+                "planning_1".to_string(),
+                crate::prompts::PromptHistoryEntry {
+                    content: "same prompt".to_string(),
+                    content_id: Some("sha256-keep".to_string()),
+                },
+            );
+            s
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "same prompt".to_string(),
+                content_id: None,
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present");
+        assert_eq!(entry.content, "same prompt");
+        assert_eq!(entry.content_id.as_deref(), Some("sha256-keep"));
+    }
+
+    #[test]
+    fn test_prompt_captured_overwrites_existing_when_content_id_differs() {
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.prompt_history.insert(
+                "planning_1".to_string(),
+                crate::prompts::PromptHistoryEntry {
+                    content: "stale prompt".to_string(),
+                    content_id: Some("sha256-old".to_string()),
+                },
+            );
+            s
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "fresh prompt".to_string(),
+                content_id: Some("sha256-new".to_string()),
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present");
+
+        assert_eq!(entry.content, "fresh prompt");
+        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
+    }
+
+    #[test]
+    fn test_prompt_captured_overwrites_legacy_entry_with_new_content_id() {
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.prompt_history.insert(
+                "planning_1".to_string(),
+                crate::prompts::PromptHistoryEntry {
+                    content: "legacy prompt".to_string(),
+                    content_id: None,
+                },
+            );
+            s
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "fresh prompt".to_string(),
+                content_id: Some("sha256-new".to_string()),
+            }),
+        );
+
+        let entry = new_state
+            .prompt_history
+            .get("planning_1")
+            .expect("entry must be present");
+
+        assert_eq!(entry.content, "fresh prompt");
+        assert_eq!(entry.content_id.as_deref(), Some("sha256-new"));
+    }
+
+    #[test]
+    fn test_prompt_captured_overwrites_existing_when_incoming_has_no_content_id_and_content_differs(
+    ) {
+        let state = PipelineState::initial(1, 0);
+        let state = {
+            let mut s = state;
+            s.prompt_history.insert(
+                "planning_1".to_string(),
+                crate::prompts::PromptHistoryEntry {
+                    content: "stale prompt".to_string(),
+                    content_id: None,
+                },
+            );
+            s
+        };
+
+        let new_state = reduce(
+            state,
+            PipelineEvent::PromptInput(PromptInputEvent::PromptCaptured {
+                key: "planning_1".to_string(),
+                content: "fresh prompt".to_string(),
+                content_id: None,
             }),
         );
 

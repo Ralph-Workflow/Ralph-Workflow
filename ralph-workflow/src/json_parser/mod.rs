@@ -57,7 +57,7 @@
 
 pub mod claude;
 #[cfg(test)]
-mod claude_tests;
+mod claude_io_tests;
 pub mod codex;
 #[cfg(test)]
 mod codex_tests;

@@ -90,21 +90,15 @@ impl ClaudeParser {
             let json_events = incremental_parser.feed(&byte_buffer);
 
             // Process each complete JSON event immediately
-            for line in json_events {
+            json_events.into_iter().for_each(|line| {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
-                    continue;
+                    return;
                 }
 
-                // Check for Result events to handle GLM/ccs-glm duplicate event bug
-                // Some agents emit both success and error_during_execution results
                 let should_skip_result = if trimmed.starts_with('{') {
-                    // First, check if the JSON has an 'errors' field with actual error messages.
-                    // This is important because Claude events can have either 'error' (string)
-                    // or 'errors' (array of strings), and we need to check both.
                     let has_errors_with_content =
                         serde_json::from_str::<serde_json::Value>(trimmed).is_ok_and(|json| {
-                            // Check for 'errors' array with at least one non-empty string
                             json.get("errors")
                                 .and_then(|v| v.as_array())
                                 .is_some_and(|arr| {
@@ -122,17 +116,6 @@ impl ClaudeParser {
                     {
                         let is_error_result = subtype.as_deref() != Some("success");
 
-                        // Suppress spurious GLM error events based on these characteristics:
-                        // 1. Error event (subtype != "success")
-                        // 2. duration_ms is 0 or very small (< 100ms, indicating synthetic event)
-                        // 3. error field is null or empty (no actual error message)
-                        // 4. NO 'errors' field with actual error messages (this indicates a real error)
-                        //
-                        // These criteria identify the spurious error_during_execution events
-                        // that GLM emits when exiting with code 1 despite producing valid output.
-                        //
-                        // We DON'T suppress if there's an 'errors' array with content, because
-                        // that indicates a real error condition that the user should see.
                         let is_spurious_glm_error = is_error_result
                             && duration_ms.unwrap_or(0) < 100
                             && (error.is_none()
@@ -140,14 +123,11 @@ impl ClaudeParser {
                             && !has_errors_with_content;
 
                         if is_spurious_glm_error && seen_success_result {
-                            // Error after success - suppress (original fix)
                             true
                         } else if subtype.as_deref() == Some("success") {
                             seen_success_result = true;
                             false
                         } else if is_spurious_glm_error {
-                            // Spurious error BEFORE success - still suppress based on characteristics
-                            // This handles the reverse-order case where error arrives first
                             true
                         } else {
                             false
@@ -159,7 +139,6 @@ impl ClaudeParser {
                     false
                 };
 
-                // In debug mode, also show the raw JSON
                 if self.verbosity.is_debug() {
                     eprintln!(
                         "{}[DEBUG]{} {}{}{}",
@@ -170,6 +149,56 @@ impl ClaudeParser {
                         c.reset()
                     );
                 }
+
+                if should_skip_result {
+                    if logging_enabled {
+                        let _ = writeln!(log_buffer, "{line}");
+                    }
+                    monitor.record_control_event();
+                    return;
+                }
+
+                match self.parse_event(&line) {
+                    Some(output) => {
+                        if trimmed.starts_with('{') {
+                            if let Ok(event) = serde_json::from_str::<ClaudeEvent>(&line) {
+                                if Self::is_partial_event(&event) {
+                                    monitor.record_partial_event();
+                                } else {
+                                    monitor.record_parsed();
+                                }
+                            } else {
+                                monitor.record_parsed();
+                            }
+                        } else {
+                            monitor.record_parsed();
+                        }
+                        let mut printer = self.printer.borrow_mut();
+                        if write!(printer, "{output}").is_ok() {
+                            printer.flush().ok();
+                        }
+                    }
+                    None => {
+                        if trimmed.starts_with('{') {
+                            if let Ok(event) = serde_json::from_str::<ClaudeEvent>(&line) {
+                                if Self::is_control_event(&event) {
+                                    monitor.record_control_event();
+                                } else {
+                                    monitor.record_unknown_event();
+                                }
+                            } else {
+                                monitor.record_parse_error();
+                            }
+                        } else {
+                            monitor.record_ignored();
+                        }
+                    }
+                }
+
+                if logging_enabled {
+                    let _ = writeln!(log_buffer, "{line}");
+                }
+            });
 
                 // Skip suppressed result events but still log them
                 if should_skip_result {

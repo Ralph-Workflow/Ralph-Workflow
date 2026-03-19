@@ -9,7 +9,7 @@ impl OpenCodeParser {
             if let Some(ref text) = part.text {
                 // Accumulate streaming text using StreamingSession
                 let (show_prefix, accumulated_text) = {
-                    let mut session = self.state.streaming_session.borrow_mut();
+                    let session = self.state.streaming_session.borrow_mut();
                     let show_prefix = session.on_text_delta_key("main", text);
                     // Get accumulated text for streaming display
                     let accumulated_text = session

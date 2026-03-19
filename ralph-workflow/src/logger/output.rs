@@ -77,22 +77,22 @@
 //! feature is enabled (for integration tests).
 
 // Sub-modules for split functionality
+#[cfg(any(test, feature = "test-utils"))]
+#[path = "io_test_logger.rs"]
+mod io_test_logger;
 #[path = "loggable.rs"]
 mod loggable;
 #[path = "logger_impl.rs"]
 mod logger_impl;
 #[path = "output_formatting.rs"]
 mod output_formatting;
-#[cfg(any(test, feature = "test-utils"))]
-#[path = "test_logger.rs"]
-mod test_logger;
 
 // Re-export sub-module items
+#[cfg(any(test, feature = "test-utils"))]
+pub use io_test_logger::TestLogger;
 pub use loggable::Loggable;
 pub use logger_impl::Logger;
 pub use output_formatting::{argv_requests_json, format_generic_json_for_display};
-#[cfg(any(test, feature = "test-utils"))]
-pub use test_logger::TestLogger;
 
 #[cfg(test)]
 mod tests {

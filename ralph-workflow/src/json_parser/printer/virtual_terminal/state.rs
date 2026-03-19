@@ -13,7 +13,7 @@ impl VirtualTerminal {
     /// In unbounded mode, this grows the buffer as needed.
     pub(super) fn ensure_row_exists(&self) {
         let row = *self.cursor_row.borrow();
-        let mut screen = self.screen.borrow_mut();
+        let screen = self.screen.borrow_mut();
 
         // In geometry mode, check if we need to scroll
         if let Some(max_rows) = self.rows {
@@ -71,7 +71,7 @@ impl VirtualTerminal {
             }
         }
 
-        let mut screen = self.screen.borrow_mut();
+        let screen = self.screen.borrow_mut();
         let line = &mut screen[row];
 
         // Extend the line with spaces if needed
@@ -93,7 +93,7 @@ impl VirtualTerminal {
         self.ensure_row_exists();
         let row = *self.cursor_row.borrow();
         let col = *self.cursor_col.borrow();
-        let mut screen = self.screen.borrow_mut();
+        let screen = self.screen.borrow_mut();
         let line = &mut screen[row];
 
         // Extend the line with spaces if needed
@@ -118,7 +118,7 @@ impl VirtualTerminal {
     pub(super) fn clear_line(&self) {
         self.ensure_row_exists();
         let row = *self.cursor_row.borrow();
-        let mut screen = self.screen.borrow_mut();
+        let screen = self.screen.borrow_mut();
         screen[row].clear();
         // Note: cursor position is NOT changed by clear line
     }

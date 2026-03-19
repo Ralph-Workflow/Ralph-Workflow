@@ -23,7 +23,7 @@ pub struct ParsingTraceStep {
 
 impl ParsingTraceStep {
     /// Create a new parsing trace step.
-    #[must_use] 
+    #[must_use]
     pub fn new(step_number: usize, description: &str) -> Self {
         Self {
             step_number,
@@ -36,7 +36,7 @@ impl ParsingTraceStep {
     }
 
     /// Set the input for this step.
-    #[must_use] 
+    #[must_use]
     pub fn with_input(mut self, input: &str) -> Self {
         // Truncate input if too large
         const MAX_INPUT_SIZE: usize = 10_000;
@@ -53,7 +53,7 @@ impl ParsingTraceStep {
     }
 
     /// Set the result for this step.
-    #[must_use] 
+    #[must_use]
     pub fn with_result(mut self, result: &str) -> Self {
         // Truncate result if too large
         const MAX_RESULT_SIZE: usize = 10_000;
@@ -70,14 +70,14 @@ impl ParsingTraceStep {
     }
 
     /// Set whether this step succeeded.
-    #[must_use] 
+    #[must_use]
     pub const fn with_success(mut self, success: bool) -> Self {
         self.success = success;
         self
     }
 
     /// Set additional details.
-    #[must_use] 
+    #[must_use]
     pub fn with_details(mut self, details: &str) -> Self {
         self.details = details.to_string();
         self
@@ -113,7 +113,7 @@ pub struct ParsingTraceLog {
 
 impl ParsingTraceLog {
     /// Create a new parsing trace log.
-    #[must_use] 
+    #[must_use]
     pub fn new(attempt_number: usize, agent: &str, strategy: &str) -> Self {
         Self {
             attempt_number,
@@ -126,8 +126,9 @@ impl ParsingTraceLog {
         }
     }
 
-    /// Set the raw output from the agent.
-    pub fn set_raw_output(&mut self, output: &str) {
+    /// Set the raw output from the agent (consuming builder).
+    #[must_use]
+    pub fn with_raw_output(mut self, output: &str) -> Self {
         const MAX_OUTPUT_SIZE: usize = 50_000;
         self.raw_output = if output.len() > MAX_OUTPUT_SIZE {
             Some(format!(
@@ -139,6 +140,7 @@ impl ParsingTraceLog {
         } else {
             Some(output.to_string())
         };
+        self
     }
 
     /// Add a parsing step to the trace.
@@ -148,9 +150,11 @@ impl ParsingTraceLog {
         self
     }
 
-    /// Set the final extracted message.
-    pub fn set_final_message(&mut self, message: &str) {
+    /// Set the final extracted message (consuming builder).
+    #[must_use]
+    pub fn with_final_message(mut self, message: &str) -> Self {
         self.final_message = Some(message.to_string());
+        self
     }
 
     /// Write this trace to a file using workspace abstraction.
@@ -236,7 +240,10 @@ RAW AGENT OUTPUT
 {}
 
 ",
-            trace.raw_output.as_deref().unwrap_or("[No raw output captured]")
+            trace
+                .raw_output
+                .as_deref()
+                .unwrap_or("[No raw output captured]")
         )
     }
 
@@ -259,7 +266,11 @@ PARSING STEPS
             .steps
             .iter()
             .map(|step| {
-                let status = if step.success { "✓ SUCCESS" } else { "✗ FAILED" };
+                let status = if step.success {
+                    "✓ SUCCESS"
+                } else {
+                    "✗ FAILED"
+                };
                 let step_str = format!("{}. {} [{}]\n", step.step_number, step.description, status);
 
                 let input_str = step
@@ -318,7 +329,10 @@ FINAL EXTRACTED MESSAGE
 {}
 
 ",
-            trace.final_message.as_deref().unwrap_or("[No message extracted]")
+            trace
+                .final_message
+                .as_deref()
+                .unwrap_or("[No message extracted]")
         )
     }
 
@@ -347,7 +361,7 @@ pub struct ExtractionAttempt {
 
 impl ExtractionAttempt {
     /// Create a successful extraction attempt.
-    #[must_use] 
+    #[must_use]
     pub const fn success(method: &'static str, detail: String) -> Self {
         Self {
             method,
@@ -357,7 +371,7 @@ impl ExtractionAttempt {
     }
 
     /// Create a failed extraction attempt.
-    #[must_use] 
+    #[must_use]
     pub const fn failure(method: &'static str, detail: String) -> Self {
         Self {
             method,
@@ -381,7 +395,7 @@ pub struct ValidationCheck {
 impl ValidationCheck {
     /// Create a passing validation check.
     #[cfg(test)]
-    #[must_use] 
+    #[must_use]
     pub const fn pass(name: &'static str) -> Self {
         Self {
             name,
@@ -392,7 +406,7 @@ impl ValidationCheck {
 
     /// Create a failing validation check.
     #[cfg(test)]
-    #[must_use] 
+    #[must_use]
     pub const fn fail(name: &'static str, error: String) -> Self {
         Self {
             name,

@@ -246,9 +246,11 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.developer_iters = 5;
-        config.reviewer_reviews = 2;
+        let config = Config {
+            developer_iters: 5,
+            reviewer_reviews: 2,
+            ..create_test_config()
+        };
 
         let result = apply_cli_state_to_config(&cli_state, &config);
 
@@ -308,8 +310,10 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.isolation_mode = true;
+        let config = Config {
+            isolation_mode: true,
+            ..create_test_config()
+        };
 
         let result = apply_cli_state_to_config(&cli_state, &config);
 
@@ -378,9 +382,11 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.developer_agent = Some("existing-dev".to_string());
-        config.reviewer_agent = Some("existing-rev".to_string());
+        let config = Config {
+            developer_agent: Some("existing-dev".to_string()),
+            reviewer_agent: Some("existing-rev".to_string()),
+            ..create_test_config()
+        };
 
         let result = apply_cli_state_to_config(&cli_state, &config);
 
@@ -396,9 +402,11 @@ mod tests {
             ..Default::default()
         };
 
-        let mut config = create_test_config();
-        config.isolation_mode = true;
-        config.review_depth = ReviewDepth::Comprehensive;
+        let config = Config {
+            isolation_mode: true,
+            review_depth: ReviewDepth::Comprehensive,
+            ..create_test_config()
+        };
 
         let result = apply_cli_state_to_config(&cli_state, &config);
 

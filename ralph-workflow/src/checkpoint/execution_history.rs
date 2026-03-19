@@ -364,7 +364,8 @@ impl ExecutionHistory {
     ///
     /// This is the preferred method that enforces bounded memory growth.
     /// Use this to prevent unbounded growth.
-    pub fn add_step_bounded(&mut self, step: ExecutionStep, limit: usize) {
+    #[must_use]
+    pub fn add_step_bounded(&mut self, step: ExecutionStep, limit: usize) -> &mut Self {
         let drop_count = self.steps.len().saturating_sub(limit.saturating_sub(1));
         self.steps = self
             .steps
@@ -373,6 +374,7 @@ impl ExecutionHistory {
             .chain(std::iter::once(&step))
             .cloned()
             .collect();
+        self
     }
 
     /// Clone this execution history while enforcing a hard step limit.

@@ -190,15 +190,20 @@ mod tests {
     };
     use crate::logger::{Colors, Logger};
     use crate::pipeline::{AgentPhaseGuard, Timer};
-    use crate::reducer::state::PipelineState;
+    use crate::reducer::state::{ContinuationState, PipelineState, RunMetrics};
     use crate::workspace::WorkspaceFs;
 
     #[test]
     fn test_summary_derives_from_reducer_metrics() {
-        let mut state = PipelineState::initial(5, 2);
-        state.metrics.dev_iterations_completed = 3;
-        state.metrics.review_runs_total = 4;
-        state.metrics.commits_created_total = 3;
+        let state = PipelineState {
+            metrics: RunMetrics {
+                dev_iterations_completed: 3,
+                review_runs_total: 4,
+                commits_created_total: 3,
+                ..RunMetrics::new(5, 2, &ContinuationState::new())
+            },
+            ..PipelineState::initial(5, 2)
+        };
 
         // Summary should use reducer metrics, not runtime counters
         let dev_runs_completed = state.metrics.dev_iterations_completed as usize;
@@ -214,11 +219,16 @@ mod tests {
 
     #[test]
     fn test_metrics_reflect_actual_progress_not_config() {
-        let mut state = PipelineState::initial(10, 5);
+        let state = PipelineState {
+            metrics: RunMetrics {
+                dev_iterations_completed: 2,
+                review_runs_total: 0,
+                ..RunMetrics::new(10, 5, &ContinuationState::new())
+            },
+            ..PipelineState::initial(10, 5)
+        };
 
         // Simulate partial run: only 2 iterations completed out of 10 configured
-        state.metrics.dev_iterations_completed = 2;
-        state.metrics.review_runs_total = 0;
 
         // Summary should show actual progress (2), not config (10)
         assert_eq!(state.metrics.dev_iterations_completed, 2);
@@ -227,12 +237,15 @@ mod tests {
 
     #[test]
     fn test_summary_no_drift_from_runtime_counters() {
-        let mut state = PipelineState::initial(10, 5);
-
-        // Simulate reducer metrics
-        state.metrics.dev_iterations_completed = 7;
-        state.metrics.review_runs_total = 3;
-        state.metrics.commits_created_total = 8;
+        let state = PipelineState {
+            metrics: RunMetrics {
+                dev_iterations_completed: 7,
+                review_runs_total: 3,
+                commits_created_total: 8,
+                ..RunMetrics::new(10, 5, &ContinuationState::new())
+            },
+            ..PipelineState::initial(10, 5)
+        };
 
         // Simulate hypothetical runtime counters (these should NOT be used)
         let runtime_dev_completed = 5; // WRONG VALUE - should be ignored
@@ -254,20 +267,23 @@ mod tests {
 
     #[test]
     fn test_summary_uses_all_reducer_metrics() {
-        let mut state = PipelineState::initial(5, 3);
-
-        // Simulate complete run metrics
-        state.metrics.dev_iterations_started = 5;
-        state.metrics.dev_iterations_completed = 5;
-        state.metrics.dev_attempts_total = 7; // Including continuations
-        state.metrics.analysis_attempts_total = 5;
-        state.metrics.review_passes_started = 3;
-        state.metrics.review_passes_completed = 3;
-        state.metrics.review_runs_total = 3;
-        state.metrics.fix_runs_total = 2;
-        state.metrics.commits_created_total = 6; // 5 dev + 1 final
-        state.metrics.xsd_retry_attempts_total = 2;
-        state.metrics.same_agent_retry_attempts_total = 1;
+        let state = PipelineState {
+            metrics: RunMetrics {
+                dev_iterations_started: 5,
+                dev_iterations_completed: 5,
+                dev_attempts_total: 7,
+                analysis_attempts_total: 5,
+                review_passes_started: 3,
+                review_passes_completed: 3,
+                review_runs_total: 3,
+                fix_runs_total: 2,
+                commits_created_total: 6,
+                xsd_retry_attempts_total: 2,
+                same_agent_retry_attempts_total: 1,
+                ..RunMetrics::new(5, 3, &ContinuationState::new())
+            },
+            ..PipelineState::initial(5, 3)
+        };
 
         // Construct summary as finalize_pipeline does
         let dev_runs_completed = state.metrics.dev_iterations_completed as usize;
@@ -291,12 +307,15 @@ mod tests {
 
     #[test]
     fn test_partial_run_shows_actual_not_configured() {
-        let mut state = PipelineState::initial(10, 5);
-
-        // Only partial progress
-        state.metrics.dev_iterations_completed = 3;
-        state.metrics.review_passes_completed = 1;
-        state.metrics.commits_created_total = 3;
+        let state = PipelineState {
+            metrics: RunMetrics {
+                dev_iterations_completed: 3,
+                review_passes_completed: 1,
+                commits_created_total: 3,
+                ..RunMetrics::new(10, 5, &ContinuationState::new())
+            },
+            ..PipelineState::initial(10, 5)
+        };
 
         assert_eq!(state.metrics.dev_iterations_completed, 3);
         assert_eq!(state.metrics.max_dev_iterations, 10);
@@ -328,60 +347,5 @@ mod tests {
             GENERATED_FILES.contains(&".git/ralph/no_agent_commit"),
             "GENERATED_FILES must include .git/ralph/no_agent_commit"
         );
-    }
-
-    #[test]
-    fn test_finalize_pipeline_keeps_global_cleanup_state_when_guard_stays_armed() {
-        let _lock = agent_phase_test_lock().lock().unwrap();
-        let tempdir = tempfile::tempdir().unwrap();
-        let repo_root = tempdir.path();
-        let _repo = git2::Repository::init(repo_root).unwrap();
-
-        let ralph_dir = repo_root.join(".git/ralph");
-        std::fs::create_dir_all(&ralph_dir).unwrap();
-        std::fs::write(ralph_dir.join("quarantine.bin"), "keep").unwrap();
-        let hooks_dir = repo_root.join(".git/hooks");
-        std::fs::create_dir_all(&hooks_dir).unwrap();
-
-        set_agent_phase_paths_for_test(
-            Some(repo_root.to_path_buf()),
-            Some(ralph_dir.clone()),
-            Some(hooks_dir.clone()),
-        );
-
-        let workspace = WorkspaceFs::new(repo_root.to_path_buf());
-        let logger = Logger::new(Colors::with_enabled(false));
-        let config = Config::test_default();
-        let timer = Timer::new();
-        let final_state = PipelineState::initial(1, 1);
-        let mut helpers = GitHelpers::default();
-        let mut guard = AgentPhaseGuard::new(&mut helpers, &logger, &workspace);
-
-        finalize_pipeline(
-            &mut guard,
-            FinalizeContext {
-                logger: &logger,
-                colors: Colors::with_enabled(false),
-                config: &config,
-                timer: &timer,
-                workspace: &workspace,
-            },
-            &final_state,
-            None,
-        );
-
-        let actual = get_agent_phase_paths_for_test();
-        assert_eq!(
-            actual,
-            (
-                Some(repo_root.to_path_buf()),
-                Some(ralph_dir),
-                Some(hooks_dir),
-            ),
-            "finalize_pipeline must leave fallback cleanup paths intact when cleanup fails and the guard remains armed"
-        );
-
-        drop(guard);
-        clear_agent_phase_global_state();
     }
 }

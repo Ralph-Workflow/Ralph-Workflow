@@ -142,5 +142,5 @@ mod rebase;
 mod review;
 
 #[cfg(test)]
-#[path = "state_reduction/tests.rs"]
+#[path = "state_reduction/io_tests/mod.rs"]
 mod tests;

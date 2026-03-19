@@ -15,4 +15,4 @@ include!("review/review_prompts.rs");
 include!("review/fix_prompts.rs");
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

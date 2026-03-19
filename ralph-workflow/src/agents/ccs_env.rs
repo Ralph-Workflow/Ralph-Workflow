@@ -12,5 +12,5 @@ include!("ccs_env/yaml_parser.rs");
 include!("ccs_env/loader.rs");
 
 #[cfg(test)]
-#[path = "ccs_env/tests.rs"]
-mod tests;
+#[path = "ccs_env/io_tests.rs"]
+mod io_tests;

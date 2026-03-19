@@ -15,7 +15,7 @@ use std::io::Stderr;
 include!("printer/traits.rs");
 
 // Test printer (test-utils only)
-include!("printer/test_printer.rs");
+include!("printer/io_test_printer.rs");
 
 // Streaming test printer (test-utils only)
 include!("printer/streaming_printer.rs");
@@ -24,4 +24,4 @@ include!("printer/streaming_printer.rs");
 include!("printer/virtual_terminal/mod.rs");
 
 // Tests
-include!("printer/tests.rs");
+include!("printer/io_tests.rs");

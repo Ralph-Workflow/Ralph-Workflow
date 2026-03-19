@@ -513,4 +513,4 @@ fn extract_conflict_sections_from_content(content: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

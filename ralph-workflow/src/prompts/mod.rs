@@ -132,4 +132,4 @@ pub use content_reference::{
 };
 
 #[cfg(test)]
-mod tests;
+mod io_tests;

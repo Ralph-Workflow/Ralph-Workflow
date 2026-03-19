@@ -273,51 +273,53 @@ mod tests {
     use std::collections::HashMap;
 
     fn mock_api_catalog() -> ApiCatalog {
-        let mut providers = HashMap::new();
-        providers.insert(
-            "anthropic".to_string(),
-            Provider {
-                id: "anthropic".to_string(),
-                name: "Anthropic".to_string(),
-                description: "Anthropic Claude models".to_string(),
-            },
-        );
-        providers.insert(
-            "openai".to_string(),
-            Provider {
-                id: "openai".to_string(),
-                name: "OpenAI".to_string(),
-                description: "OpenAI GPT models".to_string(),
-            },
-        );
+        let providers = HashMap::from([
+            (
+                "anthropic".to_string(),
+                Provider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    description: "Anthropic Claude models".to_string(),
+                },
+            ),
+            (
+                "openai".to_string(),
+                Provider {
+                    id: "openai".to_string(),
+                    name: "OpenAI".to_string(),
+                    description: "OpenAI GPT models".to_string(),
+                },
+            ),
+        ]);
 
-        let mut models = HashMap::new();
-        models.insert(
-            "anthropic".to_string(),
-            vec![
-                Model {
-                    id: "claude-sonnet-4-5".to_string(),
-                    name: "Claude Sonnet 4.5".to_string(),
-                    description: "Latest Claude Sonnet".to_string(),
-                    context_length: Some(200_000),
-                },
-                Model {
-                    id: "claude-opus-4".to_string(),
-                    name: "Claude Opus 4".to_string(),
-                    description: "Most capable Claude".to_string(),
-                    context_length: Some(200_000),
-                },
-            ],
-        );
-        models.insert(
-            "openai".to_string(),
-            vec![Model {
-                id: "gpt-4".to_string(),
-                name: "GPT-4".to_string(),
-                description: "OpenAI's GPT-4".to_string(),
-                context_length: Some(8192),
-            }],
-        );
+        let models = HashMap::from([
+            (
+                "anthropic".to_string(),
+                vec![
+                    Model {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        description: "Latest Claude Sonnet".to_string(),
+                        context_length: Some(200_000),
+                    },
+                    Model {
+                        id: "claude-opus-4".to_string(),
+                        name: "Claude Opus 4".to_string(),
+                        description: "Most capable Claude".to_string(),
+                        context_length: Some(200_000),
+                    },
+                ],
+            ),
+            (
+                "openai".to_string(),
+                vec![Model {
+                    id: "gpt-4".to_string(),
+                    name: "GPT-4".to_string(),
+                    description: "OpenAI's GPT-4".to_string(),
+                    context_length: Some(8192),
+                }],
+            ),
+        ]);
 
         ApiCatalog {
             providers,

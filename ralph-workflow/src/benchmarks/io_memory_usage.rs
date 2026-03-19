@@ -9,7 +9,7 @@
 //! **These are measurement benchmarks, not pass/fail tests.**
 //! Run with `--nocapture` to see output.
 
-use crate::benchmarks::baselines::estimate_execution_step_heap_bytes_core_fields;
+use crate::benchmarks::io_baselines::estimate_execution_step_heap_bytes_core_fields;
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::reducer::state::PipelineState;
 use std::time::Instant;

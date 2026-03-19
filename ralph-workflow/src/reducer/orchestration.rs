@@ -89,5 +89,5 @@ pub(in crate::reducer::orchestration) const fn is_recovery_state_active(
 }
 
 #[cfg(test)]
-#[path = "orchestration/tests.rs"]
+#[path = "orchestration/io_tests/mod.rs"]
 mod tests;

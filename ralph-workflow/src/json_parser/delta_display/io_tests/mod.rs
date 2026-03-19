@@ -12,7 +12,7 @@
 //! - `formatting_tests` - Formatter methods (`format_thinking`, `format_tool_input`)
 //! - `text_renderer_tests` - `TextDeltaRenderer` implementation
 //! - `thinking_renderer_tests` - `ThinkingDeltaRenderer` implementation
-//! - `streaming_tests` - Full streaming sequences and prefix display
+//! - `io_streaming_tests` - Full streaming sequences and prefix display
 //! - `sanitize_tests` - Whitespace sanitization logic
 //! - `renderer_tests` - General renderer behavior (newlines, whitespace)
 //! - `config_tests` - Configuration and debouncer behavior
@@ -26,8 +26,8 @@ pub fn test_colors() -> Colors {
 
 mod config_tests;
 mod formatting_tests;
+mod io_streaming_tests;
 mod renderer_tests;
 mod sanitize_tests;
-mod streaming_tests;
 mod text_renderer_tests;
 mod thinking_renderer_tests;

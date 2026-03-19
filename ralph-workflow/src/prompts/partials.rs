@@ -89,9 +89,9 @@ mod tests {
     #[test]
     fn test_shared_partials_not_empty() {
         let partials = get_shared_partials();
-        for (name, content) in &partials {
+        partials.iter().for_each(|(name, content)| {
             assert!(!content.is_empty(), "Partial '{name}' should not be empty");
-        }
+        });
     }
 
     #[test]
@@ -233,15 +233,17 @@ mod tests {
             .get("shared/_no_git_commit")
             .expect("no git commit partial should exist");
 
-        for cmd in &[
+        &[
             "`git status`",
             "`git log`",
             "`git diff`",
             "`git show`",
             "`git branch`",
-        ] {
+        ]
+        .into_iter()
+        .for_each(|cmd| {
             assert!(no_git.contains(cmd), "partial should list {cmd} as allowed");
-        }
+        });
     }
 
     #[test]

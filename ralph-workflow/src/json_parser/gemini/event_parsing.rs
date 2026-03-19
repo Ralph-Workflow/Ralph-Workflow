@@ -57,14 +57,11 @@ impl GeminiParser {
         let prefix = &self.display_name;
 
         // Reset streaming state on new session
-        self.state.streaming_session.borrow_mut().on_message_start();
-        self.state.last_rendered_content.borrow_mut().clear();
-        let sid = session_id.unwrap_or_else(|| "unknown".to_string());
-        // Set the current message ID for duplicate detection
-        self.state
-            .streaming_session
-            .borrow_mut()
-            .set_current_message_id(Some(sid.clone()));
+        self.state.with_session_mut(|session| {
+            session.on_message_start();
+            session.set_current_message_id(Some(sid.clone()));
+        });
+        self.state.with_last_rendered_content_mut(|v| v.clear());
         let model_str = model.unwrap_or_else(|| "unknown".to_string());
         format!(
             "{}[{}]{} {}Session started{} {}({:.8}..., {}){}\n",
@@ -135,10 +132,9 @@ impl GeminiParser {
                     );
 
                     let sanitized = delta_display::sanitize_for_display(&accumulated_text);
-                    self.state
-                        .last_rendered_content
-                        .borrow_mut()
-                        .insert(key.to_string(), sanitized);
+                    self.state.with_last_rendered_content_mut(|v| {
+                        v.insert(key.to_string(), sanitized);
+                    });
 
                     // First delta already emitted the full accumulated content, so we can stop here.
                     // Subsequent deltas will compute and emit only the new suffix.
@@ -175,10 +171,9 @@ impl GeminiParser {
                     );
                 }
 
-                self.state
-                    .last_rendered_content
-                    .borrow_mut()
-                    .insert(key.to_string(), sanitized.clone());
+                self.state.with_last_rendered_content_mut(|v| {
+                    v.insert(key.to_string(), sanitized.clone());
+                });
 
                 return match terminal_mode {
                     TerminalMode::Full => format!("{}{}{}", c.white(), suffix, c.reset()),
@@ -195,7 +190,9 @@ impl GeminiParser {
                 drop(session);
 
                 // Finalize the message (this marks it as displayed)
-                let _was_in_block = self.state.streaming_session.borrow_mut().on_message_stop();
+                let _was_in_block = self
+                    .state
+                    .with_session_mut(|session| session.on_message_stop());
 
                 let terminal_mode = *self.state.terminal_mode.borrow();
 
@@ -205,35 +202,32 @@ impl GeminiParser {
                     TerminalMode::Full => String::new(),
                     TerminalMode::Basic | TerminalMode::None => {
                         let session = self.state.streaming_session.borrow();
-                        let mut out = String::new();
-                        for key in session.accumulated_keys(ContentType::Text) {
-                            let accumulated = session
-                                .get_accumulated(ContentType::Text, &key)
-                                .unwrap_or("");
-                            let sanitized = delta_display::sanitize_for_display(accumulated);
-                            if sanitized.is_empty() {
-                                continue;
-                            }
+                        let out = session
+                            .accumulated_keys(ContentType::Text)
+                            .filter_map(|key| {
+                                let accumulated = session
+                                    .get_accumulated(ContentType::Text, &key)
+                                    .unwrap_or("");
+                                let sanitized = delta_display::sanitize_for_display(accumulated);
+                                if sanitized.is_empty() {
+                                    return None;
+                                }
 
-                            match terminal_mode {
-                                TerminalMode::Basic => {
-                                    let _ = writeln!(
-                                        out,
+                                Some(match terminal_mode {
+                                    TerminalMode::Basic => format!(
                                         "{}[{}]{} {}{}{}",
                                         c.dim(),
                                         prefix,
                                         c.reset(),
                                         c.white(),
-                                        sanitized,
-                                        c.reset()
-                                    );
-                                }
-                                TerminalMode::None => {
-                                    let _ = writeln!(out, "[{prefix}] {sanitized}");
-                                }
-                                TerminalMode::Full => unreachable!(),
-                            }
-                        }
+                                        sanitized
+                                    ),
+                                    TerminalMode::None => format!("[{prefix}] {sanitized}"),
+                                    TerminalMode::Full => unreachable!(),
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .join("");
                         out
                     }
                 };
@@ -297,7 +291,7 @@ impl GeminiParser {
         let prefix = &self.display_name;
 
         let tool_name = tool_name.unwrap_or_else(|| "unknown".to_string());
-        let mut out = format!(
+        let out = format!(
             "{}[{}]{} {}Tool{}: {}{}{}\n",
             c.dim(),
             prefix,
@@ -314,20 +308,25 @@ impl GeminiParser {
                 let limit = self.verbosity.truncate_limit("tool_input");
                 let preview = truncate_text(&params_str, limit);
                 if !preview.is_empty() {
-                    let _ = writeln!(
+                    format!(
+                        "{}{}[{}]{} {}  └─ {}{}",
                         out,
-                        "{}[{}]{} {}  └─ {}{}",
                         c.dim(),
                         prefix,
                         c.reset(),
                         c.dim(),
                         preview,
                         c.reset()
-                    );
+                    )
+                } else {
+                    out
                 }
+            } else {
+                out
             }
+        } else {
+            out
         }
-        out
     }
 
     /// Format a `ToolResult` event
@@ -340,7 +339,7 @@ impl GeminiParser {
         let icon = if is_success { CHECK } else { CROSS };
         let color = if is_success { c.green() } else { c.red() };
 
-        let mut out = format!(
+        let out = format!(
             "{}[{}]{} {}{} Tool result{}\n",
             c.dim(),
             prefix,
@@ -354,16 +353,18 @@ impl GeminiParser {
             if let Some(output_text) = output {
                 let limit = self.verbosity.truncate_limit("tool_result");
                 let preview = truncate_text(output_text, limit);
-                let _ = writeln!(
-                    out,
-                    "{}[{}]{} {}  └─ {}{}",
-                    c.dim(),
-                    prefix,
-                    c.reset(),
-                    c.dim(),
-                    preview,
-                    c.reset()
-                );
+                if !preview.is_empty() {
+                    return format!(
+                        "{}{}[{}]{} {}  └─ {}{}",
+                        out,
+                        c.dim(),
+                        prefix,
+                        c.reset(),
+                        c.dim(),
+                        preview,
+                        c.reset()
+                    );
+                }
             }
         }
         out

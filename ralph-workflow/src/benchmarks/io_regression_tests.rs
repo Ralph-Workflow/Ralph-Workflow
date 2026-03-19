@@ -3,7 +3,7 @@
 //! These tests enforce performance baselines and catch regressions early in CI.
 //! They use conservative thresholds with some tolerance for platform variance.
 
-use crate::benchmarks::baselines::estimate_execution_step_heap_bytes_core_fields;
+use crate::benchmarks::io_baselines::estimate_execution_step_heap_bytes_core_fields;
 use crate::checkpoint::execution_history::{ExecutionStep, StepOutcome};
 use crate::checkpoint::StringPool;
 use crate::reducer::state::PipelineState;

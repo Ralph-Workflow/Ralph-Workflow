@@ -68,8 +68,7 @@ pub fn run_event_loop_with_handler_boundary<'r, 'ctx>(
     phase_ctx: &'r mut PhaseContext<'ctx>,
     initial_state: PipelineState,
 ) -> anyhow::Result<crate::app::EventLoopResult> {
-    let mut handler =
-        crate::app::runtime_factory::create_main_effect_handler(initial_state.clone());
+    let handler = crate::app::runtime_factory::create_main_effect_handler(initial_state.clone());
     let event_loop_config = EventLoopConfig {
         max_iterations: MAX_EVENT_LOOP_ITERATIONS,
     };
@@ -125,7 +124,7 @@ pub fn handle_repo_commands_boundary(
     repo_root: &std::path::Path,
     workspace: &std::sync::Arc<dyn crate::workspace::Workspace>,
 ) -> anyhow::Result<bool> {
-    let mut cleanup_guard =
+    let cleanup_guard =
         crate::app::runtime_factory::create_cleanup_guard(logger, workspace.as_ref(), false);
 
     if args.recovery.dry_run {

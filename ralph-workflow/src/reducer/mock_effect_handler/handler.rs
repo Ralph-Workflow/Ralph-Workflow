@@ -496,7 +496,7 @@ mod tests {
 
         let colors = Colors { enabled: false };
         let logger = Logger::new(colors);
-        let mut timer = Timer::new();
+        let timer = Timer::new();
 
         let config = Config::default();
         let registry = AgentRegistry::new().unwrap();
@@ -513,7 +513,7 @@ mod tests {
         let workspace_arc = Arc::clone(&ws_arc);
 
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
-        let mut ctx = crate::phases::PhaseContext {
+        let ctx = crate::phases::PhaseContext {
             config: &config,
             registry: &registry,
             logger: &logger,

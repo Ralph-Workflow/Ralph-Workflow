@@ -16,7 +16,7 @@ mod tests {
     #[test]
     fn test_user_friendly_summary_uses_ascii_outcome_markers() {
         // Arrange: a checkpoint with execution history containing each outcome type.
-        let mut history = ExecutionHistory::new();
+        let history = ExecutionHistory::new();
         history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
@@ -54,7 +54,7 @@ mod tests {
             100,
         );
 
-        let mut checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
+        let checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
             phase: PipelinePhase::Development,
             iteration: 1,
             total_iterations: 1,
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_detailed_checkpoint_inspection_uses_ascii_outcome_markers() {
         // Arrange: a checkpoint with execution history containing each outcome type.
-        let mut history = ExecutionHistory::new();
+        let history = ExecutionHistory::new();
         history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
@@ -159,7 +159,7 @@ mod tests {
             100,
         );
 
-        let mut checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
+        let checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
             phase: PipelinePhase::Development,
             iteration: 1,
             total_iterations: 1,
@@ -231,7 +231,7 @@ mod tests {
         // Timestamp is stored and parsed using the same local timezone, so "just now"
         // is always correct regardless of the running environment's timezone.
 
-        let mut checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
+        let checkpoint = crate::checkpoint::PipelineCheckpoint::from_params(CheckpointParams {
             phase: PipelinePhase::Development,
             iteration: 1,
             total_iterations: 1,

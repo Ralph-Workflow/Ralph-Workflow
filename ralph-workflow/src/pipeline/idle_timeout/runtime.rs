@@ -1,6 +1,6 @@
 //! Idle-timeout monitor thread.
 
-use super::kill::{
+use super::io::{
     force_kill_best_effort, kill_process, KillConfig, KillResult, DEFAULT_KILL_CONFIG,
 };
 use crate::executor::{AgentChild, ChildProcessInfo, ProcessExecutor};

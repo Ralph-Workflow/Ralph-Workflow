@@ -141,9 +141,9 @@ mod tests {
             PipelinePhase::Complete,
             PipelinePhase::Interrupted,
         ];
-        for phase in phases {
+        phases.into_iter().for_each(|phase| {
             let emoji = UIEvent::phase_emoji(&phase);
             assert!(!emoji.is_empty(), "Phase {phase:?} should have an emoji");
-        }
+        });
     }
 }

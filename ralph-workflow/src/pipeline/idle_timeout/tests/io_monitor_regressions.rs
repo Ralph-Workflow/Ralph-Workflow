@@ -1,4 +1,4 @@
-use super::super::kill::kill_process;
+use super::super::io::kill_process;
 use super::super::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex};
@@ -78,7 +78,7 @@ fn monitor_releases_child_lock_between_sigterm_checks_so_caller_can_access_child
         move || {
             monitor_idle_timeout_with_interval_and_kill_config(
                 &timestamp_for_monitor,
-                None, // No file activity tracking for this test
+                None,
                 &child_for_monitor,
                 &should_stop_for_monitor,
                 &executor,
@@ -373,9 +373,6 @@ fn monitor_succeeds_with_sigterm_when_process_terminates() {
                 &child_clone,
                 &should_stop_clone,
                 &executor_dyn,
-                // Give the test ample SIGTERM grace so the polling loop has time
-                // to observe the TERM send and flip the mock child to "exited"
-                // before escalation.
                 MonitorConfig {
                     timeout: Duration::ZERO,
                     check_interval: Duration::from_millis(1),
@@ -462,8 +459,6 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         }
     });
 
-    // The monitor returns TimedOut after a bounded enforcement window so the
-    // pipeline can regain control, even if the process is still running.
     let result = rx
         .recv_timeout(Duration::from_secs(2))
         .expect("expected monitor to return within bounded time");
@@ -480,15 +475,12 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         "expected process to still be running"
     );
 
-    // Ensure we did not give up immediately: a background reaper keeps sending SIGKILL
-    // for a bounded amount of time to avoid leaking threads.
     let kill_calls_before = executor
         .execute_calls_for("kill")
         .iter()
         .filter(|(_, args, _, _)| args.iter().any(|a| a == "-KILL"))
         .count();
 
-    // Avoid relying on exact thread scheduling: the reaper resends SIGKILL on a timer.
     let deadline = std::time::Instant::now() + Duration::from_millis(200);
     let mut kill_calls_after = kill_calls_before;
     while std::time::Instant::now() < deadline && kill_calls_after == kill_calls_before {
@@ -504,8 +496,6 @@ fn monitor_reports_timeout_even_if_process_still_alive_after_force_kill_hard_cap
         "expected background reaper to continue sending SIGKILL"
     );
 
-    // But it must be bounded: after the reaper window expires, it should stop.
-    // post_sigkill_hard_cap=50ms; 60ms gives 20% headroom over the window.
     thread::sleep(Duration::from_millis(60));
     let kill_calls_after_reaper_window = executor
         .execute_calls_for("kill")

@@ -1,18 +1,18 @@
 //! Prompt-based command execution.
 
-mod agent_spawn;
+mod io_agent_spawn;
 
 #[cfg(test)]
-mod agent_spawn_test;
+mod io_agent_spawn_test;
 
-mod cleanup;
-mod clipboard;
+mod io_clipboard;
 mod environment;
-mod process_wait;
+mod io_process_wait;
 mod run;
+mod runtime;
 mod save;
-mod stderr_collector;
-mod streaming;
+mod io_stderr_collector;
+mod io_streaming;
 mod time;
 mod types;
 
@@ -86,27 +86,29 @@ fn truncate_prompt_if_needed(prompt: &str, logger: &Logger) -> String {
         "\nPrevious output:",
     ];
 
-    for marker in truncation_markers {
-        if let Some(marker_pos) = prompt.find(marker) {
-            let content_start = marker_pos + marker.len();
-            if content_start < prompt.len() {
-                let before_marker = &prompt[..content_start];
-                let after_marker = &prompt[content_start..];
-
-                if after_marker.len() > excess + 100 {
-                    let keep_from = excess + 100;
-                    let truncated_content = &after_marker[keep_from..];
-                    let clean_start = truncated_content.find('\n').map_or(0, |i| i + 1);
-
-                    return format!(
-                        "{}\n[... {} bytes truncated to fit CLI argument limit ...]\n{}",
-                        before_marker,
-                        keep_from + clean_start,
-                        &truncated_content[clean_start..]
-                    );
-                }
-            }
+    if let Some(early_result) = truncation_markers.iter().find_map(|marker| {
+        let marker_pos = prompt.find(marker)?;
+        let content_start = marker_pos + marker.len();
+        if content_start >= prompt.len() {
+            return None;
         }
+        let before_marker = &prompt[..content_start];
+        let after_marker = &prompt[content_start..];
+        if after_marker.len() > excess + 100 {
+            let keep_from = excess + 100;
+            let truncated_content = &after_marker[keep_from..];
+            let clean_start = truncated_content.find('\n').map_or(0, |i| i + 1);
+            Some(format!(
+                "{}\n[... {} bytes truncated to fit CLI argument limit ...]\n{}",
+                before_marker,
+                keep_from + clean_start,
+                &truncated_content[clean_start..]
+            ))
+        } else {
+            None
+        }
+    }) {
+        return early_result;
     }
 
     let keep_start = MAX_PROMPT_SIZE / 3;

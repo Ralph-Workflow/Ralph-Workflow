@@ -364,7 +364,7 @@ pub fn handle_mcp_tool_started(
     let default = String::from("unknown");
     let tool_name = tool_name.unwrap_or(&default);
 
-    let mut out = match ctx.terminal_mode {
+    let base = match ctx.terminal_mode {
         TerminalMode::Full | TerminalMode::Basic => format!(
             "{}[{}]{} {}MCP Tool{}: {}{}{}\n",
             ctx.colors.dim(),
@@ -379,16 +379,15 @@ pub fn handle_mcp_tool_started(
         TerminalMode::None => format!("[{}] MCP Tool: {}\n", ctx.display_name, tool_name),
     };
 
-    if ctx.verbosity.show_tool_input() {
+    let tool_input = if ctx.verbosity.show_tool_input() {
         if let Some(args) = arguments {
             let args_str = format_tool_input(args);
             let limit = ctx.verbosity.truncate_limit("tool_input");
             let preview = truncate_text(&args_str, limit);
-            if !preview.is_empty() {
-                // This is a one-shot preview at item start, not streaming per-delta output.
-                // Always render it, including in Basic/None modes, so non-TTY logs remain
-                // observable.
-                let tool_input_line = match ctx.terminal_mode {
+            if preview.is_empty() {
+                String::new()
+            } else {
+                match ctx.terminal_mode {
                     TerminalMode::Full | TerminalMode::Basic => format!(
                         "{}[{}]{} {}  └─ {}{}{}\n",
                         ctx.colors.dim(),
@@ -400,13 +399,16 @@ pub fn handle_mcp_tool_started(
                         ctx.colors.reset()
                     ),
                     TerminalMode::None => format!("[{}]   └─ {}\n", ctx.display_name, preview),
-                };
-                out.push_str(&tool_input_line);
+                }
             }
+        } else {
+            String::new()
         }
-    }
+    } else {
+        String::new()
+    };
 
-    out
+    format!("{base}{tool_input}")
 }
 
 /// Handle `ItemStarted` event for `web_search` type.

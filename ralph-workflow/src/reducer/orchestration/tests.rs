@@ -21,45 +21,35 @@ fn create_test_state() -> PipelineState {
 }
 
 // Interrupted phase checkpoint behavior tests
-#[path = "tests/interrupted_phase.rs"]
+#[path = "io_tests/interrupted_phase.rs"]
 mod interrupted_phase;
 
-// Planning phase effect determination tests
-#[path = "tests/planning_phase.rs"]
+#[path = "io_tests/planning_phase.rs"]
 mod planning_phase;
 
-// Development iteration tests
-#[path = "tests/development_phase.rs"]
+#[path = "io_tests/development_phase.rs"]
 mod development_phase;
 
-// Review pass and fix tests
-#[path = "tests/review_phase.rs"]
+#[path = "io_tests/review_phase.rs"]
 mod review_phase;
 
-// Commit message generation tests
-#[path = "tests/commit_phase.rs"]
+#[path = "io_tests/commit_phase.rs"]
 mod commit_phase;
 
-// Complete pipeline flow tests
-#[path = "tests/pipeline_flow.rs"]
+#[path = "io_tests/pipeline_flow.rs"]
 mod pipeline_flow;
 
-// Retry safety tests (stale XML cleanup on agent failures)
-#[path = "tests/retry_cleans_xml.rs"]
+#[path = "io_tests/retry_cleans_xml.rs"]
 mod retry_cleans_xml;
 
-// Resume boundary condition tests
-#[path = "tests/resume_boundary.rs"]
+#[path = "io_tests/resume_boundary.rs"]
 mod resume_boundary;
 
-// Prompt permissions lifecycle tests
-#[path = "tests/prompt_permissions.rs"]
+#[path = "io_tests/prompt_permissions.rs"]
 mod prompt_permissions;
 
-// Recovery flow regression tests
-#[path = "tests/recovery_flow.rs"]
+#[path = "io_tests/recovery_flow.rs"]
 mod recovery_flow;
 
-// Cloud mode orchestration tests
-#[path = "tests/cloud_push.rs"]
+#[path = "io_tests/cloud_push.rs"]
 mod cloud_push;
