@@ -435,6 +435,84 @@ Ralph should consider this RFC successful when:
 
 ## Alternatives Considered
 
+### Protocol Alternatives To MCP
+
+This section evaluates the viable protocol families for the agent-orchestrator boundary and explains why MCP-style JSON-RPC is recommended over alternatives.
+
+#### gRPC With Protobuf
+
+gRPC is a mature, high-performance RPC framework built on HTTP/2 with Protocol Buffer serialization. It is the default choice for service-to-service communication in many backend systems.
+
+| Dimension | gRPC | MCP-style JSON-RPC |
+|-----------|------|---------------------|
+| Typing | Strong, compile-time via `.proto` definitions | Runtime via JSON Schema |
+| Serialization | Binary (protobuf), 3-10x smaller payloads | Text (JSON), human-readable |
+| Streaming | Native bidirectional streaming over HTTP/2 | Request/response; streaming layered via SSE or notifications |
+| Debuggability | Poor for humans; requires `grpcurl` or reflection tooling | Excellent; any text tool can inspect, log, diff, replay |
+| Code generation | Required for every language binding | Optional; plain JSON works without codegen |
+| Ecosystem fit | Strong in backend infrastructure | Strong in AI/agent tooling ecosystem |
+| Agent compatibility | Agents produce and consume text natively; binary adds a translation layer | Agents already work in JSON; no impedance mismatch |
+
+**Verdict: not recommended for the agent-facing boundary.** gRPC's performance advantages are irrelevant when LLM inference latency dominates the workflow. The debugging and auditability tax of binary serialization is not worth paying at the orchestrator-agent surface where inspectability matters most.
+
+gRPC remains a reasonable choice for high-throughput internal Ralph boundaries if they ever emerge, but it should not be the agent-facing protocol.
+
+#### Plain JSON-RPC 2.0 Without MCP Semantics
+
+JSON-RPC 2.0 is the transport layer underneath MCP. Ralph could adopt JSON-RPC directly without the MCP capability model.
+
+**Pros**
+
+- simplest possible structured RPC
+- no external spec dependency
+- full control over message shapes
+
+**Cons**
+
+- no standard for tool discovery, capability negotiation, or resource semantics
+- Ralph would need to invent its own contract for everything MCP already defines
+- no ecosystem interoperability with MCP-compatible tooling
+
+**Verdict: viable but wasteful.** MCP adds the capability layer Ralph needs on top of JSON-RPC. Using raw JSON-RPC means rebuilding that layer from scratch.
+
+#### A2A (Agent2Agent Protocol)
+
+A2A is a Google-backed protocol for agent-to-agent collaboration. It defines Agent Cards for capability advertisement, task lifecycle management, and multi-turn interactions.
+
+**Pros**
+
+- purpose-built for multi-agent collaboration
+- Agent Card discovery mechanism for capability advertisement
+- full OAuth2, API key, and mTLS security model
+- native SSE streaming for task updates
+
+**Cons**
+
+- designed for agent-to-agent, not agent-to-orchestrator tool brokering
+- newer ecosystem with fewer production deployments
+- heavier than needed for Ralph's primary use case of tool access and policy enforcement
+
+**Verdict: worth monitoring, not the v1 choice.** A2A becomes relevant if Ralph evolves toward autonomous multi-agent collaboration where agents negotiate directly. For v1, where Ralph is the host and agents are content producers inside a governed boundary, MCP-style tool brokering is the better fit. A2A could complement MCP later for parallel worker coordination.
+
+#### Custom Binary Protocol
+
+Ralph could design a custom binary protocol using MessagePack, CBOR, or raw protobuf without the gRPC framework.
+
+**Verdict: not recommended.** The maintenance burden and debugging difficulty are not justified. Binary serialization gains are academic for agent orchestration workloads where LLM latency is orders of magnitude larger than serialization cost.
+
+### Why Text Beats Binary For Agent-Facing Protocols
+
+LLM agents natively produce and consume text. A binary protocol at the agent boundary creates an impedance mismatch that adds complexity without improving the agent's reasoning quality.
+
+More importantly, text protocols are:
+
+- **inspectable** without special tooling
+- **loggable** in human-readable audit trails
+- **diffable** for debugging session replays
+- **replayable** from log files for incident investigation
+
+For an unattended system like Ralph where post-hoc debugging matters more than wire-level throughput, text wins decisively.
+
 ### Provider-Native Subagents As The Product Surface
 
 Rejected because it weakens Ralph's determinism, portability, and recovery story. Ralph should consume providers, not become subordinate to their orchestration semantics.
@@ -456,6 +534,7 @@ Rejected for v1 because the product need is better control at the runtime bounda
 3. How much approval workflow should exist in unattended mode versus deterministic auto-policy outcomes?
 4. Should capability scoping be fully drain-defined, or should plans be allowed to narrow capabilities further for specific branch contracts?
 5. What is the minimum viable session model needed to support continuation, XSD retry, and fallback without duplicating state across layers?
+6. Should A2A be evaluated for parallel worker coordination in later phases, or is MCP-style session scoping sufficient?
 
 ---
 
@@ -470,3 +549,6 @@ Rejected for v1 because the product need is better control at the runtime bounda
 - `docs/agent-compatibility.md`
 - Model Context Protocol specification: `https://modelcontextprotocol.io/specification/2025-03-26`
 - MCP architecture docs: `https://modelcontextprotocol.io/docs/learn/architecture`
+- A2A Protocol specification: `https://a2a-protocol.org/latest/specification/`
+- gRPC documentation: `https://grpc.io/docs/`
+- JSON-RPC 2.0 specification: `https://www.jsonrpc.org/specification`
