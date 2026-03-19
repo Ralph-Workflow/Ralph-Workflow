@@ -336,7 +336,7 @@ mod tests {
         let all_events: Vec<String> = input
             .iter()
             .map(|&b| IncrementalNdjsonParser::new().feed(b))
-            .flat_map(|parser| parser.drain_results())
+            .flat_map(|mut parser| parser.drain_results())
             .collect();
 
         assert_eq!(all_events.len(), 1);

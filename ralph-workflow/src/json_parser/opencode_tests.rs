@@ -23,7 +23,7 @@ fn test_opencode_streaming_with_tool_use_events() {
 
     // Create a TestPrinter to capture output
     let test_printer: SharedPrinter = Rc::new(RefCell::new(TestPrinter::new()));
-    let parser =
+    let mut parser =
         OpenCodeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, test_printer);
 
     // Simulate streaming tool_use events
@@ -74,7 +74,7 @@ fn test_opencode_parser_writes_commit_message_xml_when_commit_tag_seen() {
     use crate::workspace::Workspace;
     use std::path::Path;
 
-    let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+    let mut parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
 
     let input = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"id":"prt_1","sessionID":"ses_test","messageID":"msg_1","type":"step-start","snapshot":"deadbeef"}}
 {"type":"text","timestamp":2,"sessionID":"ses_test","part":{"id":"prt_2","sessionID":"ses_test","messageID":"msg_1","type":"text","text":"<ralph-commit><ralph-subject>fix: test</ralph-subject></ralph-commit>"}}
@@ -106,7 +106,7 @@ fn test_opencode_parser_writes_issues_xml_when_issues_tag_seen() {
     use crate::workspace::Workspace;
     use std::path::Path;
 
-    let parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
+    let mut parser = OpenCodeParser::new(Colors { enabled: false }, Verbosity::Normal);
 
     let input = r#"{"type":"step_start","timestamp":1,"sessionID":"ses_test","part":{"id":"prt_1","sessionID":"ses_test","messageID":"msg_1","type":"step-start","snapshot":"deadbeef"}}
 {"type":"text","timestamp":2,"sessionID":"ses_test","part":{"id":"prt_2","sessionID":"ses_test","messageID":"msg_1","type":"text","text":"<ralph-issues><ralph-issue>First issue</ralph-issue></ralph-issues>"}}

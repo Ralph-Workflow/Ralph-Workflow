@@ -132,20 +132,19 @@ pub(crate) fn config_entries(path: &Path) -> io::Result<Vec<(String, Option<Stri
 }
 
 fn collect_config_entries(
-    entries: git2::ConfigEntries,
+    mut entries: git2::ConfigEntries,
 ) -> io::Result<Vec<(String, Option<String>)>> {
-    entries
-        .map(|entry: git2::ConfigEntry| {
-            let name = entry
-                .name()
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidData, "config entry missing name")
-                })?
-                .to_string();
-            let value = entry.value().map(ToString::to_string);
-            Ok((name, value))
-        })
-        .collect()
+    let mut result = Vec::new();
+    while let Some(entry) = entries.next() {
+        let entry = entry.map_err(|e| crate::git_helpers::git2_to_io_error(&e))?;
+        let name = entry
+            .name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "config entry missing name"))?
+            .to_string();
+        let value = entry.value().map(ToString::to_string);
+        result.push((name, value));
+    }
+    Ok(result)
 }
 
 fn read_shared_worktree_config_state(

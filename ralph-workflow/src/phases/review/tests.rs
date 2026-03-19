@@ -96,7 +96,7 @@ fn test_validate_and_process_issues_xml_archives_and_writes_markdown() {
         xml_content,
     );
     let mut fixture = TestFixture::new(workspace);
-    let mut ctx = fixture.ctx();
+    let ctx = fixture.ctx();
 
     let _ = super::xml_processing::validate_and_process_issues_xml(
         &ctx,

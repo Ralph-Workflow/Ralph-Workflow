@@ -1,10 +1,23 @@
 //! Shared boundary detection logic for all lints.
 //!
-//! Boundary modules are directories where effectful code (mutation, I/O) is
-//! permitted. This mirrors the Haskell separation between pure computation
-//! and the `IO` monad.
+//! A boundary module is the Rust equivalent of Haskell's `IO` monad: it exists
+//! ONLY to perform real side effects. A module belongs in `BOUNDARY_MODULES` if
+//! and only if its primary purpose is executing at least one of:
 //!
-//! This is pure domain logic - no I/O, no environment access.
+//!   - filesystem reads or writes (`std::fs`)
+//!   - environment variable access (`std::env`)
+//!   - process spawning (`std::process`)
+//!   - network I/O (`std::net`, `ureq`, `reqwest`)
+//!   - thread or task management (`std::thread`, `tokio`)
+//!   - clock or randomness (`std::time::Instant::now`, `rand`)
+//!   - stdio handles (`std::io::stdin`, `stdout`, `stderr`)
+//!   - foreign function calls (`extern "C"`)
+//!
+//! DO NOT add a module to this list because it uses `RefCell`, `Mutex`, `let
+//! mut`, or any other local mutation. Local mutation for pure computation does
+//! not make something a side effect. If a function contains no call from the
+//! list above, it is domain code and must follow FP rules regardless of how its
+//! internal state is managed.
 
 use rustc_hir::intravisit::{walk_expr, Visitor};
 use rustc_hir::{Body, Expr, ExprKind, MatchSource};
@@ -95,9 +108,7 @@ pub const BOUNDARY_MODULES: &[&str] = &[
     "delta_display",
     "executor",
     "ffi",
-    "files",
     "gemini",
-    "git_helpers",
     "health",
     "io",
     "opencode",

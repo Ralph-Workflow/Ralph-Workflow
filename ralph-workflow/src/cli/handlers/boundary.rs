@@ -152,12 +152,12 @@ pub fn prompt_template_selection(colors: Colors) -> TemplateSelectionResult {
 
     match diagnostics_domain::evaluate_template_creation_response(&response) {
         diagnostics_domain::TemplatePromptResponseDecision::Declined => None,
-        diagnostics_domain::TemplatePromptResponseDecision::Selected(_) => {
+        diagnostics_domain::TemplatePromptResponseDecision::Selected => {
             let template_input = prompt_for_template_name(colors)?;
             let templates = list_templates();
             match diagnostics_domain::resolve_selected_template(&template_input, &templates) {
                 diagnostics_domain::TemplateSelectionOutcome::Selected(selected) => Some(selected),
-                diagnostics_domain::TemplateSelectionOutcome::UseDefault { default, .. } => {
+                diagnostics_domain::TemplateSelectionOutcome::UseDefault { default } => {
                     let _ = writeln!(
                         stdout,
                         "{}Unknown template. Using {} as default.{}",
@@ -345,7 +345,13 @@ fn collect_git_info(executor: &dyn ProcessExecutor) -> GitDiagnostics {
             .ok(),
     };
 
-    diagnostics_domain::compute_git_diagnostics_from_raw_results(results)
+    let is_repo = results
+        .rev_parse_output
+        .as_ref()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    diagnostics_domain::compute_git_diagnostics_from_raw_results(results, is_repo)
 }
 
 fn format_git_info_lines(diagnostics: &GitDiagnostics) -> Vec<String> {

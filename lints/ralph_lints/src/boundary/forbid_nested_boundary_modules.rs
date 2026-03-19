@@ -1,16 +1,10 @@
 //! Lint: `FORBID_NESTED_BOUNDARY_MODULES`
 //!
-//! Rejects nested modules inside boundary directories. Boundary modules
-//! (`io/`, `runtime/`, `ffi/`, `boundary/`, `executor/`, `files/`, `git_helpers/`)
-//! must be flat - they can contain files but not subdirectories with `mod.rs` or
-//! `foo/bar.rs` module structures.
-//!
-//! ## FP principle: boundaries are leaves, not containers
-//!
-//! In Haskell, `IO` is a type tag (like `newtype IO a = IO (RealWorld -> (a, RealWorld))`).
-//! It doesn't contain other modules - it's a boundary marker. The same applies here:
-//! `io/` is where I/O happens, not a container for domain modules like `io/claude/`,
-//! `io/opencode/`, etc.
+//! Boundary modules (`io/`, `runtime/`, `ffi/`, `boundary/`, `executor/`) are
+//! the Rust equivalent of Haskell's `IO` monad — they exist solely to execute
+//! side effects. They must be flat leaf directories, not containers for domain
+//! logic. A nested submodule inside a boundary directory almost always means
+//! business logic has leaked into effectful code.
 
 use crate::domain::boundary::BOUNDARY_MODULES;
 use rustc_ast::Crate;
@@ -31,7 +25,7 @@ declare_lint! {
     /// `io/claude/mod.rs` is a nested module inside boundary `io/`
     pub FORBID_NESTED_BOUNDARY_MODULES,
     Deny,
-    "boundary modules (io/, runtime/, ffi/, boundary/, executor/, files/, git_helpers/) cannot contain nested submodules"
+    "boundary modules (io/, runtime/, ffi/, boundary/, executor/) cannot contain nested submodules"
 }
 
 impl_lint_pass!(ForbidNestedBoundaryModules => [FORBID_NESTED_BOUNDARY_MODULES]);

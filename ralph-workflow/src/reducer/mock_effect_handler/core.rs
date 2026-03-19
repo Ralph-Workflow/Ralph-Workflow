@@ -180,7 +180,7 @@ impl MockEffectHandler {
     ///     .with_replay_prompt_key("commit_message_attempt_iter1_1");
     /// ```
     #[must_use]
-    pub fn with_replay_prompt_key(mut self, key: impl Into<String>) -> Self {
+    pub fn with_replay_prompt_key(self, key: impl Into<String>) -> Self {
         Self {
             replay_prompt_keys: Some(
                 self.replay_prompt_keys

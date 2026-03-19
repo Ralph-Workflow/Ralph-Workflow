@@ -2,8 +2,6 @@
 // Environment and Filesystem Traits for Testability
 // ============================================================================
 
-use std::path::PathBuf;
-
 /// Trait for accessing CCS-related environment variables.
 ///
 /// This trait enables dependency injection for testing without global state pollution.

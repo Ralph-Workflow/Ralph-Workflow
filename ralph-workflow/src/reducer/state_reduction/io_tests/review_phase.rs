@@ -4,7 +4,6 @@
 // resetting continuation state, and preserving backoff policy.
 
 use crate::agents::AgentRole;
-use crate::reducer::effect::Effect;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::io_tests::create_test_state;
 use crate::reducer::orchestration::determine_next_effect;

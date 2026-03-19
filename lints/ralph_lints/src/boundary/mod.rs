@@ -12,6 +12,8 @@
 //! 3. Emit diagnostics (the effect)
 
 pub mod boundary_function_too_complex;
+pub mod forbid_boundary_policy_calls;
+pub mod forbid_domain_boundary_dependencies;
 pub mod forbid_imperative_loops;
 pub mod forbid_interior_mutability;
 pub mod forbid_io_effects;

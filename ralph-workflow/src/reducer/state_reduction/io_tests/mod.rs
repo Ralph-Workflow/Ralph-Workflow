@@ -15,7 +15,7 @@ mod rebase_commit;
 mod review_phase;
 mod template_validation;
 
-pub use crate::agents::{AgentErrorKind, AgentRole};
+pub use crate::agents::AgentRole;
 pub use crate::reducer::event::{PipelineEvent, PipelinePhase};
 pub use crate::reducer::io_tests::create_test_state;
 pub use crate::reducer::orchestration::determine_next_effect;

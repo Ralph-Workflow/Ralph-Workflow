@@ -12,8 +12,6 @@ use super::health::StreamingQualityMetrics;
 use super::types::{format_tool_input, format_unknown_json_event, ContentType, GeminiEvent};
 use crate::json_parser::health::monitor::HealthMonitor;
 
-pub mod boundary;
-
 pub mod io;
 
 include!("gemini/parser.rs");

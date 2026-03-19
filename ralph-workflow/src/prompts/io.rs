@@ -74,10 +74,6 @@ impl Serialize for PromptHistoryEntry {
     }
 }
 
-fn parse_variable_spec(var_spec: &str) -> Option<(&str, Option<String>)> {
-    crate::prompts::template_parsing::parse_variable_spec_impl(var_spec)
-}
-
 fn parse_metadata_line(line: &str) -> Option<(Option<String>, Option<String>)> {
     crate::prompts::template_parsing::parse_metadata_line_impl(line)
 }

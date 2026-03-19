@@ -46,12 +46,13 @@ impl EventTraceBuffer {
         }
     }
 
-    pub(super) fn push(&mut self, entry: EventTraceEntry) {
+    pub(super) fn append(mut self, entry: EventTraceEntry) -> Self {
         self.entries.push_back(entry);
         let overflow = self.entries.len().saturating_sub(self.capacity);
         if overflow > 0 {
             self.entries.drain(0..overflow);
         }
+        self
     }
 
     pub(super) const fn entries(&self) -> &VecDeque<EventTraceEntry> {

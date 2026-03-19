@@ -17,7 +17,7 @@ mod tests {
     fn test_user_friendly_summary_uses_ascii_outcome_markers() {
         // Arrange: a checkpoint with execution history containing each outcome type.
         let mut history = ExecutionHistory::new();
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
                 1,
@@ -26,7 +26,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Review",
                 1,
@@ -35,7 +35,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
                 1,
@@ -44,7 +44,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Commit",
                 1,
@@ -122,7 +122,7 @@ mod tests {
     fn test_detailed_checkpoint_inspection_uses_ascii_outcome_markers() {
         // Arrange: a checkpoint with execution history containing each outcome type.
         let mut history = ExecutionHistory::new();
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
                 1,
@@ -131,7 +131,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Review",
                 1,
@@ -140,7 +140,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Development",
                 1,
@@ -149,7 +149,7 @@ mod tests {
             ),
             100,
         );
-        history.add_step_bounded(
+        let _ = history.add_step_bounded(
             ExecutionStep::new(
                 "Commit",
                 1,

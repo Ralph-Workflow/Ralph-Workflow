@@ -20,8 +20,9 @@ fn test_consecutive_duplicate_detection_drops_resend_glitch() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate resend glitch: same delta sent repeatedly
     // With default threshold of 3, occurrences 3+ should be dropped
@@ -78,8 +79,9 @@ fn test_consecutive_duplicate_counter_resets_on_different_delta() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     let input_lines = [
         // Message start
@@ -146,8 +148,9 @@ fn test_consecutive_duplicate_allows_legitimate_repetition() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     let input_lines = [
         // Message start

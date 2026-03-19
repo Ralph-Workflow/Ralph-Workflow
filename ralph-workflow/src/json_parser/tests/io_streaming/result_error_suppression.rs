@@ -15,7 +15,8 @@ fn test_suppress_duplicate_error_result_after_success() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
 
     // Simulate the GLM/ccs-glm scenario:
     // 1. Success Result event (agent completed successfully)
@@ -73,7 +74,8 @@ fn test_suppress_error_result_that_arrives_before_success() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
 
     // Simulate the REVERSE order scenario:
     // 1. error_during_execution Result event (arrives first)
@@ -130,7 +132,8 @@ fn test_do_not_suppress_error_with_actual_errors_array() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
 
     // Simulate the scenario where an error event has actual error messages:
     // 1. Success Result event (agent completed successfully)
@@ -184,7 +187,8 @@ fn test_suppress_error_with_empty_errors_array() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer);
 
     // Simulate the scenario where an error event has an empty 'errors' array:
     // 1. Success Result event (agent completed successfully)

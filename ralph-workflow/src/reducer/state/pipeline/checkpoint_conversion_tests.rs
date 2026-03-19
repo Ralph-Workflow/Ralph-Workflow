@@ -145,7 +145,7 @@ mod tests {
         use crate::checkpoint::state::{AgentConfigSnapshot, CliArgsSnapshot, RebaseState};
         use crate::checkpoint::{CheckpointBuilder, PipelinePhase as CheckpointPhase};
 
-        let mut checkpoint = CheckpointBuilder::new()
+        let checkpoint = CheckpointBuilder::new()
             .phase(CheckpointPhase::AwaitingDevFix, 2, 5)
             .reviewer_pass(1, 2)
             .agents("dev", "rev")

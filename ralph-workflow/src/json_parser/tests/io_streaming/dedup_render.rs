@@ -14,8 +14,9 @@ fn test_identical_accumulated_content_skips_rendering() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate empty deltas that don't change accumulated content
     // This can happen with some agents that send no-op events

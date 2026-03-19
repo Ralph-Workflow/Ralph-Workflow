@@ -7,10 +7,8 @@ use crate::agents::AgentRole;
 use crate::reducer::effect::Effect;
 use crate::reducer::event::PipelineEvent;
 use crate::reducer::event::PipelinePhase;
-use crate::reducer::io_tests::create_test_state;
 use crate::reducer::orchestration::determine_next_effect;
 use crate::reducer::state::PipelineState;
-use crate::reducer::state_reduction::reduce;
 
 fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
     PipelineState {

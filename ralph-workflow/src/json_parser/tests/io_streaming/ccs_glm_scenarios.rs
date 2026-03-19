@@ -21,8 +21,9 @@ fn test_ccs_glm_duplicate_output_bug_fix() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate the ccs-glm scenario where deltas are sent in alternating pattern
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}
@@ -89,8 +90,9 @@ fn test_ccs_glm_repeated_message_start_preserves_processed_deltas() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate the ccs-glm scenario with repeated `MessageStart` events
     let input_lines = vec![

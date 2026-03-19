@@ -61,12 +61,10 @@ pub fn build_conflict_resolution_prompt(
 
     template.render(&variables).unwrap_or_else(|e| {
         eprintln!("Warning: Failed to render conflict resolution template: {e}");
-        // Use fallback template
         let fallback_template_content = include_str!("templates/conflict_resolution_fallback.txt");
         let fallback_template = Template::new(fallback_template_content);
         fallback_template.render(&variables).unwrap_or_else(|e| {
             eprintln!("Critical: Failed to render fallback template: {e}");
-            // Last resort: minimal emergency prompt - conflicts_section is captured from closure
             format!(
                 "# MERGE CONFLICT RESOLUTION\n\nResolve these conflicts:\n\n{}",
                 &conflicts_section

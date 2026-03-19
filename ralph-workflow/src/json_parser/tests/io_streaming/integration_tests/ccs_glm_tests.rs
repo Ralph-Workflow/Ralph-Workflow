@@ -24,8 +24,9 @@ fn test_ccs_glm_streaming_no_duplicate_prefix() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate the problematic ccs-glm streaming pattern:
     // Many small deltas arriving one token at a time
@@ -100,8 +101,9 @@ fn test_ccs_glm_complete_message_deduplication() {
 
     // This scenario targets non-TTY behavior: per-delta output is suppressed and
     // flushed once at message_stop to avoid repeated prefixed lines.
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::None);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::None);
 
     // Simulate streaming followed by a complete message event
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}
@@ -153,8 +155,9 @@ fn test_finalize_without_deltas_no_output() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate message_start -> message_stop with no content
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}
@@ -197,8 +200,9 @@ fn test_repeated_content_block_start_no_duplicate_prefix() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate GLM sending ContentBlockStart before each delta
     let mut input_lines = Vec::new();
@@ -271,8 +275,9 @@ fn test_multiple_messages_with_proper_separation() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Stream two complete messages in sequence
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}

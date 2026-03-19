@@ -1,3 +1,4 @@
+use crate::app::io::effect_io::{flush_stdout, write_stdout};
 use crate::logger::Logger;
 
 fn parse_yes_no_response(input: String) -> bool {
@@ -6,14 +7,13 @@ fn parse_yes_no_response(input: String) -> bool {
 }
 
 fn write_prompt(logger: &Logger, prompt_text: &str) {
-    use std::io::Write;
     logger.info("");
     logger.info(prompt_text);
     let prompt = "Resume? [y/N] ";
     let colors = crate::logger::Colors::new();
-    let _ = std::io::stdout().write_all(format!("{}{}", colors.yellow(), prompt).as_bytes());
-    let _ = std::io::stdout().flush();
-    let _ = std::io::stdout().write_all(colors.reset().as_bytes());
+    let _ = write_stdout(&format!("{}{}", colors.yellow(), prompt));
+    let _ = flush_stdout();
+    let _ = write_stdout(colors.reset().as_str());
 }
 
 pub fn prompt_yes_no(logger: &Logger, prompt_text: &str) -> bool {

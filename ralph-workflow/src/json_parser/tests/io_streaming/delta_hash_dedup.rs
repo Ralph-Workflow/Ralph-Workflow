@@ -56,8 +56,9 @@ fn test_identical_deltas_produce_output_once() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate sending the same delta multiple times (a common bug pattern)
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}
@@ -94,8 +95,9 @@ fn test_different_deltas_produce_output() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate sending different deltas
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}
@@ -129,8 +131,9 @@ fn test_empty_deltas_marked_as_processed() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate sending multiple empty deltas
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}

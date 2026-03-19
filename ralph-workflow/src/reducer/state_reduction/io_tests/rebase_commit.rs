@@ -3,12 +3,10 @@
 // Tests for rebase started/succeeded/conflict/resolved transitions,
 // and commit generation/created state transitions.
 
-use super::*;
 use crate::reducer::create_test_state;
 use crate::reducer::event::{PipelineEvent, PipelinePhase, RebasePhase};
 use crate::reducer::state::{CommitState, PipelineState, RebaseState};
 use crate::reducer::state_reduction::reduce;
-use crate::reducer::AgentRole;
 
 #[test]
 fn test_reduce_rebase_started() {

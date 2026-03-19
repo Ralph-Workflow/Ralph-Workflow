@@ -50,78 +50,21 @@ pub fn run_rebase_to_default(
 /// Uses a state machine for fault tolerance and automatic recovery from
 /// interruptions or failures.
 pub fn run_initial_rebase(
+    logger: &Logger,
+    colors: Colors,
     phase_ctx: &mut PhaseContext<'_>,
     run_context: &RunContext,
     executor: &dyn ProcessExecutor,
     prompt_history: &mut std::collections::HashMap<String, crate::prompts::PromptHistoryEntry>,
 ) -> anyhow::Result<InitialRebaseRunResult> {
-    phase_ctx
-        .logger
-        .header("Pre-development rebase", Colors::cyan);
-
-    record_rebase_start(phase_ctx);
-    save_pre_rebase_checkpoint(phase_ctx, run_context, prompt_history);
-
-    match run_rebase_to_default(phase_ctx.logger, *phase_ctx.colors, executor) {
-        Ok(RebaseResult::Success) => {
-            handle_rebase_success(phase_ctx, run_context, prompt_history);
-            let prompt_replay_hits = Vec::new();
-            Ok(InitialRebaseRunResult {
-                outcome: InitialRebaseOutcome::Succeeded {
-                    new_head: read_repo_head_or_unknown(phase_ctx.workspace),
-                },
-                prompt_replay_hits,
-            })
-        }
-        Ok(RebaseResult::NoOp { reason }) => {
-            handle_rebase_noop(phase_ctx, run_context, &reason, prompt_history);
-            let prompt_replay_hits = Vec::new();
-            Ok(InitialRebaseRunResult {
-                outcome: InitialRebaseOutcome::Skipped { reason },
-                prompt_replay_hits,
-            })
-        }
-        Ok(RebaseResult::Conflicts(_)) => {
-            let (resolved, replay) =
-                handle_rebase_conflicts(phase_ctx, run_context, executor, prompt_history)?;
-            let prompt_replay_hits = vec![(replay.key, replay.was_replayed)];
-            if resolved {
-                Ok(InitialRebaseRunResult {
-                    outcome: InitialRebaseOutcome::Succeeded {
-                        new_head: read_repo_head_or_unknown(phase_ctx.workspace),
-                    },
-                    prompt_replay_hits,
-                })
-            } else {
-                Ok(InitialRebaseRunResult {
-                    outcome: InitialRebaseOutcome::Skipped {
-                        reason: "Rebase conflicts unresolved".to_string(),
-                    },
-                    prompt_replay_hits,
-                })
-            }
-        }
-        Ok(RebaseResult::Failed(err)) => {
-            handle_rebase_failed(phase_ctx, &err);
-            let prompt_replay_hits = Vec::new();
-            Ok(InitialRebaseRunResult {
-                outcome: InitialRebaseOutcome::Skipped {
-                    reason: "Rebase failed".to_string(),
-                },
-                prompt_replay_hits,
-            })
-        }
-        Err(e) => {
-            handle_rebase_error(phase_ctx, &e);
-            let prompt_replay_hits = Vec::new();
-            Ok(InitialRebaseRunResult {
-                outcome: InitialRebaseOutcome::Skipped {
-                    reason: "Rebase error".to_string(),
-                },
-                prompt_replay_hits,
-            })
-        }
-    }
+    let default_branch = get_default_branch()?;
+    logger.info(&format!(
+        "Rebasing onto {}{}{}",
+        colors.cyan(),
+        default_branch,
+        colors.reset()
+    ));
+    rebase_onto(&default_branch, executor)
 }
 
 /// Record the start of a pre-rebase operation.
@@ -132,7 +75,7 @@ fn record_rebase_start(phase_ctx: &mut PhaseContext<'_>) {
         "pre_rebase_start",
         StepOutcome::success(None, vec![]),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }
@@ -177,7 +120,7 @@ fn handle_rebase_success(
         "pre_rebase_complete",
         StepOutcome::success(None, vec![]),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 
@@ -201,7 +144,7 @@ fn handle_rebase_noop(
         "pre_rebase_skipped",
         StepOutcome::skipped(reason.to_string()),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 
@@ -302,7 +245,7 @@ fn record_conflict_detected(phase_ctx: &mut PhaseContext<'_>, conflict_count: us
             format!("{conflict_count} conflicts detected"),
         ),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }
@@ -397,7 +340,7 @@ fn handle_resolution_failed(phase_ctx: &mut PhaseContext<'_>, executor: &dyn Pro
         "pre_rebase_resolution",
         StepOutcome::failure("AI conflict resolution failed".to_string(), true),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }
@@ -419,7 +362,7 @@ fn handle_resolution_error(
         "pre_rebase_resolution",
         StepOutcome::failure(format!("Conflict resolution error: {e}"), true),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }
@@ -435,7 +378,7 @@ fn handle_rebase_failed(phase_ctx: &mut PhaseContext<'_>, err: &RebaseErrorKind)
         "pre_rebase_failed",
         StepOutcome::failure(format!("Rebase failed: {err}"), true),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }
@@ -452,7 +395,7 @@ fn handle_rebase_error(phase_ctx: &mut PhaseContext<'_>, e: &std::io::Error) {
         "pre_rebase_error",
         StepOutcome::failure(format!("Rebase error: {e}"), true),
     );
-    phase_ctx
+    let _ = phase_ctx
         .execution_history
         .add_step_bounded(step, phase_ctx.config.execution_history_limit);
 }

@@ -199,7 +199,8 @@ pub fn run_review_pass(
             )
             .with_agent(active_agent)
             .with_duration(elapsed_seconds(attempt_start));
-            ctx.execution_history
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(ReviewPassResult::issues_found(xml_content))
@@ -220,7 +221,8 @@ pub fn run_review_pass(
             )
             .with_agent(active_agent)
             .with_duration(elapsed_seconds(attempt_start));
-            ctx.execution_history
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(ReviewPassResult::no_issues(xml_content))

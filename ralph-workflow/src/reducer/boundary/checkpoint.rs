@@ -241,7 +241,7 @@ mod tests {
         let git_env = crate::runtime::environment::mock::MockGitEnvironment::new();
 
         let mut execution_history = ExecutionHistory::new();
-        execution_history.add_step_bounded(
+        let _ = execution_history.add_step_bounded(
             ExecutionStep::new(
                 "planning",
                 0,

@@ -14,6 +14,7 @@ use crate::reducer::reduce;
 use crate::reducer::state::PipelineState;
 use crate::reducer::state::PromptMode;
 use crate::reducer::state::PromptPermissionsState;
+use crate::reducer::TimeoutOutputKind;
 
 fn initial_with_locked_permissions(dev_iters: u32, review_passes: u32) -> PipelineState {
     PipelineState {

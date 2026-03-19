@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use super::*;
+use crate::reducer::event::AgentErrorKind;
 
 /// When transitioning from Development to Review (via `CommitCreated` or `CommitSkipped`),
 /// the agent chain must be cleared so that orchestration will emit `InitializeAgentChain`
@@ -183,7 +184,7 @@ fn test_auth_failure_during_review_advances_reducer_chain() {
             AgentRole::Reviewer,
             "codex".to_string(),
             1,
-            AgentErrorKind::AuthFailure,
+            AgentErrorKind::Authentication,
             false,
         ),
     );

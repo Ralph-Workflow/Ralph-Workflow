@@ -20,6 +20,4 @@
 //!
 //! This is a boundary module - mutation and I/O are allowed here.
 
-pub mod file_operations;
 pub mod terminal;
-pub mod workspace_ops;

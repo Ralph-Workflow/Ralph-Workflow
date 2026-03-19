@@ -154,15 +154,11 @@ fn ignores_node_modules_and_target_like_directories() {
     // Many files in target should be ignored.
     let workspace = MemoryWorkspace::new_test().with_file("src/index.js", "export default {}");
 
-    (0..50).for_each(|i| {
-        workspace
-            .clone()
-            .with_file(&format!("node_modules/pkg{i}/index.js"), "");
+    let workspace = (0..50).fold(workspace, |w, i| {
+        w.with_file(&format!("node_modules/pkg{i}/index.js"), "")
     });
-    (0..50).for_each(|i| {
-        workspace
-            .clone()
-            .with_file(&format!("target/build{i}/main.rs"), "");
+    let workspace = (0..50).fold(workspace, |w, i| {
+        w.with_file(&format!("target/build{i}/main.rs"), "")
     });
 
     let stack = detect_stack_with_workspace(&workspace, Path::new("")).unwrap();

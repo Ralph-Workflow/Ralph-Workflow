@@ -106,6 +106,7 @@ In practice, that means boundary functions must not contain:
 - invariant enforcement that should have been captured in a parsed type
 - state-machine logic that belongs in an orchestrator or reducer
 - hidden dependency lookups that make the function appear pure when it is not
+- raw capability-native types flowing inward when the boundary should have translated them first
 
 If the boundary needs comments to explain the business rule it is applying, the
 logic is probably in the wrong place.
@@ -200,6 +201,34 @@ invariants when combined with private fields plus smart constructors,
 
 Use module names as architectural categories, not as lint escape hatches.
 
+### Lint-recognized boundary markers
+
+The primary architectural boundary categories are:
+
+- `io/`
+- `runtime/`
+- `ffi/`
+- `boundary/`
+- `executor/`
+
+The lint crate also recognizes a few implementation-specific adapter directories that already act as
+effect seams in this repository:
+
+- `claude/`
+- `codex/`
+- `gemini/`
+- `opencode/`
+- `streaming_state/`
+- `health/`
+- `deduplication/`
+- `delta_display/`
+- `printer/`
+
+These extra names are compatibility markers for existing adapter code, not a suggestion to invent
+new boundary categories casually. If you need a new module name in `BOUNDARY_MODULES`, it should
+be because the module's primary job is executing real effects, not because it wants an exemption
+from functional rules.
+
 ## Boundary modules must stay flat
 
 Boundary directories are architectural markers, not containers for deeper module
@@ -210,7 +239,7 @@ The repository rule is:
 > Boundary modules must be flat.
 
 That means directories such as `io/`, `runtime/`, `ffi/`, `boundary/`,
-`executor/`, `files/`, and `git_helpers/` may contain files, but they must not
+and `executor/` may contain files, but they must not
 contain nested submodules like `io/provider/mod.rs` or
 `runtime/process/wrapper.rs`.
 
@@ -558,6 +587,48 @@ pub fn load_template_directory(
 ```
 
 The boundary owns the lookup. The pure function owns the meaning.
+
+### Example 4b: Translate raw capability types before they cross inward
+
+Prefer boundary-facing types over leaking capability-native types into the rest of the program.
+
+Prefer this:
+
+```rust
+pub struct CommandOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub fn run_command(
+    executor: &dyn ProcessExecutor,
+    command: &CommandSpec,
+) -> Result<CommandOutput, RunCommandError> {
+    executor
+        .run(command)
+        .map_err(RunCommandError::Execution)
+        .map(|raw| CommandOutput {
+            success: raw.status.success(),
+            stdout: raw.stdout,
+            stderr: raw.stderr,
+        })
+}
+```
+
+over this:
+
+```rust
+pub fn run_command(
+    executor: &dyn ProcessExecutor,
+    command: &CommandSpec,
+) -> Result<std::process::Output, ProcessExecutionError> {
+    executor.run(command)
+}
+```
+
+The boundary should absorb transport, runtime, and FFI details as early as possible so domain code
+sees typed facts instead of capability-native handles.
 
 ### Example 4: Diagnostics as data, emitted later
 

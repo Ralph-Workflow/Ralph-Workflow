@@ -57,7 +57,7 @@ pub fn create_prompt_from_template<R: ConfigEnvironment>(
     let validation = validate_template_name(template_name);
     if matches!(
         validation,
-        crate::cli::diagnostics_domain::TemplateValidation::Unknown { .. }
+        crate::cli::diagnostics_domain::TemplateValidation::Unknown
     ) {
         print_unknown_template_error(template_name, colors);
         return Ok(true);

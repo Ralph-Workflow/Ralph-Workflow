@@ -50,29 +50,6 @@ fn wait_until_deadline(child: &mut std::process::Child, deadline: std::time::Ins
 }
 
 #[cfg(unix)]
-fn termination_decision(
-    now: std::time::Instant,
-    term_deadline: std::time::Instant,
-    kill_deadline: std::time::Instant,
-    _pid: i32,
-) -> TerminationStage {
-    if now < term_deadline {
-        TerminationStage::WaitAndTerm
-    } else if now < kill_deadline {
-        TerminationStage::SendSigkill
-    } else {
-        TerminationStage::Done
-    }
-}
-
-#[cfg(unix)]
-enum TerminationStage {
-    WaitAndTerm,
-    SendSigkill,
-    Done,
-}
-
-#[cfg(unix)]
 fn wait_for_termination_or_send_sigkill(child: &mut std::process::Child, pid: i32) {
     let (term_deadline, kill_deadline) = compute_termination_deadlines();
     wait_until_deadline(child, term_deadline);

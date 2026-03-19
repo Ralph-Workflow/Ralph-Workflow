@@ -59,23 +59,91 @@ For practical examples of how to rewrite imperative code to satisfy these lints,
 | `forbid_mutating_receiver_methods` | Rejects calls to `&mut self` methods unless the receiver type is an inherently-effectful I/O type or the call site is in a boundary module |
 | `forbid_interior_mutability` | Rejects interior-mutability types (`Cell`, `RefCell`, `Mutex`, `RwLock`, etc.) outside boundary modules |
 | `forbid_terminal_output` | Rejects direct terminal output (`println!`, `eprintln!`, etc.) outside boundary modules |
-| `forbid_io_effects` | Rejects direct file I/O operations (`std::fs`, `std::io`) outside boundary modules |
+| `forbid_io_effects` | Rejects direct effect access (`std::fs`, `std::env`, `std::process`, network, threads/tasks, randomness, stdio, clock reads) outside boundary modules |
+| `forbid_nested_boundary_modules` | Rejects nested modules inside boundary directories so effect seams stay flat and wiring-focused |
 | `boundary_function_too_complex` | Flags boundary functions exceeding a complexity threshold |
 
 ### Boundary modules
 
 The lints `forbid_mut_binding`, `forbid_imperative_loops`, `forbid_mutating_receiver_methods`,
-and `forbid_interior_mutability` all share a **boundary module** concept.  Code in a directory
-whose path contains one of these components is exempt from the restriction:
+`forbid_interior_mutability`, `forbid_terminal_output`, and `forbid_io_effects` all share a
+**boundary module** concept. Code in a directory whose path contains one of these components is
+treated as an effect boundary.
+
+Canonical architectural boundary categories:
 
 - `io/`
 - `runtime/`
 - `ffi/`
 - `boundary/`
+- `executor/`
 
-This mirrors the Haskell separation between pure computation and the `IO` monad.
-Low-level I/O, FFI glue, and runtime bootstrap code may use mutation where the
-underlying API demands it, while all application-level domain code stays purely functional.
+The lint crate also recognizes a small set of implementation-specific boundary markers used by
+existing adapter code:
+
+- `claude/`
+- `codex/`
+- `gemini/`
+- `opencode/`
+- `streaming_state/`
+- `health/`
+- `deduplication/`
+- `delta_display/`
+- `printer/`
+
+This mirrors the Haskell separation between pure computation and the `IO` monad, but with an
+important repository-specific rule: a boundary marker is an effect seam, not a general escape
+hatch. Mutation is tolerated there only because the underlying capability demands it.
+
+Boundary modules are expected to:
+
+- gather inputs from capabilities
+- call pure helpers on ordinary values
+- execute the requested effect
+- translate effect failures or raw outputs into typed results and descriptive events
+
+Boundary modules must not become a second policy engine. In particular they should not own:
+
+- retry or fallback policy
+- workflow progression decisions
+- reducer/orchestrator decisions hidden behind effectful helpers
+- business branching that should live in pure domain logic
+
+`boundary_function_too_complex` and `forbid_nested_boundary_modules` exist specifically to keep
+those seams thin and visible.
+
+When adding a new boundary marker to `BOUNDARY_MODULES`, the bar is high: the module's primary
+purpose must be executing real effects (filesystem, env, process, network, stdio, time, threads,
+randomness, or FFI). Local mutation alone is not enough.
+
+Current `boundary_function_too_complex` thresholds:
+
+- line threshold: 12+
+- decision threshold: 2+
+- complexity score threshold: 6+
+
+The score also grows with statement count, boolean guard operators, match-arm count, and nesting.
+The intent is to catch boundary functions that are no longer just wiring.
+
+## Good Next Lints
+
+These fit the current architecture and are realistic to implement with the existing dylint helpers.
+
+| Candidate lint | Why it fits this repo | Likely implementation shape |
+|------|-------------|-----------------|
+| `forbid_domain_boundary_dependencies` | Core/domain code should not import boundary implementations directly | Path-based import/use-item lint using the existing boundary path helpers |
+| `forbid_boundary_policy_calls` | Boundaries should execute effects, not call reducer/orchestrator policy helpers | Def-path matching for calls into reducer/orchestrator decision modules from boundary code |
+| `forbid_raw_effect_types_in_public_apis` | Boundary adapters should translate `std::process::Output`, `reqwest::Response`, raw FFI handles, etc. before returning inward | Function-signature/type-path lint on public or cross-module boundary APIs |
+| `forbid_result_swallowing` | Hidden failure handling undermines the explicit-effect model | Detect `let _ = result`, `.ok()` drops, or silent `Err(_)` branches in production code |
+| `forbid_boundary_retry_loops` | Retry policy belongs in reducer/orchestrator state, not inline boundary loops | Boundary-only lint for loops around effect calls plus retry-counter patterns |
+
+Recommended order:
+
+1. `forbid_domain_boundary_dependencies`
+2. `forbid_boundary_policy_calls`
+3. `forbid_result_swallowing`
+4. `forbid_raw_effect_types_in_public_apis`
+5. `forbid_boundary_retry_loops`
 
 ### Autogenerated file exemption
 

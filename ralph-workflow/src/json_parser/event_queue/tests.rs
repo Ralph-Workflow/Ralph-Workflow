@@ -29,19 +29,20 @@ mod tests {
         let queue = queue.send(event.clone());
         assert!(!queue.is_empty());
 
-        let (queue, received) = queue.recv();
+        let (_queue, received) = queue.recv();
         assert_eq!(received.unwrap(), event);
     }
 
     #[test]
     fn test_queue_multiple_events() {
-        let queue: BoundedEventQueue<i32> =
+        let mut queue: BoundedEventQueue<i32> =
             (0..10).fold(BoundedEventQueue::new(), |q, i| q.send(i));
 
-        (0..10).for_each(|i| {
-            let (queue, received) = queue.recv();
+        for i in 0..10 {
+            let (new_queue, received) = queue.recv();
+            queue = new_queue;
             assert_eq!(received.unwrap(), i);
-        });
+        }
     }
 
     #[test]

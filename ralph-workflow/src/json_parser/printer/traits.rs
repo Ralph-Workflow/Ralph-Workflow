@@ -7,7 +7,7 @@
 /// This trait allows parsers to write to different output destinations
 /// (stdout, stderr, or test collectors) without hardcoding the specific
 /// destination. This makes parsers testable by allowing output capture.
-pub trait Printable {
+pub trait Printable: std::io::Write {
     /// Check if this printer is connected to a terminal.
     ///
     /// This is used to determine whether to use terminal-specific features

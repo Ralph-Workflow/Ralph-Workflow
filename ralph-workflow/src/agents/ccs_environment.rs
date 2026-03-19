@@ -1,1 +1,1 @@
-pub use crate::agents::boundary::runtime::RealCcsEnvironment;
+pub use crate::agents::ccs_env::RealCcsEnvironment;

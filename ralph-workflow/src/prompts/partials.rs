@@ -233,7 +233,7 @@ mod tests {
             .get("shared/_no_git_commit")
             .expect("no git commit partial should exist");
 
-        &[
+        let _ = &[
             "`git status`",
             "`git log`",
             "`git diff`",

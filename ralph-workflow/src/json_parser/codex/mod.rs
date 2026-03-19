@@ -13,8 +13,6 @@ use crate::json_parser::types::{format_unknown_json_event, CodexEvent};
 
 pub mod event_handlers;
 
-pub mod boundary;
-
 pub mod io;
 
 use event_handlers::{

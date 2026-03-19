@@ -482,7 +482,10 @@ fn test_backoff_wait_does_not_cause_infinite_loop_in_event_loop_simulation() {
                 }
                 _ => None,
             }
-        });
+        })
+    else {
+        panic!("expected Some")
+    };
 
     // Verify backoff_pending_ms was cleared
     assert!(

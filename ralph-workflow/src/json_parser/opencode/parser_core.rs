@@ -1,6 +1,9 @@
 // OpenCode parser core: struct definition and constructor methods.
 
-use super::printer::StdoutPrinter;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use super::printer::{Printable, SharedPrinter, StdoutPrinter};
 use io::OpenCodeParserState;
 
 /// `OpenCode` event parser
@@ -11,7 +14,7 @@ pub struct OpenCodeParser {
     display_name: String,
     pub(crate) state: OpenCodeParserState,
     show_streaming_metrics: bool,
-    printer: StdoutPrinter,
+    printer: SharedPrinter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,13 +32,17 @@ const MAX_XML_BYTES: usize = 128 * 1024;
 
 impl OpenCodeParser {
     pub(crate) fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, StdoutPrinter::new())
+        Self::with_printer(
+            colors,
+            verbosity,
+            Rc::new(RefCell::new(StdoutPrinter::new())),
+        )
     }
 
     pub(crate) fn with_printer(
         colors: Colors,
         verbosity: Verbosity,
-        printer: StdoutPrinter,
+        printer: SharedPrinter,
     ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
 
@@ -78,7 +85,8 @@ impl OpenCodeParser {
         verbosity: Verbosity,
         printer: StdoutPrinter,
     ) -> Self {
-        Self::with_printer(colors, verbosity, printer).with_terminal_mode(TerminalMode::Full)
+        Self::with_printer(colors, verbosity, Rc::new(RefCell::new(printer)))
+            .with_terminal_mode(TerminalMode::Full)
     }
 
     #[cfg(feature = "test-utils")]
@@ -98,12 +106,13 @@ impl OpenCodeParser {
     }
 
     #[cfg(feature = "test-utils")]
-    pub fn printer(&self) -> StdoutPrinter {
-        self.printer.clone()
+    pub fn printer(&self) -> SharedPrinter {
+        Rc::clone(&self.printer)
     }
 
-    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
-        f(&mut self.printer)
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
     }
 
     #[cfg(feature = "test-utils")]

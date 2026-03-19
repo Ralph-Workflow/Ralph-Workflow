@@ -1,13 +1,8 @@
 use std::io::{IsTerminal, Write};
-use std::sync::LazyLock;
-
-pub static ANSI_RE: LazyLock<Result<regex::Regex, regex::Error>> =
-    LazyLock::new(|| regex::Regex::new(r"\x1b\[[0-9;]*m"));
 
 #[must_use]
 pub fn strip_ansi_codes(s: &str) -> String {
-    ANSI_RE
-        .as_ref()
+    regex::Regex::new(r"\x1b\[[0-9;]*m")
         .map_or_else(|_| s.to_string(), |re| re.replace_all(s, "").to_string())
 }
 

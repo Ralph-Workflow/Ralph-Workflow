@@ -37,7 +37,7 @@ pub fn strip_ansi_sequences(s: &str) -> String {
 pub fn apply_cr_overwrite_semantics(s: &str) -> String {
     let (out, _, _): (String, Vec<char>, usize) = s.chars().fold(
         (String::new(), Vec::new(), 0usize),
-        |(mut out, mut line, col): (String, Vec<char>, usize), ch| match ch {
+        |(mut out, line, col): (String, Vec<char>, usize), ch| match ch {
             '\n' => {
                 out.extend(line.iter());
                 out.push('\n');

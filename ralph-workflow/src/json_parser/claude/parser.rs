@@ -2,14 +2,12 @@
 //
 // Contains the ClaudeParser struct and its core methods.
 
-use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
-use std::collections::HashMap;
 use std::io::BufRead;
 use std::rc::Rc;
 
 use crate::json_parser::claude::io::ParserState;
+#[cfg(any(test, feature = "test-utils"))]
 use crate::json_parser::health::StreamingQualityMetrics;
 use crate::json_parser::incremental_parser::IncrementalNdjsonParser;
 use crate::json_parser::printer::Printable;
@@ -27,16 +25,24 @@ pub struct ClaudeParser {
     display_name: String,
     state: ParserState,
     show_streaming_metrics: bool,
-    printer: StdoutPrinter,
+    printer: Rc<RefCell<dyn Printable>>,
 }
 
 impl ClaudeParser {
     #[must_use]
     pub fn new(colors: Colors, verbosity: Verbosity) -> Self {
-        Self::with_printer(colors, verbosity, StdoutPrinter::new())
+        Self::with_printer(
+            colors,
+            verbosity,
+            Rc::new(RefCell::new(StdoutPrinter::new())),
+        )
     }
 
-    pub fn with_printer(colors: Colors, verbosity: Verbosity, printer: StdoutPrinter) -> Self {
+    pub fn with_printer(
+        colors: Colors,
+        verbosity: Verbosity,
+        printer: Rc<RefCell<dyn Printable>>,
+    ) -> Self {
         let verbose_warnings = matches!(verbosity, Verbosity::Debug);
 
         Self {
@@ -82,26 +88,6 @@ impl ClaudeParser {
         self
     }
 
-    fn streaming_session(&self) -> Rc<RefCell<StreamingSession>> {
-        Rc::clone(&self.state.streaming_session)
-    }
-
-    fn thinking_non_tty_indices_mut(&mut self) -> RefMut<'_, std::collections::BTreeSet<u64>> {
-        self.state.thinking_non_tty_indices.borrow_mut()
-    }
-
-    fn suppress_thinking_for_message_mut(&mut self) -> RefMut<'_, bool> {
-        self.state.suppress_thinking_for_message.borrow_mut()
-    }
-
-    fn last_rendered_content(&self) -> Ref<'_, HashMap<String, String>> {
-        self.state.last_rendered_content.borrow()
-    }
-
-    fn last_rendered_content_mut(&mut self) -> RefMut<'_, HashMap<String, String>> {
-        self.state.last_rendered_content.borrow_mut()
-    }
-
     /// Get a shared reference to the printer.
     ///
     /// This allows tests, monitoring, and other code to access the printer after parsing
@@ -135,11 +121,12 @@ impl ClaudeParser {
     /// Note: downstream crates should avoid relying on this API in production builds.
     #[cfg(any(test, feature = "test-utils"))]
     pub fn printer(&self) -> Rc<RefCell<dyn Printable>> {
-        Rc::new(RefCell::new(self.printer.clone()))
+        self.printer.clone()
     }
 
-    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut StdoutPrinter) -> R) -> R {
-        f(&mut self.printer)
+    pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {
+        let mut printer_ref = self.printer.borrow_mut();
+        f(&mut *printer_ref)
     }
 
     /// Get streaming quality metrics from the current session.

@@ -174,6 +174,7 @@ When an agent completes without finishing all its assigned work → **immediatel
 2. What specific work remains
 3. Exact file/line references if known
 4. Clear instruction to start editing immediately
+5. If large architectural are needed, spell out the exact kind of large change they need to make, ensure they do not avoid the hard work
 
 ---
 

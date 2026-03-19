@@ -6,5 +6,4 @@
 //!
 //! See: `docs/code-style/boundaries.md`
 
-pub mod agent;
 pub mod cloud;

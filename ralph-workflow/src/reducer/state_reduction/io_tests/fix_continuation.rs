@@ -3,7 +3,6 @@
 // Tests for fix continuation triggered, succeeded, budget exhausted events,
 // template variables invalid, and fix output validation failures.
 
-use super::*;
 use crate::agents::AgentRole;
 use crate::reducer::create_test_state;
 use crate::reducer::event::PipelineEvent;

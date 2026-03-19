@@ -70,7 +70,7 @@ impl CodexParser {
         verbosity: Verbosity,
         printer: StdoutPrinter,
     ) -> Self {
-        Self::with_printer(colors, verbosity, printer)
+        Self::with_printer(colors, verbosity, Rc::new(RefCell::new(printer)))
     }
 
     #[cfg(any(test, feature = "test-utils"))]
@@ -97,8 +97,8 @@ impl CodexParser {
     }
 
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn printer(&self) -> StdoutPrinter {
-        self.printer.clone()
+    pub fn printer(&self) -> SharedPrinter {
+        Rc::clone(&self.printer)
     }
 
     pub(crate) fn with_printer_mut<R>(&mut self, f: impl FnOnce(&mut dyn Printable) -> R) -> R {

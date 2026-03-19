@@ -8,8 +8,9 @@ fn test_verbose_mode_streaming_no_duplicate_lines() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Verbose, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Verbose, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate streaming content that arrives in multiple deltas
     // This mimics a diagnostic message like "warning: unused variable"
@@ -96,8 +97,9 @@ fn test_streaming_accumulation_behavior() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Verbose, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Verbose, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Simulate streaming content arriving in multiple deltas
     let input = r#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}}

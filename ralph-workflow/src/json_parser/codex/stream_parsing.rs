@@ -182,7 +182,7 @@ impl CodexParser {
             }
             let chunk_data: Vec<u8> = chunk.to_vec();
             let consumed = chunk_data.len();
-            drop(chunk);
+            let _ = chunk;
             reader.consume(consumed);
 
             let (new_parser, batch) = incremental_parser.feed_and_get_events(&chunk_data);

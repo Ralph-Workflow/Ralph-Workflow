@@ -15,8 +15,8 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-mod domain;
 mod boundary;
+mod domain;
 mod runtime;
 
 dylint_linting::dylint_library!();
@@ -34,6 +34,8 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
     boundary::forbid_terminal_output::register_lints(sess, lint_store);
     boundary::forbid_io_effects::register_lints(sess, lint_store);
     boundary::forbid_nested_boundary_modules::register_lints(sess, lint_store);
+    boundary::forbid_domain_boundary_dependencies::register_lints(sess, lint_store);
+    boundary::forbid_boundary_policy_calls::register_lints(sess, lint_store);
     boundary::boundary_function_too_complex::register_lints(sess, lint_store);
 
     // Code quality lints (runtime - uses std::env)

@@ -205,7 +205,8 @@ pub fn run_fix_pass(
             )
             .with_agent(active_agent)
             .with_duration(elapsed_seconds(fix_start_time));
-            ctx.execution_history
+            let _ = ctx
+                .execution_history
                 .add_step_bounded(step, ctx.config.execution_history_limit);
 
             Ok(FixPassResult::validated(

@@ -303,8 +303,9 @@ fn test_claude_parser_tracks_partial_events_in_health_monitoring() {
     let test_printer = Rc::new(RefCell::new(TestPrinter::new()));
     let printer: SharedPrinter = test_printer.clone();
 
-    let parser = ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
-        .with_terminal_mode(TerminalMode::Full);
+    let mut parser =
+        ClaudeParser::with_printer(Colors { enabled: false }, Verbosity::Normal, printer)
+            .with_terminal_mode(TerminalMode::Full);
 
     // Create a stream with mixed events: control, partial (delta), and complete
     let input = r#"{"type":"stream_event","event":{"type":"message_start"}}

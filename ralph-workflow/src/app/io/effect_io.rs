@@ -90,3 +90,12 @@ pub fn read_user_input() -> String {
     let _ = io::stdin().read_line(&mut input);
     input
 }
+
+pub fn write_stdout(content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    std::io::stdout().write_all(content.as_bytes())
+}
+
+pub fn flush_stdout() -> std::io::Result<()> {
+    std::io::stdout().flush()
+}

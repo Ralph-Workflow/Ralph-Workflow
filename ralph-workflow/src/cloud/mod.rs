@@ -18,16 +18,16 @@
 //!
 //! ## Boundary Modules
 //!
-//! - `runtime/` - Thread spawning for heartbeat background task
 //! - `io/` - HTTP client for cloud API communication
+//! - `runtime/` - Thread spawning for heartbeat background task
 
-pub mod http;
+pub mod io;
 pub mod io_redaction;
 pub mod redaction;
 pub mod runtime;
 pub mod types;
 
-pub use http::HttpCloudReporter;
+pub use io::HttpCloudReporter;
 pub use runtime::HeartbeatGuard;
 pub use types::{CloudError, PipelineResult, ProgressEventType, ProgressUpdate};
 

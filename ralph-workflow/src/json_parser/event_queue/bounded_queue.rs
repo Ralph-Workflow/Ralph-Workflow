@@ -137,28 +137,6 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
         }
     }
 
-    // Try to receive an event without blocking.
-    //
-    // Returns:
-    // * `Some(event)` - An event was available
-    // * `None` - Queue is empty
-    //
-    // Example:
-    // ```ignore
-    // while let Some(event) = queue.try_recv() {
-    //     process_event(event);
-    // }
-    // ```
-    pub fn try_recv(&mut self) -> Option<T> {
-        match self.receiver.try_recv() {
-            Ok(event) => {
-                self.metrics.depth = self.metrics.depth.saturating_sub(1);
-                Some(event)
-            }
-            Err(_) => None,
-        }
-    }
-
     // Receive an event, blocking until one is available.
     //
     // Returns:
@@ -208,16 +186,11 @@ impl<T: std::fmt::Debug> BoundedEventQueue<T> {
         self.depth() == 0
     }
 
-    #[cfg(test)]
-    pub(crate) fn receiver_mut(&mut self) -> &mut mpsc::Receiver<T> {
-        &mut self.receiver
-    }
-
     // Clear all events from the queue.
     //
     // This is useful for error recovery when invalid data is encountered.
-    pub fn clear(self) -> Self {
-        clear_via_receiver(&mut self.receiver);
+    pub fn clear(mut self) -> Self {
+        while self.receiver.try_recv().is_ok() {}
         Self {
             sender: self.sender,
             receiver: self.receiver,

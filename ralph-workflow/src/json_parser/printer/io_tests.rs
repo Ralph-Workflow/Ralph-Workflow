@@ -7,12 +7,9 @@ mod tests {
 
     #[test]
     fn test_stdout_printer() {
-        let printer = StdoutPrinter::new();
-        let _is_term = printer
-            .write_all(b"test\n")
-            .expect("write should work")
-            .flush()
-            .is_terminal();
+        let mut printer = StdoutPrinter::new();
+        printer.write_all(b"test\n").expect("write should work");
+        let _is_term = printer.flush().is_terminal();
     }
 
     #[cfg(test)]
@@ -34,26 +31,22 @@ mod tests {
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_captures_output() {
-        let printer = TestPrinter::new();
-
-        let output = printer
+        let mut printer = TestPrinter::new();
+        printer
             .write_all(b"Hello World\n")
-            .expect("Failed to write")
-            .flush()
-            .get_output();
+            .expect("Failed to write");
+        let output = printer.flush().get_output();
         assert!(output.contains("Hello World"));
     }
 
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_get_lines() {
-        let printer = TestPrinter::new();
-
-        let lines = printer
+        let mut printer = TestPrinter::new();
+        printer
             .write_all(b"Line 1\nLine 2\n")
-            .expect("write should work")
-            .flush()
-            .get_lines();
+            .expect("write should work");
+        let lines = printer.flush().get_lines();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("Line 1"));
         assert!(lines[1].contains("Line 2"));
@@ -62,12 +55,9 @@ mod tests {
     #[test]
     #[cfg(any(test, feature = "test-utils"))]
     fn test_printer_clear() {
-        let printer = TestPrinter::new();
-
-        let printer = printer
-            .write_all(b"Before\n")
-            .expect("write should work")
-            .flush();
+        let mut printer = TestPrinter::new();
+        printer.write_all(b"Before\n").expect("write should work");
+        printer = printer.flush();
         assert!(!printer.get_output().is_empty());
 
         assert!(printer.clear().get_output().is_empty());
@@ -76,12 +66,11 @@ mod tests {
     #[cfg(any(test, feature = "test-utils"))]
     #[test]
     fn test_printer_has_line() {
-        let printer = TestPrinter::new();
-
-        let printer = printer
+        let mut printer = TestPrinter::new();
+        printer
             .write_all(b"Hello World\n")
-            .expect("write should work")
-            .flush();
+            .expect("write should work");
+        printer = printer.flush();
 
         assert!(printer.has_line("Hello"));
         assert!(printer.has_line("World"));
@@ -91,12 +80,11 @@ mod tests {
     #[cfg(any(test, feature = "test-utils"))]
     #[test]
     fn test_printer_count_pattern() {
-        let printer = TestPrinter::new();
-
-        let printer = printer
+        let mut printer = TestPrinter::new();
+        printer
             .write_all(b"test\nmore test\ntest again\n")
-            .expect("write should work")
-            .flush();
+            .expect("write should work");
+        printer = printer.flush();
 
         assert_eq!(printer.count_pattern("test"), 3);
     }
@@ -109,7 +97,7 @@ mod tests {
         printer
             .write_all(b"Line 1\nLine 1\nLine 2\n")
             .expect("write should work");
-        printer.flush();
+        printer = printer.flush();
 
         assert!(printer.has_duplicate_consecutive_lines());
     }
@@ -122,7 +110,7 @@ mod tests {
         printer
             .write_all(b"Line 1\nLine 1\nLine 2\nLine 3\nLine 3\n")
             .expect("write should work");
-        printer.flush();
+        printer = printer.flush();
 
         let duplicates = printer.find_duplicate_consecutive_lines();
         assert_eq!(duplicates.len(), 2);
@@ -140,7 +128,7 @@ mod tests {
         printer
             .write_all(b"Line 1\nLine 2\nLine 3\n")
             .expect("write should work");
-        printer.flush();
+        printer = printer.flush();
 
         assert!(!printer.has_duplicate_consecutive_lines());
     }
@@ -159,7 +147,7 @@ mod tests {
 
         // Add newline to complete the line
         printer.write_all(b" content\n").expect("write should work");
-        printer.flush();
+        printer = printer.flush();
 
         // Now should have the complete content
         assert!(printer.has_line("Partial content"));
@@ -177,7 +165,7 @@ mod tests {
         printer
             .write_all(b"Line 1\nLine 2\n")
             .expect("write should work");
-        printer.flush();
+        printer = printer.flush();
 
         let (line_count, char_count) = printer.get_stats();
         assert_eq!(line_count, 2);
@@ -226,7 +214,7 @@ mod tests {
         printer.write_all(b"Normal text").unwrap();
         assert!(!printer.has_any_escape_sequences());
 
-        printer.clear();
+        printer = printer.clear();
         printer.write_all(b"\x1b[2K\rUpdated").unwrap();
         assert!(printer.has_any_escape_sequences());
         assert!(printer.contains_escape_sequence("\x1b[2K"));
@@ -291,7 +279,7 @@ mod tests {
         printer.write_all(b"Some content").unwrap();
         assert_eq!(printer.write_count(), 1);
 
-        printer.clear();
+        printer = printer.clear();
         assert_eq!(printer.write_count(), 0);
         assert!(printer.get_full_output().is_empty());
     }
@@ -468,7 +456,7 @@ mod tests {
         write!(term, "Some content\nMore content").unwrap();
         assert!(!term.get_visible_output().is_empty());
 
-        term.clear();
+        term = term.clear();
         assert!(term.get_visible_output().is_empty());
         assert_eq!(term.cursor_position(), (0, 0));
     }

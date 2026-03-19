@@ -5,9 +5,34 @@ use crate::checkpoint::execution_history::{
 };
 use crate::logger::output::TestLogger;
 use crate::reducer::PipelineState;
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::io::SnapshotCounter;
+struct SnapshotCounter {
+    count: RefCell<usize>,
+}
+
+impl SnapshotCounter {
+    fn new() -> Self {
+        Self {
+            count: RefCell::new(0),
+        }
+    }
+
+    fn get(&self) -> usize {
+        *self.count.borrow()
+    }
+
+    fn increment(&self) {
+        *self.count.borrow_mut() += 1;
+    }
+}
+
+impl Default for SnapshotCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[test]
 fn test_execution_history_heap_estimate_uses_len_not_capacity() {

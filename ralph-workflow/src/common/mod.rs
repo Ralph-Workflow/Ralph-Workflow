@@ -7,6 +7,7 @@
 //! - External tool detection
 
 pub mod domain_types;
+pub mod io;
 pub mod utils;
 
 // Re-export commonly used utility functions
